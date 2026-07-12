@@ -1,8 +1,8 @@
-SECRET_KEY = "placeholder-not-secret"
+SECRET_KEY: str = "placeholder-not-secret"
 DEBUG = True
-ALLOWED_HOSTS = ["*"]
-INSTALLED_APPS = []
-MIDDLEWARE = []
+ALLOWED_HOSTS: list[str] = ["*"]
+INSTALLED_APPS: list[str] = []
+MIDDLEWARE: list[str] = []
 ROOT_URLCONF = "config.urls"
 DATABASES = {
     "default": {
