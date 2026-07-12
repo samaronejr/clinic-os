@@ -41,7 +41,7 @@ GRANT USAGE ON SCHEMA :"app_schema" TO clinic_owner, clinic_app;
 GRANT USAGE, CREATE ON SCHEMA :"app_schema" TO clinic_resolver;
 
 GRANT clinic_app TO clinic_owner WITH INHERIT FALSE, SET TRUE;
-GRANT clinic_resolver TO clinic_owner WITH INHERIT FALSE, SET FALSE;
+GRANT clinic_resolver TO clinic_owner WITH INHERIT FALSE, SET TRUE;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE clinic_owner IN SCHEMA :"app_schema"
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO clinic_app;
