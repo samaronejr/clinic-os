@@ -1,15 +1,14 @@
-SECRET_KEY: str = "placeholder-not-secret"
-DEBUG = True
-ALLOWED_HOSTS: list[str] = ["*"]
-INSTALLED_APPS: list[str] = []
-MIDDLEWARE: list[str] = []
-ROOT_URLCONF = "config.urls"
+import environ
+
+from .base import *  # noqa: F403
+
+test_env = environ.Env()
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
-    },
+    "default": test_env.db(
+        "MIGRATION_DATABASE_URL",
+        default="postgresql://clinic_owner:clinic_owner_password@localhost:5432/clinic",
+    )
 }
-USE_TZ = True
-TIME_ZONE = "UTC"
-DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+DATABASES["default"]["ATOMIC_REQUESTS"] = False
+DATABASES["default"]["OPTIONS"] = {"options": "-c search_path=clinic_app,public"}
+PASSWORD_HASHERS: list[str] = ["django.contrib.auth.hashers.MD5PasswordHasher"]

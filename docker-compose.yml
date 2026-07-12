@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: clinic
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      CLINIC_OWNER_PASSWORD: ${CLINIC_OWNER_PASSWORD:-clinic_owner_password}
+      CLINIC_APP_PASSWORD: ${CLINIC_APP_PASSWORD:-clinic_app_password}
+      CLINIC_SUPER_PASSWORD: ${CLINIC_SUPER_PASSWORD:-clinic_super_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - clinic_postgres_data:/var/lib/postgresql/data
+      - ./ops/db/bootstrap.sql:/opt/clinic/bootstrap.sql:ro
+      - ./ops/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  clinic_postgres_data:

@@ -74,6 +74,14 @@ plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
 [tool.django-stubs]
 django_settings_module = "config.settings.test"
 
+[[tool.mypy.overrides]]
+module = ["config.settings.dev", "config.settings.prod"]
+allow_redefinition = true
+
+[[tool.mypy.overrides]]
+module = "environ"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = ["-ra", "--strict-config", "--strict-markers"]
