@@ -4,7 +4,7 @@ import base64
 import importlib
 import json
 from types import TracebackType
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, cast
 from unittest.mock import patch
 
 import pytest
@@ -133,7 +133,11 @@ def test_qr_generation_failure_exposes_no_seed_or_provisioning_material(
     ):
         response = client.post("/auth/enroll/", {"action": "start"})
 
-    _assert_failure_surfaces_exclude(response, caplog, SECRET_SENTINEL)
+    _assert_failure_surfaces_exclude(
+        cast("FailureResponse", response),
+        caplog,
+        SECRET_SENTINEL,
+    )
 
 
 @override_settings(DEBUG=False)
@@ -161,4 +165,8 @@ def test_enrollment_render_failure_exposes_no_qr_data_uri(
     ):
         response = client.post("/auth/enroll/", {"action": "start"})
 
-    _assert_failure_surfaces_exclude(response, caplog, QR_DATA_URI_SENTINEL)
+    _assert_failure_surfaces_exclude(
+        cast("FailureResponse", response),
+        caplog,
+        QR_DATA_URI_SENTINEL,
+    )

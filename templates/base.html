@@ -1,15 +1,20 @@
-{% load static %}
+{% load static i18n %}
+{% get_current_language as LANGUAGE_CODE %}
 <!doctype html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{% block meta_description %}Clinic OS secure clinical workspace.{% endblock %}">
     <title>{% block title %}Clinic OS{% endblock %}</title>
+    <link rel="icon" href="{% static 'icons/clinic-os.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'css/clinic-os.css' %}">
+    <link rel="stylesheet" href="{% static 'css/clinic-os-auth.css' %}">
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
             integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
             crossorigin="anonymous"
             defer></script>
+    <script src="{% static 'js/auth-ui.js' %}" defer></script>
     {% block extra_head %}{% endblock %}
   </head>
   <body>

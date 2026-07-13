@@ -13,5 +13,4 @@ urlpatterns: list[URLPattern] = [
     path("auth/enroll/", otp_views.enroll_view, name="enroll"),
     path("auth/verify/", otp_views.verify_view, name="verify"),
     path("auth/protected/", views.protected_view, name="protected"),
-    path("__ui__/auth/", views.auth_showcase, name="auth-showcase"),
 ]

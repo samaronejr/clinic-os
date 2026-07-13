@@ -53,12 +53,26 @@ class ClinicAuthenticationForm(AuthenticationForm):
             }
         )
 
+    def full_clean(self) -> None:
+        """Connect bound field errors to their rendered descriptions."""
+        super().full_clean()
+        for field_name in ("username", "password"):
+            description_ids = ["login-help"]
+            if field_name in self.errors:
+                description_ids.append(f"{self[field_name].auto_id}_error")
+            self.fields[field_name].widget.attrs["aria-describedby"] = " ".join(
+                description_ids
+            )
+        if self.errors:
+            self.fields["username"].widget.attrs.pop("autofocus", None)
+
 
 class ExplicitOTPTokenForm(forms.Form):
     """Verify only a caller-supplied, persistent TOTP device choice."""
 
     otp_device = _NonEchoingChoiceField(
         choices=(),
+        label="Authenticator",
         error_messages={
             "required": INVALID_CODE_MESSAGE,
             "invalid_choice": INVALID_CODE_MESSAGE,
@@ -101,6 +115,26 @@ class ExplicitOTPTokenForm(forms.Form):
                 "aria-describedby": "otp-help",
             },
         )
+
+    def full_clean(self) -> None:
+        """Connect visible OTP controls to help and bound error text."""
+        super().full_clean()
+        device_descriptions = (
+            [] if self.fields["otp_device"].widget.is_hidden else ["otp-device-help"]
+        )
+        descriptions = {
+            "otp_device": device_descriptions,
+            "otp_token": ["otp-help"],
+        }
+        for field_name, description_ids in descriptions.items():
+            if field_name in self.errors:
+                description_ids.append(f"{self[field_name].auto_id}_error")
+            if description_ids:
+                self.fields[field_name].widget.attrs["aria-describedby"] = " ".join(
+                    description_ids
+                )
+            else:
+                self.fields[field_name].widget.attrs.pop("aria-describedby", None)
 
     def clean_otp_token(self) -> str:
         """Lock and verify the token against the selected user-owned device."""

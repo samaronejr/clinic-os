@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Authentication states · Clinic OS{% endblock %}
+{% block meta_description %}Review inert Clinic OS authentication component states in development.{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
   <p class="eyebrow">Debug showcase</p>
@@ -13,6 +14,12 @@
     <section class="showcase-state" aria-busy="true"><h2>Loading</h2><p>Checking code…</p></section>
     <section class="showcase-state"><h2>Success</h2><div class="feedback feedback--success" role="status"><p>Access confirmed.</p></div></section>
     <section class="showcase-state"><h2>Enrollment</h2><div class="qr-placeholder" role="img" aria-label="Inert QR placeholder">QR placeholder</div></section>
+    <section class="showcase-state">
+      <h2>Locale wrapping</h2>
+      <p id="stress-korean" lang="ko">진료소 인증 코드를 안전하게 확인하고 <span class="keep-phrase">다음 단계로</span> 계속하세요.</p>
+      <p id="stress-japanese" lang="ja">診療所の認証コードを<span class="keep-phrase">確認して</span>、安全に次の手順へ進んでください。</p>
+      <p id="stress-chinese" lang="zh-Hans">请确认诊所身份验证代码有效，然后<span class="keep-phrase">安全地</span>继续下一步。</p>
+    </section>
   </div>
 </section>
 {% endblock %}

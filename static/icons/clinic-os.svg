@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Clinic OS</title>
+  <rect width="64" height="64" rx="12" fill="#0f6b5c"/>
+  <path fill="#ffffff" d="M27 13h10v14h14v10H37v14H27V37H13V27h14z"/>
+</svg>

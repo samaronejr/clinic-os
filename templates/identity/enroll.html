@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Set up two-step verification · Clinic OS{% endblock %}
+{% block meta_description %}Set up secure two-step verification for Clinic OS.{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
   <p class="eyebrow">Two-step verification</p>
@@ -11,7 +12,8 @@
       <p>The next screen shows a private QR code. Scan it once, then enter the current code.</p>
       <form method="post" action="{% url 'identity:enroll' %}"
             hx-post="{% url 'identity:enroll' %}" hx-target="#auth-panel"
-            hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress">
+            hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress"
+            data-auth-form>
         {% csrf_token %}
         <input type="hidden" name="action" value="start">
         <input type="hidden" name="next" value="{{ next }}">
@@ -31,25 +33,35 @@
           <img class="qr-image" src="{{ qr_data_uri }}" alt="Private Clinic OS authenticator setup QR code">
         </div>
       {% endif %}
-      {% if form.non_field_errors %}
-        <div class="feedback feedback--error" role="alert" tabindex="-1">
+      {% if form.errors %}
+        <div class="feedback feedback--error" id="auth-errors" role="alert" tabindex="-1" data-focus-error autofocus>
           <h2>Check the code</h2>
-          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+          <p>Review the highlighted authenticator details and try again.</p>
         </div>
       {% endif %}
       <form method="post" action="{% url 'identity:enroll' %}"
             hx-post="{% url 'identity:enroll' %}" hx-target="#auth-panel"
-            hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress">
+            hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress"
+            data-auth-form>
         {% csrf_token %}
         <input type="hidden" name="action" value="confirm">
         <input type="hidden" name="next" value="{{ next }}">
-        {{ form.otp_device }}
-        {% for error in form.otp_device.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+        {% if form.otp_device.is_hidden %}
+          {{ form.otp_device }}
+          {% if form.otp_device.errors %}<div class="field-errors" id="{{ form.otp_device.auto_id }}_error">{% for error in form.otp_device.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        {% else %}
+          <div class="field{% if form.otp_device.errors %} field--error{% endif %}">
+            {{ form.otp_device.label_tag }}
+            {{ form.otp_device }}
+            <p class="hint" id="otp-device-help">Choose the authenticator that will provide this code.</p>
+            {% if form.otp_device.errors %}<div class="field-errors" id="{{ form.otp_device.auto_id }}_error">{% for error in form.otp_device.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+          </div>
+        {% endif %}
         <div class="field{% if form.otp_token.errors %} field--error{% endif %}">
           {{ form.otp_token.label_tag }}
           {{ form.otp_token }}
           <p class="hint" id="otp-help">Codes refresh about every 30 seconds and can be used only once.</p>
-          {% for error in form.otp_token.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+          {% if form.otp_token.errors %}<div class="field-errors" id="{{ form.otp_token.auto_id }}_error">{% for error in form.otp_token.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
         </div>
         <div class="actions">
           <button type="submit">Confirm authenticator</button>

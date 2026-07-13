@@ -1,31 +1,37 @@
 {% extends "base.html" %}
 {% block title %}Sign in · Clinic OS{% endblock %}
+{% block meta_description %}Sign in securely to the Clinic OS clinical workspace.{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
   <p class="eyebrow">Secure workspace</p>
   <h1 id="auth-title">Sign in to Clinic OS</h1>
   <p class="lede" id="login-help">Use your clinic credentials. Privileged roles will verify an authenticator code next.</p>
   <div class="auth-card" id="auth-panel" aria-live="polite">
-    {% if form.non_field_errors %}
-      <div class="feedback feedback--error" role="alert" tabindex="-1">
+    {% if form.errors %}
+      <div class="feedback feedback--error" id="auth-errors" role="alert" tabindex="-1" data-focus-error autofocus>
         <h2>We could not sign you in</h2>
-        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        {% if form.non_field_errors %}
+          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        {% else %}
+          <p>Check the highlighted fields and try again.</p>
+        {% endif %}
       </div>
     {% endif %}
     <form method="post" action="{% url 'identity:login' %}"
           hx-post="{% url 'identity:login' %}" hx-target="#auth-panel"
-          hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress">
+          hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress"
+          data-auth-form>
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ next }}">
       <div class="field{% if form.username.errors %} field--error{% endif %}">
         {{ form.username.label_tag }}
         {{ form.username }}
-        {% for error in form.username.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+        {% if form.username.errors %}<div class="field-errors" id="{{ form.username.auto_id }}_error">{% for error in form.username.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="field{% if form.password.errors %} field--error{% endif %}">
         {{ form.password.label_tag }}
         {{ form.password }}
-        {% for error in form.password.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+        {% if form.password.errors %}<div class="field-errors" id="{{ form.password.auto_id }}_error">{% for error in form.password.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="actions">
         <button type="submit">Sign in</button>

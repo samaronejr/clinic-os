@@ -6,6 +6,7 @@ import pytest
 from apps.identity.models import User
 from django.contrib.staticfiles import finders
 from django.test import Client, override_settings
+from django.urls import Resolver404, resolve
 
 from otp_test_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
@@ -29,6 +30,10 @@ def test_login_screen_uses_external_design_system_styles_and_accessible_form() -
 
     assert response.status_code == 200
     assert b'href="/static/css/clinic-os.css"' in response.content
+    assert b'href="/static/css/clinic-os-auth.css"' in response.content
+    assert b'src="/static/js/auth-ui.js"' in response.content
+    assert b'href="/static/icons/clinic-os.svg"' in response.content
+    assert b'<meta name="description"' in response.content
     assert b"<style" not in response.content
     assert b'<label for="id_username">' in response.content
     assert b'<label for="id_password">' in response.content
@@ -36,8 +41,17 @@ def test_login_screen_uses_external_design_system_styles_and_accessible_form() -
     assert b"Sign in to Clinic OS" in response.content
 
 
-def test_clinic_stylesheet_is_discoverable_by_django_staticfiles() -> None:
-    assert finders.find("css/clinic-os.css") is not None
+@pytest.mark.parametrize(
+    "asset",
+    [
+        "css/clinic-os.css",
+        "css/clinic-os-auth.css",
+        "js/auth-ui.js",
+        "icons/clinic-os.svg",
+    ],
+)
+def test_auth_assets_are_discoverable_by_django_staticfiles(asset: str) -> None:
+    assert finders.find(asset) is not None
 
 
 def test_auth_responses_are_uncacheable_and_vary_for_htmx() -> None:
@@ -47,7 +61,7 @@ def test_auth_responses_are_uncacheable_and_vary_for_htmx() -> None:
     assert "HX-Request" in response.headers["Vary"]
 
 
-@override_settings(DEBUG=True)
+@override_settings(DEBUG=True, ROOT_URLCONF="config.urls_dev")
 def test_auth_showcase_is_debug_only_and_contains_inert_required_states(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -64,16 +78,34 @@ def test_auth_showcase_is_debug_only_and_contains_inert_required_states(
     assert b"data:image/png" not in response.content
 
 
-@override_settings(DEBUG=False)
-def test_auth_showcase_is_unavailable_outside_debug(
+@override_settings(DEBUG=False, ROOT_URLCONF="config.urls")
+def test_auth_showcase_is_absent_from_the_production_resolver(
     rbac_graph: RbacGraph,
 ) -> None:
     client = _logged_in_client(rbac_graph)
 
-    with runtime_role():
-        response = client.get("/__ui__/auth/")
+    with pytest.raises(Resolver404):
+        resolve("/__ui__/auth/")
 
-    assert response.status_code == 404
+    with runtime_role():
+        assert client.get("/__ui__/auth/").status_code == 404
+
+
+def test_route_meta_descriptions_are_specific(rbac_graph: RbacGraph) -> None:
+    login = Client().get("/auth/login/")
+    client = _logged_in_client(rbac_graph)
+    with runtime_role():
+        logout = client.get("/auth/logout/")
+
+    assert b"Sign in securely to the Clinic OS clinical workspace." in login.content
+    assert b"Sign out of the Clinic OS clinical workspace securely." in logout.content
+
+
+@override_settings(LANGUAGE_CODE="ko")
+def test_document_language_follows_the_active_locale() -> None:
+    response = Client().get("/auth/login/")
+
+    assert b'<html lang="ko">' in response.content
 
 
 def test_htmx_login_uses_safe_client_redirect_header(
