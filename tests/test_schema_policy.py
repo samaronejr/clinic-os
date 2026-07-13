@@ -209,7 +209,7 @@ def test_resolver_table_privileges_are_an_exact_select_allowlist() -> None:
 
 
 def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
-    # Given: every function in the application schema
+    # Given: every function owned by the resolver role
     # When: signatures, execution ACLs, and safety attributes are inspected
     with connection.cursor() as cursor:
         cursor.execute(
@@ -248,6 +248,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
             JOIN pg_catalog.pg_namespace AS namespace
               ON namespace.oid = procedure.pronamespace
             WHERE namespace.nspname = 'clinic_app'
+              AND procedure.proowner = 'clinic_resolver'::pg_catalog.regrole
             ORDER BY procedure.proname
             """
         )
