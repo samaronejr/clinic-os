@@ -40,6 +40,8 @@ from psycopg.errors import (
     InvalidParameterValue,
 )
 
+from database_urls import database_url_for_name
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -77,9 +79,43 @@ class WorkerCall:
 
 
 def _runtime_database_url() -> str:
-    configured_url = urlsplit(os.environ["APP_DATABASE_URL"])
     database_name = str(connection.settings_dict["NAME"])
-    return urlunsplit(configured_url._replace(path=f"/{database_name}"))
+    return database_url_for_name(os.environ["APP_DATABASE_URL"], database_name)
+
+
+@pytest.mark.parametrize(
+    ("database_name", "expected_path"),
+    [
+        pytest.param("clinic?url", "/clinic%3Furl", id="question"),
+        pytest.param("clinic#url", "/clinic%23url", id="hash"),
+        pytest.param("clinic/url", "/clinic%2Furl", id="slash"),
+        pytest.param("clinic%url", "/clinic%25url", id="percent"),
+        pytest.param("clinic url", "/clinic%20url", id="space"),
+        pytest.param("clinic%3Furl", "/clinic%253Furl", id="literal-escape"),
+        pytest.param("clinic_url", "/clinic_url", id="ordinary"),
+    ],
+)
+def test_runtime_database_url_encodes_active_name_as_one_path_segment(
+    monkeypatch: pytest.MonkeyPatch,
+    database_name: str,
+    expected_path: str,
+) -> None:
+    configured_url = urlsplit(
+        "postgresql://user:p%40ss@db.example:5544/base"
+        "?application_name=harness%20qa&connect_timeout=5#marker"
+    )
+    monkeypatch.setenv("APP_DATABASE_URL", urlunsplit(configured_url))
+    monkeypatch.setitem(connection.settings_dict, "NAME", database_name)
+
+    result = urlsplit(_runtime_database_url())
+
+    assert result.path == expected_path
+    assert (result.scheme, result.netloc, result.query, result.fragment) == (
+        configured_url.scheme,
+        configured_url.netloc,
+        configured_url.query,
+        configured_url.fragment,
+    )
 
 
 def _set_context(

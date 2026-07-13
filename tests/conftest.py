@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 import psycopg
@@ -11,6 +10,8 @@ import pytest
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
+
+from database_urls import database_url_for_name
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
@@ -86,22 +87,23 @@ def tenant_graph() -> TenantGraph:
 
 @pytest.fixture
 def app_database_url() -> str:
-    configured_url = urlsplit(os.environ["APP_DATABASE_URL"])
     database_name = str(connection.settings_dict["NAME"])
-    return urlunsplit(configured_url._replace(path=f"/{database_name}"))
+    return database_url_for_name(os.environ["APP_DATABASE_URL"], database_name)
 
 
 @pytest.fixture
 def superuser_database_url() -> str:
-    configured_url = urlsplit(os.environ["TEST_SUPERUSER_DATABASE_URL"])
     database_name = str(connection.settings_dict["NAME"])
-    return urlunsplit(configured_url._replace(path=f"/{database_name}"))
+    return database_url_for_name(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"], database_name
+    )
 
 
 def _test_superuser_database_url() -> str:
-    configured_url = urlsplit(os.environ["TEST_SUPERUSER_DATABASE_URL"])
     database_name = str(connection.settings_dict["NAME"])
-    return urlunsplit(configured_url._replace(path=f"/{database_name}"))
+    return database_url_for_name(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"], database_name
+    )
 
 
 @pytest.hookimpl(wrapper=True)
