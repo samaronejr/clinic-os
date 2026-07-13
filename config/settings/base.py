@@ -42,6 +42,8 @@ INSTALLED_APPS: list[str] = [
     "apps.interop.apps.InteropConfig",
 ]
 
+AUTH_USER_MODEL: str = "identity.User"
+
 MIDDLEWARE: list[str] = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

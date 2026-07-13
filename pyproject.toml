@@ -86,6 +86,10 @@ ignore_missing_imports = true
 module = ["celery", "celery.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["django_otp", "django_otp.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = ["-ra", "--strict-config", "--strict-markers"]

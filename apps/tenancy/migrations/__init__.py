@@ -1,0 +1,1 @@
+"""Tenancy database migrations."""
