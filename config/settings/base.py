@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 import environ
+import sentry_sdk
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_APP_DATABASE_URL = (
@@ -40,6 +41,7 @@ MIDDLEWARE: list[str] = [
 ]
 
 ROOT_URLCONF: str = "config.urls"
+WSGI_APPLICATION: str = "config.wsgi.application"
 
 TEMPLATES = [
     {
@@ -60,6 +62,23 @@ TEMPLATES = [
 DATABASES = {"default": env.db("APP_DATABASE_URL", default=DEFAULT_APP_DATABASE_URL)}
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"]["OPTIONS"] = {"options": "-c search_path=clinic_app,public"}
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "600/min",
+    },
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -82,6 +101,10 @@ DEFAULT_AUTO_FIELD: str = "django.db.models.BigAutoField"
 SECURE_CONTENT_TYPE_NOSNIFF: bool = True
 SECURE_REFERRER_POLICY: str = "same-origin"
 X_FRAME_OPTIONS: str = "DENY"
+
+SENTRY_DSN: str = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    sentry_sdk.init(dsn=SENTRY_DSN, send_default_pii=False)
 
 LOGGING = {
     "version": 1,
