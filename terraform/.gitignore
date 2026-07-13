@@ -1,0 +1,23 @@
+# Terraform's provider/module cache and local backend metadata.
+.terraform/
+
+# Local state and state backups can contain secrets.
+*.tfstate
+*.tfstate.*
+
+# Saved plans and crash logs.
+*.tfplan
+*.plan
+crash.log
+crash.*.log
+
+# Runtime values and backend settings are intentionally supplied out of band.
+*.tfvars
+*.tfvars.json
+*.tfbackend
+
+# Local override files are never reviewed configuration.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
