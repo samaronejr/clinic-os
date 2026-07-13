@@ -32,27 +32,43 @@ class TenantTransactionNestingError(TenantContextError):
         super().__init__("tenant context requires an outermost transaction")
 
 
+def clear_connection_tenant_gucs() -> None:
+    """Reset persistent tenant state without opening an unused connection."""
+    if connection.connection is None:
+        return
+
+    with transaction.atomic(durable=True), connection.cursor() as cursor:
+        cursor.execute("RESET app.current_user_id")
+        cursor.execute("RESET app.current_tenant")
+
+
 @contextmanager
 def tenant_context(user_id: UUID, org_id: UUID) -> Iterator[None]:
     """Authorize and expose one tenant only for one outermost transaction."""
     if connection.in_atomic_block:
         raise TenantTransactionNestingError
 
-    with transaction.atomic(durable=True):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
-                [str(user_id)],
-            )
-            cursor.execute(
-                "SELECT clinic_app.user_has_org(%s)",
-                [str(org_id)],
-            )
-            membership = cursor.fetchone()
-            if membership != (True,):
-                raise TenantAccessDeniedError(user_id=user_id, organization_id=org_id)
-            cursor.execute(
-                "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
-                [str(org_id)],
-            )
-        yield
+    try:
+        with transaction.atomic(durable=True):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+                    [str(user_id)],
+                )
+                cursor.execute(
+                    "SELECT clinic_app.user_has_org(%s)",
+                    [str(org_id)],
+                )
+                membership = cursor.fetchone()
+                if membership != (True,):
+                    raise TenantAccessDeniedError(
+                        user_id=user_id,
+                        organization_id=org_id,
+                    )
+                cursor.execute(
+                    "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                    [str(org_id)],
+                )
+            yield
+    finally:
+        clear_connection_tenant_gucs()

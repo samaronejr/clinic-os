@@ -9,7 +9,11 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.http.response import HttpResponseBase
 
-from apps.tenancy.db import TenantAccessDeniedError, tenant_context
+from apps.tenancy.db import (
+    TenantAccessDeniedError,
+    clear_connection_tenant_gucs,
+    tenant_context,
+)
 
 BYPASS_PATHS: Final = frozenset(
     {
@@ -58,16 +62,22 @@ class TenantMiddleware:
         """Validate signed session identifiers and execute the full response chain."""
         path = request.path_info
         if path in BYPASS_PATHS or path.startswith(BYPASS_PREFIXES):
-            return self.get_response(request)
+            clear_connection_tenant_gucs()
+            try:
+                return self.get_response(request)
+            finally:
+                clear_connection_tenant_gucs()
 
         raw_user_id = request.session.get(SESSION_KEY)
         raw_org_id = request.session.get("active_org_id")
         if not isinstance(raw_user_id, str) or not isinstance(raw_org_id, str):
+            clear_connection_tenant_gucs()
             return HttpResponse(status=403)
 
         user_id = _parse_uuid(raw_user_id)
         org_id = _parse_uuid(raw_org_id)
         if user_id is None or org_id is None:
+            clear_connection_tenant_gucs()
             return HttpResponse(status=403)
 
         try:
