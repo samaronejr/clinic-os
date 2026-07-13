@@ -81,13 +81,12 @@ db-inputs:
 
 db-bootstrap: db-inputs
 	@PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i -e PGPASSWORD \
+		-e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
+		-e CLINIC_SUPER_PASSWORD \
 		"$${POSTGRES_CONTAINER}" \
 		psql -v ON_ERROR_STOP=1 -h localhost -p "$${POSTGRES_PORT}" \
 		-U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" \
 		-v database_name="$${POSTGRES_DB}" -v app_schema="clinic_app" \
-		-v clinic_owner_password="$${CLINIC_OWNER_PASSWORD}" \
-		-v clinic_app_password="$${CLINIC_APP_PASSWORD}" \
-		-v clinic_super_password="$${CLINIC_SUPER_PASSWORD}" \
 		-f - < ops/db/bootstrap.sql
 	@PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i \
 		-e PGPASSWORD -e POSTGRES_PORT -e POSTGRES_USER -e POSTGRES_DB \
@@ -104,39 +103,42 @@ db-bootstrap: db-inputs
 					--owner=clinic_owner "$$TEST_DATABASE_NAME"; \
 			fi'
 	@PGPASSWORD="$${POSTGRES_PASSWORD}" $(DOCKER) exec -i -e PGPASSWORD \
+		-e CLINIC_OWNER_PASSWORD -e CLINIC_APP_PASSWORD \
+		-e CLINIC_SUPER_PASSWORD \
 		"$${POSTGRES_CONTAINER}" \
 		psql -v ON_ERROR_STOP=1 -h localhost -p "$${POSTGRES_PORT}" \
 		-U "$${POSTGRES_USER}" -d "$${TEST_DATABASE_NAME}" \
 		-v database_name="$${TEST_DATABASE_NAME}" -v app_schema="clinic_app" \
-		-v clinic_owner_password="$${CLINIC_OWNER_PASSWORD}" \
-		-v clinic_app_password="$${CLINIC_APP_PASSWORD}" \
-		-v clinic_super_password="$${CLINIC_SUPER_PASSWORD}" \
 		-f - < ops/db/bootstrap.sql
 
 db-posture: db-inputs
-	@$(DOCKER) exec -i -e APP_DATABASE_URL -e TEST_DATABASE_NAME \
+	@PGHOST=localhost PGPORT="$${POSTGRES_PORT}" \
+		PGDATABASE="$${POSTGRES_DB}" PGUSER=clinic_app \
+		PGPASSWORD="$${CLINIC_APP_PASSWORD}" \
+		$(DOCKER) exec -i -e PGHOST -e PGPORT -e PGDATABASE \
+		-e PGUSER -e PGPASSWORD -e TEST_DATABASE_NAME \
 		"$${POSTGRES_CONTAINER}" \
 		sh -ceu '\
 			case "$$TEST_DATABASE_NAME" in \
 				""|*[!A-Za-z0-9_]*) printf "%s\n" "invalid TEST_DATABASE_NAME" >&2; exit 2;; \
 			esac; \
-			set -- $$(psql "$$APP_DATABASE_URL" -At -F " " -c \
+			set -- $$(psql -At -F " " -c \
 				"SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"); \
 			[ "$$1" = clinic_app ] || { \
-				printf "%s\n" "APP_DATABASE_URL must authenticate as clinic_app, got $$1" >&2; \
+				printf "%s\n" "runtime database credentials must authenticate as clinic_app, got $$1" >&2; \
 				exit 1; \
 			}; \
 			[ "$$2" = f ] && [ "$$3" = f ] || { \
-				printf "%s\n" "APP_DATABASE_URL must not authenticate as a superuser or BYPASSRLS role" >&2; \
+				printf "%s\n" "runtime database role must not be a superuser or BYPASSRLS role" >&2; \
 				exit 1; \
 			}; \
-			set -- $$(psql "$$APP_DATABASE_URL" -At -F " " -c \
+			set -- $$(psql -At -F " " -c \
 				"SELECT rolsuper, rolbypassrls, rolcreatedb FROM pg_roles WHERE rolname = '\''clinic_owner'\''"); \
 			[ "$$1" = f ] && [ "$$2" = f ] && [ "$$3" = f ] || { \
 				printf "%s\n" "clinic_owner must be NOSUPERUSER, NOBYPASSRLS, and NOCREATEDB" >&2; \
 				exit 1; \
 			}; \
-			test_owner=$$(psql "$$APP_DATABASE_URL" -Atc \
+			test_owner=$$(psql -Atc \
 				"SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '\''$$TEST_DATABASE_NAME'\''"); \
 			[ "$$test_owner" = clinic_owner ] || { \
 				printf "%s\n" "$$TEST_DATABASE_NAME must be owned by clinic_owner" >&2; \

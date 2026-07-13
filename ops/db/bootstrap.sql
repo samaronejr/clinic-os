@@ -1,4 +1,7 @@
 \set ON_ERROR_STOP on
+\getenv clinic_owner_password CLINIC_OWNER_PASSWORD
+\getenv clinic_app_password CLINIC_APP_PASSWORD
+\getenv clinic_super_password CLINIC_SUPER_PASSWORD
 
 SELECT format(
     'CREATE ROLE clinic_owner LOGIN PASSWORD %L',
