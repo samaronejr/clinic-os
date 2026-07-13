@@ -63,6 +63,19 @@ db-inputs:
 			printf 'invalid %s\n' "$${input_name}" >&2; exit 2; \
 		}; \
 	done; \
+	set -- \
+		POSTGRES_PASSWORD "$${POSTGRES_PASSWORD}" \
+		CLINIC_OWNER_PASSWORD "$${CLINIC_OWNER_PASSWORD}" \
+		CLINIC_APP_PASSWORD "$${CLINIC_APP_PASSWORD}" \
+		CLINIC_SUPER_PASSWORD "$${CLINIC_SUPER_PASSWORD}"; \
+	while [ "$${#}" -gt 0 ]; do \
+		input_name="$${1}"; \
+		input_value="$${2}"; \
+		shift 2; \
+		[ -n "$${input_value}" ] || { \
+			printf 'invalid %s\n' "$${input_name}" >&2; exit 2; \
+		}; \
+	done; \
 	case "$${POSTGRES_CONTAINER}" in \
 		""|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) \
 			printf '%s\n' 'invalid POSTGRES_CONTAINER' >&2; exit 2;; \
@@ -112,40 +125,7 @@ db-bootstrap: db-inputs
 		-f - < ops/db/bootstrap.sql
 
 db-posture: db-inputs
-	@PGHOST=localhost PGPORT="$${POSTGRES_PORT}" \
-		PGDATABASE="$${POSTGRES_DB}" PGUSER=clinic_app \
-		PGPASSWORD="$${CLINIC_APP_PASSWORD}" \
-		$(DOCKER) exec -i -e PGHOST -e PGPORT -e PGDATABASE \
-		-e PGUSER -e PGPASSWORD -e TEST_DATABASE_NAME \
-		"$${POSTGRES_CONTAINER}" \
-		sh -ceu '\
-			case "$$TEST_DATABASE_NAME" in \
-				""|*[!A-Za-z0-9_]*) printf "%s\n" "invalid TEST_DATABASE_NAME" >&2; exit 2;; \
-			esac; \
-			set -- $$(psql -At -F " " -c \
-				"SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"); \
-			[ "$$1" = clinic_app ] || { \
-				printf "%s\n" "runtime database credentials must authenticate as clinic_app, got $$1" >&2; \
-				exit 1; \
-			}; \
-			[ "$$2" = f ] && [ "$$3" = f ] || { \
-				printf "%s\n" "runtime database role must not be a superuser or BYPASSRLS role" >&2; \
-				exit 1; \
-			}; \
-			set -- $$(psql -At -F " " -c \
-				"SELECT rolsuper, rolbypassrls, rolcreatedb FROM pg_roles WHERE rolname = '\''clinic_owner'\''"); \
-			[ "$$1" = f ] && [ "$$2" = f ] && [ "$$3" = f ] || { \
-				printf "%s\n" "clinic_owner must be NOSUPERUSER, NOBYPASSRLS, and NOCREATEDB" >&2; \
-				exit 1; \
-			}; \
-			test_owner=$$(psql -Atc \
-				"SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '\''$$TEST_DATABASE_NAME'\''"); \
-			[ "$$test_owner" = clinic_owner ] || { \
-				printf "%s\n" "$$TEST_DATABASE_NAME must be owned by clinic_owner" >&2; \
-				exit 1; \
-			}; \
-			printf "%s\n" \
-				"database posture: clinic_app runtime; clinic_owner NOCREATEDB; $$TEST_DATABASE_NAME precreated"'
+	@$(UV) run python ops/db/posture.py
 
 migrate:
 	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run python manage.py migrate

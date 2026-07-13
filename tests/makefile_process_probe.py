@@ -8,14 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Sequence
 
 PROCESS_TIMEOUT_SECONDS: Final = 15
 REPORT_ENV: Final = "CLINIC_PROCESS_PROBE_REPORT"
-POSTURE_MODE_ENV: Final = "CLINIC_POSTURE_PROBE_MODE"
-PROBE_DIRECTORY_ENV: Final = "CLINIC_PSQL_PROBE_DIRECTORY"
-PROBE_MODULE_ENV: Final = "CLINIC_PSQL_PROBE_MODULE"
-PROBE_PYTHON_ENV: Final = "CLINIC_PSQL_PROBE_PYTHON"
 PASSWORD_VARIABLES: Final = (
     "CLINIC_OWNER_PASSWORD",
     "CLINIC_APP_PASSWORD",
@@ -79,65 +75,24 @@ def _append_report(fields: Sequence[str]) -> None:
         report.write("\t".join(fields) + "\n")
 
 
-def _run_posture_psql_probe(arguments: Sequence[str]) -> int:
-    libpq_names = ("PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD")
-    libpq_values = tuple(os.environ.get(name, "") for name in libpq_names)
+def _run_uv_probe(arguments: Sequence[str]) -> int:
+    database_url = os.environ.get("APP_DATABASE_URL", "")
     command_line = Path("/proc/self/cmdline").read_bytes()
-    argv_is_clean = all(
-        value.encode() not in command_line
-        for value in (os.environ["APP_DATABASE_URL"], os.environ.get("PGPASSWORD", ""))
-        if value
-    )
+    argv_is_clean = bool(database_url) and database_url.encode() not in command_line
+    expected_command = tuple(arguments) == ("run", "python", "ops/db/posture.py")
     _append_report(
         (
-            "posture-psql",
+            "posture-python",
             "1" if argv_is_clean else "0",
-            "1" if all(libpq_values) else "0",
-            hashlib.sha256("\0".join(libpq_values).encode()).hexdigest(),
+            "1" if expected_command else "0",
+            hashlib.sha256(database_url.encode()).hexdigest(),
         )
     )
-    query = arguments[arguments.index("-c") + 1] if "-c" in arguments else arguments[-1]
-    if "rolcreatedb" in query:
-        sys.stdout.write("f f f\n")
-    elif "pg_get_userbyid" in query:
-        sys.stdout.write("clinic_owner\n")
-    else:
-        sys.stdout.write("clinic_app f f\n")
-    return 0
-
-
-def _run_posture_shell(
-    environment_arguments: Collection[str],
-    command: Sequence[str],
-) -> int:
-    environment = {name: os.environ[name] for name in environment_arguments}
-    environment.update(
-        {
-            name: os.environ[name]
-            for name in (
-                REPORT_ENV,
-                PROBE_MODULE_ENV,
-                PROBE_PYTHON_ENV,
-                "APP_DATABASE_URL",
-            )
-        }
-    )
-    environment["PATH"] = f"{os.environ[PROBE_DIRECTORY_ENV]}:{os.environ['PATH']}"
-    result = subprocess.run(  # noqa: S603 - fixed Make recipe and probe PATH.
-        command,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=PROCESS_TIMEOUT_SECONDS,
-    )
-    return result.returncode
+    return 0 if argv_is_clean and expected_command else 97
 
 
 def _run_docker_probe(arguments: Sequence[str]) -> int:
     environment_arguments, command = _parse_docker_exec(arguments)
-    if command[0] == "sh" and os.environ.get(POSTURE_MODE_ENV) == "1":
-        return _run_posture_shell(environment_arguments, command)
     credentials = tuple(os.environ[name].encode() for name in PASSWORD_VARIABLES)
     self_command_line = Path("/proc/self/cmdline").read_bytes()
     self_is_clean = _contains_no_credentials(self_command_line, credentials)
@@ -171,8 +126,8 @@ def _run_docker_probe(arguments: Sequence[str]) -> int:
 
 
 def main(arguments: Sequence[str]) -> int:
-    if arguments[0] == "--psql":
-        return _run_posture_psql_probe(arguments[1:])
+    if arguments[0] == "--uv":
+        return _run_uv_probe(arguments[1:])
     return _run_docker_probe(arguments)
 
 

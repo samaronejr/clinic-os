@@ -114,6 +114,35 @@ def test_db_bootstrap_treats_passwords_as_opaque_environment_data(
     assert not canary.exists(), _output(result)
 
 
+@pytest.mark.parametrize(
+    "variable_name",
+    [
+        "POSTGRES_PASSWORD",
+        "CLINIC_OWNER_PASSWORD",
+        "CLINIC_APP_PASSWORD",
+        "CLINIC_SUPER_PASSWORD",
+    ],
+)
+def test_db_bootstrap_rejects_empty_passwords_before_docker(
+    variable_name: str,
+) -> None:
+    # Given: one required database credential is explicitly empty
+    result = _run_make(
+        (
+            "db-bootstrap",
+            "DOCKER=true",
+            "POSTGRES_CONTAINER=fixture",
+            "POSTGRES_PORT=55413",
+            f"{variable_name}=",
+        )
+    )
+
+    # Then: input validation stops bootstrap before the inert Docker boundary
+    output = _output(result)
+    assert result.returncode != 0, output
+    assert f"invalid {variable_name}" in output
+
+
 def test_ci_treats_database_urls_as_opaque_environment_data(tmp_path: Path) -> None:
     # Given: every database URL contains shell command-substitution syntax
     canary = tmp_path / "url-injection-canary"
