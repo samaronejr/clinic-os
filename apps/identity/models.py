@@ -1,18 +1,35 @@
 """Identity domain database models."""
 
+from __future__ import annotations
+
 import uuid
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from django.db.models.constraints import BaseConstraint
+
+if TYPE_CHECKING:
+    from django.db.models.constraints import BaseConstraint
 
 
 class User(AbstractUser):
     """Project authentication user with a UUID primary key."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    def _has_role(self, role: UserClinicRole.Role) -> bool:
+        return UserClinicRole.objects.filter(user_id=self.pk, role=role).exists()
+
+    @property
+    def is_physician_anywhere(self) -> bool:
+        """Report a physician assignment visible in the current tenant."""
+        return self._has_role(UserClinicRole.Role.PHYSICIAN)
+
+    @property
+    def is_clinic_admin_anywhere(self) -> bool:
+        """Report an administrator assignment visible in the current tenant."""
+        return self._has_role(UserClinicRole.Role.CLINIC_ADMIN)
 
 
 class Organization(models.Model):
