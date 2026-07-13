@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import base64
+import posixpath
 from functools import wraps
 from importlib import import_module
 from io import BytesIO
-from typing import TYPE_CHECKING, Final, Protocol, cast
-from urllib.parse import quote, urlencode, urlsplit
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict, cast
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from django.conf import settings
+from django.contrib.auth import logout as session_logout
 from django.db import connection, transaction
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.debug import sensitive_variables
 from django_otp import login as otp_login
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
@@ -23,7 +26,19 @@ from apps.identity.models import User
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
     from uuid import UUID
+
+    from django_otp.models import VerifyNotAllowed
+
+
+class OTPVerificationDetails(TypedDict, total=False):
+    """Describe optional throttle details returned by django-otp."""
+
+    error_message: str
+    reason: VerifyNotAllowed
+    failure_count: int
+    locked_until: datetime
 
 
 class TotpDevice(Protocol):
@@ -38,7 +53,9 @@ class TotpDevice(Protocol):
     digits: int
     step: int
 
-    def verify_is_allowed(self) -> tuple[bool, dict[str, object]]:
+    def verify_is_allowed(
+        self,
+    ) -> tuple[bool, OTPVerificationDetails | None]:
         """Return the django-otp throttle decision and structured details."""
 
     def verify_token(self, token: str) -> bool:
@@ -71,13 +88,15 @@ class _QrModule(Protocol):
 QRCODE = cast("_QrModule", import_module("qrcode"))
 AUTH_FLOW_PATHS: Final = frozenset(
     {
-        "/auth/login/",
-        "/auth/enroll/",
-        "/auth/verify/",
-        "/auth/logout/",
+        "/auth/login",
+        "/auth/enroll",
+        "/auth/verify",
+        "/auth/logout",
     }
 )
 DEFAULT_AUTH_TARGET: Final = "/auth/protected/"
+ASCII_CONTROL_LIMIT: Final = 0x20
+ASCII_DELETE: Final = 0x7F
 
 
 def confirmed_devices(
@@ -125,6 +144,7 @@ def get_or_create_pending_device(user_id: UUID) -> TotpDevice:
         )
 
 
+@sensitive_variables()
 def provisioning_qr_data_uri(
     device: TotpDevice,
     username: str,
@@ -152,17 +172,50 @@ def provisioning_qr_data_uri(
     return f"data:image/png;base64,{encoded}"
 
 
+def _canonical_target(raw_target: str) -> tuple[str, str] | None:
+    decoded_target = raw_target
+    for _attempt in range(4):
+        try:
+            next_target = unquote(decoded_target, errors="strict")
+        except UnicodeDecodeError:
+            return None
+        if next_target == decoded_target:
+            break
+        decoded_target = next_target
+    else:
+        return None
+    if "\\" in decoded_target or any(
+        ord(character) < ASCII_CONTROL_LIMIT or ord(character) == ASCII_DELETE
+        for character in decoded_target
+    ):
+        return None
+    path = urlsplit(decoded_target).path
+    if not path.startswith("/"):
+        return None
+    canonical_path = posixpath.normpath(f"/{path.lstrip('/')}")
+    return decoded_target, canonical_path.rstrip("/") or "/"
+
+
 def safe_next_url(request: HttpRequest, raw_target: str | None) -> str:
     """Accept only a same-host non-auth-flow redirect target."""
-    if not raw_target or "\\" in raw_target:
+    if not raw_target:
         return DEFAULT_AUTH_TARGET
-    if not url_has_allowed_host_and_scheme(
-        raw_target,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
+    canonical_target = _canonical_target(raw_target)
+    if canonical_target is None:
+        return DEFAULT_AUTH_TARGET
+    decoded_target, canonical_path = canonical_target
+    allowed_hosts = {request.get_host()}
+    require_https = request.is_secure()
+    if not all(
+        url_has_allowed_host_and_scheme(
+            target,
+            allowed_hosts=allowed_hosts,
+            require_https=require_https,
+        )
+        for target in (raw_target, decoded_target)
     ):
         return DEFAULT_AUTH_TARGET
-    if urlsplit(raw_target).path in AUTH_FLOW_PATHS:
+    if canonical_path in AUTH_FLOW_PATHS:
         return DEFAULT_AUTH_TARGET
     return raw_target
 
@@ -234,10 +287,12 @@ def privileged_totp_required(
     def wrapped(request: HttpRequest) -> HttpResponseBase:
         user = request.user
         if not user.is_authenticated:
+            target = safe_next_url(request, request.get_full_path())
+            session_logout(request)
             return flow_redirect(
                 request,
                 "identity:login",
-                safe_next_url(request, request.get_full_path()),
+                target,
             )
         if not isinstance(user, User) or not is_privileged_user(user):
             return view(request)

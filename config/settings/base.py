@@ -127,7 +127,11 @@ X_FRAME_OPTIONS: str = "DENY"
 
 SENTRY_DSN: str = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
-    sentry_sdk.init(dsn=SENTRY_DSN, send_default_pii=False)
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        send_default_pii=False,
+        include_local_variables=False,
+    )
 
 LOGGING = {
     "version": 1,

@@ -39,7 +39,8 @@ class ClinicBackend(BaseBackend):
             return None
 
         user_id, stored_username, encoded_password, is_active = row
-        if not is_active or not check_password(password, encoded_password):
+        password_matches = check_password(password, encoded_password)
+        if not is_active or not password_matches:
             return None
         return User(
             id=user_id,
@@ -64,6 +65,6 @@ class ClinicBackend(BaseBackend):
 
         field_names = [column.name for column in description]
         user = User.from_db(connection.alias, field_names, row)
-        if user.pk != expected_id:
+        if user.pk != expected_id or not user.is_active:
             return None
         return user

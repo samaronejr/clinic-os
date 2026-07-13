@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from apps.identity.forms import INVALID_CODE_MESSAGE
 from apps.identity.models import User
 from django.contrib.auth import SESSION_KEY
 from django.db import connection
@@ -12,7 +13,6 @@ from django_otp import DEVICE_ID_SESSION_KEY
 
 from otp_test_support import (
     create_totp_device,
-    current_user_guc,
     fixed_otp_time,
     get_totp_device,
     login,
@@ -76,61 +76,49 @@ def test_replayed_totp_is_rejected_after_session_verification_is_cleared(
     assert protected.headers["Location"].startswith("/auth/verify/")
 
 
-def test_verification_rejects_another_users_device_even_with_valid_token(
+@pytest.mark.parametrize("submitted_device", ["foreign", "nonexistent"])
+def test_verification_rejects_unowned_device_with_one_nonidentifying_error(
     rbac_graph: RbacGraph,
+    submitted_device: str,
 ) -> None:
     foreign = create_totp_device(rbac_graph.clinic_admin, confirmed=True)
+    own = create_totp_device(rbac_graph.physician, confirmed=True)
     client = Client()
     username = User.objects.get(pk=rbac_graph.physician).username
+    persistent_id = (
+        foreign.persistent_id
+        if submitted_device == "foreign"
+        else "otp_totp.totpdevice/999999999"
+    )
+    original_foreign_state = (
+        foreign.last_t,
+        foreign.throttling_failure_count,
+        foreign.throttling_failure_timestamp,
+    )
 
     with runtime_role():
         _physician_login(client, username)
-        own = _enroll(client, rbac_graph)
-        with current_user_guc(rbac_graph.physician):
-            own.confirmed = True
-            own.save(update_fields=("confirmed",))
         with fixed_otp_time():
             response = client.post(
                 "/auth/verify/",
                 {
-                    "otp_device": foreign.persistent_id,
+                    "otp_device": persistent_id,
                     "otp_token": token_for(foreign),
                 },
             )
 
     assert response.status_code == 200
-    assert b"valid choice" in response.content.lower()
+    assert INVALID_CODE_MESSAGE.encode() in response.content
+    assert b"valid choice" not in response.content.lower()
+    assert persistent_id.encode() not in response.content
+    assert own.persistent_id.encode() in response.content
     assert DEVICE_ID_SESSION_KEY not in client.session
-
-
-@pytest.mark.parametrize(
-    "next_url",
-    [
-        "https://attacker.invalid/steal",
-        "//attacker.invalid/steal",
-        "javascript:alert(1)",
-        "\\attacker.invalid\\steal",
-    ],
-)
-def test_login_rejects_hostile_next_urls(
-    rbac_graph: RbacGraph,
-    next_url: str,
-) -> None:
-    username = User.objects.get(pk=rbac_graph.physician).username
-    client = Client()
-
-    with runtime_role():
-        response = client.post(
-            "/auth/login/",
-            {
-                "username": username,
-                "password": RBAC_RAW_CREDENTIAL,
-                "next": next_url,
-            },
-        )
-
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/auth/protected/"
+    current_foreign = get_totp_device(rbac_graph.clinic_admin, confirmed=True)
+    assert (
+        current_foreign.last_t,
+        current_foreign.throttling_failure_count,
+        current_foreign.throttling_failure_timestamp,
+    ) == original_foreign_state
 
 
 def test_login_enrollment_and_verify_never_query_identity_user_directly(

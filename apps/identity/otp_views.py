@@ -1,8 +1,9 @@
 """Tenant-bound TOTP enrollment and verification views."""
 
+from django.contrib.auth import logout as session_logout
 from django.http import HttpRequest, HttpResponseBase
 from django.shortcuts import render
-from django.views.decorators.debug import sensitive_post_parameters
+from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.forms import ExplicitOTPTokenForm
@@ -22,14 +23,15 @@ from apps.identity.otp import (
 )
 
 
-def _current_user(request: HttpRequest) -> User:
+def _current_user(request: HttpRequest) -> User | None:
     user = request.user
     if not isinstance(user, User) or not user.is_authenticated:
-        msg = "an authenticated Clinic OS user is required"
-        raise TypeError(msg)
+        session_logout(request)
+        return None
     return user
 
 
+@sensitive_variables()
 def _render_enrollment(
     request: HttpRequest,
     *,
@@ -50,14 +52,19 @@ def _render_enrollment(
     return auth_response(response)
 
 
+@sensitive_variables()
 @sensitive_post_parameters("otp_token")
 @require_http_methods(["GET", "POST"])
 def enroll_view(request: HttpRequest) -> HttpResponseBase:
     """Enroll exactly one pending TOTP device for a privileged user."""
-    user = _current_user(request)
     target = safe_next_url(request, request.POST.get("next") or request.GET.get("next"))
-    if not is_privileged_user(user):
-        return auth_redirect(request, target)
+    user = _current_user(request)
+    if user is None or not is_privileged_user(user):
+        return (
+            flow_redirect(request, "identity:login", target)
+            if user is None
+            else auth_redirect(request, target)
+        )
     if confirmed_devices(user.pk):
         return (
             auth_redirect(request, target)
@@ -108,12 +115,15 @@ def enroll_view(request: HttpRequest) -> HttpResponseBase:
     )
 
 
+@sensitive_variables()
 @sensitive_post_parameters("otp_token")
 @require_http_methods(["GET", "POST"])
 def verify_view(request: HttpRequest) -> HttpResponseBase:
     """Verify one explicit confirmed device and rotate the password session."""
-    user = _current_user(request)
     target = safe_next_url(request, request.POST.get("next") or request.GET.get("next"))
+    user = _current_user(request)
+    if user is None:
+        return flow_redirect(request, "identity:login", target)
     if not is_privileged_user(user):
         return auth_redirect(request, target)
     devices = list(confirmed_devices(user.pk))

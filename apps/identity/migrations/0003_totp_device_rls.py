@@ -41,7 +41,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE
 REVOKE ALL PRIVILEGES
     ON SEQUENCE clinic_app.otp_totp_totpdevice_id_seq
     FROM PUBLIC, clinic_app, clinic_resolver;
-GRANT USAGE, SELECT
+GRANT USAGE
     ON SEQUENCE clinic_app.otp_totp_totpdevice_id_seq
     TO clinic_app;
 """
@@ -51,6 +51,9 @@ DROP POLICY IF EXISTS otp_totp_device_user_isolation
     ON clinic_app.otp_totp_totpdevice;
 ALTER TABLE clinic_app.otp_totp_totpdevice NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE clinic_app.otp_totp_totpdevice DISABLE ROW LEVEL SECURITY;
+REVOKE SELECT
+    ON SEQUENCE clinic_app.otp_totp_totpdevice_id_seq
+    FROM clinic_app;
 """
 
 

@@ -101,7 +101,24 @@ def test_clinic_backend_returns_none_for_invalid_credentials(
     assert result is None
 
 
-def test_unknown_username_still_performs_password_hash_work() -> None:
+@pytest.mark.parametrize(
+    ("account_exists", "is_active"),
+    [(False, True), (True, False), (True, True)],
+)
+def test_invalid_credentials_always_perform_one_password_hash(
+    tenant_graph: TenantGraph,
+    *,
+    account_exists: bool,
+    is_active: bool,
+) -> None:
+    encoded = make_password(RAW_CREDENTIAL)
+    User.objects.filter(pk=tenant_graph.user_a).update(
+        password=encoded,
+        is_active=is_active,
+    )
+    username = tenant_graph.username_a if account_exists else "todo9-unknown-user"
+    invalid_password = f"{RAW_CREDENTIAL}-invalid"
+
     with (
         _runtime_role(),
         patch(
@@ -111,12 +128,26 @@ def test_unknown_username_still_performs_password_hash_work() -> None:
     ):
         result = ClinicBackend().authenticate(
             None,
-            username="todo9-unknown-user",
-            password=RAW_CREDENTIAL,
+            username=username,
+            password=invalid_password,
         )
 
     assert result is None
     password_check.assert_called_once()
+
+
+def test_clinic_backend_get_user_rejects_inactive_resolver_rows(
+    tenant_graph: TenantGraph,
+) -> None:
+    User.objects.filter(pk=tenant_graph.user_a).update(is_active=False)
+
+    with (
+        _runtime_role(),
+        tenant_context(tenant_graph.user_a, tenant_graph.organization_a),
+    ):
+        loaded = ClinicBackend().get_user(tenant_graph.user_a)
+
+    assert loaded is None
 
 
 def test_clinic_backend_get_user_is_guc_bound_and_reconstructs_from_db(

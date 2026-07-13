@@ -19,6 +19,11 @@ INVALID_LOGIN_MESSAGE: Final = "Check your username and password, then try again
 INVALID_CODE_MESSAGE: Final = "That code is not valid. Try a current code."
 
 
+class _NonEchoingChoiceField(forms.ChoiceField):
+    def bound_data(self, data: str | None, initial: str | None) -> str | None:
+        return data if self.valid_value(data) else initial
+
+
 class ClinicAuthenticationForm(AuthenticationForm):
     """Render password authentication without disclosing account state."""
 
@@ -52,7 +57,13 @@ class ClinicAuthenticationForm(AuthenticationForm):
 class ExplicitOTPTokenForm(forms.Form):
     """Verify only a caller-supplied, persistent TOTP device choice."""
 
-    otp_device = forms.ChoiceField(choices=())
+    otp_device = _NonEchoingChoiceField(
+        choices=(),
+        error_messages={
+            "required": INVALID_CODE_MESSAGE,
+            "invalid_choice": INVALID_CODE_MESSAGE,
+        },
+    )
     otp_token = forms.CharField(
         label="Authentication code",
         widget=forms.PasswordInput(render_value=False),
@@ -91,13 +102,14 @@ class ExplicitOTPTokenForm(forms.Form):
             },
         )
 
-    def clean(self) -> dict[str, object]:
-        """Lock and verify only the exact user-owned device selected by the form."""
-        super().clean()
+    def clean_otp_token(self) -> str:
+        """Lock and verify the token against the selected user-owned device."""
         device_id = self.cleaned_data.get("otp_device")
         token = self.cleaned_data.get("otp_token")
-        if not isinstance(device_id, str) or not isinstance(token, str):
-            return cast("dict[str, object]", self.cleaned_data)
+        if not isinstance(token, str):
+            raise forms.ValidationError(INVALID_CODE_MESSAGE, code="invalid_token")
+        if not isinstance(device_id, str):
+            return token
         expected = self._allowed_devices.get(device_id)
         if expected is None:
             raise forms.ValidationError(INVALID_CODE_MESSAGE, code="invalid_token")
@@ -122,7 +134,9 @@ class ExplicitOTPTokenForm(forms.Form):
             else:
                 allowed, details = device.verify_is_allowed()
                 if not allowed:
-                    message = details.get("error_message")
+                    message = (
+                        details.get("error_message") if details is not None else None
+                    )
                     if not isinstance(message, str):
                         message = "Verification temporarily disabled. Try again soon."
                     validation_error = forms.ValidationError(
@@ -138,7 +152,7 @@ class ExplicitOTPTokenForm(forms.Form):
                     self._selected_device = device
         if validation_error is not None:
             raise validation_error
-        return cast("dict[str, object]", self.cleaned_data)
+        return token
 
     def selected_device(self) -> TotpDevice | None:
         """Return the verified device only when it was in the bound choices."""

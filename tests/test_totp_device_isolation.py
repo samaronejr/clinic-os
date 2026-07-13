@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from typing import TYPE_CHECKING, Final
 
 import psycopg
@@ -14,7 +15,16 @@ if TYPE_CHECKING:
 
 POLICY_NAME: Final = "otp_totp_device_user_isolation"
 POLICY_EXPRESSION: Final = (
-    "user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid"
+    "(user_id = (NULLIF(current_setting("
+    "'app.current_user_id'::text, true), ''::text))::uuid)"
+)
+EXPECTED_POLICY: Final = (
+    POLICY_NAME,
+    "ALL",
+    ["clinic_app"],
+    "PERMISSIVE",
+    POLICY_EXPRESSION,
+    POLICY_EXPRESSION,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -32,22 +42,16 @@ def test_totp_table_is_force_rls_owned_by_non_runtime_role() -> None:
         )
         posture = cursor.fetchone()
         cursor.execute(
-            "SELECT permissive, roles, cmd, qual, with_check "
+            "SELECT policyname, cmd, roles, permissive, qual, with_check "
             "FROM pg_catalog.pg_policies "
             "WHERE schemaname = 'clinic_app' "
             "AND tablename = 'otp_totp_totpdevice' "
-            "AND policyname = %s",
-            [POLICY_NAME],
+            "ORDER BY policyname"
         )
-        policy = cursor.fetchone()
+        policies = cursor.fetchall()
 
     assert posture == (True, True, "clinic_owner", False, False)
-    assert policy is not None
-    assert policy[:3] == ("PERMISSIVE", ["clinic_app"], "ALL")
-    assert "app.current_user_id" in policy[3]
-    assert "app.current_user_id" in policy[4]
-    assert "NULLIF" in policy[3].upper()
-    assert "NULLIF" in policy[4].upper()
+    assert policies == [EXPECTED_POLICY]
 
 
 def test_totp_seed_acl_is_limited_to_owner_and_runtime_role() -> None:
@@ -89,13 +93,7 @@ def test_totp_seed_acl_is_limited_to_owner_and_runtime_role() -> None:
                 "TRIGGER",
             )
         ),
-        *(
-            (sequence, "clinic_app", privilege)
-            for privilege in (
-                "SELECT",
-                "USAGE",
-            )
-        ),
+        *((sequence, "clinic_app", privilege) for privilege in ("USAGE",)),
         *(
             (sequence, "clinic_owner", privilege)
             for privilege in (
@@ -146,6 +144,15 @@ def test_cross_user_seed_and_mutations_are_fail_closed(
             )
 
 
+def test_foreign_unconfirmed_enrollment_seed_is_fail_closed(
+    tenant_graph: TenantGraph,
+) -> None:
+    foreign = create_totp_device(tenant_graph.user_a, confirmed=False)
+
+    with runtime_role(), current_user_guc(tenant_graph.user_b):
+        assert not TOTPDevice.objects.filter(pk=foreign.pk).exists()
+
+
 @pytest.mark.parametrize("setting", [None, ""])
 def test_totp_queries_return_zero_for_unset_or_empty_user_guc(
     tenant_graph: TenantGraph,
@@ -164,31 +171,107 @@ def test_totp_queries_return_zero_for_unset_or_empty_user_guc(
         assert TOTPDevice.objects.count() == 0
 
 
-def test_permissive_policy_toggle_proves_cross_user_test_has_teeth(
+def test_extra_permissive_policy_proves_unconfirmed_isolation_has_teeth(
     tenant_graph: TenantGraph,
     superuser_database_url: str,
 ) -> None:
-    foreign = create_totp_device(tenant_graph.user_a, confirmed=True)
+    foreign = create_totp_device(tenant_graph.user_a, confirmed=False)
 
     with runtime_role(), current_user_guc(tenant_graph.user_b):
         assert not TOTPDevice.objects.filter(pk=foreign.pk).exists()
 
-    permissive_sql = (
-        "ALTER POLICY "
-        f"{POLICY_NAME} ON clinic_app.otp_totp_totpdevice "
-        "USING (true) WITH CHECK (true)"
+    with psycopg.connect(superuser_database_url) as raw_connection:
+        try:
+            raw_connection.execute(
+                "CREATE POLICY test_unconfirmed_device_leak "
+                "ON clinic_app.otp_totp_totpdevice "
+                "AS PERMISSIVE FOR SELECT TO clinic_app "
+                "USING (NOT confirmed)"
+            )
+            raw_connection.execute("SET LOCAL ROLE clinic_app")
+            raw_connection.execute(
+                "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+                [str(tenant_graph.user_b)],
+            )
+            exposed = raw_connection.execute(
+                "SELECT key FROM clinic_app.otp_totp_totpdevice WHERE id = %s",
+                [foreign.pk],
+            ).fetchone()
+            assert exposed == (foreign.key,)
+        finally:
+            raw_connection.rollback()
+
+
+def test_totp_rls_migration_reverse_and_reapply_restore_exact_catalogs(
+    superuser_database_url: str,
+) -> None:
+    migration = importlib.import_module("apps.identity.migrations.0003_totp_device_rls")
+    posture_sql = (
+        "SELECT class.relrowsecurity, class.relforcerowsecurity, "
+        "class.relowner::regrole::text "
+        "FROM pg_catalog.pg_class AS class "
+        "WHERE class.oid = "
+        "'clinic_app.otp_totp_totpdevice'::pg_catalog.regclass"
     )
-    restore_sql = (
-        "ALTER POLICY "
-        f"{POLICY_NAME} ON clinic_app.otp_totp_totpdevice "
-        f"USING ({POLICY_EXPRESSION}) WITH CHECK ({POLICY_EXPRESSION})"
+    policies_sql = (
+        "SELECT policyname, cmd, roles, permissive, qual, with_check "
+        "FROM pg_catalog.pg_policies "
+        "WHERE schemaname = 'clinic_app' "
+        "AND tablename = 'otp_totp_totpdevice' ORDER BY policyname"
     )
-    try:
-        with psycopg.connect(superuser_database_url) as raw_connection:
-            raw_connection.execute(permissive_sql)
-        with runtime_role(), current_user_guc(tenant_graph.user_b):
-            exposed = TOTPDevice.objects.get(pk=foreign.pk)
-            assert exposed.key == foreign.key
-    finally:
-        with psycopg.connect(superuser_database_url) as raw_connection:
-            raw_connection.execute(restore_sql)
+    acl_sql = (
+        "SELECT class.relname, COALESCE(grantee.rolname, 'PUBLIC'), "
+        "grantor.rolname, acl.privilege_type, acl.is_grantable "
+        "FROM pg_catalog.pg_class AS class "
+        "CROSS JOIN LATERAL pg_catalog.aclexplode(class.relacl) AS acl "
+        "LEFT JOIN pg_catalog.pg_roles AS grantee ON grantee.oid = acl.grantee "
+        "JOIN pg_catalog.pg_roles AS grantor ON grantor.oid = acl.grantor "
+        "WHERE class.oid IN ("
+        "'clinic_app.otp_totp_totpdevice'::pg_catalog.regclass, "
+        "'clinic_app.otp_totp_totpdevice_id_seq'::pg_catalog.regclass)"
+    )
+
+    with psycopg.connect(superuser_database_url) as raw_connection:
+        try:
+            raw_connection.execute(migration.REVERSE_SQL)
+            reversed_posture = raw_connection.execute(posture_sql).fetchone()
+            reversed_policies = raw_connection.execute(policies_sql).fetchall()
+            reversed_acl = set(raw_connection.execute(acl_sql).fetchall())
+            raw_connection.execute(migration.FORWARD_SQL)
+            reapplied_posture = raw_connection.execute(posture_sql).fetchone()
+            reapplied_policies = raw_connection.execute(policies_sql).fetchall()
+            reapplied_acl = set(raw_connection.execute(acl_sql).fetchall())
+        finally:
+            raw_connection.rollback()
+
+    table = "otp_totp_totpdevice"
+    sequence = "otp_totp_totpdevice_id_seq"
+    expected_acl = {
+        *(
+            (table, "clinic_owner", "clinic_owner", privilege, False)
+            for privilege in (
+                "SELECT",
+                "INSERT",
+                "UPDATE",
+                "DELETE",
+                "TRUNCATE",
+                "REFERENCES",
+                "TRIGGER",
+            )
+        ),
+        *(
+            (table, "clinic_app", "clinic_owner", privilege, False)
+            for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
+        ),
+        *(
+            (sequence, "clinic_owner", "clinic_owner", privilege, False)
+            for privilege in ("SELECT", "UPDATE", "USAGE")
+        ),
+        (sequence, "clinic_app", "clinic_owner", "USAGE", False),
+    }
+    assert reversed_posture == (False, False, "clinic_owner")
+    assert reversed_policies == []
+    assert reversed_acl == expected_acl
+    assert reapplied_posture == (True, True, "clinic_owner")
+    assert reapplied_policies == [EXPECTED_POLICY]
+    assert reapplied_acl == expected_acl
