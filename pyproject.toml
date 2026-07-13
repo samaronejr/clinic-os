@@ -2,7 +2,7 @@
 name = "clinic-os-foundation"
 version = "0.1.0"
 description = "Clinic OS foundation"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
   "celery",
   "django==5.2.*",
@@ -23,6 +23,7 @@ dev = [
   "djangorestframework-stubs",
   "mypy",
   "model-bakery",
+  "pip-audit>=2.10.1,<3",
   "pre-commit",
   "pytest",
   "pytest-cov",
@@ -97,3 +98,6 @@ filterwarnings = ["error"]
 pythonpath = ["."]
 testpaths = ["tests"]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
+
+[tool.coverage.run]
+omit = ["*/migrations/*"]
