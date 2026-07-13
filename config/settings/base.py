@@ -43,6 +43,9 @@ INSTALLED_APPS: list[str] = [
 ]
 
 AUTH_USER_MODEL: str = "identity.User"
+AUTHENTICATION_BACKENDS: list[str] = [
+    "apps.identity.auth_backends.ClinicBackend",
+]
 
 MIDDLEWARE: list[str] = [
     "django.middleware.security.SecurityMiddleware",
@@ -51,6 +54,7 @@ MIDDLEWARE: list[str] = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_otp.middleware.OTPMiddleware",
+    "apps.tenancy.middleware.TenantMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
