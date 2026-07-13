@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final
+from unittest.mock import patch
 
 import pytest
 from apps.identity.auth_backends import ClinicBackend
 from apps.identity.models import User
 from apps.tenancy.db import tenant_context
 from apps.tenancy.management import TenantCommand
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.management import CommandError, call_command
 from django.db import connection
 from django.test import Client
@@ -98,6 +99,24 @@ def test_clinic_backend_returns_none_for_invalid_credentials(
         )
 
     assert result is None
+
+
+def test_unknown_username_still_performs_password_hash_work() -> None:
+    with (
+        _runtime_role(),
+        patch(
+            "apps.identity.auth_backends.check_password",
+            wraps=check_password,
+        ) as password_check,
+    ):
+        result = ClinicBackend().authenticate(
+            None,
+            username="todo9-unknown-user",
+            password=RAW_CREDENTIAL,
+        )
+
+    assert result is None
+    password_check.assert_called_once()
 
 
 def test_clinic_backend_get_user_is_guc_bound_and_reconstructs_from_db(

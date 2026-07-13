@@ -1,13 +1,16 @@
 """Database-function-only Django authentication backend."""
 
+from typing import Final
 from uuid import UUID
 
 from django.contrib.auth.backends import BaseBackend
-from django.contrib.auth.hashers import check_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import connection
 from django.http import HttpRequest
 
 from apps.identity.models import User
+
+DUMMY_PASSWORD_HASH: Final = make_password("clinic-os-unavailable-credential")
 
 
 class ClinicBackend(BaseBackend):
@@ -32,6 +35,7 @@ class ClinicBackend(BaseBackend):
             )
             row = cursor.fetchone()
         if row is None:
+            check_password(password, DUMMY_PASSWORD_HASH)
             return None
 
         user_id, stored_username, encoded_password, is_active = row

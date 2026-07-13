@@ -29,7 +29,13 @@ class User(AbstractUser):
     @property
     def is_clinic_admin_anywhere(self) -> bool:
         """Report an administrator assignment visible in the current tenant."""
-        return self._has_role(UserClinicRole.Role.CLINIC_ADMIN)
+        return UserClinicRole.objects.filter(
+            user_id=self.pk,
+            role__in=(
+                UserClinicRole.Role.OWNER,
+                UserClinicRole.Role.CLINIC_ADMIN,
+            ),
+        ).exists()
 
 
 class Organization(models.Model):

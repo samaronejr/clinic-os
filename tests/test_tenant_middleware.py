@@ -113,6 +113,7 @@ urlpatterns: list[URLPattern] = [
     path("healthz", bypass_view),
     path("readyz", bypass_view),
     path("login/", bypass_view),
+    path("auth/login/", bypass_view),
     path("auth/callback/", bypass_view),
     path("static/app.css", bypass_view),
 ]
@@ -242,13 +243,21 @@ def test_middleware_rejects_unauthorized_org_and_clears_pooled_connection(
 
 
 @pytest.mark.parametrize(
-    "path", ["/healthz", "/readyz", "/login/", "/auth/callback/", "/static/app.css"]
+    "path", ["/healthz", "/readyz", "/auth/login/", "/static/app.css"]
 )
 @override_settings(ROOT_URLCONF=__name__)
 def test_middleware_bypasses_only_non_tenant_paths(path: str) -> None:
     response = Client().get(path)
 
     assert response.status_code == 204
+
+
+@pytest.mark.parametrize("path", ["/login/", "/auth/callback/"])
+@override_settings(ROOT_URLCONF=__name__)
+def test_middleware_does_not_bypass_other_auth_paths(path: str) -> None:
+    response = Client().get(path)
+
+    assert response.status_code == 403
 
 
 @override_settings(ROOT_URLCONF=__name__)

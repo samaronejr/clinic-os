@@ -22,12 +22,10 @@ BYPASS_PATHS: Final = frozenset(
         "/healthz/",
         "/readyz",
         "/readyz/",
-        "/login/",
-        "/accounts/login/",
-        "/admin/login/",
+        "/auth/login/",
     }
 )
-BYPASS_PREFIXES: Final = ("/auth/", "/static/")
+BYPASS_PREFIXES: Final = ("/static/",)
 SERVER_ERROR_STATUS: Final = 500
 
 

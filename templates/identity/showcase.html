@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Authentication states · Clinic OS{% endblock %}
+{% block content %}
+<section class="auth-shell" aria-labelledby="auth-title">
+  <p class="eyebrow">Debug showcase</p>
+  <h1 id="auth-title">Authentication primitives</h1>
+  <p class="lede">Inert, non-secret states for responsive and accessibility review.</p>
+  <div class="showcase-grid">
+    <section class="showcase-state"><h2>Default</h2><label for="showcase-default">Username</label><input id="showcase-default" value="clinic.user" readonly></section>
+    <section class="showcase-state"><h2>Focus</h2><label for="showcase-focus">Authentication code</label><input class="is-focus" id="showcase-focus" inputmode="numeric"></section>
+    <section class="showcase-state"><h2>Error</h2><div class="feedback feedback--error" role="alert"><p>That code is not valid. Try a current code.</p></div></section>
+    <section class="showcase-state"><h2>Disabled</h2><button type="button" disabled>Verify and continue</button></section>
+    <section class="showcase-state" aria-busy="true"><h2>Loading</h2><p>Checking code…</p></section>
+    <section class="showcase-state"><h2>Success</h2><div class="feedback feedback--success" role="status"><p>Access confirmed.</p></div></section>
+    <section class="showcase-state"><h2>Enrollment</h2><div class="qr-placeholder" role="img" aria-label="Inert QR placeholder">QR placeholder</div></section>
+  </div>
+</section>
+{% endblock %}

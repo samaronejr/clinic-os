@@ -46,6 +46,9 @@ AUTH_USER_MODEL: str = "identity.User"
 AUTHENTICATION_BACKENDS: list[str] = [
     "apps.identity.auth_backends.ClinicBackend",
 ]
+LOGIN_URL: str = "/auth/login/"
+OTP_LOGIN_URL: str = "/auth/verify/"
+OTP_TOTP_ISSUER: str = "Clinic OS"
 
 MIDDLEWARE: list[str] = [
     "django.middleware.security.SecurityMiddleware",
@@ -114,7 +117,8 @@ LANGUAGE_CODE: str = "en-us"
 TIME_ZONE: str = "UTC"
 USE_I18N: bool = True
 USE_TZ: bool = True
-STATIC_URL: str = "static/"
+STATIC_URL: str = "/static/"
+STATICFILES_DIRS: list[Path] = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD: str = "django.db.models.BigAutoField"
 
 SECURE_CONTENT_TYPE_NOSNIFF: bool = True

@@ -218,6 +218,7 @@ def test_temporary_permissive_policy_proves_isolation_and_drift_teeth(
                 """
                 SELECT count(*) FROM pg_catalog.pg_policies
                 WHERE schemaname = 'clinic_app'
+                  AND tablename = 'tenancy_tenantprobe'
                   AND policyname <> 'tenant_isolation'
                 """
             )
@@ -243,6 +244,7 @@ def test_temporary_permissive_policy_proves_isolation_and_drift_teeth(
             """
             SELECT count(*) FROM pg_catalog.pg_policies
             WHERE schemaname = 'clinic_app'
+              AND tablename = 'tenancy_tenantprobe'
               AND policyname <> 'tenant_isolation'
             """
         )

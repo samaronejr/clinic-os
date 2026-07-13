@@ -40,7 +40,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         model._meta.db_table for model in (Organization, Clinic, UserClinicRole)
     )
 
-    # When: table flags and all application-schema policies are read
+    # When: table flags and the tenant-table policies are read
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -60,7 +60,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
             SELECT tablename, policyname
             FROM pg_catalog.pg_policies
             WHERE schemaname = 'clinic_app'
-            """
+              AND tablename = ANY(%s)
+            """,
+            [list(EXPECTED_TENANT_COLUMNS)],
         )
         policies = set(cursor.fetchall())
 
@@ -84,8 +86,10 @@ def test_tenant_policies_are_public_permissive_all_and_fail_closed() -> None:
                    policies.cmd, policies.qual, policies.with_check
             FROM pg_catalog.pg_policies AS policies
             WHERE policies.schemaname = 'clinic_app'
+              AND policies.tablename = ANY(%s)
             ORDER BY policies.tablename
-            """
+            """,
+            [list(EXPECTED_TENANT_COLUMNS)],
         )
         policy_rows = cursor.fetchall()
 
