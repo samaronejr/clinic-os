@@ -16,6 +16,7 @@ from ipaddress import ip_address
 from queue import Queue
 from time import monotonic
 from typing import TYPE_CHECKING, Final
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 import psycopg
@@ -76,10 +77,9 @@ class WorkerCall:
 
 
 def _runtime_database_url() -> str:
-    database_url = os.environ["APP_DATABASE_URL"]
-    runtime_database = psycopg.conninfo.conninfo_to_dict(database_url)["dbname"]
-    assert runtime_database == connection.settings_dict["NAME"]
-    return database_url
+    configured_url = urlsplit(os.environ["APP_DATABASE_URL"])
+    database_name = str(connection.settings_dict["NAME"])
+    return urlunsplit(configured_url._replace(path=f"/{database_name}"))
 
 
 def _set_context(

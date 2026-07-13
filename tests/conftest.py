@@ -100,8 +100,8 @@ def superuser_database_url() -> str:
 
 def _test_superuser_database_url() -> str:
     configured_url = urlsplit(os.environ["TEST_SUPERUSER_DATABASE_URL"])
-    app_url = urlsplit(os.environ["APP_DATABASE_URL"])
-    return urlunsplit(configured_url._replace(path=app_url.path))
+    database_name = str(connection.settings_dict["NAME"])
+    return urlunsplit(configured_url._replace(path=f"/{database_name}"))
 
 
 @pytest.hookimpl(wrapper=True)
