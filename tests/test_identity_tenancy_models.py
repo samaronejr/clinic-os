@@ -1,19 +1,28 @@
 from typing import Final
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import psycopg
 import pytest
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.tenancy.models import TenantProbe, TenantScopedModel
 from django.apps import apps as django_apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, connection, models, transaction
+from django.db import connection, models, transaction
 from psycopg.errors import ForeignKeyViolation
 
 COMPOSITE_CONSTRAINT_NAME: Final = "identity_userclinicrole_org_clinic_fk"
 SET_COMPOSITE_CONSTRAINTS_IMMEDIATE_SQL: Final = (
     'SET CONSTRAINTS "identity_userclinicrole_org_clinic_fk" IMMEDIATE'
 )
+
+
+def _set_local_tenant(organization_id: UUID) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(organization_id)],
+        )
 
 
 def test_identity_user_is_the_project_auth_model() -> None:
@@ -39,24 +48,28 @@ def test_django_registry_selects_the_identity_user_model() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_identity_models_generate_uuid_primary_keys() -> None:
     # Given: a wholly synthetic identity graph
-    organization = Organization.objects.create(
-        name="Synthetic Organization Alpha",
-        cnpj="00000000000000",
-    )
-    clinic = Clinic.objects.create(
-        organization=organization,
-        name="Synthetic Clinic Alpha",
-        crm_uf="SP",
-    )
-    user = User.objects.create_user(username="synthetic-user-alpha")
+    organization_id = uuid4()
+    with transaction.atomic():
+        _set_local_tenant(organization_id)
+        organization = Organization.objects.create(
+            id=organization_id,
+            name="Synthetic Organization Alpha",
+            cnpj="00000000000000",
+        )
+        clinic = Clinic.objects.create(
+            organization=organization,
+            name="Synthetic Clinic Alpha",
+            crm_uf="SP",
+        )
+        user = User.objects.create_user(username="synthetic-user-alpha")
 
-    # When: a role is created through the ordinary ORM surface
-    role = UserClinicRole.objects.create(
-        user=user,
-        organization=organization,
-        clinic=clinic,
-        role=UserClinicRole.Role.OWNER,
-    )
+        # When: a role is created through the ordinary ORM surface
+        role = UserClinicRole.objects.create(
+            user=user,
+            organization=organization,
+            clinic=clinic,
+            role=UserClinicRole.Role.OWNER,
+        )
 
     # Then: every identity aggregate uses a UUID primary key
     assert all(
@@ -167,64 +180,83 @@ def test_database_has_the_validated_composite_foreign_key() -> None:
 @pytest.mark.django_db(transaction=True)
 def test_same_organization_role_satisfies_the_composite_foreign_key() -> None:
     # Given: a synthetic user, organization, and clinic in that organization
-    organization = Organization.objects.create(
-        name="Synthetic Organization Control",
-        cnpj="11111111111111",
-    )
-    clinic = Clinic.objects.create(
-        organization=organization,
-        name="Synthetic Clinic Control",
-        crm_uf="RJ",
-    )
-    user = User.objects.create_user(username="synthetic-user-control")
+    organization_id = uuid4()
+    with transaction.atomic():
+        _set_local_tenant(organization_id)
+        organization = Organization.objects.create(
+            id=organization_id,
+            name="Synthetic Organization Control",
+            cnpj="11111111111111",
+        )
+        clinic = Clinic.objects.create(
+            organization=organization,
+            name="Synthetic Clinic Control",
+            crm_uf="RJ",
+        )
+        user = User.objects.create_user(username="synthetic-user-control")
 
-    # When: a same-organization role is inserted and deferred checks are forced
-    role = UserClinicRole.objects.create(
-        user=user,
-        organization=organization,
-        clinic=clinic,
-        role=UserClinicRole.Role.PHYSICIAN,
-    )
-    with connection.cursor() as cursor:
-        cursor.execute(SET_COMPOSITE_CONSTRAINTS_IMMEDIATE_SQL)
+        # When: a same-organization role is inserted and checks are forced
+        role = UserClinicRole.objects.create(
+            user=user,
+            organization=organization,
+            clinic=clinic,
+            role=UserClinicRole.Role.PHYSICIAN,
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(SET_COMPOSITE_CONSTRAINTS_IMMEDIATE_SQL)
 
     # Then: the accepted role retains the matching organization and clinic
     assert role.organization_id == clinic.organization_id
 
 
 @pytest.mark.django_db(transaction=True)
-def test_composite_foreign_key_rejects_reassigning_role_organization() -> None:
+def test_composite_foreign_key_rejects_reassigning_role_organization(
+    superuser_database_url: str,
+) -> None:
     # Given: a valid synthetic role in organization A and a separate organization B
-    organization_a = Organization.objects.create(
-        name="Synthetic Organization A",
-        cnpj="22222222222222",
-    )
-    organization_b = Organization.objects.create(
-        name="Synthetic Organization B",
-        cnpj="33333333333333",
-    )
-    clinic_a = Clinic.objects.create(
-        organization=organization_a,
-        name="Synthetic Clinic A",
-        crm_uf="MG",
-    )
+    organization_a_id = uuid4()
+    organization_b_id = uuid4()
     user = User.objects.create_user(username="synthetic-user-mismatch")
-    role = UserClinicRole.objects.create(
-        user=user,
-        organization=organization_a,
-        clinic=clinic_a,
-        role=UserClinicRole.Role.RECEPTIONIST,
-    )
+    with transaction.atomic():
+        _set_local_tenant(organization_a_id)
+        organization_a = Organization.objects.create(
+            id=organization_a_id,
+            name="Synthetic Organization A",
+            cnpj="22222222222222",
+        )
+        clinic_a = Clinic.objects.create(
+            organization=organization_a,
+            name="Synthetic Clinic A",
+            crm_uf="MG",
+        )
+        role = UserClinicRole.objects.create(
+            user=user,
+            organization=organization_a,
+            clinic=clinic_a,
+            role=UserClinicRole.Role.RECEPTIONIST,
+        )
+    with transaction.atomic():
+        _set_local_tenant(organization_b_id)
+        organization_b = Organization.objects.create(
+            id=organization_b_id,
+            name="Synthetic Organization B",
+            cnpj="33333333333333",
+        )
 
     # When: only its organization is reassigned and the deferred check is forced
-    with transaction.atomic(), connection.cursor() as cursor:
-        UserClinicRole.objects.filter(pk=role.pk).update(
-            organization_id=organization_b.pk
+    with psycopg.connect(superuser_database_url) as superuser_connection:
+        superuser_connection.execute("SET LOCAL search_path = clinic_app, pg_catalog")
+        superuser_connection.execute(
+            """
+            UPDATE clinic_app.identity_userclinicrole
+            SET organization_id = %s
+            WHERE id = %s
+            """,
+            (organization_b.pk, role.pk),
         )
-        with pytest.raises(IntegrityError) as exc_info:
-            cursor.execute(SET_COMPOSITE_CONSTRAINTS_IMMEDIATE_SQL)
+        with pytest.raises(ForeignKeyViolation) as exc_info:
+            superuser_connection.execute(SET_COMPOSITE_CONSTRAINTS_IMMEDIATE_SQL)
+        superuser_connection.rollback()
 
     # Then: PostgreSQL names the intended composite constraint as the rejector
-    database_error = exc_info.value.__cause__
-    assert isinstance(database_error, ForeignKeyViolation)
-    assert database_error.diag.constraint_name == COMPOSITE_CONSTRAINT_NAME
+    assert exc_info.value.diag.constraint_name == COMPOSITE_CONSTRAINT_NAME
