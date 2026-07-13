@@ -20,14 +20,13 @@ def test_settings_keep_runtime_database_requests_non_atomic() -> None:
     assert database["ATOMIC_REQUESTS"] is False
 
 
-def test_settings_register_only_foundation_apps() -> None:
-    # Given: the Todo 2 Django application registry
+def test_settings_preserve_foundation_dependencies() -> None:
+    # Given: the Django registry after domain applications are appended
     # When: installed applications are inspected
-    # Then: no domain app is registered before Todo 4
+    # Then: the required framework and OTP dependencies remain registered
     installed_apps = settings.INSTALLED_APPS
 
     assert "rest_framework" in installed_apps
     assert "django_otp" in installed_apps
     assert "django_otp.plugins.otp_static" in installed_apps
     assert "django_otp.plugins.otp_totp" in installed_apps
-    assert not any(app_name.startswith("apps.") for app_name in installed_apps)

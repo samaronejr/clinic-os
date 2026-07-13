@@ -27,6 +27,19 @@ INSTALLED_APPS: list[str] = [
     "django_otp",
     "django_otp.plugins.otp_static",
     "django_otp.plugins.otp_totp",
+    "apps.identity.apps.IdentityConfig",
+    "apps.tenancy.apps.TenancyConfig",
+    "apps.scheduling.apps.SchedulingConfig",
+    "apps.intake.apps.IntakeConfig",
+    "apps.ehr.apps.EhrConfig",
+    "apps.teleconsult.apps.TeleconsultConfig",
+    "apps.prescription.apps.PrescriptionConfig",
+    "apps.consent.apps.ConsentConfig",
+    "apps.audit.apps.AuditConfig",
+    "apps.billing.apps.BillingConfig",
+    "apps.comms.apps.CommsConfig",
+    "apps.retention.apps.RetentionConfig",
+    "apps.interop.apps.InteropConfig",
 ]
 
 MIDDLEWARE: list[str] = [

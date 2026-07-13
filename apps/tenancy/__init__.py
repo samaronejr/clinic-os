@@ -1,0 +1,1 @@
+"""Tenancy domain package."""

@@ -1,0 +1,1 @@
+"""Intake domain package."""
