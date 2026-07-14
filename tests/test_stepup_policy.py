@@ -30,6 +30,14 @@ pytestmark = [
 ]
 
 CAUSAL_DISABLE_ENV: Final = "CLINIC_STEPUP_CAUSAL_DISABLE"
+INVALID_MAX_AGE_CASES: Final = (
+    "nan",
+    "infinity",
+    "finite-float",
+    "string",
+    "bool",
+    "negative",
+)
 
 
 @pytest.fixture
@@ -72,6 +80,51 @@ def test_assert_step_up_rejects_max_age_plus_one_and_clears_freshness(
         response = client.get("/__test__/raw-issuance/")
 
     assert response.status_code == 403
+    assert STEP_UP_SESSION_KEY not in client.session
+    assert DEVICE_ID_SESSION_KEY in client.session
+
+
+@override_settings(ROOT_URLCONF="stepup_urls")
+@pytest.mark.parametrize("invalid_case", INVALID_MAX_AGE_CASES)
+def test_assert_step_up_rejects_invalid_max_age_and_clears_freshness(
+    rbac_graph: RbacGraph,
+    invalid_case: str,
+) -> None:
+    device = create_totp_device(rbac_graph.physician, confirmed=True)
+    client = logged_in_client(rbac_graph.physician)
+    seed_freshness(client, device)
+
+    with runtime_role():
+        response = client.get(
+            "/__test__/runtime-limit-raw/",
+            {"case": invalid_case},
+        )
+
+    assert response.status_code == 403
+    assert response.content != b"invalid limit action executed"
+    assert STEP_UP_SESSION_KEY not in client.session
+    assert DEVICE_ID_SESSION_KEY in client.session
+
+
+@override_settings(ROOT_URLCONF="stepup_urls")
+@pytest.mark.parametrize("invalid_case", INVALID_MAX_AGE_CASES)
+def test_step_up_decorator_rejects_invalid_max_age_without_executing_action(
+    rbac_graph: RbacGraph,
+    invalid_case: str,
+) -> None:
+    device = create_totp_device(rbac_graph.physician, confirmed=True)
+    client = logged_in_client(rbac_graph.physician)
+    seed_freshness(client, device)
+
+    with runtime_role():
+        response = client.get(
+            "/__test__/runtime-limit-decorator/",
+            {"case": invalid_case},
+        )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/auth/step-up/")
+    assert response.content != b"invalid limit action executed"
     assert STEP_UP_SESSION_KEY not in client.session
     assert DEVICE_ID_SESSION_KEY in client.session
 

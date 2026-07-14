@@ -105,6 +105,9 @@ def assert_step_up(
     max_age: int = DEFAULT_STEP_UP_MAX_AGE_SECONDS,
 ) -> None:
     """Raise a typed permission error unless recent TOTP is still valid."""
+    if isinstance(max_age, bool) or not isinstance(max_age, int) or max_age < 0:
+        clear_step_up_verification(request)
+        raise StepUpRequired
     if not _freshness_is_valid(request, max_age):
         raise StepUpRequired
 
