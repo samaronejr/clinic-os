@@ -94,10 +94,16 @@ class AuditEventInput:
 
     def __post_init__(self) -> None:
         """Reject invalid semantic values before canonicalization."""
-        if not _is_bounded_text(self.event_type, _EVENT_TYPE_MAX):
+        event_type = _freeze_text(self.event_type)
+        if event_type is None or not _is_bounded_text(event_type, _EVENT_TYPE_MAX):
             raise AuditEventValueRejectedError(field="event_type")
-        if not _is_bounded_text(self.component_id, _COMPONENT_ID_MAX):
+        object.__setattr__(self, "event_type", event_type)
+        component_id = _freeze_text(self.component_id)
+        if component_id is None or not _is_bounded_text(
+            component_id, _COMPONENT_ID_MAX
+        ):
             raise AuditEventValueRejectedError(field="component_id")
+        object.__setattr__(self, "component_id", component_id)
         if (
             self.component_ip is not None
             and type(self.component_ip) not in _COMPONENT_IP_TYPES
@@ -105,15 +111,25 @@ class AuditEventInput:
             raise AuditEventValueRejectedError(field="component_ip")
         if (self.affected_record_type is None) != (self.affected_record_id is None):
             raise AuditEventValueRejectedError(field="affected_record")
-        if (
-            self.affected_record_type is not None
-            and self.affected_record_id is not None
-            and not (
-                _is_bounded_text(self.affected_record_type, _AFFECTED_TYPE_MAX)
-                and _is_bounded_text(self.affected_record_id, _AFFECTED_ID_MAX)
+        if self.affected_record_type is not None:
+            affected_record_type = _freeze_text(self.affected_record_type)
+            affected_record_id = _freeze_text(self.affected_record_id)
+            if (
+                affected_record_type is None
+                or affected_record_id is None
+                or not _is_bounded_text(
+                    affected_record_type,
+                    _AFFECTED_TYPE_MAX,
+                )
+                or not _is_bounded_text(affected_record_id, _AFFECTED_ID_MAX)
+            ):
+                raise AuditEventValueRejectedError(field="affected_record")
+            object.__setattr__(
+                self,
+                "affected_record_type",
+                affected_record_type,
             )
-        ):
-            raise AuditEventValueRejectedError(field="affected_record")
+            object.__setattr__(self, "affected_record_id", affected_record_id)
         occurred_at_utc = self.occurred_at_utc
         if type(occurred_at_utc) is not datetime:
             raise AuditEventValueRejectedError(field="occurred_at_utc")
@@ -137,8 +153,10 @@ class AuditTrustedContext:
     actor_user_id: UUID | None
 
 
-def _is_text(value: AuditPayloadInputValue) -> TypeGuard[str]:
-    return isinstance(value, str)
+def _freeze_text(value: AuditPayloadInputValue) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return str.__str__(value)
 
 
 def _is_integer(value: AuditPayloadInputValue) -> TypeGuard[int]:
@@ -153,14 +171,21 @@ def _normalize_payload(
     payload: Mapping[str, AuditPayloadInputValue],
 ) -> ValidAuditPayload:
     normalized: dict[str, str | int] = {}
-    for key, value in payload.items():
+    for raw_key, value in payload.items():
+        key = _freeze_text(raw_key)
+        if key is None:
+            raise AuditPayloadKeyRejected(key="<non-string>")
         if key not in AUDIT_PAYLOAD_ALLOWED:
             raise AuditPayloadKeyRejected(key=key)
         string_limit = _STRING_LIMITS.get(key)
         if string_limit is not None:
-            if not _is_text(value) or not _is_bounded_text(value, string_limit):
+            normalized_value = _freeze_text(value)
+            if normalized_value is None or not _is_bounded_text(
+                normalized_value,
+                string_limit,
+            ):
                 raise AuditPayloadValueRejectedError(key=key)
-            normalized[key] = value
+            normalized[key] = normalized_value
         elif not _is_integer(value) or not (
             _HTTP_STATUS_MIN <= value <= _HTTP_STATUS_MAX
         ):
