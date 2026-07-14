@@ -1,17 +1,43 @@
+from __future__ import annotations
+
 from dataclasses import replace
 from datetime import UTC, datetime
 from inspect import signature
-from ipaddress import IPv4Address, IPv4Network, IPv6Address
+from ipaddress import (
+    IPv4Address,
+    IPv4Interface,
+    IPv4Network,
+    IPv6Address,
+    IPv6Interface,
+)
+from typing import TYPE_CHECKING, Protocol
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from apps.audit.models import SYSTEM_ORG_ID
 from apps.audit.services import (
     AuditEventInput,
     AuditEventValueRejectedError,
+    _record_system_event,
     record_event,
     verify_chain,
 )
 from django.db import connection, transaction
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from apps.audit.services import AuditPayloadInputValue
+
+
+class _AuditAppender(Protocol):
+    def __call__(
+        self,
+        event: AuditEventInput,
+        *,
+        payload: Mapping[str, AuditPayloadInputValue],
+    ) -> int: ...
 
 
 def _event() -> AuditEventInput:
@@ -26,7 +52,7 @@ def _event() -> AuditEventInput:
 
 
 def _runtime_event(
-    component_ip: str | bytes | int | IPv4Network,
+    component_ip: (str | bytes | int | IPv4Network | IPv4Interface | IPv6Interface),
 ) -> AuditEventInput:
     bound = signature(AuditEventInput).bind(
         event_type="audit.synthetic",
@@ -37,6 +63,14 @@ def _runtime_event(
         occurred_at_utc=datetime.now(UTC),
     )
     return AuditEventInput(*bound.args, **bound.kwargs)
+
+
+def _audit_row_count() -> int:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM clinic_app.audit_event")
+        row = cursor.fetchone()
+    assert row is not None
+    return int(row[0])
 
 
 @pytest.mark.parametrize(
@@ -59,6 +93,44 @@ def test_event_rejects_non_address_component_ip_runtime_values(
 
     # Then: the semantic boundary rejects it before hashing or SQL
     assert exc_info.value.field == "component_ip"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "appender",
+    [
+        pytest.param(record_event, id="tenant"),
+        pytest.param(_record_system_event, id="system"),
+    ],
+)
+@pytest.mark.parametrize(
+    "component_ip",
+    [IPv4Interface("192.0.2.9/32"), IPv6Interface("2001:db8::9/128")],
+)
+def test_interface_component_ip_is_rejected_before_append_sql(
+    appender: _AuditAppender,
+    component_ip: IPv4Interface | IPv6Interface,
+) -> None:
+    # Given: an interface subclass and a ledger with a pinned row count
+    row_count_before = _audit_row_count()
+
+    # When: either supported append path receives the dynamic runtime value
+    with (
+        patch(
+            "apps.audit.services.connection.cursor",
+            side_effect=AssertionError("append SQL boundary reached"),
+        ) as cursor_factory,
+        pytest.raises(AuditEventValueRejectedError) as exc_info,
+    ):
+        appender(
+            _runtime_event(component_ip),
+            payload={"reason_code": "component-ip-interface"},
+        )
+
+    # Then: construction rejects before a cursor opens and no row is appended
+    assert exc_info.value.field == "component_ip"
+    cursor_factory.assert_not_called()
+    assert _audit_row_count() == row_count_before
 
 
 @pytest.mark.django_db(transaction=True)
@@ -92,6 +164,37 @@ def test_address_component_ip_persists_and_immediately_verifies(
         verification = verify_chain(organization_id)
 
     # Then: storage keeps the canonical host and verification accepts its hash
+    assert stored == (str(component_ip),)
+    assert verification.row_count == 1
+    assert verification.last_seq == seq
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "component_ip",
+    [IPv4Address("198.51.100.9"), IPv6Address("2001:db8::9")],
+)
+def test_system_address_component_ip_persists_and_immediately_verifies(
+    component_ip: IPv4Address | IPv6Address,
+) -> None:
+    # Given: a valid concrete address object for the owner-only system path
+    event = replace(_event(), component_ip=component_ip)
+
+    # When: the system service appends, reads, and immediately verifies its chain
+    seq = _record_system_event(
+        event,
+        payload={"reason_code": "component-ip-system-valid"},
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT host(component_ip) FROM clinic_app.audit_event "
+            "WHERE organization_id = %s AND seq = %s",
+            [SYSTEM_ORG_ID, seq],
+        )
+        stored = cursor.fetchone()
+    verification = verify_chain()
+
+    # Then: storage and hash verification preserve the concrete address value
     assert stored == (str(component_ip),)
     assert verification.row_count == 1
     assert verification.last_seq == seq

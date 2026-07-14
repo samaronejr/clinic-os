@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
 from ipaddress import IPv4Address, IPv6Address
-from typing import TYPE_CHECKING, Final, TypeGuard, assert_never
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 import rfc8785
 
@@ -31,6 +31,7 @@ _AFFECTED_TYPE_MAX: Final = 128
 _AFFECTED_ID_MAX: Final = 255
 _HTTP_STATUS_MIN: Final = 100
 _HTTP_STATUS_MAX: Final = 599
+_COMPONENT_IP_TYPES: Final = (IPv4Address, IPv6Address)
 
 type AuditPayloadInputValue = (
     str | int | bool | float | Decimal | None | Sequence[str] | Mapping[str, str]
@@ -97,13 +98,11 @@ class AuditEventInput:
             raise AuditEventValueRejectedError(field="event_type")
         if not _is_bounded_text(self.component_id, _COMPONENT_ID_MAX):
             raise AuditEventValueRejectedError(field="component_id")
-        match self.component_ip:
-            case None | IPv4Address() | IPv6Address():
-                pass
-            case _ as invalid_component_ip:
-                if not TYPE_CHECKING:
-                    raise AuditEventValueRejectedError(field="component_ip")
-                assert_never(invalid_component_ip)
+        if (
+            self.component_ip is not None
+            and type(self.component_ip) not in _COMPONENT_IP_TYPES
+        ):
+            raise AuditEventValueRejectedError(field="component_ip")
         if (self.affected_record_type is None) != (self.affected_record_id is None):
             raise AuditEventValueRejectedError(field="affected_record")
         if (
