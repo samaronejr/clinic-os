@@ -47,6 +47,18 @@ def test_styles_include_shrink_wrapping_and_locale_aware_breaking() -> None:
     assert "transition: none" in styles
 
 
+def test_cjk_breaking_allows_japanese_and_chinese_emergency_wraps() -> None:
+    shell_styles = re.sub(r"\s+", " ", _asset_text("css/clinic-os.css"))
+
+    assert (
+        ":lang(ko) { overflow-wrap: normal; word-break: keep-all; line-break: strict; }"
+    ) in shell_styles
+    assert (
+        ":lang(ja), :lang(zh) { overflow-wrap: anywhere; word-break: normal; "
+        "line-break: strict; }"
+    ) in shell_styles
+
+
 def test_showcase_groups_localized_semantic_phrases() -> None:
     showcase = (
         Path(__file__).resolve().parents[1] / "templates" / "identity" / "showcase.html"

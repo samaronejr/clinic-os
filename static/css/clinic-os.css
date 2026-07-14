@@ -153,8 +153,8 @@ a:hover {
 
 :lang(ja),
 :lang(zh) {
-  overflow-wrap: normal;
-  word-break: keep-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
   line-break: strict;
 }
 
