@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
-from typing import TYPE_CHECKING, Final, TypeGuard
+from ipaddress import IPv4Address, IPv6Address
+from typing import TYPE_CHECKING, Final, TypeGuard, assert_never
 
 import rfc8785
 
 if TYPE_CHECKING:
-    from ipaddress import IPv4Address, IPv6Address
     from uuid import UUID
 
 AUDIT_PAYLOAD_ALLOWED: Final[frozenset[str]] = frozenset(
@@ -97,6 +97,13 @@ class AuditEventInput:
             raise AuditEventValueRejectedError(field="event_type")
         if not _is_bounded_text(self.component_id, _COMPONENT_ID_MAX):
             raise AuditEventValueRejectedError(field="component_id")
+        match self.component_ip:
+            case None | IPv4Address() | IPv6Address():
+                pass
+            case _ as invalid_component_ip:
+                if not TYPE_CHECKING:
+                    raise AuditEventValueRejectedError(field="component_ip")
+                assert_never(invalid_component_ip)
         if (self.affected_record_type is None) != (self.affected_record_id is None):
             raise AuditEventValueRejectedError(field="affected_record")
         if (
