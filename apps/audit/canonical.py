@@ -93,9 +93,9 @@ class AuditEventInput:
 
     def __post_init__(self) -> None:
         """Reject invalid semantic values before canonicalization."""
-        if not 1 <= len(self.event_type.strip()) <= _EVENT_TYPE_MAX:
+        if not _is_bounded_text(self.event_type, _EVENT_TYPE_MAX):
             raise AuditEventValueRejectedError(field="event_type")
-        if not 1 <= len(self.component_id.strip()) <= _COMPONENT_ID_MAX:
+        if not _is_bounded_text(self.component_id, _COMPONENT_ID_MAX):
             raise AuditEventValueRejectedError(field="component_id")
         if (self.affected_record_type is None) != (self.affected_record_id is None):
             raise AuditEventValueRejectedError(field="affected_record")
@@ -103,8 +103,8 @@ class AuditEventInput:
             self.affected_record_type is not None
             and self.affected_record_id is not None
             and not (
-                1 <= len(self.affected_record_type.strip()) <= _AFFECTED_TYPE_MAX
-                and 1 <= len(self.affected_record_id.strip()) <= _AFFECTED_ID_MAX
+                _is_bounded_text(self.affected_record_type, _AFFECTED_TYPE_MAX)
+                and _is_bounded_text(self.affected_record_id, _AFFECTED_ID_MAX)
             )
         ):
             raise AuditEventValueRejectedError(field="affected_record")
@@ -128,6 +128,10 @@ def _is_integer(value: AuditPayloadInputValue) -> TypeGuard[int]:
     return type(value) is int
 
 
+def _is_bounded_text(value: str, maximum: int) -> bool:
+    return bool(value.strip()) and len(value) <= maximum
+
+
 def _normalize_payload(
     payload: Mapping[str, AuditPayloadInputValue],
 ) -> ValidAuditPayload:
@@ -137,7 +141,7 @@ def _normalize_payload(
             raise AuditPayloadKeyRejected(key=key)
         string_limit = _STRING_LIMITS.get(key)
         if string_limit is not None:
-            if not _is_text(value) or not 1 <= len(value) <= string_limit:
+            if not _is_text(value) or not _is_bounded_text(value, string_limit):
                 raise AuditPayloadValueRejectedError(key=key)
             normalized[key] = value
         elif not _is_integer(value) or not (
