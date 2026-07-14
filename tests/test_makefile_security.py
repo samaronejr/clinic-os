@@ -8,6 +8,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAKE_BINARY = shutil.which("make")
+BASH_BINARY = shutil.which("bash")
 MAKE_TIMEOUT_SECONDS = 15
 
 
@@ -245,3 +246,31 @@ def test_ci_normal_output_redacts_database_urls() -> None:
     # Then: ordinary logs reveal no URL credential value
     assert result.returncode == 0, output
     assert all(sentinel not in output for sentinel in sentinels), output
+
+
+def test_ci_uses_test_settings_when_env_example_is_sourced() -> None:
+    # Given: the documented local workflow exports development settings
+    assert BASH_BINARY is not None
+    script = (
+        "set -a\n"
+        "source .env.example\n"
+        "set +a\n"
+        "make --no-print-directory "
+        "'--eval=ci: ci-settings-probe' "
+        "'--eval=ci-settings-probe: ; "
+        '@test "$$DJANGO_SETTINGS_MODULE" = config.settings.test\' '
+        "ci MAKE=true UV=true POSTGRES_CONTAINER=fixture"
+    )
+
+    # When: the real CI target runs with external tools replaced by inert commands
+    result = subprocess.run(  # noqa: S603 - fixed local Bash executes fixed source.
+        (BASH_BINARY, "-ceu", script),
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=MAKE_TIMEOUT_SECONDS,
+    )
+
+    # Then: target-scoped test settings replace the sourced development value
+    assert result.returncode == 0, _output(result)

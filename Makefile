@@ -130,6 +130,7 @@ db-posture: db-inputs
 migrate:
 	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run python manage.py migrate
 
+ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
 	$(UV) sync --locked
 	@$(MAKE) db-bootstrap
