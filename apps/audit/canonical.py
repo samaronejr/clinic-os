@@ -31,6 +31,8 @@ _AFFECTED_TYPE_MAX: Final = 128
 _AFFECTED_ID_MAX: Final = 255
 _HTTP_STATUS_MIN: Final = 100
 _HTTP_STATUS_MAX: Final = 599
+_SURROGATE_CODE_POINT_MIN: Final = 0xD800
+_SURROGATE_CODE_POINT_MAX: Final = 0xDFFF
 _COMPONENT_IP_TYPES: Final = (IPv4Address, IPv6Address)
 
 type AuditPayloadInputValue = (
@@ -164,7 +166,15 @@ def _is_integer(value: AuditPayloadInputValue) -> TypeGuard[int]:
 
 
 def _is_bounded_text(value: str, maximum: int) -> bool:
-    return bool(value.strip()) and len(value) <= maximum
+    return (
+        len(value) <= maximum
+        and bool(value.strip())
+        and "\x00" not in value
+        and all(
+            not _SURROGATE_CODE_POINT_MIN <= ord(character) <= _SURROGATE_CODE_POINT_MAX
+            for character in value
+        )
+    )
 
 
 def _normalize_payload(
