@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import base64
-import posixpath
 from functools import wraps
 from importlib import import_module
 from io import BytesIO
-from typing import TYPE_CHECKING, Final, Protocol, TypedDict, cast
-from urllib.parse import quote, unquote, urlencode, urlsplit
+from typing import TYPE_CHECKING, Protocol, TypedDict, cast
+from urllib.parse import quote, urlencode
 
 from django.conf import settings
 from django.contrib.auth import logout as session_logout
@@ -17,12 +16,13 @@ from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.cache import patch_cache_control, patch_vary_headers
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.debug import sensitive_variables
 from django_otp import login as otp_login
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
+from apps.identity import redirects as _redirects
 from apps.identity.models import User
+from apps.identity.stepup import stamp_step_up_verification
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -86,17 +86,7 @@ class _QrModule(Protocol):
 
 
 QRCODE = cast("_QrModule", import_module("qrcode"))
-AUTH_FLOW_PATHS: Final = frozenset(
-    {
-        "/auth/login",
-        "/auth/enroll",
-        "/auth/verify",
-        "/auth/logout",
-    }
-)
-DEFAULT_AUTH_TARGET: Final = "/auth/protected/"
-ASCII_CONTROL_LIMIT: Final = 0x20
-ASCII_DELETE: Final = 0x7F
+safe_next_url = _redirects.safe_next_url
 
 
 def confirmed_devices(
@@ -172,54 +162,6 @@ def provisioning_qr_data_uri(
     return f"data:image/png;base64,{encoded}"
 
 
-def _canonical_target(raw_target: str) -> tuple[str, str] | None:
-    decoded_target = raw_target
-    for _attempt in range(4):
-        try:
-            next_target = unquote(decoded_target, errors="strict")
-        except UnicodeDecodeError:
-            return None
-        if next_target == decoded_target:
-            break
-        decoded_target = next_target
-    else:
-        return None
-    if "\\" in decoded_target or any(
-        ord(character) < ASCII_CONTROL_LIMIT or ord(character) == ASCII_DELETE
-        for character in decoded_target
-    ):
-        return None
-    path = urlsplit(decoded_target).path
-    if not path.startswith("/"):
-        return None
-    canonical_path = posixpath.normpath(f"/{path.lstrip('/')}")
-    return decoded_target, canonical_path.rstrip("/") or "/"
-
-
-def safe_next_url(request: HttpRequest, raw_target: str | None) -> str:
-    """Accept only a same-host non-auth-flow redirect target."""
-    if not raw_target:
-        return DEFAULT_AUTH_TARGET
-    canonical_target = _canonical_target(raw_target)
-    if canonical_target is None:
-        return DEFAULT_AUTH_TARGET
-    decoded_target, canonical_path = canonical_target
-    allowed_hosts = {request.get_host()}
-    require_https = request.is_secure()
-    if not all(
-        url_has_allowed_host_and_scheme(
-            target,
-            allowed_hosts=allowed_hosts,
-            require_https=require_https,
-        )
-        for target in (raw_target, decoded_target)
-    ):
-        return DEFAULT_AUTH_TARGET
-    if canonical_path in AUTH_FLOW_PATHS:
-        return DEFAULT_AUTH_TARGET
-    return raw_target
-
-
 def auth_response(response: HttpResponseBase) -> HttpResponseBase:
     """Mark authentication responses private and HTMX-variant aware."""
     patch_cache_control(
@@ -276,6 +218,7 @@ def record_otp_verification(request: HttpRequest, device: TotpDevice) -> None:
         raise ValueError(msg)
     request.session.cycle_key()
     otp_login(request, device)
+    stamp_step_up_verification(request)
 
 
 def privileged_totp_required(

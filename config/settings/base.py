@@ -49,6 +49,7 @@ AUTHENTICATION_BACKENDS: list[str] = [
 LOGIN_URL: str = "/auth/login/"
 OTP_LOGIN_URL: str = "/auth/verify/"
 OTP_TOTP_ISSUER: str = "Clinic OS"
+STEP_UP_MAX_AGE_SECONDS: int = 300
 
 MIDDLEWARE: list[str] = [
     "django.middleware.security.SecurityMiddleware",

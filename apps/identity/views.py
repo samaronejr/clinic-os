@@ -7,7 +7,6 @@ from django.http import Http404, HttpRequest, HttpResponseBase
 from django.shortcuts import render
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
-from django_otp import DEVICE_ID_SESSION_KEY
 
 from apps.identity.forms import INVALID_LOGIN_MESSAGE, ClinicAuthenticationForm
 from apps.identity.otp import (
@@ -16,6 +15,7 @@ from apps.identity.otp import (
     privileged_totp_required,
     safe_next_url,
 )
+from apps.identity.stepup import clear_step_up_verification
 
 
 @sensitive_post_parameters("password")
@@ -26,7 +26,7 @@ def login_view(request: HttpRequest) -> HttpResponseBase:
     data = request.POST if request.method == "POST" else None
     form = ClinicAuthenticationForm(request=request, data=data)
     if request.method == "POST" and form.is_valid():
-        request.session.pop(DEVICE_ID_SESSION_KEY, None)
+        clear_step_up_verification(request, clear_device=True)
         session_login(request, form.get_user())
         if "active_org_id" in request.session:
             return auth_redirect(request, target)
