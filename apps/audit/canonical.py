@@ -114,8 +114,19 @@ class AuditEventInput:
             )
         ):
             raise AuditEventValueRejectedError(field="affected_record")
-        if self.occurred_at_utc.tzinfo is None:
+        occurred_at_utc = self.occurred_at_utc
+        if type(occurred_at_utc) is not datetime:
             raise AuditEventValueRejectedError(field="occurred_at_utc")
+        try:
+            utc_offset = occurred_at_utc.utcoffset()
+            if utc_offset is None:
+                raise AuditEventValueRejectedError(field="occurred_at_utc")
+            normalized_timestamp = occurred_at_utc.replace(tzinfo=None) - utc_offset
+        except (OverflowError, TypeError, ValueError) as error:
+            raise AuditEventValueRejectedError(field="occurred_at_utc") from error
+        object.__setattr__(
+            self, "occurred_at_utc", normalized_timestamp.replace(tzinfo=UTC)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,9 +175,7 @@ def _content_hash(
     context: AuditTrustedContext,
     payload: ValidAuditPayload,
 ) -> bytes:
-    occurred_at_utc = event.occurred_at_utc.astimezone(UTC).strftime(
-        "%Y-%m-%dT%H:%M:%S.%fZ"
-    )
+    occurred_at_utc = event.occurred_at_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
     actor_id = None if context.actor_user_id is None else str(context.actor_user_id)
     component_ip = None if event.component_ip is None else str(event.component_ip)
     content: dict[str, CanonicalValue] = {
