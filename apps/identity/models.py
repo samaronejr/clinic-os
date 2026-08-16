@@ -9,6 +9,8 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
+
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint
 
@@ -57,6 +59,7 @@ class Clinic(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     crm_uf = models.CharField(max_length=2)
+    timezone = IanaTimezoneField(max_length=64, validators=[validate_iana_timezone])
 
     class Meta:
         """Define the composite foreign-key target."""
@@ -65,7 +68,15 @@ class Clinic(models.Model):
             models.UniqueConstraint(
                 fields=("organization", "id"),
                 name="identity_clinic_org_id_uniq",
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.expressions.RawSQL(
+                    "btrim(timezone) <> ''",
+                    (),
+                    output_field=models.BooleanField(),
+                ),
+                name="identity_clinic_timezone_nonblank",
+            ),
         ]
 
     def __str__(self) -> str:

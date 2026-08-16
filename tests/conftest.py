@@ -53,6 +53,7 @@ def _create_tenant_rows(
             organization=organization,
             name=f"Synthetic Clinic {label}",
             crm_uf="SP",
+            timezone="America/Sao_Paulo",
         )
         UserClinicRole.objects.create(
             user=user,
