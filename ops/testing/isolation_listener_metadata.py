@@ -27,6 +27,14 @@ class _SocketRow:
     uid: int
 
 
+@dataclass(frozen=True, slots=True)
+class _ProcessIdentity:
+    start_ticks: int
+    executable_realpath: Path
+    executable_link: tuple[int, int, int, int, int]
+    command: bytes
+
+
 def _fail(message: str) -> Never:
     raise IsolationError(message)
 
@@ -166,32 +174,48 @@ def _socket_inode(target: str) -> int:
 
 def _process_listener(proc_root: Path, row: _SocketRow, pid: int) -> JsonObject:
     process_root = proc_root / str(pid)
-    stat_before = _read_bytes(process_root / "stat", MAX_PROC_BYTES)
-    start_ticks = _start_ticks(stat_before, pid)
-    executable_link = process_root / "exe"
-    link_before = executable_link.lstat()
-    if not stat.S_ISLNK(link_before.st_mode):
-        _fail("process executable entry is not a symlink")
-    executable = executable_link.resolve(strict=True)
-    command = _read_bytes(process_root / "cmdline", MAX_PROC_BYTES)
-    stat_after = _read_bytes(process_root / "stat", MAX_PROC_BYTES)
-    link_after = executable_link.lstat()
-    if stat_after != stat_before or link_after != link_before:
+    identity = _read_process_identity(process_root, pid)
+    if _read_process_identity(process_root, pid) != identity:
         _fail("process identity changed during listener capture")
-    if not _process_has_socket(process_root / "fd", row.inode):
+    if row not in _socket_rows(proc_root) or _process_owners(
+        proc_root, {row.inode}
+    ).get(row.inode) != [pid]:
         _fail("process released listener during identity capture")
     return {
-        "argv_sha256": hashlib.sha256(command).hexdigest(),
+        "argv_sha256": hashlib.sha256(identity.command).hexdigest(),
         "container_id": None,
-        "executable_realpath": str(executable),
+        "executable_realpath": str(identity.executable_realpath),
         "host": row.host,
         "owner_kind": "process",
         "pid": pid,
         "port": row.port,
-        "process_start_ticks": start_ticks,
+        "process_start_ticks": identity.start_ticks,
         "socket_inode": row.inode,
         "transport": "tcp",
     }
+
+
+def _read_process_identity(process_root: Path, pid: int) -> _ProcessIdentity:
+    start_ticks = _start_ticks(
+        _read_bytes(process_root / "stat", MAX_PROC_BYTES),
+        pid,
+    )
+    executable_link = process_root / "exe"
+    metadata = executable_link.lstat()
+    if not stat.S_ISLNK(metadata.st_mode):
+        _fail("process executable entry is not a symlink")
+    return _ProcessIdentity(
+        start_ticks,
+        executable_link.resolve(strict=True),
+        (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_uid,
+            metadata.st_gid,
+        ),
+        _read_bytes(process_root / "cmdline", MAX_PROC_BYTES),
+    )
 
 
 def _container_listener(row: _SocketRow, container_id: str) -> JsonObject:
@@ -223,21 +247,6 @@ def _start_ticks(raw: bytes, pid: int) -> int:
     if value < 0:
         _fail("process start ticks is negative")
     return value
-
-
-def _process_has_socket(fd_root: Path, inode: int) -> bool:
-    try:
-        descriptors = os.scandir(fd_root)
-    except (FileNotFoundError, PermissionError):
-        return False
-    with descriptors:
-        for descriptor in descriptors:
-            try:
-                if _socket_inode(str(Path(descriptor.path).readlink())) == inode:
-                    return True
-            except (FileNotFoundError, PermissionError, OSError):
-                continue
-    return False
 
 
 def _read_bytes(path: Path, maximum: int) -> bytes:
