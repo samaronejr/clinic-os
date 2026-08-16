@@ -90,6 +90,16 @@ class UserClinicRole(models.Model):
     clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE)
     role = models.CharField(max_length=20, choices=Role.choices)
 
+    class Meta:
+        """Prevent duplicate exact role assignments."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "clinic", "user", "role"),
+                name="identity_userclinicrole_assignment_uniq",
+            )
+        ]
+
     def __str__(self) -> str:
         """Return stable identifiers and the stored role value."""
         return f"{self.user_id}:{self.clinic_id}:{self.role}"
