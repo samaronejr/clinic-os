@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "retry_kind": "retry-later",
+  "rejections": [{"lane": "ORCH", "failure_class": "timeout"}],
+  "failure_receipts_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "user_fix_intent_sha256": null,
+  "inputs_sha256": null,
+  "pre_f4_sha256": null,
+  "final_sha256": null
+}

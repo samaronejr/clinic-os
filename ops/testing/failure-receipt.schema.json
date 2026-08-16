@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/failure-receipt.schema.json",
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"},
+    "cause": {"enum": ["reviewer-reject", "product-assertion", "auth-rejected", "malformed-verdict", "malformed-receipt", "deadline-exceeded", "session-reused", "session-disconnected", "session-missing", "auth-unavailable", "launcher-unavailable", "dependency-unavailable", "io-failure", "unexpected-signal", "boot-changed", "cleanup-failure"]}
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attempt_id", "sha", "lane", "stage", "observed_causes", "cause_code", "failure_class", "started_at_utc", "ended_at_utc", "exit_code", "signal", "timed_out", "output_sha256", "lineage_validation_sha256", "journal_sha256", "control_tree_sha256", "cleanup_verified"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "lane": {"enum": ["F1", "F2", "F3", "F4", "ORCH"]},
+    "stage": {"enum": ["F1-review", "F2-prerequisites", "F2-review", "F3-e2e", "F4-precheck", "F4-final", "ORCH-input-freeze", "ORCH-pre-f4-freeze", "ORCH-final-gate"]},
+    "observed_causes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/cause"}},
+    "cause_code": {"$ref": "#/$defs/cause"},
+    "failure_class": {"enum": ["finding", "product-failure", "infrastructure", "authentication", "session", "timeout", "malformed-output"]},
+    "started_at_utc": {"$ref": "#/$defs/timestamp"},
+    "ended_at_utc": {"$ref": "#/$defs/timestamp"},
+    "exit_code": {"type": ["integer", "null"], "minimum": 0, "maximum": 255},
+    "signal": {"type": ["integer", "null"], "minimum": 1},
+    "timed_out": {"type": "boolean"},
+    "output_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "lineage_validation_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "journal_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "control_tree_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "cleanup_verified": {"const": true}
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {"properties": {"lane": {"const": "F1"}, "stage": {"const": "F1-review"}}},
+        {"properties": {"lane": {"const": "F2"}, "stage": {"enum": ["F2-prerequisites", "F2-review"]}}},
+        {"properties": {"lane": {"const": "F3"}, "stage": {"const": "F3-e2e"}}},
+        {"properties": {"lane": {"const": "F4"}, "stage": {"enum": ["F4-precheck", "F4-final"]}}},
+        {"properties": {"lane": {"const": "ORCH"}, "stage": {"enum": ["ORCH-input-freeze", "ORCH-pre-f4-freeze", "ORCH-final-gate"]}}}
+      ]
+    },
+    {
+      "oneOf": [
+        {"properties": {"exit_code": {"type": "null"}, "signal": {"type": "null"}}},
+        {"properties": {"exit_code": {"type": "integer"}, "signal": {"type": "null"}}},
+        {"properties": {"exit_code": {"type": "null"}, "signal": {"type": "integer"}}}
+      ]
+    },
+    {
+      "if": {"properties": {"lane": {"enum": ["F1", "F2", "F3"]}}},
+      "then": {"properties": {"journal_sha256": {"$ref": "#/$defs/sha256"}}}
+    },
+    {
+      "if": {"properties": {"stage": {"const": "ORCH-input-freeze"}}},
+      "then": {"properties": {"lineage_validation_sha256": {"$ref": "#/$defs/sha256"}}}
+    }
+  ],
+  "oneOf": [
+    {"properties": {"cause_code": {"const": "reviewer-reject"}, "failure_class": {"const": "finding"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "reviewer-reject"}]}}},
+    {"properties": {"cause_code": {"const": "product-assertion"}, "failure_class": {"const": "product-failure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "product-assertion"}]}}},
+    {"properties": {"cause_code": {"const": "auth-rejected"}, "failure_class": {"const": "authentication"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "auth-rejected"}]}}},
+    {"properties": {"cause_code": {"const": "malformed-verdict"}, "failure_class": {"const": "malformed-output"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "malformed-verdict"}]}}},
+    {"properties": {"cause_code": {"const": "malformed-receipt"}, "failure_class": {"const": "malformed-output"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "malformed-receipt"}]}}},
+    {"properties": {"cause_code": {"const": "deadline-exceeded"}, "failure_class": {"const": "timeout"}, "timed_out": {"const": true}, "observed_causes": {"prefixItems": [{"const": "deadline-exceeded"}]}}},
+    {"properties": {"cause_code": {"const": "session-reused"}, "failure_class": {"const": "session"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "session-reused"}]}}},
+    {"properties": {"cause_code": {"const": "session-disconnected"}, "failure_class": {"const": "session"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "session-disconnected"}]}}},
+    {"properties": {"cause_code": {"const": "session-missing"}, "failure_class": {"const": "session"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "session-missing"}]}}},
+    {"properties": {"cause_code": {"const": "auth-unavailable"}, "failure_class": {"const": "authentication"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "auth-unavailable"}]}}},
+    {"properties": {"cause_code": {"const": "launcher-unavailable"}, "failure_class": {"const": "infrastructure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "launcher-unavailable"}]}}},
+    {"properties": {"cause_code": {"const": "dependency-unavailable"}, "failure_class": {"const": "infrastructure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "dependency-unavailable"}]}}},
+    {"properties": {"cause_code": {"const": "io-failure"}, "failure_class": {"const": "infrastructure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "io-failure"}]}}},
+    {"properties": {"cause_code": {"const": "unexpected-signal"}, "failure_class": {"const": "infrastructure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "unexpected-signal"}]}}},
+    {"properties": {"cause_code": {"const": "boot-changed"}, "failure_class": {"const": "infrastructure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "boot-changed"}]}}},
+    {"properties": {"cause_code": {"const": "cleanup-failure"}, "failure_class": {"const": "infrastructure"}, "timed_out": {"const": false}, "observed_causes": {"prefixItems": [{"const": "cleanup-failure"}]}}}
+  ]
+}

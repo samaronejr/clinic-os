@@ -1,0 +1,419 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/stale-boot-recovery-phase1a-v1.json",
+  "title": "Clinic OS Phase 1A stale-boot recovery journal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "attempt_id",
+    "previous_boot_id",
+    "current_boot_id",
+    "recovery_goal",
+    "state",
+    "prior_ledger_sha256",
+    "resource_actions",
+    "runner_recoveries",
+    "completed_action_ids",
+    "reboot_stable_baseline_sha256",
+    "boot_observation",
+    "boot_observation_sha256",
+    "shared_evidence_manifest_sha256",
+    "lock_identity_sha256",
+    "post_cleanup_ledger_sha256",
+    "post_update_ledger_sha256",
+    "resume_execution_host_preflight_path",
+    "resume_execution_host_preflight_sha256",
+    "f3_recovery_required",
+    "f3_journal_path",
+    "f3_initial_journal_sha256",
+    "f3_final_journal_sha256",
+    "f3_receipt_path",
+    "f3_receipt_sha256",
+    "controller_recoveries",
+    "publisher_claim_id",
+    "publisher_final_wave_journal_path",
+    "publisher_initial_journal_sha256",
+    "publisher_release_intent_sha256",
+    "publisher_final_journal_sha256",
+    "failure_receipts_sha256",
+    "updated_at_utc"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "previous_boot_id": {"$ref": "#/$defs/uuid"},
+    "current_boot_id": {"$ref": "#/$defs/uuid"},
+    "recovery_goal": {"enum": ["resume", "reject"]},
+    "state": {
+      "enum": [
+        "prepared",
+        "cleaning",
+        "resources-absent",
+        "claims-prune-intent",
+        "claims-pruned",
+        "resume-proof-published",
+        "receipts-finalizing",
+        "receipts-finalized",
+        "publisher-release-intent",
+        "boot-updated",
+        "publisher-released",
+        "complete"
+      ]
+    },
+    "prior_ledger_sha256": {"$ref": "#/$defs/sha256"},
+    "resource_actions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/resourceAction"}
+    },
+    "runner_recoveries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/runnerRecovery"}
+    },
+    "completed_action_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/actionId"}
+    },
+    "reboot_stable_baseline_sha256": {"$ref": "#/$defs/sha256"},
+    "boot_observation": {
+      "$ref": "isolation-ledger.schema.json#/$defs/bootObservation"
+    },
+    "boot_observation_sha256": {"$ref": "#/$defs/sha256"},
+    "shared_evidence_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "lock_identity_sha256": {"$ref": "#/$defs/sha256"},
+    "post_cleanup_ledger_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "post_update_ledger_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "resume_execution_host_preflight_path": {
+      "$ref": "#/$defs/nullableAbsolutePath"
+    },
+    "resume_execution_host_preflight_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "f3_recovery_required": {"type": "boolean"},
+    "f3_journal_path": {"$ref": "#/$defs/nullableAbsolutePath"},
+    "f3_initial_journal_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "f3_final_journal_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "f3_receipt_path": {"$ref": "#/$defs/nullableAbsolutePath"},
+    "f3_receipt_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "controller_recoveries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/controllerRecovery"}
+    },
+    "publisher_claim_id": {"$ref": "#/$defs/nullableUuid"},
+    "publisher_final_wave_journal_path": {
+      "$ref": "#/$defs/nullableAbsolutePath"
+    },
+    "publisher_initial_journal_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "publisher_release_intent_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "publisher_final_journal_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "failure_receipts_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "updated_at_utc": {"$ref": "#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"f3_recovery_required": {"const": false}},
+        "required": ["f3_recovery_required"]
+      },
+      "then": {
+        "properties": {
+          "f3_journal_path": {"type": "null"},
+          "f3_initial_journal_sha256": {"type": "null"},
+          "f3_final_journal_sha256": {"type": "null"},
+          "f3_receipt_path": {"type": "null"},
+          "f3_receipt_sha256": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"f3_recovery_required": {"const": true}},
+        "required": ["f3_recovery_required"]
+      },
+      "then": {
+        "properties": {
+          "f3_journal_path": {"$ref": "#/$defs/absolutePath"},
+          "f3_initial_journal_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"publisher_claim_id": {"type": "null"}},
+        "required": ["publisher_claim_id"]
+      },
+      "then": {
+        "properties": {
+          "publisher_final_wave_journal_path": {"type": "null"},
+          "publisher_initial_journal_sha256": {"type": "null"},
+          "publisher_release_intent_sha256": {"type": "null"},
+          "publisher_final_journal_sha256": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"publisher_claim_id": {"$ref": "#/$defs/uuid"}},
+        "required": ["publisher_claim_id"]
+      },
+      "then": {
+        "properties": {
+          "publisher_final_wave_journal_path": {
+            "$ref": "#/$defs/absolutePath"
+          },
+          "publisher_initial_journal_sha256": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"recovery_goal": {"const": "resume"}},
+        "required": ["recovery_goal"]
+      },
+      "then": {
+        "properties": {"failure_receipts_sha256": {"type": "null"}}
+      }
+    }
+  ],
+  "$defs": {
+    "absolutePath": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "nullableAbsolutePath": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/absolutePath"}
+      ]
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "nullableUuid": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/uuid"}
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableSha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha256"}
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "actionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resourceAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_id",
+        "claim_id",
+        "resource_kind",
+        "operation",
+        "identity_sha256"
+      ],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/actionId"},
+        "claim_id": {"$ref": "#/$defs/uuid"},
+        "resource_kind": {
+          "enum": [
+            "process",
+            "container",
+            "borrowed-network-attachment",
+            "owned-network",
+            "owned-volume",
+            "filesystem-staging",
+            "candidate-publication-envelope",
+            "candidate-publication-history"
+          ]
+        },
+        "operation": {
+          "enum": [
+            "observe-prior-boot-process-absent",
+            "stop-remove-container",
+            "detach-borrowed-network",
+            "remove-owned-network",
+            "remove-owned-volume",
+            "remove-staging",
+            "publish-or-adopt-candidate-envelope",
+            "publish-or-adopt-candidate-history"
+          ]
+        },
+        "identity_sha256": {"$ref": "#/$defs/sha256"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"resource_kind": {"const": "process"}},
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {
+              "operation": {"const": "observe-prior-boot-process-absent"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"resource_kind": {"const": "container"}},
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {"operation": {"const": "stop-remove-container"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_kind": {"const": "borrowed-network-attachment"}
+            },
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {
+              "operation": {"const": "detach-borrowed-network"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"resource_kind": {"const": "owned-network"}},
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {"operation": {"const": "remove-owned-network"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"resource_kind": {"const": "owned-volume"}},
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {"operation": {"const": "remove-owned-volume"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_kind": {"const": "filesystem-staging"}
+            },
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {"operation": {"const": "remove-staging"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_kind": {"const": "candidate-publication-envelope"}
+            },
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {
+              "operation": {"const": "publish-or-adopt-candidate-envelope"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_kind": {"const": "candidate-publication-history"}
+            },
+            "required": ["resource_kind"]
+          },
+          "then": {
+            "properties": {
+              "operation": {"const": "publish-or-adopt-candidate-history"}
+            }
+          }
+        }
+      ]
+    },
+    "runnerRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_id",
+        "claim_id",
+        "origin_status",
+        "origin_claim_sha256",
+        "runner_creation"
+      ],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/actionId"},
+        "claim_id": {"$ref": "#/$defs/uuid"},
+        "origin_status": {"enum": ["reserved", "prepared", "active"]},
+        "origin_claim_sha256": {"$ref": "#/$defs/sha256"},
+        "runner_creation": {
+          "$ref": "isolation-ledger.schema.json#/$defs/runnerCreation"
+        }
+      }
+    },
+    "controllerRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controller_kind",
+        "lane_or_form",
+        "journal_path",
+        "lease_path",
+        "initial_journal_sha256",
+        "state",
+        "final_journal_sha256",
+        "common_receipt_path",
+        "common_receipt_sha256"
+      ],
+      "properties": {
+        "controller_kind": {"enum": ["review-lane", "final-wave"]},
+        "lane_or_form": {
+          "enum": ["F1", "F2", "inputs", "scope-pre", "pre-f4", "final"]
+        },
+        "journal_path": {"$ref": "#/$defs/absolutePath"},
+        "lease_path": {"$ref": "#/$defs/absolutePath"},
+        "initial_journal_sha256": {"$ref": "#/$defs/sha256"},
+        "state": {
+          "enum": ["pending", "journal-sealed", "receipt-written", "complete"]
+        },
+        "final_journal_sha256": {"$ref": "#/$defs/nullableSha256"},
+        "common_receipt_path": {"$ref": "#/$defs/nullableAbsolutePath"},
+        "common_receipt_sha256": {"$ref": "#/$defs/nullableSha256"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"controller_kind": {"const": "review-lane"}},
+            "required": ["controller_kind"]
+          },
+          "then": {"properties": {"lane_or_form": {"enum": ["F1", "F2"]}}}
+        },
+        {
+          "if": {
+            "properties": {"controller_kind": {"const": "final-wave"}},
+            "required": ["controller_kind"]
+          },
+          "then": {
+            "properties": {
+              "lane_or_form": {"enum": ["inputs", "scope-pre", "pre-f4", "final"]}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/execution-host-proof.schema.json",
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "gid", "inode", "link_count", "mode", "uid"],
+      "properties": {
+        "device": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 1},
+        "link_count": {"type": "integer", "minimum": 1},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0}
+      }
+    },
+    "absolutePath": {
+      "type": "string",
+      "pattern": "^/[^\\u0000\\r\\n]*$"
+    },
+    "bootId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "boot_id",
+    "cgroup_events_identity",
+    "cgroup_kill_identity",
+    "cgroup_mount_identity",
+    "cgroup_mount_path",
+    "cgroup_parent_identity",
+    "cgroup_parent_path",
+    "cgroup_procs_identity",
+    "cgroup_relative_path",
+    "checked_at_utc",
+    "foundation_sha",
+    "purpose",
+    "schema_version",
+    "workspace_realpath"
+  ],
+  "properties": {
+    "boot_id": {"$ref": "#/$defs/bootId"},
+    "cgroup_events_identity": {"$ref": "#/$defs/identity"},
+    "cgroup_kill_identity": {"$ref": "#/$defs/identity"},
+    "cgroup_mount_identity": {"$ref": "#/$defs/identity"},
+    "cgroup_mount_path": {"$ref": "#/$defs/absolutePath"},
+    "cgroup_parent_identity": {"$ref": "#/$defs/identity"},
+    "cgroup_parent_path": {"$ref": "#/$defs/absolutePath"},
+    "cgroup_procs_identity": {"$ref": "#/$defs/identity"},
+    "cgroup_relative_path": {
+      "type": "string",
+      "pattern": "^/(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000\\r\\n]*$"
+    },
+    "checked_at_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "foundation_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "purpose": {"const": "clinic-os-phase1a-execution-host-cgroup-v2"},
+    "schema_version": {"const": 1},
+    "workspace_realpath": {"$ref": "#/$defs/absolutePath"}
+  }
+}

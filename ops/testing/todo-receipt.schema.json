@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/todo-receipt-phase1a-v1.json",
+  "title": "Clinic OS Phase 1A primary todo receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "todo",
+    "foundation_sha",
+    "parent_sha",
+    "primary_commit_sha",
+    "validator_sha256",
+    "tdd_entries",
+    "tests_after_entries",
+    "acceptance",
+    "resources",
+    "cleanup"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "todo": {"type": "integer", "minimum": 1, "maximum": 20},
+    "foundation_sha": {"$ref": "#/$defs/sha40"},
+    "parent_sha": {"$ref": "#/$defs/sha40"},
+    "primary_commit_sha": {"$ref": "#/$defs/sha40"},
+    "validator_sha256": {"$ref": "#/$defs/sha256"},
+    "tdd_entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/tddEntry"}
+    },
+    "tests_after_entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/testsAfterEntry"}
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/commandEvidence"}
+    },
+    "resources": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/resource"}
+    },
+    "cleanup": {"$ref": "#/$defs/cleanup"}
+  },
+  "$defs": {
+    "sha40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "testRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "argv",
+        "started_at_utc",
+        "ended_at_utc",
+        "exit_code",
+        "classification",
+        "expected_failed_nodeids",
+        "observed_failed_nodeids",
+        "stdout_sha256",
+        "stderr_sha256"
+      ],
+      "properties": {
+        "argv": {"$ref": "#/$defs/stringArray"},
+        "started_at_utc": {"$ref": "#/$defs/timestamp"},
+        "ended_at_utc": {"$ref": "#/$defs/timestamp"},
+        "exit_code": {"type": "integer"},
+        "classification": {
+          "enum": ["expected-assertion-failure", "pass"]
+        },
+        "expected_failed_nodeids": {"$ref": "#/$defs/stringArray"},
+        "observed_failed_nodeids": {"$ref": "#/$defs/stringArray"},
+        "stdout_sha256": {"$ref": "#/$defs/sha256"},
+        "stderr_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "tddEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test_paths", "test_source_sha256", "red", "green"],
+      "properties": {
+        "test_paths": {"$ref": "#/$defs/stringArray"},
+        "test_source_sha256": {"$ref": "#/$defs/sha256"},
+        "red": {"$ref": "#/$defs/testRun"},
+        "green": {"$ref": "#/$defs/testRun"}
+      }
+    },
+    "testsAfterEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "test_paths",
+        "test_source_sha256",
+        "classification",
+        "http_contract_nodeids",
+        "argv",
+        "started_at_utc",
+        "ended_at_utc",
+        "exit_code",
+        "stdout_sha256",
+        "stderr_sha256"
+      ],
+      "properties": {
+        "test_paths": {"$ref": "#/$defs/stringArray"},
+        "test_source_sha256": {"$ref": "#/$defs/sha256"},
+        "classification": {"const": "visual-polish-no-behavior"},
+        "http_contract_nodeids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^tests/[^:]+::.+$"}
+        },
+        "argv": {"$ref": "#/$defs/stringArray"},
+        "started_at_utc": {"$ref": "#/$defs/timestamp"},
+        "ended_at_utc": {"$ref": "#/$defs/timestamp"},
+        "exit_code": {"const": 0},
+        "stdout_sha256": {"$ref": "#/$defs/sha256"},
+        "stderr_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "commandEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "argv",
+        "started_at_utc",
+        "ended_at_utc",
+        "exit_code",
+        "stdout_sha256",
+        "stderr_sha256"
+      ],
+      "properties": {
+        "argv": {"$ref": "#/$defs/stringArray"},
+        "started_at_utc": {"$ref": "#/$defs/timestamp"},
+        "ended_at_utc": {"$ref": "#/$defs/timestamp"},
+        "exit_code": {"type": "integer"},
+        "stdout_sha256": {"$ref": "#/$defs/sha256"},
+        "stderr_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "kind",
+        "activated_at_utc",
+        "released_at_utc"
+      ],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/uuid"},
+        "kind": {"enum": ["stack", "process", "filesystem"]},
+        "activated_at_utc": {"$ref": "#/$defs/timestamp"},
+        "released_at_utc": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verified_at_utc",
+        "claim_ids_absent",
+        "paths_absent",
+        "containers_absent",
+        "volumes_absent",
+        "networks_absent",
+        "listeners_absent",
+        "process_members_absent",
+        "shared_evidence_manifest_sha256"
+      ],
+      "properties": {
+        "verified_at_utc": {"$ref": "#/$defs/timestamp"},
+        "claim_ids_absent": {"const": true},
+        "paths_absent": {"const": true},
+        "containers_absent": {"const": true},
+        "volumes_absent": {"const": true},
+        "networks_absent": {"const": true},
+        "listeners_absent": {"const": true},
+        "process_members_absent": {"const": true},
+        "shared_evidence_manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

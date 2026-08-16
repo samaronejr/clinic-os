@@ -1,0 +1,1819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/isolation-ledger-phase1a-v2.json",
+  "title": "Clinic OS Phase 1A isolation ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "attempt_id",
+    "foundation_sha",
+    "authority_binding",
+    "worktree_realpath",
+    "boot_id",
+    "state",
+    "created_at_utc",
+    "last_verified_at_utc",
+    "closed_at_utc",
+    "lock_path",
+    "lock_identity",
+    "attempt_root",
+    "approved_plan",
+    "execution_host_preflight",
+    "baseline",
+    "reboot_stable_baseline_sha256",
+    "boot_observation",
+    "rejection_close",
+    "claims"
+  ],
+  "properties": {
+    "schema_version": {"const": 2},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "foundation_sha": {"$ref": "#/$defs/sha40"},
+    "authority_binding": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/authorityBinding"}
+      ]
+    },
+    "worktree_realpath": {"$ref": "#/$defs/absolutePath"},
+    "boot_id": {"$ref": "#/$defs/uuid"},
+    "state": {"enum": ["open", "closed"]},
+    "created_at_utc": {"$ref": "#/$defs/timestamp"},
+    "last_verified_at_utc": {"$ref": "#/$defs/timestamp"},
+    "closed_at_utc": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/timestamp"}
+      ]
+    },
+    "lock_path": {"$ref": "#/$defs/absolutePath"},
+    "lock_identity": {"$ref": "#/$defs/fileIdentity"},
+    "attempt_root": {"$ref": "#/$defs/absolutePath"},
+    "approved_plan": {"$ref": "#/$defs/approvedPlan"},
+    "execution_host_preflight": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/executionHostPreflight"}
+      ]
+    },
+    "baseline": {"$ref": "#/$defs/baseline"},
+    "reboot_stable_baseline_sha256": {"$ref": "#/$defs/sha256"},
+    "boot_observation": {"$ref": "#/$defs/bootObservation"},
+    "rejection_close": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/rejectionClose"}
+      ]
+    },
+    "claims": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/claim"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "open"}}},
+      "then": {
+        "properties": {
+          "closed_at_utc": {"type": "null"},
+          "rejection_close": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "closed"}}},
+      "then": {
+        "properties": {
+          "closed_at_utc": {"$ref": "#/$defs/timestamp"},
+          "claims": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "approved_plan": {
+            "properties": {"source_kind": {"const": "tracked-ci"}},
+            "required": ["source_kind"]
+          }
+        },
+        "required": ["approved_plan"]
+      },
+      "then": {
+        "properties": {
+          "authority_binding": {"type": "null"},
+          "execution_host_preflight": {"type": "null"},
+          "baseline": {
+            "properties": {"omo_lstat": {"type": "null"}},
+            "required": ["omo_lstat"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "approved_plan": {
+            "properties": {"source_kind": {"const": "invoked"}},
+            "required": ["source_kind"]
+          }
+        },
+        "required": ["approved_plan"]
+      },
+      "then": {
+        "properties": {
+          "authority_binding": {"$ref": "#/$defs/authorityBinding"},
+          "execution_host_preflight": {
+            "$ref": "#/$defs/executionHostPreflight"
+          },
+          "baseline": {
+            "properties": {"omo_lstat": {"$ref": "#/$defs/omoLstat"}},
+            "required": ["omo_lstat"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "absolutePath": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sha40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "nullableTimestamp": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/timestamp"}
+      ]
+    },
+    "authorityRootIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "inode", "mode", "uid", "gid"],
+      "properties": {
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0}
+      }
+    },
+    "fileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "inode", "mode", "uid", "gid", "link_count"],
+      "properties": {
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "mode": {"const": 384},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "link_count": {"const": 1}
+      }
+    },
+    "worktreeOmoLstat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "mode",
+        "uid",
+        "gid",
+        "device",
+        "inode",
+        "link_target",
+        "realpath"
+      ],
+      "properties": {
+        "type": {"const": "symlink-to-directory"},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "link_target": {"type": "string", "minLength": 1},
+        "realpath": {"$ref": "#/$defs/absolutePath"}
+      }
+    },
+    "authorityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_workspace_realpath",
+        "authority_root_realpath",
+        "authority_root_identity",
+        "worktree_omo_path",
+        "worktree_omo_lstat"
+      ],
+      "properties": {
+        "authority_workspace_realpath": {"$ref": "#/$defs/absolutePath"},
+        "authority_root_realpath": {"$ref": "#/$defs/absolutePath"},
+        "authority_root_identity": {"$ref": "#/$defs/authorityRootIdentity"},
+        "worktree_omo_path": {"$ref": "#/$defs/absolutePath"},
+        "worktree_omo_lstat": {"$ref": "#/$defs/worktreeOmoLstat"}
+      }
+    },
+    "approvedPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_kind", "path", "sha256", "sidecar_path"],
+      "properties": {
+        "source_kind": {"enum": ["invoked", "tracked-ci"]},
+        "path": {"$ref": "#/$defs/absolutePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "sidecar_path": {"$ref": "#/$defs/absolutePath"}
+      }
+    },
+    "executionHostPreflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "device",
+        "inode",
+        "mode",
+        "uid",
+        "gid",
+        "link_count",
+        "boot_id",
+        "cgroup_parent_path",
+        "cgroup_parent_device",
+        "cgroup_parent_inode"
+      ],
+      "properties": {
+        "path": {"$ref": "#/$defs/absolutePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "mode": {"const": 256},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "link_count": {"const": 1},
+        "boot_id": {"$ref": "#/$defs/uuid"},
+        "cgroup_parent_path": {"$ref": "#/$defs/absolutePath"},
+        "cgroup_parent_device": {"type": "integer", "minimum": 0},
+        "cgroup_parent_inode": {"type": "integer", "minimum": 0}
+      }
+    },
+    "label": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string"},
+        "value": {"type": "string"}
+      }
+    },
+    "labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/label"}
+    },
+    "publishedPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "host", "port", "container_port"],
+      "properties": {
+        "transport": {"enum": ["tcp", "udp"]},
+        "host": {"type": "string"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "container_port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "labels",
+        "config_sha256",
+        "state",
+        "health",
+        "restart_count",
+        "published_ports"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/sha256"},
+        "labels": {"$ref": "#/$defs/labels"},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "state": {"type": "string", "minLength": 1},
+        "health": {"type": ["string", "null"]},
+        "restart_count": {"type": "integer", "minimum": 0},
+        "published_ports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publishedPort"}
+        }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "volume_name",
+        "driver",
+        "scope",
+        "created_at",
+        "mountpoint",
+        "labels",
+        "options"
+      ],
+      "properties": {
+        "volume_name": {"type": "string", "minLength": 1},
+        "driver": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "minLength": 1},
+        "created_at": {"type": "string", "minLength": 1},
+        "mountpoint": {"$ref": "#/$defs/absolutePath"},
+        "labels": {"$ref": "#/$defs/labels"},
+        "options": {"$ref": "#/$defs/labels"}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "labels"],
+      "properties": {
+        "id": {"$ref": "#/$defs/sha256"},
+        "name": {"type": "string", "minLength": 1},
+        "labels": {"$ref": "#/$defs/labels"}
+      }
+    },
+    "listener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transport",
+        "host",
+        "port",
+        "socket_inode",
+        "owner_kind",
+        "container_id",
+        "pid",
+        "process_start_ticks",
+        "executable_realpath",
+        "argv_sha256"
+      ],
+      "properties": {
+        "transport": {"const": "tcp"},
+        "host": {"type": "string"},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "socket_inode": {"type": "integer", "minimum": 1},
+        "owner_kind": {"enum": ["container", "process"]},
+        "container_id": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        },
+        "pid": {"type": ["integer", "null"], "minimum": 1},
+        "process_start_ticks": {"type": ["integer", "null"], "minimum": 0},
+        "executable_realpath": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/absolutePath"}]
+        },
+        "argv_sha256": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "owner_kind": {"const": "container"},
+            "container_id": {"$ref": "#/$defs/sha256"},
+            "pid": {"type": "null"},
+            "process_start_ticks": {"type": "null"},
+            "executable_realpath": {"type": "null"},
+            "argv_sha256": {"type": "null"}
+          }
+        },
+        {
+          "properties": {
+            "owner_kind": {"const": "process"},
+            "container_id": {"type": "null"},
+            "pid": {"type": "integer", "minimum": 1},
+            "process_start_ticks": {"type": "integer", "minimum": 0},
+            "executable_realpath": {"$ref": "#/$defs/absolutePath"},
+            "argv_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      ]
+    },
+    "omoLstat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "type",
+        "mode",
+        "uid",
+        "gid",
+        "device",
+        "inode",
+        "link_target",
+        "realpath",
+        "created_by_attempt"
+      ],
+      "properties": {
+        "path": {"$ref": "#/$defs/absolutePath"},
+        "type": {"const": "symlink-to-directory"},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "link_target": {"type": "string", "minLength": 1},
+        "realpath": {"$ref": "#/$defs/absolutePath"},
+        "created_by_attempt": {"type": "boolean"}
+      }
+    },
+    "evidenceLstat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "type",
+        "mode",
+        "uid",
+        "gid",
+        "device",
+        "inode",
+        "realpath",
+        "created_by_attempt"
+      ],
+      "properties": {
+        "path": {"$ref": "#/$defs/absolutePath"},
+        "type": {"const": "directory"},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "realpath": {"$ref": "#/$defs/absolutePath"},
+        "created_by_attempt": {"type": "boolean"}
+      }
+    },
+    "sharedManifestReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "entry_count"],
+      "properties": {
+        "path": {"$ref": "#/$defs/absolutePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "entry_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "omo_lstat",
+        "evidence_lstat",
+        "shared_evidence_manifest",
+        "containers",
+        "volumes",
+        "networks",
+        "listeners"
+      ],
+      "properties": {
+        "omo_lstat": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/omoLstat"}
+          ]
+        },
+        "evidence_lstat": {"$ref": "#/$defs/evidenceLstat"},
+        "shared_evidence_manifest": {"$ref": "#/$defs/sharedManifestReference"},
+        "containers": {"$ref": "#/$defs/containers"},
+        "volumes": {"$ref": "#/$defs/volumes"},
+        "networks": {"$ref": "#/$defs/networks"},
+        "listeners": {"$ref": "#/$defs/listeners"}
+      }
+    },
+    "containers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/container"}
+    },
+    "volumes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/volume"}
+    },
+    "networks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/network"}
+    },
+    "listeners": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/listener"}
+    },
+    "bootObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boot_id",
+        "observed_at_utc",
+        "containers",
+        "volumes",
+        "networks",
+        "listeners"
+      ],
+      "properties": {
+        "boot_id": {"$ref": "#/$defs/uuid"},
+        "observed_at_utc": {"$ref": "#/$defs/timestamp"},
+        "containers": {"$ref": "#/$defs/containers"},
+        "volumes": {"$ref": "#/$defs/volumes"},
+        "networks": {"$ref": "#/$defs/networks"},
+        "listeners": {"$ref": "#/$defs/listeners"}
+      }
+    },
+    "rejectionClose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rejection_spec_sha256",
+        "user_fix_intent_relative_path",
+        "user_fix_intent_sha256",
+        "user_fix_binding_relative_path",
+        "user_fix_binding_sha256",
+        "terminal_revalidation_relative_path",
+        "terminal_revalidation_sha256"
+      ],
+      "properties": {
+        "rejection_spec_sha256": {"$ref": "#/$defs/sha256"},
+        "user_fix_intent_relative_path": {"type": ["string", "null"]},
+        "user_fix_intent_sha256": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        },
+        "user_fix_binding_relative_path": {"type": ["string", "null"]},
+        "user_fix_binding_sha256": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        },
+        "terminal_revalidation_relative_path": {"type": ["string", "null"]},
+        "terminal_revalidation_sha256": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        }
+      }
+    },
+    "runnerCreation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "state",
+        "creation_boot_id",
+        "intent_id",
+        "intent_at_utc",
+        "service_name",
+        "container_name",
+        "desired_service_sha256",
+        "create_argv_sha256",
+        "intent_sha256",
+        "container_id",
+        "remove_reason",
+        "remove_intent_at_utc",
+        "removed_at_utc"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "state": {"enum": ["intent", "prepared", "remove-intent", "removed"]},
+        "creation_boot_id": {"$ref": "#/$defs/uuid"},
+        "intent_id": {"$ref": "#/$defs/uuid"},
+        "intent_at_utc": {"$ref": "#/$defs/timestamp"},
+        "service_name": {"type": "string", "minLength": 1},
+        "container_name": {"type": "string", "minLength": 1},
+        "desired_service_sha256": {"$ref": "#/$defs/sha256"},
+        "create_argv_sha256": {"$ref": "#/$defs/sha256"},
+        "intent_sha256": {"$ref": "#/$defs/sha256"},
+        "container_id": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        },
+        "remove_reason": {
+          "type": ["string", "null"],
+          "enum": [null, "owner-cleanup", "owner-lost", "unsafe-state"]
+        },
+        "remove_intent_at_utc": {"$ref": "#/$defs/nullableTimestamp"},
+        "removed_at_utc": {"$ref": "#/$defs/nullableTimestamp"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"state": {"const": "intent"}},
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "container_id": {"type": "null"},
+              "remove_reason": {"type": "null"},
+              "remove_intent_at_utc": {"type": "null"},
+              "removed_at_utc": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"state": {"const": "prepared"}},
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "container_id": {"$ref": "#/$defs/sha256"},
+              "remove_reason": {"type": "null"},
+              "remove_intent_at_utc": {"type": "null"},
+              "removed_at_utc": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"state": {"const": "remove-intent"}},
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "remove_reason": {
+                "enum": ["owner-cleanup", "owner-lost", "unsafe-state"]
+              },
+              "remove_intent_at_utc": {"$ref": "#/$defs/timestamp"},
+              "removed_at_utc": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"state": {"const": "removed"}},
+            "required": ["state"]
+          },
+          "then": {
+            "properties": {
+              "remove_reason": {
+                "enum": ["owner-cleanup", "owner-lost", "unsafe-state"]
+              },
+              "remove_intent_at_utc": {"$ref": "#/$defs/timestamp"},
+              "removed_at_utc": {"$ref": "#/$defs/timestamp"}
+            }
+          }
+        }
+      ]
+    },
+    "candidateEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "attempt_id",
+        "claim_id",
+        "authorization_id",
+        "revision_sha",
+        "tree_sha",
+        "image_id",
+        "image_contract",
+        "published_at_utc"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "attempt_id": {"$ref": "#/$defs/uuid"},
+        "claim_id": {"$ref": "#/$defs/uuid"},
+        "authorization_id": {
+          "enum": [
+            "candidate-application-envelope",
+            "candidate-browser-runner-envelope"
+          ]
+        },
+        "revision_sha": {"$ref": "#/$defs/sha40"},
+        "tree_sha": {"$ref": "#/$defs/sha40"},
+        "image_id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "image_contract": {"$ref": "#/$defs/imageContract"},
+        "published_at_utc": {"$ref": "#/$defs/timestamp"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "authorization_id": {"const": "candidate-application-envelope"}
+            },
+            "required": ["authorization_id"]
+          },
+          "then": {
+            "properties": {
+              "image_contract": {
+                "properties": {"kind": {"const": "application"}},
+                "required": ["kind"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "authorization_id": {
+                "const": "candidate-browser-runner-envelope"
+              }
+            },
+            "required": ["authorization_id"]
+          },
+          "then": {
+            "properties": {
+              "image_contract": {
+                "properties": {"kind": {"const": "browser-runner"}},
+                "required": ["kind"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "candidateEnvelopeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "envelope",
+        "envelope_sha256"
+      ],
+      "properties": {
+        "schema_version": {"const": 1},
+        "envelope": {"$ref": "#/$defs/candidateEnvelope"},
+        "envelope_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "environmentContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["literal", "secret_keys", "absent_keys"],
+      "properties": {
+        "literal": {"$ref": "#/$defs/labels"},
+        "secret_keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "absent_keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "imageContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "revision_sha",
+        "tree_sha",
+        "source_manifest_sha256",
+        "source_entry_count",
+        "available_suite_ids"
+      ],
+      "properties": {
+        "kind": {"enum": ["application", "browser-runner"]},
+        "revision_sha": {"$ref": "#/$defs/sha40"},
+        "tree_sha": {"$ref": "#/$defs/sha40"},
+        "source_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "source_entry_count": {"type": "integer", "minimum": 0},
+        "available_suite_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["availability", "patient", "runtime-https", "scheduling"]
+          }
+        }
+      }
+    },
+    "tmpfsMount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "size_bytes",
+        "mode",
+        "uid",
+        "gid",
+        "nosuid",
+        "nodev",
+        "noexec"
+      ],
+      "properties": {
+        "target": {"$ref": "#/$defs/absolutePath"},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "nosuid": {"type": "boolean"},
+        "nodev": {"type": "boolean"},
+        "noexec": {"type": "boolean"}
+      }
+    },
+    "serviceFilesystemContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_read_only",
+        "tmpfs_mounts",
+        "ipc_mode",
+        "shm_size_bytes",
+        "writable_paths"
+      ],
+      "properties": {
+        "root_read_only": {"type": "boolean"},
+        "tmpfs_mounts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/tmpfsMount"}
+        },
+        "ipc_mode": {"enum": ["private", "none"]},
+        "shm_size_bytes": {"type": "integer", "minimum": 0},
+        "writable_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/absolutePath"}
+        }
+      }
+    },
+    "stackPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "host", "port"],
+      "properties": {
+        "transport": {"const": "tcp"},
+        "host": {"enum": ["127.0.0.1", "::1"]},
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "not": {"const": 5432}
+        }
+      }
+    },
+    "ownedVolumeDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["volume_name", "driver", "labels"],
+      "properties": {
+        "volume_name": {"type": "string", "minLength": 1},
+        "driver": {"const": "local"},
+        "labels": {"$ref": "#/$defs/labels"}
+      }
+    },
+    "ownedNetworkDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_name", "driver", "internal", "attachable", "labels"],
+      "properties": {
+        "network_name": {"type": "string", "minLength": 1},
+        "driver": {"const": "bridge"},
+        "internal": {"type": "boolean"},
+        "attachable": {"type": "boolean"},
+        "labels": {"$ref": "#/$defs/labels"}
+      }
+    },
+    "borrowedVolumeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner_claim_id", "volume_name", "access"],
+      "properties": {
+        "owner_claim_id": {"$ref": "#/$defs/uuid"},
+        "volume_name": {"type": "string", "minLength": 1},
+        "access": {"const": "read-only"}
+      }
+    },
+    "borrowedNetworkRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner_claim_id", "network_name", "access"],
+      "properties": {
+        "owner_claim_id": {"$ref": "#/$defs/uuid"},
+        "network_name": {"type": "string", "minLength": 1},
+        "access": {"const": "attach"}
+      }
+    },
+    "serviceNetworkRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_name", "aliases"],
+      "properties": {
+        "network_name": {"type": "string", "minLength": 1},
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "extraHost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostname", "address"],
+      "properties": {
+        "hostname": {"type": "string", "minLength": 1},
+        "address": {"type": "string", "minLength": 1}
+      }
+    },
+    "volumeMount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["volume_name", "target", "read_only"],
+      "properties": {
+        "volume_name": {"type": "string", "minLength": 1},
+        "target": {"$ref": "#/$defs/absolutePath"},
+        "read_only": {"type": "boolean"}
+      }
+    },
+    "stackServiceDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "image_id",
+        "uid",
+        "gid",
+        "command",
+        "start_policy",
+        "network_mode",
+        "network_refs",
+        "extra_hosts",
+        "volume_mounts",
+        "published_ports",
+        "environment_contract",
+        "image_contract",
+        "filesystem_contract"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "start_policy": {
+          "enum": ["running-before-activation", "prepared-attest-before-use"]
+        },
+        "network_mode": {"enum": ["bridge", "host", "none"]},
+        "network_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/serviceNetworkRef"}
+        },
+        "extra_hosts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/extraHost"}
+        },
+        "volume_mounts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/volumeMount"}
+        },
+        "published_ports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publishedPort"}
+        },
+        "environment_contract": {"$ref": "#/$defs/environmentContract"},
+        "image_contract": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/imageContract"}]
+        },
+        "filesystem_contract": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/serviceFilesystemContract"}
+          ]
+        }
+      }
+    },
+    "stackDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project",
+        "services",
+        "owned_volumes",
+        "owned_networks",
+        "database_names",
+        "loopback_ports",
+        "borrowed_volume_refs",
+        "borrowed_network_refs"
+      ],
+      "properties": {
+        "project": {"type": "string", "minLength": 1},
+        "services": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/stackServiceDesired"}
+        },
+        "owned_volumes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ownedVolumeDesired"}
+        },
+        "owned_networks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ownedNetworkDesired"}
+        },
+        "database_names": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}
+        },
+        "loopback_ports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/stackPort"}
+        },
+        "borrowed_volume_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/borrowedVolumeRef"}
+        },
+        "borrowed_network_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/borrowedNetworkRef"}
+        }
+      }
+    },
+    "networkAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network_name", "network_id", "aliases"],
+      "properties": {
+        "network_name": {"type": "string", "minLength": 1},
+        "network_id": {"$ref": "#/$defs/sha256"},
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "stackServiceObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "container_id",
+        "image_id",
+        "uid",
+        "gid",
+        "command",
+        "state",
+        "network_mode",
+        "network_attachments",
+        "extra_hosts",
+        "volume_mounts",
+        "published_ports",
+        "environment_contract",
+        "image_contract",
+        "filesystem_contract"
+      ],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "container_id": {"$ref": "#/$defs/sha256"},
+        "image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "state": {"enum": ["created", "running"]},
+        "network_mode": {"enum": ["bridge", "host", "none"]},
+        "network_attachments": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/networkAttachment"}
+        },
+        "extra_hosts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/extraHost"}
+        },
+        "volume_mounts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/volumeMount"}
+        },
+        "published_ports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publishedPort"}
+        },
+        "environment_contract": {"$ref": "#/$defs/environmentContract"},
+        "image_contract": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/imageContract"}]
+        },
+        "filesystem_contract": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/serviceFilesystemContract"}
+          ]
+        }
+      }
+    },
+    "ownedNetworkObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_name",
+        "network_id",
+        "driver",
+        "internal",
+        "attachable",
+        "labels"
+      ],
+      "properties": {
+        "network_name": {"type": "string", "minLength": 1},
+        "network_id": {"$ref": "#/$defs/sha256"},
+        "driver": {"const": "bridge"},
+        "internal": {"type": "boolean"},
+        "attachable": {"type": "boolean"},
+        "labels": {"$ref": "#/$defs/labels"}
+      }
+    },
+    "borrowedNetworkObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_claim_id",
+        "network_name",
+        "network_id",
+        "driver",
+        "internal",
+        "attachable",
+        "labels",
+        "access"
+      ],
+      "properties": {
+        "owner_claim_id": {"$ref": "#/$defs/uuid"},
+        "network_name": {"type": "string", "minLength": 1},
+        "network_id": {"$ref": "#/$defs/sha256"},
+        "driver": {"const": "bridge"},
+        "internal": {"type": "boolean"},
+        "attachable": {"type": "boolean"},
+        "labels": {"$ref": "#/$defs/labels"},
+        "access": {"const": "attach"}
+      }
+    },
+    "borrowedVolumeObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_claim_id",
+        "volume_name",
+        "driver",
+        "scope",
+        "created_at",
+        "mountpoint",
+        "labels",
+        "options",
+        "access"
+      ],
+      "properties": {
+        "owner_claim_id": {"$ref": "#/$defs/uuid"},
+        "volume_name": {"type": "string", "minLength": 1},
+        "driver": {"type": "string", "minLength": 1},
+        "scope": {"type": "string", "minLength": 1},
+        "created_at": {"type": "string", "minLength": 1},
+        "mountpoint": {"$ref": "#/$defs/absolutePath"},
+        "labels": {"$ref": "#/$defs/labels"},
+        "options": {"$ref": "#/$defs/labels"},
+        "access": {"const": "read-only"}
+      }
+    },
+    "stackObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "services",
+        "container_ids",
+        "owned_volumes",
+        "borrowed_volumes",
+        "owned_networks",
+        "borrowed_networks",
+        "listeners"
+      ],
+      "properties": {
+        "services": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/stackServiceObserved"}
+        },
+        "container_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/sha256"}
+        },
+        "owned_volumes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/volume"}
+        },
+        "borrowed_volumes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/borrowedVolumeObserved"}
+        },
+        "owned_networks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ownedNetworkObserved"}
+        },
+        "borrowed_networks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/borrowedNetworkObserved"}
+        },
+        "listeners": {"$ref": "#/$defs/listeners"}
+      }
+    },
+    "pathLstat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "device",
+        "inode",
+        "mode",
+        "uid",
+        "gid",
+        "link_count",
+        "symlink_target"
+      ],
+      "properties": {
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "link_count": {"type": "integer", "minimum": 1},
+        "symlink_target": {"type": ["string", "null"]}
+      }
+    },
+    "borrowedFileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_claim_id",
+        "relative_path",
+        "mode",
+        "uid",
+        "gid",
+        "device",
+        "inode",
+        "sha256",
+        "access"
+      ],
+      "properties": {
+        "owner_claim_id": {"$ref": "#/$defs/uuid"},
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "mode": {"type": "integer", "minimum": 0, "maximum": 4095},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "access": {"const": "read-only"}
+      }
+    },
+    "processMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pid",
+        "ppid",
+        "pgid",
+        "sid",
+        "start_ticks",
+        "uid",
+        "gid",
+        "executable_realpath",
+        "argv_sha256"
+      ],
+      "properties": {
+        "pid": {"type": "integer", "minimum": 1},
+        "ppid": {"type": "integer", "minimum": 0},
+        "pgid": {"type": "integer", "minimum": 1},
+        "sid": {"type": "integer", "minimum": 1},
+        "start_ticks": {"type": "integer", "minimum": 0},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "executable_realpath": {"$ref": "#/$defs/absolutePath"},
+        "argv_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "processDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "process_model",
+        "launcher_path",
+        "launcher_lstat",
+        "interpreter_realpath",
+        "interpreter_sha256",
+        "argv",
+        "argv_sha256",
+        "module",
+        "worker_count",
+        "gunicorn_config_path",
+        "gunicorn_config_lstat",
+        "gunicorn_config_sha256",
+        "uid",
+        "gid",
+        "environment_contract",
+        "host_ports",
+        "borrowed_file_refs"
+      ],
+      "properties": {
+        "process_model": {"enum": ["single", "gunicorn-prefork"]},
+        "launcher_path": {"$ref": "#/$defs/absolutePath"},
+        "launcher_lstat": {"$ref": "#/$defs/pathLstat"},
+        "interpreter_realpath": {"$ref": "#/$defs/absolutePath"},
+        "interpreter_sha256": {"$ref": "#/$defs/sha256"},
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "argv_sha256": {"$ref": "#/$defs/sha256"},
+        "module": {"type": ["string", "null"], "enum": [null, "gunicorn"]},
+        "worker_count": {
+          "oneOf": [{"type": "null"}, {"const": 2}]
+        },
+        "gunicorn_config_path": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/absolutePath"}]
+        },
+        "gunicorn_config_lstat": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/pathLstat"}]
+        },
+        "gunicorn_config_sha256": {
+          "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+        },
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "environment_contract": {"$ref": "#/$defs/environmentContract"},
+        "host_ports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/stackPort"}
+        },
+        "borrowed_file_refs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/borrowedFileRef"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"process_model": {"const": "single"}},
+            "required": ["process_model"]
+          },
+          "then": {
+            "properties": {
+              "module": {"type": "null"},
+              "worker_count": {"type": "null"},
+              "gunicorn_config_path": {"type": "null"},
+              "gunicorn_config_lstat": {"type": "null"},
+              "gunicorn_config_sha256": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"process_model": {"const": "gunicorn-prefork"}},
+            "required": ["process_model"]
+          },
+          "then": {
+            "properties": {
+              "module": {"const": "gunicorn"},
+              "worker_count": {"const": 2},
+              "gunicorn_config_path": {"$ref": "#/$defs/absolutePath"},
+              "gunicorn_config_lstat": {"$ref": "#/$defs/pathLstat"},
+              "gunicorn_config_sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        }
+      ]
+    },
+    "processObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["members", "listener_socket_inode", "listeners"],
+      "properties": {
+        "members": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/processMember"}
+        },
+        "listener_socket_inode": {
+          "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+        },
+        "listeners": {"$ref": "#/$defs/listeners"}
+      }
+    },
+    "ownedFileDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "mode", "uid", "gid", "sha256"],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "mode": {"const": 384},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "ownedFileObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "mode",
+        "uid",
+        "gid",
+        "device",
+        "inode",
+        "sha256"
+      ],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "mode": {"const": 384},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "device": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "publishedOutputAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorization_id",
+        "output_kind",
+        "root_path",
+        "governing_lock",
+        "predecessor_authorization_ids",
+        "relative_paths",
+        "mode",
+        "uid",
+        "gid"
+      ],
+      "properties": {
+        "authorization_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+        },
+        "output_kind": {
+          "enum": [
+            "todo-evidence",
+            "candidate-image",
+            "publication-history",
+            "final-terminal"
+          ]
+        },
+        "root_path": {"$ref": "#/$defs/absolutePath"},
+        "governing_lock": {"enum": ["stable", "final"]},
+        "predecessor_authorization_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+          }
+        },
+        "relative_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          }
+        },
+        "mode": {"const": 256},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0}
+      }
+    },
+    "publishedOutputEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "mode", "uid", "gid", "size_bytes", "sha256"],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "mode": {"const": 256},
+        "uid": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "publishedOutputObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorization_id",
+        "output_kind",
+        "root_path",
+        "governing_lock",
+        "status",
+        "entries"
+      ],
+      "properties": {
+        "authorization_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+        },
+        "output_kind": {
+          "enum": [
+            "todo-evidence",
+            "candidate-image",
+            "publication-history",
+            "final-terminal"
+          ]
+        },
+        "root_path": {"$ref": "#/$defs/absolutePath"},
+        "governing_lock": {"enum": ["stable", "final"]},
+        "status": {"enum": ["unpublished", "published"]},
+        "entries": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publishedOutputEntry"}
+        }
+      }
+    },
+    "filesystemDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owned_files", "published_outputs"],
+      "properties": {
+        "owned_files": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ownedFileDesired"}
+        },
+        "published_outputs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publishedOutputAuthorization"}
+        }
+      }
+    },
+    "filesystemObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owned_files", "published_outputs"],
+      "properties": {
+        "owned_files": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ownedFileObserved"}
+        },
+        "published_outputs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/publishedOutputObservation"}
+        }
+      }
+    },
+    "closedDesired": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "closedObserved": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "kind",
+        "status",
+        "purpose",
+        "dependency_claim_ids",
+        "root_relative_path",
+        "reserved_at_utc",
+        "prepared_at_utc",
+        "activated_at_utc",
+        "last_verified_at_utc",
+        "runner_creation",
+        "candidate_envelope_binding",
+        "desired",
+        "observed"
+      ],
+      "properties": {
+        "claim_id": {"$ref": "#/$defs/uuid"},
+        "kind": {"enum": ["stack", "process", "filesystem"]},
+        "status": {"enum": ["reserved", "prepared", "active"]},
+        "purpose": {"type": "string", "minLength": 1},
+        "dependency_claim_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/uuid"}
+        },
+        "root_relative_path": {"type": "string", "pattern": "^claims/[0-9a-f-]+$"},
+        "reserved_at_utc": {"$ref": "#/$defs/timestamp"},
+        "prepared_at_utc": {"$ref": "#/$defs/nullableTimestamp"},
+        "activated_at_utc": {"$ref": "#/$defs/nullableTimestamp"},
+        "last_verified_at_utc": {"$ref": "#/$defs/timestamp"},
+        "runner_creation": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/runnerCreation"}
+          ]
+        },
+        "candidate_envelope_binding": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/candidateEnvelopeBinding"}
+          ]
+        },
+        "desired": {
+          "oneOf": [
+            {"$ref": "#/$defs/closedDesired"},
+            {"$ref": "#/$defs/stackDesired"},
+            {"$ref": "#/$defs/processDesired"},
+            {"$ref": "#/$defs/filesystemDesired"}
+          ]
+        },
+        "observed": {
+          "oneOf": [
+            {"$ref": "#/$defs/closedObserved"},
+            {"$ref": "#/$defs/stackObserved"},
+            {"$ref": "#/$defs/processObserved"},
+            {"$ref": "#/$defs/filesystemObserved"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"runner_creation": {"type": "null"}},
+            "required": ["runner_creation"]
+          },
+          "then": {
+            "properties": {"status": {"enum": ["reserved", "active"]}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"runner_creation": {"not": {"type": "null"}}},
+            "required": ["runner_creation"]
+          },
+          "then": {
+            "properties": {"kind": {"const": "stack"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runner_creation": {
+                "not": {"type": "null"},
+                "properties": {"state": {"const": "intent"}},
+                "required": ["state"]
+              }
+            },
+            "required": ["runner_creation"]
+          },
+          "then": {
+            "properties": {"status": {"const": "reserved"}}
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "runner_creation": {
+                "not": {"type": "null"},
+                "properties": {"state": {"const": "prepared"}},
+                "required": ["state"]
+              }
+            },
+            "required": ["runner_creation"]
+          },
+          "then": {
+            "properties": {"status": {"enum": ["prepared", "active"]}}
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "reserved"}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "prepared_at_utc": {"type": "null"},
+              "activated_at_utc": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "prepared"}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "prepared_at_utc": {"$ref": "#/$defs/timestamp"},
+              "activated_at_utc": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"status": {"const": "active"}},
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "activated_at_utc": {"$ref": "#/$defs/timestamp"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"kind": {"const": "filesystem"}},
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "runner_creation": {"type": "null"},
+              "desired": {"$ref": "#/$defs/filesystemDesired"},
+              "observed": {"$ref": "#/$defs/filesystemObserved"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"kind": {"const": "stack"}},
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "desired": {"$ref": "#/$defs/stackDesired"},
+              "observed": {"$ref": "#/$defs/stackObserved"}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {"kind": {"const": "process"}},
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "runner_creation": {"type": "null"},
+              "desired": {"$ref": "#/$defs/processDesired"},
+              "observed": {"$ref": "#/$defs/processObserved"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

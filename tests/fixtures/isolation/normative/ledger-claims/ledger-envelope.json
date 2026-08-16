@@ -1,0 +1,108 @@
+{
+  "approved_plan": {
+    "path": "/clinic-os/authority/.omo/evidence/review-inputs/approved-plan.md",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sidecar_path": "/clinic-os/authority/.omo/evidence/review-inputs/approved-plan.sha256",
+    "source_kind": "invoked"
+  },
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "attempt_root": "/clinic-os/authority/.omo/evidence/clinic-os-phase1a-runtime/11111111-1111-4111-8111-111111111111",
+  "authority_binding": {
+    "authority_root_identity": {
+      "device": 7,
+      "gid": 1000,
+      "inode": 101,
+      "mode": 509,
+      "uid": 1000
+    },
+    "authority_root_realpath": "/clinic-os/authority/.omo",
+    "authority_workspace_realpath": "/clinic-os/authority",
+    "worktree_omo_lstat": {
+      "device": 7,
+      "gid": 1000,
+      "inode": 102,
+      "link_target": "../authority/.omo",
+      "mode": 511,
+      "realpath": "/clinic-os/authority/.omo",
+      "type": "symlink-to-directory",
+      "uid": 1000
+    },
+    "worktree_omo_path": "/clinic-os/worktree/.omo"
+  },
+  "baseline": {
+    "containers": [],
+    "evidence_lstat": {
+      "created_by_attempt": true,
+      "device": 7,
+      "gid": 1000,
+      "inode": 103,
+      "mode": 448,
+      "path": "/clinic-os/authority/.omo/evidence",
+      "realpath": "/clinic-os/authority/.omo/evidence",
+      "type": "directory",
+      "uid": 1000
+    },
+    "listeners": [],
+    "networks": [],
+    "omo_lstat": {
+      "created_by_attempt": true,
+      "device": 7,
+      "gid": 1000,
+      "inode": 102,
+      "link_target": "../authority/.omo",
+      "mode": 511,
+      "path": "/clinic-os/worktree/.omo",
+      "realpath": "/clinic-os/authority/.omo",
+      "type": "symlink-to-directory",
+      "uid": 1000
+    },
+    "shared_evidence_manifest": {
+      "entry_count": 0,
+      "path": "/clinic-os/authority/.omo/evidence/clinic-os-phase1a-runtime/11111111-1111-4111-8111-111111111111/shared-evidence-baseline.json",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "volumes": []
+  },
+  "boot_id": "22222222-2222-4222-8222-222222222222",
+  "boot_observation": {
+    "boot_id": "22222222-2222-4222-8222-222222222222",
+    "containers": [],
+    "listeners": [],
+    "networks": [],
+    "observed_at_utc": "2026-01-01T00:00:00.000000Z",
+    "volumes": []
+  },
+  "claims": [],
+  "closed_at_utc": null,
+  "created_at_utc": "2026-01-01T00:00:00.000000Z",
+  "execution_host_preflight": {
+    "boot_id": "22222222-2222-4222-8222-222222222222",
+    "cgroup_parent_device": 8,
+    "cgroup_parent_inode": 201,
+    "cgroup_parent_path": "/sys/fs/cgroup/clinic-os",
+    "device": 7,
+    "gid": 1000,
+    "inode": 104,
+    "link_count": 1,
+    "mode": 256,
+    "path": "/clinic-os/authority/.omo/clinic-os-phase1a-execution-host-22222222-2222-4222-8222-222222222222.json",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "uid": 1000
+  },
+  "foundation_sha": "dddddddddddddddddddddddddddddddddddddddd",
+  "last_verified_at_utc": "2026-01-01T00:00:03.000000Z",
+  "lock_identity": {
+    "device": 7,
+    "gid": 1000,
+    "inode": 105,
+    "link_count": 1,
+    "mode": 384,
+    "uid": 1000
+  },
+  "lock_path": "/clinic-os/authority/.omo/evidence/isolation-ledger-phase1a.lock",
+  "reboot_stable_baseline_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "rejection_close": null,
+  "schema_version": 2,
+  "state": "open",
+  "worktree_realpath": "/clinic-os/worktree"
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "rejected_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "bundle_path": "/clinic-os/authority/.omo/evidence/clinic-os-phase1a-rejected/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "archive_identity_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "stable_lock_identity_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "journal_path": "forbidden"
+}

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/terminal-revalidation-phase1a-v1.json",
+  "title": "Clinic OS Phase 1A terminal revalidation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "accepted_close_prepared_sha256",
+    "approvals_sha256",
+    "attempt_id",
+    "boot_changed",
+    "boot_observation",
+    "boot_observation_sha256",
+    "current_boot_id",
+    "final_relative_path",
+    "final_sha256",
+    "lock_identity_sha256",
+    "post_update_ledger_sha256",
+    "pre_update_ledger_sha256",
+    "previous_boot_id",
+    "publisher_final_journal_sha256",
+    "purpose",
+    "reboot_stable_baseline_sha256",
+    "schema_version",
+    "sha",
+    "shared_evidence_manifest_sha256",
+    "tree_sha",
+    "verified_at_utc"
+  ],
+  "properties": {
+    "accepted_close_prepared_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "approvals_sha256": {"$ref": "#/$defs/sha256"},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "boot_changed": {"type": "boolean"},
+    "boot_observation": {
+      "$ref": "isolation-ledger.schema.json#/$defs/bootObservation"
+    },
+    "boot_observation_sha256": {"$ref": "#/$defs/sha256"},
+    "current_boot_id": {"$ref": "#/$defs/uuid"},
+    "final_relative_path": {"const": "clinic-os-phase1a-final/final.json"},
+    "final_sha256": {"$ref": "#/$defs/sha256"},
+    "lock_identity_sha256": {"$ref": "#/$defs/sha256"},
+    "post_update_ledger_sha256": {"$ref": "#/$defs/sha256"},
+    "pre_update_ledger_sha256": {"$ref": "#/$defs/sha256"},
+    "previous_boot_id": {"$ref": "#/$defs/uuid"},
+    "publisher_final_journal_sha256": {"$ref": "#/$defs/sha256"},
+    "purpose": {"const": "terminal-final"},
+    "reboot_stable_baseline_sha256": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 1},
+    "sha": {"$ref": "#/$defs/sha40"},
+    "shared_evidence_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "tree_sha": {"$ref": "#/$defs/sha40"},
+    "verified_at_utc": {"$ref": "#/$defs/timestamp"}
+  },
+  "$defs": {
+    "nullableSha256": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+    },
+    "sha40": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

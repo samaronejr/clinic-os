@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/f3-supervisor-state.schema.json",
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"},
+    "nullableTimestamp": {"oneOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+    "publicationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorization_id", "sequence", "state", "staging_claim_id", "publisher_claim_id", "manifest_sha256", "entries_sha256", "publication_sha256", "acknowledged_at_utc"],
+      "properties": {
+        "authorization_id": {"enum": ["f3-artifacts", "f3-receipt", "f3-manifest"]},
+        "sequence": {"type": "integer", "minimum": 1},
+        "state": {"enum": ["requested", "imported", "published", "controller-acknowledged"]},
+        "staging_claim_id": {"$ref": "#/$defs/uuid"},
+        "publisher_claim_id": {"$ref": "#/$defs/uuid"},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "entries_sha256": {"$ref": "#/$defs/sha256"},
+        "publication_sha256": {"$ref": "#/$defs/nullableSha256"},
+        "acknowledged_at_utc": {"$ref": "#/$defs/nullableTimestamp"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"state": {"enum": ["requested", "imported"]}}},
+          "then": {"properties": {"publication_sha256": {"type": "null"}, "acknowledged_at_utc": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"state": {"const": "published"}}},
+          "then": {"properties": {"publication_sha256": {"$ref": "#/$defs/sha256"}, "acknowledged_at_utc": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"state": {"const": "controller-acknowledged"}}},
+          "then": {"properties": {"authorization_id": {"const": "f3-artifacts"}, "publication_sha256": {"$ref": "#/$defs/sha256"}, "acknowledged_at_utc": {"$ref": "#/$defs/timestamp"}}}
+        }
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attempt_id", "sha", "creation_boot_id", "recovery_boot_id", "inputs_sha256", "launcher_manifest_sha256", "state", "supervisor_pid", "supervisor_start_ticks", "cgroup_parent_path", "cgroup_parent_device", "cgroup_parent_inode", "cgroup_path", "cgroup_device", "cgroup_inode", "controller_pid", "controller_pgid", "controller_start_ticks", "controller_barrier_released", "active_child_kind", "active_child_name", "active_child_pid", "active_child_pgid", "active_child_start_ticks", "active_child_barrier_released", "heartbeat_sequence", "heartbeat_at_utc", "publication_records", "started_at_utc", "controller_ended_at_utc", "termination_kind", "boot_disappearance_sha256", "wait_exit_code", "wait_signal", "timed_out", "typed_outcome_sha256", "kill_domain_removal_kind", "kill_domain_removed_at_utc", "cleanup_verified", "updated_at_utc"],
+  "properties": {
+    "schema_version": {"const": 1}, "attempt_id": {"$ref": "#/$defs/uuid"},
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "creation_boot_id": {"$ref": "#/$defs/uuid"},
+    "recovery_boot_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+    "inputs_sha256": {"$ref": "#/$defs/sha256"}, "launcher_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "state": {"enum": ["prepared", "kill-domain-intent", "kill-domain-ready", "controller-barrier", "controller-running", "controller-terminal", "recovering", "kill-domain-remove-intent", "kill-domain-removed", "success", "failure-ready"]},
+    "supervisor_pid": {"type": "integer", "minimum": 1}, "supervisor_start_ticks": {"type": "integer", "minimum": 1},
+    "cgroup_parent_path": {"type": "string", "pattern": "^/[^\\u0000\\r\\n]*$"},
+    "cgroup_parent_device": {"type": "integer", "minimum": 0}, "cgroup_parent_inode": {"type": "integer", "minimum": 1},
+    "cgroup_path": {"type": ["string", "null"], "pattern": "^/[^\\u0000\\r\\n]*/clinic-os-phase1a-[0-9a-f-]{36}-f3$"},
+    "cgroup_device": {"type": ["integer", "null"], "minimum": 0}, "cgroup_inode": {"type": ["integer", "null"], "minimum": 1},
+    "controller_pid": {"type": ["integer", "null"], "minimum": 1}, "controller_pgid": {"type": ["integer", "null"], "minimum": 1},
+    "controller_start_ticks": {"type": ["integer", "null"], "minimum": 1}, "controller_barrier_released": {"type": ["boolean", "null"]},
+    "active_child_kind": {"type": ["string", "null"], "enum": [null, "stage", "helper"]},
+    "active_child_name": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "active_child_pid": {"type": ["integer", "null"], "minimum": 1}, "active_child_pgid": {"type": ["integer", "null"], "minimum": 1},
+    "active_child_start_ticks": {"type": ["integer", "null"], "minimum": 1}, "active_child_barrier_released": {"type": ["boolean", "null"]},
+    "heartbeat_sequence": {"type": ["integer", "null"], "minimum": 1}, "heartbeat_at_utc": {"$ref": "#/$defs/nullableTimestamp"},
+    "publication_records": {"type": "array", "items": {"$ref": "#/$defs/publicationRecord"}, "uniqueItems": true},
+    "started_at_utc": {"$ref": "#/$defs/timestamp"}, "controller_ended_at_utc": {"$ref": "#/$defs/nullableTimestamp"},
+    "termination_kind": {"type": ["string", "null"], "enum": [null, "wait-result", "boot-disappearance"]},
+    "boot_disappearance_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "wait_exit_code": {"type": ["integer", "null"], "minimum": 0, "maximum": 255}, "wait_signal": {"type": ["integer", "null"], "minimum": 1},
+    "timed_out": {"type": "boolean"}, "typed_outcome_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "kill_domain_removal_kind": {"type": ["string", "null"], "enum": [null, "rmdir", "boot-disappearance"]},
+    "kill_domain_removed_at_utc": {"$ref": "#/$defs/nullableTimestamp"}, "cleanup_verified": {"type": "boolean"},
+    "updated_at_utc": {"$ref": "#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "prepared"}}},
+      "then": {"properties": {"recovery_boot_id": {"type": "null"}, "cgroup_path": {"type": "null"}, "cgroup_device": {"type": "null"}, "cgroup_inode": {"type": "null"}, "controller_pid": {"type": "null"}, "controller_pgid": {"type": "null"}, "controller_start_ticks": {"type": "null"}, "controller_barrier_released": {"type": "null"}, "active_child_kind": {"type": "null"}, "active_child_name": {"type": "null"}, "active_child_pid": {"type": "null"}, "active_child_pgid": {"type": "null"}, "active_child_start_ticks": {"type": "null"}, "active_child_barrier_released": {"type": "null"}, "heartbeat_sequence": {"type": "null"}, "heartbeat_at_utc": {"type": "null"}, "publication_records": {"maxItems": 0}, "controller_ended_at_utc": {"type": "null"}, "termination_kind": {"type": "null"}, "boot_disappearance_sha256": {"type": "null"}, "wait_exit_code": {"type": "null"}, "wait_signal": {"type": "null"}, "timed_out": {"const": false}, "typed_outcome_sha256": {"type": "null"}, "kill_domain_removal_kind": {"type": "null"}, "kill_domain_removed_at_utc": {"type": "null"}, "cleanup_verified": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "kill-domain-intent"}}},
+      "then": {"properties": {"cgroup_path": {"type": "string"}, "cgroup_device": {"type": "null"}, "cgroup_inode": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["kill-domain-ready", "controller-barrier", "controller-running", "controller-terminal", "recovering", "kill-domain-remove-intent", "kill-domain-removed", "success", "failure-ready"]}}},
+      "then": {"properties": {"cgroup_path": {"type": "string"}, "cgroup_device": {"type": "integer"}, "cgroup_inode": {"type": "integer"}}}
+    },
+    {
+      "if": {"properties": {"state": {"const": "controller-barrier"}}},
+      "then": {"properties": {"controller_pid": {"type": "integer"}, "controller_pgid": {"type": "integer"}, "controller_start_ticks": {"type": "integer"}, "controller_barrier_released": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["controller-running", "controller-terminal", "recovering", "kill-domain-remove-intent", "kill-domain-removed", "success", "failure-ready"]}}},
+      "then": {"properties": {"controller_pid": {"type": "integer"}, "controller_pgid": {"type": "integer"}, "controller_start_ticks": {"type": "integer"}, "controller_barrier_released": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["kill-domain-removed", "success", "failure-ready"]}}},
+      "then": {"properties": {"kill_domain_removal_kind": {"enum": ["rmdir", "boot-disappearance"]}, "kill_domain_removed_at_utc": {"$ref": "#/$defs/timestamp"}}}
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["success", "failure-ready"]}}},
+      "then": {"properties": {"cleanup_verified": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"termination_kind": {"const": "boot-disappearance"}}},
+      "then": {"properties": {"recovery_boot_id": {"$ref": "#/$defs/uuid"}, "boot_disappearance_sha256": {"$ref": "#/$defs/sha256"}, "wait_exit_code": {"type": "null"}, "wait_signal": {"type": "null"}, "timed_out": {"const": false}, "typed_outcome_sha256": {"type": "null"}}}
+    }
+  ]
+}

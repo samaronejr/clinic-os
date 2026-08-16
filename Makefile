@@ -2,15 +2,19 @@ COMPOSE ?= docker compose
 DOCKER ?= docker
 UV ?= uv
 POSTGRES_PORT ?= 5432
+POSTGRES_HOST_IP ?= 127.0.0.1
+POSTGRES_HOST_PORT ?= 5432
+POSTGRES_IMAGE ?= postgres:16
+POSTGRES_DATA_VOLUME ?= clinic_postgres_data
 POSTGRES_DB ?= clinic
 POSTGRES_USER ?= postgres
 POSTGRES_PASSWORD ?= postgres
 CLINIC_OWNER_PASSWORD ?= clinic_owner_password
 CLINIC_APP_PASSWORD ?= clinic_app_password
 CLINIC_SUPER_PASSWORD ?= clinic_super_password
-APP_DATABASE_URL ?= postgresql://clinic_app:clinic_app_password@localhost:5432/clinic
-MIGRATION_DATABASE_URL ?= postgresql://clinic_owner:clinic_owner_password@localhost:5432/clinic
-TEST_SUPERUSER_DATABASE_URL ?= postgresql://clinic_super:clinic_super_password@localhost:5432/clinic
+APP_DATABASE_URL ?= postgresql://clinic_app:clinic_app_password@localhost:$(POSTGRES_HOST_PORT)/clinic
+MIGRATION_DATABASE_URL ?= postgresql://clinic_owner:clinic_owner_password@localhost:$(POSTGRES_HOST_PORT)/clinic
+TEST_SUPERUSER_DATABASE_URL ?= postgresql://clinic_super:clinic_super_password@localhost:$(POSTGRES_HOST_PORT)/clinic
 
 ifeq ($(origin POSTGRES_CONTAINER), undefined)
 POSTGRES_CONTAINER := $(shell $(COMPOSE) ps -q db 2>/dev/null)
@@ -19,6 +23,10 @@ override POSTGRES_CONTAINER := $(value POSTGRES_CONTAINER)
 endif
 
 override POSTGRES_PORT := $(value POSTGRES_PORT)
+override POSTGRES_HOST_IP := $(value POSTGRES_HOST_IP)
+override POSTGRES_HOST_PORT := $(value POSTGRES_HOST_PORT)
+override POSTGRES_IMAGE := $(value POSTGRES_IMAGE)
+override POSTGRES_DATA_VOLUME := $(value POSTGRES_DATA_VOLUME)
 override POSTGRES_DB := $(value POSTGRES_DB)
 override POSTGRES_USER := $(value POSTGRES_USER)
 override POSTGRES_PASSWORD := $(value POSTGRES_PASSWORD)
@@ -36,6 +44,7 @@ override TEST_DATABASE_NAME := $(value TEST_DATABASE_NAME)
 endif
 
 export POSTGRES_CONTAINER POSTGRES_PORT POSTGRES_DB TEST_DATABASE_NAME
+export POSTGRES_HOST_IP POSTGRES_HOST_PORT POSTGRES_IMAGE POSTGRES_DATA_VOLUME
 export POSTGRES_USER POSTGRES_PASSWORD
 export CLINIC_OWNER_PASSWORD CLINIC_APP_PASSWORD CLINIC_SUPER_PASSWORD
 export APP_DATABASE_URL MIGRATION_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
@@ -44,7 +53,16 @@ COVERAGE_TARGETS = \
 	--cov=apps.identity \
 	--cov=apps.tenancy
 
-.PHONY: ci db-bootstrap db-inputs db-posture migrate
+.PHONY: ci db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate
+
+isolated-db-up:
+	@./ops/testing/isolated_db.sh up
+
+isolated-db-status:
+	@./ops/testing/isolated_db.sh status
+
+isolated-db-down:
+	@./ops/testing/isolated_db.sh down
 
 db-inputs:
 	@set -- \
