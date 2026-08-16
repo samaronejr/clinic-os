@@ -136,6 +136,47 @@ def test_invalid_credentials_always_perform_one_password_hash(
     password_check.assert_called_once()
 
 
+def test_clinic_backend_canonicalizes_username_before_exact_lookup(
+    tenant_graph: TenantGraph,
+) -> None:
+    encoded = make_password(RAW_CREDENTIAL)
+    User.objects.filter(pk=tenant_graph.user_a).update(password=encoded)
+
+    with _runtime_role():
+        result = ClinicBackend().authenticate(
+            None,
+            username=f"  {tenant_graph.username_a.upper()}  ",
+            password=RAW_CREDENTIAL,
+        )
+
+    assert result is not None
+    assert result.pk == tenant_graph.user_a
+
+
+@pytest.mark.parametrize(
+    "credentials",
+    [
+        {"username": None, "password": RAW_CREDENTIAL},
+        {"username": "synthetic-user", "password": None},
+    ],
+)
+def test_malformed_credentials_use_the_dummy_hash_failure_path(
+    credentials: dict[str, str | None],
+) -> None:
+    with (
+        CaptureQueriesContext(connection) as queries,
+        patch(
+            "apps.identity.auth_backends.check_password",
+            wraps=check_password,
+        ) as password_check,
+    ):
+        result = ClinicBackend().authenticate(None, **credentials)
+
+    assert result is None
+    password_check.assert_called_once()
+    assert queries.captured_queries == []
+
+
 def test_clinic_backend_get_user_rejects_inactive_resolver_rows(
     tenant_graph: TenantGraph,
 ) -> None:

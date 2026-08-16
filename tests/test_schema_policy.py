@@ -15,6 +15,11 @@ EXPECTED_TENANT_COLUMNS: Final = {
     "identity_userclinicrole": "organization_id",
     "tenancy_tenantprobe": "organization_id",
 }
+SELECT_ONLY_RUNTIME_TABLES: Final = {
+    "identity_organization",
+    "identity_clinic",
+    "identity_userclinicrole",
+}
 
 
 def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
@@ -148,8 +153,9 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     # Then: app is ordinary, tenant DML is narrow, and User is fully denied
     assert runtime_posture == ("clinic_app", False, False, False)
     assert tenant_grants == {
-        (table, privilege)
-        for table in EXPECTED_TENANT_COLUMNS
+        (table, "SELECT") for table in SELECT_ONLY_RUNTIME_TABLES
+    } | {
+        ("tenancy_tenantprobe", privilege)
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
     }
     assert user_grants == []

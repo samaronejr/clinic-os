@@ -13,6 +13,7 @@ RESOLVER_SELECT_TABLES: Final = {
 }
 FUNCTION_SIGNATURES: Final = {
     ("auth_lookup", "requested_username text"),
+    ("list_active_clinic_physicians", "requested_clinic uuid"),
     ("load_current_user", ""),
     ("user_has_org", "requested_org uuid"),
     ("user_organizations", ""),
@@ -100,7 +101,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
         functions = cursor.fetchall()
 
     assert {(row[0], row[1]) for row in functions} == FUNCTION_SIGNATURES
-    assert len(functions) == 4
+    assert len(functions) == 5
     for function in functions:
         name = function[0]
         assert function[2:9] == (
@@ -123,6 +124,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
             "TABLE(id uuid, username character varying, "
             "password character varying, is_active boolean)"
         ),
+        "list_active_clinic_physicians": ("TABLE(user_id uuid, display_label text)"),
         "load_current_user": "SETOF identity_user",
         "user_has_org": "boolean",
         "user_organizations": "SETOF uuid",

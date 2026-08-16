@@ -8,13 +8,16 @@ from django.db.models import QuerySet
 from django.dispatch import Signal
 from django.http import HttpRequest
 
+from apps.identity.current_context import (
+    ClinicId,
+    ClinicRoles,
+    UserId,
+)
 from apps.identity.models import Clinic, User, UserClinicRole
 
-UserId = NewType("UserId", UUID)
-ClinicId = NewType("ClinicId", UUID)
-OrganizationId = NewType("OrganizationId", UUID)
+__all__ = ["ClinicId", "ClinicRoles", "OrganizationId", "UserId"]
 
-type ClinicRoles = tuple[UserClinicRole.Role, ...]
+OrganizationId = NewType("OrganizationId", UUID)
 
 
 def role_assignments_for_user(user_id: UserId) -> QuerySet[UserClinicRole]:

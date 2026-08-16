@@ -8,6 +8,7 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.db import connection
 from django.http import HttpRequest
 
+from apps.identity.identifiers import canonicalize_username
 from apps.identity.models import User
 
 DUMMY_PASSWORD_HASH: Final = make_password("clinic-os-unavailable-credential")
@@ -26,7 +27,12 @@ class ClinicBackend(BaseBackend):
         username = credentials.get("username")
         password = credentials.get("password")
         if not isinstance(username, str) or not isinstance(password, str):
+            check_password(
+                password if isinstance(password, str) else "",
+                DUMMY_PASSWORD_HASH,
+            )
             return None
+        username = canonicalize_username(username)
 
         with connection.cursor() as cursor:
             cursor.execute(
