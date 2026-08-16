@@ -5,7 +5,7 @@ import importlib.util
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
-from apps.identity.models import Clinic, Organization, User, UserClinicRole
+from apps.identity.models import Organization, User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
@@ -90,12 +90,17 @@ def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
                 name=f"Synthetic Organization {suffix}",
                 cnpj=f"{int(organization_id):014d}",
             )
-            Clinic.objects.create(
-                id=clinic_id,
-                organization=organization,
-                name=f"Synthetic Clinic {suffix}",
-                crm_uf="SP",
-            )
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO clinic_app.identity_clinic "
+                    "(id, organization_id, name, crm_uf) VALUES (%s, %s, %s, %s)",
+                    [
+                        clinic_id,
+                        organization.pk,
+                        f"Synthetic Clinic {suffix}",
+                        "SP",
+                    ],
+                )
     with transaction.atomic():
         set_tenant(ORG_A)
         for role_id in (UUID(int=30), LOWEST_ROLE, UUID(int=20)):

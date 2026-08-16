@@ -62,11 +62,13 @@ def rbac_graph() -> RbacGraph:
             organization=org_a,
             name="Todo 8 Clinic A",
             crm_uf="SP",
+            timezone="America/Sao_Paulo",
         )
         clinic_b = Clinic.objects.create(
             organization=org_a,
             name="Todo 8 Clinic B",
             crm_uf="RJ",
+            timezone="America/Sao_Paulo",
         )
         UserClinicRole.objects.create(
             user_id=physician.pk,
@@ -101,6 +103,7 @@ def rbac_graph() -> RbacGraph:
             organization=org_b,
             name="Todo 8 Clinic C",
             crm_uf="MG",
+            timezone="America/Sao_Paulo",
         )
         UserClinicRole.objects.create(
             user_id=shared_user.pk,

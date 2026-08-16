@@ -8,6 +8,7 @@ from apps.tenancy.models import TenantProbe, TenantScopedModel
 from django.apps import apps as django_apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import connection, models, transaction
 from psycopg.errors import ForeignKeyViolation
 
@@ -60,6 +61,7 @@ def test_identity_models_generate_uuid_primary_keys() -> None:
             organization=organization,
             name="Synthetic Clinic Alpha",
             crm_uf="SP",
+            timezone="America/Sao_Paulo",
         )
         user = User.objects.create_user(username="synthetic-user-alpha")
 
@@ -127,6 +129,45 @@ def test_clinic_declares_the_composite_foreign_key_target() -> None:
     assert target_constraint.fields == ("organization", "id")
 
 
+def test_clinic_timezone_is_required_and_iana_validated() -> None:
+    timezone_field = next(
+        (field for field in Clinic._meta.fields if field.name == "timezone"),
+        None,
+    )
+    assert timezone_field is not None
+    assert isinstance(timezone_field, models.CharField)
+    assert timezone_field.max_length == 64
+    assert timezone_field.blank is False
+    assert timezone_field.null is False
+    assert timezone_field.has_default() is False
+
+    clinic = Clinic(
+        organization_id=uuid4(),
+        name="Synthetic Timezone Clinic",
+        crm_uf="AM",
+    )
+    for invalid in ("", "  ", "Not/A_Zone"):
+        with pytest.raises(ValidationError):
+            timezone_field.clean(invalid, clinic)
+    assert timezone_field.clean("America/Manaus", clinic) == "America/Manaus"
+
+
+def test_clinic_timezone_is_validated_before_every_model_write() -> None:
+    timezone_field = Clinic._meta.get_field("timezone")
+    clinic = Clinic(
+        organization_id=uuid4(),
+        name="Synthetic Write Boundary Clinic",
+        crm_uf="SP",
+        timezone="Invalid/Timezone",
+    )
+
+    with pytest.raises(ValidationError):
+        timezone_field.pre_save(clinic, add=True)
+
+    clinic.timezone = "America/Sao_Paulo"
+    assert timezone_field.pre_save(clinic, add=True) == "America/Sao_Paulo"
+
+
 @pytest.mark.django_db(transaction=True)
 def test_database_has_the_validated_composite_foreign_key() -> None:
     # Given: the migrated PostgreSQL catalog
@@ -192,6 +233,7 @@ def test_same_organization_role_satisfies_the_composite_foreign_key() -> None:
             organization=organization,
             name="Synthetic Clinic Control",
             crm_uf="RJ",
+            timezone="America/Sao_Paulo",
         )
         user = User.objects.create_user(username="synthetic-user-control")
 
@@ -228,6 +270,7 @@ def test_composite_foreign_key_rejects_reassigning_role_organization(
             organization=organization_a,
             name="Synthetic Clinic A",
             crm_uf="MG",
+            timezone="America/Sao_Paulo",
         )
         role = UserClinicRole.objects.create(
             user=user,
