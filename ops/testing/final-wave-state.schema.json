@@ -1,0 +1,414 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/final-wave-state-phase1a-v1.json",
+  "title": "Clinic OS Phase 1A final-wave state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attempt_id",
+    "bootstrap_root",
+    "control_root",
+    "control_root_identity",
+    "f4_sha256",
+    "final_sha256",
+    "inputs_sha256",
+    "lineage_validation_sha256",
+    "lock_identity",
+    "phase",
+    "pre_f4_sha256",
+    "receipt_lineage_sha256",
+    "schema_version",
+    "sha",
+    "terminal_publisher_claim_id",
+    "terminal_publisher_post_release_ledger_sha256",
+    "terminal_publisher_post_reservation_ledger_sha256",
+    "terminal_publisher_pre_release_ledger_sha256",
+    "terminal_publisher_pre_reservation_ledger_sha256",
+    "terminal_publisher_release_authorizations_sha256",
+    "terminal_publisher_release_basis_sha256",
+    "terminal_publisher_release_boot_id",
+    "terminal_publisher_release_context",
+    "terminal_publisher_release_kind",
+    "terminal_publisher_released_at_utc",
+    "terminal_publisher_reservation_at_utc",
+    "terminal_publisher_reservation_spec_sha256",
+    "terminal_publisher_state",
+    "updated_at_utc"
+  ],
+  "properties": {
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "bootstrap_root": {
+      "type": "string",
+      "pattern": "^/.+/final-control-bootstrap-[0-9a-f]{32}$"
+    },
+    "control_root": {
+      "type": "string",
+      "pattern": "^/.+/clinic-os-phase1a-final$"
+    },
+    "control_root_identity": {"$ref": "#/$defs/nullableIdentity"},
+    "f4_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "final_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "inputs_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "lineage_validation_sha256": {"$ref": "#/$defs/sha256"},
+    "lock_identity": {"$ref": "#/$defs/nullableIdentity"},
+    "phase": {
+      "enum": [
+        "initializing",
+        "inputs-frozen",
+        "lanes-complete",
+        "pre-f4-frozen",
+        "f4-rejected",
+        "f4-created",
+        "final-frozen",
+        "rejected"
+      ]
+    },
+    "pre_f4_sha256": {"$ref": "#/$defs/nullableSha256"},
+    "receipt_lineage_sha256": {"$ref": "#/$defs/sha256"},
+    "schema_version": {"const": 1},
+    "sha": {"$ref": "#/$defs/sha40"},
+    "terminal_publisher_claim_id": {"$ref": "#/$defs/nullableUuid"},
+    "terminal_publisher_post_release_ledger_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_post_reservation_ledger_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_pre_release_ledger_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_pre_reservation_ledger_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_release_authorizations_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_release_basis_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_release_boot_id": {"$ref": "#/$defs/nullableUuid"},
+    "terminal_publisher_release_context": {
+      "oneOf": [
+        {"type": "null"},
+        {"enum": ["same-boot", "stale-boot"]}
+      ]
+    },
+    "terminal_publisher_release_kind": {
+      "oneOf": [
+        {"type": "null"},
+        {"enum": ["approved-chain", "rejection-prefix"]}
+      ]
+    },
+    "terminal_publisher_released_at_utc": {
+      "$ref": "#/$defs/nullableTimestamp"
+    },
+    "terminal_publisher_reservation_at_utc": {
+      "$ref": "#/$defs/nullableTimestamp"
+    },
+    "terminal_publisher_reservation_spec_sha256": {
+      "$ref": "#/$defs/nullableSha256"
+    },
+    "terminal_publisher_state": {
+      "enum": [
+        "unbound",
+        "id-bound",
+        "reserved",
+        "active",
+        "release-intent",
+        "released"
+      ]
+    },
+    "updated_at_utc": {"$ref": "#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"terminal_publisher_state": {"const": "unbound"}},
+        "required": ["terminal_publisher_state"]
+      },
+      "then": {"$ref": "#/$defs/unboundPublisher"}
+    },
+    {
+      "if": {
+        "properties": {"terminal_publisher_state": {"const": "id-bound"}},
+        "required": ["terminal_publisher_state"]
+      },
+      "then": {
+        "allOf": [
+          {"$ref": "#/$defs/boundReservation"},
+          {"$ref": "#/$defs/unreleasedPublisher"}
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"terminal_publisher_state": {"const": "reserved"}},
+        "required": ["terminal_publisher_state"]
+      },
+      "then": {
+        "allOf": [
+          {"$ref": "#/$defs/boundReservation"},
+          {"$ref": "#/$defs/unreleasedPublisher"}
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"terminal_publisher_state": {"const": "active"}},
+        "required": ["terminal_publisher_state"]
+      },
+      "then": {
+        "allOf": [
+          {"$ref": "#/$defs/boundReservation"},
+          {"$ref": "#/$defs/unreleasedPublisher"}
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "terminal_publisher_state": {"const": "release-intent"}
+        },
+        "required": ["terminal_publisher_state"]
+      },
+      "then": {
+        "allOf": [
+          {"$ref": "#/$defs/boundReservation"},
+          {"$ref": "#/$defs/releaseIntent"}
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"terminal_publisher_state": {"const": "released"}},
+        "required": ["terminal_publisher_state"]
+      },
+      "then": {
+        "allOf": [
+          {"$ref": "#/$defs/boundReservation"},
+          {"$ref": "#/$defs/releasedPublisher"}
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "enum": [
+              "inputs-frozen",
+              "lanes-complete",
+              "pre-f4-frozen",
+              "f4-created"
+            ]
+          }
+        },
+        "required": ["phase"]
+      },
+      "then": {
+        "properties": {"terminal_publisher_state": {"const": "active"}}
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": {"enum": ["f4-rejected", "rejected", "final-frozen"]}
+        },
+        "required": ["phase"]
+      },
+      "then": {
+        "properties": {
+          "terminal_publisher_state": {
+            "enum": ["active", "release-intent", "released"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "boundReservation": {
+      "type": "object",
+      "properties": {
+        "terminal_publisher_claim_id": {"$ref": "#/$defs/uuid"},
+        "terminal_publisher_post_reservation_ledger_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_pre_reservation_ledger_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_reservation_at_utc": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "terminal_publisher_reservation_spec_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "required": [
+        "terminal_publisher_claim_id",
+        "terminal_publisher_post_reservation_ledger_sha256",
+        "terminal_publisher_pre_reservation_ledger_sha256",
+        "terminal_publisher_reservation_at_utc",
+        "terminal_publisher_reservation_spec_sha256"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "gid", "inode", "mode", "uid"],
+      "properties": {
+        "device": {"type": "integer", "minimum": 0},
+        "gid": {"type": "integer", "minimum": 0},
+        "inode": {"type": "integer", "minimum": 0},
+        "mode": {"type": "integer", "minimum": 0},
+        "uid": {"type": "integer", "minimum": 0}
+      }
+    },
+    "nullableIdentity": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/identity"}]
+    },
+    "nullableSha256": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]
+    },
+    "nullableTimestamp": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/timestamp"}]
+    },
+    "nullableUuid": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/uuid"}]
+    },
+    "releaseIntent": {
+      "type": "object",
+      "properties": {
+        "terminal_publisher_post_release_ledger_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_pre_release_ledger_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_release_authorizations_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_release_basis_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_release_boot_id": {"$ref": "#/$defs/uuid"},
+        "terminal_publisher_release_context": {
+          "enum": ["same-boot", "stale-boot"]
+        },
+        "terminal_publisher_release_kind": {
+          "enum": ["approved-chain", "rejection-prefix"]
+        },
+        "terminal_publisher_released_at_utc": {"type": "null"}
+      },
+      "required": [
+        "terminal_publisher_post_release_ledger_sha256",
+        "terminal_publisher_pre_release_ledger_sha256",
+        "terminal_publisher_release_authorizations_sha256",
+        "terminal_publisher_release_basis_sha256",
+        "terminal_publisher_release_boot_id",
+        "terminal_publisher_release_context",
+        "terminal_publisher_release_kind",
+        "terminal_publisher_released_at_utc"
+      ]
+    },
+    "releasedPublisher": {
+      "type": "object",
+      "properties": {
+        "terminal_publisher_post_release_ledger_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_pre_release_ledger_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_release_authorizations_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_release_basis_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terminal_publisher_release_boot_id": {"$ref": "#/$defs/uuid"},
+        "terminal_publisher_release_context": {
+          "enum": ["same-boot", "stale-boot"]
+        },
+        "terminal_publisher_release_kind": {
+          "enum": ["approved-chain", "rejection-prefix"]
+        },
+        "terminal_publisher_released_at_utc": {"$ref": "#/$defs/timestamp"}
+      },
+      "required": [
+        "terminal_publisher_post_release_ledger_sha256",
+        "terminal_publisher_pre_release_ledger_sha256",
+        "terminal_publisher_release_authorizations_sha256",
+        "terminal_publisher_release_basis_sha256",
+        "terminal_publisher_release_boot_id",
+        "terminal_publisher_release_context",
+        "terminal_publisher_release_kind",
+        "terminal_publisher_released_at_utc"
+      ]
+    },
+    "sha40": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "unboundPublisher": {
+      "type": "object",
+      "properties": {
+        "terminal_publisher_claim_id": {"type": "null"},
+        "terminal_publisher_post_release_ledger_sha256": {"type": "null"},
+        "terminal_publisher_post_reservation_ledger_sha256": {"type": "null"},
+        "terminal_publisher_pre_release_ledger_sha256": {"type": "null"},
+        "terminal_publisher_pre_reservation_ledger_sha256": {"type": "null"},
+        "terminal_publisher_release_authorizations_sha256": {"type": "null"},
+        "terminal_publisher_release_basis_sha256": {"type": "null"},
+        "terminal_publisher_release_boot_id": {"type": "null"},
+        "terminal_publisher_release_context": {"type": "null"},
+        "terminal_publisher_release_kind": {"type": "null"},
+        "terminal_publisher_released_at_utc": {"type": "null"},
+        "terminal_publisher_reservation_at_utc": {"type": "null"},
+        "terminal_publisher_reservation_spec_sha256": {"type": "null"}
+      },
+      "required": [
+        "terminal_publisher_claim_id",
+        "terminal_publisher_post_release_ledger_sha256",
+        "terminal_publisher_post_reservation_ledger_sha256",
+        "terminal_publisher_pre_release_ledger_sha256",
+        "terminal_publisher_pre_reservation_ledger_sha256",
+        "terminal_publisher_release_authorizations_sha256",
+        "terminal_publisher_release_basis_sha256",
+        "terminal_publisher_release_boot_id",
+        "terminal_publisher_release_context",
+        "terminal_publisher_release_kind",
+        "terminal_publisher_released_at_utc",
+        "terminal_publisher_reservation_at_utc",
+        "terminal_publisher_reservation_spec_sha256"
+      ]
+    },
+    "unreleasedPublisher": {
+      "type": "object",
+      "properties": {
+        "terminal_publisher_post_release_ledger_sha256": {"type": "null"},
+        "terminal_publisher_pre_release_ledger_sha256": {"type": "null"},
+        "terminal_publisher_release_authorizations_sha256": {"type": "null"},
+        "terminal_publisher_release_basis_sha256": {"type": "null"},
+        "terminal_publisher_release_boot_id": {"type": "null"},
+        "terminal_publisher_release_context": {"type": "null"},
+        "terminal_publisher_release_kind": {"type": "null"},
+        "terminal_publisher_released_at_utc": {"type": "null"}
+      },
+      "required": [
+        "terminal_publisher_post_release_ledger_sha256",
+        "terminal_publisher_pre_release_ledger_sha256",
+        "terminal_publisher_release_authorizations_sha256",
+        "terminal_publisher_release_basis_sha256",
+        "terminal_publisher_release_boot_id",
+        "terminal_publisher_release_context",
+        "terminal_publisher_release_kind",
+        "terminal_publisher_released_at_utc"
+      ]
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

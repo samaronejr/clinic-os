@@ -1,0 +1,17 @@
+{
+  "boot_id": "22222222-2222-4222-8222-222222222222",
+  "cgroup_events_identity": {"device": 1, "gid": 1000, "inode": 101, "link_count": 1, "mode": 420, "uid": 1000},
+  "cgroup_kill_identity": {"device": 1, "gid": 1000, "inode": 102, "link_count": 1, "mode": 420, "uid": 1000},
+  "cgroup_mount_identity": {"device": 1, "gid": 0, "inode": 2, "link_count": 1, "mode": 493, "uid": 0},
+  "cgroup_mount_path": "/sys/fs/cgroup",
+  "cgroup_parent_identity": {"device": 1, "gid": 1000, "inode": 100, "link_count": 2, "mode": 493, "uid": 1000},
+  "cgroup_parent_path": "/sys/fs/cgroup/user.slice/clinic.scope",
+  "cgroup_procs_identity": {"device": 1, "gid": 1000, "inode": 103, "link_count": 1, "mode": 420, "uid": 1000},
+  "cgroup_relative_path": "/user.slice/clinic.scope",
+  "checked_at_utc": "2026-07-16T12:00:00.000000Z",
+  "foundation_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "purpose": "clinic-os-phase1a-execution-host-cgroup-v2",
+  "schema_version": 1,
+  "workspace_realpath": "/workspace/clinic",
+  "hostname": "forbidden"
+}

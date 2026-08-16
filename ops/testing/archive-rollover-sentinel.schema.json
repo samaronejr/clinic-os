@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/archive-rollover-sentinel.schema.json",
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attempt_id", "rejected_sha", "bundle_path", "archive_identity_sha256", "stable_lock_identity_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "rejected_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "bundle_path": {"type": "string", "pattern": "^/[^\\u0000\\r\\n]*/\\.omo/evidence/clinic-os-phase1a-rejected/[0-9a-f-]{36}/[0-9a-f]{40}$"},
+    "archive_identity_sha256": {"$ref": "#/$defs/sha256"},
+    "stable_lock_identity_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

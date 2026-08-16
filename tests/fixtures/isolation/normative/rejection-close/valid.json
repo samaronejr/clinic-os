@@ -1,0 +1,9 @@
+{
+  "rejection_spec_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "user_fix_intent_relative_path": null,
+  "user_fix_intent_sha256": null,
+  "user_fix_binding_relative_path": null,
+  "user_fix_binding_sha256": null,
+  "terminal_revalidation_relative_path": null,
+  "terminal_revalidation_sha256": null
+}

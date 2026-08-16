@@ -1,0 +1,23 @@
+{
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "child_device": null,
+  "child_inode": null,
+  "child_path": "/sys/fs/cgroup/user.slice/clinic.scope/clinic-probe",
+  "creation_boot_id": "22222222-2222-4222-8222-222222222222",
+  "expected_parent_pid": null,
+  "parent_device": 1,
+  "parent_inode": 100,
+  "parent_path": "/sys/fs/cgroup/user.slice/clinic.scope",
+  "probe_barrier_released": null,
+  "probe_pgid": null,
+  "probe_pid": null,
+  "probe_start_ticks": null,
+  "proof_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "purpose": "todo1-kickoff",
+  "recovery_boot_id": "33333333-3333-4333-8333-333333333333",
+  "removal_kind": "boot-disappearance",
+  "removed_at_utc": "2026-07-16T12:00:02.000000Z",
+  "schema_version": 1,
+  "state": "removed",
+  "updated_at_utc": "2026-07-16T12:00:02.000000Z"
+}

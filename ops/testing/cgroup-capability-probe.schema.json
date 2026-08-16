@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/cgroup-capability-probe.schema.json",
+  "$defs": {
+    "absolutePath": {"type": "string", "pattern": "^/[^\\u0000\\r\\n]*$"},
+    "bootId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "nullableBootId": {
+      "oneOf": [{"$ref": "#/$defs/bootId"}, {"type": "null"}]
+    },
+    "nullableNonnegative": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "nullablePositive": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "nullableTimestamp": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "disappearancePrefix": {
+      "oneOf": [
+        {
+          "properties": {
+            "child_device": {"type": "null"}, "child_inode": {"type": "null"},
+            "expected_parent_pid": {"type": "null"}, "probe_pid": {"type": "null"},
+            "probe_pgid": {"type": "null"}, "probe_start_ticks": {"type": "null"},
+            "probe_barrier_released": {"type": "null"}
+          }
+        },
+        {
+          "properties": {
+            "child_device": {"type": "integer"}, "child_inode": {"type": "integer"},
+            "expected_parent_pid": {"type": "null"}, "probe_pid": {"type": "null"},
+            "probe_pgid": {"type": "null"}, "probe_start_ticks": {"type": "null"},
+            "probe_barrier_released": {"type": "null"}
+          }
+        },
+        {
+          "properties": {
+            "child_device": {"type": "integer"}, "child_inode": {"type": "integer"},
+            "expected_parent_pid": {"type": "integer"}, "probe_pid": {"type": "integer"},
+            "probe_pgid": {"type": "integer"}, "probe_start_ticks": {"type": "integer"},
+            "probe_barrier_released": {"type": "boolean"}
+          }
+        }
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "attempt_id", "purpose", "creation_boot_id",
+    "recovery_boot_id", "proof_sha256", "parent_path", "parent_device",
+    "parent_inode", "child_path", "child_device", "child_inode", "state",
+    "expected_parent_pid", "probe_pid", "probe_pgid", "probe_start_ticks",
+    "probe_barrier_released", "removal_kind", "removed_at_utc", "updated_at_utc"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "purpose": {"enum": ["todo1-kickoff", "final-input-freeze"]},
+    "creation_boot_id": {"$ref": "#/$defs/bootId"},
+    "recovery_boot_id": {"$ref": "#/$defs/nullableBootId"},
+    "proof_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "parent_path": {"$ref": "#/$defs/absolutePath"},
+    "parent_device": {"type": "integer", "minimum": 0},
+    "parent_inode": {"type": "integer", "minimum": 1},
+    "child_path": {"$ref": "#/$defs/absolutePath"},
+    "child_device": {"$ref": "#/$defs/nullableNonnegative"},
+    "child_inode": {"$ref": "#/$defs/nullablePositive"},
+    "state": {
+      "enum": [
+        "prepared", "mkdir-intent", "child-ready", "probe-identity",
+        "probe-migrated", "probe-running", "kill-complete", "remove-intent",
+        "removed"
+      ]
+    },
+    "expected_parent_pid": {"$ref": "#/$defs/nullablePositive"},
+    "probe_pid": {"$ref": "#/$defs/nullablePositive"},
+    "probe_pgid": {"$ref": "#/$defs/nullablePositive"},
+    "probe_start_ticks": {"$ref": "#/$defs/nullablePositive"},
+    "probe_barrier_released": {"type": ["boolean", "null"]},
+    "removal_kind": {"type": ["string", "null"], "enum": [null, "rmdir", "boot-disappearance"]},
+    "removed_at_utc": {"$ref": "#/$defs/nullableTimestamp"},
+    "updated_at_utc": {"$ref": "#/$defs/timestamp"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"enum": ["prepared", "mkdir-intent"]}}},
+      "then": {
+        "properties": {
+          "child_device": {"type": "null"}, "child_inode": {"type": "null"},
+          "expected_parent_pid": {"type": "null"}, "probe_pid": {"type": "null"},
+          "probe_pgid": {"type": "null"}, "probe_start_ticks": {"type": "null"},
+          "probe_barrier_released": {"type": "null"}, "removal_kind": {"type": "null"},
+          "removed_at_utc": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "child-ready"}}},
+      "then": {
+        "properties": {
+          "child_device": {"type": "integer"}, "child_inode": {"type": "integer"},
+          "expected_parent_pid": {"type": "null"}, "probe_pid": {"type": "null"},
+          "probe_pgid": {"type": "null"}, "probe_start_ticks": {"type": "null"},
+          "probe_barrier_released": {"type": "null"}, "removal_kind": {"type": "null"},
+          "removed_at_utc": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["probe-identity", "probe-migrated"]}}},
+      "then": {
+        "properties": {
+          "child_device": {"type": "integer"}, "child_inode": {"type": "integer"},
+          "expected_parent_pid": {"type": "integer"}, "probe_pid": {"type": "integer"},
+          "probe_pgid": {"type": "integer"}, "probe_start_ticks": {"type": "integer"},
+          "probe_barrier_released": {"const": false}, "removal_kind": {"type": "null"},
+          "removed_at_utc": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"enum": ["probe-running", "kill-complete"]}}},
+      "then": {
+        "properties": {
+          "child_device": {"type": "integer"}, "child_inode": {"type": "integer"},
+          "expected_parent_pid": {"type": "integer"}, "probe_pid": {"type": "integer"},
+          "probe_pgid": {"type": "integer"}, "probe_start_ticks": {"type": "integer"},
+          "probe_barrier_released": {"const": true}, "removal_kind": {"type": "null"},
+          "removed_at_utc": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "remove-intent"}}},
+      "then": {
+        "allOf": [
+          {"$ref": "#/$defs/disappearancePrefix"},
+          {
+            "properties": {
+              "removal_kind": {"type": "null"},
+              "removed_at_utc": {"type": "null"}
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "removed"}}},
+      "then": {
+        "oneOf": [
+          {
+            "properties": {
+              "child_device": {"type": "integer"}, "child_inode": {"type": "integer"},
+              "expected_parent_pid": {"type": "integer"}, "probe_pid": {"type": "integer"},
+              "probe_pgid": {"type": "integer"}, "probe_start_ticks": {"type": "integer"},
+              "probe_barrier_released": {"const": true},
+              "recovery_boot_id": {"type": "null"}, "removal_kind": {"const": "rmdir"},
+              "removed_at_utc": {"$ref": "#/$defs/timestamp"}
+            }
+          },
+          {
+            "allOf": [
+              {"$ref": "#/$defs/disappearancePrefix"},
+              {
+                "properties": {
+                  "recovery_boot_id": {"$ref": "#/$defs/bootId"},
+                  "removal_kind": {"const": "boot-disappearance"},
+                  "removed_at_utc": {"$ref": "#/$defs/timestamp"}
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"state": {"not": {"const": "removed"}}},
+        "required": ["state"]
+      },
+      "then": {"properties": {"recovery_boot_id": {"type": "null"}}}
+    }
+  ]
+}

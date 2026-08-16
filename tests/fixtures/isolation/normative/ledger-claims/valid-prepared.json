@@ -1,0 +1,99 @@
+{
+  "activated_at_utc": null,
+  "candidate_envelope_binding": null,
+  "claim_id": "33333333-3333-4333-8333-333333333333",
+  "dependency_claim_ids": [],
+  "desired": {
+    "borrowed_network_refs": [],
+    "borrowed_volume_refs": [],
+    "database_names": [
+      "clinic_phase1a_runner"
+    ],
+    "loopback_ports": [],
+    "owned_networks": [],
+    "owned_volumes": [],
+    "project": "clinic_phase1a_runner",
+    "services": [
+      {
+        "command": [
+          "python"
+        ],
+        "environment_contract": {
+          "absent_keys": [],
+          "literal": [],
+          "secret_keys": []
+        },
+        "extra_hosts": [],
+        "filesystem_contract": null,
+        "gid": 1000,
+        "image_contract": null,
+        "image_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "runner",
+        "network_mode": "none",
+        "network_refs": [],
+        "published_ports": [],
+        "start_policy": "prepared-attest-before-use",
+        "uid": 1000,
+        "volume_mounts": []
+      }
+    ]
+  },
+  "kind": "stack",
+  "last_verified_at_utc": "2026-01-01T00:00:02.000000Z",
+  "observed": {
+    "borrowed_networks": [],
+    "borrowed_volumes": [],
+    "container_ids": [
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "listeners": [],
+    "owned_networks": [],
+    "owned_volumes": [],
+    "services": [
+      {
+        "command": [
+          "python"
+        ],
+        "container_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "environment_contract": {
+          "absent_keys": [],
+          "literal": [],
+          "secret_keys": []
+        },
+        "extra_hosts": [],
+        "filesystem_contract": null,
+        "gid": 1000,
+        "image_contract": null,
+        "image_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "runner",
+        "network_attachments": [],
+        "network_mode": "none",
+        "published_ports": [],
+        "state": "created",
+        "uid": 1000,
+        "volume_mounts": []
+      }
+    ]
+  },
+  "prepared_at_utc": "2026-01-01T00:00:02.000000Z",
+  "purpose": "host-http",
+  "reserved_at_utc": "2026-01-01T00:00:01.000000Z",
+  "root_relative_path": "claims/33333333-3333-4333-8333-333333333333",
+  "runner_creation": {
+    "container_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "container_name": "clinic-phase1a-runner-33333333-3333-4333-8333-333333333333",
+    "create_argv_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "creation_boot_id": "22222222-2222-4222-8222-222222222222",
+    "desired_service_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "intent_at_utc": "2026-01-01T00:00:01.500000Z",
+    "intent_id": "44444444-4444-4444-8444-444444444444",
+    "intent_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "remove_intent_at_utc": null,
+    "remove_reason": null,
+    "removed_at_utc": null,
+    "schema_version": 1,
+    "service_name": "runner",
+    "state": "prepared"
+  },
+  "status": "prepared"
+}

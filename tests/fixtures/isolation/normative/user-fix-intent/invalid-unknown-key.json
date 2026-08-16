@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "tree_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "final_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "approvals_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "authorized_reason": "USER:user-requested-fix",
+  "boot_id": "22222222-2222-4222-8222-222222222222"
+}

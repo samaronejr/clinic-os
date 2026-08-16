@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "rejected_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "rejection_spec_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "bundle_path": "/clinic-os/authority/.omo/evidence/clinic-os-phase1a-rejected/11111111-1111-4111-8111-111111111111/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "stable_lock_identity_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "archive_identity_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "state": "moving",
+  "control_tree_sha256": null,
+  "attempt_tree_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "ledger_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "tombstone_sha256": null,
+  "updated_at_utc": "2026-07-16T12:00:00.000000Z"
+}

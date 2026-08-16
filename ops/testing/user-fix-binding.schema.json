@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/user-fix-binding.schema.json",
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attempt_id", "sha", "current_boot_id", "boot_changed", "user_fix_intent_relative_path", "user_fix_intent_sha256", "terminal_revalidation_relative_path", "terminal_revalidation_sha256", "approvals_sha256"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "attempt_id": {"$ref": "#/$defs/uuid"},
+    "sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "current_boot_id": {"$ref": "#/$defs/uuid"},
+    "boot_changed": {"type": "boolean"},
+    "user_fix_intent_relative_path": {"const": "user-fix-intent.json"},
+    "user_fix_intent_sha256": {"$ref": "#/$defs/sha256"},
+    "terminal_revalidation_relative_path": {"type": "string", "pattern": "^terminal-revalidation/[0-9a-f-]{36}\\.json$"},
+    "terminal_revalidation_sha256": {"$ref": "#/$defs/sha256"},
+    "approvals_sha256": {"$ref": "#/$defs/sha256"}
+  }
+}

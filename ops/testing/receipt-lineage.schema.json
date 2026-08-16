@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.local/schemas/receipt-lineage.schema.json",
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "sha40": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bundlePath": {"type": ["string", "null"], "pattern": "^\\.omo/evidence/clinic-os-phase1a-rejected/[0-9a-f-]{36}/[0-9a-f]{40}$"},
+    "relativePath": {"type": "string", "pattern": "^(?:todo-evidence/task-(?:[1-9]|1[0-9]|20)-clinic-os-phase-1a-staff-scheduling\\.json|todo-evidence/review-fix-[1-9][0-9]*\\.json)$"},
+    "primarySource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["todo", "attempt_id", "bundle_path", "relative_path", "sha256", "primary_commit_sha"],
+      "properties": {
+        "todo": {"type": "integer", "minimum": 1, "maximum": 20},
+        "attempt_id": {"$ref": "#/$defs/uuid"},
+        "bundle_path": {"$ref": "#/$defs/bundlePath"},
+        "relative_path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "primary_commit_sha": {"$ref": "#/$defs/sha40"}
+      }
+    },
+    "fixSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sequence", "attempt_id", "bundle_path", "relative_path", "sha256", "fix_commit_sha"],
+      "properties": {
+        "sequence": {"type": "integer", "minimum": 1},
+        "attempt_id": {"$ref": "#/$defs/uuid"},
+        "bundle_path": {"$ref": "#/$defs/bundlePath"},
+        "relative_path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "fix_commit_sha": {"$ref": "#/$defs/sha40"}
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "current_attempt_id", "seed_sha256", "lineage_validation_sha256", "primary_sources", "fix_sources", "next_fix_sequence"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "current_attempt_id": {"$ref": "#/$defs/uuid"},
+    "seed_sha256": {"$ref": "#/$defs/sha256"},
+    "lineage_validation_sha256": {"$ref": "#/$defs/sha256"},
+    "primary_sources": {"type": "array", "items": {"$ref": "#/$defs/primarySource"}, "uniqueItems": true},
+    "fix_sources": {"type": "array", "items": {"$ref": "#/$defs/fixSource"}, "uniqueItems": true},
+    "next_fix_sequence": {"type": "integer", "minimum": 1}
+  }
+}

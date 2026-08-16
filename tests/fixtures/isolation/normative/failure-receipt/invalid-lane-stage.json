@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "attempt_id": "11111111-1111-4111-8111-111111111111",
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "lane": "F1",
+  "stage": "F3-e2e",
+  "observed_causes": ["reviewer-reject", "cleanup-failure"],
+  "cause_code": "reviewer-reject",
+  "failure_class": "finding",
+  "started_at_utc": "2026-07-16T12:00:00.000000Z",
+  "ended_at_utc": "2026-07-16T12:00:01.000000Z",
+  "exit_code": 0,
+  "signal": null,
+  "timed_out": false,
+  "output_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "lineage_validation_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "journal_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "control_tree_sha256": null,
+  "cleanup_verified": true
+}
