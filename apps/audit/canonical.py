@@ -8,15 +8,20 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
 from ipaddress import IPv4Address, IPv6Address
-from typing import TYPE_CHECKING, Final, TypeGuard
+from typing import Final, TypeGuard
+from uuid import UUID
 
 import rfc8785
 
-if TYPE_CHECKING:
-    from uuid import UUID
-
 AUDIT_PAYLOAD_ALLOWED: Final[frozenset[str]] = frozenset(
-    {"http_method", "http_status", "object_verb", "reason_code", "request_id"}
+    {
+        "clinic_id",
+        "http_method",
+        "http_status",
+        "object_verb",
+        "reason_code",
+        "request_id",
+    }
 )
 _STRING_LIMITS: Final[Mapping[str, int]] = {
     "http_method": 16,
@@ -51,7 +56,7 @@ type CanonicalValue = (
 
 
 @dataclass(frozen=True, slots=True)
-class AuditPayloadKeyRejected(Exception):  # noqa: N818
+class AuditPayloadKeyRejectedError(Exception):
     """Report one payload key outside the fixed audit vocabulary."""
 
     key: str
@@ -59,6 +64,9 @@ class AuditPayloadKeyRejected(Exception):  # noqa: N818
     def __str__(self) -> str:
         """Return a safe key-only rejection message."""
         return f"audit payload key rejected: {self.key}"
+
+
+AuditPayloadKeyRejected = AuditPayloadKeyRejectedError
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,8 +195,12 @@ def _normalize_payload(
             raise AuditPayloadKeyRejected(key="<non-string>")
         if key not in AUDIT_PAYLOAD_ALLOWED:
             raise AuditPayloadKeyRejected(key=key)
-        string_limit = _STRING_LIMITS.get(key)
-        if string_limit is not None:
+        if key == "clinic_id":
+            normalized_value = _freeze_text(value)
+            if normalized_value is None or not _is_canonical_uuid(normalized_value):
+                raise AuditPayloadValueRejectedError(key=key)
+            normalized[key] = normalized_value
+        elif (string_limit := _STRING_LIMITS.get(key)) is not None:
             normalized_value = _freeze_text(value)
             if normalized_value is None or not _is_bounded_text(
                 normalized_value,
@@ -203,6 +215,13 @@ def _normalize_payload(
         else:
             normalized[key] = value
     return normalized
+
+
+def _is_canonical_uuid(value: str) -> bool:
+    try:
+        return str(UUID(value)) == value
+    except ValueError:
+        return False
 
 
 def _content_hash(
