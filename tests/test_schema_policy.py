@@ -4,6 +4,7 @@ import psycopg
 import pytest
 from apps.identity.models import Clinic, Organization, UserClinicRole
 from apps.intake.rls import INTAKE_RLS_TARGETS
+from apps.scheduling.rls import SCHEDULING_RLS_TARGETS
 from apps.tenancy.models import TenantScopedModel
 from apps.tenancy.rls import TENANT_RLS_TARGETS
 from django.apps import apps as django_apps
@@ -12,7 +13,7 @@ from django.db import connection
 pytestmark = pytest.mark.django_db(transaction=True)
 
 FOUNDATION_TENANT_COLUMNS: Final = dict(TENANT_RLS_TARGETS)
-PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS)
+PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS) | dict(SCHEDULING_RLS_TARGETS)
 EXPECTED_TENANT_COLUMNS: Final = FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS
 SELECT_ONLY_RUNTIME_TABLES: Final = {
     "identity_organization",
@@ -130,6 +131,18 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         tenant_grants = set(cursor.fetchall())
         cursor.execute(
             """
+            SELECT table_name, column_name
+            FROM information_schema.role_column_grants
+            WHERE grantee = 'clinic_app'
+              AND table_schema = 'clinic_app'
+              AND table_name = ANY(%s)
+              AND privilege_type = 'UPDATE'
+            """,
+            [list(EXPECTED_TENANT_COLUMNS)],
+        )
+        tenant_column_updates = set(cursor.fetchall())
+        cursor.execute(
+            """
             SELECT privilege_type FROM information_schema.role_table_grants
             WHERE grantee = 'clinic_app' AND table_schema = 'clinic_app'
               AND table_name = 'identity_user'
@@ -163,6 +176,13 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")
     }
     assert user_grants == []
+    assert tenant_column_updates == {
+        ("scheduling_availabilityblock", "retired_at"),
+        ("scheduling_availabilityblock", "updated_at"),
+        ("tenancy_tenantprobe", "id"),
+        ("tenancy_tenantprobe", "label"),
+        ("tenancy_tenantprobe", "organization_id"),
+    }
     assert role_posture == {
         ("clinic_owner", True, False, False, False),
         ("clinic_app", True, False, False, False),
