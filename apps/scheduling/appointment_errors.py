@@ -42,3 +42,35 @@ class SlotConflictError(Exception):
 
 
 SlotConflict = SlotConflictError
+
+
+class AppointmentCancellationInputError(ValueError):
+    """Reject values outside the fixed cancellation-reason vocabulary."""
+
+    def __init__(self) -> None:
+        """Expose one stable non-identifying cancellation message."""
+        super().__init__("appointment cancellation input is invalid")
+
+
+class AppointmentCancellationConflictError(Exception):
+    """Reject a different reason for an already-cancelled appointment."""
+
+    def __init__(self) -> None:
+        """Expose one stable non-identifying cancellation conflict."""
+        super().__init__("appointment cancellation conflicts with terminal state")
+
+
+class AppointmentTerminalError(Exception):
+    """Reject attempts to reopen or reschedule a terminal appointment."""
+
+    def __init__(self) -> None:
+        """Expose one stable non-identifying terminal-state message."""
+        super().__init__("appointment is terminal")
+
+
+class AppointmentRescheduleInputError(ValueError):
+    """Reject malformed or invalid clinic-local reschedule bounds."""
+
+    def __init__(self) -> None:
+        """Expose one stable non-identifying reschedule message."""
+        super().__init__("appointment reschedule input is invalid")
