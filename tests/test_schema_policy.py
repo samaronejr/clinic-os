@@ -4,7 +4,7 @@ import psycopg
 import pytest
 from apps.identity.models import Clinic, Organization, UserClinicRole
 from apps.intake.rls import INTAKE_RLS_TARGETS
-from apps.scheduling.rls import SCHEDULING_RLS_TARGETS
+from apps.scheduling.rls import ALL_SCHEDULING_RLS_TARGETS
 from apps.tenancy.models import TenantScopedModel
 from apps.tenancy.rls import TENANT_RLS_TARGETS
 from django.apps import apps as django_apps
@@ -13,7 +13,9 @@ from django.db import connection
 pytestmark = pytest.mark.django_db(transaction=True)
 
 FOUNDATION_TENANT_COLUMNS: Final = dict(TENANT_RLS_TARGETS)
-PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS) | dict(SCHEDULING_RLS_TARGETS)
+PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS) | dict(
+    ALL_SCHEDULING_RLS_TARGETS
+)
 EXPECTED_TENANT_COLUMNS: Final = FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS
 SELECT_ONLY_RUNTIME_TABLES: Final = {
     "identity_organization",
@@ -177,6 +179,12 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     }
     assert user_grants == []
     assert tenant_column_updates == {
+        ("scheduling_appointment", "cancellation_reason"),
+        ("scheduling_appointment", "cancelled_at"),
+        ("scheduling_appointment", "end_at"),
+        ("scheduling_appointment", "start_at"),
+        ("scheduling_appointment", "status"),
+        ("scheduling_appointment", "updated_at"),
         ("scheduling_availabilityblock", "retired_at"),
         ("scheduling_availabilityblock", "updated_at"),
         ("tenancy_tenantprobe", "id"),

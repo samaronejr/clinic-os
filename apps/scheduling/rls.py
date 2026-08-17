@@ -5,11 +5,17 @@ from typing import Final
 SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
     {("scheduling_availabilityblock", "organization_id")}
 )
+APPOINTMENT_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
+    {("scheduling_appointment", "organization_id")}
+)
+ALL_SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = (
+    SCHEDULING_RLS_TARGETS | APPOINTMENT_RLS_TARGETS
+)
 
 
 def apply_scheduling_rls(table: str, tenant_column: str) -> str:
     """Build exact FORCE-RLS DDL for one versioned scheduling table."""
-    if (table, tenant_column) not in SCHEDULING_RLS_TARGETS:
+    if (table, tenant_column) not in ALL_SCHEDULING_RLS_TARGETS:
         raise KeyError((table, tenant_column))
     condition = (
         f"{tenant_column} = "
@@ -28,7 +34,7 @@ CREATE POLICY tenant_isolation ON clinic_app.{table}
 
 def remove_scheduling_rls(table: str, tenant_column: str) -> str:
     """Build exact reverse DDL for one versioned scheduling table."""
-    if (table, tenant_column) not in SCHEDULING_RLS_TARGETS:
+    if (table, tenant_column) not in ALL_SCHEDULING_RLS_TARGETS:
         raise KeyError((table, tenant_column))
     return f"""
 DROP POLICY IF EXISTS tenant_isolation ON clinic_app.{table};
