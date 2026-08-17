@@ -2,9 +2,10 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
-from apps.identity.models import Clinic, Organization
+from apps.identity.models import Clinic, Organization, User
 from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.scheduling import timezones
+from apps.scheduling.models import AvailabilityBlock
 from apps.scheduling.timezones import (
     LocalTimeValueError,
     civil_day_bounds,
@@ -102,6 +103,42 @@ def test_timezone_change_refuses_after_first_dependent_row(table_name: str) -> N
                 organization=organization,
                 clinic=clinic,
                 patient=patient,
+                idempotency_key=uuid4(),
+                create_fingerprint=b"t" * 32,
+            )
+            with pytest.raises(timezones.ClinicTimezoneLockedError):
+                timezones.ensure_clinic_timezone_change_allowed(clinic_id)
+        return
+
+    if table_name == "scheduling_availabilityblock":
+        organization_id = uuid4()
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                [str(organization_id)],
+            )
+            organization = Organization.objects.create(
+                id=organization_id,
+                name="Synthetic Organization Availability Guard",
+                cnpj="00000000004002",
+            )
+            clinic = Clinic.objects.create(
+                id=clinic_id,
+                organization=organization,
+                name="Synthetic Clinic Availability Guard",
+                crm_uf="SP",
+                timezone="America/Sao_Paulo",
+            )
+            practitioner = User.objects.create(
+                username=f"timezone-{uuid4()}",
+                email=f"timezone-{uuid4()}@example.com",
+            )
+            AvailabilityBlock.objects.create(
+                organization=organization,
+                clinic=clinic,
+                practitioner=practitioner,
+                start_at=datetime(2030, 1, 2, 13, 30, tzinfo=UTC),
+                end_at=datetime(2030, 1, 2, 14, 0, tzinfo=UTC),
                 idempotency_key=uuid4(),
                 create_fingerprint=b"t" * 32,
             )

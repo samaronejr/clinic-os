@@ -1,3 +1,5 @@
 # Scheduling
 
-This domain is deferred to Phase >=1. Its service entrypoint fails fast, and its adapter remains an interface-only boundary.
+Phase 1A stores organization-scoped practitioner availability with immediate
+active-overlap protection. Availability services, appointments, and delivery
+surfaces remain in their dedicated slices.

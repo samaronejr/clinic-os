@@ -167,7 +167,11 @@ def test_canonicalization_failure_aborts_before_any_update(
             == originals
         )
     finally:
-        User.objects.filter(id__in=[row[0] for row in users]).delete()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM clinic_app.identity_user WHERE id = ANY(%s)",
+                [[row[0] for row in users]],
+            )
         migrate_head()
 
 
