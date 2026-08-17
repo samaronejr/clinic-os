@@ -53,7 +53,7 @@ COVERAGE_TARGETS = \
 	--cov=apps.identity \
 	--cov=apps.tenancy
 
-.PHONY: ci db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate
+.PHONY: bootstrap-clinic ci db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff revoke-staff-role set-clinic-timezone
 
 isolated-db-up:
 	@./ops/testing/isolated_db.sh up
@@ -147,6 +147,44 @@ db-posture: db-inputs
 
 migrate:
 	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run python manage.py migrate
+
+bootstrap-clinic:
+	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run --frozen --no-sync --no-env-file python manage.py bootstrap_clinic \
+		--organization-id "$${ORGANIZATION_ID}" \
+		--organization-name "$${ORGANIZATION_NAME}" \
+		--cnpj "$${CLINIC_CNPJ}" \
+		--clinic-id "$${CLINIC_ID}" \
+		--clinic-name "$${CLINIC_NAME}" \
+		--crm-uf "$${CLINIC_CRM_UF}" \
+		--timezone "$${CLINIC_TIMEZONE}" \
+		--owner-user-id "$${OWNER_USER_ID}" \
+		--owner-username "$${OWNER_USERNAME}" \
+		--owner-email "$${OWNER_EMAIL}"
+
+provision-staff:
+	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run --frozen --no-sync --no-env-file python manage.py provision_staff \
+		--operator-id "$${OPERATOR_ID}" \
+		--organization-id "$${ORGANIZATION_ID}" \
+		--clinic-id "$${CLINIC_ID}" \
+		--staff-user-id "$${STAFF_USER_ID}" \
+		--username "$${STAFF_USERNAME}" \
+		--email "$${STAFF_EMAIL}" \
+		--role "$${STAFF_ROLE}"
+
+set-clinic-timezone:
+	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run --frozen --no-sync --no-env-file python manage.py set_clinic_timezone \
+		--operator-id "$${OPERATOR_ID}" \
+		--organization-id "$${ORGANIZATION_ID}" \
+		--clinic-id "$${CLINIC_ID}" \
+		--timezone "$${CLINIC_TIMEZONE}"
+
+revoke-staff-role:
+	@APP_DATABASE_URL="$${MIGRATION_DATABASE_URL}" $(UV) run --frozen --no-sync --no-env-file python manage.py revoke_staff_role \
+		--operator-id "$${OPERATOR_ID}" \
+		--organization-id "$${ORGANIZATION_ID}" \
+		--clinic-id "$${CLINIC_ID}" \
+		--target-user-id "$${TARGET_USER_ID}" \
+		--role "$${STAFF_ROLE}"
 
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
