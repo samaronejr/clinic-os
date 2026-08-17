@@ -5,14 +5,13 @@ import pytest
 from apps.identity.models import Clinic, Organization, User
 from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.scheduling import timezones
-from apps.scheduling.models import AvailabilityBlock
+from apps.scheduling.models import Appointment, AvailabilityBlock
 from apps.scheduling.timezones import (
     LocalTimeValueError,
     civil_day_bounds,
     parse_local_minute,
 )
 from django.db import connection, transaction
-from psycopg import sql
 
 
 def test_local_minute_round_trips_through_an_explicit_iana_zone() -> None:
@@ -110,6 +109,66 @@ def test_timezone_change_refuses_after_first_dependent_row(table_name: str) -> N
                 timezones.ensure_clinic_timezone_change_allowed(clinic_id)
         return
 
+    if table_name == "scheduling_appointment":
+        organization_id = uuid4()
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                [str(organization_id)],
+            )
+            organization = Organization.objects.create(
+                id=organization_id,
+                name="Synthetic Organization Appointment Guard",
+                cnpj="00000000004003",
+            )
+            clinic = Clinic.objects.create(
+                id=clinic_id,
+                organization=organization,
+                name="Synthetic Clinic Appointment Guard",
+                crm_uf="SP",
+                timezone="America/Sao_Paulo",
+            )
+            patient = Patient.objects.create(
+                organization=organization,
+                full_name="Synthetic Patient Appointment Guard",
+                birth_date=date(2000, 1, 2),
+            )
+            PatientClinicEnrollment.objects.create(
+                organization=organization,
+                clinic=clinic,
+                patient=patient,
+                idempotency_key=uuid4(),
+                create_fingerprint=b"t" * 32,
+            )
+            practitioner = User.objects.create(
+                username=f"appointment-timezone-{uuid4()}",
+                email=f"appointment-timezone-{uuid4()}@example.com",
+            )
+            start_at = datetime(2030, 1, 2, 13, 30, tzinfo=UTC)
+            end_at = datetime(2030, 1, 2, 14, 0, tzinfo=UTC)
+            AvailabilityBlock.objects.create(
+                organization=organization,
+                clinic=clinic,
+                practitioner=practitioner,
+                start_at=start_at,
+                end_at=end_at,
+                idempotency_key=uuid4(),
+                create_fingerprint=b"t" * 32,
+            )
+            Appointment.objects.create(
+                organization=organization,
+                clinic=clinic,
+                patient=patient,
+                practitioner=practitioner,
+                start_at=start_at,
+                end_at=end_at,
+                idempotency_key=uuid4(),
+                create_fingerprint=b"t" * 32,
+            )
+            with pytest.raises(timezones.ClinicTimezoneLockedError):
+                timezones.ensure_clinic_timezone_change_allowed(clinic_id)
+        return
+
     if table_name == "scheduling_availabilityblock":
         organization_id = uuid4()
         with transaction.atomic(), connection.cursor() as cursor:
@@ -145,21 +204,3 @@ def test_timezone_change_refuses_after_first_dependent_row(table_name: str) -> N
             with pytest.raises(timezones.ClinicTimezoneLockedError):
                 timezones.ensure_clinic_timezone_change_allowed(clinic_id)
         return
-
-    table = sql.Identifier(table_name)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            sql.SQL("CREATE TABLE clinic_app.{} (clinic_id uuid NOT NULL)").format(
-                table
-            )
-        )
-        cursor.execute(
-            sql.SQL("INSERT INTO clinic_app.{} (clinic_id) VALUES (%s)").format(table),
-            [clinic_id],
-        )
-    try:
-        with pytest.raises(timezones.ClinicTimezoneLockedError):
-            timezones.ensure_clinic_timezone_change_allowed(clinic_id)
-    finally:
-        with connection.cursor() as cursor:
-            cursor.execute(sql.SQL("DROP TABLE clinic_app.{}").format(table))
