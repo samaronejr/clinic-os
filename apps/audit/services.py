@@ -22,6 +22,13 @@ from apps.audit.canonical import (
     _content_hash,
     _normalize_payload,
 )
+from apps.audit.events import (
+    PHASE1_AUDIT_EVENTS,
+    Phase1AuditAppend,
+    Phase1AuditEventDefinition,
+    Phase1AuditEventRejectedError,
+    build_phase1_audit_event,
+)
 from apps.audit.models import SYSTEM_ORG_ID
 from apps.audit.verification import (
     AuditChainFailureKind,
@@ -36,6 +43,7 @@ if TYPE_CHECKING:
 
 __all__ = (
     "AUDIT_PAYLOAD_ALLOWED",
+    "PHASE1_AUDIT_EVENTS",
     "AuditChainFailureKind",
     "AuditChainVerificationError",
     "AuditChainVerificationResult",
@@ -48,12 +56,17 @@ __all__ = (
     "AuditTrustedContext",
     "AuditVerificationAccessRejectedError",
     "CanonicalValue",
+    "Phase1AuditAppend",
+    "Phase1AuditEventDefinition",
+    "Phase1AuditEventRejectedError",
     "SystemAuditAccessRejectedError",
     "ValidAuditPayload",
     "_content_hash",
     "_normalize_payload",
     "_record_system_event",
+    "build_phase1_audit_event",
     "record_event",
+    "record_phase1_event",
     "verify_chain",
 )
 
@@ -179,6 +192,23 @@ def _record_system_event(
     if appended is None:
         raise AuditContextRejectedError(setting="audit_append_system")
     return int(appended[0])
+
+
+def record_phase1_event(
+    event_type: str,
+    *,
+    clinic_id: UUID,
+    affected_record_id: UUID,
+) -> int:
+    """Append one exact fixed-matrix event through its authorized chain."""
+    append = build_phase1_audit_event(
+        event_type,
+        clinic_id=clinic_id,
+        affected_record_id=affected_record_id,
+    )
+    if append.chain == "system":
+        return _record_system_event(append.event, payload=append.payload)
+    return record_event(append.event, payload=append.payload)
 
 
 def verify_chain(

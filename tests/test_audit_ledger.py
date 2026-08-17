@@ -697,3 +697,49 @@ def test_reverse_removes_enforcement_and_reapply_restores_it() -> None:
             "'INSERT,UPDATE,DELETE,TRUNCATE')"
         )
         assert cursor.fetchone() == (False,)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_phase1_service_transaction_appends_once_and_skips_noop_or_failure() -> None:
+    organization_id = uuid4()
+    actor_user_id = uuid4()
+    clinic_id = UUID("11111111-1111-4111-8111-111111111111")
+    affected_record_id = UUID("22222222-2222-4222-8222-222222222222")
+    rolled_back_sequences: list[int] = []
+
+    def run_command(outcome: str) -> int | None:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL ROLE clinic_app")
+            cursor.execute(
+                "SELECT set_config('app.current_tenant', %s, true), "
+                "set_config('app.current_user_id', %s, true)",
+                [str(organization_id), str(actor_user_id)],
+            )
+            if outcome == "noop":
+                return None
+            seq = audit_services.record_phase1_event(
+                "scheduling.agenda.viewed",
+                clinic_id=clinic_id,
+                affected_record_id=affected_record_id,
+            )
+            if outcome == "failure":
+                rolled_back_sequences.append(seq)
+                raise RuntimeError
+            return seq
+
+    assert run_command("noop") is None
+    with pytest.raises(RuntimeError):
+        run_command("failure")
+    committed_seq = run_command("success")
+    assert committed_seq is not None
+    assert committed_seq > rolled_back_sequences[0]
+
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_tenant', %s, true), "
+            "set_config('app.current_user_id', %s, true)",
+            [str(organization_id), str(actor_user_id)],
+        )
+        result = audit_services.verify_chain(organization_id)
+    assert result.row_count == 1
+    assert result.last_seq == committed_seq

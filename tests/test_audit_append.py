@@ -30,6 +30,7 @@ from apps.audit.services import (
     AuditTrustedContext,
     CanonicalValue,
     _content_hash,
+    _normalize_payload,
     _record_system_event,
     record_event,
 )
@@ -258,12 +259,23 @@ def test_service_rejects_unknown_payload_key_before_sql() -> None:
         occurred_at_utc=datetime.now(UTC),
     )
     assert {
+        "clinic_id",
         "http_method",
         "http_status",
         "object_verb",
         "reason_code",
         "request_id",
     } == AUDIT_PAYLOAD_ALLOWED
+    assert _normalize_payload(
+        {"clinic_id": "11111111-1111-4111-8111-111111111111"}
+    ) == {"clinic_id": "11111111-1111-4111-8111-111111111111"}
+
+    with pytest.raises(AuditPayloadValueRejectedError) as clinic_error:
+        record_event(
+            event,
+            payload={"clinic_id": "11111111-1111-4111-8111-11111111111A"},
+        )
+    assert clinic_error.value.key == "clinic_id"
 
     # When / Then: the typed boundary rejects the synthetic forbidden key first
     with pytest.raises(AuditPayloadKeyRejected, match="cpf") as exc_info:
