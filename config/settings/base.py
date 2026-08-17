@@ -2,7 +2,9 @@ import os
 from pathlib import Path
 
 import environ
-import sentry_sdk
+
+from .contracts import require_synthetic_mode
+from .telemetry import configure_sentry
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_APP_DATABASE_URL = (
@@ -11,10 +13,20 @@ DEFAULT_APP_DATABASE_URL = (
 
 env = environ.Env()
 
+
+def export_settings(namespace: dict[str, object]) -> None:
+    namespace.update(
+        (name, value) for name, value in globals().items() if name.isupper()
+    )
+
+
 SECRET_KEY: str = env("SECRET_KEY", default="development-only-secret-key")
 SECRET_KEY_CONFIGURED: bool = "SECRET_KEY" in os.environ
 DEBUG: bool = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS: list[str] = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+CLINIC_DATA_MODE: str = require_synthetic_mode(
+    env("CLINIC_DATA_MODE", default="synthetic")
+)
 
 INSTALLED_APPS: list[str] = [
     "django.contrib.admin",
@@ -127,12 +139,7 @@ SECURE_REFERRER_POLICY: str = "same-origin"
 X_FRAME_OPTIONS: str = "DENY"
 
 SENTRY_DSN: str = env("SENTRY_DSN", default="")
-if SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        send_default_pii=False,
-        include_local_variables=False,
-    )
+configure_sentry(SENTRY_DSN)
 
 LOGGING = {
     "version": 1,

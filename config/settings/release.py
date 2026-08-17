@@ -11,6 +11,7 @@ from .contracts import (
 from .database import parse_database_url
 
 base.export_settings(globals())
+globals().pop("WSGI_APPLICATION", None)
 
 SECRET_KEY = validate_runtime_secret(os.environ.get("SECRET_KEY", ""))
 SECRET_KEY_CONFIGURED = True
@@ -18,17 +19,12 @@ ALLOWED_HOSTS = parse_production_hosts(os.environ.get("ALLOWED_HOSTS", ""))
 SECURE_SSL_HOST = validate_secure_ssl_host(
     os.environ.get("SECURE_SSL_HOST", ""), ALLOWED_HOSTS
 )
-CLINIC_PROCESS_ROLE = "clinic_app"
+CLINIC_PROCESS_ROLE = "clinic_owner"
 DATABASES = {
     "default": parse_database_url(
-        os.environ.get("APP_DATABASE_URL", ""), required_role=CLINIC_PROCESS_ROLE
+        os.environ.get("MIGRATION_DATABASE_URL", ""),
+        required_role=CLINIC_PROCESS_ROLE,
     )
 }
 DEBUG = False
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = 31_536_000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
 SECURE_PROXY_SSL_HEADER = None
