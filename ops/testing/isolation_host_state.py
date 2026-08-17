@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Never
 
 from ops.testing.isolation_common import IsolationError, JsonObject, JsonValue
+from ops.testing.isolation_listener_state import (
+    ListenerKey,
+    listener_owner_kind,
+    task_listener_keys,
+    task_listeners,
+    validated_listener_map,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,11 +28,19 @@ class _Category:
     exact_task: dict[ResourceKey, JsonObject] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ListenerDrift:
+    """Exact ambient process listeners that changed since the baseline."""
+
+    disappeared: tuple[JsonObject, ...]
+    appeared: tuple[JsonObject, ...]
+
+
 def _fail(message: str) -> Never:
     raise IsolationError(message)
 
 
-def require_known_host_state(ledger: JsonObject, current: JsonObject) -> None:
+def require_known_host_state(ledger: JsonObject, current: JsonObject) -> ListenerDrift:
     """Reject baseline drift, missing task identities, and foreign resources."""
     if set(current) != {"containers", "listeners", "networks", "volumes"}:
         _fail("foreign host inventory has the wrong closed root")
@@ -58,16 +73,10 @@ def require_known_host_state(ledger: JsonObject, current: JsonObject) -> None:
         baseline.get("networks"),
         current.get("networks"),
     )
-    expected_listeners = _task_listeners(claims)
-    _compare_category(
-        _Category(
-            "listener",
-            _listener_key,
-            set(expected_listeners),
-            expected_listeners,
-        ),
+    return _compare_listeners(
         baseline.get("listeners"),
         current.get("listeners"),
+        claims,
     )
 
 
@@ -103,6 +112,80 @@ def _compare_category(
         _fail(f"recorded task {label} identity drifted")
 
 
+def _compare_listeners(
+    baseline_value: JsonValue,
+    current_value: JsonValue,
+    claims: list[JsonObject],
+) -> ListenerDrift:
+    baseline = validated_listener_map(
+        baseline_value,
+        "baseline listeners",
+        _listener_key,
+    )
+    current = validated_listener_map(
+        current_value,
+        "current listeners",
+        _listener_key,
+    )
+    expected = task_listeners(claims, _listener_key)
+    task_keys = set(expected) | task_listener_keys(claims, _listener_key)
+    _require_exact_task_listeners(baseline, current, expected, task_keys)
+    disappeared = _disappeared_ambient_listeners(baseline, current)
+    appeared = _appeared_ambient_listeners(baseline, current, expected, task_keys)
+    return ListenerDrift(tuple(disappeared), tuple(appeared))
+
+
+def _require_exact_task_listeners(
+    baseline: dict[ListenerKey, JsonObject],
+    current: dict[ListenerKey, JsonObject],
+    expected: dict[ListenerKey, JsonObject],
+    task_keys: set[ListenerKey],
+) -> None:
+    if set(baseline) & task_keys:
+        _fail("baseline listener collides with a task endpoint")
+    for identity, listener in expected.items():
+        actual = current.get(identity)
+        if actual is None:
+            _fail("recorded task listener is missing")
+        if actual != listener:
+            _fail("recorded task listener identity drifted")
+
+
+def _disappeared_ambient_listeners(
+    baseline: dict[ListenerKey, JsonObject],
+    current: dict[ListenerKey, JsonObject],
+) -> list[JsonObject]:
+    disappeared: list[JsonObject] = []
+    for identity, listener in baseline.items():
+        actual = current.get(identity)
+        if listener_owner_kind(listener) == "container":
+            if actual != listener:
+                _fail("baseline listener drifted")
+        elif actual != listener:
+            disappeared.append(listener)
+    return disappeared
+
+
+def _appeared_ambient_listeners(
+    baseline: dict[ListenerKey, JsonObject],
+    current: dict[ListenerKey, JsonObject],
+    expected: dict[ListenerKey, JsonObject],
+    task_keys: set[ListenerKey],
+) -> list[JsonObject]:
+    appeared: list[JsonObject] = []
+    for identity, listener in current.items():
+        if identity in task_keys:
+            if identity not in expected:
+                _fail("listener occupies a reserved task endpoint")
+            continue
+        if baseline.get(identity) == listener:
+            continue
+        if listener_owner_kind(listener) == "container":
+            _fail("foreign container-bound listener appeared outside ledger authority")
+        appeared.append(listener)
+    return appeared
+
+
 def _task_container_ids(claims: list[JsonObject]) -> set[ResourceKey]:
     identifiers: set[ResourceKey] = set()
     for claim in claims:
@@ -136,24 +219,7 @@ def _task_resource_keys(
     return identities
 
 
-def _task_listeners(claims: list[JsonObject]) -> dict[ResourceKey, JsonObject]:
-    result: dict[ResourceKey, JsonObject] = {}
-    for claim in claims:
-        if claim.get("status") not in {"prepared", "active"}:
-            continue
-        observed = _object(claim.get("observed"), "claim observation")
-        value = observed.get("listeners")
-        if value is None:
-            continue
-        for listener in _objects(value, "claim listeners"):
-            identity = _listener_key(listener)
-            if identity in result:
-                _fail("duplicate task listener identity")
-            result[identity] = listener
-    return result
-
-
-def _listener_key(item: JsonObject) -> ResourceKey:
+def _listener_key(item: JsonObject) -> ListenerKey:
     return (
         _text(item.get("transport"), "listener transport"),
         _text(item.get("host"), "listener host"),
