@@ -11,7 +11,6 @@ from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.prescription.services import issue_prescription
 from apps.retention.services import apply_retention_policy
-from apps.scheduling.services import create_appointment
 from apps.teleconsult.services import start_teleconsultation
 from django.apps import apps as django_apps
 
@@ -47,7 +46,6 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
-    create_appointment,
     submit_intake,
     record_clinical_note,
     start_teleconsultation,
@@ -93,7 +91,6 @@ def test_domain_app_configs_are_registered() -> None:
     "entrypoint",
     DEFERRED_SERVICE_ENTRYPOINTS,
     ids=(
-        "scheduling.create_appointment",
         "intake.submit_intake",
         "ehr.record_clinical_note",
         "teleconsult.start_teleconsultation",

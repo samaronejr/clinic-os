@@ -25,6 +25,14 @@ class AvailabilityAccessDeniedError(Exception):
         super().__init__("availability access denied")
 
 
+class AppointmentAccessDeniedError(Exception):
+    """Hide whether appointment actor, clinic, or enrollment was rejected."""
+
+    def __init__(self) -> None:
+        """Expose one stable non-identifying denial message."""
+        super().__init__("appointment access denied")
+
+
 @dataclass(frozen=True, slots=True)
 class AvailabilityViewScope:
     """Bind a visible clinic to all blocks or one physician UUID."""
@@ -40,6 +48,15 @@ def authorized_manager_clinic(clinic_id: UUID) -> Clinic:
         return Clinic.objects.get(pk=clinic_id)
     except (CurrentActorError, Clinic.DoesNotExist) as error:
         raise AvailabilityAccessDeniedError from error
+
+
+def authorized_appointment_manager_clinic(clinic_id: UUID) -> Clinic:
+    """Load one clinic only after current-actor booking authorization."""
+    try:
+        require_current_actor_clinic_roles(clinic_id, MANAGER_ROLES)
+        return Clinic.objects.get(pk=clinic_id)
+    except (CurrentActorError, Clinic.DoesNotExist) as error:
+        raise AppointmentAccessDeniedError from error
 
 
 def authorized_view_scope(clinic_id: UUID) -> AvailabilityViewScope:
