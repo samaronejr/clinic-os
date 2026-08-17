@@ -11,10 +11,17 @@ from apps.scheduling.models import Appointment
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
+    AppointmentCancellationConflictError,
+    AppointmentCancellationInputError,
     AppointmentCreateInputError,
     AppointmentIdempotencyConflictError,
+    AppointmentLocalRange,
     AppointmentPractitionerError,
+    AppointmentRescheduleInputError,
+    AppointmentTerminalError,
     SlotConflict,
+    cancel_appointment,
+    reschedule_appointment,
 )
 from apps.tenancy.db import tenant_context
 from django.db import (
@@ -103,6 +110,117 @@ def start_appointment_creator(
         ),
     )
     thread.start()
+    return thread, backend_pids, outcomes
+
+
+@dataclass(frozen=True, slots=True)
+class _TransitionCall:
+    actor_id: UUID
+    organization_id: UUID
+    appointment_id: UUID
+    local_range: AppointmentLocalRange | None
+    reason: str | None
+    backend_pids: Queue[int]
+    outcomes: Queue[AppointmentOutcome]
+    start_barrier: Barrier
+
+
+def _transition_worker(call: _TransitionCall) -> None:
+    close_old_connections()
+    try:
+        with runtime_role(), tenant_context(call.actor_id, call.organization_id):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_backend_pid()")
+                row = cursor.fetchone()
+                cursor.execute("SHOW transaction_isolation")
+                assert cursor.fetchone() == ("read committed",)
+            assert row is not None
+            call.backend_pids.put(int(row[0]))
+            call.start_barrier.wait(timeout=5)
+            if call.local_range is not None:
+                outcome = reschedule_appointment(
+                    appointment_id=call.appointment_id,
+                    local_range=call.local_range,
+                )
+            elif call.reason is not None:
+                outcome = cancel_appointment(
+                    appointment_id=call.appointment_id,
+                    reason=call.reason,
+                )
+            else:
+                raise AssertionError
+            call.outcomes.put(outcome)
+    except (
+        AppointmentAccessDeniedError,
+        AppointmentAvailabilityError,
+        AppointmentCancellationConflictError,
+        AppointmentCancellationInputError,
+        AppointmentCreateInputError,
+        AppointmentIdempotencyConflictError,
+        AppointmentPractitionerError,
+        AppointmentRescheduleInputError,
+        AppointmentTerminalError,
+        DatabaseError,
+        SlotConflict,
+    ) as error:
+        call.outcomes.put(error)
+    finally:
+        connections.close_all()
+
+
+def _start_transition(call: _TransitionCall) -> Thread:
+    thread = Thread(target=_transition_worker, args=(call,))
+    thread.start()
+    return thread
+
+
+def start_appointment_rescheduler(
+    *,
+    actor_id: UUID,
+    organization_id: UUID,
+    appointment_id: UUID,
+    local_range: AppointmentLocalRange,
+    start_barrier: Barrier,
+) -> tuple[Thread, Queue[int], Queue[AppointmentOutcome]]:
+    backend_pids: Queue[int] = Queue()
+    outcomes: Queue[AppointmentOutcome] = Queue()
+    thread = _start_transition(
+        _TransitionCall(
+            actor_id,
+            organization_id,
+            appointment_id,
+            local_range,
+            None,
+            backend_pids,
+            outcomes,
+            start_barrier,
+        )
+    )
+    return thread, backend_pids, outcomes
+
+
+def start_appointment_canceller(
+    *,
+    actor_id: UUID,
+    organization_id: UUID,
+    appointment_id: UUID,
+    reason: str,
+    start_barrier: Barrier,
+) -> tuple[Thread, Queue[int], Queue[AppointmentOutcome]]:
+    backend_pids: Queue[int] = Queue()
+    outcomes: Queue[AppointmentOutcome] = Queue()
+    thread = _start_transition(
+        _TransitionCall(
+            actor_id,
+            organization_id,
+            appointment_id,
+            None,
+            reason,
+            backend_pids,
+            outcomes,
+            start_barrier,
+        )
+    )
     return thread, backend_pids, outcomes
 
 

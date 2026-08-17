@@ -9,6 +9,7 @@ from django.db import IntegrityError, transaction
 
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
+    AppointmentTerminalError,
     SlotConflict,
 )
 from apps.scheduling.appointment_values import (
@@ -19,6 +20,8 @@ from apps.scheduling.appointment_values import (
 from apps.scheduling.models import Appointment
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from apps.identity.models import Clinic
 
 
@@ -65,3 +68,30 @@ def _constraint_name(error: IntegrityError) -> str | None:
     if not isinstance(cause, psycopg.Error):
         return None
     return cause.diag.constraint_name
+
+
+def update_appointment_range(
+    appointment: Appointment,
+    *,
+    start_at: datetime,
+    end_at: datetime,
+) -> Appointment:
+    """Update one range in a savepoint and map only named appointment guards."""
+    try:
+        with transaction.atomic():
+            appointment.start_at = start_at
+            appointment.end_at = end_at
+            appointment.save(update_fields=("start_at", "end_at", "updated_at"))
+    except IntegrityError as error:
+        constraint = _constraint_name(error)
+        if constraint in {
+            "scheduling_appointment_scheduled_patient_excl",
+            "scheduling_appointment_scheduled_practitioner_excl",
+        }:
+            raise SlotConflict from error
+        if constraint == "scheduling_appointment_active_availability_check":
+            raise AppointmentAvailabilityError from error
+        if constraint == "scheduling_appointment_terminal_check":
+            raise AppointmentTerminalError from error
+        raise
+    return appointment

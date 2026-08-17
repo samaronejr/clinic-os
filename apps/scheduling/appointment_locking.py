@@ -25,6 +25,7 @@ class AppointmentWriteRows:
     """UUID-ordered rows held until the appointment transaction ends."""
 
     availability: AvailabilityBlock | None
+    additional_availability: tuple[AvailabilityBlock | None, ...]
     conflicting_appointment_ids: tuple[UUID, ...]
 
 
@@ -55,8 +56,16 @@ def lock_appointment_write_rows(
     target: AppointmentWriteTarget,
     start_at: datetime,
     end_at: datetime,
+    additional_ranges: tuple[tuple[datetime, datetime], ...] = (),
+    appointment_ids: tuple[UUID, ...] = (),
 ) -> AppointmentWriteRows:
     """Lock containing availability, then overlapping appointments by UUID."""
+    ranges = ((start_at, end_at), *additional_ranges)
+    availability_filter = Q()
+    appointment_overlap = Q()
+    for range_start, range_end in ranges:
+        availability_filter |= Q(start_at__lte=range_start, end_at__gte=range_end)
+        appointment_overlap |= Q(start_at__lt=range_end, end_at__gt=range_start)
     availability_rows = tuple(
         AvailabilityBlock.objects.select_for_update()
         .filter(
@@ -64,28 +73,46 @@ def lock_appointment_write_rows(
             clinic_id=target.clinic_id,
             practitioner_id__in=target.practitioner_ids,
             retired_at__isnull=True,
-            start_at__lte=start_at,
-            end_at__gte=end_at,
         )
+        .filter(availability_filter)
         .order_by("pk")
     )
-    availability = availability_rows[0] if len(availability_rows) == 1 else None
+    availability_matches = tuple(
+        _covering_availability(availability_rows, range_start, range_end)
+        for range_start, range_end in ranges
+    )
     conflict_ids = tuple(
         Appointment.objects.select_for_update()
         .filter(
             organization_id=target.organization_id,
-            status=Appointment.Status.SCHEDULED,
-            start_at__lt=end_at,
-            end_at__gt=start_at,
         )
         .filter(
-            Q(patient_id=target.patient_id)
-            | Q(practitioner_id__in=target.practitioner_ids)
+            Q(pk__in=appointment_ids)
+            | (
+                Q(status=Appointment.Status.SCHEDULED)
+                & appointment_overlap
+                & (
+                    Q(patient_id=target.patient_id)
+                    | Q(practitioner_id__in=target.practitioner_ids)
+                )
+            )
         )
         .order_by("pk")
         .values_list("pk", flat=True)
     )
     return AppointmentWriteRows(
-        availability=availability,
+        availability=availability_matches[0],
+        additional_availability=availability_matches[1:],
         conflicting_appointment_ids=conflict_ids,
     )
+
+
+def _covering_availability(
+    rows: tuple[AvailabilityBlock, ...],
+    start_at: datetime,
+    end_at: datetime,
+) -> AvailabilityBlock | None:
+    matches = tuple(
+        row for row in rows if row.start_at <= start_at and row.end_at >= end_at
+    )
+    return matches[0] if len(matches) == 1 else None
