@@ -3,23 +3,23 @@ from typing import Final
 import psycopg
 import pytest
 from apps.identity.models import Clinic, Organization, UserClinicRole
+from apps.intake.rls import INTAKE_RLS_TARGETS
 from apps.tenancy.models import TenantScopedModel
+from apps.tenancy.rls import TENANT_RLS_TARGETS
 from django.apps import apps as django_apps
 from django.db import connection
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-EXPECTED_TENANT_COLUMNS: Final = {
-    "identity_organization": "id",
-    "identity_clinic": "organization_id",
-    "identity_userclinicrole": "organization_id",
-    "tenancy_tenantprobe": "organization_id",
-}
+FOUNDATION_TENANT_COLUMNS: Final = dict(TENANT_RLS_TARGETS)
+PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS)
+EXPECTED_TENANT_COLUMNS: Final = FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS
 SELECT_ONLY_RUNTIME_TABLES: Final = {
     "identity_organization",
     "identity_clinic",
     "identity_userclinicrole",
 }
+SELECT_INSERT_RUNTIME_TABLES: Final = set(PHASE1A_TENANT_COLUMNS)
 
 
 def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
@@ -70,7 +70,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
 
 
 def test_tenant_policies_are_public_permissive_all_and_fail_closed() -> None:
-    # Given: the four expected RLS policy targets
+    # Given: the immutable foundation and versioned Phase 1A policy targets
     # When: PostgreSQL deparses every policy expression
     with connection.cursor() as cursor:
         cursor.execute(
@@ -154,6 +154,10 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     assert runtime_posture == ("clinic_app", False, False, False)
     assert tenant_grants == {
         (table, "SELECT") for table in SELECT_ONLY_RUNTIME_TABLES
+    } | {
+        (table, privilege)
+        for table in SELECT_INSERT_RUNTIME_TABLES
+        for privilege in ("SELECT", "INSERT")
     } | {
         ("tenancy_tenantprobe", privilege)
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE")

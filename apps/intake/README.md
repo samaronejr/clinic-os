@@ -1,3 +1,5 @@
 # Intake
 
-This domain is deferred to Phase >=1. Its service entrypoint fails fast, and its adapter remains an interface-only boundary.
+The Phase 1A data boundary stores organization-scoped patient identity and clinic
+enrollment. Service and adapter entrypoints remain deferred to their dedicated
+workflow slice.

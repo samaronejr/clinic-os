@@ -2,13 +2,15 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
+from apps.identity.models import Clinic, Organization
+from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.scheduling import timezones
 from apps.scheduling.timezones import (
     LocalTimeValueError,
     civil_day_bounds,
     parse_local_minute,
 )
-from django.db import connection
+from django.db import connection, transaction
 from psycopg import sql
 
 
@@ -72,6 +74,41 @@ def test_civil_week_uses_monday_boundaries() -> None:
 )
 def test_timezone_change_refuses_after_first_dependent_row(table_name: str) -> None:
     clinic_id = uuid4()
+    if table_name == "intake_patientclinicenrollment":
+        organization_id = uuid4()
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                [str(organization_id)],
+            )
+            organization = Organization.objects.create(
+                id=organization_id,
+                name="Synthetic Organization Timezone Guard",
+                cnpj="00000000004001",
+            )
+            clinic = Clinic.objects.create(
+                id=clinic_id,
+                organization=organization,
+                name="Synthetic Clinic Timezone Guard",
+                crm_uf="SP",
+                timezone="America/Sao_Paulo",
+            )
+            patient = Patient.objects.create(
+                organization=organization,
+                full_name="Synthetic Patient Timezone Guard",
+                birth_date=date(2000, 1, 2),
+            )
+            PatientClinicEnrollment.objects.create(
+                organization=organization,
+                clinic=clinic,
+                patient=patient,
+                idempotency_key=uuid4(),
+                create_fingerprint=b"t" * 32,
+            )
+            with pytest.raises(timezones.ClinicTimezoneLockedError):
+                timezones.ensure_clinic_timezone_change_allowed(clinic_id)
+        return
+
     table = sql.Identifier(table_name)
     with connection.cursor() as cursor:
         cursor.execute(
