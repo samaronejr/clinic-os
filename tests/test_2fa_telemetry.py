@@ -4,13 +4,14 @@ import base64
 import importlib
 import json
 from types import TracebackType
-from typing import TYPE_CHECKING, Final, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 from unittest.mock import patch
 
 import pytest
 import sentry_sdk
 from apps.identity.models import User
 from config.settings import base as base_settings
+from config.settings.telemetry import scrub_sentry_event
 from django.test import Client, override_settings
 from django.views.debug import ExceptionReporter
 from django_otp.plugins.otp_totp.models import TOTPDevice
@@ -36,6 +37,7 @@ QR_DATA_URI_SENTINEL: Final = "data:image/png;base64,TODO9_QR_DATA_URI_CANARY"
 type ExceptionInfo = tuple[type[BaseException], BaseException, TracebackType]
 
 
+@runtime_checkable
 class FailureResponse(Protocol):
     status_code: int
     exc_info: ExceptionInfo | None
@@ -109,6 +111,8 @@ def test_sentry_initialization_disables_local_variable_capture(
             dsn="https://public@example.invalid/1",
             send_default_pii=False,
             include_local_variables=False,
+            max_request_body_size="never",
+            before_send=scrub_sentry_event,
         )
 
     importlib.reload(base_settings)
@@ -133,11 +137,8 @@ def test_qr_generation_failure_exposes_no_seed_or_provisioning_material(
     ):
         response = client.post("/auth/enroll/", {"action": "start"})
 
-    _assert_failure_surfaces_exclude(
-        cast("FailureResponse", response),
-        caplog,
-        SECRET_SENTINEL,
-    )
+    assert isinstance(response, FailureResponse)
+    _assert_failure_surfaces_exclude(response, caplog, SECRET_SENTINEL)
 
 
 @override_settings(DEBUG=False)
@@ -165,8 +166,5 @@ def test_enrollment_render_failure_exposes_no_qr_data_uri(
     ):
         response = client.post("/auth/enroll/", {"action": "start"})
 
-    _assert_failure_surfaces_exclude(
-        cast("FailureResponse", response),
-        caplog,
-        QR_DATA_URI_SENTINEL,
-    )
+    assert isinstance(response, FailureResponse)
+    _assert_failure_surfaces_exclude(response, caplog, QR_DATA_URI_SENTINEL)
