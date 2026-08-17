@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from django.db import DataError
+
 from apps.identity.current_context import (
     MANAGER_ROLES,
     CurrentActorError,
@@ -46,7 +48,7 @@ def authorized_manager_clinic(clinic_id: UUID) -> Clinic:
     try:
         require_current_actor_clinic_roles(clinic_id, MANAGER_ROLES)
         return Clinic.objects.get(pk=clinic_id)
-    except (CurrentActorError, Clinic.DoesNotExist) as error:
+    except (CurrentActorError, Clinic.DoesNotExist, DataError) as error:
         raise AvailabilityAccessDeniedError from error
 
 
@@ -55,7 +57,7 @@ def authorized_appointment_manager_clinic(clinic_id: UUID) -> Clinic:
     try:
         require_current_actor_clinic_roles(clinic_id, MANAGER_ROLES)
         return Clinic.objects.get(pk=clinic_id)
-    except (CurrentActorError, Clinic.DoesNotExist) as error:
+    except (CurrentActorError, Clinic.DoesNotExist, DataError) as error:
         raise AppointmentAccessDeniedError from error
 
 
@@ -70,7 +72,7 @@ def authorized_view_scope(clinic_id: UUID) -> AvailabilityViewScope:
             ).values_list("role", flat=True)
         )
         clinic = Clinic.objects.get(pk=clinic_id)
-    except (CurrentActorError, Clinic.DoesNotExist) as error:
+    except (CurrentActorError, Clinic.DoesNotExist, DataError) as error:
         raise AvailabilityAccessDeniedError from error
     if roles.intersection(MANAGER_ROLES):
         return AvailabilityViewScope(clinic=clinic, practitioner_id=None)
