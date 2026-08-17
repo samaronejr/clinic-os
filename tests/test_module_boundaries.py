@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
@@ -6,7 +7,7 @@ from apps.billing.services import create_invoice
 from apps.comms.services import send_message
 from apps.consent.services import record_consent
 from apps.ehr.services import record_clinical_note
-from apps.intake.services import submit_intake
+from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.prescription.services import issue_prescription
 from apps.retention.services import apply_retention_policy
@@ -115,3 +116,30 @@ def test_deferred_service_entrypoint_raises_phase_boundary(
     # Then: it fails with the exact shared phase-boundary exception
     assert type(exc_info.value) is NotImplementedError
     assert exc_info.value.args == ("Phase >=1",)
+
+
+def test_intake_service_boundaries_derive_context_and_keep_search_body_only() -> None:
+    create_parameters = signature(create_patient).parameters
+    search_parameters = signature(search_patients).parameters
+
+    assert list(create_parameters) == [
+        "clinic_id",
+        "full_name",
+        "birth_date",
+        "idempotency_key",
+    ]
+    assert list(search_parameters) == ["clinic_id", "query", "page", "birth_date"]
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY
+        for parameter in (*create_parameters.values(), *search_parameters.values())
+    )
+    assert not {
+        "actor",
+        "actor_id",
+        "organization",
+        "organization_id",
+        "request",
+        "url",
+        "patient_id",
+        "enrollment_id",
+    }.intersection(set(create_parameters) | set(search_parameters))
