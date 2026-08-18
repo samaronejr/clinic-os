@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Final, Never
 
+from ops.testing.isolation_borrowed_resources import borrowed_resource_names
 from ops.testing.isolation_common import IsolationError, JsonObject, JsonValue
 from ops.testing.isolation_stack_service import (
     validate_loopback_port,
@@ -39,7 +40,7 @@ def validate_stack_desired(value: JsonObject) -> None:
     """Validate the closed resource and service mapping of one stack spec."""
     if set(value) != set(DESIRED_KEYS):
         _fail("stack desired has the wrong closed key set")
-    project = _name(value["project"], "stack project")
+    _ = _name(value["project"], "stack project")
     services = _objects(value["services"], "stack services")
     if not services:
         _fail("stack requires at least one desired service")
@@ -56,11 +57,21 @@ def validate_stack_desired(value: JsonObject) -> None:
     _sorted_unique(ports, "loopback ports")
     names = [validate_stack_service(item, set(ports)) for item in services]
     _sorted_unique(names, "service names")
-    _borrowed(value["borrowed_volume_refs"], "volume_name", "read-only")
-    _borrowed(value["borrowed_network_refs"], "network_name", "attach")
-    _validate_service_resources(services, owned_volumes, owned_networks)
-    if not project:
-        _fail("stack project is empty")
+    borrowed_volumes = borrowed_resource_names(
+        value["borrowed_volume_refs"], "volume_name", "read-only"
+    )
+    borrowed_networks = borrowed_resource_names(
+        value["borrowed_network_refs"], "network_name", "attach"
+    )
+    if owned_volumes & borrowed_volumes or owned_networks & borrowed_networks:
+        _fail("stack cannot own and borrow the same resource")
+    _validate_service_resources(
+        services,
+        owned_volumes,
+        owned_networks,
+        borrowed_volumes,
+        borrowed_networks,
+    )
 
 
 def reserved_stack_observed() -> JsonObject:
@@ -153,25 +164,21 @@ def _validate_service_resources(
     services: list[JsonObject],
     owned_volumes: set[str],
     owned_networks: set[str],
+    borrowed_volumes: set[str],
+    borrowed_networks: set[str],
 ) -> None:
     for service in services:
         for reference in _objects(service.get("network_refs"), "network refs"):
-            if reference.get("network_name") not in owned_networks:
+            if reference.get("network_name") not in owned_networks | borrowed_networks:
                 _fail("service network is not owned by its stack")
         for mount in _objects(service.get("volume_mounts"), "volume mounts"):
             volume_name = _text(mount.get("volume_name"), "mounted volume name")
             if volume_name in owned_volumes:
                 continue
+            if volume_name in borrowed_volumes and mount.get("read_only") is True:
+                continue
             if not volume_name.startswith("/") or mount.get("read_only") is not True:
                 _fail("service volume is not owned or an immutable bind source")
-
-
-def _borrowed(value: JsonValue, key: str, access: str) -> None:
-    items = _objects(value, f"borrowed {key}")
-    if items:
-        _fail(f"borrowed {key} references are not implemented in this slice")
-    if access not in {"read-only", "attach"}:
-        _fail("internal borrowed access contract drifted")
 
 
 def _resource_names(value: JsonValue, key: str) -> list[str]:

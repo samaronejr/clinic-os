@@ -1,0 +1,13 @@
+**
+!Dockerfile
+!application-source-manifest.json
+!apps/**
+!config/**
+!manage.py
+!ops/container/**
+!ops/testing/timezone_contract.py
+!pyproject.toml
+!sitecustomize.py
+!static/**
+!templates/**
+!uv.lock

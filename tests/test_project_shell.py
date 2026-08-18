@@ -1,37 +1,9 @@
-from typing import NoReturn, Self
-
 import pytest
 import sentry_sdk
 from apps.core import views
 from config.celery import app as celery_app
 from django.conf import settings
-from django.db import DatabaseError
 from django.test import Client
-
-
-class FakeCursor:
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        return None
-
-    def execute(self, sql: str) -> None:
-        self.statement = sql
-
-    def fetchone(self) -> tuple[int]:
-        return (1,)
-
-
-class WorkingConnection:
-    def cursor(self) -> FakeCursor:
-        return FakeCursor()
-
-
-class FailingConnection:
-    def cursor(self) -> NoReturn:
-        msg = "simulated database outage"
-        raise DatabaseError(msg)
 
 
 def test_healthz_reports_liveness_without_database_access(client: Client) -> None:
@@ -47,8 +19,8 @@ def test_healthz_reports_liveness_without_database_access(client: Client) -> Non
 def test_readyz_reports_ready_when_the_database_probe_succeeds(
     client: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Given: the default connection accepts the readiness probe query
-    monkeypatch.setattr(views, "connections", {"default": WorkingConnection()})
+    # Given: the bounded production readiness contract succeeds
+    monkeypatch.setattr(views, "probe_database_ready", lambda: True)
 
     # When: the readiness endpoint is requested
     response = client.get("/readyz")
@@ -61,8 +33,8 @@ def test_readyz_reports_ready_when_the_database_probe_succeeds(
 def test_readyz_reports_unavailable_when_the_database_probe_fails(
     client: Client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Given: the default connection raises on the readiness probe
-    monkeypatch.setattr(views, "connections", {"default": FailingConnection()})
+    # Given: the bounded production readiness contract rejects its dependency
+    monkeypatch.setattr(views, "probe_database_ready", lambda: False)
 
     # When: the readiness endpoint is requested
     response = client.get("/readyz")

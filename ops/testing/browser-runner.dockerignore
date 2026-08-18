@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!browser-runner-source-manifest.json
+!config/runtime.py
+!ops/testing/**
+!pyproject.toml
+!sitecustomize.py
+!uv.lock

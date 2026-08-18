@@ -33,6 +33,7 @@ from ops.testing.isolation_common import (
     ensure_private_directory,
     utc_now,
 )
+from ops.testing.isolation_filesystem_claim import require_filesystem_release_ready
 
 if TYPE_CHECKING:
     from ops.testing.isolation_ledger_store import LedgerSession
@@ -61,7 +62,7 @@ def release_candidate_claim(
     )
     binding = claim.get("candidate_envelope_binding")
     if binding is None:
-        _release_unbound(session, claims, claim, claim_root, authorizations)
+        _release_unbound(session, claims, claim, claim_root)
         return True
     if claim.get("status") != "active":
         _fail("bound candidate publisher is not active")
@@ -85,7 +86,7 @@ def release_candidate_claim(
     history_destination = authorization_destination(authorizations[1])
     if observations[1] == unpublished_observation(authorizations[1]):
         history_root = Path(text_value(authorizations[1]["root_path"], "history root"))
-        ensure_private_directory(history_root)
+        _ = ensure_private_directory(history_root)
         publish_immutable(history_destination, history_raw, claim_id)
         observations[1].clear()
         observations[1].update(expected_history)
@@ -104,26 +105,8 @@ def _release_unbound(
     claims: list[JsonObject],
     claim: JsonObject,
     claim_root: Path,
-    authorizations: list[JsonObject],
 ) -> None:
-    status = claim.get("status")
-    observed = object_value(claim["observed"], "candidate observed")
-    if status == "reserved":
-        expected: JsonObject = {"owned_files": [], "published_outputs": []}
-        if observed != expected:
-            _fail("reserved candidate abort has observations")
-    elif status == "active":
-        outputs = candidate_observations(claim, authorizations)
-        if any(
-            output != unpublished_observation(authorization)
-            for output, authorization in zip(outputs, authorizations, strict=True)
-        ):
-            _fail("active candidate abort has published state")
-    else:
-        _fail("candidate abort status is invalid")
-    if any(_exists(authorization_destination(item)) for item in authorizations):
-        _fail("unbound candidate abort found a destination")
-    _require_absent(claim_root, "candidate abort staging remains")
+    require_filesystem_release_ready(claim, claim_root)
     claims.remove(claim)
     session.ledger["last_verified_at_utc"] = utc_now()
     session.commit()
@@ -143,7 +126,7 @@ def _require_absent(path: Path, message: str) -> None:
 
 def _exists(path: Path) -> bool:
     try:
-        os.lstat(path)
+        _ = os.lstat(path)
     except FileNotFoundError:
         return False
     return True

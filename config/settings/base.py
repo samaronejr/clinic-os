@@ -3,8 +3,12 @@ from pathlib import Path
 
 import environ
 
+from config.runtime import enforce_wheel_timezone
+
 from .contracts import require_synthetic_mode
 from .telemetry import configure_sentry
+
+enforce_wheel_timezone()
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_APP_DATABASE_URL = (
@@ -65,6 +69,7 @@ STEP_UP_MAX_AGE_SECONDS: int = 300
 
 MIDDLEWARE: list[str] = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -131,7 +136,27 @@ TIME_ZONE: str = "UTC"
 USE_I18N: bool = True
 USE_TZ: bool = True
 STATIC_URL: str = "/static/"
+STATIC_ROOT: Path = BASE_DIR / "staticfiles"
 STATICFILES_DIRS: list[Path] = [BASE_DIR / "static"]
+PRODUCTION_STATICFILES_BACKEND: str = (
+    "whitenoise.storage.CompressedManifestStaticFilesStorage"
+)
+_settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+_direct_static_modules = {
+    "config.settings.browser",
+    "config.settings.dev",
+    "config.settings.test",
+}
+STATICFILES_BACKEND: str = (
+    "django.contrib.staticfiles.storage.StaticFilesStorage"
+    if _settings_module in _direct_static_modules
+    else PRODUCTION_STATICFILES_BACKEND
+)
+STORAGES: dict[str, dict[str, str]] = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": STATICFILES_BACKEND},
+}
+WHITENOISE_AUTOREFRESH: bool = _settings_module == "config.settings.test"
 DEFAULT_AUTO_FIELD: str = "django.db.models.BigAutoField"
 
 SECURE_CONTENT_TYPE_NOSNIFF: bool = True
