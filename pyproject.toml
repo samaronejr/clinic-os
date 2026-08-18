@@ -15,9 +15,15 @@ dependencies = [
   "redis",
   "rfc8785",
   "sentry-sdk[django]",
+  "tzdata==2026.3",
+  "whitenoise==6.12.0",
 ]
 
 [dependency-groups]
+browser = [
+  "playwright==1.61.0",
+  "pytest-playwright==0.8.0",
+]
 dev = [
   "django-stubs",
   "djangorestframework-stubs",
@@ -58,6 +64,7 @@ fixable = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "config/**/*.py" = ["D"]
 "config/settings/test.py" = ["D", "S105"]
+"ops/container/gunicorn_no_proxy.py" = ["D100"]
 "tests/**/*.py" = ["ARG", "D", "PLR2004", "S101", "SLF001"]
 
 [tool.ruff.format]
@@ -78,6 +85,10 @@ django_settings_module = "config.settings.test"
 [[tool.mypy.overrides]]
 module = ["config.settings.dev", "config.settings.prod"]
 allow_redefinition = true
+
+[[tool.mypy.overrides]]
+module = "ops.container.gunicorn_no_proxy"
+disable_error_code = ["var-annotated"]
 
 [[tool.mypy.overrides]]
 module = "environ"

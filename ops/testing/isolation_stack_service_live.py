@@ -95,13 +95,50 @@ def _validated_attachments(
     expected = _objects(desired.get("network_refs"), "service network refs")
     raw = current.get("network_attachments")
     actual = [] if raw is None and not strict else _objects(raw, "network attachments")
+    declared = {
+        str(item.get("network_name")): set(
+            _strings(item.get("aliases"), "declared network aliases")
+        )
+        for item in expected
+    }
+    project = _label(current, "com.docker.compose.project")
+    service = _label(current, "com.docker.compose.service")
+    identifier = _text(current.get("id"), "container ID")
+    automatic = {identifier[:12], f"{project}-{service}-1"}
+    if desired.get("network_mode") == "none":
+        if expected or len(actual) > 1:
+            _fail("network-none service has declared attachments")
+        if actual:
+            item = actual[0]
+            aliases = set(_strings(item.get("aliases"), "network aliases"))
+            if item.get("network_name") != "none" or aliases not in (set(), automatic):
+                _fail("network-none service attachment drifted")
+        return []
+    normalized: list[JsonObject] = []
+    for item in actual:
+        network_name = _text(item.get("network_name"), "network name")
+        aliases = set(_strings(item.get("aliases"), "network aliases"))
+        expected_aliases = declared.get(network_name)
+        if (
+            expected_aliases is None
+            or not expected_aliases <= aliases
+            or not aliases <= expected_aliases | automatic
+        ):
+            _fail("live stack service network aliases drifted")
+        normalized.append(
+            {
+                "aliases": _json_strings(sorted(expected_aliases)),
+                "network_id": item.get("network_id"),
+                "network_name": network_name,
+            }
+        )
     projected = [
         {"aliases": item.get("aliases"), "network_name": item.get("network_name")}
-        for item in actual
+        for item in normalized
     ]
     if projected != expected:
         _fail("live stack service network attachments drifted")
-    return actual
+    return normalized
 
 
 def _validate_network_mode(
@@ -135,8 +172,28 @@ def _objects(value: JsonValue, context: str) -> list[JsonObject]:
     return result
 
 
+def _strings(value: JsonValue, context: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        _fail(f"{context} must be a string array")
+    return [item for item in value if isinstance(item, str)]
+
+
+def _label(container: JsonObject, name: str) -> str:
+    labels = _objects(container.get("labels"), "container labels")
+    matches = [item.get("value") for item in labels if item.get("name") == name]
+    if len(matches) != 1:
+        _fail("container service labels are invalid")
+    return _text(matches[0], "container service label")
+
+
 def _json_objects(value: list[JsonObject]) -> list[JsonValue]:
     return [copy.deepcopy(item) for item in value]
+
+
+def _json_strings(value: list[str]) -> list[JsonValue]:
+    result: list[JsonValue] = []
+    result.extend(value)
+    return result
 
 
 def _text(value: JsonValue, context: str) -> str:

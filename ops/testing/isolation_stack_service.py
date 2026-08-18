@@ -6,6 +6,7 @@ import re
 from typing import Final, Never
 
 from ops.testing.isolation_common import IsolationError, JsonObject, JsonValue
+from ops.testing.isolation_service_contracts import validate_service_contracts
 
 SERVICE_KEYS: Final = frozenset(
     {
@@ -59,11 +60,10 @@ def validate_stack_service(
     validate_environment_contract(
         _object(service["environment_contract"], "environment contract")
     )
-    if (
-        service["image_contract"] is not None
-        or service["filesystem_contract"] is not None
-    ):
-        _fail("authored image contracts are not implemented in this slice")
+    validate_service_contracts(
+        service["image_contract"],
+        service["filesystem_contract"],
+    )
     return name
 
 

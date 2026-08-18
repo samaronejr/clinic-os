@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from typing import Never
 
+from ops.testing.isolation_borrowed_resources import observe_borrowed_resources
 from ops.testing.isolation_common import IsolationError, JsonObject, JsonValue
 from ops.testing.isolation_stack_observation import validate_stack_observation
 from ops.testing.isolation_stack_service_live import observe_live_service
@@ -42,16 +43,14 @@ def observe_live_stack(
         return None
     if missing:
         _fail("live stack reservation is partial")
-    if (
-        desired.get("borrowed_network_refs") != []
-        or desired.get("borrowed_volume_refs") != []
-    ):
-        _fail("live stack borrowed resources are not supported by this observer")
-    observed_services.sort(key=lambda item: str(item["container_id"]))
-    container_ids = [
+    borrowed_volumes, borrowed_networks = observe_borrowed_resources(
+        desired,
+        inventory,
+    )
+    container_ids = sorted(
         _text(item.get("container_id"), "observed container ID")
         for item in observed_services
-    ]
+    )
     listeners = [
         copy.deepcopy(item)
         for item in _objects(inventory.get("listeners"), "live listeners")
@@ -65,8 +64,8 @@ def observe_live_stack(
         )
     )
     observed: JsonObject = {
-        "borrowed_networks": [],
-        "borrowed_volumes": [],
+        "borrowed_networks": _json_objects(borrowed_networks),
+        "borrowed_volumes": _json_objects(borrowed_volumes),
         "container_ids": _json_strings(container_ids),
         "listeners": _json_objects(listeners),
         "owned_networks": _json_objects(_owned_networks(desired, inventory)),

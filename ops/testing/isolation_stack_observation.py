@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final, Never
 if TYPE_CHECKING:
     from pathlib import Path
 
+from ops.testing.isolation_borrowed_resources import validate_borrowed_resources
 from ops.testing.isolation_common import (
     MODE_IMMUTABLE,
     IsolationError,
@@ -109,16 +110,19 @@ def validate_stack_observation(
     if set(observed) != set(OBSERVED_KEYS):
         _fail("stack observation has the wrong closed key set")
     desired = _object(claim.get("desired"), "stack desired")
-    _validate_resource_sets(desired, observed)
+    validate_borrowed_resources(desired, observed)
+    _validate_owned_volumes(desired, observed)
+    _validate_owned_networks(desired, observed)
     desired_services = _objects(desired.get("services"), "desired services")
     observed_services = _objects(observed.get("services"), "observed services")
     if len(observed_services) != len(desired_services):
         _fail("stack service mapping is incomplete")
-    container_ids = [
+    mapped_container_ids = [
         _validate_service(actual, expected, required_state)
         for expected, actual in zip(desired_services, observed_services, strict=True)
     ]
-    if container_ids != sorted(set(container_ids)):
+    container_ids = sorted(set(mapped_container_ids))
+    if len(container_ids) != len(mapped_container_ids):
         _fail("observed container IDs are not sorted and unique")
     if observed.get("container_ids") != _json_strings(container_ids):
         _fail("observed container ID set disagrees with service mapping")
@@ -136,18 +140,6 @@ def require_stack_release_ready(claim: JsonObject, claim_root: Path) -> None:
         _fail("claim root still exists")
     if claim.get("observed") != reserved_stack_observed():
         _fail("live stack identities remain recorded")
-
-
-def _validate_resource_sets(
-    desired: JsonObject,
-    observed: JsonObject,
-) -> None:
-    for key in ("borrowed_volumes", "borrowed_networks"):
-        desired_key = key.removesuffix("s") + "_refs"
-        if desired.get(desired_key) != [] or observed.get(key) != []:
-            _fail("stack borrowed resource observation is not implemented")
-    _validate_owned_volumes(desired, observed)
-    _validate_owned_networks(desired, observed)
 
 
 def _validate_owned_volumes(desired: JsonObject, observed: JsonObject) -> None:
