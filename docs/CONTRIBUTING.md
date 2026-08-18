@@ -1,7 +1,7 @@
 # Contributing to the Clinic OS foundation
 
 Changes must preserve tenant isolation, the single RBAC authority, trusted
-audit context, and explicit Phase 0 boundaries. Read
+audit context, and explicit Phase 1A synthetic boundaries. Read
 [ARCHITECTURE.md](ARCHITECTURE.md) and [SECURITY.md](SECURITY.md) before changing
 identity, tenancy, audit, or a deferred domain.
 
@@ -139,9 +139,9 @@ uv run pytest --reuse-db tests/test_stepup_policy.py tests/test_stepup_challenge
   allowed to perform the sensitive operation. Do not substitute baseline
   privileged-role TOTP for freshness.
 
-## Deferred domains and AI-assisted code
+## Deferred domains, live data, and AI-assisted code
 
-The ten deferred `services.py` entrypoints must continue to raise exactly
+The eight deferred `services.py` entrypoints must continue to raise exactly
 `NotImplementedError("Phase >=1")` until an approved later-phase design ships.
 Do not describe or expose these stubs as working clinical functionality.
 
@@ -151,6 +151,12 @@ merge.** Generated output does not relax ownership, security review, data
 minimization, migration, or verification requirements. Reject invented APIs,
 dependencies, provider commands, clinical assumptions, and tests that merely
 mirror an implementation without proving the boundary.
+
+Patient and scheduling work in Phase 1A is synthetic-only. A contributor may
+not add live identifiers, hosted deployment claims, backup credentials, or
+provider recovery steps. The unapproved templates are not evidence of approval;
+every item in [LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md) must remain
+unchecked until its named accountable owner records external approval.
 
 ## Data hygiene and review evidence
 

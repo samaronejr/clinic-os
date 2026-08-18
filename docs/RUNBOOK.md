@@ -1,6 +1,6 @@
-# Clinic OS foundation runbook
+# Clinic OS Phase 1A synthetic runbook
 
-This runbook covers the source-backed local foundation surface. It does not
+This runbook covers the source-backed Phase 1A synthetic surface. It does not
 authorize a production deployment. Security boundaries are in
 [SECURITY.md](SECURITY.md), and contribution gates are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -192,19 +192,30 @@ or clinical data into issues, logs, evidence files, or chat. Local example
 credentials are disposable only; production rotation requires the provider's
 approved procedure and a recorded incident timeline.
 
-## Backup, restore, and PITR placeholder
+## Disposable logical recovery rehearsal
 
-No production database has been provisioned by this repository, and no tested
-backup/restore command is available here. Before launch, the infrastructure
-owner must write and rehearse a provider-specific runbook covering encrypted
-automated backups, at least the approved retention window, restore into an
-isolated environment, role/function/policy verification, application smoke
-tests, audit-chain verification, recovery-point/recovery-time evidence, and
-cutover/rollback authorization.
+`make restore-rehearsal` is called only after the F3 supervisor has stopped
+source writers, migrated a distinct task-owned target as `clinic_owner`, and
+passed the two container IDs/database names plus one private credential FD and
+task-owned mode-0700 work/evidence paths. The target is empty except for
+owner-created migration/framework state. The target migration leaf set must
+equal the source before the fixed custom archive can mutate it.
+
+The command uses only PostgreSQL 16.14 `pg_dump`/`pg_restore` clients inside the
+exact source/target containers as isolated `clinic_super`. It writes a mode-0600
+custom archive and SHA-256 sidecar, requires the normalized `TABLE DATA` and
+`SEQUENCE SET` TOC to equal the fixed manifest, restores strict data-only with
+no ownership or ACL changes, verifies rows/posture/sequences, then deletes and
+proves absence of the dump and hash. Restored verification is read-only except
+for advancing each restored sequence once; it runs no restored provisioning or
+browser command.
+
+This rehearsal does not define a live backup principal and does not claim archive encryption or provider recovery. It is not reusable as an incident or
+production procedure. See [LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md).
 
 The Terraform skeleton enables an RDS backup-retention/PITR hook, but
-`terraform validate` is not a restore test. Do not invent `pg_dump`, AWS, or
-Terraform apply commands during an incident.
+`terraform validate` and this logical rehearsal are not provider restore tests.
+Do not invent AWS or Terraform apply commands during an incident.
 
 Source anchors: [Makefile](../Makefile), [Compose service](../docker-compose.yml),
 [health views](../apps/core/views.py), [database posture](../ops/db/posture.py),

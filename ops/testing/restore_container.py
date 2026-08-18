@@ -1,0 +1,191 @@
+"""Run every logical-recovery PostgreSQL client inside its owned container."""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from typing import Final, Never, Protocol
+
+from ops.testing.restore_contract import (
+    POSTGRES_VERSION,
+    RestoreContractError,
+    dump_argv,
+    restore_argv,
+)
+
+DOCKER: Final = "/usr/bin/docker"
+TIMEOUT_SECONDS: Final = 1800
+CONTAINER_ID_HEX_LENGTH: Final = 64
+POSTGRES_IDENTIFIER_MAX_LENGTH: Final = 63
+POSTGRES_VERSION_NUM: Final = "160014"
+
+
+class _ContainerRunner(Protocol):
+    def __call__(
+        self,
+        argv: tuple[str, ...],
+        standard_input: bytes | None,
+        environment: dict[str, str],
+    ) -> bytes: ...
+
+
+@dataclass(frozen=True, slots=True)
+class VersionEvidence:
+    """Record exact source/target client and server patch versions."""
+
+    dump_client: str
+    restore_client: str
+    server: str
+
+
+@dataclass(frozen=True, slots=True)
+class ContainerPostgres:
+    """Bind data transport to one authenticated task-owned container."""
+
+    container_id: str
+    database: str
+    password: str
+    runner: _ContainerRunner | None = None
+
+    def __post_init__(self) -> None:
+        """Reject identifiers or credentials that cannot enter closed argv/env."""
+        if (
+            len(self.container_id) != CONTAINER_ID_HEX_LENGTH
+            or any(
+                character not in "0123456789abcdef" for character in self.container_id
+            )
+            or not self.database
+            or len(self.database) > POSTGRES_IDENTIFIER_MAX_LENGTH
+            or not self.database.replace("_", "a").isalnum()
+            or not self.password
+            or "\x00" in self.password
+        ):
+            _fail("container PostgreSQL binding is invalid")
+        if self.runner is not None and not callable(self.runner):
+            _fail("container PostgreSQL runner is invalid")
+
+    def require_postgresql_16_14(self) -> VersionEvidence:
+        """Require both container clients and the server to be exactly 16.14."""
+        dump_version = _client_version(
+            self.execute(("pg_dump", "--version")), "pg_dump"
+        )
+        restore_version = _client_version(
+            self.execute(("pg_restore", "--version")), "pg_restore"
+        )
+        server_version = _server_version(self.sql("SHOW server_version_num").strip())
+        evidence = VersionEvidence(dump_version, restore_version, server_version)
+        if evidence != VersionEvidence(
+            POSTGRES_VERSION,
+            POSTGRES_VERSION,
+            POSTGRES_VERSION,
+        ):
+            _fail("PostgreSQL client/server version is not exactly 16.14")
+        return evidence
+
+    def dump(self) -> bytes:
+        """Stream the fixed custom archive from this source container."""
+        return self.execute(dump_argv(self.database))
+
+    def list_archive(self, archive: bytes) -> str:
+        """List one custom archive using this container's pg_restore client."""
+        raw = self.execute(("pg_restore", "--list"), archive)
+        return raw.decode("utf-8")
+
+    def restore(self, archive: bytes) -> None:
+        """Apply the strict fixed data-only archive to this target container."""
+        _ = self.execute(restore_argv(self.database), archive)
+
+    def sql(self, statement: str) -> str:
+        """Run one noninteractive exact-database SQL observation."""
+        if not statement or "\x00" in statement:
+            _fail("container SQL statement is invalid")
+        raw = self.execute(
+            (
+                "psql",
+                "--no-psqlrc",
+                "--set=ON_ERROR_STOP=1",
+                "--tuples-only",
+                "--no-align",
+                "--host=127.0.0.1",
+                "--username=clinic_super",
+                f"--dbname={self.database}",
+                "--command",
+                statement,
+            )
+        )
+        return raw.decode("utf-8")
+
+    def execute(
+        self, inner: tuple[str, ...], standard_input: bytes | None = None
+    ) -> bytes:
+        """Execute one fixed inner argv through absolute Docker with a private env."""
+        if not inner or any(not item or "\x00" in item for item in inner):
+            _fail("container PostgreSQL command is invalid")
+        argv = (DOCKER, "exec", "-i", "--env", "PGPASSWORD", self.container_id, *inner)
+        environment = {
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PATH": "/usr/bin:/bin",
+            "PGPASSWORD": self.password,
+            "TZ": "UTC",
+        }
+        selected = self.runner if self.runner is not None else run_container_command
+        if not callable(selected):
+            _fail("container PostgreSQL runner is invalid")
+        result = selected(argv, standard_input, environment)
+        if not isinstance(result, bytes):
+            _fail("container PostgreSQL output is invalid")
+        return result
+
+
+def run_container_command(
+    argv: tuple[str, ...],
+    standard_input: bytes | None,
+    environment: dict[str, str],
+) -> bytes:
+    """Run one bounded Docker exec and return stdout only on exit zero."""
+    return asyncio.run(_run_container_command(argv, standard_input, environment))
+
+
+async def _run_container_command(
+    argv: tuple[str, ...],
+    standard_input: bytes | None,
+    environment: dict[str, str],
+) -> bytes:
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=environment,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(standard_input),
+            timeout=TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        _fail("container PostgreSQL command timed out")
+    if process.returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace")[-1000:]
+        _fail(f"container PostgreSQL command failed: {detail}")
+    return stdout
+
+
+def _client_version(raw: bytes, executable: str) -> str:
+    prefix = f"{executable} (PostgreSQL) ".encode("ascii")
+    if not raw.startswith(prefix) or not raw.endswith(b"\n"):
+        _fail("PostgreSQL client version output is invalid")
+    return raw.removeprefix(prefix).decode("ascii").split(maxsplit=1)[0]
+
+
+def _server_version(raw: str) -> str:
+    if raw != POSTGRES_VERSION_NUM:
+        _fail("PostgreSQL server version output is invalid")
+    return POSTGRES_VERSION
+
+
+def _fail(message: str) -> Never:
+    raise RestoreContractError(message)

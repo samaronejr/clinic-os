@@ -20,7 +20,9 @@ def test_ci_browser_suite_file_is_exactly_the_three_host_http_suites() -> None:
 
     # When / Then: bytes are sorted, LF-terminated, and exclude Todo 20 runtime HTTPS.
     assert path.read_bytes() == b"availability\npatient\nscheduling\n"
-    assert not (PROJECT_ROOT / "ops/testing/final-required-browser-suites.txt").exists()
+    assert (
+        PROJECT_ROOT / "ops/testing/final-required-browser-suites.txt"
+    ).read_bytes() == (b"availability\npatient\nruntime-https\nscheduling\n")
 
 
 def test_ci_postgres_environment_percent_encodes_database_credentials(

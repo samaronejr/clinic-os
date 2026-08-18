@@ -147,6 +147,16 @@ def _postgres_image_id() -> str:
 
 
 async def _pull_postgres() -> int:
+    inspect = await asyncio.create_subprocess_exec(
+        "/usr/bin/docker",
+        "image",
+        "inspect",
+        POSTGRES_IMAGE,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    if await inspect.wait() == 0:
+        return 0
     process = await asyncio.create_subprocess_exec(
         "/usr/bin/docker",
         "pull",

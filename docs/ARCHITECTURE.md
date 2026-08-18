@@ -1,9 +1,10 @@
-# Clinic OS foundation architecture
+# Clinic OS Phase 1A architecture
 
-This document describes the code that exists in the Phase 0 foundation. It is
-not a roadmap claim. Product workflows such as prescribing, consent capture,
-clinical records, scheduling, billing, messaging, retention execution, and
-interoperability are deliberately unavailable until a later phase.
+This document describes the implemented Phase 1A synthetic-data surface. It is
+not a production, pilot, or live-data claim. Patient registration/search,
+staff availability, booking, agendas, rescheduling, and cancellation exist;
+prescribing, consent capture, clinical records, billing, messaging, retention
+execution, and interoperability remain unavailable.
 
 See [SECURITY.md](SECURITY.md) for trust boundaries,
 [RUNBOOK.md](RUNBOOK.md) for operations, and
@@ -18,28 +19,28 @@ points, but all current tenant middleware is synchronous. Redis, Celery, and
 DRF are dependency/configuration foundations only: there are no project Celery
 tasks and there is no shipped Phase 0 domain API.
 
-The production URL set is intentionally small: the shell, `/healthz`,
-`/readyz`, and identity routes. Debug-only identity showcase routes are added
-only by `config.urls_dev`.
+The URL set includes the shell, `/healthz`, `/readyz`, identity, clinic intake,
+availability, booking, agenda, reschedule, and cancellation routes. Debug-only
+identity showcase routes are added only by `config.urls_dev`.
 
 ## Domain module map
 
-The 13 registered domain apps have explicit `AppConfig` classes. Three contain
-implemented Phase 0 behavior:
+The 13 registered domain apps have explicit `AppConfig` classes. Five contain
+implemented Phase 1A behavior:
 
-| App | Phase 0 responsibility |
+| App | Phase 1A responsibility |
 | --- | --- |
 | `identity` | UUID users, organizations, clinics, canonical role assignments, password-session authentication through database resolvers, TOTP enrollment/verification, and recent-verification step-up |
 | `tenancy` | transaction-scoped tenant context, middleware, RLS DDL helpers, membership resolvers, and the schema-policy sentinel |
 | `audit` | typed semantic events, RFC 8785 canonical hashing, trusted-context append functions, immutable per-organization chains, and chain verification |
+| `intake` | organization-scoped patient identity, clinic enrollment, body-only search, pagination, and idempotent registration |
+| `scheduling` | practitioner availability, booking, day/week agendas, terminal cancellation, rescheduling, and audited staff-only screens |
 
-Ten apps are registered extension seams whose public service entrypoints raise
+Eight apps are registered extension seams whose public service entrypoints raise
 exactly `NotImplementedError("Phase >=1")`:
 
 | Deferred app | Reserved service boundary |
 | --- | --- |
-| `scheduling` | appointment creation |
-| `intake` | intake submission |
 | `ehr` | clinical-note recording |
 | `teleconsult` | teleconsultation start |
 | `prescription` | prescription issuance |
@@ -49,9 +50,10 @@ exactly `NotImplementedError("Phase >=1")`:
 | `retention` | retention-policy execution |
 | `interop` | clinical-record exchange |
 
-The `apps.core` package supplies the project shell and health endpoints; it is
-not one of the 13 registered domain apps. The deferred modules contain adapter
-interfaces and phase-boundary stubs, not working product features.
+The `apps.core` package supplies the project shell, readiness, privacy headers,
+and health endpoints; it is not one of the 13 registered domain apps. Deferred
+modules contain adapter interfaces and phase-boundary stubs, not working product
+features.
 
 ## Request, session, and tenant transaction
 
@@ -138,7 +140,7 @@ truncate the base ledger. A separate all-zero organization chain is reserved
 for owner-only system events. `verify_chain()` rebuilds semantic hashes and
 the linked chain without returning sensitive payloads in failure evidence.
 
-External timestamping or anchoring is not part of Phase 0. The exact threat
+External timestamping or anchoring is not part of Phase 1A. The exact threat
 boundary is documented in [SECURITY.md](SECURITY.md).
 
 ## Delivery and extension boundaries
@@ -152,6 +154,10 @@ boundary is documented in [SECURITY.md](SECURITY.md).
 - PITR procedures, external audit anchoring, user mutation definers, password
   reset/admin editing, APIs, background jobs, and all ten deferred product
   domains require later design, authorization, tests, and operational review.
+
+The disposable logical recovery rehearsal is a synthetic integrity check, not
+a live backup design. Live use remains blocked by
+[LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md).
 
 Source anchors: [settings](../config/settings/base.py),
 [tenant transaction](../apps/tenancy/db.py),

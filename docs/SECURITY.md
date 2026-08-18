@@ -1,6 +1,6 @@
-# Clinic OS foundation security model
+# Clinic OS Phase 1A security model
 
-This is the implemented Phase 0 security contract. It explains what the
+This is the implemented Phase 1A synthetic-data security contract. It explains what the
 controls do and, equally importantly, what they do not do. Operational steps
 are in [RUNBOOK.md](RUNBOOK.md); architectural context is in
 [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -67,13 +67,13 @@ boundary.
 
 ## Session authentication and identity writes
 
-Phase 0 APIs use Django session authentication and require authentication by
+Phase 1A screens use Django session authentication and require authentication by
 default. There are no token or service-account authentication modes. The
 custom backend calls `auth_lookup` before session creation and
 `load_current_user` for GUC-bound session rehydration; runtime SQL cannot read
 `identity_user` directly.
 
-Phase 0 deliberately disconnects Django's `update_last_login` receiver, so
+Phase 1A deliberately disconnects Django's `update_last_login` receiver, so
 login does **not** maintain `last_login`. The read-only runtime boundary also
 means `request.user.save()`, password reset, admin user editing, and ordinary
 runtime user creation are unsupported. User creation and password mutation
@@ -157,6 +157,21 @@ database trust boundary, not as proof against a superuser.
   deployment-specific hooks requiring an approved production runbook.
 - Use synthetic, non-identifying values in tests and evidence. Audit payloads
   are metadata, not a place for PHI.
+
+## Synthetic recovery and live-data gate
+
+`make restore-rehearsal` transports only the reviewed table/sequence manifest
+between two task-owned PostgreSQL 16.14 containers. It verifies the archive
+hash and TOC before target mutation, migrates the target first, restores no
+framework/session/migration state, and compares restored domain rows and
+posture read-only. `clinic_super` is confined to exact task database creation
+and data transport; source and target PostgreSQL clients run inside their own
+containers. The rehearsal executes no restored bootstrap, provisioning,
+password, login, TOTP, helper, browser, or runner action.
+
+This is not an encrypted backup, provider PITR, RPO/RTO, or recovery approval.
+Live data is prohibited until every item in
+[LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md) is independently approved.
 
 ## Incident response
 
