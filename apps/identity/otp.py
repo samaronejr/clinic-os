@@ -6,7 +6,7 @@ import base64
 from functools import wraps
 from importlib import import_module
 from io import BytesIO
-from typing import TYPE_CHECKING, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, Concatenate, Final, Protocol, TypedDict, cast
 from urllib.parse import quote, urlencode
 
 from django.conf import settings
@@ -87,6 +87,10 @@ class _QrModule(Protocol):
 
 QRCODE = cast("_QrModule", import_module("qrcode"))
 safe_next_url = _redirects.safe_next_url
+SAFE_METHODS: Final = frozenset({"GET", "HEAD", "OPTIONS"})
+
+type PrivilegedView[**P] = Callable[Concatenate[HttpRequest, P], HttpResponseBase]
+type SafeContinuation[**P] = Callable[P, str]
 
 
 def confirmed_devices(
@@ -221,28 +225,37 @@ def record_otp_verification(request: HttpRequest, device: TotpDevice) -> None:
     stamp_step_up_verification(request)
 
 
-def privileged_totp_required(
-    view: Callable[[HttpRequest], HttpResponseBase],
-) -> Callable[[HttpRequest], HttpResponseBase]:
-    """Require confirmed TOTP for privileged roles and leave other roles unchanged."""
+def privileged_totp_required[**P](
+    safe_continuation: SafeContinuation[P],
+) -> Callable[[PrivilegedView[P]], PrivilegedView[P]]:
+    """Guard privileged roles and resume unsafe methods at a declared safe GET."""
 
-    @wraps(view)
-    def wrapped(request: HttpRequest) -> HttpResponseBase:
-        user = request.user
-        if not user.is_authenticated:
-            target = safe_next_url(request, request.get_full_path())
-            session_logout(request)
-            return flow_redirect(
-                request,
-                "identity:login",
-                target,
+    def decorate(view: PrivilegedView[P]) -> PrivilegedView[P]:
+        @wraps(view)
+        def wrapped(
+            request: HttpRequest,
+            /,
+            *args: P.args,
+            **kwargs: P.kwargs,
+        ) -> HttpResponseBase:
+            target = (
+                safe_next_url(request, request.get_full_path())
+                if request.method in SAFE_METHODS
+                else safe_next_url(request, safe_continuation(*args, **kwargs))
             )
-        if not isinstance(user, User) or not is_privileged_user(user):
-            return view(request)
-        if is_confirmed_verified_user(user):
-            return view(request)
-        target = safe_next_url(request, request.get_full_path())
-        route = "identity:verify" if confirmed_devices(user.pk) else "identity:enroll"
-        return flow_redirect(request, route, target)
+            user = request.user
+            if not user.is_authenticated:
+                session_logout(request)
+                return flow_redirect(request, "identity:login", target)
+            if not isinstance(user, User) or not is_privileged_user(user):
+                return view(request, *args, **kwargs)
+            if is_confirmed_verified_user(user):
+                return view(request, *args, **kwargs)
+            route = (
+                "identity:verify" if confirmed_devices(user.pk) else "identity:enroll"
+            )
+            return flow_redirect(request, route, target)
 
-    return wrapped
+        return wrapped
+
+    return decorate

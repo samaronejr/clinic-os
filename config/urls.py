@@ -7,4 +7,5 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("healthz", views.healthz, name="healthz"),
     path("readyz", views.readyz, name="readyz"),
     path("", include("apps.identity.urls")),
+    path("", include("apps.intake.urls")),
 ]
