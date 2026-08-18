@@ -51,9 +51,11 @@ export APP_DATABASE_URL MIGRATION_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
 COVERAGE_TARGETS = \
 	--cov=apps.audit \
 	--cov=apps.identity \
+	--cov=apps.intake \
+	--cov=apps.scheduling \
 	--cov=apps.tenancy
 
-.PHONY: bootstrap-clinic ci db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff revoke-staff-role set-clinic-timezone
+.PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff revoke-staff-role set-clinic-timezone
 
 isolated-db-up:
 	@./ops/testing/isolated_db.sh up
@@ -186,9 +188,26 @@ revoke-staff-role:
 		--target-user-id "$${TARGET_USER_ID}" \
 		--role "$${STAFF_ROLE}"
 
+ci-browser-contract:
+	@actual="$$(sha256sum ops/testing/ci-required-browser-suites.txt | cut -d' ' -f1)"; \
+		test "$${actual}" = 4c6e14cdf93690d1c38bba4b5a7c36cf657bf795bc3a003a17ad5bc3e67067c5
+	@set --; previous=''; \
+		while IFS= read -r suite; do \
+			case "$${suite}" in availability|patient|scheduling) ;; *) exit 2 ;; esac; \
+			test -z "$${previous}" || test "$${previous}" \< "$${suite}" || exit 2; \
+			set -- "$${@}" --require-suite "$${suite}"; previous="$${suite}"; \
+		done < ops/testing/ci-required-browser-suites.txt; \
+		test "$${#}" -eq 6; \
+		ops/testing/browser_runner.sh probe "$${@}"
+
+ci-image-contracts:
+	@sha="$$(git rev-parse HEAD)"; \
+		ops/testing/image_smoke.sh build --sha "$${sha}"
+	@ops/testing/tls_stack.sh smoke
+
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:
-	$(UV) sync --locked
+	$(UV) sync --locked --all-groups
 	@$(MAKE) db-bootstrap
 	@$(MAKE) migrate
 	@$(MAKE) db-posture
@@ -200,3 +219,5 @@ ci:
 		TEST_SUPERUSER_DATABASE_URL="$${TEST_SUPERUSER_DATABASE_URL}" \
 		$(UV) run pytest --reuse-db $(COVERAGE_TARGETS) --cov-report=term-missing --cov-fail-under=90 tests
 	$(UV) run pip-audit --local
+	@$(MAKE) ci-image-contracts
+	@$(MAKE) ci-browser-contract

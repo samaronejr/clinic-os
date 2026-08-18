@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clinic-os.invalid/schemas/review-fix-receipt-phase1a-v1.json",
+  "title": "Clinic OS Phase 1A supplemental review-fix receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "sequence",
+    "change_class",
+    "owning_todo",
+    "review_lane",
+    "rejected_sha",
+    "parent_sha",
+    "fix_commit_sha",
+    "changed_paths",
+    "tdd_entries",
+    "tests_after_entries",
+    "acceptance",
+    "resources",
+    "cleanup"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "sequence": {"type": "integer", "minimum": 1},
+    "change_class": {
+      "enum": ["behavior", "tests", "visual-polish", "docs-only"]
+    },
+    "owning_todo": {"type": "integer", "minimum": 1, "maximum": 20},
+    "review_lane": {"enum": ["F1", "F2", "F3", "F4", "ORCH", "USER"]},
+    "rejected_sha": {"$ref": "todo-receipt.schema.json#/$defs/sha40"},
+    "parent_sha": {"$ref": "todo-receipt.schema.json#/$defs/sha40"},
+    "fix_commit_sha": {"$ref": "todo-receipt.schema.json#/$defs/sha40"},
+    "changed_paths": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "tdd_entries": {
+      "type": "array",
+      "items": {"$ref": "todo-receipt.schema.json#/$defs/tddEntry"}
+    },
+    "tests_after_entries": {
+      "type": "array",
+      "items": {"$ref": "todo-receipt.schema.json#/$defs/testsAfterEntry"}
+    },
+    "acceptance": {
+      "type": "array",
+      "items": {"$ref": "todo-receipt.schema.json#/$defs/commandEvidence"}
+    },
+    "resources": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "todo-receipt.schema.json#/$defs/resource"}
+    },
+    "cleanup": {"$ref": "todo-receipt.schema.json#/$defs/cleanup"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"change_class": {"enum": ["behavior", "tests"]}}},
+      "then": {"properties": {"tdd_entries": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"change_class": {"const": "visual-polish"}}},
+      "then": {"properties": {"tests_after_entries": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"change_class": {"const": "docs-only"}}},
+      "then": {
+        "properties": {
+          "tdd_entries": {"maxItems": 0},
+          "tests_after_entries": {"maxItems": 0},
+          "changed_paths": {
+            "items": {"type": "string", "pattern": "^(docs/.*|.*\\.md)$"}
+          }
+        }
+      }
+    }
+  ]
+}

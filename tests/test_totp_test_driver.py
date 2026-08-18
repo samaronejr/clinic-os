@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 from django.conf import settings
@@ -31,10 +32,8 @@ REJECTED: Final = 2
 
 def _app_dsn() -> str:
     database = settings.DATABASES["default"]
-    return (
-        f"postgresql://clinic_app:clinic_app_password@{database['HOST'] or 'localhost'}"
-        f":{database['PORT'] or 5432}/{database['NAME']}"
-    )
+    configured = urlsplit(os.environ["APP_DATABASE_URL"])
+    return urlunsplit(configured._replace(path=f"/{database['NAME']}"))
 
 
 def _context(

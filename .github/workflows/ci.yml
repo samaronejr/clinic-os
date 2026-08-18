@@ -11,37 +11,11 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
-    services:
-      postgres:
-        image: postgres:16
-        # Disposable CI-only credentials; never use these values in production.
-        env:
-          POSTGRES_DB: clinic
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d clinic"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      POSTGRES_DB: clinic
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      TEST_DATABASE_NAME: test_clinic
-      CLINIC_OWNER_PASSWORD: clinic_owner_password
-      CLINIC_APP_PASSWORD: clinic_app_password
-      CLINIC_SUPER_PASSWORD: clinic_super_password
-      APP_DATABASE_URL: postgresql://clinic_app:clinic_app_password@localhost:5432/clinic
-      MIGRATION_DATABASE_URL: postgresql://clinic_owner:clinic_owner_password@localhost:5432/clinic
-      TEST_SUPERUSER_DATABASE_URL: postgresql://clinic_super:clinic_super_password@localhost:5432/clinic
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -53,34 +27,56 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
           version: "0.11.28"
-      - name: Sync locked dependencies
-        run: uv sync --locked
-      - name: Bootstrap database roles and precreated test database
-        run: make db-bootstrap POSTGRES_CONTAINER="${{ job.services.postgres.id }}"
-      - name: Apply migrations as clinic_owner
-        run: make migrate
-      - name: Verify database runtime posture
-        run: make db-posture POSTGRES_CONTAINER="${{ job.services.postgres.id }}"
-      - name: Ruff lint
-        run: uv run ruff check .
-      - name: Ruff format
-        run: uv run ruff format --check .
-      - name: Strict mypy
-        run: uv run mypy .
-      - name: Test critical apps with coverage
-        run: >-
-          uv run pytest --reuse-db
-          --cov=apps.audit
-          --cov=apps.identity
-          --cov=apps.tenancy
-          --cov-report=term-missing
-          --cov-fail-under=90
-          tests
-      - name: Audit locked Python dependencies
-        run: uv run pip-audit --local
+      - name: Authenticate repository snapshot
+        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+      - name: Run claimed database quality gates
+        run: |
+          trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
+          ops/testing/ci_postgres.sh up
+          source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+          uv sync --locked --all-groups
+          make db-bootstrap
+          make migrate
+          make db-posture
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy .
+          uv run pytest --reuse-db --cov=apps.audit --cov=apps.identity --cov=apps.intake --cov=apps.scheduling --cov=apps.tenancy --cov-report=term-missing --cov-fail-under=90 tests
+          uv run pip-audit --local
+
+  contracts:
+    name: Migration, image, browser, and TLS contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+      - name: Run claimed migration and contract gates
+        run: |
+          trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
+          ops/testing/ci_postgres.sh up
+          source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+          uv sync --locked --all-groups
+          make db-bootstrap
+          make migrate
+          make db-posture
+          ops/testing/image_smoke.sh build --sha "$GITHUB_SHA"
+          ops/testing/browser_runner.sh probe --require-suite availability --require-suite patient --require-suite scheduling
+          uv run pytest -q tests/test_schema_policy.py tests/test_phase1_audit_migration.py tests/test_browser_runner_contract.py tests/test_container_contract.py
+          ops/testing/tls_stack.sh smoke
 
   actionlint:
-    name: actionlint
+    name: actionlint and action provenance
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -88,5 +84,15 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: false
+          python-version: "3.12"
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+      - name: Validate closed action provenance
+        run: python ops/testing/validate_action_pins.py
       - name: Check workflow syntax
-        uses: raven-actions/actionlint@v2
+        uses: raven-actions/actionlint@963d4779ef039e217e5d0e6fd73ce9ab7764e493 # v2.1.0

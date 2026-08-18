@@ -57,9 +57,12 @@ def build_candidate(
     )
     ledger, _ = load_json(ledger_path)
     attempt_root = Path(_text(ledger.get("attempt_root")))
-    claim_id = str(uuid4())
     if kind not in {"application", "browser-runner"}:
         _fail("candidate image kind is invalid")
+    existing = attempt_root / "candidate-images" / revision / f"{kind}-envelope.json"
+    if existing.exists():
+        return smoke_candidate(repository, revision, kind, required_suites)
+    claim_id = str(uuid4())
     placeholder: JsonObject = {
         "image_contract": {"kind": kind},
         "revision_sha": revision,
@@ -80,42 +83,42 @@ def build_candidate(
         observed = _candidate_observation(spec)
         observed_path = _immutable_json(staging / "observed.json", observed)
         activate_claim(ledger_path, claim_id, observed_path)
-        context = claim_root / "build-context"
-        contract = assemble_candidate_context(
-            repository,
-            context,
-            revision,
-            kind,
-        )
-        selected_suites(
-            _strings(contract.get("available_suite_ids")),
-            [] if required_suites is None else required_suites,
-        )
-        image_id_path = claim_root / "image-id"
-        build_candidate_image(context, contract, image_id_path)
-        image_id = image_id_path.read_text(encoding="ascii").strip()
-        current, _ = load_json(ledger_path)
-        envelope: JsonObject = {
-            "attempt_id": current["attempt_id"],
-            "authorization_id": f"{prefix}-envelope",
-            "claim_id": claim_id,
-            "image_contract": contract,
-            "image_id": image_id,
-            "published_at_utc": utc_now(),
-            "revision_sha": revision,
-            "schema_version": 1,
-            "tree_sha": contract["tree_sha"],
-        }
-        envelope_path = _immutable_json(
-            claim_root / "candidate-envelope.json",
-            envelope,
-        )
-        publish_candidate_envelope(ledger_path, claim_id, envelope_path)
-        shutil.rmtree(context)
-        image_id_path.unlink()
-        envelope_path.unlink()
-        claim_root.rmdir()
-        release_claim(ledger_path, claim_id)
+        try:
+            context = claim_root / "build-context"
+            contract = assemble_candidate_context(
+                repository,
+                context,
+                revision,
+                kind,
+            )
+            selected_suites(
+                _strings(contract.get("available_suite_ids")),
+                [] if required_suites is None else required_suites,
+            )
+            image_id_path = claim_root / "image-id"
+            build_candidate_image(context, contract, image_id_path)
+            image_id = image_id_path.read_text(encoding="ascii").strip()
+            current, _ = load_json(ledger_path)
+            envelope: JsonObject = {
+                "attempt_id": current["attempt_id"],
+                "authorization_id": f"{prefix}-envelope",
+                "claim_id": claim_id,
+                "image_contract": contract,
+                "image_id": image_id,
+                "published_at_utc": utc_now(),
+                "revision_sha": revision,
+                "schema_version": 1,
+                "tree_sha": contract["tree_sha"],
+            }
+            envelope_path = _immutable_json(
+                claim_root / "candidate-envelope.json",
+                envelope,
+            )
+            publish_candidate_envelope(ledger_path, claim_id, envelope_path)
+        finally:
+            if claim_root.exists() and not claim_root.is_symlink():
+                shutil.rmtree(claim_root)
+            release_claim(ledger_path, claim_id)
     return smoke_candidate(repository, revision, kind, required_suites)
 
 

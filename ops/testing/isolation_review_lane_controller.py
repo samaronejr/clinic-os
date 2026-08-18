@@ -100,7 +100,11 @@ class _ReviewLaneSession:
         identity = child.identity
         if min(identity.pid, identity.pgid, identity.start_ticks) < 1:
             _fail("review child identity is invalid")
-        clear_review_child(self.record)
+        if (
+            self.record["child_process_claim_id"] != child.process_claim_id
+            or self.record["child_argv_sha256"] != child.argv_sha256
+        ):
+            _fail("review child differs from its journaled claim intent")
         self._update(
             now,
             state="child-barrier",
@@ -111,6 +115,20 @@ class _ReviewLaneSession:
             child_pgid=identity.pgid,
             child_start_ticks=identity.start_ticks,
             child_barrier_released=False,
+        )
+
+    def reserve_child_claim(
+        self, process_claim_id: str, argv_sha256: str, now: str
+    ) -> None:
+        if self.record["state"] not in {"filesystem-active", "between-stages"}:
+            _fail("review child claim cannot reserve from this state")
+        if not is_uuid(process_claim_id) or not is_sha256(argv_sha256):
+            _fail("review child claim intent is invalid")
+        clear_review_child(self.record)
+        self._update(
+            now,
+            child_process_claim_id=process_claim_id,
+            child_argv_sha256=argv_sha256,
         )
 
     def release_child(self, now: str) -> None:
@@ -181,6 +199,16 @@ class _ReviewLaneSession:
         validate_review_lane_record(self.record)
         seal_controller_record(self._path, self.record)
         self._lease.close()
+
+    def prepare_failure(self, now: str) -> None:
+        if self.record["state"] in {"failure-ready", "success"}:
+            _fail("terminal review controller cannot prepare another failure")
+        clear_review_child(self.record)
+        self._update(
+            now,
+            state="recovering",
+            child_cleanup_verified=True,
+        )
 
     def abandon(self) -> None:
         self._lease.close()

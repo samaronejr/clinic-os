@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 HTMX_SHA384 = "H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
 
 
-def test_todo18_dependencies_are_exact_and_isolated() -> None:
+def test_todo18_and_todo19_dependencies_are_exact_and_isolated() -> None:
     document = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
 
     assert document["project"]["dependencies"][-2:] == [
@@ -24,9 +24,10 @@ def test_todo18_dependencies_are_exact_and_isolated() -> None:
         "playwright==1.61.0",
         "pytest-playwright==0.8.0",
     ]
-    serialized = (PROJECT_ROOT / "pyproject.toml").read_text()
-    assert "jsonschema" not in serialized
-    assert "basedpyright" not in serialized
+    assert document["dependency-groups"]["dev"][-2:] == [
+        "basedpyright==1.39.9",
+        "jsonschema>=4.26.0",
+    ]
 
 
 def test_production_static_is_manifested_and_self_hosted() -> None:
