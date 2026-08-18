@@ -6,11 +6,8 @@ from typing import TYPE_CHECKING, Final
 
 import pytest
 from ops.testing import browser_server_stages as stage
-from ops.testing.browser_secret_channel import (
-    FRAME_COUNT,
-    SecretChannel,
-)
-from ops.testing.browser_server_flow import BrowserFlowError, run_session
+from ops.testing.browser_artifact_publisher import ArtifactPublicationError
+from ops.testing.browser_server_flow import BrowserFlowError
 from ops.testing.browser_server_journal import BarrierJournal, BrowserJournalError
 from ops.testing.browser_server_stages import BrowserStageError
 from ops.testing.browser_suites.patient import build_patient_suite
@@ -26,82 +23,18 @@ from ops.testing.browser_totp_helpers import (
     CLINIC_ADMIN,
     OWNER,
     PHYSICIAN,
-    HelperSequence,
 )
 
-from browser_server_fakes import (
-    RecordingEffects,
-)
+from browser_session_harness import CAUSAL_CHAIN, run_recorded_session
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 CLAIM: Final = "6889f2de-b9ac-4ac6-bb78-136e54a4e340"
-CAUSAL_CHAIN: Final = (
-    stage.LEDGER_REFRESHED,
-    stage.MATERIALIZER_ACTIVE,
-    stage.DB_ACTIVE,
-    stage.OWNER_RELEASE,
-    stage.OWNER_BOOTSTRAP,
-    stage.CA_EXPORTED,
-    stage.SETTINGS_IMPORTED,
-    stage.MASTER_BOUND,
-    stage.APP_ACTIVE,
-    stage.CANDIDATE_PROBED,
-    stage.RUNNER_INTENT,
-    stage.RUNNER_CREATED,
-    stage.RUNNER_INSPECTED,
-    stage.RUNNER_PREPARED,
-    stage.RUNNER_STARTED,
-    stage.RUNNER_ATTESTED,
-    stage.RUNNER_ACTIVE,
-    stage.OWNER_START_SENT,
-    stage.OWNER_PENDING_READY,
-    stage.OWNER_HELPER_PENDING,
-    stage.OWNER_CONFIRMED,
-    stage.ADMIN_PROVISIONED,
-    stage.RECEPTIONIST_PROVISIONED,
-    stage.PHYSICIAN_PROVISIONED,
-    stage.ADMIN_START_SENT,
-    stage.ADMIN_PENDING_READY,
-    stage.ADMIN_CONFIRMED,
-    stage.PHYSICIAN_START_SENT,
-    stage.PHYSICIAN_PENDING_READY,
-    stage.PHYSICIAN_CONFIRMED,
-    stage.RECEPTIONIST_LOGGED_IN,
-    stage.SUITE_DISPATCHED,
-    stage.RUNNER_REMOVE_INTENT,
-    stage.RUNNER_REMOVED,
-    stage.MASTER_TERMINATED,
-    stage.DB_RELEASED,
-    stage.SEALED,
-)
-
-
-def _run(
-    tmp_path: Path, faults: frozenset[str] = frozenset()
-) -> tuple[
-    BarrierJournal,
-    RecordingEffects,
-    int,
-]:
-    read_fd, write_fd = os.pipe()
-    channel = SecretChannel(write_fd)
-    helpers = HelperSequence()
-    effects = RecordingEffects(channel, helpers, faults)
-    journal = BarrierJournal(tmp_path / "session.jsonl")
-    try:
-        run_session(effects, journal, helpers)
-    finally:
-        if len(channel.sent) == FRAME_COUNT:
-            channel.close()
-        else:
-            os.close(write_fd)
-    return journal, effects, read_fd
 
 
 def test_full_causal_chain_is_recorded_in_exact_order(tmp_path: Path) -> None:
-    journal, effects, read_fd = _run(tmp_path)
+    journal, effects, read_fd = run_recorded_session(tmp_path)
 
     assert journal.recorded == CAUSAL_CHAIN
     assert journal.sealed
@@ -114,7 +47,9 @@ def test_full_causal_chain_is_recorded_in_exact_order(tmp_path: Path) -> None:
     ("fault", "match"),
     [
         ("workers", "workers"),
-        ("suite-ids", "patient suite"),
+        ("suite-ids", "advertises"),
+        ("forged-frame", "not authenticated"),
+        ("publish-drop", "rather than the patient set"),
         ("no-intent", "runner intent"),
         ("runner-state", "created state"),
         ("runner-slow", "five seconds"),
@@ -128,7 +63,7 @@ def test_each_contract_violation_aborts_the_session(
     match: str,
 ) -> None:
     with pytest.raises(BrowserFlowError, match=match):
-        _run(tmp_path, frozenset({fault}))
+        run_recorded_session(tmp_path, frozenset({fault}))
 
 
 def test_stage_graph_rejects_every_out_of_order_record() -> None:
@@ -246,3 +181,8 @@ def test_supervisor_session_binds_staging_to_the_claim_on_the_test_origin(
             publisher_authorization_id="todo-receipt",
             origin="https://phase1a.qa.clinic-os.dev:8443",
         )
+
+
+def test_an_unacknowledged_publication_aborts_the_session(tmp_path: Path) -> None:
+    with pytest.raises(ArtifactPublicationError, match="never acknowledged"):
+        run_recorded_session(tmp_path, frozenset({"no-acknowledgement"}))

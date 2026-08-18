@@ -1,0 +1,82 @@
+.scheduling-shell {
+  width: min(64rem, 100%);
+  margin-inline: auto;
+}
+
+.scheduling-card {
+  margin-block: var(--space-5);
+  padding: var(--space-5);
+  border: 0.0625rem solid var(--color-line);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-raised);
+}
+
+.scheduling-card > * {
+  margin-block: 0 var(--space-4);
+}
+
+.scheduling-card > :last-child {
+  margin-block-end: 0;
+}
+
+.scheduling-results {
+  margin-block-start: var(--space-6);
+}
+
+.scheduling-status {
+  margin-block: 0 var(--space-4);
+  color: var(--color-ink-soft);
+  font-family: var(--font-display);
+}
+
+.scheduling-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: start;
+}
+
+.scheduling-table caption {
+  margin-block-end: var(--space-3);
+  color: var(--color-primary-strong);
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-align: start;
+}
+
+.scheduling-table th,
+.scheduling-table td {
+  padding: var(--space-3);
+  border-block-end: 0.0625rem solid var(--color-line);
+  overflow-wrap: anywhere;
+  text-align: start;
+  vertical-align: top;
+}
+
+.scheduling-table thead th {
+  border-block-end-width: 0.125rem;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+}
+
+.scheduling-table tbody th {
+  font-weight: 600;
+}
+
+.scheduling-table tbody tr:nth-child(even) {
+  background: var(--color-surface);
+}
+
+.scheduling-table form {
+  margin: 0;
+}
+
+.scheduling-table button {
+  inline-size: 100%;
+}
+
+@media (min-width: 40rem) {
+  .scheduling-shell .actions {
+    flex-direction: row;
+    align-items: center;
+  }
+}

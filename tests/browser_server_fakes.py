@@ -3,10 +3,16 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Final
 
+from ops.testing.browser_artifact_publisher import publication_acknowledgement
 from ops.testing.browser_secret_channel import (
     LENGTH_BYTES,
     SecretChannel,
     decode_frame,
+)
+from ops.testing.browser_supervisor_session import (
+    SupervisorSessionError,
+    authenticate_dispatch,
+    dispatch_frame,
 )
 from ops.testing.browser_totp_helpers import (
     CONFIRMED,
@@ -17,6 +23,7 @@ from ops.testing.browser_totp_helpers import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+SYNTHETIC_CLAIM: Final = "0f0e2b6c-6f2a-4f5e-9d47-6e3a1d2c5b90"
 SYNTHETIC_CODE: Final = b"123456"
 SYNTHETIC_PASSWORDS: Final = {
     "owner": b"Sy7-Synthetic-Owner-Buffer",
@@ -59,10 +66,16 @@ class RecordingEffects:
         channel: SecretChannel,
         helpers: HelperSequence,
         faults: frozenset[str] = frozenset(),
+        available: tuple[str, ...] = ("patient",),
     ) -> None:
         self.channel = channel
         self.helpers = helpers
         self.faults = faults
+        self.available = available
+        self.claim_id = SYNTHETIC_CLAIM
+        self.argv = ("--require-suite", *sorted(available))
+        self.artifacts: dict[str, bytes] = {}
+        self.published: tuple[str, ...] = ()
         self.calls: list[str] = []
         self.provisioned: list[str] = []
         self.pending_ready: list[str] = []
@@ -105,7 +118,9 @@ class RecordingEffects:
         self._note("probe_candidate")
         if "suite-ids" in self.faults:
             return ["availability", "patient"]
-        return ["patient"]
+        if "missing-availability" in self.faults:
+            return ["patient"]
+        return list(self.available)
 
     def runner_intent(self) -> str:
         self._note("runner_intent")
@@ -158,11 +173,42 @@ class RecordingEffects:
             raise AssertionError(message)
         self.provisioned.append(persona)
 
+    def authorize_suite(self, suite_id: str) -> bytes:
+        self._note(f"authorize:{suite_id}")
+        return dispatch_frame(self.claim_id, 0, suite_id, list(self.argv))
+
+    def verify_authorization(self, suite_id: str, frame: bytes) -> bool:
+        self._note(f"verify:{suite_id}")
+        if "forged-frame" in self.faults:
+            return False
+        try:
+            authenticate_dispatch(frame, self.claim_id, 0, suite_id, list(self.argv))
+        except SupervisorSessionError:
+            return False
+        return True
+
     def dispatch_suite(self, suite_id: str) -> dict[str, bytes]:
         self._note(f"dispatch:{suite_id}")
         if "no-artifacts" in self.faults:
             return {}
-        return {f"browser/{suite_id}/summary.json": b"{}\n"}
+        artifacts = {f"browser/{suite_id}/summary.json": b"{}\n"}
+        if "foreign-artifact" in self.faults:
+            artifacts["browser/patient/leaked.png"] = b"\x89PNG\r\n"
+        self.artifacts = dict(sorted(artifacts.items()))
+        return self.artifacts
+
+    def publish_frames(self, frames: tuple[bytes, ...]) -> tuple[str, ...]:
+        self._note(f"publish:{len(frames)}")
+        self.published = tuple(sorted(self.artifacts))
+        if "publish-drop" in self.faults:
+            return ()
+        return self.published
+
+    def acknowledge_publication(self, suite_id: str, digest: str) -> bytes:
+        self._note(f"acknowledge:{suite_id}")
+        if "no-acknowledgement" in self.faults:
+            return b""
+        return publication_acknowledgement(suite_id, digest)
 
     def runner_remove(self) -> None:
         self._note("runner_remove")

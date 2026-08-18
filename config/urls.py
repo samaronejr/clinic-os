@@ -8,4 +8,5 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("readyz", views.readyz, name="readyz"),
     path("", include("apps.identity.urls")),
     path("", include("apps.intake.urls")),
+    path("", include("apps.scheduling.urls")),
 ]

@@ -7,9 +7,15 @@ Docker, Gunicorn, and pseudo-terminals or a recording double in a test.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final, Never, Protocol
+from typing import TYPE_CHECKING, Final, Never
 
 from ops.testing import browser_server_stages as stage
+from ops.testing.browser_artifact_publisher import (
+    artifact_prefix,
+    frame_suite_artifacts,
+    manifest_digest,
+    require_acknowledged,
+)
 from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_secret_channel import (
     ADMIN_CONFIRM,
@@ -31,8 +37,10 @@ from ops.testing.browser_totp_helpers import (
 
 if TYPE_CHECKING:
     from ops.testing.browser_server_journal import BarrierJournal
+    from ops.testing.browser_session_effects import BrowserSessionEffects
 
 REQUIRED_SUITE: Final = "patient"
+DEFAULT_REQUIRED: Final = (REQUIRED_SUITE,)
 RUNNER_START_DEADLINE_SECONDS: Final = 5.0
 EXPECTED_WORKERS: Final = 2
 CREATED_STATE: Final = "created"
@@ -72,114 +80,6 @@ def _fail(reason: str) -> Never:
     raise BrowserFlowError(reason)
 
 
-class BrowserSessionEffects(Protocol):
-    """Every external effect the browser-server session is allowed to cause."""
-
-    def refresh_ledger(self) -> None:
-        """Refresh Todo 1's active ledger before any external effect."""
-        ...
-
-    def activate_materializer(self) -> None:
-        """Activate the materializer claim the TLS stack depends on."""
-        ...
-
-    def activate_database(self) -> None:
-        """Reserve, start, and activate the TLS PostgreSQL stack."""
-        ...
-
-    def run_owner_release(self) -> None:
-        """Run the owner release and migrations against the active stack."""
-        ...
-
-    def bootstrap_owner(self) -> None:
-        """Execute only Todo 13's TOTP-exempt clinic bootstrap."""
-        ...
-
-    def export_ca(self) -> None:
-        """Activate the executor-owned public CA export filesystem claim."""
-        ...
-
-    def reserve_process_claim(self) -> int:
-        """Reserve the browser-server process claim and return its port."""
-        ...
-
-    def request_start_master(self, port: int) -> int:
-        """Ask the supervisor to fork and exec the master; return its pid."""
-        ...
-
-    def observe_workers(self) -> int:
-        """Return the number of direct workers observed for the master."""
-        ...
-
-    def probe_candidate(self) -> list[str]:
-        """Probe the clean candidate and return its available suite ids."""
-        ...
-
-    def runner_intent(self) -> str:
-        """Durably fsync runner create intent and return its digest."""
-        ...
-
-    def runner_create(self) -> None:
-        """Create or adopt the deterministic runner container."""
-        ...
-
-    def runner_inspect(self) -> str:
-        """Return the inspected Docker state of the created runner."""
-        ...
-
-    def runner_prepare(self) -> None:
-        """Record the exact created-state identity as prepared."""
-        ...
-
-    def runner_start(self) -> float:
-        """Start the runner and return the elapsed seconds to attach."""
-        ...
-
-    def runner_attest(self) -> str:
-        """Return the runner's fixed bootstrap attestation payload."""
-        ...
-
-    def runner_activate(self) -> None:
-        """Atomically activate and acknowledge the runner claim."""
-        ...
-
-    def send_password_frame(self, kind: str, persona: str) -> None:
-        """Send one password-bearing frame from a mutable buffer."""
-        ...
-
-    def send_code_frame(self, kind: str, code: bytearray) -> None:
-        """Send one code-only enrollment confirm frame."""
-        ...
-
-    def await_pending_ready(self, persona: str) -> None:
-        """Block until the runner acknowledges pending-ready."""
-        ...
-
-    def run_helper(self, persona: str, mode: str) -> tuple[int, bytearray]:
-        """Run one private-FD helper and return its counter and code."""
-        ...
-
-    def provision_staff(self, persona: str, code: bytearray) -> None:
-        """Drive one Todo 13 provision_staff pseudo-terminal."""
-        ...
-
-    def dispatch_suite(self, suite_id: str) -> dict[str, bytes]:
-        """Dispatch the suite in-process and return bounded artifacts."""
-        ...
-
-    def runner_remove(self) -> None:
-        """Record remove intent, remove, and prove the runner absent."""
-        ...
-
-    def stop_master(self) -> None:
-        """Terminate the supervised master group and reap it."""
-        ...
-
-    def release_database(self) -> None:
-        """Tear down and release the TLS PostgreSQL stack claim."""
-        ...
-
-
 def _bring_up_application(
     effects: BrowserSessionEffects, journal: BarrierJournal
 ) -> None:
@@ -205,11 +105,16 @@ def _bring_up_application(
     journal.record(stage.APP_ACTIVE)
 
 
-def _bring_up_runner(effects: BrowserSessionEffects, journal: BarrierJournal) -> None:
+def _bring_up_runner(
+    effects: BrowserSessionEffects,
+    journal: BarrierJournal,
+    required: tuple[str, ...],
+) -> None:
     available = effects.probe_candidate()
-    selected_suites(available, [REQUIRED_SUITE])
-    if available != [REQUIRED_SUITE]:
-        _fail(f"candidate advertises {available} rather than the patient suite")
+    expected = sorted(required)
+    if available != expected:
+        _fail(f"candidate advertises {available} rather than {expected}")
+    selected_suites(available, expected)
     journal.record(stage.CANDIDATE_PROBED)
     if not effects.runner_intent():
         _fail("runner intent was not durably recorded before creation")
@@ -286,23 +191,54 @@ def _tear_down(effects: BrowserSessionEffects, journal: BarrierJournal) -> None:
     journal.record(stage.SEALED)
 
 
+def _export_artifacts(
+    effects: BrowserSessionEffects,
+    journal: BarrierJournal,
+    suite_id: str,
+) -> dict[str, bytes]:
+    frame = effects.authorize_suite(suite_id)
+    if not effects.verify_authorization(suite_id, frame):
+        _fail(f"{suite_id} dispatch frame is not authenticated for this session")
+    journal.record(stage.SUITE_AUTHORIZED)
+    artifacts = effects.dispatch_suite(suite_id)
+    if not artifacts:
+        _fail("suite dispatch produced no artifact")
+    journal.record(stage.SUITE_DISPATCHED)
+    frames = frame_suite_artifacts(suite_id, artifacts)
+    journal.record(stage.ARTIFACTS_FRAMED)
+    published = effects.publish_frames(frames)
+    prefix = artifact_prefix(suite_id)
+    if sorted(published) != sorted(artifacts) or any(
+        not item.startswith(prefix) for item in published
+    ):
+        _fail(f"host published {sorted(published)} rather than the {suite_id} set")
+    journal.record(stage.ARTIFACT_PUBLISHED)
+    digest = manifest_digest(frames)
+    require_acknowledged(
+        effects.acknowledge_publication(suite_id, digest), suite_id, digest
+    )
+    journal.record(stage.PUBLICATION_ACKNOWLEDGED)
+    return artifacts
+
+
 def run_session(
     effects: BrowserSessionEffects,
     journal: BarrierJournal,
     helpers: HelperSequence,
+    required: tuple[str, ...] = DEFAULT_REQUIRED,
+    suite_id: str = REQUIRED_SUITE,
 ) -> dict[str, bytes]:
     """Execute the whole causally ordered session and return its artifacts."""
+    if suite_id not in required:
+        _fail(f"{suite_id} is not part of the required suite set")
     _bring_up_application(effects, journal)
-    _bring_up_runner(effects, journal)
+    _bring_up_runner(effects, journal, required)
     _enroll_owner(effects, journal, helpers)
     _provision_personas(effects, journal)
     _enroll_privileged(effects, journal)
     effects.send_password_frame(RECEPTIONIST_LOGIN, "receptionist")
     journal.record(stage.RECEPTIONIST_LOGGED_IN)
     helpers.require_complete()
-    artifacts = effects.dispatch_suite(REQUIRED_SUITE)
-    if not artifacts:
-        _fail("suite dispatch produced no artifact")
-    journal.record(stage.SUITE_DISPATCHED)
+    artifacts = _export_artifacts(effects, journal, suite_id)
     _tear_down(effects, journal)
     return artifacts
