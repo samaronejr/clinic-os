@@ -11,8 +11,8 @@ from ops.testing.assert_visual_evidence import (
     validate_summary,
 )
 from ops.testing.browser_runner_contract import selected_suites
+from ops.testing.browser_suite_driver import CONFIG_KEYS
 from ops.testing.browser_suites.patient import (
-    CONFIG_KEYS,
     PatientSuiteError,
     build_patient_suite,
 )

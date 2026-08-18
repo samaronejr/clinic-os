@@ -1,0 +1,43 @@
+<div id="availability-blocks" class="scheduling-results">
+  {% if banner %}
+  <div class="feedback feedback--error" id="scheduling-retire-error" role="alert" tabindex="-1">
+    <h2>We could not retire that window</h2>
+    <p>{{ banner }}</p>
+  </div>
+  {% endif %}
+  <p class="scheduling-status" id="availability-status" role="status">
+    {% if blocks %}{{ blocks|length }} active availability window{{ blocks|length|pluralize }} in {{ timezone_key }}.{% else %}No active availability windows for this clinic.{% endif %}
+  </p>
+  {% if blocks %}
+  <table class="scheduling-table">
+    <caption>Active availability in this clinic</caption>
+    <thead>
+      <tr>
+        <th scope="col">Physician</th>
+        <th scope="col">Starts</th>
+        <th scope="col">Ends</th>
+        {% if can_manage %}<th scope="col">Retirement</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for block in blocks %}
+      <tr>
+        <th scope="row">{{ block.row.practitioner_label }}</th>
+        <td>{{ block.row.start_local }}</td>
+        <td>{{ block.row.end_local }}</td>
+        {% if can_manage %}
+        <td>
+          <form method="post" action="{{ block.retire_url }}"
+                hx-post="{{ block.retire_url }}"
+                hx-target="#availability-blocks" hx-swap="outerHTML">
+            {% csrf_token %}
+            <button type="submit">Retire the {{ block.row.start_local }} window</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>

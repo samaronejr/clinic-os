@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import TYPE_CHECKING, Final
 
-from playwright.sync_api import ConsoleMessage, Error, Page, sync_playwright
+from playwright.sync_api import Page, sync_playwright
 
+from ops.testing.browser_suite_driver import (
+    CONFIG_KEYS,
+    audit,
+    capture,
+    record_console,
+    record_error,
+    require_expected_screen,
+    require_post_only_forms_on,
+    sign_in,
+)
 from ops.testing.browser_visual_contract import (
-    AUDIT_SCRIPT,
     VIEWPORTS,
     VisualContractError,
     blocking_violations,
-    require_clean_console,
-    require_no_blocking_violations,
     require_no_state_in_url,
-    require_post_only_forms,
 )
 
 if TYPE_CHECKING:
@@ -25,13 +30,8 @@ if TYPE_CHECKING:
 SUITE_ID: Final = "patient"
 ARTIFACT_PREFIX: Final = "browser/patient"
 SEARCH_TERM: Final = "Marina"
-CONSOLE_LEVELS: Final = frozenset({"error", "warning"})
 NAVIGATION_TIMEOUT_MS: Final = 15_000
-SESSION_TIMEOUT_SECONDS: Final = 15
-SESSION_POLL_SECONDS: Final = 0.1
 OK_STATUS: Final = 200
-CONFIG_KEYS: Final = frozenset({"base_url", "clinic_id", "password", "username"})
-FORM_SHAPE_LENGTH: Final = 2
 
 
 class PatientSuiteError(RuntimeError):
@@ -67,10 +67,10 @@ def run_patient_suite(config: dict[str, str]) -> dict[str, bytes]:
         context = browser.new_context()
         page = context.new_page()
         page.set_default_timeout(NAVIGATION_TIMEOUT_MS)
-        page.on("console", lambda message: _record_console(message, console))
-        page.on("pageerror", lambda error: _record_error(error, console))
+        page.on("console", lambda message: record_console(message, console))
+        page.on("pageerror", lambda error: record_error(error, console))
         try:
-            _sign_in(page, base_url, config)
+            sign_in(page, base_url, config)
             findings += _blank_list(page, list_url, console, artifacts)
             findings += _search(page, list_url, console, artifacts)
             findings += _paginate(page, list_url, console, artifacts)
@@ -81,108 +81,6 @@ def run_patient_suite(config: dict[str, str]) -> dict[str, bytes]:
 
     artifacts[f"{ARTIFACT_PREFIX}/summary.json"] = _summary(findings, console)
     return dict(sorted(artifacts.items()))
-
-
-def _record_console(message: ConsoleMessage, console: list[str]) -> None:
-    if message.type in CONSOLE_LEVELS:
-        console.append(f"{message.type}:{message.text}")
-
-
-def _record_error(error: Error, console: list[str]) -> None:
-    console.append(f"pageerror:{error.message}")
-
-
-def _evaluate_audit(page: Page) -> list[dict[str, object]]:
-    raw: object = page.evaluate(AUDIT_SCRIPT)
-    if not isinstance(raw, list):
-        raise PatientSuiteError
-    result: list[dict[str, object]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            raise PatientSuiteError
-        result.append({str(key): value for key, value in item.items()})
-    return result
-
-
-def _resize(page: Page, viewport: dict[str, object]) -> None:
-    page.set_viewport_size(
-        {"width": int(str(viewport["width"])), "height": int(str(viewport["height"]))}
-    )
-    page.evaluate(
-        "(factor) => { document.documentElement.style.zoom = String(factor); }",
-        float(str(viewport["zoom"])),
-    )
-
-
-def _audit(page: Page, label: str, console: list[str]) -> list[dict[str, str]]:
-    found: list[dict[str, str]] = []
-    for viewport in VIEWPORTS:
-        _resize(page, viewport)
-        found.extend(
-            {
-                "impact": str(item.get("impact")),
-                "rule": str(item.get("rule")),
-                "target": str(item.get("target")),
-                "viewport": str(viewport["label"]),
-            }
-            for item in _evaluate_audit(page)
-        )
-    require_no_blocking_violations(label, found)
-    require_clean_console(label, console)
-    return found
-
-
-def _form_shapes(page: Page) -> tuple[list[str], list[str]]:
-    raw: object = page.evaluate(
-        "() => Array.from(document.querySelectorAll('form'))"
-        ".map((item) => [item.getAttribute('method') || '', "
-        "item.getAttribute('action') || ''])"
-    )
-    if not isinstance(raw, list):
-        raise PatientSuiteError
-    methods: list[str] = []
-    actions: list[str] = []
-    for pair in raw:
-        if not isinstance(pair, list) or len(pair) != FORM_SHAPE_LENGTH:
-            raise PatientSuiteError
-        methods.append(str(pair[0]))
-        actions.append(str(pair[1]))
-    return methods, actions
-
-
-def _require_expected_screen(page: Page, expected_url: str, label: str) -> None:
-    """Fail with the observed screen identity instead of a bare contract miss."""
-    if page.url.split("?")[0].rstrip("/") == expected_url.rstrip("/"):
-        return
-    message = (
-        f"{label}: expected {expected_url} but the browser is on {page.url} "
-        f"titled {page.title()!r}"
-    )
-    raise VisualContractError(message)
-
-
-def _sign_in(page: Page, base_url: str, config: dict[str, str]) -> None:
-    page.goto(f"{base_url}/auth/login/", wait_until="load")
-    page.fill("#id_username", config["username"])
-    page.fill("#id_password", config["password"])
-    page.click("button[type=submit]")
-    page.wait_for_load_state("load")
-    _await_session(page)
-
-
-def _await_session(page: Page) -> None:
-    """Wait for the progressive HTMX sign-in to actually establish a session."""
-    deadline = time.monotonic() + SESSION_TIMEOUT_SECONDS
-    while time.monotonic() < deadline:
-        if any(cookie["name"] == "sessionid" for cookie in page.context.cookies()):
-            return
-        time.sleep(SESSION_POLL_SECONDS)
-    message = "sign-in never established an authenticated session"
-    raise VisualContractError(message)
-
-
-def _capture(page: Page, artifacts: dict[str, bytes], label: str) -> None:
-    artifacts[f"{ARTIFACT_PREFIX}/{label}.png"] = page.screenshot(full_page=True)
 
 
 def _blank_list(
@@ -196,12 +94,11 @@ def _blank_list(
         status = "none" if response is None else str(response.status)
         message = f"blank-list: clinic patient list returned status {status}"
         raise VisualContractError(message)
-    _require_expected_screen(page, list_url, "blank-list")
-    methods, actions = _form_shapes(page)
-    require_post_only_forms("blank-list", methods, actions)
+    require_expected_screen(page, list_url, "blank-list")
+    require_post_only_forms_on(page, "blank-list")
     require_no_state_in_url("blank-list", page.url, (SEARCH_TERM,))
-    findings = _audit(page, "blank-list", console)
-    _capture(page, artifacts, "blank-list")
+    findings = audit(page, "blank-list", console)
+    capture(page, artifacts, ARTIFACT_PREFIX, "blank-list")
     return findings
 
 
@@ -218,8 +115,8 @@ def _search(
     if page.url.rstrip("/") != list_url.rstrip("/"):
         message = "search navigated away from the clinic list URL"
         raise VisualContractError(message)
-    findings = _audit(page, "search-results", console)
-    _capture(page, artifacts, "search-results")
+    findings = audit(page, "search-results", console)
+    capture(page, artifacts, ARTIFACT_PREFIX, "search-results")
     return findings
 
 
@@ -246,8 +143,8 @@ def _paginate(
     if page.url.rstrip("/") != list_url.rstrip("/"):
         message = "pagination navigated away from the clinic list URL"
         raise VisualContractError(message)
-    findings = _audit(page, "search-page-two", console)
-    _capture(page, artifacts, "search-page-two")
+    findings = audit(page, "search-page-two", console)
+    capture(page, artifacts, ARTIFACT_PREFIX, "search-page-two")
     return findings
 
 
@@ -259,15 +156,15 @@ def _create(
     artifacts: dict[str, bytes],
 ) -> list[dict[str, str]]:
     page.goto(create_url, wait_until="load")
-    findings = _audit(page, "create-form", console)
-    _capture(page, artifacts, "create-form")
+    findings = audit(page, "create-form", console)
+    capture(page, artifacts, ARTIFACT_PREFIX, "create-form")
     page.fill("#id_full_name", "Zoe Synthetic Testpatient")
     page.fill("#id_birth_date", "1993-08-09")
     page.click("button[type=submit]")
     page.wait_for_url(list_url)
     require_no_state_in_url("create-redirect", page.url, ("Zoe", "1993-08-09"))
-    findings += _audit(page, "create-redirect", console)
-    _capture(page, artifacts, "create-redirect")
+    findings += audit(page, "create-redirect", console)
+    capture(page, artifacts, ARTIFACT_PREFIX, "create-redirect")
     return findings
 
 

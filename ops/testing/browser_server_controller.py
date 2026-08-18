@@ -14,11 +14,29 @@ import sys
 import time
 from http import HTTPStatus
 from pathlib import Path
-from typing import Final, Never
+from typing import TYPE_CHECKING, Final, Never
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from ops.testing.browser_artifact_publisher import (
+    frame_suite_artifacts,
+    manifest_digest,
+    publication_acknowledgement,
+    require_acknowledged,
+)
 from ops.testing.browser_runner_contract import selected_suites
+from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
+from ops.testing.browser_totp_code import TotpContext, confirmed_code
 
+AVAILABLE_SUITES: Final = ["availability", "patient"]
+PHYSICIAN_ENVIRONMENT: Final = (
+    "CLINIC_BROWSER_ORG_ID",
+    "CLINIC_BROWSER_PHYSICIAN_ID",
+    "CLINIC_BROWSER_PHYSICIAN_PASSWORD",
+    "CLINIC_BROWSER_PHYSICIAN_USERNAME",
+)
 READY_TIMEOUT_SECONDS: Final = 60
 READY_POLL_SECONDS: Final = 0.25
 TERMINATION_GRACE_SECONDS: Final = 10
@@ -140,37 +158,74 @@ def publish(evidence_root: Path, artifacts: dict[str, bytes]) -> dict[str, str]:
     return published
 
 
-def run_suite(required: list[str]) -> int:
-    """Supervise one server, run the required suites, and publish evidence."""
-    selected = selected_suites(["patient"], required)
+def _base_config(base_url: str) -> dict[str, str]:
+    return {
+        "base_url": base_url,
+        "clinic_id": os.environ["CLINIC_BROWSER_CLINIC_ID"],
+        "password": os.environ["CLINIC_BROWSER_PASSWORD"],
+        "username": os.environ["CLINIC_BROWSER_USERNAME"],
+    }
+
+
+def build_suite(suite_id: str, base_url: str) -> Callable[[], dict[str, bytes]]:
+    """Return the allowlisted zero-argument entrypoint for one suite id."""
+    if suite_id == "patient":
+        return build_patient_suite(_base_config(base_url))
+    if suite_id != "availability":
+        _fail(f"{suite_id} is not an implemented browser suite")
+    for name in PHYSICIAN_ENVIRONMENT:
+        if not os.environ.get(name):
+            _fail(f"missing {name}")
+    context = TotpContext(
+        dsn=os.environ["APP_DATABASE_URL"],
+        tenant_id=os.environ["CLINIC_BROWSER_ORG_ID"],
+        user_id=os.environ["CLINIC_BROWSER_PHYSICIAN_ID"],
+    )
+    config = _base_config(base_url)
+    config["physician_username"] = os.environ["CLINIC_BROWSER_PHYSICIAN_USERNAME"]
+    config["physician_password"] = os.environ["CLINIC_BROWSER_PHYSICIAN_PASSWORD"]
+    return build_availability_suite(config, lambda: confirmed_code(context))
+
+
+def export_artifacts(
+    evidence_root: Path,
+    suite_id: str,
+    artifacts: dict[str, bytes],
+) -> dict[str, str]:
+    """Frame, publish, and require acknowledgement of one bounded artifact set."""
+    frames = frame_suite_artifacts(suite_id, artifacts)
+    published = publish(evidence_root, artifacts)
+    digest = manifest_digest(frames)
+    require_acknowledged(
+        publication_acknowledgement(suite_id, digest), suite_id, digest
+    )
+    return published
+
+
+def run_suite(suite_id: str, required: list[str]) -> int:
+    """Supervise one server, run the selected suite, and publish evidence."""
+    selected = selected_suites(AVAILABLE_SUITES, required)
+    if suite_id not in selected:
+        _fail(f"{suite_id} was not required by this session")
     for name in REQUIRED_ENVIRONMENT:
         if not os.environ.get(name):
             _fail(f"missing {name}")
     evidence_root = Path(os.environ["CLINIC_BROWSER_EVIDENCE_ROOT"])
     evidence_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     port = reserve_port()
-    base_url = f"http://{HOST}:{port}"
     environment = dict(os.environ)
     environment["CLINIC_BROWSER_ACCESS_LOG"] = str(evidence_root / "access.log")
     server_log = evidence_root / "server.log"
     server = start_server(port, environment, server_log)
     try:
         wait_until_ready(port, server_log)
-        suite = build_patient_suite(
-            {
-                "base_url": base_url,
-                "clinic_id": os.environ["CLINIC_BROWSER_CLINIC_ID"],
-                "password": os.environ["CLINIC_BROWSER_PASSWORD"],
-                "username": os.environ["CLINIC_BROWSER_USERNAME"],
-            }
-        )
-        artifacts = suite()
+        artifacts = build_suite(suite_id, f"http://{HOST}:{port}")()
     finally:
         stop_server(server)
     manifest = {
-        "artifacts": publish(evidence_root, artifacts),
+        "artifacts": export_artifacts(evidence_root, suite_id, artifacts),
         "schema_version": 1,
-        "suite_ids": list(selected),
+        "suite_ids": [suite_id],
     }
     manifest_path = evidence_root / "manifest.json"
     manifest_path.write_bytes(
@@ -181,20 +236,31 @@ def run_suite(required: list[str]) -> int:
     return 0
 
 
-def main() -> int:
-    """Dispatch the single supported suite operation after shell validation."""
-    arguments = sys.argv[1:]
+def parse_suite_arguments(arguments: list[str]) -> tuple[str, list[str]]:
+    """Return the dispatched suite and its sorted unique required-suite set."""
     if not arguments or arguments[0] != "suite":
         _fail("invalid operation")
-    required: list[str] = []
     rest = arguments[1:]
+    suite_id = ""
+    if rest and not rest[0].startswith("--"):
+        suite_id = rest[0]
+        rest = rest[1:]
     if len(rest) % 2:
         _fail("invalid suite grammar")
+    required: list[str] = []
     for index in range(0, len(rest), 2):
         if rest[index] != "--require-suite":
             _fail("invalid suite grammar")
         required.append(rest[index + 1])
-    return run_suite(sorted(set(required)) or ["patient"])
+    if not suite_id:
+        suite_id = sorted(set(required))[0] if required else "patient"
+    return suite_id, sorted(set(required)) or [suite_id]
+
+
+def main() -> int:
+    """Dispatch the single supported suite operation after shell validation."""
+    suite_id, required = parse_suite_arguments(sys.argv[1:])
+    return run_suite(suite_id, required)
 
 
 if __name__ == "__main__":
