@@ -83,4 +83,6 @@ def test_ci_three_suite_contract_stays_distinct_from_final_four_suites() -> None
         "runtime-https",
         "scheduling",
     )
-    assert not final_contract.exists()
+    assert final_contract.read_bytes() == (
+        b"availability\npatient\nruntime-https\nscheduling\n"
+    )

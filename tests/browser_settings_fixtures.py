@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from ops.testing.isolation_common import JsonObject, JsonValue, load_json
@@ -67,7 +66,7 @@ def browser_ledger_fixture(tmp_path: Path) -> tuple[Path, JsonObject, JsonObject
     config = tmp_path / "ops" / "container" / "gunicorn_no_proxy.py"
     config.parent.mkdir(parents=True)
     config.write_bytes(GUNICORN_CONFIG)
-    launcher = Path(sys.executable)
+    launcher = Path(__file__).resolve().parents[1] / ".venv/bin/python"
     environment = browser_environment(attempt_id, process_root / "ledger-rpc.sock")
     process = reserved_process(
         timestamp,

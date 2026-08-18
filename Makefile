@@ -55,7 +55,7 @@ COVERAGE_TARGETS = \
 	--cov=apps.scheduling \
 	--cov=apps.tenancy
 
-.PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff revoke-staff-role set-clinic-timezone
+.PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff restore-rehearsal revoke-staff-role set-clinic-timezone
 
 isolated-db-up:
 	@./ops/testing/isolated_db.sh up
@@ -187,6 +187,16 @@ revoke-staff-role:
 		--clinic-id "$${CLINIC_ID}" \
 		--target-user-id "$${TARGET_USER_ID}" \
 		--role "$${STAFF_ROLE}"
+
+restore-rehearsal:
+	@$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.restore_rehearsal \
+		--source-container "$${RESTORE_SOURCE_CONTAINER:?}" \
+		--target-container "$${RESTORE_TARGET_CONTAINER:?}" \
+		--source-database "$${RESTORE_SOURCE_DATABASE:?}" \
+		--target-database "$${RESTORE_TARGET_DATABASE:?}" \
+		--credentials-fd "$${RESTORE_CREDENTIALS_FD:?}" \
+		--work-dir "$${RESTORE_WORK_DIR:?}" \
+		--evidence "$${RESTORE_EVIDENCE_PATH:?}"
 
 ci-browser-contract:
 	@actual="$$(sha256sum ops/testing/ci-required-browser-suites.txt | cut -d' ' -f1)"; \

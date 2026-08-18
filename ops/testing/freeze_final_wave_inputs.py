@@ -9,16 +9,15 @@ from pathlib import Path
 from typing import Never
 
 from ops.testing.cgroup_capability_probe import ProbeRequest, run_capability_probe
+from ops.testing.f3_launcher_manifest import input_sidecar_bytes, launcher_prefix_bytes
 from ops.testing.isolation_claim_records import claim_objects
 from ops.testing.isolation_common import (
     MODE_IMMUTABLE,
     IsolationError,
     JsonObject,
     JsonValue,
-    canonical_bytes,
     load_json,
     raw_sha256,
-    stat_identity,
     write_no_replace,
 )
 from ops.testing.isolation_final_input_freezer import (
@@ -158,21 +157,28 @@ def _source_inspection(worktree: Path, sha: str) -> SourceInspection:
 
 def _publish_launcher_prefix(request: FinalInputFreeze) -> None:
     launcher = request.worktree / ".venv/bin/python"
-    resolved = launcher.resolve(strict=True)
-    identity = stat_identity(launcher, follow_symlinks=False)
-    identity["symlink_target"] = (
-        str(launcher.readlink()) if launcher.is_symlink() else None
+    path_raw, lstat_raw, sha256_raw = launcher_prefix_bytes(
+        launcher,
+        request.worktree / "ops/testing/final_e2e.sh",
+        request.worktree / "ops/testing/final_e2e_supervisor.py",
+        request.worktree / "ops/testing/final_e2e_controller.py",
     )
     publications = (
-        ("input-launcher-path", b"%s\n" % str(launcher).encode()),
-        ("input-launcher-lstat", canonical_bytes(identity)),
-        ("input-launcher-sha256", raw_sha256(resolved.read_bytes()).encode() + b"\n"),
+        ("input-launcher-path", path_raw),
+        ("input-launcher-lstat", lstat_raw),
+        ("input-launcher-sha256", sha256_raw),
     )
     _publish_staged(request, publications)
 
 
 def _publish_input_sidecar(request: FinalInputFreeze) -> None:
-    raw = raw_sha256(request.output_path.read_bytes()).encode() + b"\n"
+    terminal = request.output_path.parent
+    raw = input_sidecar_bytes(
+        request.output_path,
+        terminal / "F3-launcher.path",
+        terminal / "F3-launcher.lstat",
+        terminal / "F3-launcher.sha256",
+    )
     _publish_staged(request, (("input-sidecar", raw),))
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pickle
+import socket
 from typing import TYPE_CHECKING, Final
 
 import pytest
@@ -153,34 +154,45 @@ def test_suite_registry_only_accepts_allowlisted_runner_entrypoints() -> None:
         RunnerSuiteRegistry().register("patient", "os.system")
 
 
-def test_supervisor_session_binds_staging_to_the_claim_on_the_test_origin(
+def test_supervisor_session_binds_staging_to_the_claim_on_production_https(
     tmp_path: Path,
 ) -> None:
     staging = tmp_path / "claims" / CLAIM
     staging.mkdir(parents=True)
-    session = BrowserSupervisorSession(
-        claim_id=CLAIM,
-        staging_root=staging,
-        publisher_root=tmp_path / "todo-evidence",
-        publisher_authorization_id="todo-receipt",
-    )
-
-    assert session.origin.startswith("http://phase1a-browser.qa.clinic-os.test")
-    with pytest.raises(SupervisorSessionError, match="not bound to the session claim"):
-        BrowserSupervisorSession(
+    left, right = socket.socketpair()
+    try:
+        session = BrowserSupervisorSession(
             claim_id=CLAIM,
-            staging_root=tmp_path / "elsewhere",
-            publisher_root=tmp_path,
-            publisher_authorization_id="todo-receipt",
-        )
-    with pytest.raises(SupervisorSessionError, match="non-HSTS test origin"):
-        BrowserSupervisorSession(
-            claim_id=CLAIM,
-            staging_root=staging,
-            publisher_root=tmp_path,
-            publisher_authorization_id="todo-receipt",
+            container_id="a" * 64,
+            profile="container-https",
             origin="https://phase1a.qa.clinic-os.dev:8443",
+            runner_pid=123,
+            control_socket=left,
+            next_sequence=0,
+            staging_claim_id=CLAIM,
+            staging_root=staging,
+            publisher_claim_id="44444444-4444-4444-8444-444444444444",
+            publication_authorization_id="f3-artifacts",
         )
+        assert session.take_sequence() == 0
+        assert session.next_sequence == 1
+        with pytest.raises(SupervisorSessionError, match="staging claim"):
+            BrowserSupervisorSession(
+                claim_id=CLAIM,
+                container_id="a" * 64,
+                profile="container-https",
+                origin="https://phase1a.qa.clinic-os.dev:8443",
+                runner_pid=123,
+                control_socket=left,
+                next_sequence=0,
+                staging_claim_id=CLAIM,
+                staging_root=tmp_path / "elsewhere",
+                publisher_claim_id="44444444-4444-4444-8444-444444444444",
+                publication_authorization_id="f3-artifacts",
+            )
+    finally:
+        left.close()
+        right.close()
 
 
 def test_an_unacknowledged_publication_aborts_the_session(tmp_path: Path) -> None:

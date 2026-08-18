@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Never
 
@@ -11,17 +12,20 @@ import rfc8785
 from ops.testing.browser_runner_contract import selected_suites
 
 if TYPE_CHECKING:
+    import socket
     from pathlib import Path
 
     from ops.testing.isolation_common import JsonObject, JsonValue
 
-TEST_ORIGIN: Final = "http://phase1a-browser.qa.clinic-os.test"
-EXTRA_HOST: Final = "phase1a-browser.qa.clinic-os.test"
-HSTS_SUFFIX: Final = ".dev"
+PRODUCTION_ORIGIN: Final = "https://phase1a.qa.clinic-os.dev:8443"
+UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+)
 DISPATCH_KEYS: Final = frozenset(
     {"argv_sha256", "claim_id", "schema_version", "sequence", "suite_id"}
 )
 PERSONAS: Final = ("clinic-admin", "owner", "physician", "receptionist")
+CONTAINER_ID_HEX_LENGTH: Final = 64
 
 
 class SupervisorSessionError(RuntimeError):
@@ -36,28 +40,58 @@ def _fail(reason: str) -> Never:
     raise SupervisorSessionError(reason)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class BrowserSupervisorSession:
     """Bind one claimed runner session to its staging and publisher identity."""
 
     claim_id: str
+    container_id: str
+    profile: str
+    origin: str
+    runner_pid: int
+    control_socket: socket.socket
+    next_sequence: int
+    staging_claim_id: str
     staging_root: Path
-    publisher_root: Path
-    publisher_authorization_id: str
-    origin: str = TEST_ORIGIN
+    publisher_claim_id: str
+    publication_authorization_id: str
 
     def __post_init__(self) -> None:
-        """Require absolute claim-owned roots on the non-HSTS test origin."""
+        """Require the exact source-only production runner session identity."""
+        if (
+            UUID.fullmatch(self.claim_id) is None
+            or UUID.fullmatch(self.staging_claim_id) is None
+            or UUID.fullmatch(self.publisher_claim_id) is None
+            or len(self.container_id) != CONTAINER_ID_HEX_LENGTH
+            or any(
+                character not in "0123456789abcdef" for character in self.container_id
+            )
+            or self.profile != "container-https"
+            or self.origin != PRODUCTION_ORIGIN
+            or self.runner_pid < 1
+            or self.control_socket.fileno() < 0
+            or self.next_sequence < 0
+            or self.publication_authorization_id != "f3-artifacts"
+        ):
+            _fail("final runner session identity is invalid")
         if not self.staging_root.is_absolute() or self.staging_root.is_symlink():
             _fail("staging root must be an absolute non-symlink path")
-        if not self.publisher_root.is_absolute():
-            _fail("publisher root must be absolute")
-        if self.claim_id not in self.staging_root.as_posix():
-            _fail("staging root is not bound to the session claim")
-        if not self.origin.startswith("http://") or HSTS_SUFFIX in self.origin:
-            _fail("session must use the non-HSTS test origin")
-        if EXTRA_HOST not in self.origin:
-            _fail("session origin is not the reserved browser host alias")
+        if self.staging_claim_id not in self.staging_root.parts:
+            _fail("staging root is not bound to the staging claim")
+
+    def take_sequence(self) -> int:
+        """Return and advance the one contiguous runner control sequence."""
+        current = self.next_sequence
+        self.next_sequence += 1
+        return current
+
+    def __reduce__(self) -> Never:
+        """Refuse serialization of the live host control socket."""
+        _fail("browser supervisor session is never serialized")
+
+    def __getstate__(self) -> Never:
+        """Refuse state export of the live host control socket."""
+        _fail("browser supervisor session is never serialized")
 
 
 class ClinicBrowserContexts:

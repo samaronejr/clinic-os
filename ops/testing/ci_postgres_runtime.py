@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 from urllib.parse import quote, urlencode
 from uuid import uuid4
 
@@ -27,7 +27,7 @@ from ops.testing.https_service_specs import (
 from ops.testing.isolation_docker_metadata import run_docker_command
 from ops.testing.isolation_reconcile import reconcile_same_boot
 from ops.testing.isolation_refresh import verify_claim
-from ops.testing.tls_contract import SOURCE_DATABASE_HOST
+from ops.testing.tls_contract import RESTORE_DATABASE_HOST, SOURCE_DATABASE_HOST
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -35,6 +35,14 @@ if TYPE_CHECKING:
 
     from ops.testing.tls_export import PublicCaExport
     from ops.testing.tls_materializer import MaterializerLease
+
+
+class _CiDatabaseRuntimeError(RuntimeError):
+    pass
+
+
+def _fail(reason: str) -> Never:
+    raise _CiDatabaseRuntimeError(reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +58,7 @@ class CiDatabaseLease:
     owner_password: str
     postgres_password: str
     super_password: str
+    database_host: str = SOURCE_DATABASE_HOST
 
 
 @contextmanager
@@ -57,6 +66,7 @@ def ci_database_lease(
     repository: Path,
     materializer: MaterializerLease,
     public_ca: PublicCaExport,
+    database_kind: str = "source",
 ) -> Iterator[CiDatabaseLease]:
     """Reserve before creating a unique TLS database and reverse-release it."""
     claim_id = str(uuid4())
@@ -68,12 +78,17 @@ def ci_database_lease(
     port = _unused_port()
     credentials = credentials_for(claim_id)
     environment = database_environment(database, credentials)
-    tls_volume = materializer.volume_names["phase1a-source-db-tls"]
+    if database_kind not in {"source", "restore"}:
+        _fail("CI PostgreSQL database kind is invalid")
+    database_host = (
+        SOURCE_DATABASE_HOST if database_kind == "source" else RESTORE_DATABASE_HOST
+    )
+    tls_volume = materializer.volume_names[f"phase1a-{database_kind}-db-tls"]
     service = database_service(
         materializer.image_id,
         network,
         pgdata,
-        (tls_volume, SOURCE_DATABASE_HOST),
+        (tls_volume, database_host),
         environment,
     )
     service["published_ports"] = [
@@ -119,6 +134,7 @@ def ci_database_lease(
             credentials.owner,
             credentials.postgres,
             credentials.runtime,
+            database_host,
         )
     finally:
         if container_id:
@@ -131,11 +147,11 @@ def ci_database_lease(
 def write_environment(path: Path, lease: CiDatabaseLease) -> None:
     """Write the source-only shell environment consumed by the same job."""
     values = {
-        "APP_DATABASE_URL": _database_url("clinic_app", lease.app_password, lease),
+        "APP_DATABASE_URL": database_url("clinic_app", lease.app_password, lease),
         "CLINIC_APP_PASSWORD": lease.app_password,
         "CLINIC_OWNER_PASSWORD": lease.owner_password,
         "CLINIC_SUPER_PASSWORD": lease.super_password,
-        "MIGRATION_DATABASE_URL": _database_url(
+        "MIGRATION_DATABASE_URL": database_url(
             "clinic_owner", lease.owner_password, lease
         ),
         "POSTGRES_CONTAINER": lease.container_id,
@@ -146,7 +162,7 @@ def write_environment(path: Path, lease: CiDatabaseLease) -> None:
         "POSTGRES_PORT": "5432",
         "POSTGRES_USER": "postgres",
         "TEST_DATABASE_NAME": f"test_{lease.database}",
-        "TEST_SUPERUSER_DATABASE_URL": _database_url(
+        "TEST_SUPERUSER_DATABASE_URL": database_url(
             "clinic_super", lease.super_password, lease
         ),
     }
@@ -161,7 +177,8 @@ def write_environment(path: Path, lease: CiDatabaseLease) -> None:
         os.close(descriptor)
 
 
-def _database_url(role: str, password: str, lease: CiDatabaseLease) -> str:
+def database_url(role: str, password: str, lease: CiDatabaseLease) -> str:
+    """Build one host-loopback verify-full URL for the lease's DNS identity."""
     query = urlencode(
         {
             "hostaddr": "127.0.0.1",
@@ -171,6 +188,6 @@ def _database_url(role: str, password: str, lease: CiDatabaseLease) -> str:
     )
     encoded_password = quote(password, safe="")
     return (
-        f"postgresql://{role}:{encoded_password}@{SOURCE_DATABASE_HOST}:"
+        f"postgresql://{role}:{encoded_password}@{lease.database_host}:"
         f"{lease.host_port}/{lease.database}?{query}"
     )

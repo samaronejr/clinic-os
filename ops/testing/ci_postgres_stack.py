@@ -11,7 +11,6 @@ from typing import Never
 from ops.testing.isolation_claim_transitions import reserve_claim
 from ops.testing.isolation_common import JsonObject, JsonValue, canonical_bytes
 from ops.testing.isolation_docker_metadata import run_docker_command
-from ops.testing.tls_contract import SOURCE_DATABASE_HOST
 
 POSTGRES_PORT = 5432
 
@@ -109,12 +108,15 @@ def _create_container(
     port = _objects(service["published_ports"])[0]
     arguments.extend(("--publish", f"127.0.0.1:{port['port']}:5432/tcp"))
     network = _objects(service["network_refs"])[0]
+    aliases = _strings(network["aliases"])
+    if len(aliases) != 1:
+        _fail("CI PostgreSQL network alias is invalid")
     arguments.extend(
         (
             "--network",
             str(network["network_name"]),
             "--network-alias",
-            SOURCE_DATABASE_HOST,
+            aliases[0],
         )
     )
     arguments.append(str(service["image_id"]))
