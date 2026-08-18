@@ -63,6 +63,7 @@ def _search_context(
     query = form.data.get("q", "") if results is not None else ""
     return {
         "birth_date_value": birth_date.isoformat() if birth_date else "",
+        "book_url": reverse("scheduling:appointment-create", args=(clinic_id,)),
         "clinic_id": clinic_id,
         "create_url": patient_create_continuation(clinic_id),
         "form": form,

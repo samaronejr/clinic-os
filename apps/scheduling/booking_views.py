@@ -1,0 +1,177 @@
+"""Body-only appointment booking screen for authorized clinic managers.
+
+Both booking modes are POST. Neither the enrollment nor any demographic value
+ever reaches a URL, so an unverified privileged challenge can only resume at the
+blank clinic patient list.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Final
+from uuid import UUID, uuid4
+
+from django.http import Http404, HttpResponse, HttpResponseBase
+from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.views.decorators.http import require_http_methods
+
+from apps.identity.otp import privileged_totp_required
+from apps.scheduling.agenda_presenter import DAY_VIEW, agenda_url
+from apps.scheduling.appointment_forms import (
+    BOOKING_PRACTITIONER_MESSAGE,
+    CONFLICTING_BOOKING_KEY_MESSAGE,
+    INVALID_BOOKING_MESSAGE,
+    SLOT_MESSAGE,
+    WINDOW_MESSAGE,
+    AppointmentCreateForm,
+    AppointmentPrepareForm,
+)
+from apps.scheduling.availability_presenter import manager_choices
+from apps.scheduling.services import (
+    AppointmentAccessDeniedError,
+    AppointmentAvailabilityError,
+    AppointmentCreateInputError,
+    AppointmentIdempotencyConflictError,
+    AppointmentPractitionerError,
+    AvailabilityAccessDeniedError,
+    SlotConflict,
+    create_appointment,
+    prepare_booking,
+)
+
+if TYPE_CHECKING:
+    from django.http import HttpRequest
+
+    from apps.scheduling.services import BookingPreparation
+
+SEE_OTHER: Final = 303
+NO_CONTENT: Final = 204
+BOOK_TEMPLATE: Final = "scheduling/appointment_book.html"
+BOOK_PARTIAL: Final = "scheduling/partials/booking_panel.html"
+PREPARE_MODE: Final = "prepare"
+CREATE_MODE: Final = "create"
+
+
+def appointment_create_continuation(clinic_id: UUID) -> str:
+    """Resume an unsafe booking challenge at the blank clinic patient list."""
+    return reverse("intake:patient-list", args=(clinic_id,))
+
+
+def _is_htmx(request: HttpRequest) -> bool:
+    return request.headers.get("HX-Request") == "true"
+
+
+def _choices(preparation: BookingPreparation) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (str(entry.practitioner_id), entry.display_identifier)
+        for entry in preparation.practitioners
+    )
+
+
+def _booking_context(
+    clinic_id: UUID,
+    preparation: BookingPreparation,
+    form: AppointmentCreateForm,
+) -> dict[str, object]:
+    return {
+        "book_url": reverse("scheduling:appointment-create", args=(clinic_id,)),
+        "clinic_id": clinic_id,
+        "form": form,
+        "list_url": appointment_create_continuation(clinic_id),
+        "patient_display_name": preparation.patient_display_name,
+        "practitioners": preparation.practitioners,
+        "window_count": sum(len(entry.windows) for entry in preparation.practitioners),
+    }
+
+
+def _render_booking(
+    request: HttpRequest,
+    context: dict[str, object],
+) -> HttpResponseBase:
+    template = BOOK_PARTIAL if _is_htmx(request) else BOOK_TEMPLATE
+    return render(request, template, context)
+
+
+def _body_enrollment(raw: object) -> UUID:
+    try:
+        return UUID(str(raw))
+    except ValueError as error:
+        raise Http404 from error
+
+
+def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+    form = AppointmentPrepareForm(data=request.POST)
+    if not form.is_valid():
+        raise Http404
+    enrollment_id = form.selected_enrollment()
+    preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    blank = AppointmentCreateForm(_choices(preparation))
+    blank.initial["enrollment_id"] = str(enrollment_id)
+    blank.initial["idempotency_key"] = str(uuid4())
+    return _render_booking(request, _booking_context(clinic_id, preparation, blank))
+
+
+def _booked(form: AppointmentCreateForm, clinic_id: UUID) -> bool:
+    try:
+        create_appointment(
+            clinic_id=clinic_id,
+            enrollment_id=form.selected_enrollment(),
+            practitioner_id=form.selected_practitioner(),
+            local_range=form.local_range(),
+            idempotency_key=form.cleaned_data["idempotency_key"],
+        )
+    except AppointmentIdempotencyConflictError:
+        form.add_error(None, CONFLICTING_BOOKING_KEY_MESSAGE)
+    except SlotConflict:
+        form.add_error(None, SLOT_MESSAGE)
+    except AppointmentAvailabilityError:
+        form.add_error(None, WINDOW_MESSAGE)
+    except AppointmentPractitionerError:
+        form.add_error(None, BOOKING_PRACTITIONER_MESSAGE)
+    except AppointmentCreateInputError:
+        form.add_error(None, INVALID_BOOKING_MESSAGE)
+    else:
+        return True
+    return False
+
+
+def _booked_response(
+    request: HttpRequest,
+    clinic_id: UUID,
+    local_date: str,
+) -> HttpResponseBase:
+    target = agenda_url(clinic_id, DAY_VIEW, local_date, 1)
+    if _is_htmx(request):
+        response: HttpResponseBase = HttpResponse(status=NO_CONTENT)
+        response.headers["HX-Redirect"] = target
+        return response
+    accepted = redirect(target, permanent=False)
+    accepted.status_code = SEE_OTHER
+    return accepted
+
+
+def _created(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+    form = AppointmentCreateForm(manager_choices(clinic_id), request.POST)
+    if form.is_valid() and _booked(form, clinic_id):
+        return _booked_response(request, clinic_id, form.local_range().start_local[:10])
+    enrollment_id = _body_enrollment(form.data.get("enrollment_id", ""))
+    preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    return _render_booking(request, _booking_context(clinic_id, preparation, form))
+
+
+@privileged_totp_required(appointment_create_continuation)
+@require_http_methods(["POST"])
+def appointment_create_view(
+    request: HttpRequest,
+    clinic_id: UUID,
+) -> HttpResponseBase:
+    """Prepare one booking window set or create one explicit appointment."""
+    mode = request.POST.get("mode", "")
+    if mode not in {PREPARE_MODE, CREATE_MODE}:
+        raise Http404
+    try:
+        if mode == PREPARE_MODE:
+            return _prepared(request, clinic_id)
+        return _created(request, clinic_id)
+    except (AppointmentAccessDeniedError, AvailabilityAccessDeniedError) as error:
+        raise Http404 from error

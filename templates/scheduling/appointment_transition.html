@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{% if kind == "reschedule" %}Reschedule an appointment{% else %}Cancel an appointment{% endif %} · Clinic OS{% endblock %}
+{% block meta_description %}Change one clinic appointment without exposing patient identifiers in the address bar.{% endblock %}
+{% block content %}
+<section class="scheduling-shell" aria-labelledby="transition-title">
+  <p class="eyebrow">Clinic schedule</p>
+  <h1 id="transition-title">{% if kind == "reschedule" %}Reschedule an appointment{% else %}Cancel an appointment{% endif %}</h1>
+  <h2 id="transition-lede-title">This screen never changes the patient or the physician</h2>
+  <p class="lede" id="transition-lede">Every minute below is this clinic's local time ({{ timezone_key }}).</p>
+  {% include "scheduling/partials/transition_panel.html" %}
+  <p class="scheduling-links"><a href="{{ agenda_url }}">Back to the clinic agenda</a></p>
+</section>
+{% endblock %}

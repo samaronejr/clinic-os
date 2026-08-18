@@ -1,0 +1,68 @@
+<div id="scheduling-booking" class="scheduling-card">
+  {% if form.errors %}
+  <div class="feedback feedback--error" id="booking-errors" role="alert" tabindex="-1">
+    <h3>We could not book that appointment</h3>
+    {% if form.non_field_errors %}
+      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    {% else %}
+      <p>Check the highlighted fields and try again.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  <h3 id="booking-windows-title">Availability this clinic already promised</h3>
+  <p class="scheduling-status" id="booking-windows-status" role="status">
+    {% if window_count %}{{ window_count }} promised window{{ window_count|pluralize }}. Choose any exact start and end inside one of them.{% else %}No physician has promised a future window in this clinic yet.{% endif %}
+  </p>
+  {% if window_count %}
+  <table class="scheduling-table">
+    <caption>Promised availability windows</caption>
+    <thead>
+      <tr>
+        <th scope="col">Physician</th>
+        <th scope="col">Window starts</th>
+        <th scope="col">Window ends</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for practitioner in practitioners %}{% for window in practitioner.windows %}
+      <tr>
+        <th scope="row">{{ practitioner.display_identifier }}</th>
+        <td>{{ window.start_local }}</td>
+        <td>{{ window.end_local }}</td>
+      </tr>
+      {% endfor %}{% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <h3 id="booking-form-title">Choose an exact start and end</h3>
+  <form method="post" action="{{ book_url }}" hx-post="{{ book_url }}"
+        hx-target="#scheduling-booking" hx-swap="outerHTML"
+        hx-indicator="#booking-progress">
+    {% csrf_token %}
+    <input type="hidden" name="mode" value="create">
+    <div class="field{% if form.practitioner.errors %} field--error{% endif %}">
+      {{ form.practitioner.label_tag }}
+      {{ form.practitioner }}
+      <p class="hint" id="booking-practitioner-help">Only active physicians assigned to this clinic are listed.</p>
+      {% if form.practitioner.errors %}<div class="field-errors" id="{{ form.practitioner.auto_id }}_error">{% for error in form.practitioner.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+    </div>
+    <div class="field{% if form.start_local.errors %} field--error{% endif %}">
+      {{ form.start_local.label_tag }}
+      {{ form.start_local }}
+      <p class="hint" id="booking-start-help">Enter the exact clinic-local minute this appointment begins.</p>
+      {% if form.start_local.errors %}<div class="field-errors" id="{{ form.start_local.auto_id }}_error">{% for error in form.start_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+    </div>
+    <div class="field{% if form.end_local.errors %} field--error{% endif %}">
+      {{ form.end_local.label_tag }}
+      {{ form.end_local }}
+      <p class="hint" id="booking-end-help">Enter the exact clinic-local minute it ends, on the same date.</p>
+      {% if form.end_local.errors %}<div class="field-errors" id="{{ form.end_local.auto_id }}_error">{% for error in form.end_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+    </div>
+    {{ form.enrollment_id }}
+    {{ form.idempotency_key }}
+    <div class="actions">
+      <button type="submit">Book this appointment</button>
+      <span class="htmx-indicator" id="booking-progress" role="status">Booking…</span>
+    </div>
+  </form>
+</div>

@@ -28,9 +28,11 @@ from ops.testing.browser_artifact_publisher import (
 from ops.testing.browser_runner_contract import selected_suites
 from ops.testing.browser_suites.availability import build_availability_suite
 from ops.testing.browser_suites.patient import build_patient_suite
+from ops.testing.browser_suites.scheduling import build_scheduling_suite
 from ops.testing.browser_totp_code import TotpContext, confirmed_code
 
-AVAILABLE_SUITES: Final = ["availability", "patient"]
+AVAILABLE_SUITES: Final = ["availability", "patient", "scheduling"]
+PHYSICIAN_SUITES: Final = frozenset({"availability", "scheduling"})
 PHYSICIAN_ENVIRONMENT: Final = (
     "CLINIC_BROWSER_ORG_ID",
     "CLINIC_BROWSER_PHYSICIAN_ID",
@@ -171,7 +173,7 @@ def build_suite(suite_id: str, base_url: str) -> Callable[[], dict[str, bytes]]:
     """Return the allowlisted zero-argument entrypoint for one suite id."""
     if suite_id == "patient":
         return build_patient_suite(_base_config(base_url))
-    if suite_id != "availability":
+    if suite_id not in PHYSICIAN_SUITES:
         _fail(f"{suite_id} is not an implemented browser suite")
     for name in PHYSICIAN_ENVIRONMENT:
         if not os.environ.get(name):
@@ -184,6 +186,8 @@ def build_suite(suite_id: str, base_url: str) -> Callable[[], dict[str, bytes]]:
     config = _base_config(base_url)
     config["physician_username"] = os.environ["CLINIC_BROWSER_PHYSICIAN_USERNAME"]
     config["physician_password"] = os.environ["CLINIC_BROWSER_PHYSICIAN_PASSWORD"]
+    if suite_id == "scheduling":
+        return build_scheduling_suite(config, lambda: confirmed_code(context))
     return build_availability_suite(config, lambda: confirmed_code(context))
 
 
