@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
-import rfc8785
-
 from ops.testing import isolation_common as c
 from ops.testing import isolation_controller_kernel as kernel
+from ops.testing.isolation_final_wave_evidence import _predecessor_evidence_sha256
 from ops.testing.isolation_final_wave_record import FinalForm as _FinalForm
 from ops.testing.isolation_final_wave_record import (
     FinalWaveStart,
@@ -16,7 +15,6 @@ from ops.testing.isolation_final_wave_record import (
     validate_final_wave_record,
     validate_final_wave_start,
 )
-from ops.testing.isolation_review_lane_record import validate_review_lane_record
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -109,6 +107,12 @@ class _FinalWaveSession:
         ] in {"reserved", "active"}:
             self.record["final_gate_staging_state"] = "released"
         self._seal("failure-ready", now)
+
+    def prepare_failure(self, now: str) -> None:
+        if self.record["state"] in {"failure-ready", "success"}:
+            kernel.fail("terminal final-wave controller cannot prepare failure")
+        clear_final_wave_child(self.record)
+        self._update(now, state="recovering")
 
     def seal_success(self, now: str) -> None:
         if self.record["state"] != "child-terminal" or not kernel.successful_wait(
@@ -221,56 +225,6 @@ def _acquire_final_wave(
     finally:
         if not ready:
             lease.close()
-
-
-def _predecessor_evidence_sha256(request: FinalWaveStart) -> str | None:
-    if (evidence := request.predecessor_evidence) is None:
-        return None
-    if not all(
-        kernel.is_sha256(value)
-        for value in (
-            evidence.inputs_sha256,
-            evidence.f3_manifest_sha256,
-            evidence.scope_pre_sha256,
-        )
-    ):
-        kernel.fail("final-wave predecessor digest is invalid")
-    terminal_hashes: dict[str, c.JsonValue] = {}
-    for lane, record in (("F1", evidence.f1_record), ("F2", evidence.f2_record)):
-        try:
-            validate_review_lane_record(record)
-        except c.IsolationError as error:
-            message = f"{lane} predecessor record is invalid"
-            raise c.IsolationError(message) from error
-        identity = (
-            record.get("attempt_id"),
-            record.get("lane"),
-            record.get("sha"),
-            record.get("inputs_sha256"),
-            record.get("state"),
-        )
-        expected = (
-            request.attempt_id,
-            lane,
-            request.sha,
-            evidence.inputs_sha256,
-            "success",
-        )
-        if identity != expected or not kernel.is_sha256(
-            record.get("terminal_outputs_sha256")
-        ):
-            kernel.fail(f"{lane} predecessor is not a successful bound review")
-        terminal_hashes[f"{lane.lower()}_terminal_outputs_sha256"] = record[
-            "terminal_outputs_sha256"
-        ]
-    projection: c.JsonObject = {
-        **terminal_hashes,
-        "f3_manifest_sha256": evidence.f3_manifest_sha256,
-        "inputs_sha256": evidence.inputs_sha256,
-        "schema_version": 1,
-        "scope_pre_sha256": evidence.scope_pre_sha256,
-    }
-    return c.raw_sha256(rfc8785.dumps(projection))
 
 
 FinalForm, FinalWaveSession = _FinalForm, _FinalWaveSession

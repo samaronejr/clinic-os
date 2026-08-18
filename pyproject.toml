@@ -15,6 +15,7 @@ dependencies = [
   "redis",
   "rfc8785",
   "sentry-sdk[django]",
+  "sqlparse>=0.6.0,<0.7",
   "tzdata==2026.3",
   "whitenoise==6.12.0",
 ]
@@ -35,6 +36,8 @@ dev = [
   "pytest-cov",
   "pytest-django",
   "ruff",
+  "basedpyright==1.39.9",
+  "jsonschema>=4.26.0",
 ]
 
 [tool.uv]
@@ -112,3 +115,4 @@ DJANGO_SETTINGS_MODULE = "config.settings.test"
 
 [tool.coverage.run]
 omit = ["*/migrations/*"]
+patch = ["subprocess"]

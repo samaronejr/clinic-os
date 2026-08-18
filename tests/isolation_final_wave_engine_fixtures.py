@@ -70,6 +70,7 @@ def completed_review(
         identity = kernel.ChildIdentity(
             pid + index + 1, pid + index + 1, pid + index + 8000
         )
+        session.reserve_child_claim(PROCESS_CLAIMS[index], DIGEST, NOW)
         session.record_child(
             review.ReviewChild(PROCESS_CLAIMS[index], DIGEST, identity), NOW
         )

@@ -10,5 +10,7 @@ DATABASES = {
     )
 }
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
-DATABASES["default"]["OPTIONS"] = {"options": "-c search_path=clinic_app,public"}
+DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
+    "-c search_path=clinic_app,public"
+)
 PASSWORD_HASHERS: list[str] = ["django.contrib.auth.hashers.MD5PasswordHasher"]

@@ -5,8 +5,9 @@ from __future__ import annotations
 import copy
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, Never
+from typing import TYPE_CHECKING, Never
 
+from ops.testing import isolation_final_suites as final_suites
 from ops.testing.cgroup_probe_contract import validate_probe_journal
 from ops.testing.isolation_candidate_contract import (
     candidate_desired,
@@ -46,12 +47,7 @@ if TYPE_CHECKING:
 
     from ops.testing.isolation_ledger_store import LedgerSession
 
-REQUIRED_SUITES: Final = (
-    "availability",
-    "patient",
-    "runtime-https",
-    "scheduling",
-)
+REQUIRED_SUITES = final_suites.REQUIRED_SUITES
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +94,9 @@ class _FinalInputFreeze:
     staging_root: Path
     output_path: Path
     source_inspection: _SourceInspection
+    codex_source_path: Path
+    uv_source_path: Path
+    final_suite_path: Path
 
 
 @dataclass(frozen=True, slots=True)
