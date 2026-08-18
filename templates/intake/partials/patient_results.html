@@ -9,6 +9,7 @@
       <tr>
         <th scope="col">Patient name</th>
         <th scope="col">Birth date</th>
+        <th scope="col">Booking</th>
       </tr>
     </thead>
     <tbody>
@@ -16,6 +17,14 @@
       <tr>
         <th scope="row">{{ item.full_name }}</th>
         <td>{{ item.birth_date|date:"Y-m-d" }}</td>
+        <td>
+          <form method="post" action="{{ book_url }}">
+            {% csrf_token %}
+            <input type="hidden" name="mode" value="prepare">
+            <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+            <button type="submit">Book {{ item.full_name }}</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

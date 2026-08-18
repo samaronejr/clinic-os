@@ -30,14 +30,16 @@ CREATE_DESCRIPTIONS: Final = {
 }
 
 
-def _describe(form: forms.Form, descriptions: dict[str, str]) -> None:
+def describe_fields(form: forms.Form, descriptions: dict[str, str]) -> None:
+    """Bind each named field to the hint element that describes it."""
     for field_name, description in descriptions.items():
         form.fields[field_name].widget.attrs.update(
             {"autocomplete": "off", "aria-describedby": description}
         )
 
 
-def _bind_error_descriptions(form: forms.Form, descriptions: dict[str, str]) -> None:
+def bind_error_descriptions(form: forms.Form, descriptions: dict[str, str]) -> None:
+    """Append the rendered error element to each bound field description."""
     for field_name, description in descriptions.items():
         description_ids = [description]
         if field_name in form.errors:
@@ -75,12 +77,12 @@ class AvailabilityCreateForm(forms.Form):
         field = self.fields["practitioner"]
         if isinstance(field, forms.ChoiceField):
             field.choices = [BLANK_CHOICE, *choices]
-        _describe(self, CREATE_DESCRIPTIONS)
+        describe_fields(self, CREATE_DESCRIPTIONS)
 
     def full_clean(self) -> None:
         """Connect bound field errors to their rendered descriptions."""
         super().full_clean()
-        _bind_error_descriptions(self, CREATE_DESCRIPTIONS)
+        bind_error_descriptions(self, CREATE_DESCRIPTIONS)
 
     def selected_practitioner(self) -> UUID:
         """Return the resolver-approved practitioner the body selected."""

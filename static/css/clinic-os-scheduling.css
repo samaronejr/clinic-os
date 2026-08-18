@@ -80,3 +80,40 @@
     align-items: center;
   }
 }
+
+.scheduling-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block: var(--space-5) 0;
+}
+
+.scheduling-links a,
+.scheduling-pagination a,
+.scheduling-table td a {
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-1);
+  background: var(--color-surface);
+  color: var(--color-primary-strong);
+  font-family: var(--font-display);
+  text-decoration-thickness: 0.0625rem;
+  text-underline-offset: 0.125rem;
+}
+
+.scheduling-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-start: var(--space-5);
+}
+
+.scheduling-table td a {
+  margin-block-end: var(--space-2);
+}
+
+.scheduling-table td a:last-child {
+  margin-block-end: 0;
+}
