@@ -50,7 +50,12 @@ def logout_view(request: HttpRequest) -> HttpResponseBase:
     return auth_response(response)
 
 
-@privileged_totp_required
+def protected_continuation() -> str:
+    """Resume an unsafe protected-route challenge at the protected GET."""
+    return "/auth/protected/"
+
+
+@privileged_totp_required(protected_continuation)
 def protected_view(request: HttpRequest) -> HttpResponseBase:
     """Expose a compact enforcement target for authenticated product routes."""
     response = render(request, "identity/protected.html")

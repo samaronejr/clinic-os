@@ -68,6 +68,7 @@ OTP_TOTP_ISSUER: str = "Clinic OS"
 STEP_UP_MAX_AGE_SECONDS: int = 300
 
 MIDDLEWARE: list[str] = [
+    "apps.core.middleware.ResponsePrivacyMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

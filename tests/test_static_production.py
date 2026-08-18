@@ -30,7 +30,8 @@ def test_todo18_dependencies_are_exact_and_isolated() -> None:
 
 
 def test_production_static_is_manifested_and_self_hosted() -> None:
-    assert settings.MIDDLEWARE[:2] == [
+    assert settings.MIDDLEWARE[:3] == [
+        "apps.core.middleware.ResponsePrivacyMiddleware",
         "django.middleware.security.SecurityMiddleware",
         "whitenoise.middleware.WhiteNoiseMiddleware",
     ]

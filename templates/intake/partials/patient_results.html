@@ -1,0 +1,48 @@
+<div id="patient-results" class="intake-results">
+  <p class="intake-status" id="patient-results-status" role="status">
+    {% if results is None %}Submit a search to list patients.{% else %}{{ results.total }} matching patient record{{ results.total|pluralize }}. Page {{ results.page }} of {{ results.page_count }}.{% endif %}
+  </p>
+  {% if results.items %}
+  <table class="intake-table">
+    <caption>Registry matches in this clinic</caption>
+    <thead>
+      <tr>
+        <th scope="col">Patient name</th>
+        <th scope="col">Birth date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in results.items %}
+      <tr>
+        <th scope="row">{{ item.full_name }}</th>
+        <td>{{ item.birth_date|date:"Y-m-d" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if previous_page or next_page %}
+  <nav class="intake-pagination" aria-label="Search result pages">
+    {% if previous_page %}
+    <form method="post" action="{{ list_url }}"
+          hx-post="{{ list_url }}" hx-target="#patient-results" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="q" value="{{ query }}">
+      <input type="hidden" name="birth_date" value="{{ birth_date_value }}">
+      <input type="hidden" name="page" value="{{ previous_page }}">
+      <button type="submit">Previous page</button>
+    </form>
+    {% endif %}
+    {% if next_page %}
+    <form method="post" action="{{ list_url }}"
+          hx-post="{{ list_url }}" hx-target="#patient-results" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="q" value="{{ query }}">
+      <input type="hidden" name="birth_date" value="{{ birth_date_value }}">
+      <input type="hidden" name="page" value="{{ next_page }}">
+      <button type="submit">Next page</button>
+    </form>
+    {% endif %}
+  </nav>
+  {% endif %}
+</div>
