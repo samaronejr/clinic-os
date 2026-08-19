@@ -95,4 +95,4 @@ jobs:
       - name: Validate closed action provenance
         run: python ops/testing/validate_action_pins.py
       - name: Check workflow syntax
-        uses: raven-actions/actionlint@963d4779ef039e217e5d0e6fd73ce9ab7764e493 # v2.1.0
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
