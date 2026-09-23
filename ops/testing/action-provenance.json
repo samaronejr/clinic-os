@@ -12,9 +12,9 @@
       "uv_version": "0.11.28"
     },
     {
-      "commit": "963d4779ef039e217e5d0e6fd73ce9ab7764e493",
+      "commit": "3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
       "repository": "https://github.com/raven-actions/actionlint",
-      "tag": "v2.1.0"
+      "tag": "v2.2.0"
     }
   ],
   "schema_version": 1

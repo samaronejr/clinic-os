@@ -32,8 +32,8 @@ ACTION_MAP: Final = {
         "v8.3.2",
     ),
     "raven-actions/actionlint": (
-        "963d4779ef039e217e5d0e6fd73ce9ab7764e493",
-        "v2.1.0",
+        "3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
+        "v2.2.0",
     ),
 }
 USE = re.compile(

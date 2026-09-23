@@ -70,7 +70,6 @@ def _up() -> None:
                 (os.POSIX_SPAWN_DUP2, log_fd, 2),
                 (os.POSIX_SPAWN_CLOSE, log_fd),
             ),
-            setsid=True,
         )
     finally:
         os.chdir(previous_directory)
