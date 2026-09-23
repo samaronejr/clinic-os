@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from copy import deepcopy
 
 import pytest
@@ -15,6 +16,12 @@ from isolation.isolation_candidate_stale_fixtures import (
     EXPECTED_RUNNER_HASHES,
     fixed_candidate_state,
 )
+
+
+@pytest.fixture(autouse=True)
+def _pinned_process_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(os, "getegid", lambda: 1000)
 
 
 @pytest.mark.parametrize(
