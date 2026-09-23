@@ -145,13 +145,29 @@ def accepting_verifier() -> Callable[[JsonObject, JsonObject, JsonObject], None]
     return lambda _ledger, _claim, _envelope: None
 
 
+def primary_sources(attempt_id: str) -> list[JsonValue]:
+    return [
+        {
+            "attempt_id": attempt_id,
+            "bundle_path": None,
+            "primary_commit_sha": f"{todo:040x}",
+            "relative_path": (
+                f"todo-evidence/task-{todo}-clinic-os-phase-1a-staff-scheduling.json"
+            ),
+            "sha256": f"{todo:064x}",
+            "todo": todo,
+        }
+        for todo in range(1, 21)
+    ]
+
+
 def complete_empty_lineage(attempt_root: Path, attempt_id: str) -> None:
     _seed, seed_raw = load_json(attempt_root / "receipt-lineage-seed.json")
     validation: JsonObject = {
         "current_attempt_id": attempt_id,
         "fix_sources": [],
         "next_fix_sequence": 1,
-        "primary_sources": [],
+        "primary_sources": primary_sources(attempt_id),
         "schema_version": 1,
         "seed_sha256": raw_sha256(seed_raw),
     }

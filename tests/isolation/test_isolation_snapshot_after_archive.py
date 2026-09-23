@@ -136,7 +136,23 @@ def test_snapshot_after_archive_links_history_and_replays_without_duplication(
         ),
         "previous_lineage_sha256": tombstone["receipt_lineage_sha256"],
         "previous_tombstone_sha256": raw_sha256(tombstone_raw),
-        "primary_sources": [],
+        "primary_sources": [
+            {
+                "attempt_id": archived["attempt_id"],
+                "bundle_path": (
+                    ".omo/evidence/clinic-os-phase1a-rejected/"
+                    f"{archived['attempt_id']}/{tombstone['sha']}"
+                ),
+                "primary_commit_sha": f"{todo:040x}",
+                "relative_path": (
+                    f"todo-evidence/task-{todo}"
+                    "-clinic-os-phase-1a-staff-scheduling.json"
+                ),
+                "sha256": f"{todo:064x}",
+                "todo": todo,
+            }
+            for todo in range(1, 21)
+        ],
         "schema_version": 1,
     }
     runtime_root = ledger_path.parent / "clinic-os-phase1a-runtime"

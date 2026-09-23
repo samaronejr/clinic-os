@@ -24,6 +24,7 @@ from ops.testing.isolation_user_fix import (
     build_user_rejection_context,
 )
 
+from isolation.isolation_candidate_fixtures import primary_sources
 from isolation.isolation_rejection_fixtures import (
     FailureReceiptSpec,
     empty_inventory,
@@ -230,7 +231,7 @@ def _publish_lineage(attempt_root: Path, attempt_id: str) -> tuple[str, str, str
         "current_attempt_id": attempt_id,
         "fix_sources": [],
         "next_fix_sequence": 1,
-        "primary_sources": [],
+        "primary_sources": primary_sources(attempt_id),
         "schema_version": 1,
         "seed_sha256": seed_sha,
     }
