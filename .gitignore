@@ -14,3 +14,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+
+# CI runtime evidence and job-owned authority link
+evidence/
+.omo
