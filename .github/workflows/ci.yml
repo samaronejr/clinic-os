@@ -31,8 +31,11 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
-      - name: Bind job-owned authority root
-        run: ln -s "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          mkdir -p -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed database quality gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -67,8 +70,11 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
-      - name: Bind job-owned authority root
-        run: ln -s "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          mkdir -p -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed migration and contract gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -102,8 +108,11 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
-      - name: Bind job-owned authority root
-        run: ln -s "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          mkdir -p -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
         run: uv run --locked python ops/testing/validate_action_pins.py
       - name: Check workflow syntax
