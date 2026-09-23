@@ -4,6 +4,7 @@ import copy
 import importlib
 import json
 import os
+import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Final, Protocol, runtime_checkable
@@ -194,7 +195,7 @@ def test_accepted_close_state_and_receipt_validate_as_draft_2020_12(
         ("accepted-final-receipt.schema.json", receipt),
     ):
         process_id = os.posix_spawn(
-            "/usr/bin/jsonschema",
+            str(Path(sys.executable).with_name("jsonschema")),
             (
                 "jsonschema",
                 "-V",
