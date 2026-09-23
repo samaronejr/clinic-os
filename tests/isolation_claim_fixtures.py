@@ -14,6 +14,7 @@ from ops.testing.isolation_common import (
     write_no_replace,
 )
 from ops.testing.isolation_snapshot import SnapshotRequest, snapshot_ledger
+from ops.testing.process_helpers import run_process
 
 from isolation_probe_fixtures import complete_probe
 
@@ -70,7 +71,7 @@ def snapshot(tmp_path: Path) -> Path:
         "workspace_realpath": str(authority_workspace),
     }
     write_no_replace(proof_path, canonical_bytes(proof), mode=MODE_IMMUTABLE)
-    return snapshot_ledger(
+    ledger_path = snapshot_ledger(
         SnapshotRequest(
             approved_plan=plan,
             authority_workspace=authority_workspace,
@@ -87,6 +88,24 @@ def snapshot(tmp_path: Path) -> Path:
         ),
         probe_runner=complete_probe,
     )
+    for arguments in (
+        ("/usr/bin/git", "-C", str(worktree), "init", "-q"),
+        ("/usr/bin/git", "-C", str(worktree), "add", "-A"),
+        (
+            "/usr/bin/git",
+            "-C",
+            str(worktree),
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=test",
+            "commit",
+            "-qm",
+            "init",
+        ),
+    ):
+        assert run_process(arguments).returncode == 0
+    return ledger_path
 
 
 def filesystem_spec(claim_id: str, dependencies: list[JsonValue]) -> JsonObject:

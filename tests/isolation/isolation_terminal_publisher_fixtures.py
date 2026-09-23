@@ -19,6 +19,7 @@ from ops.testing.isolation_common import (
     write_atomic_replace,
     write_no_replace,
 )
+from ops.testing.process_helpers import run_process
 
 from isolation_claim_fixtures import FOUNDATION_SHA, SECOND_CLAIM_ID, snapshot
 
@@ -31,6 +32,15 @@ PREVIOUS_BOOT = "11111111-1111-4111-8111-111111111111"
 def stale_publisher_ledger(tmp_path: Path, status: str) -> tuple[Path, Path]:
     ledger_path = snapshot(tmp_path)
     ledger, _ = load_json(ledger_path)
+    worktree_head = run_process(
+        (
+            "/usr/bin/git",
+            "-C",
+            str(Path(str(ledger["worktree_realpath"]))),
+            "rev-parse",
+            "HEAD",
+        )
+    ).stdout.strip()
     ledger["boot_id"] = PREVIOUS_BOOT
     observation = cast("JsonObject", ledger["boot_observation"])
     observation["boot_id"] = PREVIOUS_BOOT
@@ -58,6 +68,7 @@ def stale_publisher_ledger(tmp_path: Path, status: str) -> tuple[Path, Path]:
         claim,
         (before_publisher, canonical_bytes(reserved_ledger)),
         (control_root, lock_path),
+        worktree_head,
     )
     write_no_replace(journal_path, canonical_bytes(journal), mode=MODE_PRIVATE)
     _write_failure_receipt(ledger)
@@ -165,6 +176,7 @@ def _final_wave_journal(
     claim: JsonObject,
     reservation_bytes: tuple[bytes, bytes],
     control_paths: tuple[Path, Path],
+    worktree_head: str,
 ) -> JsonObject:
     pre_reservation, post_reservation = reservation_bytes
     control_root, lock_path = control_paths
@@ -190,7 +202,7 @@ def _final_wave_journal(
         "pre_f4_sha256": None,
         "receipt_lineage_sha256": "f" * 64,
         "schema_version": 1,
-        "sha": FOUNDATION_SHA,
+        "sha": worktree_head,
         "attempt_id": ledger["attempt_id"],
         "terminal_publisher_claim_id": SECOND_CLAIM_ID,
         "terminal_publisher_post_release_ledger_sha256": None,

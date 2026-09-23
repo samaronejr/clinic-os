@@ -7,7 +7,7 @@ from ops.testing.isolation_common import IsolationError, load_json
 from ops.testing.isolation_terminal_publisher_journal import (
     discover_terminal_publisher,
 )
-from ops.testing.process_helpers import ProcessResult
+from ops.testing.process_helpers import ProcessResult, run_process
 
 from isolation.isolation_terminal_publisher_fixtures import stale_publisher_ledger
 from isolation_claim_fixtures import FOUNDATION_SHA
@@ -47,9 +47,18 @@ def test_terminal_publisher_accepts_clean_matching_bound_worktree(
 ) -> None:
     ledger_path, _journal_path = stale_publisher_ledger(tmp_path, "active")
     ledger, _ = load_json(ledger_path)
+    worktree_head = run_process(
+        (
+            "/usr/bin/git",
+            "-C",
+            str(ledger["worktree_realpath"]),
+            "rev-parse",
+            "HEAD",
+        )
+    ).stdout.strip()
 
     def inspect(arguments: tuple[str, ...]) -> ProcessResult:
-        stdout = f"{FOUNDATION_SHA}\n" if "rev-parse" in arguments else ""
+        stdout = f"{worktree_head}\n" if "rev-parse" in arguments else ""
         return ProcessResult(0, stdout, "")
 
     monkeypatch.setattr(
