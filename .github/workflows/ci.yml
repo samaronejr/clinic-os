@@ -28,7 +28,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ runner.temp }}/clinic-os-phase1a-evidence
       - name: Run claimed database quality gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -60,7 +62,9 @@ jobs:
           python-version: "3.12"
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ runner.temp }}/clinic-os-phase1a-evidence
       - name: Run claimed migration and contract gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -91,8 +95,10 @@ jobs:
           python-version: "3.12"
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ runner.temp }}/clinic-os-phase1a-evidence
       - name: Validate closed action provenance
-        run: python ops/testing/validate_action_pins.py
+        run: uv run --locked python ops/testing/validate_action_pins.py
       - name: Check workflow syntax
         uses: raven-actions/actionlint@963d4779ef039e217e5d0e6fd73ce9ab7764e493 # v2.1.0

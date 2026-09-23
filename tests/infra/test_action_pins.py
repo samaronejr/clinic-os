@@ -7,7 +7,7 @@ from ops.testing.validate_action_pins import validate_repository
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = PROJECT_ROOT / ".github/workflows/ci.yml"
 SNAPSHOT = (
-    "python ops/testing/isolation_ledger.py snapshot --approved-plan "
+    "uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "
     '"$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" '
     "--tracked-ci-sidecar "
     '"$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" '

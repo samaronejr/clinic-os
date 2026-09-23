@@ -15,7 +15,7 @@ from ops.testing.isolation_common import IsolationError, JsonValue
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
 SNAPSHOT: Final = (
-    "python ops/testing/isolation_ledger.py snapshot --approved-plan "
+    "uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "
     '"$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" '
     "--tracked-ci-sidecar "
     '"$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" '
