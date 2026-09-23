@@ -47,7 +47,8 @@ language is specified in [DESIGN.md](DESIGN.md).
 ```bash
 uv sync --locked --all-groups
 uv run pre-commit install
-ops/testing/ci_postgres.sh up   # claimed PostgreSQL for the test suite
+export RUNNER_TEMP="${RUNNER_TEMP:-$(mktemp -d)}"   # ci_postgres.sh requires it (set by GitHub Actions in CI)
+ops/testing/ci_postgres.sh up                      # claimed PostgreSQL for the test suite
 source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
 make db-bootstrap migrate db-posture
 uv run pytest --reuse-db tests
