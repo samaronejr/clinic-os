@@ -1,208 +1,81 @@
+/* Authentication screens: the narrow single-task measure plus the enrollment
+   QR panel. Fields, actions, notices and panels come from clinic-os.css. */
+
 .auth-shell {
-  width: min(36rem, 100%);
+  width: min(var(--measure-narrow), 100%);
   min-width: 0;
   margin-inline: auto;
 }
 
+/* Legacy kicker above the title. Do not add new ones; these lines leave with
+   the pt-BR copy pass (DESIGN.md, Don'ts). */
 .eyebrow {
   margin-bottom: var(--space-2);
   color: var(--color-primary-strong);
-  font-family: var(--font-display);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.lede {
-  font-size: 1.125rem;
-}
-
-.auth-card,
-.showcase-state {
-  min-width: 0;
-  padding: var(--space-5);
-  overflow-wrap: anywhere;
-  border: 0.0625rem solid var(--color-line);
-  border-radius: var(--radius-2);
-  background: var(--color-surface-raised);
-}
-
-.auth-card > *,
-.showcase-state > *,
-.showcase-grid > * {
-  min-width: 0;
-}
-
-.auth-card > :last-child,
-.showcase-state > :last-child {
-  margin-bottom: 0;
-}
-
-.field {
+/* Step-up context: the fixed subject of the action being confirmed, read
+   as label-over-value facts on a paper surface bounded by a rule. */
+.auth-context {
   min-width: 0;
   margin-bottom: var(--space-5);
-}
-
-.field label,
-.status-label {
-  display: block;
-  margin-bottom: var(--space-2);
-  color: var(--color-ink);
-  font-family: var(--font-display);
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-input,
-select,
-button,
-.button {
-  min-width: 0;
-  min-height: 2.75rem;
-  font-family: var(--font-display);
-  font-size: inherit;
-  line-height: inherit;
-}
-
-input,
-select {
-  width: 100%;
-  padding: var(--space-3);
-  border: 0.0625rem solid var(--color-control-border);
-  border-radius: var(--radius-1);
-  background: var(--color-surface-raised);
-  color: var(--color-ink);
-}
-
-input:hover,
-select:hover {
-  border-color: var(--color-primary-strong);
-}
-
-input[aria-invalid="true"],
-select[aria-invalid="true"],
-.field--error input,
-.field--error select {
-  border-color: var(--color-error);
-}
-
-.hint,
-.field-error {
-  margin: var(--space-2) 0 0;
+  padding: var(--space-4);
   overflow-wrap: anywhere;
-  font-size: 0.875rem;
-  line-height: 1.5;
-}
-
-.field-error {
-  color: var(--color-error);
-}
-
-.field-errors > :last-child {
-  margin-bottom: 0;
-}
-
-.feedback {
-  min-width: 0;
-  margin-bottom: var(--space-5);
-  padding: var(--space-3) var(--space-4);
-  overflow-wrap: anywhere;
-  border: 0.0625rem solid var(--color-line);
+  border: var(--line-1) solid var(--color-line);
+  border-inline-start: var(--line-3) solid var(--color-primary);
   border-radius: var(--radius-1);
   background: var(--color-surface-raised);
 }
 
-.feedback--error {
-  border-color: var(--color-error);
+.auth-context-title {
+  margin-bottom: var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
 }
 
-.feedback--error h2,
-.feedback--error p {
-  color: var(--color-error);
+.auth-context-action {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-lede);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
 }
 
-.feedback--success h2,
-.feedback--success p {
-  color: var(--color-primary-strong);
+.auth-context-facts {
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-3);
 }
 
-.feedback h2 {
-  font-size: 1rem;
+.auth-context-fact {
+  min-width: 0;
 }
 
-.feedback p {
+.auth-context-fact dt {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.auth-context-fact dd {
   margin: 0;
+  font-weight: var(--weight-label);
 }
 
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  align-items: stretch;
+.auth-context > :last-child {
+  margin-bottom: 0;
 }
 
-button,
-.button {
-  padding: var(--space-2) var(--space-4);
-  border: 0.0625rem solid var(--color-primary);
-  border-radius: var(--radius-1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow-wrap: anywhere;
-  background: var(--color-primary);
-  color: var(--color-surface-raised);
-  cursor: pointer;
-  font-weight: 600;
-  line-height: 1.4;
-  text-align: center;
-  text-decoration: none;
-  white-space: normal;
-  transition: transform 120ms ease-out, color 120ms ease-out,
-    background-color 120ms ease-out, border-color 120ms ease-out;
-}
-
-button:hover,
-.button:hover {
-  border-color: var(--color-primary-strong);
-  background: var(--color-primary-strong);
-  color: var(--color-surface-raised);
-}
-
-button:active,
-.button:active {
-  transform: translateY(0.0625rem);
-}
-
-.button--secondary {
-  background: var(--color-surface-raised);
-  color: var(--color-primary-strong);
-}
-
-button:disabled,
-.button[aria-disabled="true"] {
-  border-color: var(--color-line);
-  background: var(--color-line);
-  color: var(--color-ink-soft);
-  cursor: not-allowed;
-}
-
-[data-auth-form][aria-busy="true"] {
-  cursor: progress;
-}
-
-.htmx-indicator {
-  display: none;
-  color: var(--color-ink-soft);
-  font-family: var(--font-display);
-  font-size: 0.875rem;
-}
-
-.htmx-request .htmx-indicator,
-.htmx-request.htmx-indicator {
-  display: inline-flex;
+@media (min-width: 48rem) {
+  .auth-context-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .setup-list {
@@ -218,7 +91,7 @@ button:disabled,
   min-width: 0;
   margin-bottom: var(--space-5);
   padding: var(--space-4);
-  border: 0.0625rem solid var(--color-line);
+  border: var(--line-1) solid var(--color-line);
   border-radius: var(--radius-1);
   text-align: center;
 }
@@ -234,49 +107,15 @@ button:disabled,
   min-height: 10rem;
   display: grid;
   place-items: center;
-  border: 0.0625rem dashed var(--color-control-border);
+  border: var(--line-1) dashed var(--color-control-border);
   border-radius: var(--radius-1);
   color: var(--color-ink-soft);
-  font-family: var(--font-display);
-}
-
-.showcase-grid {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-
-.showcase-state[aria-busy="true"] {
-  border-color: var(--color-primary);
-}
-
-@media (min-width: 48rem) {
-  .actions {
-    flex-direction: row;
-    align-items: center;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  button,
-  .button {
-    transition: none;
-  }
-
-  button:active,
-  .button:active {
-    transform: none;
-  }
 }
 
 @media (forced-colors: active) {
-  button,
-  .button,
-  input,
-  select,
-  .auth-card,
-  .feedback,
-  .showcase-state {
+  .qr-panel,
+  .qr-placeholder,
+  .auth-context {
     border-color: CanvasText;
   }
 }

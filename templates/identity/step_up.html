@@ -1,16 +1,27 @@
 {% extends "base.html" %}
-{% block title %}Confirm sensitive action · Clinic OS{% endblock %}
-{% block meta_description %}Confirm a recent authenticator code before a sensitive Clinic OS action.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Confirm sensitive action · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Confirm a recent authenticator code before a sensitive Clinic OS action." %}{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
-  <p class="eyebrow">Step-up verification</p>
-  <h1 id="auth-title">Confirm this sensitive action</h1>
-  <p class="lede">Enter a current code from your Clinic OS authenticator before continuing.</p>
+  <p class="eyebrow">{% trans "Step-up verification" %}</p>
+  <h1 id="auth-title">{% trans "Confirm this sensitive action" %}</h1>
+  <p class="lede">{% trans "Enter a current code from your Clinic OS authenticator before continuing." %}</p>
+  {% if intent %}
+  <section class="auth-context" id="step-up-intent" aria-labelledby="step-up-intent-title" data-step-up-intent>
+    <h2 id="step-up-intent-title" class="auth-context-title">{% trans "You are confirming" %}</h2>
+    <p class="auth-context-action">{{ intent.action }}</p>
+    <dl class="auth-context-facts">
+      {% for fact in intent.facts %}<div class="auth-context-fact"><dt>{{ fact.0 }}</dt><dd>{{ fact.1 }}</dd></div>{% endfor %}
+    </dl>
+    <p class="hint">{% trans "These details are fixed. The code confirms your identity for exactly this action; it changes nothing else." %}</p>
+  </section>
+  {% endif %}
   <div class="auth-card" id="auth-panel" aria-live="polite">
     {% if form.errors %}
       <div class="feedback feedback--error" id="auth-errors" role="alert" tabindex="-1" data-focus-error autofocus>
-        <h2>Check the code</h2>
-        <p>Review the highlighted authenticator details and try again.</p>
+        <h2>{% trans "Check the code" %}</h2>
+        <p>{% trans "Review the highlighted authenticator details and try again." %}</p>
       </div>
     {% endif %}
     <form id="step-up-form" method="post" action="{% url 'identity:step-up' %}"
@@ -26,19 +37,19 @@
         <div class="field{% if form.otp_device.errors %} field--error{% endif %}">
           {{ form.otp_device.label_tag }}
           {{ form.otp_device }}
-          <p class="hint" id="otp-device-help">Choose the authenticator that will confirm this action.</p>
+          <p class="hint" id="otp-device-help">{% trans "Choose the authenticator that will confirm this action." %}</p>
           {% if form.otp_device.errors %}<div class="field-errors" id="{{ form.otp_device.auto_id }}_error">{% for error in form.otp_device.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
         </div>
       {% endif %}
       <div class="field{% if form.otp_token.errors %} field--error{% endif %}">
         {{ form.otp_token.label_tag }}
         {{ form.otp_token }}
-        <p class="hint" id="otp-help">Use a fresh code. A code accepted once cannot be replayed.</p>
+        <p class="hint" id="otp-help">{% trans "Use a fresh code. A code accepted once cannot be replayed." %}</p>
         {% if form.otp_token.errors %}<div class="field-errors" id="{{ form.otp_token.auto_id }}_error">{% for error in form.otp_token.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="actions">
-        <button type="submit">Confirm and continue</button>
-        <span class="htmx-indicator" id="auth-progress" role="status">Verifying…</span>
+        <button type="submit">{% trans "Confirm and continue" %}</button>
+        <span class="htmx-indicator" id="auth-progress" role="status">{% trans "Verifying…" %}</span>
       </div>
     </form>
   </div>

@@ -1,23 +1,24 @@
 {% extends "base.html" %}
-{% block title %}Sign out · Clinic OS{% endblock %}
-{% block meta_description %}Sign out of the Clinic OS clinical workspace securely.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Sign out · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Sign out of the Clinic OS clinical workspace securely." %}{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
-  <p class="eyebrow">Account security</p>
-  <h1 id="auth-title">Sign out</h1>
-  <p class="lede">Signing out clears this browser’s Clinic OS session.</p>
+  <p class="eyebrow">{% trans "Account security" %}</p>
+  <h1 id="auth-title">{% trans "Sign out" %}</h1>
+  <p class="lede">{% trans "Signing out clears this browser’s Clinic OS session." %}</p>
   <div class="auth-card" id="auth-panel" aria-live="polite">
-    <h2>Leave the secure workspace?</h2>
-    <p>You will need your password and, for privileged access, a new authenticator code to return.</p>
+    <h2>{% trans "Leave the secure workspace?" %}</h2>
+    <p>{% trans "You will need your password and, for privileged access, a new authenticator code to return." %}</p>
     <form method="post" action="{% url 'identity:logout' %}"
           hx-post="{% url 'identity:logout' %}" hx-target="#auth-panel"
           hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress"
           data-auth-form>
       {% csrf_token %}
       <div class="actions">
-        <button type="submit">Sign out</button>
-        <a class="button button--secondary" href="{% url 'identity:protected' %}">Stay signed in</a>
-        <span class="htmx-indicator" id="auth-progress" role="status">Signing out…</span>
+        <button type="submit">{% trans "Sign out" %}</button>
+        <a class="button button--secondary" href="{% url 'identity:protected' %}">{% trans "Stay signed in" %}</a>
+        <span class="htmx-indicator" id="auth-progress" role="status">{% trans "Signing out…" %}</span>
       </div>
     </form>
   </div>

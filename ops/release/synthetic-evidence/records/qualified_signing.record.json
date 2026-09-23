@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "qualified_signing",
+  "environment": "synthetic",
+  "evidence_path": "evidence/qualified_signing.json",
+  "evidence_sha256": "4d1a4675a2cb5ea7422a4f03e7f7a929695cb4d4742151efc818e8f520bf7b5c",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the qualified_signing capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

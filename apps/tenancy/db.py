@@ -40,6 +40,7 @@ def clear_connection_tenant_gucs() -> None:
     with transaction.atomic(durable=True), connection.cursor() as cursor:
         cursor.execute("RESET app.current_user_id")
         cursor.execute("RESET app.current_tenant")
+        cursor.execute("RESET app.current_patient_session")
 
 
 @contextmanager

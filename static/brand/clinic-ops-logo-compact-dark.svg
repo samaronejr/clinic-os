@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="758" height="168" viewBox="0 0 758 168" role="img" aria-labelledby="cop-c-dark-title cop-c-dark-desc">
+  <title id="cop-c-dark-title">Clinic Ops — logo compact dark</title>
+  <desc id="cop-c-dark-desc">Clinic Ops identity, edited from the existing Clinic OS vector assets. Only the OS suffix has been replaced with outlined Ops lettering; the original Clinic letter contours, symbol geometry, cyan/teal palette and Portuguese tagline are retained. Layout space is adjusted for the new suffix. Self-contained vectors; no raster images, external resources or font dependencies.</desc>
+  <defs>
+    <linearGradient id="cop-c-dark-dark-top" x1="0%" y1="0%" x2="90%" y2="100%">
+      <stop stop-color="#00E5D0"/>
+      <stop offset="1" stop-color="#00B2B6"/>
+    </linearGradient>
+    <linearGradient id="cop-c-dark-dark-right" x1="0%" y1="55%" x2="100%" y2="45%">
+      <stop stop-color="#007F83"/>
+      <stop offset="1" stop-color="#00D2B4"/>
+    </linearGradient>
+    <linearGradient id="cop-c-dark-dark-bottom" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop stop-color="#00C5CD"/>
+      <stop offset="1" stop-color="#0099AC"/>
+    </linearGradient>
+    <linearGradient id="cop-c-dark-dark-left" x1="0%" y1="15%" x2="100%" y2="90%">
+      <stop stop-color="#00DAE8"/>
+      <stop offset="1" stop-color="#00B2C0"/>
+    </linearGradient>
+    <linearGradient id="cop-c-dark-dark-joint-top" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop stop-color="#007D8E"/>
+      <stop offset="1" stop-color="#004E63"/>
+    </linearGradient>
+    <linearGradient id="cop-c-dark-dark-joint-bottom" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop stop-color="#007C83"/>
+      <stop offset="1" stop-color="#00565E"/>
+    </linearGradient>
+    <linearGradient id="cop-c-dark-dark-ops" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop stop-color="#00D5DE"/>
+      <stop offset="1" stop-color="#00C4BE"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(16 16) scale(1.33333)">
+    <path d="M32 32V16C32 7.163 39.163 0 48 0C56.837 0 64 7.163 64 16V32H80C88.837 32 96 39.163 96 48C96 56.837 88.837 64 80 64H64V80C64 88.837 56.837 96 48 96C39.163 96 32 88.837 32 80V64H16C7.163 64 0 56.837 0 48C0 39.163 7.163 32 16 32ZM32 32H48C56.837 32 64 39.163 64 48V64H48C39.163 64 32 56.837 32 48Z" fill="#009DAA" fill-rule="evenodd"/>
+    <path d="M32 32V16C32 7.163 39.163 0 48 0C56.837 0 64 7.163 64 16V32Z" fill="url(#cop-c-dark-dark-top)"/>
+    <path d="M64 32H80C88.837 32 96 39.163 96 48C96 56.837 88.837 64 80 64H64Z" fill="url(#cop-c-dark-dark-right)"/>
+    <path d="M32 64H64V80C64 88.837 56.837 96 48 96C39.163 96 32 88.837 32 80Z" fill="url(#cop-c-dark-dark-bottom)"/>
+    <path d="M32 32V64H16C7.163 64 0 56.837 0 48C0 39.163 7.163 32 16 32Z" fill="url(#cop-c-dark-dark-left)"/>
+    <path d="M48 32H64V48C64 39.163 56.837 32 48 32Z" fill="url(#cop-c-dark-dark-joint-top)"/>
+    <path d="M32 48C32 56.837 39.163 64 48 64H32Z" fill="url(#cop-c-dark-dark-joint-bottom)"/>
+  </g>
+  <g transform="translate(164 30) scale(1)">
+    <path d="M32.945 96.167C12.513 89.436 0.937 74.716 0.177 54.5C-1.195 18.031 35.547 -4.731 69.686 11.437C76.535 14.681 86.379 22.426 85.781 24.101C85.627 24.535 82.64 27.363 79.144 30.385L72.788 35.879L67.74 31.889C60.259 25.976 56.663 24.687 47.5 24.638C25.834 24.521 12.474 45.302 21.903 64.454C30.566 82.052 54.699 86.224 68.064 72.434C69.895 70.545 71.697 69 72.069 69C72.944 69 85.412 78.931 85.779 79.92C86.423 81.66 75.381 90.393 68.23 93.8C58.575 98.4 42.912 99.45 32.945 96.167ZM94 4H112V98H94V4ZM143 11C143 17.075 138.075 22 132 22C125.925 22 121 17.075 121 11C121 4.925 125.925 0 132 0C138.075 0 143 4.925 143 11ZM123 30H141V98H123V30ZM152 64V30H161H170V34.539V39.078L172.25 36.913C182.203 27.339 201.582 26.965 211.553 36.155C219.582 43.557 220.43 47.041 220.819 74.25L221.159 98H211.667H202.175L201.837 77.25C201.535 58.662 201.292 56.146 199.5 53.105C193.098 42.236 177.595 42.942 172.071 54.353C170.191 58.236 170 60.45 170 78.316V98H161H152V64ZM250 11C250 17.075 245.075 22 239 22C232.925 22 228 17.075 228 11C228 4.925 232.925 0 239 0C245.075 0 250 4.925 250 11ZM230 30H248V98H230V30ZM277.801 97.07C263.23 92.411 255.01 81.231 254.221 65C253.508 50.331 260.251 38.461 272.797 32.3C281.8 27.88 298.706 28.11 308.204 32.782C311.874 34.588 316.083 37.498 317.558 39.251L320.239 42.437L316.869 45.306C315.016 46.884 312.02 49.328 310.21 50.737L306.92 53.298L304.21 50.702C290.1 37.186 267.884 50.002 272.932 68.747C276.627 82.471 293.512 86.546 304.213 76.296L306.925 73.698L311.583 77.599C314.144 79.744 317.187 82.253 318.344 83.173C320.442 84.842 320.442 84.854 318.474 87.04C309.323 97.204 291.764 101.535 277.801 97.07Z" fill="#FFFFFF" fill-rule="evenodd"/>
+    <path d="M372.754 97.978C355.892 93.724 342.187 78.717 338.985 61C333.126 28.588 363.561 0.223 395.32 8.495C438.072 19.631 442.128 77.028 401.479 95.638C394.984 98.612 380.079 99.826 372.754 97.978ZM396.403 79.527C418.664 68.687 417.214 34.646 394.121 25.924C365.488 15.11 342.479 52.816 364.665 74.195C372.825 82.059 386.491 84.355 396.403 79.527ZM438 30H456V39.5C460.5 32.8 468.5 29 477 29C496.5 29 510 43.2 510 64C510 84.8 496.5 99 477 99C468.5 99 460.5 95.2 456 88.5V122H438ZM456 64C456 75.7 464.2 84 474.4 84C484.6 84 492 75.7 492 64C492 52.3 484.6 44 474.4 44C464.2 44 456 52.3 456 64ZM547.0 99.0C536.0 99.0 526.0 95.0 521.0 90.0L529.0 77.0C535.0 82.0 542.0 85.0 549.0 85.0C557.0 85.0 562.0 82.0 562.0 78.0C562.0 74.0 558.0 72.0 549.0 70.0L543.0 68.5C529.0 65.0 523.0 59.0 523.0 49.0C523.0 37.0 534.0 29.0 550.0 29.0C560.0 29.0 569.0 32.0 576.0 37.0L568.0 50.0C562.0 46.0 556.0 43.0 549.0 43.0C542.0 43.0 538.5 45.0 538.5 49.0C538.5 52.5 542.0 54.5 550.0 56.5L557.0 58.2C571.5 61.5 578.0 67.0 578.0 77.0C578.0 91.0 566.0 99.0 547.0 99.0Z" fill="url(#cop-c-dark-dark-ops)" fill-rule="evenodd"/>
+  </g>
+</svg>

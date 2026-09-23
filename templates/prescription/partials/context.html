@@ -1,0 +1,17 @@
+{% load tz %}{% comment %}
+Fixed subject band shown on every prescribing screen.
+
+Context:
+  subject   Subject dataclass (patient, issuer, clinic, encounter) derived
+            from stored records; never from submitted fields.
+{% endcomment %}<section class="rx-context" aria-labelledby="rx-context-title" data-subject="{{ subject.encounter_id }}">
+  <h2 id="rx-context-title" class="visually-hidden">Contexto fixo deste documento</h2>
+  {% timezone subject.clinic_timezone %}
+  <dl class="rx-context-grid">
+    <div class="rx-context-fact rx-context-fact--patient"><dt>Paciente</dt><dd data-context="patient">{{ subject.patient_name }} <span class="meta">· nascimento {{ subject.patient_birth|date:"d/m/Y" }}</span></dd></div>
+    <div class="rx-context-fact"><dt>Médico emissor</dt><dd data-context="issuer">{{ subject.issuer_name }}{% if subject.issuer_registration %} <span class="meta">· {{ subject.issuer_registration }}</span>{% endif %}{% if subject.issuer_synthetic %} <span class="badge badge--muted">registro sintético</span>{% endif %}</dd></div>
+    <div class="rx-context-fact"><dt>Clínica</dt><dd data-context="clinic">{{ subject.clinic_name }}</dd></div>
+    <div class="rx-context-fact"><dt>Consulta</dt><dd data-context="encounter">{{ subject.encounter_at|date:"d/m/Y H:i" }} <span class="meta">· horário da clínica</span></dd></div>
+  </dl>
+  {% endtimezone %}
+</section>

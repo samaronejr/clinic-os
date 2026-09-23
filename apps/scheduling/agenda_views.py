@@ -20,7 +20,7 @@ from apps.scheduling.agenda_presenter import (
     agenda_screen,
     clinic_local_today,
     navigation,
-    presented_rows,
+    presented_days,
 )
 from apps.scheduling.appointment_forms import AGENDA_INPUT_MESSAGE
 from apps.scheduling.services import (
@@ -53,18 +53,20 @@ def _context(
     screen: AgendaScreen,
     agenda: AgendaPage | None,
     banner: str,
+    today: str,
 ) -> dict[str, object]:
     context: dict[str, object] = {
         "agenda": agenda,
         "banner": banner,
         "can_manage": screen.can_manage,
         "clinic_id": clinic_id,
-        "rows": (),
+        "days": (),
         "timezone_key": screen.timezone_key,
+        "today_url": reverse("scheduling:agenda", args=(clinic_id,)),
     }
     if agenda is not None:
-        context["rows"] = presented_rows(agenda, can_manage=screen.can_manage)
-        context.update(navigation(clinic_id, agenda))
+        context["days"] = presented_days(agenda, can_manage=screen.can_manage)
+        context.update(navigation(clinic_id, agenda, today=today))
     return context
 
 
@@ -80,7 +82,8 @@ def agenda_view(
     """Render one authorized clinic-local day or ISO-week appointment page."""
     try:
         screen = agenda_screen(clinic_id)
-        selected_day = day or clinic_local_today(screen.timezone_key)
+        today = clinic_local_today(screen.timezone_key)
+        selected_day = day or today
         try:
             agenda = view_agenda(
                 clinic_id=clinic_id,
@@ -89,9 +92,11 @@ def agenda_view(
                 page=page,
             )
         except AgendaInputError:
-            context = _context(clinic_id, screen, None, AGENDA_INPUT_MESSAGE)
+            context = _context(
+                clinic_id, screen, None, str(AGENDA_INPUT_MESSAGE), today
+            )
         else:
-            context = _context(clinic_id, screen, agenda, "")
+            context = _context(clinic_id, screen, agenda, "", today)
     except AvailabilityAccessDeniedError as error:
         raise Http404 from error
     return render(request, AGENDA_TEMPLATE, context)

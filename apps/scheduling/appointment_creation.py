@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING
 
 from django.db import transaction
 
-from apps.audit.services import record_phase1_event
-from apps.scheduling.access import authorized_appointment_manager_clinic
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     SlotConflict,
@@ -29,6 +27,10 @@ from apps.scheduling.appointment_values import (
     validate_appointment_syntax,
     validate_new_appointment,
 )
+from apps.scheduling.patient_authority import (
+    authorized_appointment_clinic,
+    record_appointment_event,
+)
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -42,7 +44,7 @@ def _post_lock_revalidate(
     expected: PreparedAppointment,
     rows: AppointmentWriteRows,
 ) -> tuple[Clinic, PreparedAppointment, Appointment | None]:
-    clinic = authorized_appointment_manager_clinic(request.clinic_id)
+    clinic = authorized_appointment_clinic(request.clinic_id)
     prepared = prepare_appointment(clinic, request)
     replay = replay_appointment(
         clinic.organization_id,
@@ -96,7 +98,7 @@ def create_appointment(
     local_range: AppointmentLocalRange,
     idempotency_key: UUID,
 ) -> Appointment:
-    """Create one manager-authorized clinic-local booking exactly once."""
+    """Create one manager- or patient-authorized clinic-local booking once."""
     validate_appointment_syntax(local_range.start_local, local_range.end_local)
     request = CreateAppointmentRequest(
         clinic_id,
@@ -106,7 +108,7 @@ def create_appointment(
         idempotency_key,
     )
     with transaction.atomic():
-        clinic = authorized_appointment_manager_clinic(clinic_id)
+        clinic = authorized_appointment_clinic(clinic_id)
         prepared = prepare_appointment(clinic, request)
         replay = _replay_for_request(clinic, request, prepared)
         if replay is not None:
@@ -119,7 +121,7 @@ def create_appointment(
             practitioner_ids=(practitioner_id,),
         )
         acquire_appointment_write_gates(target=target)
-        clinic = authorized_appointment_manager_clinic(clinic_id)
+        clinic = authorized_appointment_clinic(clinic_id)
         prepared = prepare_appointment(clinic, request)
         replay = _replay_for_request(clinic, request, prepared)
         if replay is not None:
@@ -137,7 +139,7 @@ def create_appointment(
         appointment, created = insert_appointment(clinic, request, prepared)
         if not created:
             return appointment
-        record_phase1_event(
+        record_appointment_event(
             "scheduling.appointment.created",
             clinic_id=clinic_id,
             affected_record_id=appointment.pk,

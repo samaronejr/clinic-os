@@ -15,6 +15,7 @@ from psycopg.errors import (
 )
 
 from availability_test_support import END, ORG_ID, START, seed, set_tenant
+from tenant_key_support import issue_tenant_key_for
 
 ORG_B_ID = UUID(int=7401)
 CLINIC_FOREIGN_ID = UUID(int=7402)
@@ -90,6 +91,7 @@ def test_appointment_runtime_denies_tenant_clinic_immutable_and_delete_drift(
         name="Synthetic Foreign Appointment Organization",
         cnpj="00000000007401",
     )
+    issue_tenant_key_for(ORG_B_ID)
     clinic_foreign = Clinic.objects.create(
         id=CLINIC_FOREIGN_ID,
         organization=organization_b,

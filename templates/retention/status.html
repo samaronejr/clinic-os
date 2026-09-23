@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}Retenção e guarda legal · Clinic OS{% endblock %}
+{% block meta_description %}Políticas de retenção, guardas legais, liberações e exportações da clínica.{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="retention-title">
+  <p class="eyebrow">Conformidade</p>
+  <h1 id="retention-title">Retenção e guarda legal</h1>
+  <p class="lede">Nenhum registro é eliminado automaticamente. O descarte exige uma política aprovada e a ausência de guarda legal ativa.</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" id="retention-error">{{ error }}</div>{% endif %}
+  {% if disposal %}<p class="feedback feedback--success" role="status" id="disposal-result">{{ disposal }}</p>{% endif %}
+  {% for message in messages %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endfor %}
+
+  <section class="panel" aria-labelledby="policies-title">
+    <h2 id="policies-title">Políticas de retenção</h2>
+    {% if policies %}
+    <ul class="record-list" id="policy-list">
+      {% for policy in policies %}
+      <li data-policy="{{ policy.pk }}" data-state="{{ policy.state }}">
+        <strong>{{ policy.record_class }}</strong> · versão {{ policy.version }} · {{ policy.get_state_display }}{% if policy.retention_days is not None %} · {{ policy.retention_days }} dias{% else %} · prazo indeterminado{% endif %}
+        {% if can_manage %}
+        {% if policy.state == "proposed" %}
+        <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="policy_id" value="{{ policy.pk }}"><button class="button button--secondary" type="submit" name="action" value="approve_policy">Aprovar</button><button class="button button--secondary" type="submit" name="action" value="retire_policy">Retirar</button></form>
+        {% elif policy.state == "approved" %}
+        <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="policy_id" value="{{ policy.pk }}"><button class="button button--secondary" type="submit" name="action" value="retire_policy">Retirar</button></form>
+        {% endif %}
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p id="policies-empty">Nenhuma política registrada. Sem política aprovada, nenhum descarte é permitido.</p>{% endif %}
+    {% if can_manage %}
+    <form method="post" id="policy-form" class="panel-form">{% csrf_token %}
+      <h3>Propor nova política</h3>
+      {% if policy_form.errors %}<div class="feedback feedback--error" role="alert">{{ policy_form.non_field_errors }}{% for field in policy_form.visible_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+      {% for field in policy_form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<p class="help-text">{{ field.help_text }}</p>{% endif %}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" type="submit" name="action" value="propose_policy">Propor política</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="holds-title">
+    <h2 id="holds-title">Guardas legais</h2>
+    {% if holds %}
+    <ul class="record-list" id="hold-list">
+      {% for hold in holds %}
+      <li data-hold="{{ hold.pk }}" data-state="{% if hold.released_at %}released{% else %}active{% endif %}">
+        <strong>{{ hold.record_class }}</strong> · guarda <code>{{ hold.pk }}</code> · registro <code>{{ hold.record_id }}</code> · {% if hold.released_at %}liberada em {{ hold.released_at|date:"d/m/Y H:i" }}{% else %}ativa desde {{ hold.created_at|date:"d/m/Y H:i" }}{% endif %}
+        <br>Autoridade: {{ hold.authority }} · Motivo: {{ hold.reason }}
+        {% if hold.released_at %}<br>Liberada por: {{ hold.release_authority }} · {{ hold.release_reason }}{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p id="holds-empty">Nenhuma guarda legal registrada.</p>{% endif %}
+    {% if can_manage %}
+    <form method="post" id="hold-form" class="panel-form">{% csrf_token %}
+      <h3>Aplicar guarda legal</h3>
+      {% if hold_form.errors %}<div class="feedback feedback--error" role="alert">{{ hold_form.non_field_errors }}{% for field in hold_form.visible_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+      {% for field in hold_form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" type="submit" name="action" value="place_hold">Aplicar guarda</button>
+      <p class="help-text">A guarda impede qualquer descarte do registro enquanto estiver ativa.</p>
+    </form>
+    <form method="post" id="hold-release-form" class="panel-form">{% csrf_token %}
+      <h3>Liberar guarda legal</h3>
+      {% if hold_release_form.errors %}<div class="feedback feedback--error" role="alert">{{ hold_release_form.non_field_errors }}{% for field in hold_release_form.visible_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+      {% for field in hold_release_form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button button--secondary" type="submit" name="action" value="release_hold">Liberar guarda</button>
+    </form>
+    <form method="post" id="disposal-form" class="panel-form">{% csrf_token %}
+      <h3>Verificar elegibilidade de descarte</h3>
+      {% if disposal_form.errors %}<div class="feedback feedback--error" role="alert">{{ disposal_form.non_field_errors }}{% for field in disposal_form.visible_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+      {% for field in disposal_form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button button--secondary" type="submit" name="action" value="check_disposal">Verificar descarte</button>
+      <p class="help-text">A verificação nunca remove dados. Registros retidos ou sem política aprovada são sempre negados.</p>
+    </form>
+    {% endif %}
+  </section>
+
+  {% if can_release %}
+  <section class="panel" aria-labelledby="releases-title">
+    <h2 id="releases-title">Liberações para o paciente</h2>
+    {% if releasable %}
+    <h3>Versões finalizadas elegíveis</h3>
+    <ul class="record-list" id="releasable-list">
+      {% for version in releasable %}
+      <li data-version="{{ version.pk }}" data-state="{{ version.state }}">
+        {{ version.document.encounter.patient.full_name }} · versão {{ version.version }} · {{ version.get_state_display }} · {{ version.finalized_at|date:"d/m/Y H:i" }}
+        <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="version_id" value="{{ version.pk }}"><button class="button button--secondary" type="submit" name="action" value="release">Liberar ao paciente</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p id="releasable-empty">Nenhuma versão finalizada pendente de liberação.</p>{% endif %}
+    {% if releases %}
+    <h3>Liberações registradas</h3>
+    <ul class="record-list" id="release-list">
+      {% for release in releases %}
+      <li data-release="{{ release.pk }}" data-state="{% if release.revoked_at %}revoked{% else %}active{% endif %}">
+        {{ release.patient.full_name }} · versão {{ release.version_id }} · {% if release.revoked_at %}revogada em {{ release.revoked_at|date:"d/m/Y H:i" }}{% else %}ativa desde {{ release.created_at|date:"d/m/Y H:i" }}{% endif %}
+        {% if not release.revoked_at %}
+        <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="release_id" value="{{ release.pk }}"><button class="button button--secondary" type="submit" name="action" value="revoke_release">Revogar</button></form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="exports-title">
+    <h2 id="exports-title">Exportações de registros liberados</h2>
+    {% if export_patients %}
+    <ul class="record-list" id="export-patient-list">
+      {% for patient in export_patients %}
+      <li data-patient="{{ patient.pk }}">
+        {{ patient.full_name }}
+        <form method="post" class="inline-form">{% csrf_token %}<input type="hidden" name="patient_id" value="{{ patient.pk }}"><button class="button" type="submit" name="action" value="export">Exportar pacote</button></form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p id="exports-empty">Nenhum paciente com registros liberados para exportação.</p>{% endif %}
+    {% if exports %}
+    <h3>Exportações registradas</h3>
+    <ul class="record-list" id="export-list">
+      {% for export in exports %}
+      <li data-export="{{ export.pk }}">{{ export.patient.full_name }} · {{ export.get_kind_display }} · {{ export.record_count }} registros · {{ export.created_at|date:"d/m/Y H:i" }} · <code>{{ export.manifest_digest }}</code></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <p class="help-text">O pacote contém apenas versões liberadas, com manifesto e resumos SHA-256. Rascunhos, anexos, dados de outras clínicas e segredos internos nunca entram no pacote.</p>
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

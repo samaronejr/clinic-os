@@ -5,6 +5,7 @@
 !config/**
 !manage.py
 !ops/container/**
+!ops/release/**
 !ops/testing/timezone_contract.py
 !pyproject.toml
 !sitecustomize.py

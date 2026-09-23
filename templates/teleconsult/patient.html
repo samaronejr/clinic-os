@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-patient.js' %}" defer></script>{% endblock %}
+{% block title %}Sala de espera da teleconsulta · Clinic OS{% endblock %}
+{% block meta_description %}Prepare câmera e microfone e entre na sua teleconsulta.{% endblock %}
+{% block content %}
+<section class="shell-narrow tele-shell" aria-labelledby="teleconsult-title" data-teleconsult="waiting">
+  <h1 id="teleconsult-title">Sala de espera</h1>
+  <p class="lede">Confira sua autorização, teste a câmera e o microfone e entre na sala quando estiver pronto. A consulta não é gravada nem transcrita.</p>
+  {% include "teleconsult/partials/synthetic_notice.html" %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><h2>Não foi possível entrar agora</h2><p>{{ error }}</p></div>{% endif %}
+
+  {% for row in live_rows %}
+  <section class="panel tele-session" aria-labelledby="session-{{ forloop.counter }}-title" data-session="{{ row.session.pk }}" data-state="{{ row.state }}">
+    <h2 id="session-{{ forloop.counter }}-title">Sua teleconsulta</h2>
+    <dl class="tele-facts">
+      <div class="tele-fact">
+        <dt>Estado</dt>
+        <dd><span class="badge {% if row.state == 'active' %}badge--success{% else %}badge--pending{% endif %}" data-state-label>{{ row.patient_label }}</span></dd>
+      </div>
+      <div class="tele-fact">
+        <dt>Médico</dt>
+        <dd data-physician>{% if row.physician_joined %}Já está na sala{% else %}Ainda não entrou{% endif %}</dd>
+      </div>
+      <div class="tele-fact">
+        <dt>Autorização</dt>
+        <dd data-consent>Consentimento de teleconsulta registrado{% if row.consent %} · versão {{ row.consent.text.version }} · {{ row.consent.accepted_at|date:"d/m/Y" }}{% endif %}</dd>
+      </div>
+      <div class="tele-fact">
+        <dt>Gravação</dt>
+        <dd>Desativada</dd>
+      </div>
+    </dl>
+    <form method="post" class="tele-join" data-join-form>
+      {% csrf_token %}<input type="hidden" name="session_id" value="{{ row.session.pk }}">
+      <div class="actions">
+        <button class="button" name="action" value="join" type="submit">Entrar na sala</button>
+      </div>
+      <p class="hint">Ao entrar, o navegador pode pedir permissão para usar a câmera e o microfone. Você pode desligá-los a qualquer momento dentro da sala.</p>
+    </form>
+  </section>
+  {% endfor %}
+
+  {% if live_rows %}
+  <section class="panel tele-devices" aria-labelledby="devices-title" data-device-check data-device-state="idle">
+    <h2 id="devices-title">Câmera e microfone</h2>
+    <p>Teste antes de entrar para evitar surpresas. O teste acontece só no seu aparelho: nada é enviado à clínica.</p>
+    <noscript><p class="feedback feedback--muted" role="status">A verificação automática precisa de JavaScript. Você ainda pode entrar na sala: o navegador pedirá permissão ao entrar.</p></noscript>
+    <div class="tele-preview" data-preview hidden>
+      <video data-preview-video autoplay muted playsinline aria-label="Prévia da sua câmera"></video>
+      <p class="tele-preview-off" data-preview-off hidden>Câmera indisponível</p>
+    </div>
+    <dl class="tele-device-list" data-device-list hidden>
+      <div class="tele-device">
+        <dt>Câmera</dt>
+        <dd><span class="badge badge--pending" data-device="camera">Não testada</span></dd>
+      </div>
+      <div class="tele-device">
+        <dt>Microfone</dt>
+        <dd><span class="badge badge--pending" data-device="microphone">Não testado</span></dd>
+      </div>
+    </dl>
+    <div class="feedback feedback--muted" role="status" data-device-status tabindex="-1" hidden></div>
+    <div class="feedback feedback--error" role="alert" data-device-error tabindex="-1" hidden>
+      <h3 data-device-error-title></h3>
+      <p data-device-error-text></p>
+      <p data-device-error-help></p>
+    </div>
+    <div class="actions">
+      <button class="button button--secondary" type="button" data-device-test>Testar câmera e microfone</button>
+      <button class="button button--quiet" type="button" data-device-stop hidden>Encerrar teste</button>
+    </div>
+  </section>
+  {% else %}
+  <section class="panel" aria-labelledby="empty-title">
+    <h2 id="empty-title">Nenhuma teleconsulta para entrar agora</h2>
+    <p>Quando o médico criar a sala da sua consulta, ela aparecerá aqui. Se você esperava uma consulta hoje, fale com a clínica.</p>
+  </section>
+  {% endif %}
+
+  {% if past_rows %}
+  <section class="panel" aria-labelledby="history-title">
+    <h2 id="history-title">Consultas anteriores</h2>
+    <ul class="tele-history">
+      {% for row in past_rows %}
+      <li class="tele-history-item" data-session="{{ row.session.pk }}" data-state="{{ row.state }}">
+        <p class="tele-history-line"><span class="badge {% if row.state == 'failed' %}badge--error{% else %}badge--muted{% endif %}">{{ row.patient_label }}</span> <span class="meta">{{ row.session.created_at|date:"d/m/Y H:i" }}</span></p>
+        {% if row.failure_label %}<p class="hint">{{ row.failure_label }} Se precisar de outra consulta, fale com a clínica.</p>{% elif row.state == 'ended' %}<p class="hint">Esta sala foi encerrada e não pode ser reaberta. Se precisar de outra consulta, fale com a clínica.</p>{% endif %}
+        <details class="tele-provenance">
+          <summary>Histórico desta consulta</summary>
+          <ul class="event-history">
+            {% for event in row.events %}<li data-event="{{ event.kind }}">{{ event.label }} · <time datetime="{{ event.at|date:'c' }}">{{ event.at|date:"d/m/Y H:i" }}</time></li>{% endfor %}
+          </ul>
+        </details>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  <div class="actions">
+    <a class="button button--quiet" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
+  </div>
+</section>
+{% endblock %}

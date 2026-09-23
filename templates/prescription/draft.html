@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% load static tz %}
+{% block title %}Prescrição · autoria · Clinic OS{% endblock %}
+{% block meta_description %}Autoria de um documento de prescrição sintético com revisão, identidade e assinatura explícitas.{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-prescription.css' %}"><script src="{% static 'js/prescription-workflow.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="rx-shell" aria-labelledby="prescription-title">
+  <div class="rx-title-row">
+    <h1 id="prescription-title">Prescrição</h1>
+    <span class="badge badge--muted">ensaio sintético · sem emissão real</span>
+  </div>
+  <p class="lede">Registre somente o conteúdo definido por você. Cada versão renderizada é revisada por inteiro antes da assinatura.</p>
+  {% if encounter %}
+  <form class="rx-back" method="post" action="{% url 'ehr:encounter' clinic_id %}">{% csrf_token %}
+    <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+    <button class="button button--quiet" name="action" value="show" type="submit">Voltar ao atendimento</button>
+  </form>
+  {% else %}
+  <a class="rx-back" href="{% url 'ehr:encounter' clinic_id %}">Voltar ao atendimento</a>
+  {% endif %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus data-outcome="{{ error_code }}"><h2>A ação não foi concluída</h2><p>{{ error }}</p></div>{% endif %}
+  {% if encounter %}
+    {% include "prescription/partials/context.html" %}
+    {% include "prescription/partials/steps.html" %}
+    {% timezone subject.clinic_timezone %}
+    <p class="meta" data-encounter="{{ encounter.pk }}">Atendimento {{ encounter.get_state_display|lower }} · consulta de {{ encounter.appointment.start_at|date:"d/m/Y" }} · autoria do médico responsável</p>
+    {% if draft %}
+      {% if draft.state == "discarded" %}
+      <p class="feedback feedback--muted" role="status">Rascunho descartado. Somente os metadados são exibidos; o conteúdo não é recuperável.</p>
+      {% else %}
+      <section class="panel" aria-labelledby="author-title">
+        <h2 id="author-title">Conteúdo do rascunho</h2>
+        <p class="meta" data-draft="{{ draft.pk }}" data-version="{{ draft.version }}">Versão salva {{ draft.version }} · sem assinatura ou emissão</p>
+        <p class="feedback {% if unsaved %}feedback--error{% endif %}" role="status" id="save-state" data-state="{% if unsaved %}unsaved{% else %}saved{% endif %}">{% if unsaved %}Alterações não salvas.{% else %}Versão salva carregada. Novas alterações precisam ser salvas.{% endif %}</p>
+        <form method="post" id="prescription-form">{% csrf_token %}
+          {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+          {% if form.errors or items.total_error_count %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><h3>Revise os campos</h3><p>Nada foi salvo.</p>{{ form.non_field_errors }}{% for field in form.hidden_fields %}{{ field.errors }}{% endfor %}{{ items.non_form_errors }}</div>{% endif %}
+          <div class="field"><label for="{{ form.category.id_for_label }}">{{ form.category.label }}</label>{{ form.category }}{{ form.category.errors }}</div>
+          {{ items.management_form }}
+          {% for item in items %}
+          <fieldset class="rx-fieldset">
+            <legend>Medicamento {{ forloop.counter }}</legend>
+            {% if not forloop.first %}<p class="hint">Deixe todos os campos vazios se não houver outro item.</p>{% endif %}
+            {% for field in item %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+          </fieldset>
+          {% endfor %}
+          <p class="hint">Até 20 itens. Ao salvar, um campo adicional fica disponível. Nenhuma dose ou orientação é sugerida ou corrigida automaticamente.</p>
+          <div class="actions">
+            <button class="button" name="action" value="save" type="submit">Salvar rascunho</button>
+            <a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id encounter.pk %}">Reabrir versão salva</a>
+            <button class="button button--quiet" type="submit" name="action" value="discard" formnovalidate>Descartar rascunho</button>
+          </div>
+        </form>
+      </section>
+      {% endif %}
+      <section class="panel" aria-labelledby="documents-title">
+        <h2 id="documents-title">Documentos renderizados</h2>
+        <p class="hint">Histórico imutável: cada versão renderizada, sua assinatura e o que aconteceu com ela. Nada aqui é reescrito.</p>
+        {% if documents %}
+        <ol class="rx-history" aria-label="Versões renderizadas">
+          {% for row in documents %}
+          <li class="rx-history-item{% if row.revoked or row.superseded %} rx-history-item--muted{% endif %}" data-document="{{ row.document.pk }}" data-signature="{% if row.operation %}{{ row.operation.state }}{% else %}none{% endif %}"{% if row.revoked %} data-revoked="true"{% endif %}{% if row.superseded %} data-superseded="true"{% endif %}>
+            <div class="rx-history-line">
+              <h3>Versão {{ row.document.document_version }}</h3>
+              <span class="badge badge--{{ row.badge_tone }}">{{ row.badge_label }}</span>
+              {% if row.release and not row.revoked %}<span class="badge badge--success">liberado ao paciente</span>{% endif %}
+            </div>
+            <p class="meta">Renderizado em {{ row.document.created_at|date:"d/m/Y H:i" }} · SHA-256 <code class="rx-digest">{{ row.document.pdf_digest|slice:":16" }}…</code>{% if row.attempts %} · {{ row.attempts }} tentativa{{ row.attempts|pluralize }} de assinatura{% endif %}</p>
+            <div class="rx-history-actions">
+              {% if row.can_review %}
+              <form method="post" data-once>{% csrf_token %}
+                <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+                <input type="hidden" name="document_id" value="{{ row.document.pk }}">
+                <button class="button" name="action" value="review_document" type="submit">{% if draft.state != "draft" %}Revisar{% elif row.attempts %}Revisar e assinar novamente{% else %}Revisar e assinar{% endif %}</button>
+              </form>
+              {% endif %}
+              {% if row.operation %}
+              <a class="button button--secondary" href="{{ row.signing_url }}">{% if row.live %}Acompanhar assinatura{% else %}Ver resultado{% endif %}</a>
+              {% endif %}
+              <form method="post">{% csrf_token %}
+                <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+                <input type="hidden" name="document_id" value="{{ row.document.pk }}">
+                <button class="button button--quiet" name="action" value="download_document" type="submit">Baixar PDF não assinado</button>
+              </form>
+              {% if row.complete and not row.revoked %}
+              <form method="post" data-once>{% csrf_token %}
+                <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+                <input type="hidden" name="document_id" value="{{ row.document.pk }}">
+                <input type="hidden" name="reason" value="issuer_request">
+                {% if row.release %}
+                <button class="button button--secondary" name="action" value="deliver_document" type="submit">Enviar aviso ao paciente</button>
+                <button class="button button--quiet" name="action" value="revoke_release" type="submit">Revogar acesso do paciente</button>
+                {% else %}
+                <button class="button button--secondary" name="action" value="release_document" type="submit">Liberar para o paciente</button>
+                {% endif %}
+                <button class="button button--danger" name="action" value="revoke_document" type="submit" formnovalidate>Revogar documento</button>
+                <span class="rx-once-status" data-once-status role="status" hidden>Enviando…</span>
+              </form>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}<p class="rx-empty">{% if draft.state == "draft" %}Nenhuma versão renderizada ainda. Renderize a versão salva para revisá-la e assiná-la.{% else %}Nenhuma versão foi renderizada antes do descarte.{% endif %}</p>{% endif %}
+        {% if draft.state == "draft" %}
+        <form method="post" class="rx-render" data-once>{% csrf_token %}
+          <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+          <input type="hidden" name="expected_version" value="{{ draft.version }}">
+          <div class="actions">
+            <button class="button" name="action" value="render_document" type="submit">Renderizar a versão salva {{ draft.version }}</button>
+            <span class="rx-once-status" data-once-status role="status" hidden>Renderizando… a revisão abre em seguida.</span>
+          </div>
+          <p class="hint">A renderização congela exatamente a versão salva. Alterações não salvas não entram no documento.</p>
+        </form>
+        {% endif %}
+      </section>
+    {% else %}
+      <section class="panel"><h2>Nenhum rascunho criado</h2><p>Somente documentos sintéticos não controlados. Categorias controladas, notificações e categorias sem contrato confirmado não estão disponíveis.</p>
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="patient_id" value="{{ encounter.patient_id }}"><input type="hidden" name="issuer_id" value="{{ encounter.physician_id }}"><input type="hidden" name="category" value="{{ category }}">
+        <button class="button" name="action" value="create" type="submit">Criar rascunho sintético</button>
+      </form></section>
+    {% endif %}
+    {% endtimezone %}
+  {% else %}<section class="panel"><h2>Abra um atendimento</h2><p>Selecione a prescrição pelo atendimento da consulta na agenda.</p></section>{% endif %}
+</section>
+{% endblock %}

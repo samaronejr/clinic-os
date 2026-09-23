@@ -27,21 +27,22 @@ class _SuccessfulProcess:
 
 
 def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
-    assert restore_contract.TABLE_DATA == (
-        "clinic_app.audit_event",
-        "clinic_app.identity_clinic",
-        "clinic_app.identity_organization",
-        "clinic_app.identity_user",
-        "clinic_app.identity_userclinicrole",
-        "clinic_app.intake_patient",
-        "clinic_app.intake_patientclinicenrollment",
-        "clinic_app.otp_totp_totpdevice",
-        "clinic_app.scheduling_appointment",
-        "clinic_app.scheduling_availabilityblock",
+    assert (
+        tuple(
+            f"clinic_app.{relation}" for relation in restore_contract.DOMAIN_RELATIONS
+        )
+        == restore_contract.TABLE_DATA
     )
+    assert len(restore_contract.DOMAIN_RELATIONS) == 63
+    assert "clinic_app.tenancy_tenantdatakey" in restore_contract.TABLE_DATA
+    assert "clinic_app.ehr_clinicalattachment" in restore_contract.TABLE_DATA
+    assert "clinic_app.prescription_signatureoperation" in restore_contract.TABLE_DATA
+    assert "clinic_app.billing_paymentevent" in restore_contract.TABLE_DATA
     assert restore_contract.SEQUENCE_SET == (
         "clinic_app.audit_event_seq_seq",
         "clinic_app.otp_totp_totpdevice_id_seq",
+        "clinic_app.scheduling_waitlistentry_id_seq",
+        "clinic_app.teleconsult_teleconsultevent_id_seq",
     )
     dump = restore_contract.dump_argv("clinic_source")
     assert dump[:5] == (
@@ -54,7 +55,7 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     assert "--no-owner" not in dump
     assert dump[-1] == "clinic_source"
     restore = restore_contract.restore_argv("clinic_restore")
-    assert restore[:9] == (
+    assert restore[:10] == (
         "pg_restore",
         "--schema=clinic_app",
         "--strict-names",
@@ -63,6 +64,7 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         "--no-acl",
         "--single-transaction",
         "--exit-on-error",
+        "--disable-triggers",
         "--dbname=clinic_restore",
     )
     assert all(
@@ -114,11 +116,14 @@ def test_toc_and_source_scope_reject_before_restore() -> None:
         foreign_audit_organization_count=0,
         identity_user_count=4,
         organization_count=1,
+        tenant_data_key_count=1,
         totp_without_identity_count=0,
         unexpected_domain_relations=(),
         users_without_role_count=0,
     )
     restore_contract.require_source_scope(clean)
+    with pytest.raises(restore_contract.RestoreContractError, match="data key"):
+        restore_contract.require_source_scope(replace(clean, tenant_data_key_count=0))
     with pytest.raises(restore_contract.RestoreContractError, match="organization"):
         restore_contract.require_source_scope(replace(clean, organization_count=2))
     with pytest.raises(restore_contract.RestoreContractError, match="empty"):

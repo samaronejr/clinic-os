@@ -38,18 +38,16 @@ def main() -> int:
         root / "supervisor.json",
         {"pgid": os.getpgrp(), "pid": os.getpid(), "start_ticks": _start()},
     )
-    try:
-        with (
-            materializer_lease(repository) as materializer,
-            public_ca_export(materializer) as public_ca,
-            ci_database_lease(repository, materializer, public_ca) as database,
-        ):
-            write_environment(root / "ci-postgres.env", database)
-            write_record(root / "ready", {}, mode=0o600)
-            while not stop_state["requested"]:
-                time.sleep(0.1)
-    finally:
-        write_record(root / "cleaned", {}, mode=0o600)
+    with (
+        materializer_lease(repository) as materializer,
+        public_ca_export(materializer) as public_ca,
+        ci_database_lease(repository, materializer, public_ca) as database,
+    ):
+        write_environment(root / "ci-postgres.env", database)
+        write_record(root / "ready", {}, mode=0o600)
+        while not stop_state["requested"]:
+            time.sleep(0.1)
+    write_record(root / "cleaned", {}, mode=0o600)
     return 0
 
 

@@ -47,6 +47,11 @@ def appointment_create_url(clinic_id: UUID) -> str:
     return f"/scheduling/clinics/{clinic_id}/appointments/new/"
 
 
+def local_time_markup(minute: str) -> bytes:
+    """The ledger's `<time>` for one clinic-local minute: ISO attribute, HH:MM text."""
+    return f'<time datetime="{minute}">{minute[11:16]}</time>'.encode()
+
+
 def agenda_url(clinic_id: UUID) -> str:
     return f"/scheduling/clinics/{clinic_id}/agenda/"
 

@@ -1,119 +1,691 @@
-.scheduling-shell {
-  width: min(64rem, 100%);
+/* Scheduling: agenda, booking, reschedule and cancel, plus availability.
+   Fields, actions, notices, badges, tables and panels come from
+   clinic-os.css; this sheet only arranges them. */
+
+.patient-booking {
+  width: min(48rem, 100%);
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+
+.patient-booking > .button,
+.patient-booking [data-appointment],
+.patient-booking .booking-day-form {
+  margin-bottom: var(--space-4);
+}
+
+.patient-booking [data-slot] {
+  border-top: 1px solid var(--color-line);
+  padding-block: var(--space-4);
+}
+
+.patient-booking :where([data-slot]) p {
+  margin-bottom: var(--space-3);
+}
+
+.patient-booking .booking-day-form {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 24rem;
+}
+
+.patient-booking [data-appointment] form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared: single-task screens and Small status lines.                */
+/* ------------------------------------------------------------------ */
+
+/* Booking and transitions read as one task: prose measure, one panel. */
+.scheduling-task {
+  width: min(var(--measure-prose), 100%);
+  min-width: 0;
   margin-inline: auto;
 }
 
-.scheduling-card {
-  margin-block: var(--space-5);
-  padding: var(--space-5);
-  border: 0.0625rem solid var(--color-line);
-  border-radius: var(--radius-2);
+.scheduling-status,
+.agenda-status,
+.availability-status {
+  max-width: none;
+  margin: 0 0 var(--space-4);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-small);
+}
+
+/* ------------------------------------------------------------------ */
+/* Agenda: a ledger of time ranges, grouped by clinic-local day.       */
+/* ------------------------------------------------------------------ */
+
+.agenda-shell {
+  min-width: 0;
+}
+
+/* The date bar: the period heading, then step and view actions. */
+.agenda-bar {
+  margin-bottom: var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agenda-period {
+  min-width: 0;
+  margin: 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-nav {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  align-items: center;
+}
+
+.agenda-steps,
+.agenda-views {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.agenda-steps .button,
+.agenda-views .button {
+  white-space: nowrap;
+}
+
+/* The view switch: two quiet actions, the current one on selection tint. */
+.agenda-views .button[aria-current="page"] {
+  background: var(--color-selection);
+  color: var(--color-ink);
+  cursor: default;
+}
+
+.agenda-results {
+  min-width: 0;
+}
+
+.agenda-table tbody {
   background: var(--color-surface-raised);
 }
 
-.scheduling-card > * {
-  margin-block: 0 var(--space-4);
+/* Rules and day groups carry the rhythm; a cancelled row is the only tint. */
+.agenda-table tbody tr:nth-child(even) {
+  background: transparent;
 }
 
-.scheduling-card > :last-child {
-  margin-block-end: 0;
+.agenda-table tbody tr.table-row--muted {
+  background: var(--color-surface-sunken);
 }
 
-.scheduling-results {
-  margin-block-start: var(--space-6);
-}
-
-.scheduling-status {
-  margin-block: 0 var(--space-4);
-  color: var(--color-ink-soft);
-  font-family: var(--font-display);
-}
-
-.scheduling-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: start;
-}
-
-.scheduling-table caption {
-  margin-block-end: var(--space-3);
-  color: var(--color-primary-strong);
-  font-family: var(--font-display);
-  font-weight: 600;
-  text-align: start;
-}
-
-.scheduling-table th,
-.scheduling-table td {
-  padding: var(--space-3);
-  border-block-end: 0.0625rem solid var(--color-line);
-  overflow-wrap: anywhere;
-  text-align: start;
-  vertical-align: top;
-}
-
-.scheduling-table thead th {
-  border-block-end-width: 0.125rem;
-  color: var(--color-ink);
-  font-family: var(--font-display);
-}
-
-.scheduling-table tbody th {
-  font-weight: 600;
-}
-
-.scheduling-table tbody tr:nth-child(even) {
+.agenda-table .agenda-day-row th {
+  padding-top: var(--space-4);
+  border-top: var(--line-2) solid var(--color-line);
   background: var(--color-surface);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
 }
 
-.scheduling-table form {
-  margin: 0;
+.agenda-table tbody:first-of-type .agenda-day-row th {
+  border-top: 0;
 }
 
-.scheduling-table button {
-  inline-size: 100%;
+/* Time first, in tabular numerals; the patient column takes the slack. */
+.agenda-table .agenda-time {
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-@media (min-width: 40rem) {
-  .scheduling-shell .actions {
+/* A name wraps, even mid-word, so the row's actions never leave the screen. */
+.agenda-table .agenda-patient {
+  min-width: 9rem;
+  overflow-wrap: anywhere;
+}
+
+.agenda-table .agenda-physician {
+  min-width: 6rem;
+  overflow-wrap: anywhere;
+}
+
+.agenda-table .agenda-state {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.agenda-table .agenda-actions {
+  width: 1%;
+}
+
+/* Both row actions on one line from 64rem; stacked in the narrower table. */
+.agenda-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.agenda-action-group .button {
+  white-space: nowrap;
+}
+
+.agenda-table .agenda-no-action {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+  white-space: nowrap;
+}
+
+.agenda-empty p {
+  margin: 0 0 var(--space-2);
+}
+
+.agenda-empty .actions {
+  margin-top: var(--space-4);
+}
+
+.agenda-empty > :last-child {
+  margin-bottom: 0;
+}
+
+.agenda-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* Below 48rem the agenda is a day list: every appointment becomes one block,
+   time first, then the patient, the physician, the status and the actions
+   full width. The ARIA table roles in the markup keep the semantics. */
+@media (max-width: 47.99rem) {
+  .agenda-results .table-scroll {
+    overflow: visible;
+  }
+
+  .agenda-table,
+  .agenda-table caption,
+  .agenda-table tbody,
+  .agenda-table tbody tr,
+  .agenda-table tbody th,
+  .agenda-table tbody td {
+    display: block;
+  }
+
+  .agenda-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .agenda-table tbody {
+    border-top: var(--line-2) solid var(--color-line);
+  }
+
+  .agenda-table tbody:first-of-type .agenda-day-row th,
+  .agenda-table .agenda-day-row th {
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    border: 0;
+  }
+
+  .agenda-table .agenda-row {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: var(--line-1) solid var(--color-line);
+  }
+
+  .agenda-table .agenda-row th,
+  .agenda-table .agenda-row td {
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .agenda-table .agenda-time {
+    margin-bottom: var(--space-1);
+    font-size: var(--text-small);
+    line-height: var(--leading-small);
+  }
+
+  .agenda-table .agenda-patient {
+    margin-bottom: var(--space-1);
+    font-weight: var(--weight-label);
+    overflow-wrap: anywhere;
+  }
+
+  .agenda-table .agenda-physician {
+    margin-bottom: var(--space-2);
+    color: var(--color-ink-soft);
+    font-size: var(--text-small);
+    line-height: var(--leading-small);
+  }
+
+  .agenda-table .agenda-physician::before {
+    content: attr(data-label) ": ";
+  }
+
+  .agenda-table .agenda-state {
+    margin-bottom: var(--space-3);
+    white-space: normal;
+  }
+
+  .agenda-action-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .agenda-action-group .button {
+    width: 100%;
+    white-space: normal;
+  }
+
+  .agenda-table .agenda-no-action {
+    white-space: normal;
+  }
+
+  .agenda-table .table-row--muted .agenda-state {
+    margin-bottom: var(--space-2);
+  }
+}
+
+@media (min-width: 48rem) {
+  .agenda-steps .button--quiet,
+  .agenda-views .button--quiet {
+    padding-inline: var(--space-4);
+  }
+}
+
+@media (min-width: 64rem) {
+  .agenda-action-group {
     flex-direction: row;
     align-items: center;
   }
 }
 
-.scheduling-links {
+/* ------------------------------------------------------------------ */
+/* Booking: the patient, the offered windows, then the exact time.     */
+/* ------------------------------------------------------------------ */
+
+.booking-patient {
+  max-width: none;
+  margin: 0 0 var(--space-5);
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-block: var(--space-5) 0;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
 }
 
-.scheduling-links a,
-.scheduling-pagination a,
-.scheduling-table td a {
-  min-height: 2.75rem;
-  padding: var(--space-2) var(--space-3);
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-1);
+.booking-patient-label {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.booking-patient strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-lede);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+
+.booking-panel .table-scroll {
+  margin-bottom: var(--space-5);
+}
+
+.booking-windows th:first-child {
+  min-width: 10rem;
+  overflow-wrap: anywhere;
+}
+
+.booking-windows .booking-window-day,
+.booking-windows .booking-window-range {
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Below 48rem every window is one block: the physician, then day and hours. */
+@media (max-width: 47.99rem) {
+  .booking-panel .table-scroll {
+    overflow: visible;
+  }
+
+  .booking-windows,
+  .booking-windows caption,
+  .booking-windows tbody,
+  .booking-windows tbody tr,
+  .booking-windows tbody th,
+  .booking-windows tbody td {
+    display: block;
+  }
+
+  .booking-windows thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .booking-windows tbody {
+    border-top: var(--line-2) solid var(--color-line);
+  }
+
+  .booking-windows tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) var(--space-2);
+    border-bottom: var(--line-1) solid var(--color-line);
+  }
+
+  .booking-windows tbody tr:nth-child(even) {
+    background: transparent;
+  }
+
+  .booking-windows tbody th,
+  .booking-windows tbody td,
+  .booking-windows .booking-window-day,
+  .booking-windows .booking-window-range {
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .booking-windows tbody th {
+    flex-basis: 100%;
+  }
+
+  .booking-windows .booking-window-day::after {
+    content: " ·";
+  }
+}
+
+.booking-fields,
+.transition-fields {
+  display: grid;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.booking-fields .field,
+.transition-fields .field {
+  margin-bottom: 0;
+}
+
+@media (min-width: 48rem) {
+  .booking-fields,
+  .transition-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .booking-field--practitioner {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Reschedule and cancel: the record, then the one change.             */
+/* ------------------------------------------------------------------ */
+
+.transition-panel .transition-summary {
+  margin-bottom: var(--space-5);
+}
+
+.transition-summary tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+.transition-summary th {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+.transition-summary td {
+  overflow-wrap: anywhere;
+}
+
+.transition-summary time {
+  white-space: nowrap;
+}
+
+.transition-reason {
+  margin-left: var(--space-2);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+}
+
+.transition-panel h2 {
+  margin-bottom: var(--space-4);
+}
+
+/* A held cancellation stays disabled even while the pointer still hovers. */
+.transition-panel .button--danger:disabled {
+  border-color: var(--color-line);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
+}
+
+.transition-terminal {
+  max-width: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Availability: periods grouped by physician and clinic-local day.    */
+/* ------------------------------------------------------------------ */
+
+.availability-shell {
+  min-width: 0;
+}
+
+/* Create panel: physician on its own line, then date, start and end. */
+.availability-fields {
+  display: grid;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.availability-fields .field {
+  margin-bottom: 0;
+}
+
+/* Results: a Small count line, then one ledger per physician. */
+.availability-results {
+  min-width: 0;
+  margin-top: var(--space-6);
+}
+
+.availability-table caption .badge {
+  margin-left: var(--space-2);
+}
+
+.availability-table tbody {
+  background: var(--color-surface-raised);
+}
+
+/* The day groups carry the rhythm; rows do not alternate. */
+.availability-table tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+.availability-table tbody tr.table-row--error {
+  background: var(--color-error-tint);
+}
+
+.availability-table .availability-day-row th {
+  padding-top: var(--space-4);
+  border-top: var(--line-2) solid var(--color-line);
   background: var(--color-surface);
-  color: var(--color-primary-strong);
-  font-family: var(--font-display);
-  text-decoration-thickness: 0.0625rem;
-  text-underline-offset: 0.125rem;
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
 }
 
-.scheduling-pagination {
+/* The header rule already separates the first day from the headings. */
+.availability-table tbody:first-of-type .availability-day-row th {
+  border-top: 0;
+}
+
+/* Start and end sit side by side as a range; the end column takes the slack. */
+.availability-table thead th:first-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.availability-table .availability-window th,
+.availability-table .availability-window td {
+  font-variant-numeric: tabular-nums;
+}
+
+.availability-table .availability-retire {
+  width: 1%;
+}
+
+.availability-table .availability-retire form {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-block-start: var(--space-5);
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
 }
 
-.scheduling-table td a {
-  margin-block-end: var(--space-2);
+/* A held retirement stays disabled even while the pointer still hovers. */
+.availability-retire .button:disabled {
+  border-color: var(--color-line);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
 }
 
-.scheduling-table td a:last-child {
-  margin-block-end: 0;
+.availability-empty p {
+  margin: 0;
+}
+
+/* Below 48rem each day becomes a block list: the day line, then one
+   "start – end" line per period with the action full width. The ARIA
+   table roles in the markup keep the semantics while the display changes. */
+@media (max-width: 47.99rem) {
+  .availability-results .table-scroll {
+    overflow: visible;
+  }
+
+  .availability-table,
+  .availability-table caption,
+  .availability-table tbody,
+  .availability-table tbody tr,
+  .availability-table tbody th,
+  .availability-table tbody td {
+    display: block;
+  }
+
+  .availability-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .availability-table tbody {
+    border-top: var(--line-2) solid var(--color-line);
+  }
+
+  .availability-table tbody:first-of-type .availability-day-row th,
+  .availability-table .availability-day-row th {
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    border: 0;
+  }
+
+  .availability-table .availability-window {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-1);
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    border-bottom: var(--line-1) solid var(--color-line);
+  }
+
+  .availability-table .availability-window th,
+  .availability-table .availability-window td {
+    padding: 0;
+    border-bottom: 0;
+    font-weight: var(--weight-label);
+  }
+
+  .availability-table .availability-window th::after {
+    content: " –";
+  }
+
+  .availability-table .availability-retire {
+    flex-basis: 100%;
+    width: auto;
+    margin-top: var(--space-1);
+  }
+
+  .availability-table .availability-retire .button {
+    width: 100%;
+    white-space: normal;
+  }
+}
+
+@media (min-width: 48rem) {
+  .availability-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .availability-field--practitioner {
+    grid-column: 1 / -1;
+    max-width: 32rem;
+  }
+}
+
+@media (forced-colors: active) {
+  .agenda-table tbody,
+  .agenda-table .agenda-day-row th,
+  .agenda-table .agenda-row,
+  .availability-table tbody,
+  .availability-table .availability-day-row th,
+  .availability-table .availability-window {
+    border-color: CanvasText;
+  }
+
+  .agenda-views .button[aria-current="page"] {
+    text-decoration: underline;
+    text-decoration-thickness: var(--line-2);
+    text-underline-offset: 0.3em;
+  }
 }

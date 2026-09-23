@@ -194,7 +194,7 @@ def _require_read_only(page: Page) -> None:
     if page.locator("form").count() or page.locator("a[href$='/cancel/']").count():
         message = "physician-agenda: a physician was offered scheduling controls"
         raise VisualContractError(message)
-    if PATIENT_NAME not in page.inner_text(".scheduling-table"):
+    if PATIENT_NAME not in page.inner_text(".agenda-table"):
         message = "physician-agenda: the physician's own appointment is missing"
         raise VisualContractError(message)
 

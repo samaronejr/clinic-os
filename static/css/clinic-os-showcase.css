@@ -1,0 +1,86 @@
+/* DEBUG-only primitive showcase layout. Loaded by identity/showcase.html only. */
+
+.spec-index {
+  margin-bottom: var(--space-6);
+}
+
+.spec-index ul {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.spec-index a {
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+  color: var(--color-primary-strong);
+  font-weight: var(--weight-label);
+}
+
+.spec-section {
+  margin-bottom: var(--space-8);
+}
+
+.spec-grid {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+.spec-grid--stack {
+  grid-template-columns: 1fr;
+}
+
+.spec {
+  min-width: 0;
+  padding-top: var(--space-3);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.spec > h3 {
+  margin-bottom: var(--space-3);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+}
+
+.spec > * + * {
+  margin-top: var(--space-4);
+}
+
+.spec .field,
+.spec .feedback,
+.spec .panel,
+.spec .table-scroll {
+  margin-bottom: 0;
+}
+
+.spec .nav {
+  border-radius: var(--radius-1);
+}
+
+.badge-row {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (forced-colors: active) {
+  .spec,
+  .spec-index a {
+    border: var(--line-1) solid CanvasText;
+  }
+
+  .spec {
+    padding: var(--space-3);
+  }
+}

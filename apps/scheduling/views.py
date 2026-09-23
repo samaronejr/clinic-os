@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
+from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
 from apps.scheduling.availability_presenter import (
     authorized_screen,
+    grouped_availability,
     manager_choices,
     presented_rows,
 )
@@ -42,15 +44,14 @@ if TYPE_CHECKING:
 
     from django.http import HttpRequest
 
-    from apps.scheduling.availability_presenter import (
-        AvailabilityRow,
-        AvailabilityScreen,
-    )
+    from apps.scheduling.availability_presenter import AvailabilityScreen
 
 SEE_OTHER: Final = 303
 NO_CONTENT: Final = 204
 LIST_TEMPLATE: Final = "scheduling/availability_list.html"
 BLOCKS_PARTIAL: Final = "scheduling/partials/availability_blocks.html"
+CREATED_MESSAGE: Final = "scheduling.availability.created"
+RETIRED_MESSAGE: Final = "scheduling.availability.retired"
 
 
 def availability_list_continuation(clinic_id: UUID) -> str:
@@ -70,12 +71,13 @@ def _is_htmx(request: HttpRequest) -> bool:
     return request.headers.get("HX-Request") == "true"
 
 
-@dataclass(frozen=True, slots=True)
-class _ListedBlock:
-    """Bind one presented block to its POST-only clinic retirement route."""
-
-    retire_url: str
-    row: AvailabilityRow
+def _blank_form(screen: AvailabilityScreen) -> AvailabilityCreateForm | None:
+    """Offer managers a fresh create form carrying one new idempotency key."""
+    if not screen.can_manage:
+        return None
+    blank = AvailabilityCreateForm(screen.choices, None)
+    blank.initial["idempotency_key"] = str(uuid4())
+    return blank
 
 
 def _screen_context(
@@ -83,26 +85,20 @@ def _screen_context(
     screen: AvailabilityScreen,
     form: AvailabilityCreateForm | None,
     banner: str,
+    retire_failed_id: UUID | None = None,
 ) -> dict[str, object]:
     items = view_availability(clinic_id=clinic_id)
-    listed = [
-        _ListedBlock(
-            retire_url=reverse(
-                "scheduling:availability-retire",
-                args=(clinic_id, row.availability_id),
-            ),
-            row=row,
-        )
-        for row in presented_rows(clinic_id, items, screen)
-    ]
+    rows = presented_rows(clinic_id, items, screen)
     return {
         "banner": banner,
-        "blocks": listed,
         "can_manage": screen.can_manage,
         "clinic_id": clinic_id,
         "form": form,
+        "groups": grouped_availability(rows),
         "list_url": availability_list_continuation(clinic_id),
+        "retire_failed_id": retire_failed_id,
         "timezone_key": screen.timezone_key,
+        "total": len(rows),
     }
 
 
@@ -116,8 +112,15 @@ def _render_screen(
     return render(request, template, context)
 
 
-def _completed_response(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+def _completed_response(
+    request: HttpRequest,
+    clinic_id: UUID,
+    tag: str,
+    text: str,
+) -> HttpResponseBase:
     target = availability_list_continuation(clinic_id)
+    # Completion feedback names the next step and carries no identifier.
+    messages.success(request, text, extra_tags=tag)
     if _is_htmx(request):
         response: HttpResponseBase = HttpResponse(status=NO_CONTENT)
         response.headers["HX-Redirect"] = target
@@ -162,21 +165,19 @@ def availability_list_view(
     try:
         screen = authorized_screen(clinic_id)
         if request.method != "POST":
-            blank = (
-                AvailabilityCreateForm(screen.choices, None)
-                if screen.can_manage
-                else None
-            )
-            if blank is not None:
-                blank.initial["idempotency_key"] = str(uuid4())
             return _render_screen(
                 request,
-                _screen_context(clinic_id, screen, blank, ""),
+                _screen_context(clinic_id, screen, _blank_form(screen), ""),
                 partial=False,
             )
         form = AvailabilityCreateForm(manager_choices(clinic_id), request.POST)
         if form.is_valid() and _created(form, clinic_id):
-            return _completed_response(request, clinic_id)
+            return _completed_response(
+                request,
+                clinic_id,
+                CREATED_MESSAGE,
+                _("The period is listed below and can receive appointments."),
+            )
         return _render_screen(
             request,
             _screen_context(clinic_id, screen, form, ""),
@@ -199,19 +200,32 @@ def availability_retire_view(
     except AvailabilityAccessDeniedError as error:
         raise Http404 from error
     except AvailabilityHasAppointmentsError:
-        return _dependent_response(request, clinic_id)
-    return _completed_response(request, clinic_id)
+        return _dependent_response(request, clinic_id, availability_id)
+    return _completed_response(
+        request,
+        clinic_id,
+        RETIRED_MESSAGE,
+        _(
+            "No appointment was cancelled. To offer these hours again, "
+            "add a new period."
+        ),
+    )
 
 
 def _dependent_response(
     request: HttpRequest,
     clinic_id: UUID,
+    availability_id: UUID,
 ) -> HttpResponseBase:
     try:
         screen = authorized_screen(clinic_id)
-        context = _screen_context(clinic_id, screen, None, DEPENDENT_MESSAGE)
+        context = _screen_context(
+            clinic_id,
+            screen,
+            _blank_form(screen),
+            str(DEPENDENT_MESSAGE),
+            retire_failed_id=availability_id,
+        )
     except AvailabilityAccessDeniedError as error:
         raise Http404 from error
-    if screen.can_manage:
-        context["form"] = AvailabilityCreateForm(screen.choices, None)
     return _render_screen(request, context, partial=True)

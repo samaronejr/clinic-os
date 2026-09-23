@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load static clinic_locale %}
+{% block title %}Suas cobranças · Clinic OS{% endblock %}
+{% block meta_description %}Cobranças liberadas para você, com valor em reais e recibo.{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}"><script src="{% static 'js/billing-payment.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="billing-shell billing-shell--patient" aria-labelledby="patient-charges-title">
+  <h1 id="patient-charges-title">Suas cobranças</h1>
+  <p class="lede">Aparecem aqui apenas as cobranças que a clínica liberou para você. Abra uma cobrança para ver como pagar ou para consultar o recibo.</p>
+  {% if charges %}
+  <ul class="billing-list">
+    {% for row in charges %}
+    <li class="billing-list-item" data-charge="{{ row.charge.invoice_id }}" data-state="{{ row.charge.state }}">
+      <p class="billing-amount" data-amount>{{ row.charge.amount|brl }}</p>
+      <p><span class="badge badge--{{ row.charge.tone }}">{{ row.charge.label }}</span></p>
+      <p>{{ row.detail }}</p>
+      <a class="button button--secondary" href="{% url 'billing:patient-charge' row.charge.invoice_id %}">{% if row.charge.paid %}Ver recibo{% elif row.charge.cancelled %}Ver a cobrança cancelada{% else %}Ver como pagar{% endif %}<span class="visually-hidden"> a cobrança de {{ row.charge.amount|brl }}</span></a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <section class="panel"><p id="charges-empty">Nenhuma cobrança foi liberada para você até agora. Quando a clínica liberar uma cobrança, ela aparecerá aqui.</p></section>
+  {% endif %}
+  <p><a href="{% url 'intake:patient-home' %}">Voltar ao portal</a></p>
+</section>
+{% endblock %}

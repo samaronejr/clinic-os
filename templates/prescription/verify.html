@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Document verification · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Public verification status for a signed document." %}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-prescription.css' %}">{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="verify-title">
+  <h1 id="verify-title">{% trans "Verification result" %}</h1>
+  <p class="lede">{% trans "Public status of a document code. This page verifies the signature on the server before it reports a status." %}</p>
+  {% if result %}
+  {% if result.status == "rehearsal_complete" %}<p><span class="badge badge--muted">{% trans "synthetic rehearsal - no legal validity" %}</span></p>{% elif result.status == "issued" %}<p><span class="badge badge--success">{% trans "verified" %}</span></p>{% elif result.status == "unavailable" %}<p><span class="badge badge--muted">{% trans "unavailable" %}</span></p>{% elif result.status == "superseded" %}<p><span class="badge badge--error">{% trans "superseded" %}</span></p>{% elif result.status == "revoked" %}<p><span class="badge badge--error">{% trans "revoked" %}</span></p>{% else %}<p><span class="badge badge--error">{% trans "invalid" %}</span></p>{% endif %}
+  <p class="feedback{% if result.status == 'issued' %} feedback--success{% elif result.status == 'rehearsal_complete' or result.status == 'unavailable' %} feedback--muted{% else %} feedback--error{% endif %}" role="status" id="verify-status" data-status="{{ result.status }}">
+    {% if result.status == "issued" %}{% trans "This document was issued and its signature verifies." %}{% endif %}
+    {% if result.status == "rehearsal_complete" %}{% trans "This is a synthetic rehearsal document; its signature verifies but it is not a real issued document." %}{% endif %}
+    {% if result.status == "superseded" %}{% trans "This document was replaced by a newer verified version." %}{% endif %}
+    {% if result.status == "revoked" %}{% trans "This document was revoked by its issuer." %}{% endif %}
+    {% if result.status == "invalid" %}{% trans "This document failed integrity or signature verification." %}{% endif %}
+    {% if result.status == "unavailable" %}{% trans "No verified document is available for this code." %}{% endif %}
+  </p>
+  {% if result.document_version %}
+  <dl class="rx-facts" id="verify-details">
+    <div class="rx-fact"><dt>{% trans "Document version" %}</dt><dd data-field="version">{{ result.document_version }}</dd></div>
+    {% if result.issued_at %}<div class="rx-fact"><dt>{% trans "Issued at" %}</dt><dd>{% blocktrans with moment=result.issued_at|date:"d/m/Y H:i" %}{{ moment }} (UTC){% endblocktrans %}</dd></div>{% endif %}
+    {% if result.issuer_label %}<div class="rx-fact"><dt>{% trans "Issuer" %}</dt><dd>{{ result.issuer_label }}</dd></div>{% endif %}
+    {% if result.clinic_label %}<div class="rx-fact"><dt>{% trans "Clinic" %}</dt><dd>{{ result.clinic_label }}</dd></div>{% endif %}
+    {% if result.content_digest %}<div class="rx-fact rx-fact--wide"><dt>{% trans "Content digest (SHA-256)" %}</dt><dd><code>{{ result.content_digest }}</code></dd></div>{% endif %}
+    {% if result.signed_digest %}<div class="rx-fact rx-fact--wide"><dt>{% trans "Signed digest (SHA-256)" %}</dt><dd><code>{{ result.signed_digest }}</code></dd></div>{% endif %}
+  </dl>
+  {% endif %}
+  {% else %}
+  <p><span class="badge badge--muted">{% trans "unavailable" %}</span></p>
+  <p class="feedback feedback--muted" role="status" id="verify-status" data-status="{{ status|default:'unavailable' }}">{% trans "No verified document is available for this code." %}</p>
+  {% endif %}
+  <p class="hint">{% trans "This page never shows patient or clinical content and never provides a download. Only the clinic or the patient can access the document itself." %}</p>
+</section>
+{% endblock %}

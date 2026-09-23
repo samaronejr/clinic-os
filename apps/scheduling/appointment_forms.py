@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from apps.scheduling.appointment_values import AppointmentLocalRange
 from apps.scheduling.forms import (
@@ -27,27 +28,42 @@ if TYPE_CHECKING:
 
     from django.http import QueryDict
 
-LOCAL_MINUTE_MESSAGE: Final = "Enter a clinic-local minute as YYYY-MM-DDTHH:MM."
-INVALID_BOOKING_MESSAGE: Final = (
+LOCAL_MINUTE_MESSAGE: Final = _("Enter a clinic-local minute as YYYY-MM-DDTHH:MM.")
+INVALID_BOOKING_MESSAGE: Final = _(
     "Enter a future window that starts and ends on the same clinic-local date."
 )
-CONFLICTING_BOOKING_KEY_MESSAGE: Final = (
+CONFLICTING_BOOKING_KEY_MESSAGE: Final = _(
     "This booking was already submitted with different details."
 )
-SLOT_MESSAGE: Final = "That window is no longer free for this physician or patient."
-WINDOW_MESSAGE: Final = (
+SLOT_MESSAGE: Final = _("That window is no longer free for this physician or patient.")
+WINDOW_MESSAGE: Final = _(
     "Choose a window inside one of the physician's promised availability blocks."
 )
-BOOKING_PRACTITIONER_MESSAGE: Final = "Select an active physician for this clinic."
-TERMINAL_MESSAGE: Final = "This appointment is cancelled and can no longer be moved."
-CANCELLATION_CONFLICT_MESSAGE: Final = (
+BOOKING_PRACTITIONER_MESSAGE: Final = _("Select an active physician for this clinic.")
+TERMINAL_MESSAGE: Final = _("This appointment is cancelled and can no longer be moved.")
+CANCELLATION_CONFLICT_MESSAGE: Final = _(
     "This appointment was already cancelled for a different reason."
 )
-INVALID_RESCHEDULE_MESSAGE: Final = (
+INVALID_RESCHEDULE_MESSAGE: Final = _(
     "Enter a future window that stays on one clinic-local date."
 )
-INVALID_CANCELLATION_MESSAGE: Final = "Choose one of the listed cancellation reasons."
-AGENDA_INPUT_MESSAGE: Final = "Choose a day or week agenda with a valid calendar date."
+INVALID_CANCELLATION_MESSAGE: Final = _(
+    "Choose one of the listed cancellation reasons."
+)
+AGENDA_INPUT_MESSAGE: Final = _(
+    "Choose a day or week agenda with a valid calendar date."
+)
+BOOKED_MESSAGE: Final = _(
+    "It is listed below under its start time. To move or cancel it, "
+    "use the actions on its row."
+)
+RESCHEDULED_MESSAGE: Final = _(
+    "The new window is recorded below. The patient and the physician did not change."
+)
+CANCELLED_MESSAGE: Final = _(
+    "The window is free again. This appointment keeps its history and can no "
+    "longer be changed."
+)
 BOOKING_DESCRIPTIONS: Final = {
     "practitioner": "booking-practitioner-help",
     "start_local": "booking-start-help",
@@ -87,9 +103,9 @@ class AppointmentCreateForm(forms.Form):
     """Collect one idempotent explicit clinic-local booking from the body."""
 
     enrollment_id = forms.UUIDField(widget=forms.HiddenInput())
-    practitioner = forms.ChoiceField(label="Physician")
-    start_local = LocalMinuteField(label="Starts (clinic local)")
-    end_local = LocalMinuteField(label="Ends (clinic local)")
+    practitioner = forms.ChoiceField(label=_("Physician"))
+    start_local = LocalMinuteField(label=_("Starts (clinic local)"))
+    end_local = LocalMinuteField(label=_("Ends (clinic local)"))
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
 
     def __init__(
@@ -128,8 +144,8 @@ class AppointmentCreateForm(forms.Form):
 class AppointmentRescheduleForm(forms.Form):
     """Collect one replacement clinic-local window and nothing else."""
 
-    start_local = LocalMinuteField(label="New start (clinic local)")
-    end_local = LocalMinuteField(label="New end (clinic local)")
+    start_local = LocalMinuteField(label=_("New start (clinic local)"))
+    end_local = LocalMinuteField(label=_("New end (clinic local)"))
 
     def __init__(self, data: QueryDict | None = None) -> None:
         """Describe both minute fields for assistive technology."""
@@ -153,8 +169,11 @@ class AppointmentCancelForm(forms.Form):
     """Collect one closed cancellation reason with no free-text field."""
 
     reason = forms.ChoiceField(
-        label="Cancellation reason",
-        choices=Appointment.CancellationReason.choices,
+        label=_("Cancellation reason"),
+        choices=[
+            (reason.value, _(str(reason.label)))
+            for reason in Appointment.CancellationReason
+        ],
     )
 
     def __init__(self, data: QueryDict | None = None) -> None:

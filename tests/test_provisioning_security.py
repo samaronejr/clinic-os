@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import date
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,6 +19,7 @@ from django_otp.oath import TOTP
 from database_urls import database_url_for_name
 from management_command_support import generated_password, run_management_command
 from otp_test_support import create_totp_device, get_totp_device
+from tenant_key_support import issue_tenant_key_for
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -54,6 +56,7 @@ def test_timezone_change_refuses_after_the_first_clinic_enrollment() -> None:
             name="Synthetic Enrollment Organization",
             cnpj="00000000000000",
         )
+        issue_tenant_key_for(organization_id)
         clinic = Clinic.objects.create(
             id=clinic_id,
             organization=organization,
@@ -70,7 +73,7 @@ def test_timezone_change_refuses_after_the_first_clinic_enrollment() -> None:
         patient = Patient.objects.create(
             organization=organization,
             full_name="Synthetic Enrollment Patient",
-            birth_date="2000-01-02",
+            birth_date=date(2000, 1, 2),
         )
         PatientClinicEnrollment.objects.create(
             organization=organization,
@@ -152,6 +155,7 @@ def test_only_owner_union_can_provision_staff() -> None:
             name="Synthetic Union Organization",
             cnpj="00000000000000",
         )
+        issue_tenant_key_for(organization_id)
         clinic = Clinic.objects.create(
             id=clinic_id,
             organization=organization,

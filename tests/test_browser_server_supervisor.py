@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Final
+from typing import Any, Final, cast
 
 import pytest
 from ops.testing import browser_server_stages as stage
@@ -139,6 +139,198 @@ def test_terminate_is_idempotent_and_leaves_no_zombie(tmp_path: Path) -> None:
 
     assert master.process.poll() is not None
     assert not _alive(master.pid)
+
+
+class _HandoffInterruptError(Exception):
+    """Raised by the test signal handler at the spawn/handoff seam."""
+
+
+def _raise_on_signal(_signum: int, _frame: object) -> None:
+    raise _HandoffInterruptError
+
+
+def test_start_master_reaps_the_spawn_when_the_handoff_is_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A signal after the real spawn but before the handoff cannot leak.
+
+    ``Popen`` really executes; only the ``SupervisedMaster`` construction is
+    interrupted. The spawned group must be reaped before the exception
+    propagates — the caller never receives a handle to clean up. The
+    assertions below observe the state the production cleanup left; the
+    unconditional rescue in ``finally`` runs only afterwards, so this test
+    fails if production cleanup is removed.
+    """
+    spawned: list[subprocess.Popen[bytes]] = []
+    real_master = supervisor.SupervisedMaster
+
+    def interrupted_handoff(process: subprocess.Popen[bytes]) -> object:
+        spawned.append(process)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return real_master(process)
+
+    monkeypatch.setattr(supervisor, "SupervisedMaster", interrupted_handoff)
+    previous = signal.signal(signal.SIGTERM, _raise_on_signal)
+    owner: list[supervisor.SupervisedMaster] = []
+    try:
+        with pytest.raises(_HandoffInterruptError):
+            supervisor.start_master(
+                [sys.executable, "-c", "import time; time.sleep(120)"],
+                {},
+                tmp_path / "handoff.log",
+                owner=owner,
+            )
+        # Production cleanup outcome, observed before any test-side rescue.
+        assert len(spawned) == 1
+        assert spawned[0].poll() is not None
+        assert not _alive(spawned[0].pid)
+        assert len(owner) == 1
+        assert owner[0].process is spawned[0]
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+
+
+def test_start_master_reaps_when_signaled_after_ownership_is_published(
+    tmp_path: Path,
+) -> None:
+    """A signal inside the ownership append still reaps before propagating.
+
+    The assertions observe the state production cleanup left; the
+    unconditional rescue in ``finally`` runs only afterwards, so this test
+    fails if production cleanup is removed.
+    """
+
+    class SignalOnAppend(list[supervisor.SupervisedMaster]):
+        def append(self, item: supervisor.SupervisedMaster) -> None:
+            super().append(item)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    owner = SignalOnAppend()
+    previous = signal.signal(signal.SIGTERM, _raise_on_signal)
+    try:
+        with pytest.raises(_HandoffInterruptError):
+            supervisor.start_master(
+                [sys.executable, "-c", "import time; time.sleep(120)"],
+                {},
+                tmp_path / "published.log",
+                owner=owner,
+            )
+        # Production cleanup outcome, observed before any test-side rescue.
+        assert len(owner) == 1
+        assert owner[0].process.poll() is not None
+        assert not _alive(owner[0].pid)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        for master in owner:
+            if master.process.poll() is None:
+                master.process.kill()
+                master.process.wait(timeout=10)
+
+
+def test_start_master_reaps_when_signaled_before_the_spawn_returns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A signal while the spawned child is still unowned cannot leak.
+
+    The real ``Popen`` runs; the signal is delivered after the child exists
+    but before ``start_master`` regains control — the interval that used to
+    sit between the spawn and the cleanup ``try``. The assertions observe
+    the state production cleanup left; the unconditional rescue in
+    ``finally`` runs only afterwards, so this test fails if production
+    cleanup is removed.
+    """
+    spawned: list[subprocess.Popen[bytes]] = []
+    real_popen = subprocess.Popen
+
+    def spawn_then_signal(
+        *args: object,
+        **kwargs: object,
+    ) -> subprocess.Popen[bytes]:
+        process = real_popen(*cast("Any", args), **cast("Any", kwargs))
+        spawned.append(process)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", spawn_then_signal)
+    previous = signal.signal(signal.SIGTERM, _raise_on_signal)
+    owner: list[supervisor.SupervisedMaster] = []
+    try:
+        with pytest.raises(_HandoffInterruptError):
+            supervisor.start_master(
+                [sys.executable, "-c", "import time; time.sleep(120)"],
+                {},
+                tmp_path / "spawn.log",
+                owner=owner,
+            )
+        # Production cleanup outcome, observed before any test-side rescue.
+        assert len(spawned) == 1
+        assert spawned[0].poll() is not None
+        assert not _alive(spawned[0].pid)
+        assert len(owner) == 1
+        assert owner[0].process is spawned[0]
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+
+
+def test_start_master_without_cleanup_leaves_the_spawn_alive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Negative control: with cleanup disabled the spawn survives.
+
+    This is the same spawn→publish signal seam as above with production
+    ``_terminate_group`` replaced by a no-op. It proves the positive
+    assertions observe production cleanup rather than test-side rescue: the
+    child is still alive when ``start_master`` raises, and only the
+    unconditional rescue in ``finally`` reaps it.
+    """
+    spawned: list[subprocess.Popen[bytes]] = []
+    real_popen = subprocess.Popen
+
+    def spawn_then_signal(
+        *args: object,
+        **kwargs: object,
+    ) -> subprocess.Popen[bytes]:
+        process = real_popen(*cast("Any", args), **cast("Any", kwargs))
+        spawned.append(process)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", spawn_then_signal)
+    monkeypatch.setattr(supervisor, "_terminate_group", lambda process: None)
+    previous = signal.signal(signal.SIGTERM, _raise_on_signal)
+    owner: list[supervisor.SupervisedMaster] = []
+    try:
+        with pytest.raises(_HandoffInterruptError):
+            supervisor.start_master(
+                [sys.executable, "-c", "import time; time.sleep(120)"],
+                {},
+                tmp_path / "mutant.log",
+                owner=owner,
+            )
+        # With production cleanup disabled the spawn is still alive here —
+        # the exact state the positive tests assert against.
+        assert len(spawned) == 1
+        assert spawned[0].poll() is None
+        assert _alive(spawned[0].pid)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+    assert spawned[0].poll() is not None
+    assert not _alive(spawned[0].pid)
 
 
 def test_full_session_journal_is_chained_and_replayable(tmp_path: Path) -> None:

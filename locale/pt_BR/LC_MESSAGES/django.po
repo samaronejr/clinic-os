@@ -1,0 +1,1608 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Clinic OS\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Clinic OS secure clinical workspace."
+msgstr "Clinic OS: seu espaço de trabalho clínico seguro."
+
+msgid "Skip to main content"
+msgstr "Ir para o conteúdo principal"
+
+msgid "Foundation shell"
+msgstr "Bem-vindo ao Clinic OS"
+
+msgid "The Clinic OS project shell is running."
+msgstr "Mais tempo para o que importa."
+
+msgid "Clinic OS foundation"
+msgstr "Clinic OS · Tecnologia a serviço da medicina"
+
+msgid "Sign in · Clinic OS"
+msgstr "Entrar · Clinic OS"
+
+msgid "Sign in securely to the Clinic OS clinical workspace."
+msgstr "Entre com segurança no Clinic OS."
+
+msgid "Secure workspace"
+msgstr "Ambiente seguro"
+
+msgid "Sign in to Clinic OS"
+msgstr "Entrar no Clinic OS"
+
+msgid "Use your clinic credentials. Privileged roles will verify an authenticator code next."
+msgstr "Use seu usuário e senha da clínica. Para acessos restritos, confirme também o código do aplicativo autenticador."
+
+msgid "We could not sign you in"
+msgstr "Não foi possível entrar"
+
+msgid "Check the highlighted fields and try again."
+msgstr "Revise os campos destacados e tente novamente."
+
+msgid "Sign in"
+msgstr "Entrar"
+
+msgid "Signing in…"
+msgstr "Entrando…"
+
+msgid "Set up two-step verification · Clinic OS"
+msgstr "Configurar verificação em duas etapas · Clinic OS"
+
+msgid "Set up secure two-step verification for Clinic OS."
+msgstr "Configure a verificação em duas etapas do Clinic OS."
+
+msgid "Two-step verification"
+msgstr "Verificação em duas etapas"
+
+msgid "Protect your clinic account"
+msgstr "Proteja sua conta da clínica"
+
+msgid "Add Clinic OS to an authenticator app before opening privileged clinical tools."
+msgstr "Adicione o Clinic OS a um aplicativo autenticador para acessar as funções restritas da clínica."
+
+msgid "Have your authenticator app ready"
+msgstr "Abra seu aplicativo autenticador"
+
+msgid "The next screen shows a private QR code. Scan it once, then enter the current code."
+msgstr "A próxima tela mostra um QR code privado. Leia-o uma vez e informe o código atual do aplicativo."
+
+msgid "Show my QR code"
+msgstr "Mostrar meu QR code"
+
+msgid "Preparing secure setup…"
+msgstr "Preparando configuração segura…"
+
+msgid "Scan and confirm"
+msgstr "Leia e confirme"
+
+msgid "Scan this private image with your authenticator app."
+msgstr "Leia esta imagem privada com seu aplicativo autenticador."
+
+msgid "Enter the current six-digit code below."
+msgstr "Informe abaixo o código atual de seis dígitos."
+
+msgid "Private Clinic OS authenticator setup QR code"
+msgstr "QR code privado para configurar o aplicativo autenticador do Clinic OS"
+
+msgid "Check the code"
+msgstr "Confira o código"
+
+msgid "Review the highlighted authenticator details and try again."
+msgstr "Revise os dados de autenticação destacados e tente novamente."
+
+msgid "Choose the authenticator that will provide this code."
+msgstr "Escolha o aplicativo autenticador que fornece este código."
+
+msgid "Codes refresh about every 30 seconds and can be used only once."
+msgstr "Os códigos mudam a cada 30 segundos, aproximadamente, e só podem ser usados uma vez."
+
+msgid "Confirm authenticator"
+msgstr "Confirmar aplicativo autenticador"
+
+msgid "Checking code…"
+msgstr "Conferindo código…"
+
+msgid "Verify your identity · Clinic OS"
+msgstr "Verificar sua identidade · Clinic OS"
+
+msgid "Verify your identity before opening privileged Clinic OS tools."
+msgstr "Verifique sua identidade para acessar as funções restritas do Clinic OS."
+
+msgid "Verify your identity"
+msgstr "Verifique sua identidade"
+
+msgid "Enter the current code from the authenticator app linked to Clinic OS."
+msgstr "Informe o código atual do aplicativo autenticador vinculado ao Clinic OS."
+
+msgid "Use a fresh code. A code accepted once cannot be replayed."
+msgstr "Use um código novo. Um código já aceito não pode ser usado novamente."
+
+msgid "Verify and continue"
+msgstr "Verificar e continuar"
+
+msgid "Verifying…"
+msgstr "Verificando…"
+
+msgid "Confirm sensitive action · Clinic OS"
+msgstr "Confirmar ação sensível · Clinic OS"
+
+msgid "Confirm a recent authenticator code before a sensitive Clinic OS action."
+msgstr "Confirme um código atual do aplicativo autenticador antes de uma ação sensível no Clinic OS."
+
+msgid "Step-up verification"
+msgstr "Confirmação de segurança"
+
+msgid "Confirm this sensitive action"
+msgstr "Confirme esta ação sensível"
+
+msgid "Enter a current code from your Clinic OS authenticator before continuing."
+msgstr "Informe um código atual do aplicativo autenticador do Clinic OS para continuar."
+
+msgid "Choose the authenticator that will confirm this action."
+msgstr "Escolha o aplicativo autenticador para confirmar esta ação."
+
+msgid "Confirm and continue"
+msgstr "Confirmar e continuar"
+
+msgid "Sign out · Clinic OS"
+msgstr "Sair · Clinic OS"
+
+msgid "Sign out of the Clinic OS clinical workspace securely."
+msgstr "Saia do Clinic OS com segurança."
+
+msgid "Account security"
+msgstr "Segurança da conta"
+
+msgid "Sign out"
+msgstr "Sair"
+
+msgid "Signing out clears this browser’s Clinic OS session."
+msgstr "Ao sair, sua sessão do Clinic OS será encerrada neste navegador."
+
+msgid "Leave the secure workspace?"
+msgstr "Sair do ambiente seguro?"
+
+msgid "You will need your password and, for privileged access, a new authenticator code to return."
+msgstr "Para entrar novamente, use sua senha e, nos acessos restritos, um novo código do aplicativo autenticador."
+
+msgid "Stay signed in"
+msgstr "Continuar conectado"
+
+msgid "Signing out…"
+msgstr "Saindo…"
+
+msgid "Secure access · Clinic OS"
+msgstr "Acesso seguro · Clinic OS"
+
+msgid "Confirm that Clinic OS secure access requirements are complete."
+msgstr "Confirme seu acesso seguro ao Clinic OS."
+
+msgid "Authentication complete"
+msgstr "Autenticação concluída"
+
+msgid "Access confirmed"
+msgstr "Acesso confirmado"
+
+msgid "Your account meets the security requirements for this route."
+msgstr "Sua identidade foi confirmada. Você pode continuar com segurança."
+
+msgid "Sign out safely"
+msgstr "Sair com segurança"
+
+msgid "Register patient · Clinic OS"
+msgstr "Cadastrar paciente · Clinic OS"
+
+msgid "Register a clinic patient without exposing demographics in the address bar."
+msgstr "Cadastre um paciente da clínica com segurança."
+
+msgid "Clinic registry"
+msgstr "Cadastro de pacientes"
+
+msgid "Register a patient"
+msgstr "Cadastrar paciente"
+
+msgid "Check the name and the birth date before saving. Afterwards you return to the search to book the appointment."
+msgstr "Confira o nome e a data de nascimento antes de salvar. Depois, você volta à busca para agendar a consulta."
+
+msgid "We could not register that patient"
+msgstr "Não foi possível cadastrar o paciente"
+
+msgid "Use the patient's registered legal name."
+msgstr "Informe o nome do paciente conforme o documento de identidade."
+
+msgid "The birth date cannot be later than today in this clinic."
+msgstr "A data de nascimento não pode ser posterior à data de hoje na clínica."
+
+msgid "Register patient"
+msgstr "Cadastrar paciente"
+
+msgid "Registering…"
+msgstr "Cadastrando…"
+
+msgid "Back to patient search"
+msgstr "Voltar à busca de pacientes"
+
+msgid "Patient search · Clinic OS"
+msgstr "Buscar pacientes · Clinic OS"
+
+msgid "Search the clinic patient registry without exposing patient data in the address bar."
+msgstr "Busque pacientes cadastrados nesta clínica com segurança."
+
+msgid "Patient search"
+msgstr "Buscar pacientes"
+
+msgid "Search this clinic by name. Search terms stay in the request body and never reach the address bar or server logs."
+msgstr "Busque pelo nome do paciente nesta clínica. Se necessário, refine pela data de nascimento."
+
+msgid "We could not run that search"
+msgstr "Não foi possível realizar a busca"
+
+msgid "Enter at least two characters of the patient's name."
+msgstr "Informe pelo menos dois caracteres do nome do paciente."
+
+msgid "Narrow same-name results using the recorded birth date."
+msgstr "Use a data de nascimento para distinguir pacientes com o mesmo nome."
+
+msgid "Search registry"
+msgstr "Buscar pacientes"
+
+msgid "Searching…"
+msgstr "Buscando…"
+
+msgid "Register a new patient"
+msgstr "Cadastrar novo paciente"
+
+msgid "Submit a search to list patients."
+msgstr "Faça uma busca para listar os pacientes."
+
+msgid "Registry matches in this clinic"
+msgstr "Pacientes encontrados nesta clínica"
+
+msgid "Patient name"
+msgstr "Nome do paciente"
+
+msgid "Birth date"
+msgstr "Data de nascimento"
+
+msgid "Booking"
+msgstr "Agendamento"
+
+msgid "Search result pages"
+msgstr "Páginas dos resultados da busca"
+
+msgid "Previous page"
+msgstr "Página anterior"
+
+msgid "Next page"
+msgstr "Próxima página"
+
+msgid "Clinic agenda · Clinic OS"
+msgstr "Agenda da clínica · Clinic OS"
+
+msgid "Review the clinic-local day or week agenda without exposing patient identifiers in the address bar."
+msgstr "Consulte a agenda diária ou semanal no horário da clínica."
+
+msgid "Clinic schedule"
+msgstr "Agenda da clínica"
+
+msgid "Clinic agenda"
+msgstr "Agenda da clínica"
+
+msgid "We could not show that agenda"
+msgstr "Não foi possível exibir a agenda"
+
+msgid "Agenda navigation"
+msgstr "Navegação da agenda"
+
+msgid "Patient"
+msgstr "Paciente"
+
+msgid "Clinic-local range"
+msgstr "Período no horário da clínica"
+
+msgid "Physician"
+msgstr "Médico"
+
+msgid "Status"
+msgstr "Situação"
+
+msgid "Change"
+msgstr "Alterar"
+
+msgid "No change is possible"
+msgstr "Não é possível alterar"
+
+msgid "Agenda result pages"
+msgstr "Páginas da agenda"
+
+msgid "Physician availability · Clinic OS"
+msgstr "Disponibilidade médica · Clinic OS"
+
+msgid "Manage clinic physician availability without exposing scheduling identifiers in the address bar."
+msgstr "Gerencie a disponibilidade dos médicos desta clínica."
+
+msgid "Physician availability"
+msgstr "Disponibilidade médica"
+
+msgid "We could not add that availability"
+msgstr "Não foi possível adicionar a disponibilidade"
+
+msgid "Add an availability window"
+msgstr "Adicionar período de disponibilidade"
+
+msgid "Only active physicians assigned to this clinic are listed."
+msgstr "A lista mostra apenas médicos ativos vinculados a esta clínica."
+
+msgid "Use a future date in this clinic's local calendar."
+msgstr "Escolha uma data futura no calendário local da clínica."
+
+msgid "Windows start and end on the same clinic-local date."
+msgstr "O início e o fim devem estar no mesmo dia, no horário da clínica."
+
+msgid "The end time must be later than the start time."
+msgstr "O horário de término deve ser posterior ao de início."
+
+msgid "Add availability"
+msgstr "Adicionar disponibilidade"
+
+msgid "Saving…"
+msgstr "Salvando…"
+
+msgid "We could not retire that window"
+msgstr "Não foi possível encerrar a disponibilidade"
+
+msgid "No active availability windows for this clinic."
+msgstr "Não há períodos de disponibilidade ativos nesta clínica."
+
+msgid "Active availability in this clinic"
+msgstr "Disponibilidade ativa nesta clínica"
+
+msgid "Starts"
+msgstr "Início"
+
+msgid "Ends"
+msgstr "Término"
+
+msgid "Retirement"
+msgstr "Encerramento"
+
+msgid "We could not book that appointment"
+msgstr "Não foi possível agendar a consulta"
+
+msgid "Availability this clinic already promised"
+msgstr "Disponibilidade oferecida pela clínica"
+
+msgid "No physician has promised a future window in this clinic yet."
+msgstr "Nenhum médico oferece disponibilidade futura nesta clínica no momento."
+
+msgid "Promised availability windows"
+msgstr "Períodos de disponibilidade oferecidos"
+
+msgid "Window starts"
+msgstr "Início do período"
+
+msgid "Window ends"
+msgstr "Término do período"
+
+msgid "Choose an exact start and end"
+msgstr "Escolha os horários de início e término"
+
+msgid "Enter the exact clinic-local minute this appointment begins."
+msgstr "Informe a data e o horário exatos de início da consulta, no horário da clínica."
+
+msgid "Enter the exact clinic-local minute it ends, on the same date."
+msgstr "Informe o horário exato de término, no mesmo dia e no horário da clínica."
+
+msgid "Book this appointment"
+msgstr "Agendar esta consulta"
+
+msgid "Booking…"
+msgstr "Agendando…"
+
+msgid "The request did not complete. Check the agenda before trying again."
+msgstr "A solicitação não foi concluída. Verifique a agenda antes de tentar novamente."
+
+msgid "We could not change that appointment"
+msgstr "Não foi possível alterar a consulta"
+
+msgid "Current appointment"
+msgstr "Consulta atual"
+
+msgid "The appointment as this clinic currently records it"
+msgstr "Dados atuais da consulta"
+
+msgid "Move this appointment"
+msgstr "Reagendar esta consulta"
+
+msgid "Cancel this appointment"
+msgstr "Cancelar esta consulta"
+
+msgid "Enter the exact clinic-local minute the appointment should begin."
+msgstr "Informe a nova data e o horário exatos de início, no horário da clínica."
+
+msgid "The new window stays with the same patient and the same physician."
+msgstr "O novo período mantém o mesmo paciente e o mesmo médico."
+
+msgid "Choose one listed reason. Cancellation keeps the appointment history."
+msgstr "Escolha um dos motivos da lista. O cancelamento mantém o histórico da consulta."
+
+msgid "Save the new window"
+msgstr "Salvar novo período"
+
+msgid "Cancel the appointment"
+msgstr "Cancelar consulta"
+
+msgid "This appointment is cancelled, so it can no longer be changed."
+msgstr "Esta consulta foi cancelada e não pode mais ser alterada."
+
+msgid "Book an appointment · Clinic OS"
+msgstr "Agendar consulta · Clinic OS"
+
+msgid "Book a clinic appointment inside a promised availability window without exposing patient identifiers in the address bar."
+msgstr "Agende uma consulta em um período de disponibilidade oferecido pela clínica."
+
+msgid "Book an appointment"
+msgstr "Agendar consulta"
+
+msgid "Every minute below is this clinic's local time. Nothing here is a fixed slot: choose any start and end inside a promised window."
+msgstr "Os horários abaixo são os da clínica. Escolha o início e o término dentro de um período de disponibilidade oferecido."
+
+msgid "Back to the patient registry"
+msgstr "Voltar ao cadastro de pacientes"
+
+msgid "Reschedule an appointment"
+msgstr "Reagendar consulta"
+
+msgid "Cancel an appointment"
+msgstr "Cancelar consulta"
+
+msgid "Change one clinic appointment without exposing patient identifiers in the address bar."
+msgstr "Altere uma consulta da clínica com segurança."
+
+msgid "This screen never changes the patient or the physician"
+msgstr "O paciente e o médico não serão alterados"
+
+msgid "Back to the clinic agenda"
+msgstr "Voltar à agenda da clínica"
+
+msgid "Check your username and password, then try again."
+msgstr "Confira seu usuário e senha e tente novamente."
+
+msgid "That code is not valid. Try a current code."
+msgstr "Código inválido. Use um código atual do aplicativo autenticador."
+
+msgid "Authenticator"
+msgstr "Aplicativo autenticador"
+
+msgid "Authentication code"
+msgstr "Código de autenticação"
+
+msgid "Verification temporarily disabled. Try again soon."
+msgstr "Verificação temporariamente indisponível. Aguarde um pouco e tente novamente."
+
+msgid "Enter a patient name and a valid birth date."
+msgstr "Informe o nome do paciente e uma data de nascimento válida."
+
+msgid "This registration was already submitted differently."
+msgstr "Este cadastro já foi enviado com outros dados. Confira o cadastro antes de tentar novamente."
+
+msgid "Birth date (optional)"
+msgstr "Data de nascimento (opcional)"
+
+msgid "Results page"
+msgstr "Página de resultados"
+
+msgid "Full name"
+msgstr "Nome completo"
+
+msgid "Select a physician"
+msgstr "Selecione um médico"
+
+msgid "Enter a future clinic-local window that ends after it starts."
+msgstr "Informe um período futuro no horário da clínica, com término posterior ao início."
+
+msgid "This availability was already submitted differently."
+msgstr "Esta disponibilidade já foi enviada com outros dados. Confira os períodos cadastrados."
+
+msgid "That physician already promises part of this window."
+msgstr "Este médico já tem disponibilidade cadastrada em parte desse período. Escolha outro período."
+
+msgid "Select an active physician for this clinic."
+msgstr "Selecione um médico ativo nesta clínica."
+
+msgid "This block still has future appointments and cannot be retired."
+msgstr "Este período ainda tem consultas futuras e não pode ser encerrado. Reagende ou cancele essas consultas primeiro."
+
+msgid "Date"
+msgstr "Data"
+
+msgid "Start time"
+msgstr "Horário de início"
+
+msgid "End time"
+msgstr "Horário de término"
+
+msgid "Enter a clinic-local minute as YYYY-MM-DDTHH:MM."
+msgstr "Informe a data e a hora da clínica com precisão de minutos (AAAA-MM-DDTHH:MM)."
+
+msgid "Enter a future window that starts and ends on the same clinic-local date."
+msgstr "Informe um período futuro que comece e termine no mesmo dia, no horário da clínica."
+
+msgid "This booking was already submitted with different details."
+msgstr "Este agendamento já foi enviado com outros dados. Confira a agenda antes de tentar novamente."
+
+msgid "That window is no longer free for this physician or patient."
+msgstr "Este período não está mais livre para o médico ou para o paciente. Escolha outro horário."
+
+msgid "Choose a window inside one of the physician's promised availability blocks."
+msgstr "Escolha um período dentro da disponibilidade oferecida pelo médico."
+
+msgid "This appointment is cancelled and can no longer be moved."
+msgstr "Esta consulta foi cancelada e não pode mais ser reagendada."
+
+msgid "This appointment was already cancelled for a different reason."
+msgstr "Esta consulta já foi cancelada por outro motivo."
+
+msgid "Enter a future window that stays on one clinic-local date."
+msgstr "Informe um período futuro inteiramente no mesmo dia, no horário da clínica."
+
+msgid "Choose one of the listed cancellation reasons."
+msgstr "Escolha um dos motivos de cancelamento da lista."
+
+msgid "Choose a day or week agenda with a valid calendar date."
+msgstr "Escolha a agenda diária ou semanal e uma data válida."
+
+msgid "Starts (clinic local)"
+msgstr "Início (horário da clínica)"
+
+msgid "Ends (clinic local)"
+msgstr "Término (horário da clínica)"
+
+msgid "New start (clinic local)"
+msgstr "Novo início (horário da clínica)"
+
+msgid "New end (clinic local)"
+msgstr "Novo término (horário da clínica)"
+
+msgid "Cancellation reason"
+msgstr "Motivo do cancelamento"
+
+msgid "Enter a valid normalized patient name."
+msgstr "Informe um nome de paciente válido, sem caracteres de controle."
+
+msgid "Enter a valid IANA timezone."
+msgstr "Informe um fuso horário válido, como America/Sao_Paulo."
+
+msgid "Scheduled"
+msgstr "Agendada"
+
+msgid "Cancelled"
+msgstr "Cancelada"
+
+msgid "Patient request"
+msgstr "Solicitação do paciente"
+
+msgid "Clinic request"
+msgstr "Solicitação da clínica"
+
+msgid "Practitioner unavailable"
+msgstr "Médico indisponível"
+
+msgid "Duplicate"
+msgstr "Duplicidade"
+
+msgid "Other"
+msgstr "Outro motivo"
+
+msgid "Workspace primitives · Clinic OS"
+msgstr "Componentes da interface · Clinic OS"
+
+msgid "Review inert Clinic OS workspace primitives and their states in development."
+msgstr "Confira os componentes e seus estados em uma demonstração do Clinic OS."
+
+msgid "Workspace primitives"
+msgstr "Componentes da interface"
+
+msgid "Inert, synthetic states for responsive, keyboard, forced-colors and reduced-motion review. Nothing here is a real patient, secret or code."
+msgstr "Demonstração com dados sintéticos para conferir telas, teclado, contraste e movimento reduzido. Nenhum paciente, segredo ou código é real."
+
+msgid "Primitives on this page"
+msgstr "Componentes nesta página"
+
+msgid "Navigation"
+msgstr "Navegação"
+
+msgid "Field"
+msgstr "Campo"
+
+msgid "Action"
+msgstr "Ação"
+
+msgid "Table"
+msgstr "Tabela"
+
+msgid "Panel"
+msgstr "Painel"
+
+msgid "Stress cases"
+msgstr "Casos extremos"
+
+msgid "Default"
+msgstr "Padrão"
+
+msgid "Focus"
+msgstr "Foco"
+
+msgid "Disabled"
+msgstr "Indisponível"
+
+msgid "Loading"
+msgstr "Carregando"
+
+msgid "Error"
+msgstr "Erro"
+
+msgid "Success"
+msgstr "Sucesso"
+
+msgid "Workspace, default"
+msgstr "Área de trabalho, padrão"
+
+msgid "Workspace, focus"
+msgstr "Área de trabalho, foco"
+
+msgid "Workspace, disabled item"
+msgstr "Área de trabalho, item indisponível"
+
+msgid "Workspace, loading item"
+msgstr "Área de trabalho, item carregando"
+
+msgid "Workspace, error badge"
+msgstr "Área de trabalho, indicador de erro"
+
+msgid "Workspace, success badge"
+msgstr "Área de trabalho, indicador de sucesso"
+
+msgid "Patients"
+msgstr "Pacientes"
+
+msgid "Billing (not yet available)"
+msgstr "Cobranças (ainda indisponível)"
+
+msgid "opening…"
+msgstr "abrindo…"
+
+msgid "2 conflicts"
+msgstr "2 conflitos"
+
+msgid "Reminders"
+msgstr "Lembretes"
+
+msgid "sent"
+msgstr "enviados"
+
+msgid "Enter the name as written on the identity document."
+msgstr "Informe o nome conforme o documento de identidade."
+
+msgid "Six digits from your authenticator app."
+msgstr "Seis dígitos do aplicativo autenticador."
+
+msgid "Clinic"
+msgstr "Clínica"
+
+msgid "Set by the clinic administrator."
+msgstr "Definida pela administração da clínica."
+
+msgid "Checking the registry…"
+msgstr "Conferindo cadastro…"
+
+msgid "Enter the birth date as DD/MM/YYYY, for example 12/03/1988."
+msgstr "Informe a data de nascimento como DD/MM/AAAA, por exemplo 12/03/1988."
+
+msgid "Format accepted."
+msgstr "Formato aceito."
+
+msgid "Book appointment"
+msgstr "Agendar consulta"
+
+msgid "Back to agenda"
+msgstr "Voltar à agenda"
+
+msgid "Discard changes"
+msgstr "Descartar alterações"
+
+msgid "Cancel appointment"
+msgstr "Cancelar consulta"
+
+msgid "Could not book: the slot was taken. Choose another time."
+msgstr "Não foi possível agendar: o horário foi ocupado. Escolha outro horário."
+
+msgid "Booked for 14:30."
+msgstr "Consulta agendada para as 14:30."
+
+msgid "Registry search"
+msgstr "Busca de pacientes"
+
+msgid "Awaiting confirmation"
+msgstr "Aguardando confirmação"
+
+msgid "We could not save the patient"
+msgstr "Não foi possível salvar o cadastro do paciente"
+
+msgid "Fix the fields below and try again."
+msgstr "Corrija os campos abaixo e tente novamente."
+
+msgid "Birth date: enter it as DD/MM/YYYY."
+msgstr "Data de nascimento: informe como DD/MM/AAAA."
+
+msgid "This appointment was completed and can no longer be moved."
+msgstr "Esta consulta foi concluída e não pode mais ser reagendada."
+
+msgid "Completed"
+msgstr "Concluída"
+
+msgid "Refreshing the agenda…"
+msgstr "Atualizando agenda…"
+
+msgid "Appointments will appear in a moment."
+msgstr "As consultas aparecerão em instantes."
+
+msgid "Refreshing…"
+msgstr "Atualizando…"
+
+msgid "Enter at least two characters of the name, then try again."
+msgstr "Informe pelo menos dois caracteres do nome e tente novamente."
+
+msgid "Conflict"
+msgstr "Conflito"
+
+msgid "Appointment booked"
+msgstr "Consulta agendada"
+
+msgid "Marina Duarte Sampaio, 14:30 with Dr. Otávio Lins."
+msgstr "Marina Duarte Sampaio, às 14:30 com Dr. Otávio Lins."
+
+msgid "Confirmed"
+msgstr "Confirmada"
+
+msgid "Appointments today"
+msgstr "Consultas de hoje"
+
+msgid "Time"
+msgstr "Horário"
+
+msgid "09:00 to 09:30"
+msgstr "09:00 às 09:30"
+
+msgid "09:30 to 10:00"
+msgstr "09:30 às 10:00"
+
+msgid "14:30 to 15:00"
+msgstr "14:30 às 15:00"
+
+msgid "Reschedule"
+msgstr "Reagendar"
+
+msgid "No appointments in this week yet. Book one from the patient registry."
+msgstr "Nenhuma consulta nesta semana. Agende pelo cadastro de pacientes."
+
+msgid "Updating…"
+msgstr "Atualizando…"
+
+msgid "Choose another time"
+msgstr "Escolher outro horário"
+
+msgid "Booked"
+msgstr "Agendada"
+
+msgid "Choose a time for Marina Duarte Sampaio with Dr. Otávio Lins."
+msgstr "Escolha um horário para Marina Duarte Sampaio com Dr. Otávio Lins."
+
+msgid "Choose a time"
+msgstr "Escolher horário"
+
+msgid "This panel receives focus after an HTMX swap so the next step is announced."
+msgstr "Após a atualização, este painel recebe o foco para anunciar a próxima etapa."
+
+msgid "Select a patient from the registry first."
+msgstr "Primeiro, selecione um paciente no cadastro."
+
+msgid "Loading available times…"
+msgstr "Carregando horários disponíveis…"
+
+msgid "Booking failed"
+msgstr "Não foi possível agendar"
+
+msgid "The 14:30 slot was taken while you were choosing. Pick another time."
+msgstr "O horário das 14:30 foi ocupado durante sua escolha. Escolha outro horário."
+
+msgid "Marina Duarte Sampaio, 14:30 to 15:00 with Dr. Otávio Lins."
+msgstr "Marina Duarte Sampaio, das 14:30 às 15:00 com Dr. Otávio Lins."
+
+msgid "Long labels"
+msgstr "Rótulos longos"
+
+msgid "Workspace, long item"
+msgstr "Área de trabalho, item longo"
+
+msgid "Unbroken values"
+msgstr "Valores sem espaços"
+
+msgid "Note"
+msgstr "Observação"
+
+msgid "Error summary"
+msgstr "Resumo de erros"
+
+msgid "Fix the three fields below, then save again."
+msgstr "Corrija os três campos abaixo e salve novamente."
+
+msgid "Patient name: enter the full name."
+msgstr "Nome do paciente: informe o nome completo."
+
+msgid "Phone: include the area code."
+msgstr "Telefone: inclua o DDD."
+
+msgid "Enter the full name."
+msgstr "Informe o nome completo."
+
+msgid "Enter it as DD/MM/YYYY."
+msgstr "Informe como DD/MM/AAAA."
+
+msgid "Phone"
+msgstr "Telefone"
+
+msgid "Include the area code."
+msgstr "Inclua o DDD."
+
+msgid "Locale wrapping"
+msgstr "Quebra de linha em outros idiomas"
+
+msgid "Enrollment placeholder"
+msgstr "Exemplo de configuração"
+
+msgid "Inert QR placeholder"
+msgstr "Exemplo de QR code sem função"
+
+msgid "QR placeholder"
+msgstr "Exemplo de QR code"
+
+msgid "Appointments use the clinic time zone (%(timezone_key)s)."
+msgstr "As consultas usam o horário da clínica (%(timezone_key)s)."
+
+msgid "Day agenda"
+msgstr "Agenda diária"
+
+msgid "Week agenda"
+msgstr "Agenda semanal"
+
+msgid "Previous day"
+msgstr "Dia anterior"
+
+msgid "Previous week"
+msgstr "Semana anterior"
+
+msgid "Next day"
+msgstr "Próximo dia"
+
+msgid "Next week"
+msgstr "Próxima semana"
+
+msgid "Show day agenda"
+msgstr "Ver agenda diária"
+
+msgid "Show week agenda"
+msgstr "Ver agenda semanal"
+
+msgid "Page %(page)s of %(pages)s."
+msgstr "Página %(page)s de %(pages)s."
+
+msgid "Appointments in this period"
+msgstr "Consultas neste período"
+
+msgid "%(start)s to %(end)s"
+msgstr "%(start)s a %(end)s"
+
+msgid "Reschedule the %(start)s appointment"
+msgstr "Reagendar a consulta de %(start)s"
+
+msgid "Cancel the %(start)s appointment"
+msgstr "Cancelar a consulta de %(start)s"
+
+msgid "Book %(name)s"
+msgstr "Agendar para %(name)s"
+
+msgid "Hours follow the clinic time zone (%(timezone_key)s). Retiring a period stops new bookings in it and never cancels an appointment."
+msgstr "Os horários seguem o fuso da clínica (%(timezone_key)s). Encerrar um período impede novos agendamentos nele e nunca cancela uma consulta."
+
+msgid "All times below use the clinic time zone (%(timezone_key)s)."
+msgstr "Todos os horários abaixo são os da clínica (%(timezone_key)s)."
+
+msgid "Currency format (synthetic example)"
+msgstr "Formato monetário (exemplo sintético)"
+
+msgid "Invalid request"
+msgstr "Solicitação inválida"
+
+msgid "Return to the previous page and try again."
+msgstr "Volte à página anterior e tente novamente."
+
+msgid "Access unavailable"
+msgstr "Acesso indisponível"
+
+msgid "Sign in with an authorized clinic account. If the problem continues, contact the clinic administrator."
+msgstr "Entre com uma conta autorizada da clínica. Se o problema continuar, procure a administração da clínica."
+
+msgid "Page unavailable"
+msgstr "Página indisponível"
+
+msgid "Return to the previous page and check the selected item."
+msgstr "Volte à página anterior e confira o item selecionado."
+
+msgid "Service temporarily unavailable"
+msgstr "Serviço temporariamente indisponível"
+
+msgid "Try again shortly. Before repeating a registration or booking, check whether it was saved."
+msgstr "Tente novamente em instantes. Antes de repetir um cadastro ou agendamento, confira se ele foi salvo."
+
+msgid "Reload this page"
+msgstr "Recarregue esta página"
+
+msgid "This submission could not be verified. Reload the form and try again."
+msgstr "Não foi possível verificar este envio. Recarregue o formulário e tente novamente."
+
+msgid "%(total)s appointment in this period."
+msgid_plural "%(total)s appointments in this period."
+msgstr[0] "%(total)s consulta neste período."
+msgstr[1] "%(total)s consultas neste período."
+
+msgid "%(total)s matching patient."
+msgid_plural "%(total)s matching patients."
+msgstr[0] "%(total)s paciente encontrado."
+msgstr[1] "%(total)s pacientes encontrados."
+
+msgid "%(total)s active availability period."
+msgid_plural "%(total)s active availability periods."
+msgstr[0] "%(total)s período de disponibilidade ativo."
+msgstr[1] "%(total)s períodos de disponibilidade ativos."
+
+msgid "%(total)s available period. Choose a start and end inside it."
+msgid_plural "%(total)s available periods. Choose a start and end inside one of them."
+msgstr[0] "%(total)s período disponível. Escolha o início e o término dentro dele."
+msgstr[1] "%(total)s períodos disponíveis. Escolha o início e o término dentro de um deles."
+
+msgid "Workspace"
+msgstr "Espaço de trabalho"
+
+msgid "change"
+msgstr "trocar"
+
+msgid "No clinic assigned"
+msgstr "Nenhuma clínica atribuída"
+
+msgid "Availability"
+msgstr "Disponibilidade"
+
+msgid "Retention"
+msgstr "Retenção"
+
+msgid "Agenda"
+msgstr "Agenda"
+
+msgid "today %(day)s"
+msgstr "hoje %(day)s"
+
+msgid "Your account has no active role in a clinic of this organization. Ask the clinic administrator to assign one, then sign in again."
+msgstr "Sua conta não tem um papel ativo em nenhuma clínica desta organização. Peça ao administrador da clínica que atribua um e entre novamente."
+
+msgid "Patient registered"
+msgstr "Paciente cadastrado"
+
+msgid "The patient can now be booked in this clinic. Search by name to book."
+msgstr "O paciente já pode ser agendado nesta clínica. Busque pelo nome para agendar a consulta."
+
+msgid "for %(name)s"
+msgstr "para %(name)s"
+
+msgid "There are no patients on this page. Go back to the previous page."
+msgstr "Não há pacientes nesta página. Volte à página anterior."
+
+msgid "No patient named “%(term)s” in this clinic."
+msgstr "Nenhum paciente com o nome “%(term)s” nesta clínica."
+
+msgid "Check the spelling, or register the patient to book an appointment."
+msgstr "Confira a grafia ou cadastre o paciente para agendar a consulta."
+
+msgid "Period added"
+msgstr "Período adicionado"
+
+msgid "Period retired"
+msgstr "Período encerrado"
+
+msgid "The period is listed below and can receive appointments."
+msgstr "O período já aparece na lista abaixo e pode receber agendamentos."
+
+msgid "No appointment was cancelled. To offer these hours again, add a new period."
+msgstr "Nenhuma consulta foi cancelada. Para oferecer esses horários novamente, adicione um novo período."
+
+msgid "Reload this page and submit the period again."
+msgstr "Recarregue esta página e envie o período novamente."
+
+msgid "%(total)s period"
+msgid_plural "%(total)s periods"
+msgstr[0] "%(total)s período"
+msgstr[1] "%(total)s períodos"
+
+msgid "Retire period"
+msgstr "Encerrar período"
+
+msgid "from %(start)s to %(end)s on %(day)s, %(practitioner)s"
+msgstr "das %(start)s às %(end)s de %(day)s, %(practitioner)s"
+
+msgid "Retiring…"
+msgstr "Encerrando…"
+
+msgid "Has appointments"
+msgstr "Com consultas marcadas"
+
+msgid "Add the first period above: choose the physician, the date and the hours the clinic offers."
+msgstr "Adicione o primeiro período acima: escolha o médico, a data e os horários que a clínica oferece."
+
+msgid "Periods the clinic offers for you will appear here, grouped by day."
+msgstr "Os períodos que a clínica oferece para você aparecerão aqui, agrupados por dia."
+
+msgid "Open today's agenda"
+msgstr "Abrir a agenda de hoje"
+
+msgid "today"
+msgstr "hoje"
+
+msgid "Today"
+msgstr "Hoje"
+
+msgid "Agenda view"
+msgstr "Visão da agenda"
+
+msgid "Day"
+msgstr "Dia"
+
+msgid "Week"
+msgstr "Semana"
+
+msgid "Week of <time datetime=\"%(start_iso)s\">%(start)s</time> to <time datetime=\"%(end_iso)s\">%(end)s</time>"
+msgstr "Semana de <time datetime=\"%(start_iso)s\">%(start)s</time> a <time datetime=\"%(end_iso)s\">%(end)s</time>"
+
+msgid "%(total)s appointment on this day."
+msgid_plural "%(total)s appointments on this day."
+msgstr[0] "%(total)s consulta neste dia."
+msgstr[1] "%(total)s consultas neste dia."
+
+msgid "%(total)s appointment in this week."
+msgid_plural "%(total)s appointments in this week."
+msgstr[0] "%(total)s consulta nesta semana."
+msgstr[1] "%(total)s consultas nesta semana."
+
+msgid "Appointments on this day"
+msgstr "Consultas deste dia"
+
+msgid "Appointments in this week"
+msgstr "Consultas desta semana"
+
+msgid "Actions"
+msgstr "Ações"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "%(patient)s at %(start)s"
+msgstr "%(patient)s às %(start)s"
+
+msgid "No action available"
+msgstr "Sem ação disponível"
+
+msgid "No appointment on this day. To book one, find the patient in the registry and press “Book appointment”."
+msgstr "Nenhuma consulta neste dia. Para agendar, encontre o paciente no cadastro e use “Agendar consulta”."
+
+msgid "No appointment in this week. To book one, find the patient in the registry and press “Book appointment”."
+msgstr "Nenhuma consulta nesta semana. Para agendar, encontre o paciente no cadastro e use “Agendar consulta”."
+
+msgid "Find a patient to book"
+msgstr "Buscar paciente para agendar"
+
+msgid "You have no appointment on this day."
+msgstr "Você não tem consultas neste dia."
+
+msgid "You have no appointment in this week."
+msgstr "Você não tem consultas nesta semana."
+
+msgid "Every time below is this clinic's local time (%(timezone_key)s). Choose any start and end inside a window the physician offers."
+msgstr "Todos os horários abaixo são os da clínica (%(timezone_key)s). Escolha o início e o término dentro de um período oferecido pelo médico."
+
+msgid "Return to the patient registry and start this booking again."
+msgstr "Volte ao cadastro de pacientes e inicie este agendamento novamente."
+
+msgid "No physician offers a future window in this clinic yet. Add availability first, then book."
+msgstr "Nenhum médico oferece um período futuro nesta clínica ainda. Cadastre a disponibilidade primeiro e depois agende."
+
+msgid "%(total)s offered window. Choose a start and end inside it."
+msgid_plural "%(total)s offered windows. Choose a start and end inside one of them."
+msgstr[0] "%(total)s período oferecido. Escolha o início e o término dentro dele."
+msgstr[1] "%(total)s períodos oferecidos. Escolha o início e o término dentro de um deles."
+
+msgid "Availability by physician and day"
+msgstr "Disponibilidade por médico e dia"
+
+msgid "Window"
+msgstr "Período"
+
+msgid "Choose the physician and the exact time"
+msgstr "Escolha o médico e o horário exato"
+
+msgid "Choose a new start and end for the same patient with the same physician. Times use the clinic time zone (%(timezone_key)s)."
+msgstr "Escolha o novo início e término para o mesmo paciente com o mesmo médico. Os horários seguem o fuso da clínica (%(timezone_key)s)."
+
+msgid "Choose why this appointment will not happen. The window opens again and the record keeps its history. Times use the clinic time zone (%(timezone_key)s)."
+msgstr "Informe por que esta consulta não acontecerá. O horário fica livre de novo e o registro mantém o histórico. Os horários seguem o fuso da clínica (%(timezone_key)s)."
+
+msgid "Appointment rescheduled"
+msgstr "Consulta reagendada"
+
+msgid "Appointment cancelled"
+msgstr "Consulta cancelada"
+
+msgid "The appointment as recorded"
+msgstr "Consulta como registrada"
+
+msgid "New time"
+msgstr "Novo horário"
+
+msgid "Reason"
+msgstr "Motivo"
+
+msgid "Save the new time"
+msgstr "Salvar novo horário"
+
+msgid "Back to the day's agenda"
+msgstr "Voltar à agenda do dia"
+
+msgid "It is listed below under its start time. To move or cancel it, use the actions on its row."
+msgstr "Ela aparece abaixo, no horário de início. Para reagendar ou cancelar, use as ações da linha."
+
+msgid "The new window is recorded below. The patient and the physician did not change."
+msgstr "O novo horário está registrado abaixo. O paciente e o médico não mudaram."
+
+msgid "The window is free again. This appointment keeps its history and can no longer be changed."
+msgstr "O horário está livre de novo. Esta consulta mantém o histórico e não pode mais ser alterada."
+
+msgid "Contacts and preferences · Clinic OS"
+msgstr "Contatos e preferências · Clinic OS"
+
+msgid "Manage one patient's verified contacts and messaging preferences without exposing destinations in the address bar."
+msgstr "Gerencie os contatos verificados e as preferências de mensagens de um paciente sem expor destinos na barra de endereço."
+
+msgid "Contacts and messaging preferences"
+msgstr "Contatos e preferências de mensagens"
+
+msgid "Find the patient in the registry to manage their contacts and messaging preferences."
+msgstr "Encontre o paciente no cadastro para gerenciar contatos e preferências de mensagens."
+
+msgid "Contacts and automated-message preferences for %(name)s in this clinic."
+msgstr "Contatos e preferências de mensagens automáticas de %(name)s nesta clínica."
+
+msgid "We could not complete that action"
+msgstr "Não foi possível concluir essa ação"
+
+msgid "Destinations"
+msgstr "Destinos"
+
+msgid "Destinations stay masked here. Open the edit screen to see or change the full value; changing it requires a new verification before automated messages can use it."
+msgstr "Os destinos ficam mascarados aqui. Abra a tela de edição para ver ou alterar o valor completo; alterá-lo exige uma nova verificação antes do envio de mensagens automáticas."
+
+msgid "Verified"
+msgstr "Verificado"
+
+msgid "Not verified"
+msgstr "Não verificado"
+
+msgid "No destination recorded"
+msgstr "Nenhum destino cadastrado"
+
+msgid "Edit destination"
+msgstr "Editar destino"
+
+msgid "Add destination"
+msgstr "Adicionar destino"
+
+msgid "for %(channel)s"
+msgstr "para %(channel)s"
+
+msgid "Mark as verified"
+msgstr "Marcar como verificado"
+
+msgid "Automated messages"
+msgstr "Mensagens automáticas"
+
+msgid "Choose one channel per purpose, or choose not to send. Preferences apply to this clinic only and can be revoked at any time."
+msgstr "Escolha um canal por finalidade ou escolha não enviar. As preferências valem apenas para esta clínica e podem ser revogadas a qualquer momento."
+
+msgid "Do not send"
+msgstr "Não enviar"
+
+msgid "Save preference"
+msgstr "Salvar preferência"
+
+msgid "for %(purpose)s"
+msgstr "para %(purpose)s"
+
+msgid "History"
+msgstr "Histórico"
+
+msgid "Contact and preference changes in this clinic"
+msgstr "Alterações de contatos e preferências nesta clínica"
+
+msgid "Channel"
+msgstr "Canal"
+
+msgid "Purpose"
+msgstr "Finalidade"
+
+msgid "Version"
+msgstr "Versão"
+
+msgid "Recorded by"
+msgstr "Registrado por"
+
+msgid "When"
+msgstr "Quando"
+
+msgid "No contact or preference changes recorded yet."
+msgstr "Nenhuma alteração de contato ou preferência registrada ainda."
+
+msgid "Edit destination · Clinic OS"
+msgstr "Editar destino · Clinic OS"
+
+msgid "Edit one patient contact destination on the explicit edit screen."
+msgstr "Edite o destino de contato de um paciente na tela de edição."
+
+msgid "Edit %(channel)s destination"
+msgstr "Editar destino de %(channel)s"
+
+msgid "This is the only screen that shows the full destination for %(name)s."
+msgstr "Esta é a única tela que mostra o destino completo de %(name)s."
+
+msgid "We could not save that destination"
+msgstr "Não foi possível salvar esse destino"
+
+msgid "Enter the full destination exactly as it should receive messages."
+msgstr "Digite o destino completo exatamente como deve receber as mensagens."
+
+msgid "Save destination"
+msgstr "Salvar destino"
+
+msgid "Back to contacts"
+msgstr "Voltar aos contatos"
+
+msgid "Contacts"
+msgstr "Contatos"
+
+msgid "Contact saved."
+msgstr "Contato salvo."
+
+msgid "Destination verified for automated messages."
+msgstr "Destino verificado para mensagens automáticas."
+
+msgid "Messaging preferences saved."
+msgstr "Preferências de mensagens salvas."
+
+msgid "Automated messages for this purpose were revoked."
+msgstr "As mensagens automáticas desta finalidade foram revogadas."
+
+msgid "This contact changed since you opened it. Review the current destination and save again."
+msgstr "Este contato mudou desde que você o abriu. Revise o destino atual e salve novamente."
+
+msgid "This destination changed since you opened it. Review the current destination and verify it again."
+msgstr "Este destino mudou desde que você o abriu. Revise o destino atual e verifique novamente."
+
+msgid "Enter a valid destination for this channel."
+msgstr "Digite um destino válido para este canal."
+
+msgid "SMS"
+msgstr "SMS"
+
+msgid "Email"
+msgstr "E-mail"
+
+msgid "WhatsApp"
+msgstr "WhatsApp"
+
+msgid "Appointment reminders"
+msgstr "Lembretes de consulta"
+
+msgid "Booking confirmations"
+msgstr "Confirmações de agendamento"
+
+msgid "Contact saved"
+msgstr "Contato salvo"
+
+msgid "Destination verified"
+msgstr "Destino verificado"
+
+msgid "Verification invalidated by a destination change"
+msgstr "Verificação invalidada por alteração de destino"
+
+msgid "Messages allowed"
+msgstr "Mensagens permitidas"
+
+msgid "Messages revoked"
+msgstr "Mensagens revogadas"
+
+msgid "Enter a valid enrollment."
+msgstr "Digite um vínculo válido."
+
+msgid "Destination"
+msgstr "Destino"
+
+msgid "Enter a valid version."
+msgstr "Digite uma versão válida."
+
+msgid "Appointment reminder"
+msgstr "Lembrete de consulta"
+
+msgid "Booking confirmation"
+msgstr "Confirmação de agendamento"
+
+msgid "Contact verified"
+msgstr "Contato verificado"
+
+msgid "Verification invalidated"
+msgstr "Verificação invalidada"
+
+msgid "Preference opted in"
+msgstr "Preferência permitida"
+
+msgid "Preference opted out"
+msgstr "Preferência revogada"
+
+msgid "Patient access · Clinic OS"
+msgstr "Acesso do paciente · Clinic OS"
+
+msgid "Issue and revoke single-use patient invitations without exposing patient data in the address bar."
+msgstr "Emita e revogue convites de uso único sem expor dados do paciente na barra de endereço."
+
+msgid "Patient access"
+msgstr "Acesso do paciente"
+
+msgid "Find the patient in the registry to manage their portal access."
+msgstr "Encontre o paciente no cadastro para gerenciar o acesso ao portal."
+
+msgid "Portal invitations and sessions for %(name)s in this clinic."
+msgstr "Convites e sessões do portal de %(name)s nesta clínica."
+
+msgid "Invitation code"
+msgstr "Código do convite"
+
+msgid "Share this code with the patient now. It is shown only once, works a single time and expires in 24 hours."
+msgstr "Compartilhe este código com o paciente agora. Ele é exibido apenas uma vez, funciona uma única vez e expira em 24 horas."
+
+msgid "Invitations"
+msgstr "Convites"
+
+msgid "Each invitation is a single-use code valid for 24 hours. Revoking an invitation also ends every session it created."
+msgstr "Cada convite é um código de uso único válido por 24 horas. Revogar um convite também encerra todas as sessões que ele criou."
+
+msgid "Issue a new invitation"
+msgstr "Emitir novo convite"
+
+msgid "Invitations for this enrollment"
+msgstr "Convites deste vínculo"
+
+msgid "State"
+msgstr "Situação"
+
+msgid "Issued by"
+msgstr "Emitido por"
+
+msgid "Issued"
+msgstr "Emitido"
+
+msgid "Expires"
+msgstr "Expira"
+
+msgid "Revoke access"
+msgstr "Revogar acesso"
+
+msgid "No invitations issued yet."
+msgstr "Nenhum convite emitido ainda."
+
+msgid "Patient sessions"
+msgstr "Sessões do paciente"
+
+msgid "Sessions expire after 30 minutes without activity or 8 hours after sign-in, whichever comes first."
+msgstr "As sessões expiram após 30 minutos sem atividade ou 8 horas após o acesso, o que ocorrer primeiro."
+
+msgid "Sessions for this enrollment"
+msgstr "Sessões deste vínculo"
+
+msgid "Started"
+msgstr "Iniciada"
+
+msgid "Idle until"
+msgstr "Inativa até"
+
+msgid "No patient sessions yet."
+msgstr "Nenhuma sessão de paciente ainda."
+
+msgid "Revoked"
+msgstr "Revogado"
+
+msgid "Used"
+msgstr "Utilizado"
+
+msgid "Expired"
+msgstr "Expirado"
+
+msgid "Active"
+msgstr "Ativo"
+
+msgid "Invitation created. Share the code with the patient now; it is shown only once and expires in 24 hours."
+msgstr "Convite criado. Compartilhe o código com o paciente agora; ele é exibido apenas uma vez e expira em 24 horas."
+
+msgid "Patient access revoked. The invitation and its sessions no longer work."
+msgstr "Acesso do paciente revogado. O convite e suas sessões não funcionam mais."
+
+msgid "This access code is not valid. Check the code or ask the clinic for a new invitation."
+msgstr "Este código de acesso não é válido. Confira o código ou peça um novo convite à clínica."
+
+msgid "Enter a valid invitation."
+msgstr "Digite um convite válido."
+
+msgid "Access code"
+msgstr "Código de acesso"
+
+msgid "Enter the single-use access code the clinic gave you."
+msgstr "Digite o código de acesso de uso único que a clínica forneceu."
+
+msgid "Patient portal"
+msgstr "Portal do paciente"
+
+msgid "Enter your access code"
+msgstr "Digite seu código de acesso"
+
+msgid "Enter the single-use code the clinic gave you. Codes expire 24 hours after they are issued."
+msgstr "Digite o código de uso único que a clínica forneceu. Os códigos expiram 24 horas após a emissão."
+
+msgid "Continue"
+msgstr "Continuar"
+
+msgid "Your enrollment · Clinic OS"
+msgstr "Seu vínculo · Clinic OS"
+
+msgid "View the enrollment this access session is bound to."
+msgstr "Veja o vínculo ao qual esta sessão de acesso está associada."
+
+msgid "Your enrollment"
+msgstr "Seu vínculo"
+
+msgid "This session shows only the enrollment your invitation was issued for."
+msgstr "Esta sessão mostra apenas o vínculo para o qual seu convite foi emitido."
+
+msgid "Enrollment details"
+msgstr "Dados do vínculo"
+
+msgid "Enrolled"
+msgstr "Vinculado"
+
+msgid "Session ends"
+msgstr "Sessão termina"
+
+msgid "Patient portal · Clinic OS"
+msgstr "Portal do paciente · Clinic OS"
+
+msgid "Patient portal access state."
+msgstr "Estado de acesso ao portal do paciente."
+
+msgid "You are signed out"
+msgstr "Você saiu"
+
+msgid "Your access session ended. Use a new invitation code from the clinic to sign in again."
+msgstr "Sua sessão de acesso terminou. Use um novo código de convite da clínica para entrar novamente."
+
+msgid "Access required"
+msgstr "Acesso necessário"
+
+msgid "Use the invitation link and access code the clinic gave you. If your code expired or was already used, ask the clinic for a new invitation."
+msgstr "Use o link do convite e o código de acesso que a clínica forneceu. Se o código expirou ou já foi usado, peça um novo convite à clínica."
+
+msgid "Access"
+msgstr "Acesso"
+
+msgid "Document verification · Clinic OS"
+msgstr "Verificação de documento · Clinic OS"
+
+msgid "Public verification status for a signed document."
+msgstr "Status público de verificação de um documento assinado."
+
+msgid "Verification result"
+msgstr "Resultado da verificação"
+
+msgid "Public status of a document code. This page verifies the signature on the server before it reports a status."
+msgstr "Status público do código de um documento. Esta página verifica a assinatura no servidor antes de informar o status."
+
+msgid "synthetic rehearsal - no legal validity"
+msgstr "ensaio sintético · sem validade legal"
+
+msgid "verified"
+msgstr "verificado"
+
+msgid "unavailable"
+msgstr "indisponível"
+
+msgid "superseded"
+msgstr "substituído"
+
+msgid "revoked"
+msgstr "revogado"
+
+msgid "invalid"
+msgstr "inválido"
+
+msgid "This document was issued and its signature verifies."
+msgstr "Este documento foi emitido e a assinatura confere."
+
+msgid "This is a synthetic rehearsal document; its signature verifies but it is not a real issued document."
+msgstr "Este é um documento de ensaio sintético: a assinatura confere, mas não é um documento emitido de verdade."
+
+msgid "This document was replaced by a newer verified version."
+msgstr "Este documento foi substituído por uma versão verificada mais recente."
+
+msgid "This document was revoked by its issuer."
+msgstr "Este documento foi revogado pelo emissor."
+
+msgid "This document failed integrity or signature verification."
+msgstr "Este documento não passou na verificação de integridade ou de assinatura."
+
+msgid "No verified document is available for this code."
+msgstr "Nenhum documento verificado está disponível para este código."
+
+msgid "Document version"
+msgstr "Versão do documento"
+
+msgid "Issued at"
+msgstr "Emitido em"
+
+msgid "Issuer"
+msgstr "Emissor"
+
+msgid "Content digest (SHA-256)"
+msgstr "Resumo do conteúdo (SHA-256)"
+
+msgid "Signed digest (SHA-256)"
+msgstr "Resumo assinado (SHA-256)"
+
+msgid "This page never shows patient or clinical content and never provides a download. Only the clinic or the patient can access the document itself."
+msgstr "Esta página nunca mostra dados do paciente nem conteúdo clínico e nunca oferece download. Somente a clínica ou o paciente acessam o documento."
+
+msgid "%(moment)s (UTC)"
+msgstr "%(moment)s (UTC)"
+
+msgid "You are confirming"
+msgstr "Você está confirmando"
+
+msgid "These details are fixed. The code confirms your identity for exactly this action; it changes nothing else."
+msgstr "Estes dados são fixos. O código confirma sua identidade somente para esta ação e não altera mais nada."
+
+msgid "Your documents · Clinic OS"
+msgstr "Seus documentos · Clinic OS"
+
+msgid "Download the prescription documents the clinic released to you."
+msgstr "Baixe os documentos de prescrição que a clínica liberou para você."
+
+msgid "Your records · Clinic OS"
+msgstr "Seus registros · Clinic OS"
+
+msgid "View and export the records the clinic released to you."
+msgstr "Veja e exporte os registros que a clínica liberou para você."

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,10 +10,17 @@ from typing import TYPE_CHECKING, Final, Never
 from uuid import uuid4
 
 from ops.testing.isolation_claim_transitions import reserve_claim
-from ops.testing.isolation_common import JsonObject, JsonValue, canonical_bytes
+from ops.testing.isolation_common import (
+    JsonObject,
+    JsonValue,
+    canonical_bytes,
+    ensure_private_directory,
+    load_json,
+)
 from ops.testing.isolation_docker_metadata import run_docker_command
 from ops.testing.isolation_reconcile import reconcile_same_boot
 from ops.testing.isolation_refresh import verify_claim
+from ops.testing.runtime_paths import runtime_directory
 from ops.testing.tls_contract import POSTGRES_IMAGE
 from ops.testing.tls_specs import (
     materializer_spec,
@@ -58,8 +64,8 @@ def materializer_lease(repository: Path) -> Iterator[MaterializerLease]:
     volumes = _objects(desired.get("owned_volumes"))
     service = _objects(desired.get("services"))[0]
     container_id = ""
-    with tempfile.TemporaryDirectory(dir="/tmp/opencode") as temporary:
-        spec_path = Path(temporary) / "materializer-spec.json"
+    with runtime_directory(_run_root(ledger_path), purpose="materializer") as work:
+        spec_path = work / "materializer-spec.json"
         spec_path.write_bytes(canonical_bytes(spec))
         spec_path.chmod(0o400)
         reserve_claim(ledger_path, spec_path)
@@ -109,6 +115,14 @@ def materializer_lease(repository: Path) -> Iterator[MaterializerLease]:
             name = _text(volume.get("volume_name"))
             _remove_volume_if_present(name)
         reconcile_same_boot(ledger_path)
+
+
+def _run_root(ledger_path: Path) -> Path:
+    """Provision this caller's private run root under the attempt root."""
+    ledger, _ = load_json(ledger_path)
+    root = Path(_text(ledger.get("attempt_root"))) / "runtime"
+    ensure_private_directory(root)
+    return root
 
 
 def _create_materializer(project: str, claim_id: str, service: JsonObject) -> str:

@@ -5,6 +5,8 @@ from uuid import uuid4
 
 import pytest
 from apps.identity.models import User, UserClinicRole
+from apps.identity.templatetags.clinic_locale import clinic_minute
+from apps.scheduling.appointment_forms import TERMINAL_MESSAGE
 from apps.scheduling.models import Appointment
 from django.test import Client
 
@@ -69,7 +71,7 @@ def test_reschedule_get_audits_the_read_and_offers_only_a_new_window(
     body = response.content
     assert response.status_code == 200
     assert SYNTHETIC_PATIENT.encode() in body
-    assert INSIDE_START.encode() in body
+    assert clinic_minute(INSIDE_START).encode() in body
     assert b"America/Sao_Paulo" in body
     assert b'name="practitioner"' not in body
     assert b'name="enrollment_id"' not in body
@@ -165,7 +167,7 @@ def test_cancel_post_is_terminal_and_returns_to_the_same_object(
     assert response.headers["Location"] == cancel_url(appointment_id)
     assert cancelled.status == Appointment.Status.CANCELLED
     assert blocked.status_code == 200
-    assert b"cancelled and can no longer be moved" in blocked.content
+    assert str(TERMINAL_MESSAGE).encode() in blocked.content
     events = audit_event_types(rbac_graph, context.actor)
     assert events.count(APPOINTMENT_CANCELLED_EVENT) == 1
 

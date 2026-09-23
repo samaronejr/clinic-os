@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Never
@@ -15,23 +14,32 @@ from ops.testing.isolation_common import (
     JsonObject,
     JsonValue,
     canonical_bytes,
+    ensure_private_directory,
+    load_json,
 )
 from ops.testing.isolation_docker_metadata import run_docker_command
 from ops.testing.isolation_reconcile import reconcile_same_boot
 from ops.testing.isolation_refresh import verify_claim
 from ops.testing.isolation_runner_create import runner_tmpfs_options
 from ops.testing.process_helpers import run_process
+from ops.testing.runtime_paths import runtime_directory
 from ops.testing.tls_contract import WEB_HOST
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ops.testing.https_stack_specs import HttpsStackPlan
 
-TEMPORARY_ROOT = Path("/", "tmp", "opencode")
 READINESS_BOUND_SECONDS = 5
 SIGTERM_BOUND_SECONDS = 35
 
 
-def run_https_stack(repository: Path, plan: HttpsStackPlan, ca_path: Path) -> None:
+def run_https_stack(
+    repository: Path,
+    plan: HttpsStackPlan,
+    ca_path: Path,
+    browser_probe: Callable[[Path], None] | None = None,
+) -> None:
     """Reserve, activate, probe, and reverse-clean one isolated HTTPS stack."""
     ledger_path = (repository / ".omo/evidence/isolation-ledger-phase1a.json").resolve(
         strict=True
@@ -51,7 +59,9 @@ def run_https_stack(repository: Path, plan: HttpsStackPlan, ca_path: Path) -> No
         _wait_for_database(containers["database"])
         reconcile_same_boot(ledger_path)
         verify_claim(ledger_path, _text(plan.spec["claim_id"]), refresh=True)
-        run_https_probes(repository, plan, containers, ca_path)
+        run_https_probes(
+            repository, plan, containers, ca_path, browser_probe=browser_probe
+        )
         _prove_sigterm(containers["web"])
     finally:
         for container_id in reversed(container_ids):
@@ -62,11 +72,19 @@ def run_https_stack(repository: Path, plan: HttpsStackPlan, ca_path: Path) -> No
 
 
 def _reserve(ledger_path: Path, spec: JsonObject) -> None:
-    with tempfile.TemporaryDirectory(dir=TEMPORARY_ROOT) as temporary:
-        path = Path(temporary) / "https-stack-spec.json"
+    with runtime_directory(_run_root(ledger_path), purpose="https") as work:
+        path = work / "https-stack-spec.json"
         path.write_bytes(canonical_bytes(spec))
         path.chmod(0o400)
         reserve_claim(ledger_path, path)
+
+
+def _run_root(ledger_path: Path) -> Path:
+    """Provision this caller's private run root under the attempt root."""
+    ledger, _ = load_json(ledger_path)
+    root = Path(_text(ledger.get("attempt_root"))) / "runtime"
+    ensure_private_directory(root)
+    return root
 
 
 def _create_owned_resources(plan: HttpsStackPlan) -> None:

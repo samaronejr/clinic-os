@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import socket
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Never
 
 from ops.testing.isolation_claim_transitions import reserve_claim
-from ops.testing.isolation_common import JsonObject, JsonValue, canonical_bytes
+from ops.testing.isolation_common import (
+    JsonObject,
+    JsonValue,
+    canonical_bytes,
+    ensure_private_directory,
+    load_json,
+)
 from ops.testing.isolation_docker_metadata import run_docker_command
+from ops.testing.runtime_paths import runtime_directory
 
 POSTGRES_PORT = 5432
 
@@ -71,11 +77,22 @@ def _spec(spec: _CiDatabaseSpec) -> JsonObject:
 
 
 def _reserve(ledger: Path, spec: JsonObject) -> None:
-    with tempfile.TemporaryDirectory(dir="/tmp/opencode") as temporary:
-        path = Path(temporary) / "ci-postgres-spec.json"
+    with runtime_directory(_run_root(ledger), purpose="postgres") as work:
+        path = work / "ci-postgres-spec.json"
         path.write_bytes(canonical_bytes(spec))
         path.chmod(0o400)
         reserve_claim(ledger, path)
+
+
+def _run_root(ledger: Path) -> Path:
+    """Provision this caller's private run root under the attempt root."""
+    record, _ = load_json(ledger)
+    attempt_root = record.get("attempt_root")
+    if not isinstance(attempt_root, str) or not attempt_root:
+        _fail("ledger attempt root is invalid")
+    root = Path(attempt_root) / "runtime"
+    ensure_private_directory(root)
+    return root
 
 
 def _create_container(

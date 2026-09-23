@@ -61,7 +61,7 @@ def test_stale_decorator_redirects_to_named_tenant_bound_challenge(
     assert parsed.path == "/auth/step-up/"
     assert parse_qs(parsed.query) == {"next": ["/__test__/issuance/"]}
     assert challenge.status_code == 200
-    assert b"Confirm this sensitive action" in challenge.content
+    assert "Confirme esta ação sensível".encode() in challenge.content
     assert challenge.headers["Cache-Control"].startswith("no-cache, no-store")
     assert "HX-Request" in challenge.headers["Vary"]
 

@@ -49,9 +49,11 @@ def test_query_counts_user_joins_and_volume_plan_stay_bounded(
                 page=1,
             )
 
-        assert len(booking_queries) <= 14
-        assert len(appointment_queries) <= 13
-        assert len(agenda_queries) <= 14
+        # Each fetched patient row decrypts its two envelope columns
+        # (full_name, birth_date) through protected_decrypt, one call each.
+        assert len(booking_queries) <= 16
+        assert len(appointment_queries) <= 15
+        assert len(agenda_queries) <= 16
         statements = "\n".join(
             query["sql"]
             for captured in (booking_queries, appointment_queries, agenda_queries)
@@ -82,6 +84,14 @@ def test_query_counts_user_joins_and_volume_plan_stay_bounded(
             ],
             batch_size=200,
         )
+
+    # The plan assertion is only meaningful at volume: refresh the table
+    # statistics as the owner so the planner sees the 1200-row bulk insert
+    # instead of whatever stale estimate earlier tests left behind.
+    with connection.cursor() as cursor:
+        cursor.execute("ANALYZE clinic_app.scheduling_appointment")
+
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
         plan = (
             Appointment.objects.filter(
                 organization_id=setup.organization_id,

@@ -1,0 +1,15 @@
+{% comment %}
+Status notice primitive.
+
+Context:
+  tone     "info" (default), "error", "success", "loading" or "muted".
+  title    Heading text (optional).
+  message  One-sentence body (optional).
+  id       Element id (optional).
+  heading  Heading tag name, default "h2".
+  focus    True for an error summary that receives focus after an invalid
+           submit (tabindex="-1" plus data-focus-error for auth-ui.js).
+{% endcomment %}{% with level=heading|default:"h2" %}<div class="feedback{% if tone == "error" %} feedback--error{% elif tone == "success" %} feedback--success{% elif tone == "muted" %} feedback--muted{% endif %}"{% if id %} id="{{ id }}"{% endif %} role="{% if tone == "error" %}alert{% else %}status{% endif %}"{% if tone == "loading" %} aria-busy="true"{% endif %}{% if focus %} tabindex="-1" data-focus-error{% endif %}>
+  {% if title %}<{{ level }}>{{ title }}</{{ level }}>{% endif %}
+  {% if message %}<p>{{ message }}</p>{% endif %}
+</div>{% endwith %}

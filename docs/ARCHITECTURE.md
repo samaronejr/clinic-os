@@ -1,27 +1,38 @@
-# Clinic OS Phase 1A architecture
+# Clinic OS architecture
 
-This document describes the implemented Phase 1A synthetic-data surface. It is
-not a production, pilot, or live-data claim. Patient registration/search,
-staff availability, booking, agendas, rescheduling, and cancellation exist;
-prescribing, consent capture, clinical records, billing, messaging, retention
-execution, and interoperability remain unavailable.
+This document describes the implemented synthetic-data surface. It is not a
+production, pilot, or live-data claim. The Phase 1A foundation — patient
+registration/search, staff availability, booking, agendas, rescheduling, and
+cancellation — exists, and the renewal domains (clinical records, consent,
+teleconsultation, prescriptions, billing, messaging, retention) are
+implemented and verified in synthetic mode on labelled synthetic adapters.
+Real issuance, automatic retention destruction and clinical-record exchange
+remain deferred stubs; every provider-backed slice stays `waiting_external`
+until its capability record is approved.
 
 See [SECURITY.md](SECURITY.md) for trust boundaries,
-[RUNBOOK.md](RUNBOOK.md) for operations, and
-[CONTRIBUTING.md](CONTRIBUTING.md) for change rules.
+[RUNBOOK.md](RUNBOOK.md) for operations,
+[CONTRIBUTING.md](CONTRIBUTING.md) for change rules, and
+[the renewal roadmap](plans/clinic-os-renewal-roadmap.md) for task status and
+the external prerequisites of each provider slice.
 
 ## Runtime shape
 
 Clinic OS is a Django 5.2 application backed by PostgreSQL 16. Django owns the
 HTTP and session layer; PostgreSQL owns the authoritative tenant boundary and
 the append-only audit ledger. The project exposes both WSGI and ASGI entry
-points, but all current tenant middleware is synchronous. Redis, Celery, and
-DRF are dependency/configuration foundations only: there are no project Celery
-tasks and there is no shipped Phase 0 domain API.
+points, but all current tenant middleware is synchronous. Redis backs the
+Celery broker for the comms reminder worker: `apps/comms/tasks.py` ships
+`comms.execute_operation` (one stored outbox operation through the trusted
+worker boundary) and `comms.dispatch_due_reminders` (claims due outbox rows),
+which `config/celery.py` schedules through beat every 60 seconds. DRF remains
+a dependency/configuration foundation only: there is no shipped domain API.
 
-The URL set includes the shell, `/healthz`, `/readyz`, identity, clinic intake,
-availability, booking, agenda, reschedule, and cancellation routes. Debug-only
-identity showcase routes are added only by `config.urls_dev`.
+The URL set includes the shell, `workspace/`, `sw.js`, `/healthz`, `/readyz`,
+identity, clinic intake, availability, booking, agenda, reschedule, and
+cancellation routes, plus the renewal domain mounts for ehr, prescription,
+retention, billing, consent, and teleconsult. Debug-only identity showcase
+routes are added only by `config.urls_dev`.
 
 ## Domain module map
 
@@ -36,24 +47,43 @@ implemented Phase 1A behavior:
 | `intake` | organization-scoped patient identity, clinic enrollment, body-only search, pagination, and idempotent registration |
 | `scheduling` | practitioner availability, booking, day/week agendas, terminal cancellation, rescheduling, and audited staff-only screens |
 
-Eight apps are registered extension seams whose public service entrypoints raise
-exactly `NotImplementedError("Phase >=1")`:
+The `comms` domain implements durable, independently gated synthetic appointment
+reminders through the shared integration boundary; real providers remain blocked.
+See [communications](../apps/comms/README.md) for the scheduling, actor, retry and
+receipt contract.
 
-| Deferred app | Reserved service boundary |
+The renewal waves implemented the remaining domain apps in synthetic mode:
+`ehr` (encounters, SOAP notes, problems/allergies, quarantined attachments,
+amendments), `teleconsult` (scoped sessions, waiting room, clinician
+workspace), `consent` (versioned capture and revocation), `billing`
+(invoices, synthetic PIX, reconciliation, receipts), `retention` (policies,
+legal holds, controlled export) and `prescription` (drafts, `synthetic-pdf-v1`
+documents, synthetic signing, public verification). Each provider-backed slice
+uses a labelled synthetic adapter that refuses non-synthetic mode; real
+integration stays `waiting_external` on its task-6 capability record.
+
+Three service entrypoints remain deferred stubs that raise exactly
+`NotImplementedError("Phase >=1")`:
+
+| Deferred entrypoint | Reserved service boundary |
 | --- | --- |
-| `ehr` | clinical-note recording |
-| `teleconsult` | teleconsultation start |
-| `prescription` | prescription issuance |
-| `consent` | consent recording |
-| `billing` | invoice creation |
-| `comms` | message delivery |
-| `retention` | retention-policy execution |
-| `interop` | clinical-record exchange |
+| `prescription.issue_prescription` | real prescription issuance (awaits the signing capability) |
+| `retention.apply_retention_policy` | automatic retention-policy destruction (no approved disposal policy) |
+| `interop.exchange_clinical_record` | clinical-record exchange (RNDS/SNCR preparation only) |
 
 The `apps.core` package supplies the project shell, readiness, privacy headers,
-and health endpoints; it is not one of the 13 registered domain apps. Deferred
-modules contain adapter interfaces and phase-boundary stubs, not working product
-features.
+and health endpoints; it is not one of the 13 registered domain apps.
+
+### Renewal prescription drafts
+
+Task 32 adds [synthetic prescription drafts](../apps/prescription/README.md),
+separate from the still-deferred issuance boundary above. Drafts bind an open
+encounter, patient and issuer, retain immutable item snapshots, compare expected
+versions, and enforce current assigned-physician authority in services and FORCE
+RLS. Active prescription drafts block encounter closure. The native no-store
+workspace is reached from the encounter; clinical selectors stay in POST bodies.
+No real category has a confirmed task-6 issuance contract. The visibly synthetic
+category permits draft rehearsal only and never infers medication safety.
 
 ## Request, session, and tenant transaction
 
@@ -149,11 +179,21 @@ boundary is documented in [SECURITY.md](SECURITY.md).
   `clinic_owner`, while the application connects as `clinic_app`.
 - CI runs the same bootstrap, migrations, posture, lint, type, test/coverage,
   and dependency-audit gates on Python 3.12 and 3.13.
+- Renewal verification adds a current-source route:
+  `ops/testing/renewal_runner.py` snapshots the working tree, provisions a
+  task-owned PostgreSQL container, serves through Gunicorn as `clinic_app`,
+  and drives registered real-Chromium suites. Its `ci` subcommand runs the
+  static, migration, coverage, dependency, image/TLS and browser gates
+  against uncommitted source. `make ci` remains the committed-source gate;
+  prerequisites and failure behavior are in
+  [RUNBOOK.md](RUNBOOK.md#renewal-verification-runner).
 - `terraform/` is a validation-only AWS `sa-east-1` RDS skeleton. No resource
   has been provisioned and no plan/apply belongs to foundation validation.
 - PITR procedures, external audit anchoring, user mutation definers, password
-  reset/admin editing, APIs, background jobs, and all ten deferred product
-  domains require later design, authorization, tests, and operational review.
+reset/admin editing, APIs, real provider integrations, the three deferred
+  service entrypoints, and any background job beyond the delivered comms
+  reminder worker require later design, authorization, tests, and operational
+  review.
 
 The disposable logical recovery rehearsal is a synthetic integrity check, not
 a live backup design. Live use remains blocked by

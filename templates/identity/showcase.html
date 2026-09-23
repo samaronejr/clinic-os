@@ -1,25 +1,442 @@
 {% extends "base.html" %}
-{% block title %}Authentication states · Clinic OS{% endblock %}
-{% block meta_description %}Review inert Clinic OS authentication component states in development.{% endblock %}
+{% load i18n clinic_locale %}
+{% load static %}
+{% block title %}{% trans "Workspace primitives · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Review inert Clinic OS workspace primitives and their states in development." %}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-showcase.css' %}">{% endblock %}
 {% block content %}
-<section class="auth-shell" aria-labelledby="auth-title">
-  <p class="eyebrow">Debug showcase</p>
-  <h1 id="auth-title">Authentication primitives</h1>
-  <p class="lede">Inert, non-secret states for responsive and accessibility review.</p>
-  <div class="showcase-grid">
-    <section class="showcase-state"><h2>Default</h2><label for="showcase-default">Username</label><input id="showcase-default" value="clinic.user" readonly></section>
-    <section class="showcase-state"><h2>Focus</h2><label for="showcase-focus">Authentication code</label><input class="is-focus" id="showcase-focus" inputmode="numeric"></section>
-    <section class="showcase-state"><h2>Error</h2><div class="feedback feedback--error" role="alert"><p>That code is not valid. Try a current code.</p></div></section>
-    <section class="showcase-state"><h2>Disabled</h2><button type="button" disabled>Verify and continue</button></section>
-    <section class="showcase-state" aria-busy="true"><h2>Loading</h2><p>Checking code…</p></section>
-    <section class="showcase-state"><h2>Success</h2><div class="feedback feedback--success" role="status"><p>Access confirmed.</p></div></section>
-    <section class="showcase-state"><h2>Enrollment</h2><div class="qr-placeholder" role="img" aria-label="Inert QR placeholder">QR placeholder</div></section>
-    <section class="showcase-state">
-      <h2>Locale wrapping</h2>
+<h1 id="showcase-title">{% trans "Workspace primitives" %}</h1>
+<p class="lede">{% trans "Inert, synthetic states for responsive, keyboard, forced-colors and reduced-motion review. Nothing here is a real patient, secret or code." %}</p>
+
+<nav class="spec-index" aria-label="{% trans "Primitives on this page" %}">
+  <ul>
+    <li><a href="#navigation">{% trans "Navigation" %}</a></li>
+    <li><a href="#field">{% trans "Field" %}</a></li>
+    <li><a href="#action">{% trans "Action" %}</a></li>
+    <li><a href="#status">{% trans "Status" %}</a></li>
+    <li><a href="#table">{% trans "Table" %}</a></li>
+    <li><a href="#panel">{% trans "Panel" %}</a></li>
+    <li><a href="#stress">{% trans "Stress cases" %}</a></li>
+  </ul>
+</nav>
+
+<section class="spec-section" id="navigation" aria-labelledby="navigation-title">
+  <h2 id="navigation-title">{% trans "Navigation" %}</h2>
+  <div class="spec-grid">
+    <article class="spec" data-primitive="navigation" data-state="default">
+      <h3>{% trans "Default" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, default" %}">
+        <a class="nav-brand" href="#navigation">Clinic OS</a>
+        <p class="nav-context">Clínica Vila Mariana</p>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#navigation" aria-current="page">Agenda</a></li>
+          <li><a class="nav-link" href="#navigation">{% trans "Patients" %}</a></li>
+        </ul>
+      </nav>
+    </article>
+    <article class="spec" data-primitive="navigation" data-state="focus">
+      <h3>{% trans "Focus" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, focus" %}">
+        <a class="nav-brand" href="#navigation">Clinic OS</a>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#navigation">Agenda</a></li>
+          <li><a class="nav-link is-focus" href="#navigation">{% trans "Patients" %}</a></li>
+        </ul>
+      </nav>
+    </article>
+    <article class="spec" data-primitive="navigation" data-state="disabled">
+      <h3>{% trans "Disabled" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, disabled item" %}">
+        <a class="nav-brand" href="#navigation">Clinic OS</a>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#navigation" aria-current="page">Agenda</a></li>
+          <li><a class="nav-link" role="link" aria-disabled="true">{% trans "Billing (not yet available)" %}</a></li>
+        </ul>
+      </nav>
+    </article>
+    <article class="spec" data-primitive="navigation" data-state="loading">
+      <h3>{% trans "Loading" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, loading item" %}">
+        <a class="nav-brand" href="#navigation">Clinic OS</a>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#navigation">Agenda</a></li>
+          <li><a class="nav-link" href="#navigation" aria-busy="true">{% trans "Patients" %} <span class="nav-progress" role="status">{% trans "opening…" %}</span></a></li>
+        </ul>
+      </nav>
+    </article>
+    <article class="spec" data-primitive="navigation" data-state="error">
+      <h3>{% trans "Error" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, error badge" %}">
+        <a class="nav-brand" href="#navigation">Clinic OS</a>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#navigation" aria-current="page">Agenda <span class="nav-badge nav-badge--error">{% trans "2 conflicts" %}</span></a></li>
+          <li><a class="nav-link" href="#navigation">{% trans "Patients" %}</a></li>
+        </ul>
+      </nav>
+    </article>
+    <article class="spec" data-primitive="navigation" data-state="success">
+      <h3>{% trans "Success" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, success badge" %}">
+        <a class="nav-brand" href="#navigation">Clinic OS</a>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#navigation">Agenda</a></li>
+          <li><a class="nav-link" href="#navigation">{% trans "Reminders" %} <span class="nav-badge nav-badge--success">{% trans "sent" %}</span></a></li>
+        </ul>
+      </nav>
+    </article>
+  </div>
+</section>
+
+<section class="spec-section" id="field" aria-labelledby="field-title">
+  <h2 id="field-title">{% trans "Field" %}</h2>
+  <div class="spec-grid">
+    <article class="spec" data-primitive="field" data-state="default">
+      <h3>{% trans "Default" %}</h3>
+      <div class="field">
+        <label for="field-default">{% trans "Patient name" %}</label>
+        <input id="field-default" name="field-default" value="Marina Duarte Sampaio" autocomplete="off" aria-describedby="field-default-hint">
+        <p class="hint" id="field-default-hint">{% trans "Enter the name as written on the identity document." %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="field" data-state="focus">
+      <h3>{% trans "Focus" %}</h3>
+      <div class="field">
+        <label for="field-focus">{% trans "Authentication code" %}</label>
+        <input class="is-focus" id="field-focus" name="field-focus" inputmode="numeric" autocomplete="one-time-code" aria-describedby="field-focus-hint">
+        <p class="hint" id="field-focus-hint">{% trans "Six digits from your authenticator app." %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="field" data-state="disabled">
+      <h3>{% trans "Disabled" %}</h3>
+      <div class="field">
+        <label for="field-disabled">{% trans "Clinic" %}</label>
+        <input id="field-disabled" name="field-disabled" value="Clínica Vila Mariana" disabled aria-describedby="field-disabled-hint">
+        <p class="hint" id="field-disabled-hint">{% trans "Set by the clinic administrator." %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="field" data-state="loading">
+      <h3>{% trans "Loading" %}</h3>
+      <div class="field" aria-busy="true">
+        <label for="field-loading">{% trans "Birth date" %}</label>
+        <input id="field-loading" name="field-loading" value="12/03/1988" inputmode="numeric" aria-describedby="field-loading-progress">
+        <p class="field-progress" id="field-loading-progress" role="status">{% trans "Checking the registry…" %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="field" data-state="error">
+      <h3>{% trans "Error" %}</h3>
+      <div class="field field--error">
+        <label for="field-error">{% trans "Birth date" %}</label>
+        <input id="field-error" name="field-error" value="1988-3-12" inputmode="numeric" aria-invalid="true" aria-describedby="field-error-error">
+        <div class="field-errors" id="field-error-error"><p class="field-error">{% trans "Enter the birth date as DD/MM/YYYY, for example 12/03/1988." %}</p></div>
+      </div>
+    </article>
+    <article class="spec" data-primitive="field" data-state="success">
+      <h3>{% trans "Success" %}</h3>
+      <div class="field field--success">
+        <label for="field-success">{% trans "Birth date" %}</label>
+        <input id="field-success" name="field-success" value="12/03/1988" inputmode="numeric" aria-describedby="field-success-success">
+        <p class="field-success" id="field-success-success">{% trans "Format accepted." %}</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="spec-section" id="action" aria-labelledby="action-title">
+  <h2 id="action-title">{% trans "Action" %}</h2>
+  <div class="spec-grid">
+    <article class="spec" data-primitive="action" data-state="default">
+      <h3>{% trans "Default" %}</h3>
+      <div class="actions">
+        <button type="button">{% trans "Book appointment" %}</button>
+        <a class="button button--secondary" href="#action">{% trans "Back to agenda" %}</a>
+        <a class="button button--quiet" href="#action">{% trans "Discard changes" %}</a>
+        <button type="button" class="button--danger">{% trans "Cancel appointment" %}</button>
+      </div>
+    </article>
+    <article class="spec" data-primitive="action" data-state="focus">
+      <h3>{% trans "Focus" %}</h3>
+      <div class="actions">
+        <button type="button" class="is-focus">{% trans "Book appointment" %}</button>
+        <a class="button button--secondary" href="#action">{% trans "Back to agenda" %}</a>
+      </div>
+    </article>
+    <article class="spec" data-primitive="action" data-state="disabled">
+      <h3>{% trans "Disabled" %}</h3>
+      <div class="actions">
+        <button type="button" disabled>{% trans "Book appointment" %}</button>
+        <a class="button button--secondary" role="link" aria-disabled="true">{% trans "Back to agenda" %}</a>
+      </div>
+    </article>
+    <article class="spec" data-primitive="action" data-state="loading">
+      <h3>{% trans "Loading" %}</h3>
+      <div class="actions" aria-busy="true">
+        <button type="button" disabled>{% trans "Book appointment" %}</button>
+        <span class="htmx-indicator" role="status">{% trans "Booking…" %}</span>
+      </div>
+    </article>
+    <article class="spec" data-primitive="action" data-state="error">
+      <h3>{% trans "Error" %}</h3>
+      <div class="actions">
+        <button type="button">{% trans "Book appointment" %}</button>
+        <p class="action-outcome action-outcome--error" role="alert">{% trans "Could not book: the slot was taken. Choose another time." %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="action" data-state="success">
+      <h3>{% trans "Success" %}</h3>
+      <div class="actions">
+        <a class="button button--secondary" href="#action">{% trans "Back to agenda" %}</a>
+        <p class="action-outcome action-outcome--success" role="status">{% trans "Booked for 14:30." %}</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="spec-section" id="status" aria-labelledby="status-title">
+  <h2 id="status-title">{% trans "Status" %}</h2>
+  <div class="spec-grid">
+    <article class="spec" data-primitive="status" data-state="default">
+      <h3>{% trans "Default" %}</h3>
+      {% include "includes/notice.html" with tone="info" heading="h4" title=_("Registry search") message=_("Submit a search to list patients.") %}
+      <p class="badge-row"><span class="badge">{% trans "Scheduled" %}</span> <span class="badge badge--pending">{% trans "Awaiting confirmation" %}</span> <span class="badge badge--muted">{% trans "Cancelled" %}</span></p>
+    </article>
+    <article class="spec" data-primitive="status" data-state="focus">
+      <h3>{% trans "Focus" %}</h3>
+      <div class="feedback feedback--error is-focus" id="status-focus" role="alert" tabindex="-1">
+        <h4>{% trans "We could not save the patient" %}</h4>
+        <p>{% trans "Fix the fields below and try again." %}</p>
+        <ul>
+          <li><a href="#field-error">{% trans "Birth date: enter it as DD/MM/YYYY." %}</a></li>
+        </ul>
+      </div>
+    </article>
+    <article class="spec" data-primitive="status" data-state="disabled">
+      <h3>{% trans "Disabled" %}</h3>
+      {% include "includes/notice.html" with tone="muted" heading="h4" title=_("No change is possible") message=_("This appointment was completed and can no longer be moved.") %}
+      <p class="badge-row"><span class="badge badge--muted">{% trans "Completed" %}</span></p>
+    </article>
+    <article class="spec" data-primitive="status" data-state="loading">
+      <h3>{% trans "Loading" %}</h3>
+      {% include "includes/notice.html" with tone="loading" heading="h4" title=_("Refreshing the agenda…") message=_("Appointments will appear in a moment.") %}
+      <p class="badge-row"><span class="badge badge--pending">{% trans "Refreshing…" %}</span></p>
+    </article>
+    <article class="spec" data-primitive="status" data-state="error">
+      <h3>{% trans "Error" %}</h3>
+      {% include "includes/notice.html" with tone="error" heading="h4" title=_("We could not run that search") message=_("Enter at least two characters of the name, then try again.") %}
+      <p class="badge-row"><span class="badge badge--error">{% trans "Conflict" %}</span></p>
+    </article>
+    <article class="spec" data-primitive="status" data-state="success">
+      <h3>{% trans "Success" %}</h3>
+      {% include "includes/notice.html" with tone="success" heading="h4" title=_("Appointment booked") message=_("Marina Duarte Sampaio, 14:30 with Dr. Otávio Lins.") %}
+      <p class="badge-row"><span class="badge badge--success">{% trans "Confirmed" %}</span></p>
+    </article>
+  </div>
+</section>
+
+<section class="spec-section" id="table" aria-labelledby="table-title">
+  <h2 id="table-title">{% trans "Table" %}</h2>
+  <div class="spec-grid spec-grid--stack">
+    <article class="spec" data-primitive="table" data-state="default">
+      <h3>{% trans "Default" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-default-caption" tabindex="0">
+        <table class="table">
+          <caption id="table-default-caption">{% trans "Appointments today" %}</caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Marina Duarte Sampaio</th><td>{% trans "09:00 to 09:30" %}</td><td><span class="badge">{% trans "Scheduled" %}</span></td><td><a href="#table">{% trans "Reschedule" %}</a></td></tr>
+            <tr class="table-row--selected"><th scope="row">Heitor Nascimento Prado</th><td>{% trans "09:30 to 10:00" %}</td><td><span class="badge">{% trans "Scheduled" %}</span></td><td><a href="#table">{% trans "Reschedule" %}</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-empty">{% trans "No appointments in this week yet. Book one from the patient registry." %}</p>
+    </article>
+    <article class="spec" data-primitive="table" data-state="focus">
+      <h3>{% trans "Focus" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-focus-caption" tabindex="0">
+        <table class="table">
+          <caption id="table-focus-caption">{% trans "Appointments today" %}</caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Marina Duarte Sampaio</th><td>{% trans "09:00 to 09:30" %}</td><td><a class="is-focus" href="#table">{% trans "Reschedule" %}</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    <article class="spec" data-primitive="table" data-state="disabled">
+      <h3>{% trans "Disabled" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-disabled-caption" tabindex="0">
+        <table class="table">
+          <caption id="table-disabled-caption">{% trans "Appointments today" %}</caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
+          <tbody>
+            <tr class="table-row--muted"><th scope="row">Heitor Nascimento Prado</th><td>{% trans "09:30 to 10:00" %}</td><td><span class="badge badge--muted">{% trans "Cancelled" %}</span></td><td>{% trans "No change is possible" %}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    <article class="spec" data-primitive="table" data-state="loading">
+      <h3>{% trans "Loading" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-loading-caption" tabindex="0">
+        <table class="table" aria-busy="true">
+          <caption id="table-loading-caption">{% trans "Appointments today" %} <span class="table-progress" role="status">{% trans "Updating…" %}</span></caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th></tr></thead>
+          <tbody>
+            <tr><td><span class="skeleton"></span></td><td><span class="skeleton skeleton--short"></span></td><td><span class="skeleton skeleton--short"></span></td></tr>
+            <tr><td><span class="skeleton"></span></td><td><span class="skeleton skeleton--short"></span></td><td><span class="skeleton skeleton--short"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    <article class="spec" data-primitive="table" data-state="error">
+      <h3>{% trans "Error" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-error-caption" tabindex="0">
+        <table class="table">
+          <caption id="table-error-caption">{% trans "Appointments today" %}</caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
+          <tbody>
+            <tr class="table-row--error"><th scope="row">Marina Duarte Sampaio</th><td>{% trans "09:00 to 09:30" %}</td><td><span class="badge badge--error">{% trans "Conflict" %}</span></td><td><a href="#table">{% trans "Choose another time" %}</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    <article class="spec" data-primitive="table" data-state="success">
+      <h3>{% trans "Success" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-success-caption" tabindex="0">
+        <table class="table">
+          <caption id="table-success-caption">{% trans "Appointments today" %}</caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
+          <tbody>
+            <tr class="table-row--success"><th scope="row">Marina Duarte Sampaio</th><td>{% trans "14:30 to 15:00" %}</td><td><span class="badge badge--success">{% trans "Booked" %}</span></td><td><a href="#table">{% trans "Reschedule" %}</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="spec-section" id="panel" aria-labelledby="panel-title">
+  <h2 id="panel-title">{% trans "Panel" %}</h2>
+  <div class="spec-grid">
+    <article class="spec" data-primitive="panel" data-state="default">
+      <h3>{% trans "Default" %}</h3>
+      <div class="panel">
+        <h4 class="panel-title">{% trans "Booking" %}</h4>
+        <p>{% trans "Choose a time for Marina Duarte Sampaio with Dr. Otávio Lins." %}</p>
+        <div class="actions"><button type="button">{% trans "Choose a time" %}</button></div>
+      </div>
+    </article>
+    <article class="spec" data-primitive="panel" data-state="focus">
+      <h3>{% trans "Focus" %}</h3>
+      <div class="panel is-focus" id="panel-focus" tabindex="-1">
+        <h4 class="panel-title">{% trans "Booking" %}</h4>
+        <p>{% trans "This panel receives focus after an HTMX swap so the next step is announced." %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="panel" data-state="disabled">
+      <h3>{% trans "Disabled" %}</h3>
+      <div class="panel panel--disabled" aria-disabled="true">
+        <h4 class="panel-title">{% trans "Booking" %}</h4>
+        <p>{% trans "Select a patient from the registry first." %}</p>
+        <div class="actions"><button type="button" disabled>{% trans "Choose a time" %}</button></div>
+      </div>
+    </article>
+    <article class="spec" data-primitive="panel" data-state="loading">
+      <h3>{% trans "Loading" %}</h3>
+      <div class="panel" aria-busy="true">
+        <h4 class="panel-title">{% trans "Booking" %}</h4>
+        <p class="panel-progress" role="status">{% trans "Loading available times…" %}</p>
+      </div>
+    </article>
+    <article class="spec" data-primitive="panel" data-state="error">
+      <h3>{% trans "Error" %}</h3>
+      <div class="panel panel--error">
+        <h4 class="panel-title">{% trans "Booking failed" %}</h4>
+        <p>{% trans "The 14:30 slot was taken while you were choosing. Pick another time." %}</p>
+        <div class="actions"><button type="button">{% trans "Choose another time" %}</button></div>
+      </div>
+    </article>
+    <article class="spec" data-primitive="panel" data-state="success">
+      <h3>{% trans "Success" %}</h3>
+      <div class="panel panel--success">
+        <h4 class="panel-title">{% trans "Appointment booked" %}</h4>
+        <p>{% trans "Marina Duarte Sampaio, 14:30 to 15:00 with Dr. Otávio Lins." %}</p>
+        <div class="actions"><a class="button button--secondary" href="#panel">{% trans "Back to agenda" %}</a></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="spec-section" id="stress" aria-labelledby="stress-title">
+  <h2 id="stress-title">{% trans "Stress cases" %}</h2>
+  <div class="spec-grid spec-grid--stack">
+    <article class="spec" data-stress="long-labels">
+      <h3>{% trans "Long labels" %}</h3>
+      <nav class="nav" aria-label="{% trans "Workspace, long item" %}">
+        <a class="nav-brand" href="#stress">Clinic OS</a>
+        <ul class="nav-list">
+          <li><a class="nav-link" href="#stress" aria-current="page">Agenda</a></li>
+          <li><a class="nav-link" href="#stress">Reagendamentos pendentes de confirmação pelo paciente <span class="nav-badge">14</span></a></li>
+        </ul>
+      </nav>
+      <div class="field">
+        <label for="stress-long-label">Nome completo do responsável legal conforme consta no documento de identidade apresentado na recepção da clínica</label>
+        <input id="stress-long-label" name="stress-long-label" value="Ana Beatriz Figueiredo Albuquerque de Castro e Vasconcelos" aria-describedby="stress-long-hint">
+        <p class="hint" id="stress-long-hint">Antesdenominaçãoinstitucionalextraordinariamentelongaparatestarquebradelinha sem espaços.</p>
+      </div>
+      <div class="actions">
+        <button type="button">Confirmar reagendamento e notificar o paciente por WhatsApp, SMS e e-mail</button>
+        <span class="badge badge--pending">Aguardando confirmação do paciente desde ontem</span>
+      </div>
+      <div class="table-scroll" role="region" aria-labelledby="stress-table-caption" tabindex="0">
+        <table class="table">
+          <caption id="stress-table-caption">{% trans "Unbroken values" %}</caption>
+          <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Note" %}</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Ana Beatriz Figueiredo Albuquerque</th><td>ReferenciaInternaSemEspacosParaTestarQuebraDeLinha0123456789ABCDEFGHIJ</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    <article class="spec" data-stress="error-summary">
+      <h3>{% trans "Error summary" %}</h3>
+      <div class="feedback feedback--error" id="stress-summary" role="alert" tabindex="-1">
+        <h4>{% trans "We could not save the patient" %}</h4>
+        <p>{% trans "Fix the three fields below, then save again." %}</p>
+        <ul>
+          <li><a href="#stress-f1">{% trans "Patient name: enter the full name." %}</a></li>
+          <li><a href="#stress-f2">{% trans "Birth date: enter it as DD/MM/YYYY." %}</a></li>
+          <li><a href="#stress-f3">{% trans "Phone: include the area code." %}</a></li>
+        </ul>
+      </div>
+      <div class="field field--error">
+        <label for="stress-f1">{% trans "Patient name" %}</label>
+        <input id="stress-f1" name="stress-f1" value="M." aria-invalid="true" aria-describedby="stress-f1-error">
+        <div class="field-errors" id="stress-f1-error"><p class="field-error">{% trans "Enter the full name." %}</p></div>
+      </div>
+      <div class="field field--error">
+        <label for="stress-f2">{% trans "Birth date" %}</label>
+        <input id="stress-f2" name="stress-f2" value="1988" aria-invalid="true" aria-describedby="stress-f2-error">
+        <div class="field-errors" id="stress-f2-error"><p class="field-error">{% trans "Enter it as DD/MM/YYYY." %}</p></div>
+      </div>
+      <div class="field field--error">
+        <label for="stress-f3">{% trans "Phone" %}</label>
+        <input id="stress-f3" name="stress-f3" value="98765-4321" aria-invalid="true" aria-describedby="stress-f3-error">
+        <div class="field-errors" id="stress-f3-error"><p class="field-error">{% trans "Include the area code." %}</p></div>
+      </div>
+    </article>
+    <article class="spec" data-stress="brl-example">
+      <h3>{% trans "Currency format (synthetic example)" %}</h3>
+      <p id="brl-example">{% brl_example %}</p>
+    </article>
+    <article class="spec" data-stress="locale-wrapping">
+      <h3>{% trans "Locale wrapping" %}</h3>
       <p id="stress-korean" lang="ko">진료소 인증 코드를 안전하게 확인하고 <span class="keep-phrase">다음 단계로</span> 계속하세요.</p>
       <p id="stress-japanese" lang="ja">診療所の認証コードを<span class="keep-phrase">確認して</span>、安全に次の手順へ進んでください。</p>
       <p id="stress-chinese" lang="zh-Hans">请确认诊所身份验证代码有效，然后<span class="keep-phrase">安全地</span>继续下一步。</p>
-    </section>
+    </article>
+    <article class="spec" data-stress="enrollment">
+      <h3>{% trans "Enrollment placeholder" %}</h3>
+      <div class="qr-placeholder" role="img" aria-label="{% trans "Inert QR placeholder" %}">{% trans "QR placeholder" %}</div>
+    </article>
   </div>
 </section>
 {% endblock %}

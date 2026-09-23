@@ -1,0 +1,4 @@
+Documento disponível · {{ clinic }}
+Um documento foi liberado para você. Acesse o portal do paciente para baixá-lo.
+Verificação pública do documento: {{ verification_url }}
+Esta mensagem nunca contém anexos nem conteúdo clínico.

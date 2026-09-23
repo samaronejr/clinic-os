@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING
 
 from apps.identity.current_context import (
@@ -14,7 +15,7 @@ from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
     authorized_view_scope,
 )
-from apps.scheduling.timezones import format_local_minute
+from apps.scheduling.timezones import LOCAL_MINUTE_FORMAT, format_local_minute
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -30,6 +31,34 @@ class AvailabilityRow:
     practitioner_label: str
     start_local: str
     end_local: str
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityWindow:
+    """One active block as clinic-local civil times for display only."""
+
+    availability_id: UUID
+    start: time
+    end: time
+    start_local: str
+    end_local: str
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilityDay:
+    """One clinic-local civil day and its windows in start order."""
+
+    date: date
+    windows: tuple[AvailabilityWindow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PractitionerAvailability:
+    """One practitioner's active windows grouped by clinic-local day."""
+
+    practitioner_label: str
+    days: tuple[AvailabilityDay, ...]
+    total: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,4 +124,47 @@ def presented_rows(
             end_local=format_local_minute(item.end_at, screen.timezone_key),
         )
         for item in items
+    )
+
+
+def _civil(local_minute: str) -> datetime:
+    # Already converted to the clinic zone by the presenter; never re-zoned.
+    return datetime.strptime(local_minute, LOCAL_MINUTE_FORMAT)  # noqa: DTZ007
+
+
+def grouped_availability(
+    rows: tuple[AvailabilityRow, ...],
+) -> tuple[PractitionerAvailability, ...]:
+    """Group presented rows by practitioner label, then by clinic-local day."""
+    by_practitioner: dict[str, dict[date, list[AvailabilityWindow]]] = {}
+    for row in rows:
+        start = _civil(row.start_local)
+        end = _civil(row.end_local)
+        days = by_practitioner.setdefault(row.practitioner_label, {})
+        days.setdefault(start.date(), []).append(
+            AvailabilityWindow(
+                availability_id=row.availability_id,
+                start=start.time(),
+                end=end.time(),
+                start_local=row.start_local,
+                end_local=row.end_local,
+            )
+        )
+    return tuple(
+        PractitionerAvailability(
+            practitioner_label=label,
+            days=tuple(
+                AvailabilityDay(
+                    date=day,
+                    windows=tuple(
+                        sorted(windows, key=lambda w: (w.start, w.availability_id))
+                    ),
+                )
+                for day, windows in sorted(days.items())
+            ),
+            total=sum(len(windows) for windows in days.values()),
+        )
+        for label, days in sorted(
+            by_practitioner.items(), key=lambda item: item[0].casefold()
+        )
     )

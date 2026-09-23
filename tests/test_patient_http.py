@@ -194,6 +194,28 @@ def test_physician_denial_is_indistinguishable_from_foreign_clinic(
     assert statuses == {404}
 
 
+def test_blank_search_get_is_refused_outside_the_actor_clinics(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The blank screen never renders a clinic the form could not submit to."""
+    physician = verified_physician_client(rbac_graph)
+    receptionist, actor = receptionist_client(rbac_graph)
+
+    with runtime_role():
+        own_clinic = receptionist.get(patient_list_url(rbac_graph.clinic_a))
+        denied_role = physician.get(patient_list_url(rbac_graph.clinic_a))
+        denied_clinic = receptionist.get(patient_list_url(rbac_graph.clinic_c))
+        denied_unknown = receptionist.get(patient_list_url(uuid4()))
+
+    assert own_clinic.status_code == 200
+    assert {
+        denied_role.status_code,
+        denied_clinic.status_code,
+        denied_unknown.status_code,
+    } == {404}
+    assert SEARCH_EVENT not in audit_event_types(rbac_graph, actor.pk)
+
+
 def test_accepted_search_emits_exactly_one_metadata_only_event(
     rbac_graph: RbacGraph,
 ) -> None:

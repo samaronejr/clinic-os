@@ -1,0 +1,19 @@
+{% comment %}
+Field primitive for one bound Django form field.
+
+Context:
+  field      BoundField (required). Django renders aria-invalid on error and
+             aria-describedby from the form; pass hint_id to match a custom id.
+  hint       Supporting text rendered below the control.
+  hint_id    Optional id for the hint (defaults to "<auto_id>_hint").
+  progress   Text shown while a server-side check runs (needs busy=True).
+  busy       True while the check runs; sets aria-busy on the field.
+  success    Confirmation text; renders the success tone.
+{% endcomment %}<div class="field{% if field.errors %} field--error{% elif success %} field--success{% endif %}"{% if busy %} aria-busy="true"{% endif %}>
+  {{ field.label_tag }}
+  {{ field }}
+  {% if hint %}<p class="hint" id="{% if hint_id %}{{ hint_id }}{% else %}{{ field.auto_id }}_hint{% endif %}">{{ hint }}</p>{% endif %}
+  {% if progress %}<p class="field-progress" id="{{ field.auto_id }}_progress" role="status">{{ progress }}</p>{% endif %}
+  {% if success and not field.errors %}<p class="field-success" id="{{ field.auto_id }}_success">{{ success }}</p>{% endif %}
+  {% if field.errors %}<div class="field-errors" id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+</div>

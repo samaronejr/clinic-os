@@ -1,3 +1,5 @@
+import os
+from datetime import date
 from importlib import import_module
 from importlib.util import find_spec
 from uuid import UUID
@@ -9,10 +11,13 @@ from apps.intake.models import Patient, PatientClinicEnrollment
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from psycopg.errors import (
-    CheckViolation,
     InsufficientPrivilege,
     InvalidTextRepresentation,
 )
+
+from database_urls import database_url_for_name
+from tenant_key_support import issue_tenant_key_for
+from test_intake_migrations import _default_connection, _scratch_database
 
 ORG_A = UUID(int=2001)
 ORG_B = UUID(int=2002)
@@ -48,6 +53,7 @@ def _seed_rows() -> None:
         name="Synthetic Organization A",
         cnpj="00000000002001",
     )
+    issue_tenant_key_for(ORG_A)
     clinic_a = Clinic.objects.create(
         id=CLINIC_A,
         organization=organization_a,
@@ -66,7 +72,7 @@ def _seed_rows() -> None:
         id=PATIENT_A,
         organization=organization_a,
         full_name="Synthetic Patient A",
-        birth_date="2000-01-02",
+        birth_date=date(2000, 1, 2),
     )
     PatientClinicEnrollment.objects.create(
         id=ENROLLMENT_A,
@@ -91,6 +97,7 @@ def _seed_rows() -> None:
         name="Synthetic Organization B",
         cnpj="00000000002002",
     )
+    issue_tenant_key_for(ORG_B)
     clinic_foreign = Clinic.objects.create(
         id=CLINIC_FOREIGN,
         organization=organization_b,
@@ -102,7 +109,7 @@ def _seed_rows() -> None:
         id=PATIENT_B,
         organization=organization_b,
         full_name="Synthetic Patient B",
-        birth_date="2001-01-02",
+        birth_date=date(2001, 1, 2),
     )
     PatientClinicEnrollment.objects.create(
         id=ENROLLMENT_FOREIGN,
@@ -116,141 +123,179 @@ def _seed_rows() -> None:
 
 @pytest.mark.django_db(transaction=True)
 def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
-    app_database_url: str,
+    superuser_database_url: str,
 ) -> None:
     module = import_module("apps.intake.rls") if find_spec("apps.intake.rls") else None
 
     assert module is not None
     expected_targets = {
         ("intake_patient", "organization_id"),
+        ("intake_patientaccessgrant", "organization_id"),
+        ("intake_patientchannelpreference", "organization_id"),
         ("intake_patientclinicenrollment", "organization_id"),
+        ("intake_patientcontact", "organization_id"),
+        ("intake_patientcontactevent", "organization_id"),
+        ("intake_patientsession", "organization_id"),
     }
     assert frozenset(expected_targets) == module.INTAKE_RLS_TARGETS
-    MigrationExecutor(connection).migrate([("intake", None)])
-    executor = MigrationExecutor(connection)
-    executor.migrate(executor.loader.graph.leaf_nodes())
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT class.relname, class.relrowsecurity, class.relforcerowsecurity,
-                   class.relowner::regrole::text
-            FROM pg_catalog.pg_class AS class
-            JOIN pg_catalog.pg_namespace AS namespace
-              ON namespace.oid = class.relnamespace
-            WHERE namespace.nspname = 'clinic_app'
-              AND class.relname = ANY(%s)
-            ORDER BY class.relname
-            """,
-            [[table for table, _ in sorted(expected_targets)]],
+    # The protected-field migration is irreversible, so the unapply/reapply
+    # cycle runs on a scratch database migrated forward to the last
+    # reversible intake migration: the unapply plan then contains only
+    # reversible migrations.
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        app_database_url = database_url_for_name(
+            os.environ["APP_DATABASE_URL"], str(wrapper.settings_dict["NAME"])
         )
-        assert cursor.fetchall() == [
-            ("intake_patient", True, True, "clinic_owner"),
-            ("intake_patientclinicenrollment", True, True, "clinic_owner"),
-        ]
-        cursor.execute(
-            """
-            SELECT tablename, policyname, permissive, roles, cmd, qual, with_check
-            FROM pg_catalog.pg_policies
-            WHERE schemaname = 'clinic_app' AND tablename = ANY(%s)
-            ORDER BY tablename, policyname
-            """,
-            [[table for table, _ in sorted(expected_targets)]],
+        MigrationExecutor(connection).migrate(
+            [
+                (
+                    "intake",
+                    "0010_remove_patientaccessgrant_intake_grant_operations_check_and_more",
+                )
+            ]
         )
-        policy_rows = cursor.fetchall()
-        assert len(policy_rows) == 2
-        for table, policy, permissive, roles, command, using, check in policy_rows:
-            assert policy == "tenant_isolation"
-            assert permissive == "PERMISSIVE"
-            assert roles == ["public"]
-            assert command == "ALL"
-            expected = (
-                "(organization_id = (NULLIF(current_setting("
-                "'app.current_tenant'::text, true), ''::text))::uuid)"
+        MigrationExecutor(connection).migrate([("intake", None)])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT class.relname, class.relrowsecurity,
+                       class.relforcerowsecurity, class.relowner::regrole::text
+                FROM pg_catalog.pg_class AS class
+                JOIN pg_catalog.pg_namespace AS namespace
+                  ON namespace.oid = class.relnamespace
+                WHERE namespace.nspname = 'clinic_app'
+                  AND class.relname = ANY(%s)
+                ORDER BY class.relname
+                """,
+                [[table for table, _ in sorted(expected_targets)]],
             )
-            assert using == check == expected, table
-        cursor.execute(
-            """
-            SELECT table_name, privilege_type
-            FROM information_schema.role_table_grants
-            WHERE grantee = 'clinic_app' AND table_schema = 'clinic_app'
-              AND table_name = ANY(%s)
-            ORDER BY table_name, privilege_type
-            """,
-            [[table for table, _ in sorted(expected_targets)]],
-        )
-        assert cursor.fetchall() == [
-            ("intake_patient", "INSERT"),
-            ("intake_patient", "SELECT"),
-            ("intake_patientclinicenrollment", "INSERT"),
-            ("intake_patientclinicenrollment", "SELECT"),
-        ]
+            assert cursor.fetchall() == [
+                ("intake_patient", True, True, "clinic_owner"),
+                ("intake_patientaccessgrant", True, True, "clinic_owner"),
+                ("intake_patientchannelpreference", True, True, "clinic_owner"),
+                ("intake_patientclinicenrollment", True, True, "clinic_owner"),
+                ("intake_patientcontact", True, True, "clinic_owner"),
+                ("intake_patientcontactevent", True, True, "clinic_owner"),
+                ("intake_patientsession", True, True, "clinic_owner"),
+            ]
+            cursor.execute(
+                """
+                SELECT tablename, policyname, permissive, roles, cmd, qual,
+                       with_check
+                FROM pg_catalog.pg_policies
+                WHERE schemaname = 'clinic_app' AND tablename = ANY(%s)
+                ORDER BY tablename, policyname
+                """,
+                [[table for table, _ in sorted(expected_targets)]],
+            )
+            policy_rows = cursor.fetchall()
+            assert len(policy_rows) == 7
+            for table, policy, permissive, roles, command, using, check in policy_rows:
+                assert policy == "tenant_isolation"
+                assert permissive == "PERMISSIVE"
+                assert roles == ["public"]
+                assert command == "ALL"
+                expected = (
+                    "(organization_id = (NULLIF(current_setting("
+                    "'app.current_tenant'::text, true), ''::text))::uuid)"
+                )
+                assert using == check == expected, table
+            cursor.execute(
+                """
+                SELECT table_name, privilege_type
+                FROM information_schema.role_table_grants
+                WHERE grantee = 'clinic_app' AND table_schema = 'clinic_app'
+                  AND table_name = ANY(%s)
+                ORDER BY table_name, privilege_type
+                """,
+                [[table for table, _ in sorted(expected_targets)]],
+            )
+            assert cursor.fetchall() == [
+                ("intake_patient", "INSERT"),
+                ("intake_patient", "SELECT"),
+                ("intake_patientaccessgrant", "INSERT"),
+                ("intake_patientaccessgrant", "SELECT"),
+                ("intake_patientchannelpreference", "INSERT"),
+                ("intake_patientchannelpreference", "SELECT"),
+                ("intake_patientclinicenrollment", "INSERT"),
+                ("intake_patientclinicenrollment", "SELECT"),
+                ("intake_patientcontact", "INSERT"),
+                ("intake_patientcontact", "SELECT"),
+                ("intake_patientcontactevent", "INSERT"),
+                ("intake_patientcontactevent", "SELECT"),
+                ("intake_patientsession", "SELECT"),
+            ]
 
-    _seed_rows()
-    with psycopg.connect(app_database_url) as app_connection:
-        _set_local(app_connection, str(ORG_A))
-        assert app_connection.execute(
-            "SELECT id FROM clinic_app.intake_patient ORDER BY id"
-        ).fetchall() == [(PATIENT_A,)]
-        assert app_connection.execute(
-            "SELECT id FROM clinic_app.intake_patientclinicenrollment "
-            "WHERE clinic_id = %s ORDER BY id",
-            (CLINIC_A,),
-        ).fetchall() == [(ENROLLMENT_A,)]
-        assert (
-            app_connection.execute(
+        _seed_rows()
+        with psycopg.connect(app_database_url) as app_connection:
+            _set_local(app_connection, str(ORG_A))
+            assert app_connection.execute(
+                "SELECT id FROM clinic_app.intake_patient ORDER BY id"
+            ).fetchall() == [(PATIENT_A,)]
+            assert app_connection.execute(
                 "SELECT id FROM clinic_app.intake_patientclinicenrollment "
                 "WHERE clinic_id = %s ORDER BY id",
-                (CLINIC_FOREIGN,),
-            ).fetchall()
-            == []
-        )
-        for offset, invalid_name in enumerate(
-            (
-                "  Synthetic   Invalid  ",
-                "A\N{COMBINING ACUTE ACCENT}na Synthetic",
-                "Synthetic\nInvalid",
-            ),
-            start=1,
-        ):
-            with pytest.raises(CheckViolation):
+                (CLINIC_A,),
+            ).fetchall() == [(ENROLLMENT_A,)]
+            assert (
+                app_connection.execute(
+                    "SELECT id FROM clinic_app.intake_patientclinicenrollment "
+                    "WHERE clinic_id = %s ORDER BY id",
+                    (CLINIC_FOREIGN,),
+                ).fetchall()
+                == []
+            )
+            # full_name and birth_date are tenant envelopes: raw inserts
+            # carry opaque bytes, so plaintext-shape checks no longer exist
+            # at the database boundary; normalization is enforced by the
+            # field layer.
+            app_connection.execute(
+                "INSERT INTO clinic_app.intake_patient "
+                "(id, organization_id, full_name, birth_date, created_at) "
+                "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                [
+                    UUID(int=2501),
+                    ORG_A,
+                    psycopg.Binary(b"\x01synthetic-envelope"),
+                    psycopg.Binary(b"\x01synthetic-envelope"),
+                ],
+            )
+            app_connection.rollback()
+            _set_local(app_connection, str(ORG_A))
+            with pytest.raises(InsufficientPrivilege):
+                app_connection.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = full_name"
+                )
+            app_connection.rollback()
+            _set_local(app_connection, str(ORG_A))
+            with pytest.raises(InsufficientPrivilege):
+                app_connection.execute("DELETE FROM clinic_app.intake_patient")
+            app_connection.rollback()
+            _set_local(app_connection, str(ORG_A))
+            with pytest.raises(InsufficientPrivilege):
                 app_connection.execute(
                     "INSERT INTO clinic_app.intake_patient "
                     "(id, organization_id, full_name, birth_date, created_at) "
                     "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
                     [
-                        UUID(int=2501 + offset),
-                        ORG_A,
-                        invalid_name,
-                        "2002-01-02",
+                        UUID(int=2502),
+                        ORG_B,
+                        psycopg.Binary(b"\x01synthetic-envelope"),
+                        psycopg.Binary(b"\x01synthetic-envelope"),
                     ],
                 )
             app_connection.rollback()
-            _set_local(app_connection, str(ORG_A))
-        with pytest.raises(InsufficientPrivilege):
-            app_connection.execute(
-                "UPDATE clinic_app.intake_patient SET full_name = full_name"
-            )
-        app_connection.rollback()
-        _set_local(app_connection, str(ORG_A))
-        with pytest.raises(InsufficientPrivilege):
-            app_connection.execute("DELETE FROM clinic_app.intake_patient")
-        app_connection.rollback()
-        _set_local(app_connection, str(ORG_A))
-        with pytest.raises(InsufficientPrivilege):
-            app_connection.execute(
-                "INSERT INTO clinic_app.intake_patient "
-                "(id, organization_id, full_name, birth_date, created_at) "
-                "VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)",
-                [UUID(int=2501), ORG_B, "Synthetic Cross Tenant", "2002-01-02"],
-            )
-        app_connection.rollback()
 
-    with psycopg.connect(app_database_url) as app_connection:
-        assert app_connection.execute(
-            "SELECT count(*) FROM clinic_app.intake_patient"
-        ).fetchone() == (0,)
-        _set_local(app_connection, "not-a-uuid")
-        with pytest.raises(InvalidTextRepresentation):
-            app_connection.execute("SELECT count(*) FROM clinic_app.intake_patient")
-        app_connection.rollback()
-    _set_owner_tenant(ORG_A)
+        with psycopg.connect(app_database_url) as app_connection:
+            assert app_connection.execute(
+                "SELECT count(*) FROM clinic_app.intake_patient"
+            ).fetchone() == (0,)
+            _set_local(app_connection, "not-a-uuid")
+            with pytest.raises(InvalidTextRepresentation):
+                app_connection.execute("SELECT count(*) FROM clinic_app.intake_patient")
+            app_connection.rollback()

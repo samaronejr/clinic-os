@@ -1,37 +1,79 @@
+{% load i18n %}
 <div id="patient-results" class="intake-results">
-  <p class="intake-status" id="patient-results-status" role="status">
-    {% if results is None %}Submit a search to list patients.{% else %}{{ results.total }} matching patient record{{ results.total|pluralize }}. Page {{ results.page }} of {{ results.page_count }}.{% endif %}
-  </p>
+  {% if form.errors %}
+    <div class="feedback feedback--error" id="intake-errors" role="alert" tabindex="-1" data-focus-error autofocus>
+      <h2>{% trans "We could not run that search" %}</h2>
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+      {% else %}
+        {% for field in form %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
+      {% endif %}
+    </div>
+  {% elif results is None or results.items or results.total %}
+    <p class="intake-status" id="patient-results-status" role="status"{% if results is not None %} tabindex="-1" autofocus{% endif %}>{{ status }}</p>
+  {% endif %}
   {% if results.items %}
-  <table class="intake-table">
-    <caption>Registry matches in this clinic</caption>
-    <thead>
-      <tr>
-        <th scope="col">Patient name</th>
-        <th scope="col">Birth date</th>
-        <th scope="col">Booking</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in results.items %}
-      <tr>
-        <th scope="row">{{ item.full_name }}</th>
-        <td>{{ item.birth_date|date:"Y-m-d" }}</td>
-        <td>
-          <form method="post" action="{{ book_url }}">
-            {% csrf_token %}
-            <input type="hidden" name="mode" value="prepare">
-            <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
-            <button type="submit">Book {{ item.full_name }}</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" role="region" aria-labelledby="patient-results-caption" tabindex="0">
+    <table class="table intake-table" role="table" aria-labelledby="patient-results-caption">
+      <caption id="patient-results-caption">{% trans "Registry matches in this clinic" %}</caption>
+      <thead role="rowgroup">
+        <tr role="row">
+          <th scope="col" role="columnheader">{% trans "Patient name" %}</th>
+          <th scope="col" role="columnheader">{% trans "Birth date" %}</th>
+          <th scope="col" role="columnheader">{% trans "Booking" %}</th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        {% for item in results.items %}
+        <tr role="row">
+          <th scope="row" role="rowheader">{{ item.full_name }}</th>
+          <td role="cell" data-label="{% trans "Birth date" %}">{{ item.birth_date|date:"SHORT_DATE_FORMAT" }}</td>
+          <td role="cell" class="intake-book">
+            <form method="post" action="{{ book_url }}">
+              {% csrf_token %}
+              <input type="hidden" name="mode" value="prepare">
+              <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--secondary" type="submit">{% trans "Book appointment" %}<span class="visually-hidden"> {% blocktrans with name=item.full_name %}for {{ name }}{% endblocktrans %}</span></button>
+            </form>
+            <form method="post" action="{{ contacts_url }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="manage">
+              <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--quiet" type="submit">{% trans "Contacts" %}<span class="visually-hidden"> {% blocktrans with name=item.full_name %}for {{ name }}{% endblocktrans %}</span></button>
+            </form>
+            <form method="post" action="{{ access_url }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="manage">
+              <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--quiet" type="submit">{% trans "Access" %}<span class="visually-hidden"> {% blocktrans with name=item.full_name %}for {{ name }}{% endblocktrans %}</span></button>
+            </form>
+            <form method="post" action="{% url 'intake:questionnaire-staff' clinic_id=clinic_id %}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="status">
+              <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--quiet" type="submit">Questionários<span class="visually-hidden"> de {{ item.full_name }}</span></button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif results is not None %}
+  <div class="table-empty intake-empty">
+    {% if results.total %}
+      <p>{% trans "There are no patients on this page. Go back to the previous page." %}</p>
+    {% else %}
+      <p class="intake-status" id="patient-results-status" role="status" tabindex="-1" autofocus>{{ status }}</p>
+      <p>{% trans "Check the spelling, or register the patient to book an appointment." %}</p>
+      <div class="actions">
+        <a class="button button--secondary" href="{{ create_url }}">{% trans "Register a new patient" %}</a>
+      </div>
+    {% endif %}
+  </div>
   {% endif %}
   {% if previous_page or next_page %}
-  <nav class="intake-pagination" aria-label="Search result pages">
+  <nav class="intake-pagination" aria-label="{% trans "Search result pages" %}">
     {% if previous_page %}
     <form method="post" action="{{ list_url }}"
           hx-post="{{ list_url }}" hx-target="#patient-results" hx-swap="outerHTML">
@@ -39,7 +81,7 @@
       <input type="hidden" name="q" value="{{ query }}">
       <input type="hidden" name="birth_date" value="{{ birth_date_value }}">
       <input type="hidden" name="page" value="{{ previous_page }}">
-      <button type="submit">Previous page</button>
+      <button class="button button--secondary" type="submit">{% trans "Previous page" %}</button>
     </form>
     {% endif %}
     {% if next_page %}
@@ -49,7 +91,7 @@
       <input type="hidden" name="q" value="{{ query }}">
       <input type="hidden" name="birth_date" value="{{ birth_date_value }}">
       <input type="hidden" name="page" value="{{ next_page }}">
-      <button type="submit">Next page</button>
+      <button class="button button--secondary" type="submit">{% trans "Next page" %}</button>
     </form>
     {% endif %}
   </nav>

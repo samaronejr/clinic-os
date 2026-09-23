@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 import pytest
+from apps.scheduling.appointment_forms import CONFLICTING_BOOKING_KEY_MESSAGE
 
 from appointment_http_support import (
     APPOINTMENT_CREATED_EVENT,
@@ -72,6 +73,26 @@ def test_equal_replay_of_one_booking_key_creates_exactly_one_appointment(
     assert audit_event_types(rbac_graph, actor).count(APPOINTMENT_CREATED_EVENT) == 1
 
 
+def test_retry_after_a_lost_reply_shows_one_booked_notice(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The first reply never reached the browser; the retry lands once."""
+    client, _actor, enrollment_id = _booked_clinic(rbac_graph)
+    payload = create_payload(
+        enrollment_id, rbac_graph.physician, INSIDE_START, INSIDE_END, uuid4()
+    )
+    url = appointment_create_url(rbac_graph.clinic_a)
+
+    with runtime_role():
+        client.post(url, payload, headers={"hx-request": "true"})
+        retried = client.post(url, payload, headers={"hx-request": "true"})
+        agenda = client.get(retried.headers["HX-Redirect"])
+        reloaded = client.get(retried.headers["HX-Redirect"])
+
+    assert agenda.content.count(b'id="appointment-booked"') == 1
+    assert reloaded.content.count(b'id="appointment-booked"') == 0
+
+
 def test_reusing_a_booking_key_for_different_input_conflicts(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -93,7 +114,7 @@ def test_reusing_a_booking_key_for_different_input_conflicts(
         )
 
     assert response.status_code == 200
-    assert b"already submitted with different details" in response.content
+    assert str(CONFLICTING_BOOKING_KEY_MESSAGE).encode() in response.content
     assert len(appointment_rows(rbac_graph, actor)) == 1
 
 

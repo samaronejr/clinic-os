@@ -82,12 +82,19 @@ def test_sentry_stays_dormant_without_a_dsn() -> None:
     assert not sentry_sdk.is_initialized()
 
 
-def test_celery_app_registers_no_project_tasks() -> None:
-    # Given: the thin Phase 0 celery application
-    # When: registered tasks are inspected
+def test_celery_app_registers_only_the_integration_task() -> None:
+    # Given: the celery application behind the integration job boundary
+    # When: the comms task module is imported and tasks are inspected
+    import apps.comms.tasks  # noqa: F401, PLC0415 - registration is
+    # deferred until the shared task module is imported
+
     project_tasks = [
         name for name in celery_app.tasks if not name.startswith("celery.")
     ]
 
-    # Then: only celery built-ins exist; the project defines no tasks
-    assert project_tasks == []
+    # Then: only the shared comms operation and reminder tasks exist
+    # beyond built-ins (registration order is not part of the contract)
+    assert sorted(project_tasks) == [
+        "comms.dispatch_due_reminders",
+        "comms.execute_operation",
+    ]

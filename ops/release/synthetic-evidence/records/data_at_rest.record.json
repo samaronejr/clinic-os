@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "data_at_rest",
+  "environment": "synthetic",
+  "evidence_path": "evidence/data_at_rest.json",
+  "evidence_sha256": "3f3da316b54d4538c44c2b9bcea4384db3ef4c628fa407643d218cbfb2d49c91",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the data_at_rest capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

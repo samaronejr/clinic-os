@@ -1,66 +1,113 @@
 {% extends "base.html" %}
-{% block title %}Clinic agenda · Clinic OS{% endblock %}
-{% block meta_description %}Review the clinic-local day or week agenda without exposing patient identifiers in the address bar.{% endblock %}
+{% load i18n clinic_locale %}
+{% block title %}{% trans "Clinic agenda · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Review the clinic-local day or week agenda without exposing patient identifiers in the address bar." %}{% endblock %}
 {% block content %}
-<section class="scheduling-shell" aria-labelledby="agenda-title">
-  <p class="eyebrow">Clinic schedule</p>
-  <h1 id="agenda-title">Clinic agenda</h1>
-  <p class="lede" id="agenda-lede">Every appointment is shown in this clinic's local time ({{ timezone_key }}). Birth dates are never listed here.</p>
+<section class="agenda-shell" id="agenda-shell" aria-labelledby="agenda-title">
+  <h1 id="agenda-title">{% trans "Clinic agenda" %}</h1>
+  {% if can_manage %}<a class="button button--secondary" href="{% url 'scheduling:waitlist' clinic_id %}">Lista de espera</a>
+  <a class="button button--secondary" href="{% url 'scheduling:reminders' clinic_id %}">Lembretes de consulta</a>{% endif %}
+  <p class="lede" id="agenda-lede">{% blocktrans %}Appointments use the clinic time zone ({{ timezone_key }}).{% endblocktrans %}</p>
+  {% for message in messages %}
+    {% if "scheduling.appointment.booked" in message.tags %}
+      <div class="feedback feedback--success" id="appointment-booked" role="status">
+        <h2>{% trans "Appointment booked" %}</h2>
+        <p>{{ message }}</p>
+      </div>
+    {% endif %}
+  {% endfor %}
   {% if banner %}
-  <div class="feedback feedback--error" id="agenda-error" role="alert" tabindex="-1">
-    <h2>We could not show that agenda</h2>
+  <div class="feedback feedback--error" id="agenda-error" role="alert" tabindex="-1" data-focus-error autofocus>
+    <h2>{% trans "We could not show that agenda" %}</h2>
     <p>{{ banner }}</p>
+    <p><a href="{{ today_url }}">{% trans "Open today's agenda" %}</a></p>
   </div>
   {% endif %}
   {% if agenda %}
-  <h2 id="agenda-range-title">{{ agenda.view|capfirst }} of {{ agenda.date|date:"Y-m-d" }}</h2>
-  <nav class="scheduling-links" aria-label="Agenda navigation">
-    <a href="{{ previous_url }}">Previous {{ agenda.view }}</a>
-    <a href="{{ next_url }}">Next {{ agenda.view }}</a>
-    <a href="{{ other_view_url }}">Switch to the {{ other_view }} agenda</a>
-  </nav>
-  <div id="agenda-results" class="scheduling-results">
-    <p class="scheduling-status" id="agenda-status" role="status">
-      {{ agenda.total }} appointment{{ agenda.total|pluralize }} in this {{ agenda.view }}. Page {{ agenda.page }} of {{ agenda.page_count }}.
+  <div class="agenda-bar">
+    <h2 class="agenda-period" id="agenda-range-title">
+      <span class="agenda-period-text">{% if agenda.view == 'day' %}<time datetime="{{ agenda.date|date:'Y-m-d' }}">{{ agenda.date|date:"l"|capfirst }}, {{ agenda.date|date:"SHORT_DATE_FORMAT" }}</time>{% else %}{% blocktrans with start=week_start|date:"SHORT_DATE_FORMAT" end=week_end|date:"SHORT_DATE_FORMAT" start_iso=week_start|date:"Y-m-d" end_iso=week_end|date:"Y-m-d" %}Week of <time datetime="{{ start_iso }}">{{ start }}</time> to <time datetime="{{ end_iso }}">{{ end }}</time>{% endblocktrans %}{% endif %}</span>
+      {% if is_today %}<span class="badge badge--success">{% trans "today" %}</span>{% endif %}
+    </h2>
+    <nav class="agenda-nav" aria-label="{% trans "Agenda navigation" %}">
+      <ul class="agenda-steps">
+        <li><a class="button button--secondary" href="{{ previous_url }}">{% if agenda.view == 'day' %}{% trans "Previous day" %}{% else %}{% trans "Previous week" %}{% endif %}</a></li>
+        <li><a class="button button--quiet" href="{{ today_url }}">{% trans "Today" %}</a></li>
+        <li><a class="button button--secondary" href="{{ next_url }}">{% if agenda.view == 'day' %}{% trans "Next day" %}{% else %}{% trans "Next week" %}{% endif %}</a></li>
+      </ul>
+      <ul class="agenda-views" aria-label="{% trans "Agenda view" %}">
+        <li><a class="button button--quiet" href="{{ day_view_url }}"{% if agenda.view == 'day' %} aria-current="page"{% endif %}>{% trans "Day" %}</a></li>
+        <li><a class="button button--quiet" href="{{ week_view_url }}"{% if agenda.view == 'week' %} aria-current="page"{% endif %}>{% trans "Week" %}</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div id="agenda-results" class="agenda-results">
+    <p class="agenda-status" id="agenda-status" role="status">
+      {% if agenda.view == 'day' %}{% blocktrans count total=agenda.total %}{{ total }} appointment on this day.{% plural %}{{ total }} appointments on this day.{% endblocktrans %}{% else %}{% blocktrans count total=agenda.total %}{{ total }} appointment in this week.{% plural %}{{ total }} appointments in this week.{% endblocktrans %}{% endif %}
+      {% if agenda.page_count > 1 %}{% blocktrans with page=agenda.page pages=agenda.page_count %}Page {{ page }} of {{ pages }}.{% endblocktrans %}{% endif %}
     </p>
-    {% if rows %}
-    <table class="scheduling-table">
-      <caption>Appointments in this {{ agenda.view }}</caption>
-      <thead>
-        <tr>
-          <th scope="col">Patient</th>
-          <th scope="col">Clinic-local range</th>
-          <th scope="col">Physician</th>
-          <th scope="col">Status</th>
-          {% if can_manage %}<th scope="col">Change</th>{% endif %}
+    {% if days %}
+    <div class="table-scroll" role="region" aria-labelledby="agenda-table-caption" tabindex="0">
+    <table class="table agenda-table{% if agenda.view == 'week' %} agenda-table--week{% endif %}" role="table" aria-labelledby="agenda-table-caption">
+      <caption id="agenda-table-caption">{% if agenda.view == 'day' %}{% trans "Appointments on this day" %}{% else %}{% trans "Appointments in this week" %}{% endif %}</caption>
+      <thead role="rowgroup">
+        <tr role="row">
+          <th scope="col" role="columnheader">{% trans "Time" %}</th>
+          <th scope="col" role="columnheader">{% trans "Patient" %}</th>
+          <th scope="col" role="columnheader">{% trans "Physician" %}</th>
+          <th scope="col" role="columnheader">{% trans "Status" %}</th>
+          {% if can_manage %}<th scope="col" role="columnheader">{% trans "Actions" %}</th>{% endif %}
         </tr>
       </thead>
-      <tbody>
-        {% for row in rows %}
-        <tr>
-          <th scope="row">{{ row.item.patient_display_name }}</th>
-          <td>{{ row.item.start_local }} to {{ row.item.end_local }} ({{ timezone_key }})</td>
-          <td>{{ row.item.practitioner_display_identifier }}</td>
-          <td>{{ row.status_label }}</td>
+      {% for day in days %}
+      <tbody class="agenda-day" role="rowgroup">
+        {% if agenda.view == 'week' %}
+        <tr class="agenda-day-row" role="row">
+          <th scope="rowgroup" role="rowheader" colspan="{% if can_manage %}5{% else %}4{% endif %}"><time datetime="{{ day.date|date:'Y-m-d' }}">{{ day.date|date:"l"|capfirst }}, {{ day.date|date:"SHORT_DATE_FORMAT" }}</time></th>
+        </tr>
+        {% endif %}
+        {% for row in day.rows %}
+        <tr class="agenda-row{% if not row.is_scheduled %} table-row--muted{% endif %}" role="row">
+          <th scope="row" role="rowheader" class="agenda-time"><time datetime="{{ row.item.start_local }}">{{ row.start_time }}</time> – <time datetime="{{ row.item.end_local }}">{{ row.end_time }}</time></th>
+          <td role="cell" class="agenda-patient">{{ row.item.patient_display_name }}
+            {% if row.item.practitioner_id == request.user.pk %}<form method="post" action="{% url 'ehr:encounter' clinic_id %}">{% csrf_token %}<input type="hidden" name="appointment_id" value="{{ row.item.appointment_id }}"><button class="button button--secondary" type="submit" name="action" value="open">Abrir atendimento</button></form><form method="post" action="{% url 'intake:questionnaire-staff' clinic_id %}">{% csrf_token %}<input type="hidden" name="appointment_id" value="{{ row.item.appointment_id }}"><button class="button button--quiet" type="submit" name="action" value="appointment">Questionários<span class="visually-hidden"> de {{ row.item.patient_display_name }}</span></button></form>{% endif %}
+          </td>
+          <td role="cell" class="agenda-physician" data-label="{% trans "Physician" %}">{{ row.item.practitioner_display_identifier }}</td>
+          <td role="cell" class="agenda-state"><span class="badge{% if not row.is_scheduled %} badge--muted{% endif %}">{{ row.item.status|appointment_label }}</span></td>
           {% if can_manage %}
-          <td>
+          <td role="cell" class="agenda-actions">
             {% if row.is_scheduled %}
-            <a href="{{ row.reschedule_url }}">Reschedule the {{ row.item.start_local }} appointment</a>
-            <a href="{{ row.cancel_url }}">Cancel the {{ row.item.start_local }} appointment</a>
+            <div class="agenda-action-group">
+              <a class="button button--secondary" href="{{ row.reschedule_url }}">{% trans "Reschedule" %}<span class="visually-hidden"> {% blocktrans with patient=row.item.patient_display_name start=row.start_time %}{{ patient }} at {{ start }}{% endblocktrans %}</span></a>
+              <a class="button button--quiet" href="{{ row.cancel_url }}">{% trans "Cancel" %}<span class="visually-hidden"> {% blocktrans with patient=row.item.patient_display_name start=row.start_time %}{{ patient }} at {{ start }}{% endblocktrans %}</span></a>
+            </div>
             {% else %}
-            <span>No change is possible</span>
+            <span class="agenda-no-action">{% trans "No action available" %}</span>
             {% endif %}
           </td>
           {% endif %}
         </tr>
         {% endfor %}
       </tbody>
+      {% endfor %}
     </table>
+    </div>
+    {% else %}
+    <div class="table-empty agenda-empty" id="agenda-empty">
+      {% if can_manage %}
+        <p>{% if agenda.view == 'day' %}{% trans "No appointment on this day. To book one, find the patient in the registry and press “Book appointment”." %}{% else %}{% trans "No appointment in this week. To book one, find the patient in the registry and press “Book appointment”." %}{% endif %}</p>
+        <div class="actions">
+          <a class="button button--secondary" href="{{ patient_list_url }}">{% trans "Find a patient to book" %}</a>
+        </div>
+      {% else %}
+        <p>{% if agenda.view == 'day' %}{% trans "You have no appointment on this day." %}{% else %}{% trans "You have no appointment in this week." %}{% endif %}</p>
+      {% endif %}
+    </div>
     {% endif %}
     {% if previous_page_url or next_page_url %}
-    <nav class="scheduling-pagination" aria-label="Agenda result pages">
-      {% if previous_page_url %}<a href="{{ previous_page_url }}">Previous page</a>{% endif %}
-      {% if next_page_url %}<a href="{{ next_page_url }}">Next page</a>{% endif %}
+    <nav class="agenda-pagination" aria-label="{% trans "Agenda result pages" %}">
+      {% if previous_page_url %}<a class="button button--secondary" href="{{ previous_page_url }}">{% trans "Previous page" %}</a>{% endif %}
+      {% if next_page_url %}<a class="button button--secondary" href="{{ next_page_url }}">{% trans "Next page" %}</a>{% endif %}
     </nav>
     {% endif %}
   </div>

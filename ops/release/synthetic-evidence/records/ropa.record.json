@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "ropa",
+  "environment": "synthetic",
+  "evidence_path": "evidence/ropa.json",
+  "evidence_sha256": "58ba9d9fc068a039e315f7919b8eebc19babfff3a1923889cfd850dbbb461273",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the ropa capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

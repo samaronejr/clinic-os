@@ -50,8 +50,27 @@ uv run python manage.py makemigrations --check --dry-run
 ```
 
 `make ci` owns the locked sync, database bootstrap/migration/posture, Ruff,
-format, strict mypy, full test/coverage, and dependency-audit gates. When the
-optional tools are installed, also run:
+format, strict mypy, full test/coverage, and dependency-audit gates. Its
+image contract builds committed source, so it requires a clean Git tree.
+
+For uncommitted work, the renewal runner is the verified current-source
+route:
+
+```sh
+uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
+uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
+```
+
+It snapshots the working tree, provisions its own PostgreSQL container,
+serves through Gunicorn as `clinic_app`, and drives a real Chromium. The
+runner exports `CLINIC_RENEWAL_BASE_URL`, `CLINIC_RENEWAL_ARTIFACT_ROOT`,
+`CLINIC_RENEWAL_BROWSER_EXECUTABLE`, `CLINIC_RENEWAL_USERNAME` and
+`CLINIC_RENEWAL_PASSWORD` privately to its own suite processes; browser
+fixtures skip without them, and the junit gate rejects skips, so a bare
+pytest run can never fake a green browser pass. Prerequisites and failure
+behavior are in [RUNBOOK.md](RUNBOOK.md#renewal-verification-runner).
+
+When the optional tools are installed, also run:
 
 ```sh
 actionlint .github/workflows/ci.yml
@@ -141,9 +160,13 @@ uv run pytest --reuse-db tests/test_stepup_policy.py tests/test_stepup_challenge
 
 ## Deferred domains, live data, and AI-assisted code
 
-The eight deferred `services.py` entrypoints must continue to raise exactly
-`NotImplementedError("Phase >=1")` until an approved later-phase design ships.
-Do not describe or expose these stubs as working clinical functionality.
+The three remaining deferred `services.py` entrypoints
+(`prescription.issue_prescription`, `retention.apply_retention_policy`,
+`interop.exchange_clinical_record`) must continue to raise exactly
+`NotImplementedError("Phase >=1")` until their owning renewal task ships. Do
+not describe or expose these stubs as working clinical functionality. The
+[renewal roadmap](plans/clinic-os-renewal-roadmap.md) maps each deferred
+domain to its owning wave.
 
 **AI-generated or AI-assisted code requires line-by-line human review and
 targeted tests for prescription, consent, audit, RBAC, and RLS behavior before

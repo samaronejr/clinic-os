@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "physician_registration",
+  "environment": "synthetic",
+  "evidence_path": "evidence/physician_registration.json",
+  "evidence_sha256": "fb7d28ef68b6008d443488d1fe3b24003ce63bffc10ae354b46efab4d7b76eaa",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the physician_registration capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

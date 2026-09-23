@@ -1,0 +1,7 @@
+{
+  "attestation": "synthetic release-evidence fixture",
+  "capability": "dpo_designation",
+  "formal_designation": true,
+  "named_accountable_person": "Synthetic DPO Fixture",
+  "note": "Synthetic fixture bytes only; this file is not approval evidence and authorizes nothing."
+}

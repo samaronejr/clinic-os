@@ -205,6 +205,8 @@ def test_production_direct_process_trusts_no_forwarded_header(tmp_path: Path) ->
                 f"clinic?{query}"
             ),
             "CLINIC_DATA_MODE": "synthetic",
+            "CLINIC_SECRET_BACKEND": "synthetic-file",
+            "CLINIC_SECRET_DIR": str(tmp_path / "secrets"),
             "DJANGO_SETTINGS_MODULE": "config.settings.prod",
             "SECRET_KEY": VALID_RUNTIME_TOKEN,
             "SECURE_SSL_HOST": "app.qa.clinic-os.dev",

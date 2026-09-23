@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "pdf_rendering",
+  "environment": "synthetic",
+  "evidence_path": "evidence/pdf_rendering.json",
+  "evidence_sha256": "0a1a4a2c68ca9d343f5b5ade4f726b288188847144f470c7a411c0d03fadbca6",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the pdf_rendering capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

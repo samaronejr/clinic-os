@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "dpo_public_contact",
+  "environment": "synthetic",
+  "evidence_path": "evidence/dpo_public_contact.json",
+  "evidence_sha256": "e96f485744ee2ce1a3ef7b054fe16fa36d257af3542dfd5734cca0284061cbb3",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the dpo_public_contact capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
+
+from tenant_key_support import issue_tenant_key_for
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 RBAC_RAW_CREDENTIAL = "todo8-correct-horse-battery-staple"
 
@@ -26,7 +32,7 @@ class RbacGraph:
 
 
 @pytest.fixture
-def rbac_graph() -> RbacGraph:
+def rbac_graph(synthetic_secret_backend: Path) -> RbacGraph:
     organization_a = uuid4()
     organization_b = uuid4()
     physician = User.objects.create(
@@ -112,6 +118,8 @@ def rbac_graph() -> RbacGraph:
             role=UserClinicRole.Role.PHYSICIAN,
         )
 
+    issue_tenant_key_for(organization_a)
+    issue_tenant_key_for(organization_b)
     return RbacGraph(
         organization_a=organization_a,
         organization_b=organization_b,

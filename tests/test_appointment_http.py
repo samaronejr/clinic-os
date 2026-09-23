@@ -25,6 +25,7 @@ from appointment_http_support import (
     appointment_rows,
     booked_local_range,
     create_payload,
+    local_time_markup,
     prepare_payload,
     seed_enrollment,
 )
@@ -91,8 +92,8 @@ def test_prepare_shows_promised_windows_and_explicit_minute_fields(
 
     body = response.content
     assert response.status_code == 200
-    assert f"{FUTURE_DATE}T08:00".encode() in body
-    assert f"{FUTURE_DATE}T09:00".encode() in body
+    assert local_time_markup(f"{FUTURE_DATE}T08:00") in body
+    assert local_time_markup(f"{FUTURE_DATE}T09:00") in body
     assert b'name="start_local"' in body
     assert b'name="end_local"' in body
     assert audit_event_types(rbac_graph, actor).count(BOOKING_VIEWED_EVENT) == 1
@@ -111,7 +112,7 @@ def test_prepare_generates_no_slot_grid_and_no_fixed_duration(
 
     body = response.content
     assert response.status_code == 200
-    assert body.count(f"{FUTURE_DATE}T08:".encode()) == 1
+    assert body.count(local_time_markup(f"{FUTURE_DATE}T08:00")) == 1
     assert b"duration" not in body.lower()
     assert b'type="datetime-local"' in body
     assert b"<option" in body.split(b'name="start_local"')[0].split(b"<form")[-1]

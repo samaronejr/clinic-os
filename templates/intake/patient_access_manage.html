@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Patient access · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Issue and revoke single-use patient invitations without exposing patient data in the address bar." %}{% endblock %}
+{% block content %}
+<section class="intake-shell contacts-shell" aria-labelledby="access-title">
+  <h1 id="access-title">{% trans "Patient access" %}</h1>
+  {% if overview is None %}
+    <p class="lede">{% trans "Find the patient in the registry to manage their portal access." %}</p>
+    <div class="actions">
+      <a class="button button--secondary" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+    </div>
+  {% else %}
+    <p class="lede">{% blocktrans with name=overview.patient_display_name %}Portal invitations and sessions for {{ name }} in this clinic.{% endblocktrans %}</p>
+    {% if messages %}
+      {% for message in messages %}
+        <div class="feedback feedback--success" role="status"><p>{{ message }}</p></div>
+      {% endfor %}
+    {% endif %}
+    {% if error %}
+      <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>
+        <h2>{% trans "We could not complete that action" %}</h2>
+        <p>{{ error }}</p>
+      </div>
+    {% endif %}
+    {% if issued_code %}
+      <div class="feedback feedback--success access-issued" role="status">
+        <h2>{% trans "Invitation code" %}</h2>
+        <p>{% trans "Share this code with the patient now. It is shown only once, works a single time and expires in 24 hours." %}</p>
+        <p><code class="access-code" id="issued-code">{{ issued_code }}</code></p>
+      </div>
+    {% endif %}
+
+    <section class="panel contacts-panel" aria-labelledby="access-invitations">
+      <h2 id="access-invitations">{% trans "Invitations" %}</h2>
+      <p class="hint">{% trans "Each invitation is a single-use code valid for 24 hours. Revoking an invitation also ends every session it created." %}</p>
+      <form method="post" action="{{ access_url }}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="issue">
+        <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+        <button class="button" type="submit">{% trans "Issue a new invitation" %}</button>
+      </form>
+      {% if grant_rows %}
+      <div class="table-scroll" role="region" aria-labelledby="access-grants-caption" tabindex="0">
+        <table class="table contacts-table" aria-labelledby="access-grants-caption">
+          <caption id="access-grants-caption">{% trans "Invitations for this enrollment" %}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{% trans "State" %}</th>
+              <th scope="col">{% trans "Issued by" %}</th>
+              <th scope="col">{% trans "Issued" %}</th>
+              <th scope="col">{% trans "Expires" %}</th>
+              <th scope="col">{% trans "Action" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for grant in grant_rows %}
+            <tr>
+              <th scope="row">{{ grant.state }}</th>
+              <td data-label="{% trans "Issued by" %}">{{ grant.issued_by_label }}</td>
+              <td data-label="{% trans "Issued" %}">{{ grant.created_at|date:"d/m/Y H:i" }}</td>
+              <td data-label="{% trans "Expires" %}">{{ grant.expires_at|date:"d/m/Y H:i" }}</td>
+              <td data-label="{% trans "Action" %}">
+                {% if grant.revocable %}
+                <form method="post" action="{{ access_url }}">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="revoke">
+                  <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+                  <input type="hidden" name="grant_id" value="{{ grant.grant_id }}">
+                  <button class="button button--quiet" type="submit">{% trans "Revoke access" %}</button>
+                </form>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="contacts-empty">{% trans "No invitations issued yet." %}</p>
+      {% endif %}
+    </section>
+
+    <section class="panel contacts-panel" aria-labelledby="access-sessions">
+      <h2 id="access-sessions">{% trans "Patient sessions" %}</h2>
+      <p class="hint">{% trans "Sessions expire after 30 minutes without activity or 8 hours after sign-in, whichever comes first." %}</p>
+      {% if session_rows %}
+      <div class="table-scroll" role="region" aria-labelledby="access-sessions-caption" tabindex="0">
+        <table class="table contacts-table" aria-labelledby="access-sessions-caption">
+          <caption id="access-sessions-caption">{% trans "Sessions for this enrollment" %}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{% trans "State" %}</th>
+              <th scope="col">{% trans "Started" %}</th>
+              <th scope="col">{% trans "Idle until" %}</th>
+              <th scope="col">{% trans "Ends" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for session in session_rows %}
+            <tr>
+              <th scope="row">{{ session.state }}</th>
+              <td data-label="{% trans "Started" %}">{{ session.created_at|date:"d/m/Y H:i" }}</td>
+              <td data-label="{% trans "Idle until" %}">{{ session.idle_expires_at|date:"d/m/Y H:i" }}</td>
+              <td data-label="{% trans "Ends" %}">{{ session.expires_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="contacts-empty">{% trans "No patient sessions yet." %}</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Lista de espera · Clinic OS{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="waitlist-title">
+  <p class="eyebrow">Agenda · {{ clinic.name }}</p>
+  <h1 id="waitlist-title">Lista de espera</h1>
+  <p class="lede">Uma abertura, uma oferta por vez. A ordem de chegada vale para quem pode comparecer no horário.</p>
+  <p>Ofertas válidas por <strong>30 minutos</strong>. Uma oferta não reserva o horário: a disponibilidade é conferida ao aceitar. Horários da clínica: {{ clinic.timezone }}.</p>
+  <a class="button button--secondary" href="{% url 'scheduling:agenda' clinic.pk %}">Voltar à agenda</a>
+  {% for message in messages %}<div class="feedback feedback--success" role="status">{{ message }}</div>{% endfor %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  <section class="panel" aria-labelledby="queue-title">
+    <h2 id="queue-title">Fila e histórico</h2>
+    <p>Solicitações expiradas, recusadas e atendidas permanecem no histórico. Sem classificação por urgência clínica.</p>
+    {% timezone clinic.timezone %}
+    {% for row in rows %}{% with entry=row.entry %}
+    <article class="patient-detail" data-entry="{{ entry.pk }}" data-state="{{ entry.state }}">
+      <h3>#{{ entry.pk }} · {{ entry.patient.full_name }}</h3>
+      <p>{{ entry.practitioner_label }} · {{ entry.get_state_display }}</p>
+      <p>Período solicitado: {{ entry.start_at|date:"d/m/Y H:i" }} a {{ entry.end_at|date:"d/m/Y H:i" }}</p>
+      {% for notice in row.offers %}{% with offer=notice.offer %}
+      <div data-offer="{{ offer.pk }}" data-state="{{ offer.state }}">
+        <p><strong>{{ offer.get_state_display }}</strong> · {{ offer.start_at|date:"d/m/Y H:i" }}–{{ offer.end_at|date:"H:i" }}</p>
+        <p>Prazo: {{ offer.expires_at|date:"d/m/Y H:i" }} (30 minutos após a emissão).</p>
+        {% if offer.state == 'pending' %}<p>Aviso no portal. {% if notice.channels %}Canais autorizados: {{ notice.channels|join:", " }}; envio externo não confirmado.{% else %}Sem autorização e contato verificado para avisos externos.{% endif %}</p>{% endif %}
+      </div>
+      {% endwith %}{% empty %}<p>Aguardando uma abertura compatível.</p>{% endfor %}
+    </article>
+    {% endwith %}{% empty %}<p role="status">Nenhuma solicitação nesta clínica. Registre o período desejado abaixo.</p>{% endfor %}
+    {% endtimezone %}
+    <p>A oferta fica no portal do paciente. Avisos externos só podem usar contato verificado e autorização específica para ofertas; nenhum envio externo é confirmado nesta tela.</p>
+  </section>
+  <section class="panel" aria-labelledby="entry-title">
+    <h2 id="entry-title">Registrar solicitação</h2>
+    <p>Selecione um paciente cadastrado e seu profissional, com o início e o fim do período desejado.</p>
+    <form method="post" id="waitlist-entry-form">{% csrf_token %}
+      {{ entry_form.as_p }}
+      <button class="button" type="submit" name="action" value="add">Entrar na fila</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="opening-title">
+    <h2 id="opening-title">Oferecer uma abertura</h2>
+    <p>Após cancelar uma consulta na agenda, informe o horário liberado. A primeira solicitação elegível recebe a oferta; nenhuma consulta é criada agora.</p>
+    <form method="post" id="waitlist-offer-form">{% csrf_token %}
+      {{ offer_form.as_p }}
+      <button class="button" type="submit" name="action" value="offer">Oferecer ao próximo da fila</button>
+    </form>
+  </section>
+</section>
+{% endblock %}

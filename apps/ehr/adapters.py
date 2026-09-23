@@ -1,11 +1,25 @@
-"""Phase >=1 ehr adapter interfaces."""
+"""Typed boundary for explicit internal SOAP draft persistence."""
 
-from typing import Protocol
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from apps.ehr.models import ClinicalDocumentVersion
 
 
 class EhrAdapter(Protocol):
-    """Define the future ehr integration boundary."""
+    """Require exact version and optimistic revision at every persistence caller."""
 
-    def record_clinical_note(self) -> None:
-        """Record a clinical note through a Phase >=1 integration."""
+    def record_clinical_note(
+        self,
+        *,
+        clinic_id: UUID,
+        version_id: UUID,
+        expected_revision: int,
+        content: dict[str, str],
+    ) -> ClinicalDocumentVersion:
+        """Save through the current actor's clinic-scoped clinical authority."""
         ...

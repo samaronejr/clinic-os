@@ -6,6 +6,11 @@ INTAKE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
     {
         ("intake_patient", "organization_id"),
         ("intake_patientclinicenrollment", "organization_id"),
+        ("intake_patientcontact", "organization_id"),
+        ("intake_patientchannelpreference", "organization_id"),
+        ("intake_patientcontactevent", "organization_id"),
+        ("intake_patientaccessgrant", "organization_id"),
+        ("intake_patientsession", "organization_id"),
     }
 )
 

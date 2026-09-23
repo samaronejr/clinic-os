@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Final
 
 import pytest
 from django.contrib.staticfiles import finders
+from django.utils.translation import gettext
 
 from accessible_document import Document
 from otp_test_support import runtime_role
@@ -62,12 +63,44 @@ def test_search_results_expose_an_accessible_table_and_pagination(
     document.assert_unique_identifiers()
     document.assert_descriptions_resolve()
     document.assert_every_form_is_post_with_csrf()
-    assert b"<caption>Registry matches in this clinic</caption>" in content
-    assert document.attributes_for("patient-results-status")["role"] == "status"
+    caption = gettext("Registry matches in this clinic")
+    assert (
+        f'<caption id="patient-results-caption">{caption}</caption>'.encode() in content
+    )
+    region = [
+        attributes
+        for attributes in document.tagged("div")
+        if attributes.get("role") == "region"
+    ]
+    assert [item.get("aria-labelledby") for item in region] == [
+        "patient-results-caption"
+    ]
+    assert region[0].get("tabindex") == "0"
+    status = document.attributes_for("patient-results-status")
+    assert status["role"] == "status"
+    assert status["tabindex"] == "-1"
+    assert "autofocus" in status
     headers = document.tagged("th")
     assert {attributes.get("scope") for attributes in headers} == {"col", "row"}
-    navigation = document.tagged("nav")
-    assert [item.get("aria-label") for item in navigation] == ["Search result pages"]
+    assert {attributes.get("role") for attributes in headers} == {
+        "columnheader",
+        "rowheader",
+    }
+    # Birth dates are table cells only: never status text, labels or attributes.
+    assert b"1990" not in content.split(b"<tbody")[0]
+    assert not [
+        attributes
+        for _tag, attributes in document.elements
+        if any("1990" in (value or "") for value in attributes.values())
+    ]
+    pagination = [
+        item
+        for item in document.tagged("nav")
+        if "intake-pagination" in (item.get("class") or "").split()
+    ]
+    assert [item.get("aria-label") for item in pagination] == [
+        gettext("Search result pages")
+    ]
 
 
 def test_bound_search_errors_are_described_and_announced(
@@ -90,6 +123,65 @@ def test_bound_search_errors_are_described_and_announced(
     document.assert_unique_identifiers()
     document.assert_descriptions_resolve()
     document.assert_every_control_is_labelled()
+
+
+def test_empty_search_names_the_term_and_offers_registration(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, _ = receptionist_client(rbac_graph)
+
+    with runtime_role():
+        response = client.post(
+            patient_list_url(rbac_graph.clinic_a),
+            {"q": "Zeferino <Sintético>", "page": "1"},
+        )
+
+    document = Document(response.content)
+    content = response.content.decode()
+    assert response.status_code == 200
+    status = document.attributes_for("patient-results-status")
+    assert status["role"] == "status"
+    assert "autofocus" in status
+    assert (
+        gettext("No patient named \u201c%(term)s\u201d in this clinic.")
+        % {"term": "Zeferino &lt;Sintético&gt;"}
+        in content
+    )
+    assert "<Sintético>" not in content
+    assert (
+        gettext("Check the spelling, or register the patient to book an appointment.")
+        in content
+    )
+    assert f'href="{patient_create_url(rbac_graph.clinic_a)}"' in content
+    assert "<table" not in content
+    document.assert_unique_identifiers()
+    document.assert_descriptions_resolve()
+
+
+def test_registration_success_is_announced_once_on_the_search_screen(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, _ = receptionist_client(rbac_graph)
+    payload = {
+        "full_name": "Helena Synthetic Feedback",
+        "birth_date": "1990-05-17",
+        "idempotency_key": "6f3e0a4a-2f47-4c7e-9a9b-2c8e3d1f5b10",
+    }
+
+    with runtime_role():
+        created = client.post(patient_create_url(rbac_graph.clinic_a), payload)
+        landing = client.get(created.headers["Location"])
+        reloaded = client.get(created.headers["Location"])
+
+    assert created.status_code == 303
+    document = Document(landing.content)
+    notice = document.attributes_for("intake-registered")
+    assert notice["role"] == "status"
+    assert gettext("Patient registered") in landing.content.decode()
+    # Completion feedback carries no patient data and is consumed once.
+    assert b"Helena Synthetic Feedback" not in landing.content
+    assert b"1990" not in landing.content
+    assert b"intake-registered" not in reloaded.content
 
 
 def test_create_screen_meets_the_dom_accessibility_contract(
@@ -131,9 +223,37 @@ def test_bound_create_errors_are_described_and_announced(
     assert document.attributes_for("id_full_name")["aria-describedby"] == (
         "patient-create-name-help id_full_name_error"
     )
-    assert document.attributes_for("intake-errors")["role"] == "alert"
+    errors = document.attributes_for("intake-errors")
+    assert errors["role"] == "alert"
+    assert errors["tabindex"] == "-1"
+    assert "autofocus" in errors
     document.assert_unique_identifiers()
     document.assert_descriptions_resolve()
+
+
+def test_invalid_create_preserves_the_typed_name_for_retry(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, _ = receptionist_client(rbac_graph)
+
+    with runtime_role():
+        response = client.post(
+            patient_create_url(rbac_graph.clinic_a),
+            {
+                "full_name": "Teste Synthetic Retry",
+                "birth_date": "3999-01-01",
+                "idempotency_key": "6f3e0a4a-2f47-4c7e-9a9b-2c8e3d1f5b11",
+            },
+        )
+
+    document = Document(response.content)
+    assert response.status_code == 200
+    assert document.attributes_for("id_full_name")["value"] == "Teste Synthetic Retry"
+    assert document.attributes_for("id_birth_date")["value"] == "3999-01-01"
+    assert document.attributes_for("intake-errors")["role"] == "alert"
+    assert gettext("Enter a patient name and a valid birth date.") in (
+        response.content.decode()
+    )
 
 
 def test_intake_stylesheet_is_self_hosted_and_discoverable() -> None:

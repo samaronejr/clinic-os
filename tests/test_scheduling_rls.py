@@ -54,24 +54,51 @@ def test_availability_has_exact_force_rls_and_runtime_acl_catalog() -> None:
             "'clinic_app.scheduling_availabilityblock'::regclass"
         )
         assert cursor.fetchone() == (True, True, "clinic_owner")
-        cursor.execute(
-            "SELECT policyname, permissive, roles, cmd, qual, with_check "
-            "FROM pg_catalog.pg_policies WHERE schemaname = 'clinic_app' "
-            "AND tablename = 'scheduling_availabilityblock'"
-        )
-        policy = cursor.fetchone()
+        # pg_policies deparses stored expressions against the session
+        # search_path; pin it to pg_catalog so the stored reference to the
+        # schema-qualified resolver is asserted exactly.
+        cursor.execute("SET search_path = pg_catalog")
+        try:
+            cursor.execute(
+                "SELECT policyname, permissive, roles, cmd, qual, with_check "
+                "FROM pg_catalog.pg_policies WHERE schemaname = 'clinic_app' "
+                "AND tablename = 'scheduling_availabilityblock' "
+                "ORDER BY policyname"
+            )
+            policies = cursor.fetchall()
+        finally:
+            cursor.execute("RESET search_path")
         expected = (
             "(organization_id = (NULLIF(current_setting("
             "'app.current_tenant'::text, true), ''::text))::uuid)"
         )
-        assert policy == (
-            "tenant_isolation",
-            "PERMISSIVE",
-            ["public"],
-            "ALL",
-            expected,
-            expected,
+        booking_read = (
+            "(EXISTS ( SELECT 1\n"
+            "   FROM clinic_app.patient_booking_scope() "
+            "s(session_id, organization_id, clinic_id, patient_id, "
+            "enrollment_id, clinic_name, timezone)\n"
+            "  WHERE ((s.organization_id = "
+            "scheduling_availabilityblock.organization_id) "
+            "AND (s.clinic_id = scheduling_availabilityblock.clinic_id))))"
         )
+        assert policies == [
+            (
+                "patient_booking_read",
+                "PERMISSIVE",
+                ["clinic_app"],
+                "SELECT",
+                booking_read,
+                None,
+            ),
+            (
+                "tenant_isolation",
+                "PERMISSIVE",
+                ["public"],
+                "ALL",
+                expected,
+                expected,
+            ),
+        ]
         cursor.execute(
             "SELECT privilege_type FROM information_schema.role_table_grants "
             "WHERE grantee = 'clinic_app' AND table_schema = 'clinic_app' "
@@ -93,7 +120,10 @@ def test_availability_has_exact_force_rls_and_runtime_acl_catalog() -> None:
             "AND grantee = ANY(%s) ORDER BY grantee, privilege_type",
             [["PUBLIC", "clinic_resolver"]],
         )
-        assert cursor.fetchall() == []
+        # The resolver holds SELECT so the stored-authority
+        # patient_booking_scope() can read availability rows; nothing else
+        # beyond PUBLIC is granted.
+        assert cursor.fetchall() == [("clinic_resolver", "SELECT")]
 
 
 @pytest.mark.django_db(transaction=True)

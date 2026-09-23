@@ -103,6 +103,31 @@ def test_search_returns_only_selected_clinic_in_deterministic_order(
     )
 
 
+def test_search_matches_accented_names_case_insensitively(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Decrypted names keep the database collation, so accents case-fold."""
+    services = importlib.import_module("apps.intake.services")
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = services.create_patient(
+            clinic_id=rbac_graph.clinic_a,
+            full_name="Concei\u00e7\u00e3o Sint\u00e9tica",
+            birth_date=date(1990, 1, 2),
+            idempotency_key=uuid4(),
+        )
+        found = [
+            services.search_patients(clinic_id=rbac_graph.clinic_a, query=query, page=1)
+            for query in ("concei\u00e7\u00e3o", "SINT\u00c9TICA", "Sint\u00e9tica")
+        ]
+    for result in found:
+        assert [item.enrollment_id for item in result.items] == [
+            registration.enrollment.pk
+        ]
+
+
 def test_search_paginates_twenty_five_per_page_and_filters_exact_birth_date(
     rbac_graph: RbacGraph,
 ) -> None:

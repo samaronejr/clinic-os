@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "pix",
+  "environment": "synthetic",
+  "evidence_path": "evidence/pix.json",
+  "evidence_sha256": "ee65a1fd8dfacfcc65298a42affb7aa2c823e892386d3c696913b432b08a2e5f",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the pix capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

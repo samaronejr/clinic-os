@@ -7,6 +7,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
 from django.http import HttpRequest, QueryDict
+from django.utils.translation import gettext_lazy as _
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.identity.models import User
@@ -15,8 +16,8 @@ from apps.identity.otp import TotpDevice
 if TYPE_CHECKING:
     from uuid import UUID
 
-INVALID_LOGIN_MESSAGE: Final = "Check your username and password, then try again."
-INVALID_CODE_MESSAGE: Final = "That code is not valid. Try a current code."
+INVALID_LOGIN_MESSAGE: Final = _("Check your username and password, then try again.")
+INVALID_CODE_MESSAGE: Final = _("That code is not valid. Try a current code.")
 
 
 class _NonEchoingChoiceField(forms.ChoiceField):
@@ -72,14 +73,14 @@ class ExplicitOTPTokenForm(forms.Form):
 
     otp_device = _NonEchoingChoiceField(
         choices=(),
-        label="Authenticator",
+        label=_("Authenticator"),
         error_messages={
             "required": INVALID_CODE_MESSAGE,
             "invalid_choice": INVALID_CODE_MESSAGE,
         },
     )
     otp_token = forms.CharField(
-        label="Authentication code",
+        label=_("Authentication code"),
         widget=forms.PasswordInput(render_value=False),
     )
 
@@ -166,15 +167,10 @@ class ExplicitOTPTokenForm(forms.Form):
                     code="invalid_token",
                 )
             else:
-                allowed, details = device.verify_is_allowed()
+                allowed, _details = device.verify_is_allowed()
                 if not allowed:
-                    message = (
-                        details.get("error_message") if details is not None else None
-                    )
-                    if not isinstance(message, str):
-                        message = "Verification temporarily disabled. Try again soon."
                     validation_error = forms.ValidationError(
-                        message,
+                        _("Verification temporarily disabled. Try again soon."),
                         code="verification_not_allowed",
                     )
                 elif not device.verify_token(token):

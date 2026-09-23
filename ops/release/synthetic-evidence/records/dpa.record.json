@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "dpa",
+  "environment": "synthetic",
+  "evidence_path": "evidence/dpa.json",
+  "evidence_sha256": "2e28cc94b72249ab1ff03bd97e05cf77f9e5ae9524f3516a7c2426ec9decfba6",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the dpa capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

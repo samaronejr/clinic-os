@@ -17,6 +17,7 @@ from django.http import (
     JsonResponse,
     StreamingHttpResponse,
 )
+from django.template.loader import render_to_string
 from django.test import Client, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import path
@@ -223,7 +224,7 @@ def test_middleware_fails_closed_for_missing_or_malformed_session_context(
     response = client.get("/tenant/")
 
     assert response.status_code == 403
-    assert response.content == b""
+    assert response.content == render_to_string("403.html").encode()
 
 
 @override_settings(ROOT_URLCONF=__name__)
@@ -239,7 +240,7 @@ def test_middleware_rejects_unauthorized_org_and_clears_pooled_connection(
         _assert_gucs_empty()
 
     assert response.status_code == 403
-    assert response.content == b""
+    assert response.content == render_to_string("403.html").encode()
 
 
 @pytest.mark.parametrize(

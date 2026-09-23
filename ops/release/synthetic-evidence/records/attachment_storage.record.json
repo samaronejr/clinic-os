@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "attachment_storage",
+  "environment": "synthetic",
+  "evidence_path": "evidence/attachment_storage.json",
+  "evidence_sha256": "174aadc9ec54a023ba980f660a50d66a1c028a2735208a7cb5b75a8bc3c43082",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the attachment_storage capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

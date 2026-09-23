@@ -9,6 +9,7 @@ from django.db import IntegrityError, transaction
 
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
+    AppointmentIdempotencyConflictError,
     AppointmentTerminalError,
     SlotConflict,
 )
@@ -52,6 +53,8 @@ def insert_appointment(
         if replay is not None:
             return replay, False
         constraint = _constraint_name(error)
+        if constraint == "scheduling_appointment_org_idempotency_uniq":
+            raise AppointmentIdempotencyConflictError from error
         if constraint in {
             "scheduling_appointment_scheduled_patient_excl",
             "scheduling_appointment_scheduled_practitioner_excl",

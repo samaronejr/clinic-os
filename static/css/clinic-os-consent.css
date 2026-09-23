@@ -1,0 +1,35 @@
+/* Native consent decisions and reproducible, wrapping receipts. */
+.consent-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-block: var(--space-4);
+}
+
+.consent-provenance {
+  overflow-wrap: anywhere;
+}
+
+.consent-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+
+.consent-choice input[type="checkbox"] {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  accent-color: var(--color-primary);
+}
+
+.consent-choice label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.consent-provenance summary {
+  min-height: 44px;
+  padding-block: var(--space-3);
+  cursor: pointer;
+}

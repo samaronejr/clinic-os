@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from apps.identity.models import User
 from django.test import Client
+from django.utils.translation import gettext
 
 from otp_test_support import create_totp_device, runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
@@ -55,8 +56,8 @@ def test_step_up_page_uses_existing_accessible_auth_primitives(
     token = parser.attributes_by_id["id_otp_token"]
     form = parser.attributes_by_id["step-up-form"]
     assert response.status_code == 200
-    assert b'<h1 id="auth-title">Confirm this sensitive action</h1>' in response.content
-    assert b'<label for="id_otp_token">Authentication code:</label>' in response.content
+    assert gettext("Confirm this sensitive action").encode() in response.content
+    assert gettext("Authentication code").encode() in response.content
     assert token["autocomplete"] == "one-time-code"
     assert token["aria-describedby"] == "otp-help"
     assert form["data-auth-form"] is None
@@ -97,7 +98,9 @@ def test_step_up_route_has_specific_document_metadata(
         response = client.get("/auth/step-up/")
 
     assert (
-        b"Confirm a recent authenticator code before a sensitive Clinic OS action."
+        gettext(
+            "Confirm a recent authenticator code before a sensitive Clinic OS action."
+        ).encode()
         in response.content
     )
-    assert b"Confirm sensitive action \xc2\xb7 Clinic OS" in response.content
+    assert gettext("Confirm sensitive action · Clinic OS").encode() in response.content

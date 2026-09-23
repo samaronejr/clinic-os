@@ -7,7 +7,6 @@ import django.db.models.deletion
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
-import apps.intake.models
 from apps.intake.rls import (
     INTAKE_RLS_TARGETS,
     apply_intake_rls,
@@ -91,7 +90,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "full_name",
-                    apps.intake.models.NormalizedPatientNameField(max_length=255),
+                    models.CharField(max_length=255),
                 ),
                 ("birth_date", models.DateField()),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
@@ -176,6 +175,7 @@ class Migration(migrations.Migration):
                 reverse_sql=remove_intake_rls(table, tenant_column),
             )
             for table, tenant_column in sorted(INTAKE_RLS_TARGETS)
+            if table in {"intake_patient", "intake_patientclinicenrollment"}
         ),
         migrations.RunSQL(sql=RUNTIME_ACL_SQL, reverse_sql=REVERSE_RUNTIME_ACL_SQL),
     ]

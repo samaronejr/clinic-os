@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "email",
+  "environment": "synthetic",
+  "evidence_path": "evidence/email.json",
+  "evidence_sha256": "41228363e357d36063157324afd2e84a4f20cad1c5b457d78bf58d68cad1f27c",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the email capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

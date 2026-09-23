@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 from . import base
 from .contracts import (
     parse_production_hosts,
@@ -24,6 +26,12 @@ DATABASES = {
         os.environ.get("APP_DATABASE_URL", ""), required_role=CLINIC_PROCESS_ROLE
     )
 }
+# Protected fields decrypt only through the managed-secret boundary; a
+# production deployment without a configured backend must fail at startup,
+# not at the first clinical read.
+BACKEND_REQUIRED_MESSAGE = "CLINIC_SECRET_BACKEND is required for production"
+if base.CLINIC_SECRET_BACKEND is None:
+    raise ImproperlyConfigured(BACKEND_REQUIRED_MESSAGE)
 DEBUG = False
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True

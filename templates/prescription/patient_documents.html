@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Your documents · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Download the prescription documents the clinic released to you." %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="patient-documents-title">
+  <p class="eyebrow">{% trans "Patient portal" %}</p>
+  <h1 id="patient-documents-title">Seus documentos</h1>
+  <p class="lede">Somente os documentos liberados pela clínica aparecem aqui. O download acontece nesta sessão.</p>
+  {% if documents %}
+  <section class="panel" aria-labelledby="released-documents-title">
+    <h2 id="released-documents-title">Documentos liberados</h2>
+    {% for document in documents %}
+    <article class="record-review" data-document="{{ document.document_id }}" data-state="{{ document.state }}">
+      <h3>Documento versão {{ document.document_version }}{% if document.state == "rehearsal_complete" %} · ensaio sintético{% endif %}</h3>
+      <p>Emitido em {{ document.issued_at|date:"d/m/Y H:i" }}</p>
+      <p class="help-text">Verificação pública: <code>{{ document.verification_url }}</code></p>
+      <form method="post" action="{% url 'prescription:patient-documents' %}">
+        {% csrf_token %}
+        <input type="hidden" name="document_id" value="{{ document.document_id }}">
+        <button class="button" type="submit" name="action" value="download">Baixar documento assinado</button>
+      </form>
+    </article>
+    {% endfor %}
+  </section>
+  {% else %}
+  <section class="panel"><p id="documents-empty">Nenhum documento foi liberado para você ainda.</p></section>
+  {% endif %}
+  <p><a href="{% url 'intake:patient-home' %}">Voltar</a></p>
+</section>
+{% endblock %}

@@ -1,13 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Book an appointment · Clinic OS{% endblock %}
-{% block meta_description %}Book a clinic appointment inside a promised availability window without exposing patient identifiers in the address bar.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Book an appointment · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Book a clinic appointment inside a promised availability window without exposing patient identifiers in the address bar." %}{% endblock %}
 {% block content %}
-<section class="scheduling-shell" aria-labelledby="booking-title">
-  <p class="eyebrow">Clinic schedule</p>
-  <h1 id="booking-title">Book an appointment</h1>
-  <h2 id="booking-patient">{{ patient_display_name }}</h2>
-  <p class="lede" id="booking-lede">Every minute below is this clinic's local time. Nothing here is a fixed slot: choose any start and end inside a promised window.</p>
+<section class="scheduling-task booking-shell" aria-labelledby="booking-title">
+  <h1 id="booking-title">{% trans "Book an appointment" %}</h1>
+  <p class="lede" id="booking-lede">{% blocktrans %}Every time below is this clinic's local time ({{ timezone_key }}). Choose any start and end inside a window the physician offers.{% endblocktrans %}</p>
+  <p class="booking-patient"><span class="booking-patient-label">{% trans "Patient" %}</span> <strong id="booking-patient">{{ patient_display_name }}</strong></p>
   {% include "scheduling/partials/booking_panel.html" %}
-  <p class="scheduling-links"><a href="{{ list_url }}">Back to the patient registry</a></p>
 </section>
 {% endblock %}

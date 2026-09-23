@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Histórico clínico · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="history-title">
+  <p class="eyebrow">Contexto longitudinal</p>
+  <h1 id="history-title">Problemas e alergias</h1>
+  <p class="lede">Registros do médico, com autoria e versões preservadas. Uma lista vazia não significa ausência de problemas ou alergias.</p>
+  <p><a href="{% url 'ehr:encounter' clinic_id %}">Voltar ao atendimento</a></p>
+  {% if encounter %}
+  {% timezone encounter.clinic.timezone %}
+  <h2>{{ encounter.patient.full_name }}</h2>
+  {% for message in messages %}{% if 'ehr.history.saved' in message.tags %}<p class="feedback feedback--success" role="status" data-save-state="saved">{{ message }}</p>{% endif %}{% endfor %}
+  {% if form %}
+  <section class="panel" aria-labelledby="edit-title">
+    <h2 id="edit-title">Registrar ou corrigir</h2>
+    <p>Escolha “Nenhum registro documentado” somente após avaliação explícita. Nesse caso, deixe a descrição vazia e selecione “Sem registro individual”.</p>
+    <p role="status" data-save-state="{% if unsaved %}unsaved{% else %}editing{% endif %}">{% if unsaved %}Alterações não salvas.{% else %}As alterações só serão guardadas ao salvar.{% endif %}</p>
+    <form method="post" id="history-form">{% csrf_token %}
+      {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+      {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}</div>{% endif %}
+      {% for field in form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+      <div class="actions"><button class="button" type="submit" name="action" value="save">Salvar histórico</button><a class="button button--secondary" href="{% url 'ehr:history' clinic_id %}">Reabrir contexto atual</a></div>
+    </form>
+  </section>
+  {% endif %}
+  {% for section in sections %}
+  <section class="panel" data-kind="{{ section.kind }}" data-state="{{ section.state }}" data-revision="{{ section.revision }}" aria-labelledby="title-{{ section.kind }}">
+    <h2 id="title-{{ section.kind }}">{{ section.label }}</h2>
+    <p class="feedback">{{ section.state_label }} · Revisão {{ section.revision }}</p>
+    {% if section.can_write %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="kind" value="{{ section.kind }}"><button class="button button--secondary" type="submit" name="action" value="new">Registrar {{ section.label|lower }} ou avaliação</button></form>{% else %}<p>Somente leitura. A escrita é restrita ao médico responsável pelo atendimento.</p>{% endif %}
+    {% for entry in section.entries %}
+      <article data-entry="{{ entry.entry_id }}" data-status="{{ entry.status }}">
+        <h3>{{ entry.description }}</h3><p>{{ entry.get_status_display }} · Versão {{ entry.version }}</p>
+        <p>Autoria: {{ entry.assessment.author_label }} · {{ entry.assessment.created_at|date:"d/m/Y H:i:s" }} · Horário da clínica</p>
+        <p>Motivo: {{ entry.assessment.reason }}</p>
+        {% if section.can_write %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="kind" value="{{ section.kind }}"><input type="hidden" name="entry_id" value="{{ entry.entry_id }}"><button class="button button--secondary" type="submit" name="action" value="edit">Corrigir ou resolver</button></form>{% endif %}
+      </article>
+    {% empty %}<p>Nenhum item registrado. Considere a situação da avaliação acima, não a ausência de itens.</p>{% endfor %}
+    {% if section.assessments %}
+    <details><summary>Histórico de versões e avaliações</summary>
+      {% for version in section.versions %}<article data-history-version="{{ version.version }}"><h3>{{ version.description }}</h3><p>{{ version.get_status_display }} · Versão {{ version.version }} · Revisão {{ version.assessment.revision }}</p><p>{{ version.assessment.author_label }} · {{ version.assessment.created_at|date:"d/m/Y H:i:s" }}</p><p>{{ version.assessment.reason }}</p></article>{% endfor %}
+      <h3>Avaliações explícitas</h3>
+      {% for assessment in section.assessments %}<p data-assessment-revision="{{ assessment.revision }}">Revisão {{ assessment.revision }} · {{ assessment.get_state_display }} · {{ assessment.author_label }} · {{ assessment.created_at|date:"d/m/Y H:i:s" }} · {{ assessment.reason }}</p>{% endfor %}
+    </details>
+    {% endif %}
+  </section>
+  {% endfor %}
+  {% endtimezone %}
+  {% else %}<section class="panel"><h2>Abra o histórico a partir do atendimento</h2><p>O acesso exige vínculo de cuidado nesta clínica.</p></section>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,38 @@
+{
+  "name": "Clinic Ops",
+  "short_name": "Clinic Ops",
+  "description": "Agenda, cadastro de pacientes e disponibilidade da clínica.",
+  "lang": "pt-BR",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f5f0",
+  "theme_color": "#0f2d3a",
+  "icons": [
+    {
+      "src": "/static/brand/clinic-ops-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/brand/clinic-ops-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/brand/clinic-ops-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/brand/clinic-ops-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

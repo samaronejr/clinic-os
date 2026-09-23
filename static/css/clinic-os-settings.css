@@ -1,0 +1,55 @@
+/* Closed branding tokens affect only this decorative clinic banner. */
+.clinic-brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  overflow-wrap: anywhere;
+  background: #fff;
+  color: #0f2d3a;
+  border-block-end: 3px solid currentColor;
+}
+.clinic-brand--teal { color: #115e59; }
+.clinic-brand img { width: 48px; height: 48px; object-fit: contain; }
+.clinic-brand p { margin: 0; }
+@media (forced-colors: active) {
+  .clinic-brand { color: CanvasText; background: Canvas; }
+}
+
+/* One questionnaire row: a bounded group under a rule, never a nested panel
+   (same treatment as the prescription item group; DESIGN.md: panels do not
+   nest). */
+.settings-question {
+  min-width: 0;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: var(--line-1) solid var(--color-line);
+}
+.settings-question legend {
+  padding: 0;
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+/* A required-answer checkbox sits beside its label at full target size
+   (same treatment as the billing attestation choice). */
+.settings-check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+.settings-check input[type="checkbox"] {
+  flex: 0 0 var(--control-height);
+  width: var(--control-height);
+  height: var(--control-height);
+  accent-color: var(--color-primary);
+}
+.settings-check label {
+  flex: 1 1 0;
+  margin: 0;
+  cursor: pointer;
+}

@@ -1,46 +1,44 @@
 {% extends "base.html" %}
-{% block title %}Patient search · Clinic OS{% endblock %}
-{% block meta_description %}Search the clinic patient registry without exposing patient data in the address bar.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Patient search · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Search the clinic patient registry without exposing patient data in the address bar." %}{% endblock %}
 {% block content %}
 <section class="intake-shell" aria-labelledby="intake-title">
-  <p class="eyebrow">Clinic registry</p>
-  <h1 id="intake-title">Patient search</h1>
-  <p class="lede" id="intake-lede">Search this clinic by name. Search terms stay in the request body and never reach the address bar or server logs.</p>
-  <div class="intake-card">
-    {% if form.errors %}
-      <div class="feedback feedback--error" id="intake-errors" role="alert" tabindex="-1">
-        <h2>We could not run that search</h2>
-        {% if form.non_field_errors %}
-          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-        {% else %}
-          <p>Check the highlighted fields and try again.</p>
-        {% endif %}
+  <h1 id="intake-title">{% trans "Patient search" %}</h1>
+  <p class="lede" id="intake-lede">{% trans "Search this clinic by name. Search terms stay in the request body and never reach the address bar or server logs." %}</p>
+  {% for message in messages %}
+    {% if "intake.patient.registered" in message.tags %}
+      <div class="feedback feedback--success" id="intake-registered" role="status">
+        <h2>{% trans "Patient registered" %}</h2>
+        <p>{{ message }}</p>
       </div>
     {% endif %}
-    <form method="post" action="{{ list_url }}"
-          hx-post="{{ list_url }}" hx-target="#patient-results"
-          hx-swap="outerHTML" hx-indicator="#intake-progress">
-      {% csrf_token %}
-      <div class="field{% if form.q.errors %} field--error{% endif %}">
+  {% endfor %}
+  <form class="panel intake-search" id="patient-search-form" method="post" action="{{ list_url }}"
+        hx-post="{{ list_url }}" hx-target="#patient-results"
+        hx-swap="outerHTML" hx-indicator="#intake-progress" data-auth-form>
+    {% csrf_token %}
+    <div class="intake-search-fields">
+      <div class="field intake-search-name{% if form.q.errors %} field--error{% endif %}">
         {{ form.q.label_tag }}
         {{ form.q }}
-        <p class="hint" id="patient-search-help">Enter at least two characters of the patient's name.</p>
+        <p class="hint" id="patient-search-help">{% trans "Enter at least two characters of the patient's name." %}</p>
         {% if form.q.errors %}<div class="field-errors" id="{{ form.q.auto_id }}_error">{% for error in form.q.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
-      <div class="field{% if form.birth_date.errors %} field--error{% endif %}">
+      <div class="field intake-search-date{% if form.birth_date.errors %} field--error{% endif %}">
         {{ form.birth_date.label_tag }}
         {{ form.birth_date }}
-        <p class="hint" id="patient-search-birth-date-help">Narrow same-name results using the recorded birth date.</p>
+        <p class="hint" id="patient-search-birth-date-help">{% trans "Narrow same-name results using the recorded birth date." %}</p>
         {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
-      <input type="hidden" name="page" value="1">
-      <div class="actions">
-        <button type="submit">Search registry</button>
-        <span class="htmx-indicator" id="intake-progress" role="status">Searching…</span>
-      </div>
-    </form>
-  </div>
-  <p class="actions"><a class="button" href="{{ create_url }}">Register a new patient</a></p>
+    </div>
+    <input type="hidden" name="page" value="1">
+    <div class="actions">
+      <button type="submit">{% trans "Search registry" %}</button>
+      <span class="htmx-indicator" id="intake-progress" role="status">{% trans "Searching…" %}</span>
+      <a class="button button--secondary" href="{{ create_url }}">{% trans "Register a new patient" %}</a>
+    </div>
+  </form>
   {% include "intake/partials/patient_results.html" %}
 </section>
 {% endblock %}

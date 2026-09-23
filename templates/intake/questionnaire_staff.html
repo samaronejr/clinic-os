@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Questionários clínicos · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="questionnaire-title">
+  <p class="eyebrow">Pré-consulta</p><h1 id="questionnaire-title">Questionários clínicos</h1>
+  <p class="lede">A recepção acompanha somente o preenchimento. Respostas são restritas aos médicos desta clínica.</p>
+  {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="feedback feedback--error" role="alert">{{ error }}</p>{% endif %}
+  {% for response_id, state, revision in statuses %}
+  <section class="panel" data-state="{{ state }}"><h2>{% if state == 'submitted' %}Enviado{% else %}Rascunho{% endif %}</h2><p>Revisão {{ revision }}</p>
+    <form method="post">{% csrf_token %}<input type="hidden" name="response_id" value="{{ response_id }}"><button type="submit" name="action" value="inspect">Consultar respostas (médico)</button></form>
+  </section>
+  {% empty %}{% if statuses != None %}<p>Nenhum formulário disponível.</p>{% endif %}{% endfor %}
+  {% if appointment_id %}
+  <section class="panel" aria-labelledby="assign-title" data-assign>
+    <h2 id="assign-title">Atribuir questionário a esta consulta</h2>
+    {% if templates %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="appointment_id" value="{{ appointment_id }}">
+      <div class="field"><label for="template-id">Questionário publicado</label><select id="template-id" name="template_id" required>{% for template in templates %}<option value="{{ template.pk }}">{{ template.title }} · versão {{ template.version }}</option>{% endfor %}</select></div>
+      <button class="button" type="submit" name="action" value="assign">Atribuir questionário</button>
+    </form>
+    {% else %}<p>Nenhum questionário publicado nesta clínica. A administração publica questionários em Configurações da clínica.</p>{% endif %}
+  </section>
+  {% endif %}
+  {% if response %}
+  <section class="panel" data-state="{{ response.state }}" data-template-version="{{ response.template.version }}"><h2>{{ response.template.title }}</h2><p>Versão {{ response.template.version }} · Revisão {{ response.revision }}</p>
+    <dl>{% for label, value in answers %}<dt>{{ label }}</dt><dd>{% if value == True %}Sim{% elif value == False %}Não{% else %}{{ value|default_if_none:"—" }}{% endif %}</dd>{% endfor %}</dl>
+    {% if response.state == 'submitted' %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="response_id" value="{{ response.pk }}"><input type="hidden" name="revision" value="{{ response.revision }}">
+      <div class="field"><label for="reopen-reason">Motivo da reabertura</label><textarea id="reopen-reason" name="reason" maxlength="255" rows="3" required></textarea></div>
+      <button class="button button--secondary" type="submit" name="action" value="reopen">Reabrir para o paciente</button>
+    </form>{% endif %}
+  </section>{% endif %}
+  <form method="post" class="panel">{% csrf_token %}<div class="field"><label for="enrollment-id">Identificador do vínculo do paciente</label><input id="enrollment-id" name="enrollment_id" required></div><button name="action" value="status" type="submit">Consultar preenchimento</button></form>
+</section>
+{% endblock %}

@@ -50,12 +50,21 @@ export CLINIC_OWNER_PASSWORD CLINIC_APP_PASSWORD CLINIC_SUPER_PASSWORD
 export APP_DATABASE_URL MIGRATION_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
 COVERAGE_TARGETS = \
 	--cov=apps.audit \
+	--cov=apps.billing \
+	--cov=apps.comms \
+	--cov=apps.consent \
+	--cov=apps.ehr \
+	--cov=apps.prescription \
+	--cov=apps.core \
 	--cov=apps.identity \
 	--cov=apps.intake \
+	--cov=apps.interop \
+	--cov=apps.retention \
 	--cov=apps.scheduling \
+	--cov=apps.teleconsult \
 	--cov=apps.tenancy
 
-.PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff restore-rehearsal revoke-staff-role set-clinic-timezone
+.PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts current-source-snapshot db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff restore-rehearsal revoke-staff-role set-clinic-timezone
 
 isolated-db-up:
 	@./ops/testing/isolated_db.sh up
@@ -194,9 +203,15 @@ restore-rehearsal:
 		--target-container "$${RESTORE_TARGET_CONTAINER:?}" \
 		--source-database "$${RESTORE_SOURCE_DATABASE:?}" \
 		--target-database "$${RESTORE_TARGET_DATABASE:?}" \
+		--source-claim "$${RESTORE_SOURCE_CLAIM:?}" \
+		--target-claim "$${RESTORE_TARGET_CLAIM:?}" \
 		--credentials-fd "$${RESTORE_CREDENTIALS_FD:?}" \
 		--work-dir "$${RESTORE_WORK_DIR:?}" \
-		--evidence "$${RESTORE_EVIDENCE_PATH:?}"
+		--evidence "$${RESTORE_EVIDENCE_PATH:?}" \
+		--probe "$${RESTORE_PROBE_PATH:?}" \
+		--object-store "$${RESTORE_OBJECT_STORE:?}" \
+		--secret-dir "$${RESTORE_SECRET_DIR:?}" \
+		--attachment-root "$${RESTORE_ATTACHMENT_ROOT:?}"
 
 ci-browser-contract:
 	@actual="$$(sha256sum ops/testing/ci-required-browser-suites.txt | cut -d' ' -f1)"; \
@@ -214,6 +229,17 @@ ci-image-contracts:
 	@sha="$$(git rev-parse HEAD)"; \
 		ops/testing/image_smoke.sh build --sha "$${sha}"
 	@ops/testing/tls_stack.sh smoke
+
+current-source-snapshot:
+	@set --; \
+		if [ -n "$${CLINIC_CURRENT_SOURCE_ALLOWLIST:-}" ]; then \
+			set -- "$${@}" --allowlist "$${CLINIC_CURRENT_SOURCE_ALLOWLIST}"; \
+		fi; \
+		$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.current_source_snapshot snapshot \
+			--repository "$${CLINIC_CURRENT_SOURCE_REPOSITORY:?}" \
+			--run-root "$${CLINIC_CURRENT_SOURCE_RUN_ROOT:?}" \
+			--report "$${CLINIC_CURRENT_SOURCE_REPORT:?}" \
+			"$${@}"
 
 ci: override export DJANGO_SETTINGS_MODULE := config.settings.test
 ci:

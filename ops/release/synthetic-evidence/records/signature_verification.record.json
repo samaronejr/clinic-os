@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "signature_verification",
+  "environment": "synthetic",
+  "evidence_path": "evidence/signature_verification.json",
+  "evidence_sha256": "06d0db475745f545611d1f2a900065b1856c6dc36944e751bdb34b88b7f846e5",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the signature_verification capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

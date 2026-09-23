@@ -1,0 +1,2 @@
+Lembrete de consulta: {{ clinic }}, {{ date }}, {{ start }}–{{ end }} ({{ timezone }}).
+Para cancelar ou reagendar, use o portal ou entre em contato com a clínica.

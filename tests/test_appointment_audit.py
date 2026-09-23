@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.audit.services import record_phase1_event, verify_chain
-from apps.scheduling import appointment_creation
+from apps.scheduling import patient_authority
 from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
 from django.db import connection
@@ -52,7 +52,7 @@ def test_failed_audit_rolls_back_booking_and_leaves_key_reusable(
         tenant_context(setup.actor_id, setup.organization_id),
     ):
         monkeypatch.setattr(
-            appointment_creation,
+            patient_authority,
             "record_phase1_event",
             append_then_fail,
         )
@@ -60,7 +60,7 @@ def test_failed_audit_rolls_back_booking_and_leaves_key_reusable(
             create_synthetic_appointment(setup, idempotency_key=key)
         assert Appointment.objects.count() == 0
         monkeypatch.setattr(
-            appointment_creation,
+            patient_authority,
             "record_phase1_event",
             original_append,
         )

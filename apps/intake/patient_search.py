@@ -6,13 +6,12 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Final
 
-from django.db import transaction
-from django.db.models.functions import Lower
+from django.db import connection, transaction
 
 from apps.audit.services import record_phase1_event
 from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.intake.access import authorized_manager_clinic
-from apps.intake.models import PatientClinicEnrollment
+from apps.tenancy.envelope import _kek
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -74,29 +73,34 @@ def search_patients(
         raise PatientSearchInputError
 
     with transaction.atomic():
-        clinic = authorized_manager_clinic(clinic_id)
-        enrollments = PatientClinicEnrollment.objects.filter(
-            organization_id=clinic.organization_id,
-            clinic_id=clinic_id,
-            patient__full_name__icontains=normalized_query,
-        )
-        if birth_date is not None:
-            enrollments = enrollments.filter(patient__birth_date=birth_date)
-        ordered = enrollments.select_related("patient").order_by(
-            Lower("patient__full_name"),
-            "patient__birth_date",
-            "patient_id",
-        )
-        total = ordered.count()
+        authorized_manager_clinic(clinic_id)
+        # Patient identity lives only in tenant envelopes; the approved
+        # search contract (normalized substring, optional exact birth date,
+        # lower(name)/birth_date/patient ordering, 25-row pages) executes
+        # inside the database boundary so ciphertext never feeds predicates
+        # and only the authorized page's plaintext leaves the database.
+        kek = _kek()
         offset = (page - 1) * PAGE_SIZE
-        rows = tuple(ordered[offset : offset + PAGE_SIZE])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.patient_registry_count(%s, %s, %s, %s)",
+                [kek, str(clinic_id), normalized_query, birth_date],
+            )
+            count_row = cursor.fetchone()
+            total = 0 if count_row is None else int(count_row[0])
+            cursor.execute(
+                "SELECT enrollment_id, full_name, birth_date "
+                "FROM clinic_app.patient_registry_page(%s, %s, %s, %s, %s, %s)",
+                [kek, str(clinic_id), normalized_query, birth_date, offset, PAGE_SIZE],
+            )
+            rows = cursor.fetchall()
         items = tuple(
             PatientSearchItem(
-                enrollment_id=enrollment.pk,
-                full_name=enrollment.patient.full_name,
-                birth_date=enrollment.patient.birth_date,
+                enrollment_id=enrollment_id,
+                full_name=full_name,
+                birth_date=stored_birth,
             )
-            for enrollment in rows
+            for enrollment_id, full_name, stored_birth in rows
         )
         record_phase1_event(
             "intake.patient.searched",

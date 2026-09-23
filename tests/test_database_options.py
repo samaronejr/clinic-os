@@ -130,6 +130,8 @@ def test_production_database_has_one_app_role_alias(tmp_path: Path) -> None:
             "ALLOWED_HOSTS": VALID_HOSTS,
             "APP_DATABASE_URL": database_url,
             "CLINIC_DATA_MODE": "synthetic",
+            "CLINIC_SECRET_BACKEND": "synthetic-file",
+            "CLINIC_SECRET_DIR": str(tmp_path / "secrets"),
             "DJANGO_SETTINGS_MODULE": "config.settings.prod",
             "SECRET_KEY": VALID_RUNTIME_TOKEN,
             "SECURE_SSL_HOST": "app.qa.clinic-os.dev",

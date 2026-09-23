@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Patient portal · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Patient portal access state." %}{% endblock %}
+{% block content %}
+<section class="auth-shell" aria-labelledby="patient-gate-title">
+  <p class="eyebrow">{% trans "Patient portal" %}</p>
+  {% if state == "signed_out" %}
+    <h1 id="patient-gate-title">{% trans "You are signed out" %}</h1>
+    <p class="lede">{% trans "Your access session ended. Use a new invitation code from the clinic to sign in again." %}</p>
+  {% else %}
+    <h1 id="patient-gate-title">{% trans "Access required" %}</h1>
+    <p class="lede">{% trans "Use the invitation link and access code the clinic gave you. If your code expired or was already used, ask the clinic for a new invitation." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

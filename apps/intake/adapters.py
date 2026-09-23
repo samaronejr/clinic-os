@@ -1,11 +1,16 @@
-"""Phase >=1 intake adapter interfaces."""
+"""Typed boundary for explicit questionnaire submission."""
 
 from typing import Protocol
+from uuid import UUID
+
+from apps.intake.models import QuestionnaireResponse
 
 
 class IntakeAdapter(Protocol):
-    """Define the future intake integration boundary."""
+    """Submit within the caller's validated patient session context."""
 
-    def submit_intake(self) -> None:
-        """Submit patient intake through a Phase >=1 integration."""
+    def submit_intake(
+        self, *, response_id: UUID, answers: object, expected_revision: int
+    ) -> QuestionnaireResponse:
+        """Retain the exact assigned version and validate all required answers."""
         ...

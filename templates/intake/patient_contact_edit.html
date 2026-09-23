@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Edit destination · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Edit one patient contact destination on the explicit edit screen." %}{% endblock %}
+{% block content %}
+<section class="shell-narrow contacts-edit" aria-labelledby="contact-edit-title">
+  <h1 id="contact-edit-title">{% blocktrans with channel=channel_label %}Edit {{ channel }} destination{% endblocktrans %}</h1>
+  <p class="lede">{% blocktrans with name=target.patient_display_name %}This is the only screen that shows the full destination for {{ name }}. Saving a new value requires a new verification before automated messages can use it.{% endblocktrans %}</p>
+  <div class="panel" id="contact-edit-panel">
+    {% if error or form.errors %}
+      <div class="feedback feedback--error" id="contact-errors" role="alert" tabindex="-1" data-focus-error autofocus>
+        <h2>{% trans "We could not save that destination" %}</h2>
+        {% if error %}<p>{{ error }}</p>{% endif %}
+        {% for field in form %}{% for field_error in field.errors %}<p>{{ field.label }}: {{ field_error }}</p>{% endfor %}{% endfor %}
+      </div>
+    {% endif %}
+    <form method="post" action="{{ contacts_url }}" data-auth-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save">
+      {{ form.enrollment_id }}
+      {{ form.channel }}
+      {{ form.expected_version }}
+      <div class="field{% if form.destination.errors %} field--error{% endif %}">
+        {{ form.destination.label_tag }}
+        {{ form.destination }}
+        <p class="hint" id="contact-destination-help">{% trans "Enter the full destination exactly as it should receive messages." %}</p>
+        {% if form.destination.errors %}<div class="field-errors" id="{{ form.destination.auto_id }}_error">{% for field_error in form.destination.errors %}<p class="field-error">{{ field_error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="actions">
+        <button type="submit">{% trans "Save destination" %}</button>
+      </div>
+    </form>
+    <form method="post" action="{{ contacts_url }}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="manage">
+      <input type="hidden" name="enrollment_id" value="{{ target.enrollment_id }}">
+      <div class="actions">
+        <button class="button button--quiet" type="submit">{% trans "Back to contacts" %}</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

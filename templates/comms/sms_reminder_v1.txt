@@ -1,0 +1,1 @@
+{{ clinic }}: consulta em {{ date }}, {{ start }}–{{ end }} ({{ timezone }}). Cancelar ou reagendar: portal ou clínica.

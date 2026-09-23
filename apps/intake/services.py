@@ -1,8 +1,35 @@
 """Phase >=1 intake service entrypoints."""
 
-from typing import NoReturn
-
 from apps.intake.access import PatientAccessDeniedError
+from apps.intake.contacts import (
+    AutomatedMessageError,
+    ContactConflictError,
+    ContactEditTarget,
+    ContactEventView,
+    ContactInputError,
+    ContactOverview,
+    ContactView,
+    PreferenceView,
+    contact_for_edit,
+    contact_overview,
+    enqueue_automated_message,
+    mask_destination,
+    save_contact_destination,
+    set_purpose_channel,
+    verify_contact,
+)
+from apps.intake.patient_access import (
+    AccessOverview,
+    GrantView,
+    IssuedInvitation,
+    PatientSessionBinding,
+    PatientSessionOverview,
+    SessionView,
+    access_overview,
+    issue_invitation,
+    redeem_invitation,
+    revoke_patient_access,
+)
 from apps.intake.patient_creation import (
     PatientBirthDateError,
     PatientCreateInputError,
@@ -16,8 +43,29 @@ from apps.intake.patient_search import (
     PatientSearchPage,
     search_patients,
 )
+from apps.intake.questionnaires import (
+    assign_questionnaire,
+    clinical_response,
+    completion_status,
+    patient_response,
+    patient_responses,
+    publish_template,
+    reopen_response,
+    save_response,
+    submit_intake,
+)
 
 __all__ = (
+    "AccessOverview",
+    "AutomatedMessageError",
+    "ContactConflictError",
+    "ContactEditTarget",
+    "ContactEventView",
+    "ContactInputError",
+    "ContactOverview",
+    "ContactView",
+    "GrantView",
+    "IssuedInvitation",
     "PatientAccessDeniedError",
     "PatientBirthDateError",
     "PatientCreateInputError",
@@ -26,13 +74,30 @@ __all__ = (
     "PatientSearchInputError",
     "PatientSearchItem",
     "PatientSearchPage",
+    "PatientSessionBinding",
+    "PatientSessionOverview",
+    "PreferenceView",
+    "SessionView",
+    "access_overview",
+    "assign_questionnaire",
+    "clinical_response",
+    "completion_status",
+    "contact_for_edit",
+    "contact_overview",
     "create_patient",
+    "enqueue_automated_message",
+    "issue_invitation",
+    "mask_destination",
+    "patient_response",
+    "patient_responses",
+    "publish_template",
+    "redeem_invitation",
+    "reopen_response",
+    "revoke_patient_access",
+    "save_contact_destination",
+    "save_response",
     "search_patients",
+    "set_purpose_channel",
     "submit_intake",
+    "verify_contact",
 )
-
-
-def submit_intake() -> NoReturn:
-    """Submit patient intake when the intake domain is implemented."""
-    message = "Phase >=1"
-    raise NotImplementedError(message)

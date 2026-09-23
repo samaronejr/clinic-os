@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.exceptions import ValidationError
 from django.db import connection, models
+from django.utils.translation import gettext_lazy as _
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -25,7 +26,7 @@ LOCAL_MINUTE_PATTERN: Final = re.compile(
 )
 LOCAL_MINUTE_FORMAT: Final = "%Y-%m-%dT%H:%M"
 MINUTES_PER_DAY: Final = 24 * 60
-INVALID_TIMEZONE_MESSAGE: Final = "Enter a valid IANA timezone."
+INVALID_TIMEZONE_MESSAGE: Final = _("Enter a valid IANA timezone.")
 CLINIC_DEPENDENCY_QUERIES: Final = (
     (
         "clinic_app.intake_patientclinicenrollment",

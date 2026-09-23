@@ -7,6 +7,7 @@ from apps.identity.models import User
 from django.contrib.staticfiles import finders
 from django.test import Client, override_settings
 from django.urls import Resolver404, resolve
+from django.utils.translation import gettext
 
 from otp_test_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
@@ -38,7 +39,7 @@ def test_login_screen_uses_external_design_system_styles_and_accessible_form() -
     assert b'<label for="id_username">' in response.content
     assert b'<label for="id_password">' in response.content
     assert b'aria-describedby="login-help"' in response.content
-    assert b"Sign in to Clinic OS" in response.content
+    assert gettext("Sign in to Clinic OS").encode() in response.content
 
 
 @pytest.mark.parametrize(
@@ -71,9 +72,9 @@ def test_auth_showcase_is_debug_only_and_contains_inert_required_states(
         response = client.get("/__ui__/auth/")
 
     assert response.status_code == 200
-    for state in (b"Default", b"Focus", b"Error", b"Disabled", b"Loading", b"Success"):
-        assert state in response.content
-    assert b"QR placeholder" in response.content
+    for state in ("default", "focus", "error", "disabled", "loading", "success"):
+        assert f'data-state="{state}"'.encode() in response.content
+    assert gettext("QR placeholder").encode() in response.content
     assert b"otpauth://" not in response.content
     assert b"data:image/png" not in response.content
 
@@ -97,8 +98,14 @@ def test_route_meta_descriptions_are_specific(rbac_graph: RbacGraph) -> None:
     with runtime_role():
         logout = client.get("/auth/logout/")
 
-    assert b"Sign in securely to the Clinic OS clinical workspace." in login.content
-    assert b"Sign out of the Clinic OS clinical workspace securely." in logout.content
+    assert (
+        gettext("Sign in securely to the Clinic OS clinical workspace.").encode()
+        in login.content
+    )
+    assert (
+        gettext("Sign out of the Clinic OS clinical workspace securely.").encode()
+        in logout.content
+    )
 
 
 @override_settings(LANGUAGE_CODE="ko")
@@ -139,7 +146,7 @@ def test_logout_requires_confirmation_post_and_clears_session(
         response = client.post("/auth/logout/")
 
     assert confirmation.status_code == 200
-    assert b"Sign out" in confirmation.content
+    assert gettext("Sign out").encode() in confirmation.content
     assert response.status_code == 302
     assert response.headers["Location"] == "/auth/login/"
     assert "active_org_id" not in client.session
@@ -171,5 +178,8 @@ def test_invalid_login_returns_plain_recovery_copy_without_authentication(
         )
 
     assert response.status_code == 200
-    assert b"Check your username and password, then try again." in response.content
+    assert (
+        gettext("Check your username and password, then try again.").encode()
+        in response.content
+    )
     assert "active_org_id" not in client.session

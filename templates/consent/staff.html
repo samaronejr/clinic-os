@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-consent.css' %}">{% endblock %}
+{% block title %}Consentimentos da clínica · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="staff-consent-title">
+  <p class="eyebrow">Clínica · Consentimentos</p>
+  <h1 id="staff-consent-title">Textos e comprovantes</h1>
+  <p class="lede">Somente o paciente pode consentir. A equipe consulta comprovantes, sem aceitar ou revogar em seu nome.</p>
+  {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="feedback feedback--error" role="alert">{{ error }}</p>{% endif %}
+  <section class="panel" aria-labelledby="publish-title">
+    <h2 id="publish-title">Publicar nova versão</h2>
+    <p>Disponível para administração e titular da clínica. O texto completo substitui a versão oferecida para novas aceitações, nunca o histórico. Apenas dados sintéticos; publicação não equivale a aprovação jurídica.</p>
+    <form method="post" novalidate>
+      {% csrf_token %}{{ form.non_field_errors }}
+      {% for field in form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" name="action" value="publish" type="submit">Publicar nova versão</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="lookup-title">
+    <h2 id="lookup-title">Consultar comprovantes</h2>
+    <form method="post">
+      {% csrf_token %}
+      <div class="field"><label for="enrollment-id">Identificador do vínculo com a clínica</label><input id="enrollment-id" name="enrollment_id" required></div>
+      <button class="button button--secondary" name="action" value="receipts" type="submit">Consultar comprovantes</button>
+    </form>
+  </section>
+  {% include "consent/receipts.html" %}
+</section>
+{% endblock %}

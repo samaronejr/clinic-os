@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "incident_record_retention",
+  "environment": "synthetic",
+  "evidence_path": "evidence/incident_record_retention.json",
+  "evidence_sha256": "c4de6de1d1428f6357e8516c9b9940000e950b1797101db64e77965a5a27fe78",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the incident_record_retention capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}
