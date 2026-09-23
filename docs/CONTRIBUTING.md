@@ -73,31 +73,31 @@ line-by-line self-review and fresh targeted tests before the full gate.
 Tenant isolation and schema drift:
 
 ```sh
-uv run pytest --reuse-db tests/test_schema_policy.py tests/test_tenancy_rls.py tests/test_tenant_guc_boundaries.py tests/test_tenant_middleware.py tests/test_identity_isolation.py
+uv run pytest --reuse-db tests/infra/test_schema_policy.py tests/identity/test_tenancy_rls.py tests/identity/test_tenant_guc_boundaries.py tests/identity/test_tenant_middleware.py tests/identity/test_identity_isolation.py
 ```
 
 Audit append, immutability, and verification:
 
 ```sh
-uv run pytest --reuse-db tests/test_audit_append.py tests/test_audit_ledger.py
+uv run pytest --reuse-db tests/audit/test_audit_append.py tests/audit/test_audit_ledger.py
 ```
 
 RBAC and relational integrity:
 
 ```sh
-uv run pytest --reuse-db tests/test_identity_rbac.py tests/test_identity_tenancy_models.py tests/test_auth_backend.py tests/test_resolver_catalog.py
+uv run pytest --reuse-db tests/identity/test_identity_rbac.py tests/identity/test_identity_tenancy_models.py tests/auth/test_auth_backend.py tests/infra/test_resolver_catalog.py
 ```
 
 TOTP enrollment, isolation, session, redirect, and telemetry behavior:
 
 ```sh
-uv run pytest --reuse-db tests/test_2fa.py tests/test_2fa_enrollment.py tests/test_2fa_security.py tests/test_2fa_sessions.py tests/test_2fa_redirect_security.py tests/test_2fa_telemetry.py tests/test_totp_device_isolation.py
+uv run pytest --reuse-db tests/auth/test_2fa.py tests/auth/test_2fa_enrollment.py tests/auth/test_2fa_security.py tests/auth/test_2fa_sessions.py tests/auth/test_2fa_redirect_security.py tests/auth/test_2fa_telemetry.py tests/auth/test_totp_device_isolation.py
 ```
 
 Recent-verification policy, challenge, session, telemetry, and UI behavior:
 
 ```sh
-uv run pytest --reuse-db tests/test_stepup_policy.py tests/test_stepup_challenge.py tests/test_stepup_sessions.py tests/test_stepup_telemetry.py tests/test_stepup_ui.py
+uv run pytest --reuse-db tests/auth/test_stepup_policy.py tests/auth/test_stepup_challenge.py tests/auth/test_stepup_sessions.py tests/auth/test_stepup_telemetry.py tests/auth/test_stepup_ui.py
 ```
 
 ## Migrations, tenant tables, and RLS
@@ -106,7 +106,7 @@ uv run pytest --reuse-db tests/test_stepup_policy.py tests/test_stepup_challenge
   `clinic_owner`; never make `clinic_app` an owner or bypass role.
 - Every new tenant table must carry an organization key, receive exact
   `ENABLE` plus `FORCE ROW LEVEL SECURITY` DDL and the fail-closed
-  `tenant_isolation` policy, and pass `tests/test_schema_policy.py`. Update the
+  `tenant_isolation` policy, and pass `tests/infra/test_schema_policy.py`. Update the
   expected table/policy matrix in the same reviewed change. Every new tenant
   table must pass schema drift before merge.
 - Preserve the request order: set `app.current_user_id`, validate membership
@@ -174,6 +174,6 @@ handoff.
 
 Source anchors: [CI target](../Makefile),
 [hosted workflow](../.github/workflows/ci.yml),
-[module boundaries](../tests/test_module_boundaries.py),
-[schema policy](../tests/test_schema_policy.py), and
+[module boundaries](../tests/infra/test_module_boundaries.py),
+[schema policy](../tests/infra/test_schema_policy.py), and
 [pre-commit hooks](../.pre-commit-config.yaml).

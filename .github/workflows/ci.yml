@@ -72,7 +72,7 @@ jobs:
           make db-posture
           ops/testing/image_smoke.sh build --sha "$GITHUB_SHA"
           ops/testing/browser_runner.sh probe --require-suite availability --require-suite patient --require-suite scheduling
-          uv run pytest -q tests/test_schema_policy.py tests/test_phase1_audit_migration.py tests/test_browser_runner_contract.py tests/test_container_contract.py
+          uv run pytest -q tests/infra/test_schema_policy.py tests/audit/test_phase1_audit_migration.py tests/browser/test_browser_runner_contract.py tests/isolation/test_container_contract.py
           ops/testing/tls_stack.sh smoke
 
   actionlint:
