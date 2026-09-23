@@ -33,7 +33,7 @@ jobs:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
       - name: Bind job-owned authority and TLS identity
         run: |
-          mkdir -p -m 0700 /tmp/opencode
+          install -d -m 0700 /tmp/opencode
           ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed database quality gates
@@ -72,7 +72,7 @@ jobs:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
       - name: Bind job-owned authority and TLS identity
         run: |
-          mkdir -p -m 0700 /tmp/opencode
+          install -d -m 0700 /tmp/opencode
           ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed migration and contract gates
@@ -110,7 +110,7 @@ jobs:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
       - name: Bind job-owned authority and TLS identity
         run: |
-          mkdir -p -m 0700 /tmp/opencode
+          install -d -m 0700 /tmp/opencode
           ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
           echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
