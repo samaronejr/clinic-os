@@ -137,9 +137,7 @@ jobs:
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
       - name: Bind task-owned evidence root
-        run: |
-          install -d -m 0700 "$GITHUB_WORKSPACE/.omo"
-          mv "$GITHUB_WORKSPACE/evidence" "$GITHUB_WORKSPACE/.omo/evidence"
+        run: ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
       - name: Verify browser prerequisites
         run: |
           command -v google-chrome || command -v google-chrome-stable || command -v chromium
