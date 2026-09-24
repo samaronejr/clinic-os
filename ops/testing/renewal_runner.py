@@ -722,6 +722,12 @@ def _server_environment(app_dsn: str) -> dict[str, str]:
         {
             "ALLOWED_HOSTS": "127.0.0.1,localhost",
             "APP_DATABASE_URL": app_dsn,
+            # Browser journeys exercise real dispatch boundaries through
+            # outbox records and worker subprocesses; the in-process
+            # broker exists only so request-time apply_async does not
+            # crash the view. Cross-process delivery is proven by the
+            # real Redis broker gate.
+            "CELERY_BROKER_URL": "memory://",
             "CLINIC_DATA_MODE": "synthetic",
             "DJANGO_SETTINGS_MODULE": "config.settings.renewal",
             "SECRET_KEY": secrets.token_urlsafe(48),
