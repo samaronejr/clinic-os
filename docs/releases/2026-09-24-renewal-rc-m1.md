@@ -69,7 +69,7 @@ not redone.
   - `renewal-acceptance` — `if: always()`, `needs:` all of the above;
     `ops/testing/renewal_acceptance.py` rejects failed/cancelled/missing
     jobs, absent or malformed suite reports, zero-test suites, shard↔registry
-    drift, and divergent `source_manifest_sha256` across shards. Emits the
+    drift, and divergent `revision_sha`/`tree_sha` across shards. Emits the
     stable check name **Renewal RC acceptance**.
 - `.omo` binding uses the workspace-symlink contract
   (`ln -sfn $GITHUB_WORKSPACE .omo`); a real directory + `mv` breaks the
