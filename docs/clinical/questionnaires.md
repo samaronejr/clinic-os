@@ -82,7 +82,7 @@ response or receipt rows to reception.
 
 ## Verification
 
-`P tests/renewal/test_questionnaires.py tests/test_module_boundaries.py && B questionnaires`
+`P tests/renewal/test_questionnaires.py tests/infra/test_module_boundaries.py && B questionnaires`
 uses the renewal plan's P/B commands. The browser suite runs as `clinic_app` with
 real invitations, CSRF, patient sessions and physician TOTP. Owner access is
 confined to synthetic fixture/configuration setup. Screenshots contain synthetic

@@ -52,12 +52,12 @@ from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 from psycopg import sql
 
+from auth.stepup_test_support import create_role_actor
 from patient_service_support import runtime_role
 from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import seed as clinical_seed
 from renewal.test_encounters import setup_context
 from renewal.test_retention import admin
-from stepup_test_support import create_role_actor
 
 if TYPE_CHECKING:
     from uuid import UUID

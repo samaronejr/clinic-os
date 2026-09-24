@@ -40,14 +40,14 @@ readonly -a stages=(
   'timeout 300s uv run ruff format --check .'
   'timeout 600s uv run mypy .'
   'timeout 600s uv run pip-audit --local'
-  'timeout 600s uv run pytest -q tests/test_production_settings.py tests/test_release_settings.py tests/test_browser_settings.py tests/test_database_options.py tests/test_data_mode.py tests/test_product_telemetry.py tests/test_timezone_source.py'
-  'timeout 600s uv run pytest -q tests/test_schema_policy.py tests/test_resolver_catalog.py tests/test_readiness.py tests/test_container_contract.py'
-  'timeout 900s uv run pytest -q tests/test_patient_services.py tests/test_availability_concurrency.py tests/test_appointment_concurrency.py tests/test_appointment_transition_concurrency.py tests/test_lifecycle_lock_races.py'
-  'timeout 900s uv run pytest -q tests/test_phase1_audit_contract.py tests/test_phase1_audit_migration.py tests/test_audit_append.py tests/test_audit_unicode_boundaries.py'
+  'timeout 600s uv run pytest -q tests/infra/test_production_settings.py tests/infra/test_release_settings.py tests/browser/test_browser_settings.py tests/infra/test_database_options.py tests/infra/test_data_mode.py tests/infra/test_product_telemetry.py tests/infra/test_timezone_source.py'
+  'timeout 600s uv run pytest -q tests/infra/test_schema_policy.py tests/infra/test_resolver_catalog.py tests/infra/test_readiness.py tests/isolation/test_container_contract.py'
+  'timeout 900s uv run pytest -q tests/patients/test_patient_services.py tests/scheduling/test_availability_concurrency.py tests/scheduling/test_appointment_concurrency.py tests/scheduling/test_appointment_transition_concurrency.py tests/infra/test_lifecycle_lock_races.py'
+  'timeout 900s uv run pytest -q tests/audit/test_phase1_audit_contract.py tests/audit/test_phase1_audit_migration.py tests/audit/test_audit_append.py tests/audit/test_audit_unicode_boundaries.py'
   'timeout 300s uv run python ops/testing/assert_foundation_history.py cffbb1900ae2132560f20c27fcf1a514a1ef71aa'
   'timeout --signal=TERM --kill-after=120s 900s ops/testing/image_contract_gate.sh --sha "$SHA" --inputs .omo/evidence/clinic-os-phase1a-final/terminal/inputs.json'
   'timeout --signal=TERM --kill-after=120s 600s ops/testing/tls_stack.sh smoke'
-  'timeout --signal=TERM --kill-after=120s 600s uv run pytest -q tests/test_isolated_db_harness.py tests/test_isolation_ledger.py'
+  'timeout --signal=TERM --kill-after=120s 600s uv run pytest -q tests/infra/test_isolated_db_harness.py tests/isolation/test_isolation_ledger.py'
 )
 
 for index in "${!stages[@]}"; do

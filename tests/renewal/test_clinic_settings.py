@@ -34,10 +34,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, connection, connections, transaction
 from PIL import Image
 
-from appointment_service_support import (
-    create_synthetic_appointment,
-    seed_appointment_setup,
-)
+from auth.stepup_test_support import create_role_actor, verified_request
 from otp_test_support import runtime_role as http_runtime_role
 from patient_http_support import verified_physician_client
 from patient_service_support import runtime_role
@@ -47,7 +44,10 @@ from renewal.test_encounters import seed as clinical_seed
 from renewal.test_encounters import setup_context
 from renewal.test_reminders import _contact
 from renewal.test_retention import admin, finalized, staff_client
-from stepup_test_support import create_role_actor, verified_request
+from scheduling.appointment_service_support import (
+    create_synthetic_appointment,
+    seed_appointment_setup,
+)
 
 if TYPE_CHECKING:
     from typing import Any

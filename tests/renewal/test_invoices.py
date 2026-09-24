@@ -43,19 +43,19 @@ from django.db import DatabaseError, connection, connections, transaction
 from django.utils import timezone
 from psycopg import sql
 
-from appointment_service_support import (
+from patient_service_support import runtime_role
+from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_appointment_setup,
     seed_cross_clinic_appointment_setups,
 )
-from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from uuid import UUID
 
-    from appointment_service_support import AppointmentSetup
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = pytest.mark.django_db(transaction=True)
 TABLES = {

@@ -108,11 +108,11 @@ from django.db.utils import DatabaseError
 from django.test.utils import CaptureQueriesContext
 from psycopg.errors import InsufficientPrivilege
 
+from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import setup_context
-from stepup_test_support import verified_request
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping

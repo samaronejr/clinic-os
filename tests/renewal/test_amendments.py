@@ -39,9 +39,10 @@ from django.db import DatabaseError, connection, connections, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
-from appointment_service_support import (
-    AppointmentSetup,
-    create_synthetic_appointment,
+from auth.stepup_test_support import (
+    clear_freshness,
+    seed_freshness,
+    verified_request,
 )
 from otp_test_support import get_totp_device
 from patient_service_support import runtime_role
@@ -52,10 +53,9 @@ from renewal.test_encounters import (
     seed_appointment_setup_for_existing,
     setup_context,
 )
-from stepup_test_support import (
-    clear_freshness,
-    seed_freshness,
-    verified_request,
+from scheduling.appointment_service_support import (
+    AppointmentSetup,
+    create_synthetic_appointment,
 )
 
 if TYPE_CHECKING:

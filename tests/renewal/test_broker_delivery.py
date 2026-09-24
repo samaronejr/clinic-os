@@ -51,12 +51,12 @@ from apps.tenancy.db import tenant_context
 from config.celery import app as celery_app
 from django.db import connection, transaction
 
-from appointment_service_support import (
+from patient_service_support import runtime_role
+from renewal.test_integration_boundary import SECRET, SyntheticAuthenticator
+from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_appointment_setup,
 )
-from patient_service_support import runtime_role
-from renewal.test_integration_boundary import SECRET, SyntheticAuthenticator
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -64,8 +64,8 @@ if TYPE_CHECKING:
 
     from pytest_django.fixtures import SettingsWrapper
 
-    from appointment_service_support import AppointmentSetup
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),

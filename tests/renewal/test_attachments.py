@@ -37,10 +37,6 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, connection, transaction
 from django.test import Client, override_settings
 
-from appointment_service_support import (
-    AppointmentSetup,
-    create_synthetic_appointment,
-)
 from otp_test_support import (
     OTP_RAW_CREDENTIAL,
     create_receptionist,
@@ -48,6 +44,10 @@ from otp_test_support import (
 from otp_test_support import runtime_role as http_runtime_role
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client, seed, setup_context
+from scheduling.appointment_service_support import (
+    AppointmentSetup,
+    create_synthetic_appointment,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

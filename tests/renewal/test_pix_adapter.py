@@ -33,8 +33,8 @@ from django.db import DatabaseError, connection, connections, transaction
 from django.utils import timezone
 from psycopg import sql
 
-from appointment_service_support import seed_appointment_setup
 from patient_service_support import runtime_role
+from scheduling.appointment_service_support import seed_appointment_setup
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -43,8 +43,8 @@ if TYPE_CHECKING:
     from apps.billing.adapters import PixRequest, PixResponse
     from pytest_django.fixtures import SettingsWrapper
 
-    from appointment_service_support import AppointmentSetup
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = pytest.mark.django_db(transaction=True)
 TABLES = ["billing_pixoperation", "billing_pixcharge"]

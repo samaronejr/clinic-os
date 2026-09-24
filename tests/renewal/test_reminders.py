@@ -45,13 +45,13 @@ from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
 from django.utils import timezone
 
-from appointment_service_support import (
-    create_synthetic_appointment,
-    seed_appointment_setup,
-)
 from patient_http_support import receptionist_client
 from patient_service_support import runtime_role
 from renewal.test_integration_boundary import SECRET, SyntheticAuthenticator
+from scheduling.appointment_service_support import (
+    create_synthetic_appointment,
+    seed_appointment_setup,
+)
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -59,8 +59,8 @@ if TYPE_CHECKING:
     from apps.comms.adapters import SendAdapter
     from pytest_django.fixtures import SettingsWrapper
 
-    from appointment_service_support import AppointmentSetup
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = pytest.mark.django_db(transaction=True)
 ADAPTERS = {
