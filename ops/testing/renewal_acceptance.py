@@ -9,7 +9,9 @@
   shard that silently drops one shrinks verification and must fail;
 * every registered suite produced a runner report with a nonzero executed
   test count, a zero exit, the ``clinic_app`` runtime role and a bound
-  source manifest; all shards must agree on one source manifest digest;
+  source manifest; all shards must agree on one tested source revision
+  (the manifest digest itself binds per-job ledger state, so it cannot
+  be compared across jobs);
 * every suite's JUnit document parses and carries no failures, errors or
   skips, and its case count matches the runner report.
 
@@ -40,6 +42,7 @@ SHARD_LIST = re.compile(
 SHARD_ENTRY = re.compile(r'-\s*"([^"]*)"')
 NEEDS_LIST = re.compile(r"renewal-acceptance:.*?needs:\s*\[([^\]]*)\]", re.DOTALL)
 DIGEST_HEX_LENGTH: Final = 64
+SHA_HEX_LENGTH: Final = 40
 EXPECTED_OPTIONS: Final = 3
 
 
@@ -120,6 +123,10 @@ def _validate_suite_report(suite: str, report_path: Path) -> list[str]:
     digest = report.get("source_manifest_sha256")
     if not isinstance(digest, str) or len(digest) != DIGEST_HEX_LENGTH:
         failures.append(f"suite {suite}: source manifest digest missing")
+    for field in ("revision_sha", "tree_sha"):
+        value = report.get(field)
+        if not isinstance(value, str) or len(value) != SHA_HEX_LENGTH:
+            failures.append(f"suite {suite}: source {field} missing")
     junit = report_path.parent / "browser" / f"junit-{suite}.xml"
     failures.extend(_junit_failures(suite, junit, tests))
     return failures
@@ -166,10 +173,10 @@ def _binding_failures(
 
 def _report_failures(
     registered: set[str], artifacts: Path
-) -> tuple[list[str], set[str]]:
-    """Return (failures, manifest digests) across suite reports."""
+) -> tuple[list[str], set[tuple[str, str]]]:
+    """Return (failures, tested (revision, tree) identities) across reports."""
     failures: list[str] = []
-    digests: set[str] = set()
+    identities: set[tuple[str, str]] = set()
     for suite in sorted(registered):
         candidates = list(artifacts.glob(f"*/{suite}/report.json"))
         if len(candidates) != 1:
@@ -180,14 +187,9 @@ def _report_failures(
         suite_failures = _validate_suite_report(suite, candidates[0])
         failures.extend(suite_failures)
         if not suite_failures:
-            digests.add(
-                str(
-                    json.loads(candidates[0].read_text(encoding="utf-8"))[
-                        "source_manifest_sha256"
-                    ]
-                )
-            )
-    return failures, digests
+            report = json.loads(candidates[0].read_text(encoding="utf-8"))
+            identities.add((str(report["revision_sha"]), str(report["tree_sha"])))
+    return failures, identities
 
 
 def validate(workflow: str, needs: dict[str, object], artifacts: Path) -> list[str]:
@@ -196,10 +198,10 @@ def validate(workflow: str, needs: dict[str, object], artifacts: Path) -> list[s
     failures = _needs_failures(needs)
     binding, _bound = _binding_failures(workflow, registered)
     failures.extend(binding)
-    report_failures, digests = _report_failures(registered, artifacts)
+    report_failures, identities = _report_failures(registered, artifacts)
     failures.extend(report_failures)
-    if not failures and len(digests) != 1:
-        failures.append("suite reports disagree on the tested source manifest digest")
+    if not failures and len(identities) != 1:
+        failures.append("suite reports disagree on the tested source revision")
     return failures
 
 
@@ -221,8 +223,10 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write("renewal-acceptance: missing required arguments\n")
         return 2
     try:
-        needs_raw = json.loads(options["--needs-json"])
-    except json.JSONDecodeError:
+        needs_raw = json.loads(
+            Path(options["--needs-json"]).read_text(encoding="utf-8")
+        )
+    except (json.JSONDecodeError, OSError):
         sys.stderr.write("renewal-acceptance: needs payload is malformed\n")
         return 2
     failures = validate(

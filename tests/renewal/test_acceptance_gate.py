@@ -2,7 +2,7 @@
 
 The gate must reject failed/cancelled/skipped required jobs, shrunken or
 duplicated suite binding, missing or malformed runner reports/JUnit files,
-zero-test evidence, skipped required tests and diverging source digests.
+zero-test evidence, skipped required tests and diverging source revisions.
 """
 
 from __future__ import annotations
@@ -42,18 +42,27 @@ def _needs(**overrides: object) -> dict[str, object]:
     return needs
 
 
-def _report(suite: str, *, digest: str = "d" * 64, tests: int = 3) -> dict[str, object]:
+def _report(
+    suite: str,
+    *,
+    digest: str = "d" * 64,
+    tests: int = 3,
+    revision: str = "a" * 40,
+    tree: str = "b" * 40,
+) -> dict[str, object]:
     return {
         "artifact_root": "/tmp/evidence",  # noqa: S108 - fixture-only label
         "base_url": "http://127.0.0.1:54321",
         "browser": "/usr/bin/chromium",
         "pytest_exit": 0,
+        "revision_sha": revision,
         "runtime_role": "clinic_app",
         "schema_version": 1,
         "source_entry_count": 1000,
         "source_manifest_sha256": digest,
         "suite": suite,
         "tests": tests,
+        "tree_sha": tree,
         "verified_record": None,
     }
 
@@ -66,10 +75,16 @@ def _write_suite(  # noqa: PLR0913 - fixture builder needs its switches
     junit: str | None = None,
     raw_report: str | None = None,
     digest: str = "d" * 64,
+    revision: str = "a" * 40,
+    tree: str = "b" * 40,
 ) -> None:
     suite_dir = root / "shard" / suite
     (suite_dir / "browser").mkdir(parents=True, exist_ok=True)
-    report = report if report is not None else _report(suite, digest=digest)
+    report = (
+        report
+        if report is not None
+        else _report(suite, digest=digest, revision=revision, tree=tree)
+    )
     if raw_report is not None:
         (suite_dir / "report.json").write_text(raw_report)
     else:
@@ -87,9 +102,15 @@ def _write_suite(  # noqa: PLR0913 - fixture builder needs its switches
     (suite_dir / "browser" / f"junit-{suite}.xml").write_text(junit)
 
 
-def _populate(root: Path, *, digest: str = "d" * 64) -> Path:
+def _populate(
+    root: Path,
+    *,
+    digest: str = "d" * 64,
+    revision: str = "a" * 40,
+    tree: str = "b" * 40,
+) -> Path:
     for suite in sorted(SUITES):
-        _write_suite(root, suite, digest=digest)
+        _write_suite(root, suite, digest=digest, revision=revision, tree=tree)
     return root
 
 
@@ -207,6 +228,15 @@ def test_missing_digest_is_rejected(tmp_path: Path) -> None:
     assert any("digest" in failure for failure in failures)
 
 
+def test_missing_revision_is_rejected(tmp_path: Path) -> None:
+    artifacts = _populate(tmp_path / "artifacts")
+    report = _report(FIRST_SUITE)
+    report["revision_sha"] = ""
+    _write_suite(artifacts, FIRST_SUITE, report=report)
+    failures = validate(_workflow(), _needs(), artifacts)
+    assert any("revision_sha" in failure for failure in failures)
+
+
 def test_skipped_junit_case_is_rejected(tmp_path: Path) -> None:
     artifacts = _populate(tmp_path / "artifacts")
     junit = (
@@ -237,12 +267,21 @@ def test_malformed_junit_is_rejected(tmp_path: Path) -> None:
     assert any("malformed" in failure for failure in failures)
 
 
-def test_diverging_source_digests_are_rejected(tmp_path: Path) -> None:
+def test_diverging_source_revisions_are_rejected(tmp_path: Path) -> None:
+    artifacts = _populate(tmp_path / "artifacts", revision="c" * 40)
+    second = sorted(SUITES)[1]
+    _write_suite(artifacts, second, revision="e" * 40)
+    failures = validate(_workflow(), _needs(), artifacts)
+    assert any("revision" in failure for failure in failures)
+
+
+def test_diverging_manifest_digests_are_accepted(tmp_path: Path) -> None:
+    # The manifest digest binds per-job ledger state; only revision and
+    # tree identity must agree across shards.
     artifacts = _populate(tmp_path / "artifacts", digest="a" * 64)
     second = sorted(SUITES)[1]
     _write_suite(artifacts, second, digest="b" * 64)
-    failures = validate(_workflow(), _needs(), artifacts)
-    assert any("digest" in failure for failure in failures)
+    assert validate(_workflow(), _needs(), artifacts) == []
 
 
 def test_missing_workflow_matrix_is_rejected(tmp_path: Path) -> None:

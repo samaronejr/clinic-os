@@ -945,12 +945,14 @@ def _run_browser_suite(
         "base_url": base_url,
         "browser": browser,
         "pytest_exit": pytest_code,
+        "revision_sha": manifest.get("base_revision_sha"),
         "runtime_role": APP_ROLE,
         "schema_version": 1,
         "source_entry_count": len(entries) if isinstance(entries, list) else 0,
         "source_manifest_sha256": digest,
         "suite": suite,
         "tests": tests,
+        "tree_sha": manifest.get("base_tree_sha"),
         "verified_record": str(record) if record is not None else None,
     }
 
