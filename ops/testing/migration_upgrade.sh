@@ -46,20 +46,41 @@ psql_super() {
         -U "$POSTGRES_USER" "$@"
 }
 
+# Cleanup is armed before any resource exists so every failure path drops
+# only what this run created; the original exit status is preserved.
+db_created=0
+worktree_added=0
+secret_dir="${RUNNER_TEMP:-/tmp}/migration-upgrade-secrets.$$"
+cleanup() {
+    rc=$?
+    trap - EXIT
+    if [ "$worktree_added" = 1 ]; then
+        git -C "$project_root" worktree remove --force "$base_worktree" || true
+    fi
+    if [ "$db_created" = 1 ]; then
+        psql_super -d postgres -qc "DROP DATABASE IF EXISTS $upgrade_db" || true
+    fi
+    rm -rf "$secret_dir"
+    exit $rc
+}
+trap cleanup EXIT
+
 echo "== create upgrade database $upgrade_db =="
 psql_super -d postgres -qc "CREATE DATABASE $upgrade_db"
+db_created=1
 psql_super -d "$upgrade_db" \
     -v database_name="$upgrade_db" -v app_schema="clinic_app" \
     -f - < "$project_root/ops/db/bootstrap.sql"
 
 echo "== check out base $base_sha =="
 git -C "$project_root" worktree add --detach "$base_worktree" "$base_sha"
-trap 'git -C "$project_root" worktree remove --force "$base_worktree" || true' EXIT
+worktree_added=1
 
 echo "== sync base dependencies =="
 (cd "$base_worktree" && uv sync --locked --all-groups --quiet)
 
-secret_dir="$work_root/secrets"
+# The KEK dir must live outside work_root: the workflow publishes work_root
+# as an artifact and key material must never land in retained evidence.
 mkdir -m 0700 -p "$secret_dir"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$secret_dir/tenant-kek.secret"
 chmod 600 "$secret_dir/tenant-kek.secret"
@@ -143,6 +164,6 @@ echo "== confirm no migration drift =="
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py makemigrations --check --dry-run)
 
-echo "== drop upgrade database =="
-psql_super -d postgres -qc "DROP DATABASE $upgrade_db"
+printf '{"schema_version":1,"result":"PASS","base_sha":"%s","upgrade_db":"%s"}\n' \
+    "$base_sha" "$upgrade_db" > "$work_root/verdict.json"
 echo "migration-upgrade: PASS"

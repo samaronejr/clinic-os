@@ -35,6 +35,7 @@ REQUIRED_JOBS: Final = (
     "renewal-browser",
     "worker-integration",
     "migration-upgrade",
+    "actionlint",
 )
 SHARD_LIST = re.compile(
     r'renewal-browser:.*?shard:\s*\n((?:\s*-\s*"[^"]*"\s*\n)+)', re.DOTALL
