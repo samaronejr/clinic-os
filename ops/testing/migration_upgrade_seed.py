@@ -25,6 +25,7 @@ from apps.scheduling.appointment_creation import create_appointment
 from apps.scheduling.appointment_values import AppointmentLocalRange
 from apps.scheduling.availability_creation import create_availability
 from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import issue_tenant_key
 from django.db import connection, transaction
 
 ORGANIZATION_ID = uuid4()
@@ -73,6 +74,9 @@ with transaction.atomic(), connection.cursor() as cursor:
         clinic=clinic,
         role=UserClinicRole.Role.PHYSICIAN,
     )
+    # The tenant DEK must exist before clinic_app writes reach any
+    # envelope-protected field.
+    issue_tenant_key()
 
 with connection.cursor() as cursor:
     cursor.execute("SET ROLE clinic_app")
