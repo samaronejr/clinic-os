@@ -42,6 +42,8 @@ jobs:
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
           ops/testing/ci_postgres.sh up
           source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+          export CELERY_BROKER_URL="memory://"
+          rm -f "$GITHUB_WORKSPACE/.omo"
           uv sync --locked --all-groups
           make db-bootstrap
           make migrate
