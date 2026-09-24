@@ -1,6 +1,6 @@
 """Professional registry boundary; no real provider or credentials are selected.
 
-The task-6 physician_registration capability is unavailable (2026-09-12-v1).
+The task-6 physician_registration capability is unavailable (2026-09-24-v2).
 A synthetic response is never an authorized sandbox response or live approval.
 """
 

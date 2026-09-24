@@ -1,7 +1,7 @@
 # Physician verification boundary (task 31)
 
-Only synthetic data is authorized. The task-6
-`docs/integrations/records/2026-09-12-v1/physician_registration.md` record has no
+Only synthetic data is authorized. The
+`docs/integrations/records/2026-09-24-v2/physician_registration.md` record has no
 selected provider, machine API, owner approval or sandbox. `registry_capability()`
 therefore always returns `real_enabled=False`. There is no configuration switch
 that approves live verification. The live-data gate remains UNAPPROVED.

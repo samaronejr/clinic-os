@@ -18,7 +18,11 @@ hides content, and is terminal; live drafts block encounter closure.
 
 ## Category boundary
 
-The task-6 [2026-09-12-v1 register](../../docs/integrations/capabilities.md) has no
+Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger):
+SD-6 replaces the synthetic-only category with a prescription-class taxonomy
+(todo 34); the rules in this section still hold in code today.
+
+The [2026-09-24-v2 register](../../docs/integrations/capabilities.md) has no
 confirmed real issuance contract. Consequently **no real document category is
 supported**, including ordinary non-controlled prescriptions. Controlled,
 notification, antimicrobial and unknown categories fail closed server-side.

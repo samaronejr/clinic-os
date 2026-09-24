@@ -1,7 +1,7 @@
 """Signature provider boundary; no real signing capability is approved.
 
 The task-6 register records ``qualified_signing`` and
-``signature_verification`` as unavailable (2026-09-12-v1): no provider,
+``signature_verification`` as unavailable (2026-09-24-v2): no provider,
 format profile, verifier package or sandbox is selected. This module pins
 the provider contract and supplies an explicitly synthetic implementation
 for the rehearsal lifecycle only. The synthetic provider signs with a fixed

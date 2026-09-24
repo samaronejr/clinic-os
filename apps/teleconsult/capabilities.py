@@ -1,7 +1,7 @@
 """Fail-closed synthetic room decision for task-6's unavailable video record.
 
 There is no selected or owner-authorized video provider in record set
-2026-09-12-v1 (docs/integrations/records/2026-09-12-v1/video.md). Configuration
+2026-09-24-v2 (docs/integrations/records/2026-09-24-v2/video.md). Configuration
 cannot turn a synthetic room reference into live approval; a future approved
 provider must implement its own reviewed adapter and gate.
 """

@@ -1,7 +1,7 @@
 """Independent fail-closed channel decisions for task-6's unavailable records.
 
 There is no selected or owner-authorized real provider in record set
-2026-09-12-v1. Configuration cannot turn a synthetic receipt into live approval.
+2026-09-24-v2. Configuration cannot turn a synthetic receipt into live approval.
 A future approved provider must implement its own reviewed adapter and gate.
 """
 
