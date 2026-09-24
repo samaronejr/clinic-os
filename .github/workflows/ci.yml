@@ -20,6 +20,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install uv and Python
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -28,7 +29,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed database quality gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -60,7 +68,14 @@ jobs:
           python-version: "3.12"
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed migration and contract gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -72,7 +87,7 @@ jobs:
           make db-posture
           ops/testing/image_smoke.sh build --sha "$GITHUB_SHA"
           ops/testing/browser_runner.sh probe --require-suite availability --require-suite patient --require-suite scheduling
-          uv run pytest -q tests/test_schema_policy.py tests/test_phase1_audit_migration.py tests/test_browser_runner_contract.py tests/test_container_contract.py
+          uv run pytest -q --reuse-db tests/test_schema_policy.py tests/test_phase1_audit_migration.py tests/test_browser_runner_contract.py tests/test_container_contract.py
           ops/testing/tls_stack.sh smoke
 
   actionlint:
@@ -91,8 +106,15 @@ jobs:
           python-version: "3.12"
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
-        run: python ops/testing/validate_action_pins.py
+        run: uv run --locked python ops/testing/validate_action_pins.py
       - name: Check workflow syntax
-        uses: raven-actions/actionlint@963d4779ef039e217e5d0e6fd73ce9ab7764e493 # v2.1.0
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0

@@ -11,6 +11,7 @@ import signal
 def main() -> int:
     """Signal readiness, wait for release, and replace this process."""
     arguments = _parser().parse_args()
+    os.setsid()
     if os.getppid() != arguments.parent_pid:
         return 125
     libc = ctypes.CDLL(None, use_errno=True)

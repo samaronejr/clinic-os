@@ -11,6 +11,11 @@ import sys
 from pathlib import Path
 from typing import Final, Never
 
+if __package__ in {None, ""}:
+    _ROOT = Path(__file__).resolve().parents[2]
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+
 from ops.testing.browser_runner_contract import filesystem_contract
 from ops.testing.candidate_pair import validate_candidate_pair
 from ops.testing.isolation_candidate_verification import verify_candidate_image

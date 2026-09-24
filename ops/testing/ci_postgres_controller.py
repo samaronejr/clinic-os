@@ -70,7 +70,6 @@ def _up() -> None:
                 (os.POSIX_SPAWN_DUP2, log_fd, 2),
                 (os.POSIX_SPAWN_CLOSE, log_fd),
             ),
-            setsid=True,
         )
     finally:
         os.chdir(previous_directory)
@@ -86,11 +85,7 @@ def _up() -> None:
         waited, status = os.waitpid(pid, os.WNOHANG)
         if waited == pid:
             _cleanup_failed_up(root)
-            _fail(
-                "PostgreSQL daemon exited before readiness: "
-                f"{os.waitstatus_to_exitcode(status)}; "
-                f"private diagnostics retained at {root}"
-            )
+            _fail(f"PostgreSQL daemon exited before readiness: {status}")
         time.sleep(0.1)
     os.killpg(pid, signal.SIGTERM)
     _wait_for_exit(pid)
@@ -140,10 +135,8 @@ def _wait_for_exit(pid: int) -> None:
 
 def _cleanup_failed_up(root: Path) -> None:
     if (root / "supervisor.json").exists() and not (root / "cleaned").is_file():
-        _fail(
-            "PostgreSQL daemon failed without proving cleanup; "
-            f"private diagnostics retained at {root}"
-        )
+        _fail("PostgreSQL daemon failed without proving cleanup")
+    _remove_root(root)
 
 
 def _remove_root(root: Path) -> None:

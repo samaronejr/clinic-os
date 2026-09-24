@@ -15,7 +15,7 @@ from ops.testing.isolation_common import IsolationError, JsonValue
 
 PROJECT_ROOT: Final = Path(__file__).resolve().parents[2]
 SNAPSHOT: Final = (
-    "python ops/testing/isolation_ledger.py snapshot --approved-plan "
+    "uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "
     '"$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" '
     "--tracked-ci-sidecar "
     '"$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" '
@@ -32,8 +32,8 @@ ACTION_MAP: Final = {
         "v8.3.2",
     ),
     "raven-actions/actionlint": (
-        "963d4779ef039e217e5d0e6fd73ce9ab7764e493",
-        "v2.1.0",
+        "3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
+        "v2.2.0",
     ),
 }
 USE = re.compile(

@@ -18,3 +18,5 @@ build/
 dist/
 staticfiles/
 var/
+evidence/
+.omo

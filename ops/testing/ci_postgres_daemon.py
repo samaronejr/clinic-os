@@ -33,6 +33,7 @@ def main() -> int:
         _fail("invalid daemon root")
     for watched in STOP:
         signal.signal(watched, _stop)
+    os.setsid()
     repository = Path.cwd()
     write_record(
         root / "supervisor.json",

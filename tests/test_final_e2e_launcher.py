@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from ops.testing import f3_launcher_manifest
@@ -66,7 +67,10 @@ def test_launcher_sidecars_reject_drift_and_clean_poisoned_environment(
     inputs = terminal / "inputs.json"
     inputs.write_bytes(b'{"schema_version":1}\n')
     inputs.chmod(0o400)
-    launcher = Path("/home/samarone/Documents/clinic_project/.venv/bin/python")
+    launcher_dir = tmp_path / ".venv" / "bin"
+    launcher_dir.mkdir(parents=True)
+    launcher = launcher_dir / "python"
+    launcher.symlink_to(sys.executable)
     f3_launcher_manifest.freeze_launcher_sidecars(
         inputs=inputs,
         launcher=launcher,

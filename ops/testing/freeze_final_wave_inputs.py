@@ -8,6 +8,11 @@ import sys
 from pathlib import Path
 from typing import Never
 
+if __package__ in {None, ""}:
+    _ROOT = Path(__file__).resolve().parents[2]
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+
 from ops.testing.cgroup_capability_probe import ProbeRequest, run_capability_probe
 from ops.testing.f3_launcher_manifest import input_sidecar_bytes, launcher_prefix_bytes
 from ops.testing.isolation_claim_records import claim_objects

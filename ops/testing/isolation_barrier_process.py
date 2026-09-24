@@ -122,7 +122,6 @@ def start_barrier_process(
             argv,
             dict(environment),
             file_actions=actions,
-            setsid=True,
         )
     finally:
         for descriptor in (ready_write, release_read, stdout, stderr):
