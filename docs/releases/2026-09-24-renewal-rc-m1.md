@@ -62,8 +62,10 @@ not redone.
     per-suite `report.json` + JUnit artifacts always uploaded.
   - `worker-integration` — `apt redis-server` + preflight, then
     `CLINIC_BROKER_GATE=required pytest tests/renewal/test_broker_delivery.py`.
-  - `migration-upgrade` — derives base from `git merge-base` against the PR
-    base branch, runs `ops/testing/migration_upgrade.sh`.
+  - `migration-upgrade` — derives the upgrade base as
+    `git merge-base origin/main HEAD` (the pre-renewal deployed schema;
+    merging against the stacked PR base ref would degenerate to the
+    renewal head itself), runs `ops/testing/migration_upgrade.sh`.
   - `renewal-acceptance` — `if: always()`, `needs:` all of the above;
     `ops/testing/renewal_acceptance.py` rejects failed/cancelled/missing
     jobs, absent or malformed suite reports, zero-test suites, shard↔registry
@@ -118,6 +120,22 @@ not redone.
 | lint/type | `ruff check`, `ruff format`, `mypy` on touched files | clean |
 
 Hosted evidence: see PR #13 checks (`Renewal RC acceptance` aggregates them).
+
+## Defects the new gate exposed (fixed in this change)
+
+- `attachment_storage._authorize_mutation` claimed the storage ownership
+  marker before the attachment root existed; the sibling marker write
+  failed with `FileNotFoundError` and every upload returned 503 on a
+  fresh environment. The root is now created ahead of the synthetic
+  claim (`b3a59d9`).
+- `renewal_runner._server_environment` gave suite app servers no broker,
+  so request-time `execute_operation_task.apply_async` crashed document
+  delivery with kombu `ConnectionRefusedError`. The child now gets
+  `CELERY_BROKER_URL=memory://` (in-process only; cross-process delivery
+  is still proven exclusively by the Redis broker gate) (`b768984`).
+- `current_source_snapshot._open_ledger` did not canonicalize `.omo`,
+  which is a symlink in CI; every sibling caller resolves it first
+  (`373477d`).
 
 ## Known limits / non-claims
 
