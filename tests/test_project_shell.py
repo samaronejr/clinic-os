@@ -97,4 +97,5 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     assert sorted(project_tasks) == [
         "comms.dispatch_due_reminders",
         "comms.execute_operation",
+        "comms.recover_pending_operations",
     ]
