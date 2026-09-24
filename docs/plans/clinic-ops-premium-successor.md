@@ -98,8 +98,9 @@ CONDITIONALLY SUPERSEDED, REPLACED, REWRITTEN, EXTENDED, PRESERVED, ADDED.
 The table copies the planning draft's supersession map. The JSON ledger holds
 the same rows as `{id, source_path, source_lines, class, disposition,
 replaced_by_todo}`: one tracked file and line range where the item lives in
-this tree, an integer class, and the list of todos that deliver or guard the
-disposition. It splits the mixed SD-8 row into SD-8a (autosave ban, class 1)
+this tree, an integer class, a disposition written as `KEYWORD: detail` (the
+keyword is machine-checked, the detail copies this table), and the list of
+todos that deliver or guard the disposition. It splits the mixed SD-8 row into SD-8a (autosave ban, class 1)
 and SD-8b (browser storage ban, class 3) so each part carries one class.
 
 | SD | Historical item (path) | Class | Disposition |
@@ -112,7 +113,7 @@ and SD-8b (browser storage ban, class 3) so each part carries one class.
 | SD-6 | Rx CHECK `category=synthetic_non_controlled` (apps/prescription/models.py:45-51) and policy.py | 1+2 | REPLACED by a prescription-class taxonomy (simple, controle especial, antimicrobial/retention, notificacao A/B/B2, retinoids, thalidomide) with per-class eligibility gates; the synthetic category stays for rehearsal |
 | SD-7 | Deferred stubs `issue_prescription`, `apply_retention_policy`, `exchange_clinical_record` and their pin (tests/infra/test_module_boundaries.py:86-105; AGENTS.md) | 2 | REPLACED per stub when its todo lands; the pin is updated in the same commit |
 | SD-8 | No autosave / no browser storage (apps/ehr/AGENTS.md:31, static/AGENTS.md:30) | mixed | Autosave SUPERSEDED (server-side durable only); no browser storage of clinical text or audio PRESERVED |
-| SD-9 | No npm/bundler/JS lint, no client bundle (static/AGENTS.md:4; PRODUCT.md:77-78 at b39ae43) | 1 | CONDITIONALLY SUPERSEDED: a Node toolchain is allowed only for islands if the agenda vertical slice selects them (ADR-001); committed build plus drift CI; the HTMX JS-off baseline is PRESERVED |
+| SD-9 | No npm/bundler/JS lint, no client bundle (static/AGENTS.md:4; PRODUCT.md:77-78 at b39ae43) | 1 | CONDITIONALLY SUPERSEDED: a Node toolchain (npm, bundler, JS lint) is allowed only under `frontend/`, for islands, and only if the agenda vertical slice selects them (ADR-001); committed build plus drift CI; the HTMX JS-off baseline is PRESERVED |
 | SD-10 | Questionnaire branching excluded (docs/clinical/questionnaires.md:22-23) | 1 | SUPERSEDED with declarative, deterministic branching (no expressions, no eval) |
 | SD-11 | Consent purpose only teleconsultation (apps/consent/models.py:40-45) | 2 | EXTENDED with a purpose taxonomy (recording, AI processing, messaging, marketing, research) |
 | SD-12 | PRODUCT.md 'non-controlled prescriptions', 'no richer client'; capabilities.md 'transcription remains excluded' (docs/integrations/capabilities.md:54-57) | 1 | REWRITTEN by this contract's todo |
@@ -184,9 +185,11 @@ Two decisions change how repository guidance reads before any code changes:
   code remain the enforced behavior.
 - **ADR-001, frontend.** HTMX stays first. Bounded React + TypeScript islands
   (agenda grid, encounter with AI review, inbox) are allowed only if todo 23's
-  agenda vertical slice selects them, with Node pinned by image digest, a
+  agenda vertical slice selects them. The Node toolchain (npm, bundler, JS
+  lint) then lives only under `frontend/`, with Node pinned by image digest, a
   committed lockfile, `npm ci --ignore-scripts` and a committed build with
-  drift CI. Until then there's no npm, bundler or JS lint in the tree.
+  drift CI. Nothing outside `frontend/` gains npm, a bundler or JS lint. Until
+  the slice selects islands there's no npm, bundler or JS lint in the tree.
 
 ## CFM 2.454/2026 obligation (SD-17)
 

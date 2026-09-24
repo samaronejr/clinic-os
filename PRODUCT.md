@@ -107,9 +107,9 @@ remains a tested stub until real requirements are recorded.
   until its external gate clears; synthetic evidence never counts as live.
 - Frontend: server-rendered templates with HTMX stay the baseline and every
   page works with JavaScript off. Bounded React + TypeScript islands are
-  allowed only where the agenda vertical slice selects them (ADR-001); no
-  Tailwind, no third-party component library, and no browser storage of
-  clinical text or audio.
+  allowed only where the agenda vertical slice selects them (ADR-001), with
+  their Node toolchain confined to `frontend/`; no Tailwind, no third-party
+  component library, and no browser storage of clinical text or audio.
 - Product name: the customer-facing brand is "Clinic Ops" [inferred from the
   owner specification]. The shell wordmark, the installable manifest and the
   icon alt text already carry it (renewal task 9). Code identifiers, routes,
