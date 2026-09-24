@@ -5,10 +5,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = (
     "DPA-REVIEW.md",
+    "ai-risk-register.md",
+    "applicability-matrix.md",
     "INCIDENT-APPROVAL.md",
     "LIVE-DATA-GATE.md",
     "PRIVACY-REVIEW.md",
     "ROPA-REVIEW.md",
+    "reverification-log.md",
 )
 REQUIRED_PENDING = (
     "hosted CI/deploy/TLS",
