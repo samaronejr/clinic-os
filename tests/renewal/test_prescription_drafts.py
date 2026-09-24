@@ -32,12 +32,12 @@ from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
 
-from appointment_service_support import (
+from patient_service_support import runtime_role
+from renewal.test_encounters import physician_client, setup_context
+from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_appointment_setup,
 )
-from patient_service_support import runtime_role
-from renewal.test_encounters import physician_client, setup_context
 
 if TYPE_CHECKING:
     from conftest import RbacGraph

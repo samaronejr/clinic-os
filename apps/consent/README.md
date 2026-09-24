@@ -40,6 +40,6 @@ travel in POST bodies, never URLs; responses are private/no-store. The native
 pt-BR forms work without JavaScript and never preselect acceptance.
 
 QA: `uv run --frozen --no-sync --no-env-file pytest --reuse-db -q
- tests/renewal/test_consent.py tests/test_module_boundaries.py` then
+ tests/renewal/test_consent.py tests/infra/test_module_boundaries.py` then
 `uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner
  browser --suite consent` in the task-owned database environment.

@@ -1,60 +1,78 @@
 # Clinic OS
 
-A web workspace for Brazilian outpatient clinics, built with Django 5.2,
-PostgreSQL 16, server-rendered templates, and HTMX.
+A Django 5.2 + PostgreSQL 16 staff-operated clinic management system: patient
+registration/search, practitioner availability, booking, agendas, clinical
+records, intake questionnaires, consent, attachments, synthetic prescribing,
+synthetic PIX billing, reminders, retention, and teleconsult rehearsal —
+behind audited, role-scoped staff and patient sessions with FORCE RLS tenant
+isolation. All external integrations (payments, signing, video, messaging)
+are explicitly synthetic and non-operational; real patient data and real
+providers stay closed by design.
 
-Product naming is pending: a `Clinic_Ops_SVG/` brand pack exists in the main
-checkout (not this worktree) with the tentative name "Clinic Ops". Until the
-owner approves the rename, the shell wordmark, installable manifest and icon
-alt text carry "Clinic Ops" while code identifiers, routes, static paths,
-page titles and other copy keep "Clinic OS".
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the runtime shape,
+[docs/SECURITY.md](docs/SECURITY.md) for trust boundaries,
+[docs/RUNBOOK.md](docs/RUNBOOK.md) for operations, and
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for change rules. The visual
+language is specified in [DESIGN.md](DESIGN.md). Release-candidate evidence
+lives in [docs/releases/](docs/releases/).
 
-The current implementation is **synthetic-data only**. The Phase 1A
-foundation ships organization/clinic identity, staff roles, TOTP, tenant
-isolation, an append-only audit ledger, patient registration/search,
-practitioner availability, booking, day/week agendas, rescheduling, and
-cancellation.
+## Layout
 
-The renewal domains are implemented and verified in synthetic mode: patient
-contacts, invitations and sessions, versioned questionnaires, self-booking,
-waitlist and reminders, clinical encounters and longitudinal records,
-quarantined attachments, amendments, retention policies and legal holds,
-versioned consent, teleconsultation, physician verification, prescription
-drafts, PDF/QR documents, signing and public verification, PIX billing and
-receipts, and bounded clinic configuration. Every provider-backed slice runs
-on a labelled synthetic adapter and stays `waiting_external` until its
-capability record gains an approved provider and sandbox; see the
-[capability register](docs/integrations/capabilities.md).
+- `apps/` — the 14 registered domain apps (`audit`, `billing`, `comms`,
+  `consent`, `core`, `ehr`, `identity`, `intake`, `interop`, `prescription`,
+  `retention`, `scheduling`, `teleconsult`, `tenancy`)
+- `config/` — Django project: settings split per environment, URLconf, WSGI /
+  ASGI / Celery entrypoints
+- `templates/`, `static/` — server-rendered screens and self-hosted assets
+- `tests/` — pytest suite, grouped by domain:
+  - `tests/auth/` — authentication, TOTP/2FA, step-up verification
+  - `tests/identity/` — users, organizations, RBAC, tenant middleware/RLS
+  - `tests/patients/` — intake and patient registration/search
+  - `tests/scheduling/` — availability, appointments, agendas, booking
+  - `tests/ehr/` — clinical records and EHR migrations
+  - `tests/audit/` — audit ledger and Phase 1A contracts
+  - `tests/browser/` — recorded browser-session contracts
+  - `tests/renewal/` — renewal release-candidate application tests
+    (`tests/renewal/browser/` for the registered browser suites)
+  - `tests/isolation/` — Phase 1A evidence-isolation and gate machinery
+  - `tests/infra/` — settings, database, lifecycle, and schema gates
+  - `tests/fixtures/` — shared test data (normative isolation fixtures)
+  - shared harnesses (`otp_test_support`, `rbac_fixtures`, `database_urls`,
+    `patient_service_support`, `patient_http_support`, `accessible_document`,
+    `isolation_claim_fixtures`, `isolation_probe_fixtures`,
+    `tenant_key_support`) stay at the `tests/` root; each domain keeps its
+    own helpers beside its tests
+- `ops/` — operations tooling: `ops/db/` database bootstrap/posture,
+  `ops/container/` image runtime, `ops/testing/` CI, evidence, and gate
+  harnesses
+- `docs/` — architecture, security, runbook, contributing, compliance,
+  release notes, and the hash-frozen approved plans in `docs/plans/`
+- `terraform/` — infrastructure definitions (no live deployment yet)
+- Root files — `manage.py`, `pyproject.toml` (+ `uv.lock`), `Makefile`,
+  `Dockerfile`, `docker-compose.yml`, `docs` entry points
 
-Three service entrypoints remain deferred stubs
-(`NotImplementedError("Phase >=1")`): `prescription.issue_prescription`,
-`retention.apply_retention_policy`, and `interop.exchange_clinical_record`.
-Live use remains subject to the
-[live-data gate](docs/compliance/LIVE-DATA-GATE.md).
+## Develop
 
-## Work on the project
+```bash
+uv sync --locked --all-groups
+uv run pre-commit install
+export RUNNER_TEMP="${RUNNER_TEMP:-$(mktemp -d)}"   # ci_postgres.sh requires it (set by GitHub Actions in CI)
+ops/testing/ci_postgres.sh up                      # claimed PostgreSQL for the test suite
+source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+make db-bootstrap migrate db-posture
+uv run pytest --reuse-db tests
+```
 
-Use Python 3.12 or 3.13, `uv`, Docker Compose, and PostgreSQL 16. Follow the
-[runbook](docs/RUNBOOK.md) for the database roles, environment, migrations,
-local startup sequence and the renewal verification runner, then the
-[contribution guide](docs/CONTRIBUTING.md) for required checks.
+The full local gate is `make ci` (ruff, ruff format, mypy --strict, pytest with
+coverage, pip-audit, image/browser/TLS contract checks). Pre-commit runs ruff
+and mypy on every commit. See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for
+scoped test invocations and change rules.
 
-- [Architecture and module status](docs/ARCHITECTURE.md)
-- [Security boundaries](docs/SECURITY.md)
-- [Current design system](DESIGN.md)
-- [Renewal roadmap](docs/plans/clinic-os-renewal-roadmap.md)
-- [Integration capability register](docs/integrations/capabilities.md)
-- [Repository cleanup record](docs/maintenance/2026-09-12-omo-cleanup.md)
+## Test layout conventions
 
-## Planning records
-
-The original `initial_plan_en.md` and `initialreport.md`, when present locally,
-are historical inputs. Their regulatory, vendor, pricing, and delivery
-assumptions need revalidation before reuse.
-
-Plans and drafts under `.omo/` are local workflow artifacts. The tracked
-[approved Phase 1A plan](docs/plans/clinic-os-phase1a-approved.md) and its
-SHA-256 sidecar are frozen CI inputs. Preserve their bytes when writing a new
-product roadmap. Remaining `.omo/evidence` and runner inputs also retain
-shared-worktree and verification responsibilities described in the cleanup
-record.
+- `tests/` itself is not a package: files at its root are top-level modules,
+  so root-level basenames must stay unique.
+- Each domain directory is a package. Tests there import helpers as
+  `domain.helper_module` (e.g. `scheduling.appointment_service_support`,
+  `auth.stepup_test_support`); shared harnesses at the `tests/` root stay
+  imported bare.

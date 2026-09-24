@@ -96,7 +96,7 @@ verified patient email and no revocation. A subject recheck
 revoked or unreleased document can never be delivered.
 
 QA: `uv run --frozen --no-sync --no-env-file pytest --reuse-db -q
-tests/renewal/test_prescription_drafts.py tests/test_module_boundaries.py`, then
+tests/renewal/test_prescription_drafts.py tests/infra/test_module_boundaries.py`, then
 `uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner
 browser --suite prescription-draft` in the owned database environment.
 Verification and delivery: `uv run --frozen --no-sync --no-env-file pytest

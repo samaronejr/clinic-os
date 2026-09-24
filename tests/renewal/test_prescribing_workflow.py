@@ -40,15 +40,15 @@ from django.test import Client, override_settings
 from django.utils.timezone import now as real_now
 from django_otp.oath import TOTP
 
-from appointment_service_support import (
-    AppointmentSetup,
-    create_synthetic_appointment,
-)
+from auth.stepup_test_support import clear_freshness
 from otp_test_support import OTP_FIXED_TIME, get_totp_device, runtime_role
 from renewal.test_document_artifacts import ITEM, seed, seed_rendered
 from renewal.test_encounters import physician_client
 from renewal.test_signatures import owner_scope, physician_anonymous_post
-from stepup_test_support import clear_freshness
+from scheduling.appointment_service_support import (
+    AppointmentSetup,
+    create_synthetic_appointment,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

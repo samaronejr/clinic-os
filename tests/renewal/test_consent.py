@@ -46,12 +46,12 @@ from django.test import Client
 from django.utils import timezone
 from psycopg import sql
 
+from auth.stepup_test_support import verified_request
 from otp_test_support import runtime_role as http_runtime_role
 from patient_service_support import runtime_role
 from renewal.test_encounters import seed as clinical_seed
 from renewal.test_encounters import setup_context
 from renewal.test_retention import admin, finalized, staff_client
-from stepup_test_support import verified_request
 
 if TYPE_CHECKING:
     from uuid import UUID

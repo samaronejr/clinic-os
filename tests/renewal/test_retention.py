@@ -53,6 +53,7 @@ from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, transaction
 from django.test import Client
 
+from auth.stepup_test_support import create_role_actor, verified_request
 from otp_test_support import (
     create_totp_device,
     fixed_otp_time,
@@ -63,7 +64,6 @@ from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_amendments import AMENDED, saved_draft
 from renewal.test_encounters import physician_client, seed, setup_context
-from stepup_test_support import create_role_actor, verified_request
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

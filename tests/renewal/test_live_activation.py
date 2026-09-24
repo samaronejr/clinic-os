@@ -35,8 +35,8 @@ from django.test import override_settings
 from ops.release import activation, readiness
 from ops.testing.renewal_runner import _provision_database
 
+from infra.test_production_settings import VALID_HOSTS, VALID_RUNTIME_TOKEN
 from renewal.test_release_readiness import _live_bundle
-from test_production_settings import VALID_HOSTS, VALID_RUNTIME_TOKEN
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence

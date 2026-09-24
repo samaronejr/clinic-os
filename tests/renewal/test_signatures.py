@@ -62,10 +62,10 @@ from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
 
+from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client
-from stepup_test_support import verified_request
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

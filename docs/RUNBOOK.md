@@ -86,7 +86,7 @@ test database creation and migration remain owner responsibilities.
 For a focused recent-verification check after bootstrap/migration:
 
 ```sh
-uv run pytest --reuse-db tests/test_stepup_policy.py tests/test_stepup_challenge.py tests/test_stepup_sessions.py tests/test_stepup_telemetry.py tests/test_stepup_ui.py
+uv run pytest --reuse-db tests/auth/test_stepup_policy.py tests/auth/test_stepup_challenge.py tests/auth/test_stepup_sessions.py tests/auth/test_stepup_telemetry.py tests/auth/test_stepup_ui.py
 ```
 
 Optional repository validation, without provisioning infrastructure:
@@ -240,7 +240,7 @@ ownership, or direct `identity_user` access to `clinic_app`.
   the runtime URL, then run `make migrate`.
 - Check for uncommitted model changes with
   `uv run python manage.py makemigrations --check --dry-run`.
-- Run `uv run pytest --reuse-db tests/test_schema_policy.py tests/test_tenancy_rls.py`.
+- Run `uv run pytest --reuse-db tests/infra/test_schema_policy.py tests/identity/test_tenancy_rls.py`.
   The tests require the exact tenant-table set, FORCE RLS, and one fail-closed
   policy per table. A newly introduced tenant model must be added to the
   migration/RLS matrix; weakening the test is not remediation.

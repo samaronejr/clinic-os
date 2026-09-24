@@ -60,10 +60,10 @@ from django.db import DatabaseError, connection, transaction
 from django.test import Client, override_settings
 from django.utils import timezone
 
+from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client, setup_context
-from stepup_test_support import verified_request
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

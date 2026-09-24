@@ -89,6 +89,8 @@ echo "== migrate at base revision =="
 (cd "$base_worktree" && env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
+    CLINIC_SECRET_BACKEND="synthetic-file" \
+    CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     uv run --frozen --no-sync --no-env-file python manage.py migrate --no-input)
 
@@ -96,27 +98,36 @@ echo "== seed representative data at base revision =="
 (cd "$base_worktree" && env \
     APP_DATABASE_URL="$owner_dsn" \
     CLINIC_DATA_MODE="synthetic" \
+    CLINIC_SECRET_BACKEND="synthetic-file" \
+    CLINIC_SECRET_DIR="$secret_dir" \
     DJANGO_SETTINGS_MODULE="config.settings.base" \
     UPGRADE_SEED_FILE="$seed_file" \
     uv run --frozen --no-sync --no-env-file python manage.py shell \
         < "$project_root/ops/testing/migration_upgrade_seed.py")
 
 echo "== install the envelope boundary, then issue the tenant DEK =="
-(cd "$project_root" && env \
-    APP_DATABASE_URL="$owner_dsn" \
-    CLINIC_DATA_MODE="synthetic" \
-    DJANGO_SETTINGS_MODULE="config.settings.base" \
-    uv run --frozen --no-sync --no-env-file python manage.py migrate tenancy 0003 --no-input)
-# A tenant DEK must exist before the protected-field backfill can encrypt
-# existing plaintext rows; issue it through the supported owner boundary.
-(cd "$project_root" && env \
-    APP_DATABASE_URL="$owner_dsn" \
-    CLINIC_DATA_MODE="synthetic" \
-    CLINIC_SECRET_BACKEND="synthetic-file" \
-    CLINIC_SECRET_DIR="$secret_dir" \
-    DJANGO_SETTINGS_MODULE="config.settings.base" \
-    UPGRADE_SEED_FILE="$seed_file" \
-    uv run --frozen --no-sync --no-env-file python manage.py shell <<'PYEOF'
+# Bases that already ship tenancy.0003 install the boundary during the
+# base migrate, and the seed already issued a DEK through the owner
+# boundary; only pre-envelope bases need the dedicated install + issue.
+if ! psql_super "$upgrade_db" -tAc \
+    "SELECT 1 FROM clinic_app.django_migrations WHERE app='tenancy' AND name LIKE '0003%'" \
+    | grep -q 1; then
+    (cd "$project_root" && env \
+        APP_DATABASE_URL="$owner_dsn" \
+        CLINIC_DATA_MODE="synthetic" \
+        DJANGO_SETTINGS_MODULE="config.settings.base" \
+        uv run --frozen --no-sync --no-env-file python manage.py migrate tenancy 0003 --no-input)
+    # A tenant DEK must exist before the protected-field backfill can
+    # encrypt existing plaintext rows; issue it through the supported
+    # owner boundary.
+    (cd "$project_root" && env \
+        APP_DATABASE_URL="$owner_dsn" \
+        CLINIC_DATA_MODE="synthetic" \
+        CLINIC_SECRET_BACKEND="synthetic-file" \
+        CLINIC_SECRET_DIR="$secret_dir" \
+        DJANGO_SETTINGS_MODULE="config.settings.base" \
+        UPGRADE_SEED_FILE="$seed_file" \
+        uv run --frozen --no-sync --no-env-file python manage.py shell <<'PYEOF'
 import json
 import os
 from uuid import UUID
@@ -136,6 +147,7 @@ with transaction.atomic(), connection.cursor() as cursor:
 print(f"tenant DEK issued for {organization_id}: version {issued}")
 PYEOF
 )
+fi
 
 echo "== migrate forward with the candidate =="
 (cd "$project_root" && env \

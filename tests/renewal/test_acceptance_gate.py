@@ -142,7 +142,7 @@ def test_missing_required_job_is_rejected(tmp_path: Path) -> None:
 
 def test_undeclared_need_is_rejected(tmp_path: Path) -> None:
     artifacts = _populate(tmp_path / "artifacts")
-    workflow = _workflow().replace(", migration-upgrade", "")
+    workflow = _workflow().replace("migration-upgrade, ", "")
     failures = validate(workflow, _needs(), artifacts)
     assert any("migration-upgrade" in failure for failure in failures)
 

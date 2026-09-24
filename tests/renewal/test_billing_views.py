@@ -41,10 +41,10 @@ from apps.tenancy.db import tenant_context
 from django.test import Client
 from django.utils import timezone
 
+from auth.stepup_test_support import create_role_actor
 from otp_test_support import create_totp_device, fixed_otp_time, token_for
 from otp_test_support import runtime_role as http_runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
-from stepup_test_support import create_role_actor
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

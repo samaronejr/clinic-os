@@ -63,7 +63,7 @@ The existing renewal CI discovers `tests/renewal/` and already owns coverage for
 `apps.identity`; no new browser suite or coverage exclusion is needed. Required QA:
 
 ```sh
-uv run --frozen --no-sync --no-env-file pytest --reuse-db -q tests/renewal/test_physician_verification.py tests/test_stepup_policy.py
+uv run --frozen --no-sync --no-env-file pytest --reuse-db -q tests/renewal/test_physician_verification.py tests/auth/test_stepup_policy.py
 ```
 
 Real/sandbox acceptance remains waiting_external: accountable clinical owner,

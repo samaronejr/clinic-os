@@ -43,15 +43,15 @@ from django.db import DatabaseError, connection, connections, transaction
 from django.test import Client
 from django.utils import timezone
 
-from appointment_service_support import (
+from patient_service_support import runtime_role
+from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_appointment_setup,
 )
-from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
-    from appointment_service_support import AppointmentSetup
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = pytest.mark.django_db(transaction=True)
 DAY = date(2035, 6, 2)

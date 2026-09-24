@@ -52,8 +52,8 @@ from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
 from psycopg import sql
 
-from appointment_service_support import seed_appointment_setup
 from patient_service_support import runtime_role
+from scheduling.appointment_service_support import seed_appointment_setup
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -61,8 +61,8 @@ if TYPE_CHECKING:
 
     from pytest_django.fixtures import SettingsWrapper
 
-    from appointment_service_support import AppointmentSetup
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = pytest.mark.django_db(transaction=True)
 PROVIDER: Final = "synthetic-pix-v1"

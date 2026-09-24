@@ -43,15 +43,15 @@ from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
 from django.test import Client
 
-from appointment_service_support import (
-    AppointmentSetup,
-    create_synthetic_appointment,
-    seed_appointment_setup,
-)
 from otp_test_support import create_totp_device, fixed_otp_time, token_for
 from otp_test_support import runtime_role as http_runtime_role
 from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
+from scheduling.appointment_service_support import (
+    AppointmentSetup,
+    create_synthetic_appointment,
+    seed_appointment_setup,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
