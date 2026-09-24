@@ -104,8 +104,11 @@ class FilesystemAttachmentStorage:
             if getattr(settings, "CLINIC_DATA_MODE", None) == LIVE_DATA_MODE:
                 authorize_live_storage_mutation(os.environ, self._root)
             else:
+                # The ownership marker is a sibling of the root, so the
+                # root must exist before a claim write lands.
+                self._root.mkdir(mode=0o700, parents=True, exist_ok=True)
                 claim_synthetic_storage(self._root)
-        except (LiveModeHaltedError, StorageOwnershipError) as error:
+        except (LiveModeHaltedError, OSError, StorageOwnershipError) as error:
             raise AttachmentStorageError from error
 
     def _path(self, key: str) -> Path:
