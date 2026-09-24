@@ -146,21 +146,13 @@ CI_GATES: Final = (
     "image-tls",
     "browser",
 )
-COVERAGE_TARGETS: Final = (
-    "--cov=apps.audit",
-    "--cov=apps.billing",
-    "--cov=apps.comms",
-    "--cov=apps.consent",
-    "--cov=apps.ehr",
-    "--cov=apps.prescription",
-    "--cov=apps.core",
-    "--cov=apps.identity",
-    "--cov=apps.intake",
-    "--cov=apps.interop",
-    "--cov=apps.retention",
-    "--cov=apps.scheduling",
-    "--cov=apps.teleconsult",
-    "--cov=apps.tenancy",
+COVERAGE_TARGETS_FILE: Final = (
+    Path(__file__).resolve().with_name("coverage-targets.txt")
+)
+COVERAGE_TARGETS: Final = tuple(
+    line
+    for line in COVERAGE_TARGETS_FILE.read_text(encoding="utf-8").splitlines()
+    if line and not line.startswith("#")
 )
 POSTGRES_IMAGE: Final = "postgres:16"
 POSTGRES_CONTAINER_PORT: Final = 5432

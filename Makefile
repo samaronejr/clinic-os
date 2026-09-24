@@ -48,21 +48,7 @@ export POSTGRES_HOST_IP POSTGRES_HOST_PORT POSTGRES_IMAGE POSTGRES_DATA_VOLUME
 export POSTGRES_USER POSTGRES_PASSWORD
 export CLINIC_OWNER_PASSWORD CLINIC_APP_PASSWORD CLINIC_SUPER_PASSWORD
 export APP_DATABASE_URL MIGRATION_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
-COVERAGE_TARGETS = \
-	--cov=apps.audit \
-	--cov=apps.billing \
-	--cov=apps.comms \
-	--cov=apps.consent \
-	--cov=apps.ehr \
-	--cov=apps.prescription \
-	--cov=apps.core \
-	--cov=apps.identity \
-	--cov=apps.intake \
-	--cov=apps.interop \
-	--cov=apps.retention \
-	--cov=apps.scheduling \
-	--cov=apps.teleconsult \
-	--cov=apps.tenancy
+COVERAGE_TARGETS := $(shell grep -v '^\#' ops/testing/coverage-targets.txt | tr '\n' ' ')
 
 .PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts current-source-snapshot db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff restore-rehearsal revoke-staff-role set-clinic-timezone
 

@@ -25,6 +25,10 @@ app.conf.update(
             "task": "comms.dispatch_due_reminders",
             "schedule": 60.0,
         },
+        "pending-operation-recovery": {
+            "task": "comms.recover_pending_operations",
+            "schedule": 60.0,
+        },
     },
 )
 app.autodiscover_tasks()

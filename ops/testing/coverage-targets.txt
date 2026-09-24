@@ -1,0 +1,17 @@
+# Authoritative renewal coverage scope shared by ``make ci``, the hosted
+# workflow and the renewal runner. One ``--cov`` flag per line; the aggregate
+# floor (--cov-fail-under=90) is unchanged.
+--cov=apps.audit
+--cov=apps.billing
+--cov=apps.comms
+--cov=apps.consent
+--cov=apps.ehr
+--cov=apps.prescription
+--cov=apps.core
+--cov=apps.identity
+--cov=apps.intake
+--cov=apps.interop
+--cov=apps.retention
+--cov=apps.scheduling
+--cov=apps.teleconsult
+--cov=apps.tenancy
