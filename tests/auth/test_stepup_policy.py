@@ -47,7 +47,7 @@ def _step_up_clock(monkeypatch: MonkeyPatch) -> None:
         monkeypatch.setattr(stepup, "_freshness_is_valid", lambda *_args: True)
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize("age", [0, STEP_UP_MAX_AGE])
 def test_assert_step_up_accepts_fresh_exact_device_at_inclusive_boundary(
     rbac_graph: RbacGraph,
@@ -64,7 +64,7 @@ def test_assert_step_up_accepts_fresh_exact_device_at_inclusive_boundary(
     assert response.content == b"raw issuance hook reached"
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_assert_step_up_rejects_max_age_plus_one_and_clears_freshness(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -84,7 +84,7 @@ def test_assert_step_up_rejects_max_age_plus_one_and_clears_freshness(
     assert DEVICE_ID_SESSION_KEY in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize("invalid_case", INVALID_MAX_AGE_CASES)
 def test_assert_step_up_rejects_invalid_max_age_and_clears_freshness(
     rbac_graph: RbacGraph,
@@ -106,7 +106,7 @@ def test_assert_step_up_rejects_invalid_max_age_and_clears_freshness(
     assert DEVICE_ID_SESSION_KEY in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize("invalid_case", INVALID_MAX_AGE_CASES)
 def test_step_up_decorator_rejects_invalid_max_age_without_executing_action(
     rbac_graph: RbacGraph,
@@ -129,7 +129,7 @@ def test_step_up_decorator_rejects_invalid_max_age_without_executing_action(
     assert DEVICE_ID_SESSION_KEY in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize(
     "invalid_value",
     [True, "2100000000", -1, STEP_UP_NOW + 1],
@@ -153,7 +153,7 @@ def test_assert_step_up_rejects_invalid_timestamp_shapes(
     assert STEP_UP_SESSION_KEY not in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_timestamp_without_verified_device_fails_and_clears_freshness(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -169,7 +169,7 @@ def test_timestamp_without_verified_device_fails_and_clears_freshness(
     assert STEP_UP_SESSION_KEY not in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_verified_device_without_timestamp_fails_closed(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -187,7 +187,7 @@ def test_verified_device_without_timestamp_fails_closed(
     assert DEVICE_ID_SESSION_KEY in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize("device_case", ["foreign", "unconfirmed"])
 def test_foreign_or_unconfirmed_persistent_device_fails_and_is_cleared(
     rbac_graph: RbacGraph,

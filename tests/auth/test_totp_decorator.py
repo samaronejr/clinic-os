@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
-    pytest.mark.urls("totp_decorator_urls"),
+    pytest.mark.urls("auth.totp_decorator_urls"),
 ]
 
 BLOCK_PATH: Final = "/decorator/clinic-alpha/block-beta/"

@@ -120,7 +120,7 @@ def test_logout_clears_freshness_and_back_does_not_restore_it(
     assert back.status_code == 403
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize("invalidator", ["inactive", "password-change"])
 def test_inactive_or_password_changed_session_clears_freshness(
     rbac_graph: RbacGraph,
@@ -144,7 +144,7 @@ def test_inactive_or_password_changed_session_clears_freshness(
     assert STEP_UP_SESSION_KEY not in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize(
     "role",
     [

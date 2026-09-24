@@ -44,7 +44,7 @@ def _fixed_step_up_clock(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(stepup, "_utc_now_seconds", lambda: STEP_UP_NOW)
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_stale_decorator_redirects_to_named_tenant_bound_challenge(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -66,7 +66,7 @@ def test_stale_decorator_redirects_to_named_tenant_bound_challenge(
     assert "HX-Request" in challenge.headers["Vary"]
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_htmx_stale_request_uses_success_status_and_hx_redirect(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -84,7 +84,7 @@ def test_htmx_stale_request_uses_success_status_and_hx_redirect(
     assert response.headers["HX-Redirect"].startswith("/auth/step-up/")
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 @pytest.mark.parametrize(
     "hostile_target",
     [
@@ -108,7 +108,7 @@ def test_challenge_rejects_hostile_or_recursive_next_targets(
     assert b'name="next" value="/auth/protected/"' in response.content
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_exact_device_reverification_rotates_session_stamps_time_and_unlocks_hook(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -135,7 +135,7 @@ def test_exact_device_reverification_rotates_session_stamps_time_and_unlocks_hoo
     assert protected.status_code == 200
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_replay_invalid_and_throttled_attempts_never_refresh_freshness(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -167,7 +167,7 @@ def test_replay_invalid_and_throttled_attempts_never_refresh_freshness(
     assert STEP_UP_SESSION_KEY not in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_htmx_invalid_form_stays_200_without_redirect(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -186,7 +186,7 @@ def test_htmx_invalid_form_stays_200_without_redirect(
     assert "HX-Redirect" not in invalid.headers
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_htmx_success_uses_safe_redirect_header(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -208,7 +208,7 @@ def test_htmx_success_uses_safe_redirect_header(
     assert success.headers["HX-Redirect"] == "/__test__/issuance/"
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_step_up_post_requires_csrf_and_does_not_create_freshness(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -231,7 +231,7 @@ def test_step_up_post_requires_csrf_and_does_not_create_freshness(
     assert SESSION_KEY in client.session
 
 
-@override_settings(ROOT_URLCONF="stepup_urls")
+@override_settings(ROOT_URLCONF="auth.stepup_urls")
 def test_invalid_token_is_absent_from_html_logs_and_session(
     rbac_graph: RbacGraph,
     caplog: LogCaptureFixture,
