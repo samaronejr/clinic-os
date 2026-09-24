@@ -111,8 +111,11 @@ uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner bro
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 ```
 
-`browser --suite <name>` runs one registered suite (`smoke` and
-`primitives` are registered today; later tasks append theirs). It captures the working tree
+`browser --suite <name>` runs one registered suite (the full registered
+set is enumerated by `SUITES` in `ops/testing/renewal_runner.py`). In hosted
+CI the `renewal-browser` matrix shards every registered suite across six
+jobs and the `Renewal RC acceptance` verdict binds shard list, per-suite
+reports and source digests. It captures the working tree
 through the current-source snapshot contract, provisions a unique
 `postgres:16` container and volume, applies migrations and seeds a clinic as
 `clinic_owner`, serves through a supervised Gunicorn master on loopback as
@@ -134,6 +137,10 @@ Prerequisites beyond the base list:
 - `CLINIC_RENEWAL_BUILD_HOST_NETWORK=1` on this workstation: the VPN's
   1412-byte MTU blackholes Docker bridge egress, so image builds use
   `--network=host`. Image bytes are identical to the stock builder.
+- PDF inspection tests use Poppler (`pdftotext`, `pdftoppm`). Hosted CI
+  installs `poppler-utils` and exports `CLINIC_PDF_TOOLS=required`, which
+  turns a missing binary into a hard failure; without that variable a
+  local run may skip those artifact checks as a convenience.
 - The image/TLS gate (`smoke-current-source`) reserves claims through the
   repository ledger `.omo/evidence/isolation-ledger-phase1a.json`, which must
   be open and same-boot. The retained ledger in this worktree is a prior-boot
@@ -150,6 +157,20 @@ serving at an existing database, but the DSN must use the `clinic_app` role
 on loopback with a non-5432 port; owner or superuser DSNs are rejected.
 Cleanup removes only resources the runner created; the artifact root is
 retained as evidence.
+
+### Hosted RC gates
+
+`.github/workflows/ci.yml` adds, alongside the frozen three-suite
+`contracts` selector and the `test` matrix: `renewal-browser` (all
+registered suites sharded across six jobs), `worker-integration` (real
+isolated `redis-server` plus a separate Celery worker proving
+rollback/lost-dispatch/idempotency/revocation/retry-ceiling/callback
+behaviour; `CLINIC_BROKER_GATE=required`), `migration-upgrade`
+(fresh install plus `merge-base`→candidate rehearsal preserving seeded
+patient/scheduling/role/audit rows), and `renewal-acceptance` — an
+`if: always()` aggregate that rejects failed, cancelled, missing or
+divergent-digest evidence. Poppler is provisioned in the `test` job and
+gated by `CLINIC_PDF_TOOLS=required`.
 
 ### Runner stops and recovery
 

@@ -198,6 +198,11 @@ CELERY_BROKER_URL: str = env(
 CELERY_RESULT_BACKEND: str | None = env("CELERY_RESULT_BACKEND", default=None)
 # Synthetic-only, independently opted in; never authorizes a real provider.
 COMMS_SYNTHETIC_CHANNELS: list[str] = env.list("COMMS_SYNTHETIC_CHANNELS", default=[])
+# Synthetic-only fault injection for integration gates; empty means no faults.
+COMMS_SYNTHETIC_FAILURE_CHANNELS: list[str] = env.list(
+    "COMMS_SYNTHETIC_FAILURE_CHANNELS",
+    default=[],
+)
 # Synthetic-only video room gate; the task-6 video capability stays unavailable.
 TELECONSULT_SYNTHETIC_PROVIDER: bool = env.bool(
     "TELECONSULT_SYNTHETIC_PROVIDER",

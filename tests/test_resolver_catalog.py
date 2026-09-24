@@ -227,6 +227,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_recover_pending_v1", ""),
     ("comms_schedule_reminders_v1", ""),
     ("configuration_guard", ""),
     ("consent_audit_scope", "record_id uuid, event_name text"),
@@ -387,6 +388,7 @@ FUNCTION_RESULTS: Final = {
     ("comms_operation_scope", "requested_operation uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
     ),
+    ("comms_recover_pending_v1", ""): "SETOF uuid",
     ("comms_schedule_reminders_v1", ""): "trigger",
     ("configuration_guard", ""): "trigger",
     ("consent_audit_scope", "record_id uuid, event_name text"): (

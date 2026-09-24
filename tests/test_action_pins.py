@@ -23,8 +23,8 @@ def test_hosted_jobs_are_snapshot_first_and_service_free() -> None:
     # When / Then: no runner service exists and every first command is the snapshot.
     assert "\n    services:" not in source
     provenance = validate_repository(PROJECT_ROOT)
-    assert len(provenance) == 3
-    assert source.count(f"run: {SNAPSHOT}") == 3
+    assert len(provenance) == 5
+    assert source.count(f"run: {SNAPSHOT}") == 7
 
 
 def test_database_jobs_source_the_claimed_postgres_environment() -> None:
@@ -35,12 +35,12 @@ def test_database_jobs_source_the_claimed_postgres_environment() -> None:
     # When / Then: every database lane uses its private exported environment.
     assert script.is_file()
     assert script.stat().st_mode & 0o111
-    assert source.count("ops/testing/ci_postgres.sh up") == 2
+    assert source.count("ops/testing/ci_postgres.sh up") == 4
     assert (
         source.count('source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"')
-        == 2
+        == 4
     )
-    assert source.count("trap 'ops/testing/ci_postgres.sh down'") == 2
+    assert source.count("trap 'ops/testing/ci_postgres.sh down'") == 4
     assert source.index("trap 'ops/testing/ci_postgres.sh down'") < source.index(
         "ops/testing/ci_postgres.sh up"
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -1404,6 +1405,12 @@ def test_http_lexical_failure_preserves_original_and_allows_recovery(
 def _poppler(tool: str) -> str:
     path = shutil.which(tool)
     if path is None:
+        # CI exports CLINIC_PDF_TOOLS=required so a missing poppler binary
+        # fails the gate instead of silently skipping artifact inspection.
+        if os.environ.get("CLINIC_PDF_TOOLS", "") == "required":
+            pytest.fail(
+                f"required PDF inspection tool {tool} (poppler) is not installed"
+            )
         pytest.skip(f"{tool} (poppler) is not installed")
     return path
 

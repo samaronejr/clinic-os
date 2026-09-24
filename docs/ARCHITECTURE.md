@@ -178,7 +178,12 @@ boundary is documented in [SECURITY.md](SECURITY.md).
 - The local database surface is Docker PostgreSQL 16; migrations run as
   `clinic_owner`, while the application connects as `clinic_app`.
 - CI runs the same bootstrap, migrations, posture, lint, type, test/coverage,
-  and dependency-audit gates on Python 3.12 and 3.13.
+  and dependency-audit gates on Python 3.12 and 3.13. Renewal acceptance adds
+  a sharded real-Chromium matrix over every registered suite, a real
+  Redis/Celery worker-integration gate, a fresh-install plus merge-base
+  upgrade rehearsal, mandatory Poppler inspection, and an `if: always()`
+  `Renewal RC acceptance` aggregate verdict; see
+  [releases/2026-09-24-renewal-rc-m1.md](releases/2026-09-24-renewal-rc-m1.md).
 - Renewal verification adds a current-source route:
   `ops/testing/renewal_runner.py` snapshots the working tree, provisions a
   task-owned PostgreSQL container, serves through Gunicorn as `clinic_app`,

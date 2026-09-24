@@ -38,3 +38,22 @@ def dispatch_due_reminders() -> int:
     for operation_id in operation_ids:
         execute_operation.apply_async(kwargs={"operation_id": operation_id})
     return len(operation_ids)
+
+
+@shared_task(name="comms.recover_pending_operations")  # type: ignore[untyped-decorator]
+def recover_pending_operations() -> int:
+    """Re-dispatch committed operations whose broker handoff never arrived.
+
+    ``enqueue_operation`` publishes inside ``transaction.on_commit``; a broker
+    outage at that instant leaves the stored row pending forever. This
+    subject-agnostic re-scan covers those rows — overlapping with the
+    reminder scan is harmless because the per-operation claim lock
+    deduplicates concurrent dispatches.
+    """
+    require_live_runtime(os.environ)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT * FROM clinic_app.comms_recover_pending_v1()")
+        operation_ids = [str(row[0]) for row in cursor.fetchall()]
+    for operation_id in operation_ids:
+        execute_operation.apply_async(kwargs={"operation_id": operation_id})
+    return len(operation_ids)

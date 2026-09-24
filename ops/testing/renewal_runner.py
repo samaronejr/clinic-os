@@ -146,21 +146,13 @@ CI_GATES: Final = (
     "image-tls",
     "browser",
 )
-COVERAGE_TARGETS: Final = (
-    "--cov=apps.audit",
-    "--cov=apps.billing",
-    "--cov=apps.comms",
-    "--cov=apps.consent",
-    "--cov=apps.ehr",
-    "--cov=apps.prescription",
-    "--cov=apps.core",
-    "--cov=apps.identity",
-    "--cov=apps.intake",
-    "--cov=apps.interop",
-    "--cov=apps.retention",
-    "--cov=apps.scheduling",
-    "--cov=apps.teleconsult",
-    "--cov=apps.tenancy",
+COVERAGE_TARGETS_FILE: Final = (
+    Path(__file__).resolve().with_name("coverage-targets.txt")
+)
+COVERAGE_TARGETS: Final = tuple(
+    line
+    for line in COVERAGE_TARGETS_FILE.read_text(encoding="utf-8").splitlines()
+    if line and not line.startswith("#")
 )
 POSTGRES_IMAGE: Final = "postgres:16"
 POSTGRES_CONTAINER_PORT: Final = 5432
@@ -730,6 +722,12 @@ def _server_environment(app_dsn: str) -> dict[str, str]:
         {
             "ALLOWED_HOSTS": "127.0.0.1,localhost",
             "APP_DATABASE_URL": app_dsn,
+            # Browser journeys exercise real dispatch boundaries through
+            # outbox records and worker subprocesses; the in-process
+            # broker exists only so request-time apply_async does not
+            # crash the view. Cross-process delivery is proven by the
+            # real Redis broker gate.
+            "CELERY_BROKER_URL": "memory://",
             "CLINIC_DATA_MODE": "synthetic",
             "DJANGO_SETTINGS_MODULE": "config.settings.renewal",
             "SECRET_KEY": secrets.token_urlsafe(48),
@@ -947,12 +945,14 @@ def _run_browser_suite(
         "base_url": base_url,
         "browser": browser,
         "pytest_exit": pytest_code,
+        "revision_sha": manifest.get("base_revision_sha"),
         "runtime_role": APP_ROLE,
         "schema_version": 1,
         "source_entry_count": len(entries) if isinstance(entries, list) else 0,
         "source_manifest_sha256": digest,
         "suite": suite,
         "tests": tests,
+        "tree_sha": manifest.get("base_tree_sha"),
         "verified_record": str(record) if record is not None else None,
     }
 
