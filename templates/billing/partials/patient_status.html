@@ -1,0 +1,38 @@
+{% load tz clinic_locale %}{% comment %}
+Patient payment state, re-read from stored facts on every refresh.
+
+Nothing here can be paid, retried or created by the patient: the screen reads
+state and shows the instructions the clinic already issued. Paid appears only
+once the database holds the receipt.
+{% endcomment %}{% timezone clinic_timezone %}
+<div class="billing-status-head">
+  <h2 id="payment-status-title">Estado do pagamento</h2>
+  <span class="badge badge--{{ view.tone }}" data-payment-state="{{ view.state }}">{{ view.label }}</span>
+</div>
+<p class="panel-progress" id="payment-progress">Atualizando o estado…</p>
+<p data-payment-detail>{{ detail }}</p>
+<dl class="billing-facts">
+  <div class="billing-fact"><dt>Valor</dt><dd class="billing-amount" data-amount>{{ view.amount|brl }}</dd></div>
+  <div class="billing-fact"><dt>Emitida em</dt><dd>{% if view.issued_at %}{{ view.issued_at|date:"d/m/Y H:i" }}{% else %}—{% endif %}</dd></div>
+</dl>
+{% if view.paid %}
+<div class="billing-receipt" data-receipt="{{ view.receipt_reference }}">
+  <div class="billing-receipt-head">
+    <h3>Seu recibo de ensaio</h3>
+    <span class="badge badge--muted">ensaio sintético · nenhum pagamento real</span>
+  </div>
+  <p class="billing-receipt-disclosure" data-synthetic-receipt><strong>Recibo sintético, sem valor de comprovante.</strong> Nenhum dinheiro foi cobrado nem transferido: o código PIX deste ensaio não é pagável.</p>
+  <p>Pagamento simulado de {{ view.amount|brl }} registrado pela clínica em {{ view.receipt_issued_at|date:"d/m/Y H:i" }}.</p>
+  <p class="meta">Recibo de ensaio nº <code>{{ view.receipt_reference }}</code></p>
+  <p class="hint">Este número identifica o registro deste ensaio na clínica.</p>
+</div>
+{% elif view.instructions %}
+  {% include "billing/partials/instructions.html" with instructions=view.instructions patient=True %}
+{% endif %}
+<p class="feedback feedback--error billing-offline" role="alert" data-offline hidden>Não foi possível atualizar o estado agora. O que está na tela pode estar desatualizado; nada foi pago por causa disso.</p>
+<div class="actions billing-refresh">
+  <a class="button button--quiet" href="{{ refresh_url }}" data-refresh>Atualizar estado</a>
+  {% if poll_exhausted %}<span class="meta" data-poll-stopped>A atualização automática foi interrompida após várias tentativas.</span>{% endif %}
+</div>
+{% if poll %}<div data-poll="{{ next_attempt }}" hx-get="{{ poll_url }}?attempt={{ next_attempt }}" hx-trigger="load delay:{{ poll_seconds }}s" hx-target="#payment-status" hx-swap="innerHTML" hx-indicator="#payment-status"></div>{% endif %}
+{% endtimezone %}

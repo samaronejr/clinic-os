@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static tz clinic_locale %}
+{% block title %}Cobrança · Clinic OS{% endblock %}
+{% block meta_description %}Valor, estado de pagamento, código PIX e recibo de uma cobrança.{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}"><script src="{% static 'js/billing-payment.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="billing-shell" aria-labelledby="charge-title">
+  <a class="billing-back" href="{% url 'billing:charges' clinic_id %}">Voltar às cobranças</a>
+  <h1 id="charge-title">Cobrança de {{ staff_charge.patient_name }}</h1>
+  <p class="lede">Valor, estado do pagamento e recibo desta cobrança. O estado atual e a próxima ação possível ficam no painel abaixo.</p>
+  {% for message in messages %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endfor %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ error }}</div>{% endif %}
+  {% timezone clinic_timezone %}
+  <section class="panel billing-status" id="payment-status" aria-labelledby="payment-status-title" aria-live="polite">
+    {% include "billing/partials/staff_status.html" %}
+  </section>
+  <section class="panel" aria-labelledby="charge-facts-title">
+    <h2 id="charge-facts-title">Dados da cobrança</h2>
+    <dl class="billing-facts">
+      <div class="billing-fact"><dt>Paciente</dt><dd>{{ staff_charge.patient_name }}</dd></div>
+      <div class="billing-fact"><dt>Valor</dt><dd class="billing-amount">{{ view.amount|brl }}</dd></div>
+      <div class="billing-fact"><dt>Criada em</dt><dd>{{ staff_charge.created_at|date:"d/m/Y H:i" }}</dd></div>
+      <div class="billing-fact"><dt>Versão do rascunho</dt><dd>{{ staff_charge.revision }}</dd></div>
+      <div class="billing-fact billing-fact--wide"><dt>Referência da cobrança</dt><dd><code>{{ view.reference }}</code></dd></div>
+    </dl>
+  </section>
+  <section class="panel" aria-labelledby="charge-actions-title">
+    <h2 id="charge-actions-title">Ações</h2>
+    {% if staff_charge.actionable %}
+    <div class="actions">
+      {% if staff_charge.can_issue %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="expected_revision" value="{{ staff_charge.revision }}"><button class="button" type="submit" name="action" value="issue">Emitir cobrança</button></form>
+      {% endif %}
+      {% if staff_charge.can_request_code %}
+      <form method="post">{% csrf_token %}<button class="button" type="submit" name="action" value="code">Gerar código de pagamento</button></form>
+      {% endif %}
+      {% if staff_charge.can_regenerate %}
+      <form method="post">{% csrf_token %}<button class="button" type="submit" name="action" value="regenerate">Gerar novo código</button></form>
+      {% endif %}
+      {% if staff_charge.can_release %}
+      <form method="post">{% csrf_token %}<button class="button button--secondary" type="submit" name="action" value="release">Liberar para o paciente</button></form>
+      {% endif %}
+      {% if staff_charge.can_cancel %}
+      <form method="post">{% csrf_token %}<button class="button button--danger" type="submit" name="action" value="cancel">Cancelar cobrança</button></form>
+      {% endif %}
+    </div>
+    <p class="hint">Repetir uma ação não cria uma segunda cobrança: a mesma cobrança mantém o mesmo código enquanto ele for válido.</p>
+    {% else %}
+    <p>Esta cobrança está encerrada: não há mais nenhuma ação a fazer aqui.</p>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="charge-repeat-title">
+    <h2 id="charge-repeat-title">Cobrar de novo</h2>
+    <p>Voltar no navegador ou reenviar o formulário nunca duplica esta cobrança. Para cobrar outra vez o mesmo valor deste paciente, abra uma segunda cobrança separada.</p>
+    <div class="actions">
+      <a class="button button--secondary" href="{% url 'billing:charges' clinic_id %}?repeat_of={{ view.invoice_id }}" data-repeat-charge>Criar outra cobrança igual</a>
+    </div>
+  </section>
+  {% if staff_charge.can_confirm %}
+  <section class="panel" aria-labelledby="settlement-title">
+    <h2 id="settlement-title">Registrar pagamento confirmado</h2>
+    <p>Use esta opção somente depois de conferir o pagamento fora deste sistema. O recibo é emitido por esta confirmação, nunca pela geração do código.</p>
+    <form method="post" id="settlement-form" novalidate>
+      {% csrf_token %}
+      {% if settlement_form.non_field_errors %}<div class="feedback feedback--error" role="alert">{{ settlement_form.non_field_errors }}</div>{% endif %}
+      {% include "includes/field.html" with field=settlement_form.confirmation_reference hint=settlement_form.confirmation_reference.help_text %}
+      {% include "includes/field.html" with field=settlement_form.amount hint=settlement_form.amount.help_text %}
+      <div class="field billing-attest">{{ settlement_form.attested }}{{ settlement_form.attested.label_tag }}{% if settlement_form.attested.errors %}<div class="field-errors">{% for error in settlement_form.attested.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}</div>
+      <div class="actions"><button class="button" type="submit" name="action" value="confirm">Confirmar pagamento</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% endtimezone %}
+</section>
+{% endblock %}

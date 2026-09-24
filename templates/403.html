@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Access unavailable" %} · Clinic OS{% endblock %}
+{% block content %}<section class="auth-shell"><h1>{% trans "Access unavailable" %}</h1><p>{% trans "Sign in with an authorized clinic account. If the problem continues, contact the clinic administrator." %}</p><a class="button" href="/auth/login/">{% trans "Sign in" %}</a></section>{% endblock %}

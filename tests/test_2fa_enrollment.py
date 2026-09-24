@@ -6,6 +6,7 @@ from unittest.mock import PropertyMock, patch
 import pytest
 from apps.identity.models import User
 from django.test import Client
+from django.utils.translation import gettext
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from otp_test_support import (
@@ -111,5 +112,8 @@ def test_invalid_token_is_not_redisplayed_and_triggers_backoff(
     assert invalid.status_code == 200
     assert b"987654" not in invalid.content
     assert throttled.status_code == 200
-    assert b"temporarily disabled" in throttled.content.lower()
+    assert (
+        gettext("Verification temporarily disabled. Try again soon.").encode()
+        in throttled.content
+    )
     assert not totp_device_exists(rbac_graph.physician, confirmed=True)

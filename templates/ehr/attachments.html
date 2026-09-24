@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Anexos clínicos · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="attachments-title">
+  <p class="eyebrow">Registro clínico</p>
+  <h1 id="attachments-title">Anexos</h1>
+  <p class="lede">Arquivos do atendimento ficam em verificação antes de ficar disponíveis. Arquivos rejeitados nunca são servidos.</p>
+  <p><a href="{% url 'ehr:encounter' clinic_id %}">Voltar ao atendimento</a></p>
+  {% if error %}<div class="feedback feedback--error" role="alert">{{ error }}</div>{% endif %}
+  {% if encounter %}
+  {% timezone encounter.clinic.timezone %}
+  <h2>{{ encounter.patient.full_name }}</h2>
+  {% for message in messages %}{% if 'ehr.attachments.saved' in message.tags %}<p class="feedback feedback--success" role="status" data-save-state="saved">{{ message }}</p>{% endif %}{% if 'ehr.attachments.failed' in message.tags %}<p class="feedback feedback--error" role="alert">{{ message }}</p>{% endif %}{% endfor %}
+  {% if can_write %}
+  <section class="panel" aria-labelledby="upload-title">
+    <h2 id="upload-title">Enviar arquivo</h2>
+    <p role="status" data-save-state="{% if unsaved %}unsaved{% else %}editing{% endif %}">{% if unsaved %}Envio não concluído.{% else %}O arquivo só é enviado ao confirmar.{% endif %}</p>
+    <form method="post" id="attachment-form" enctype="multipart/form-data">{% csrf_token %}
+      {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+      {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}</div>{% endif %}
+      {% for field in form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="help-text">{{ field.help_text }}</p>{% endif %}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <div class="actions"><button class="button" type="submit" name="action" value="upload">Enviar para verificação</button></div>
+    </form>
+  </section>
+  {% else %}<p>Somente leitura. O envio é restrito ao médico responsável pelo atendimento.</p>{% endif %}
+  <section class="panel" aria-labelledby="list-title">
+    <h2 id="list-title">Arquivos deste atendimento</h2>
+    {% for attachment in attachments %}
+      <article data-attachment="{{ attachment.pk }}" data-state="{{ attachment.state }}" data-scan-reason="{{ attachment.scan_reason }}">
+        <h3>{{ attachment.file_name }}</h3>
+        <p>{{ attachment.detected_type }} · {{ attachment.size_bytes }} bytes · {{ attachment.get_state_display }} · Enviado em {{ attachment.created_at|date:"d/m/Y H:i" }}</p>
+        {% if attachment.state == "quarantined" %}
+          <p>Em verificação de segurança. O download fica disponível após a conclusão.</p>
+          {% if can_write %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="attachment_id" value="{{ attachment.pk }}"><button class="button button--secondary" type="submit" name="action" value="scan">Concluir verificação</button></form>{% endif %}
+        {% elif attachment.state == "available" %}
+          <form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="attachment_id" value="{{ attachment.pk }}"><button class="button button--secondary" type="submit" name="action" value="download">Baixar arquivo</button></form>
+        {% else %}
+          <p>Rejeitado na verificação. O arquivo não pode ser baixado.</p>
+        {% endif %}
+      </article>
+    {% empty %}<p>Nenhum anexo neste atendimento.</p>{% endfor %}
+  </section>
+  {% endtimezone %}
+  {% else %}<section class="panel"><h2>Abra os anexos a partir do atendimento</h2><p>O acesso exige vínculo de cuidado nesta clínica.</p></section>{% endif %}
+</section>
+{% endblock %}

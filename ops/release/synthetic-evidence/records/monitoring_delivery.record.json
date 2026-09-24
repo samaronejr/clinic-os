@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "monitoring_delivery",
+  "environment": "synthetic",
+  "evidence_path": "evidence/monitoring_delivery.json",
+  "evidence_sha256": "35e7674914cfe204552cc40c421a93afbe5055a211ac7a8deb4cc296ec6ce67a",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the monitoring_delivery capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "attachment_scanning",
+  "environment": "synthetic",
+  "evidence_path": "evidence/attachment_scanning.json",
+  "evidence_sha256": "27a473dcf6cf06e397a2c60479d9be653cf0a92916243bd82d6fc72db5f09006",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the attachment_scanning capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

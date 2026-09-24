@@ -13,15 +13,17 @@ from django.db import connection, transaction
 
 from database_urls import database_url_for_name
 from rbac_fixtures import RbacGraph, rbac_graph
+from tenant_key_support import issue_tenant_key_for, synthetic_secret_backend
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
+    from pathlib import Path
 
 SYNTHETIC_AUTH_VALUE_A = "synthetic-hash-a"
 SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
 AUDIT_ROW_TRIGGER = "audit_event_immutable_row"
 AUDIT_TRUNCATE_TRIGGER = "audit_event_immutable_truncate"
-__all__: Final = ("RbacGraph", "rbac_graph")
+__all__: Final = ("RbacGraph", "rbac_graph", "synthetic_secret_backend")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +70,7 @@ def _create_tenant_rows(
 
 
 @pytest.fixture
-def tenant_graph() -> TenantGraph:
+def tenant_graph(synthetic_secret_backend: Path) -> TenantGraph:
     organization_a = uuid4()
     organization_b = uuid4()
     username_a = f"synthetic-user-a-{uuid4().hex}"
@@ -79,6 +81,8 @@ def tenant_graph() -> TenantGraph:
     )
     _create_tenant_rows(organization_a, user_a, label="A")
     _create_tenant_rows(organization_b, user_b, label="B")
+    issue_tenant_key_for(organization_a)
+    issue_tenant_key_for(organization_b)
     return TenantGraph(
         organization_a=organization_a,
         organization_b=organization_b,

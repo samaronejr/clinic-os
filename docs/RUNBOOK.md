@@ -10,6 +10,7 @@ authorize a production deployment. Security boundaries are in
 - Docker Engine with the Compose plugin
 - `uv` and a supported Python version (3.12 or 3.13)
 - `curl`
+- a real Chrome or Chromium executable for the renewal browser route
 - optional validation tools: `actionlint` and Terraform
 
 The compose service is PostgreSQL 16. The repository's default local port is
@@ -98,6 +99,101 @@ terraform -chdir=terraform validate
 ```
 
 Never run Terraform plan/apply as part of this foundation runbook.
+
+## Renewal verification runner
+
+`ops/testing/renewal_runner.py` is the verified current-source route for
+uncommitted work. `make ci` still owns the committed-source gate; its image
+contract builds the committed revision, so it requires a clean Git tree.
+
+```sh
+uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
+uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
+```
+
+`browser --suite <name>` runs one registered suite (the full registered
+set is enumerated by `SUITES` in `ops/testing/renewal_runner.py`). In hosted
+CI the `renewal-browser` matrix shards every registered suite across six
+jobs and the `Renewal RC acceptance` verdict binds shard list, per-suite
+reports and source digests. It captures the working tree
+through the current-source snapshot contract, provisions a unique
+`postgres:16` container and volume, applies migrations and seeds a clinic as
+`clinic_owner`, serves through a supervised Gunicorn master on loopback as
+`clinic_app` with the real middleware/CSRF/RLS stack, waits on `/readyz`,
+then drives the suite through real Chromium. The junit verdict is enforced:
+zero tests, skips, failures, errors or a missing report all fail the run.
+
+`ci` runs the gates in order and aggregates per-command exits into
+`ci-report.json`: static (Ruff check, Ruff format, strict mypy), migration
+drift, full coverage against a provisioned database, `pip-audit --local`,
+the current-source image build plus TLS smoke, and every registered browser
+suite.
+
+Prerequisites beyond the base list:
+
+- Docker for the provisioned database and image builds.
+- A Chrome/Chromium executable on `PATH`, or an absolute non-symlink path in
+  `CLINIC_RENEWAL_BROWSER_EXECUTABLE`.
+- `CLINIC_RENEWAL_BUILD_HOST_NETWORK=1` on this workstation: the VPN's
+  1412-byte MTU blackholes Docker bridge egress, so image builds use
+  `--network=host`. Image bytes are identical to the stock builder.
+- PDF inspection tests use Poppler (`pdftotext`, `pdftoppm`). Hosted CI
+  installs `poppler-utils` and exports `CLINIC_PDF_TOOLS=required`, which
+  turns a missing binary into a hard failure; without that variable a
+  local run may skip those artifact checks as a convenience.
+- The image/TLS gate (`smoke-current-source`) reserves claims through the
+  repository ledger `.omo/evidence/isolation-ledger-phase1a.json`, which must
+  be open and same-boot. The retained ledger in this worktree is a prior-boot
+  evidence record, so the gate rejects it here; run that gate from a checkout
+  whose ledger was provisioned in the current boot (the tracked-CI snapshot
+  command in `.github/workflows/ci.yml` is the reference). Never overwrite
+  the retained ledger to satisfy the gate.
+
+The runner exports `CLINIC_RENEWAL_BASE_URL`, `CLINIC_RENEWAL_ARTIFACT_ROOT`,
+`CLINIC_RENEWAL_BROWSER_EXECUTABLE`, `CLINIC_RENEWAL_USERNAME` and
+`CLINIC_RENEWAL_PASSWORD` privately to its own suite processes; they are
+never written to the repository. `CLINIC_RENEWAL_APP_DATABASE_URL` may point
+serving at an existing database, but the DSN must use the `clinic_app` role
+on loopback with a non-5432 port; owner or superuser DSNs are rejected.
+Cleanup removes only resources the runner created; the artifact root is
+retained as evidence.
+
+### Hosted RC gates
+
+`.github/workflows/ci.yml` adds, alongside the frozen three-suite
+`contracts` selector and the `test` matrix: `renewal-browser` (all
+registered suites sharded across six jobs), `worker-integration` (real
+isolated `redis-server` plus a separate Celery worker proving
+rollback/lost-dispatch/idempotency/revocation/retry-ceiling/callback
+behaviour; `CLINIC_BROKER_GATE=required`), `migration-upgrade`
+(fresh install plus `merge-base`→candidate rehearsal preserving seeded
+patient/scheduling/role/audit rows), and `renewal-acceptance` — an
+`if: always()` aggregate that rejects failed, cancelled, missing or
+divergent-digest evidence. Poppler is provisioned in the `test` job and
+gated by `CLINIC_PDF_TOOLS=required`.
+
+### Runner stops and recovery
+
+Every rejection exits nonzero with a named cause. The four preflight checks
+(missing browser, unknown suite, invalid serving DSN, and stale source) run
+before provisioning, and no fake browser or partial result is substituted.
+Suite assertion, zero-test, and interrupt failures can occur after
+PostgreSQL/Gunicorn are running; the runner tears down its owned
+container/volume/processes and retains the diagnostics generated under the
+artifact root (JUnit, pytest, server, and access logs, plus browser captures).
+`report.json` is written only after a successful run. Fix the named cause and
+re-run the same command.
+
+| Symptom | Exit | Cause and recovery |
+| --- | --- | --- |
+| `renewal browser executable is unavailable` | 2 | No Chrome/Chromium on `PATH`; install one or set `CLINIC_RENEWAL_BROWSER_EXECUTABLE` |
+| `renewal browser executable override is not executable` | 2 | The override path is not an absolute, non-symlink, executable file |
+| `renewal browser suite is not registered: <name>` | 2 | Unknown suite; check `SUITES` in `ops/testing/renewal_runner.py` |
+| `renewal serving DSN must use the clinic_app role` | 2 | `CLINIC_RENEWAL_APP_DATABASE_URL` names an owner/superuser role; use the app role or unset it |
+| `current-source record is stale or drifted` | 2 | A `--record` no longer matches the working tree; re-capture the record |
+| `renewal suite failed` / `ran zero tests` / `skipped tests` | 2 | The suite itself failed or proved nothing; inspect `pytest.log` and the junit XML under the artifact root |
+| `smoke-current-source` fails inside `ci` | 1 | Usually the prior-boot ledger gate above; the `ci` report records the real exit rather than weakening the check |
+| `renewal runner interrupted` | 130 | SIGINT/SIGTERM; owned containers, volumes and processes are removed before exit |
 
 ## Stop and reseed
 
@@ -196,19 +292,39 @@ approved procedure and a recorded incident timeline.
 
 `make restore-rehearsal` is called only after the F3 supervisor has stopped
 source writers, migrated a distinct task-owned target as `clinic_owner`, and
-passed the two container IDs/database names plus one private credential FD and
-task-owned mode-0700 work/evidence paths. The target is empty except for
-owner-created migration/framework state. The target migration leaf set must
-equal the source before the fixed custom archive can mutate it.
+passed the two container IDs/database names plus their lease claim IDs, one
+private credential FD (source/target superuser passwords plus the target
+`clinic_app` password and TLS URL) and task-owned mode-0700 work/evidence
+paths. Before any mutation the command authenticates that each container
+carries the `clinic.phase1a.claim` label equal to the passed claim, lives
+under the deterministic lease name derived from the claim token, and mounts
+the claim-labeled pgdata volume; it then requires the target to hold zero
+domain rows. The target migration leaf set must equal the source before the
+fixed custom archive can mutate it.
 
 The command uses only PostgreSQL 16.14 `pg_dump`/`pg_restore` clients inside the
 exact source/target containers as isolated `clinic_super`. It writes a mode-0600
 custom archive and SHA-256 sidecar, requires the normalized `TABLE DATA` and
-`SEQUENCE SET` TOC to equal the fixed manifest, restores strict data-only with
-no ownership or ACL changes, verifies rows/posture/sequences, then deletes and
-proves absence of the dump and hash. Restored verification is read-only except
-for advancing each restored sequence once; it runs no restored provisioning or
-browser command.
+`SEQUENCE SET` TOC to equal the fixed manifest covering every domain relation
+(including attachments metadata, signing/payment references and the wrapped
+`tenancy_tenantdatakey` store), restores strict data-only with no ownership or
+ACL changes and triggers disabled for load order, then verifies row
+fingerprints, owner/RLS/role-attribute/closed-table-ACL posture, the audit
+hash chain plus recomputed canonical content hashes for every restored event,
+restored DEK metadata, one source envelope decrypted on the target through
+`tenant_decrypt` under the configured KEK, and every attachment object byte
+against the restored object store. It deletes and proves absence of the dump
+and hash. Restored verification is read-only except for advancing each
+restored sequence once; it runs no restored provisioning or browser command.
+
+Post-restore application proof runs as `clinic_app`, never `clinic_super`:
+SQL probes assert tenant-scoped reads, cross-tenant RLS denial and the
+closed ledger/DEK-unwrap ACLs, and the `ops.testing.restore_fixture verify`
+subprocess exercises the real workflows on the restored target — patient
+registry search through `patient_registry_*`, clinical version and
+attachment decryption through the protected envelope boundary, the patient
+charge resolver under the restored patient session, and row-by-row audit
+chain verification through `apps.audit.verification`.
 
 This rehearsal does not define a live backup principal and does not claim archive encryption or provider recovery. It is not reusable as an incident or
 production procedure. See [LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md).

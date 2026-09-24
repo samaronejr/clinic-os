@@ -20,12 +20,25 @@ from psycopg.errors import InvalidParameterValue
 from phase1_audit_sql_support import (
     ACTOR_ID,
     AUDIT_V1,
+    AUDIT_V2,
     CLINIC_ID,
     TENANT_ID,
     raw_append,
     sequence_state,
     set_context,
 )
+
+
+def tenant_matrix_count() -> int:
+    """Count the fixed-matrix events that append to the tenant chain."""
+    return sum(
+        1
+        for event_type in PHASE1_AUDIT_EVENTS
+        if build_phase1_audit_event(
+            event_type, clinic_id=CLINIC_ID, affected_record_id=SYSTEM_ORG_ID
+        ).chain
+        == "tenant"
+    )
 
 
 def append_fixed_matrix() -> None:
@@ -55,7 +68,7 @@ def append_fixed_matrix() -> None:
         system_append.event,
         payload=system_append.payload,
     )
-    assert len(tenant_seqs) == 14
+    assert len(tenant_seqs) == tenant_matrix_count()
     assert system_seq > 0
     _assert_matrix_rows()
 
@@ -140,7 +153,8 @@ def verify_new_chains() -> tuple[int, int | None]:
         tenant_result = verify_chain(TENANT_ID)
         cursor.execute("RESET ROLE")
     system_result = verify_chain()
-    assert tenant_result.row_count == 17
+    # The v1 seed row, the fixed matrix and the two concurrent appends.
+    assert tenant_result.row_count == tenant_matrix_count() + 3
     assert system_result.row_count == 1
     return tenant_result.row_count, tenant_result.last_seq
 
@@ -168,7 +182,7 @@ def assert_rollback_gap(app_database_url: str, expected_tip: int | None) -> None
             [TENANT_ID],
         )
         count_and_tip = cursor.fetchone()
-    assert count_and_tip == (17, expected_tip)
+    assert count_and_tip == (tenant_matrix_count() + 3, expected_tip)
     assert expected_tip is not None
     assert aborted_seq > expected_tip
     assert sequence_state()[0] >= aborted_seq
@@ -203,6 +217,6 @@ def assert_reverse_reapply(
             )
         raw_connection.rollback()
     executor = MigrationExecutor(connection)
-    executor.migrate(executor.loader.graph.leaf_nodes())
+    executor.migrate([AUDIT_V2])
     assert historical_rows() == expected_rows
     assert old_seq == expected_rows[0][0]

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% load static tz %}
+{% block title %}Atendimento · Clinic OS{% endblock %}
+{% block extra_head %}<script src="{% static 'js/ehr-draft.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="encounter-title">
+  <p class="eyebrow">Registro clínico</p>
+  <h1 id="encounter-title">Atendimento</h1>
+  <p class="lede">Registre a consulta no seu ritmo. As alterações só são guardadas ao salvar o rascunho.</p>
+  <p><a href="{% url 'scheduling:agenda' clinic_id %}">Voltar à agenda</a></p>
+  {% if error %}<div class="feedback feedback--error" role="alert">{{ error }}</div>{% endif %}
+  {% if encounter %}
+  {% timezone encounter.clinic.timezone %}
+    <h2>{{ encounter.patient.full_name }}</h2>
+    <form method="post" action="{% url 'ehr:history' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Problemas e alergias</button></form>
+    <form method="post" action="{% url 'ehr:attachments' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Anexos</button></form>
+    <form method="post" action="{% url 'prescription:draft' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Prescrição sintética</button></form>
+    {% if encounter.state == "open" %}<p><a class="button button--secondary" href="{% url 'teleconsult:staff' clinic_id %}" data-teleconsult-link>Teleconsulta</a></p>{% endif %}
+    <p>Consulta de {{ encounter.appointment.start_at|date:"d/m/Y H:i" }} · Horário da clínica</p>
+    <p data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}">Atendimento {{ encounter.get_state_display|lower }}{% if encounter.closed_at %} em {{ encounter.closed_at|date:"d/m/Y H:i" }}{% endif %} · Iniciado em {{ encounter.created_at|date:"d/m/Y H:i" }}</p>
+    {% if version %}
+    <section class="panel" data-version="{{ version.pk }}" data-revision="{{ version.revision }}" data-template-version="{{ version.template.version }}" data-state="{{ version.state }}"{% if version.content_digest %} data-digest="{{ version.content_digest }}"{% endif %}{% if version.amendment_of_id %} data-amendment-of="{{ version.amendment_of_id }}"{% endif %}>
+      <h2>{{ version.template.title }}</h2>
+      <p>Modelo versão {{ version.template.version }} · Documento versão {{ version.version }} · Revisão salva {{ version.revision }}</p>
+      <p>Autoria: você · Criado em {{ version.created_at|date:"d/m/Y H:i" }} · Última gravação: {{ version.updated_at|date:"d/m/Y H:i" }}</p>
+      {% if version.state == "draft" %}
+      {% if version.amendment_of_id %}<p class="feedback">Retificação da versão {{ version.amendment_of.version }} · Motivo: {{ version.amendment_reason }}</p>{% endif %}
+      <p class="feedback {% if unsaved %}feedback--error{% endif %}" id="save-state" role="status" aria-live="polite" data-state="{% if unsaved %}unsaved{% else %}saved{% endif %}">{% if unsaved %}Alterações não salvas.{% else %}Versão salva carregada. Novas alterações precisam ser salvas.{% endif %}</p>
+      {% for message in messages %}{% if 'ehr.saved' in message.tags %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endif %}{% endfor %}
+      <form method="post" id="soap-form">{% csrf_token %}
+        {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+        {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}<p>Alterações não salvas. Revise os campos abaixo.</p></div>{% endif %}
+        {% for field in form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="help-text">{{ field.help_text }}</p>{% endif %}{{ field }}{{ field.errors }}</div>{% endfor %}
+        <div class="actions"><button class="button" name="action" value="save" type="submit">Salvar rascunho</button><a class="button button--secondary" href="{% url 'ehr:encounter' clinic_id %}">Reabrir versão salva</a></div>
+        <p class="help-text">O rascunho não é um documento finalizado. Sem salvamento automático.</p>
+      </form>
+      <form method="post" id="finalize-form">{% csrf_token %}
+        <input type="hidden" name="version_id" value="{{ version.pk }}"><input type="hidden" name="revision" value="{{ version.revision }}">
+        <div class="actions"><button class="button" name="action" value="finalize" type="submit">Finalizar documento</button><button class="button button--secondary" name="action" value="discard" type="submit">Descartar rascunho</button></div>
+        <p class="help-text">Finalizar torna o conteúdo imutável e exige verificação recente do seu autenticador. A finalização local não é uma assinatura digital.</p>
+      </form>
+      {% else %}
+      {% if unsaved %}
+      <p class="feedback feedback--error" id="save-state" role="alert" data-state="unsaved">Alterações não salvas.</p>
+      {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}</div>{% endif %}
+      <h3>Suas edições não salvas</h3>
+      <dl class="record-review" data-unsaved-edits>
+        <div><dt>Subjetivo</dt><dd>{{ form.subjective.value }}</dd></div>
+        <div><dt>Objetivo</dt><dd>{{ form.objective.value }}</dd></div>
+        <div><dt>Avaliação</dt><dd>{{ form.assessment.value }}</dd></div>
+        <div><dt>Plano</dt><dd>{{ form.plan.value }}</dd></div>
+      </dl>
+      <p class="help-text">Nada foi gravado nesta versão. Copie o que deseja manter; correções usam retificação.</p>
+      <p>{% if version.finalized_at %}Versão finalizada localmente em {{ version.finalized_at|date:"d/m/Y H:i" }} · Este registro não é uma assinatura digital.{% else %}Esta versão não aceita edições.{% endif %}</p>
+      {% else %}
+      <p class="feedback feedback--success" role="status" data-finalization="local">Versão finalizada localmente em {{ version.finalized_at|date:"d/m/Y H:i" }} · Conteúdo imutável. Este registro não é uma assinatura digital.</p>
+      {% endif %}
+      {% for message in messages %}{% if 'ehr.saved' in message.tags %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endif %}{% endfor %}
+      {% if unsaved %}<h3>Conteúdo armazenado (inalterado)</h3>{% endif %}
+      <dl class="record-review">
+        <div><dt>Subjetivo</dt><dd>{{ version.subjective }}</dd></div>
+        <div><dt>Objetivo</dt><dd>{{ version.objective }}</dd></div>
+        <div><dt>Avaliação</dt><dd>{{ version.assessment }}</dd></div>
+        <div><dt>Plano</dt><dd>{{ version.plan }}</dd></div>
+      </dl>
+      <p class="help-text">Resumo do conteúdo (SHA-256): <code>{{ version.content_digest }}</code></p>
+      {% if amend_form %}
+      <form method="post" id="amend-form">{% csrf_token %}
+        {% for hidden in amend_form.hidden_fields %}{{ hidden }}{% endfor %}
+        {% if amend_form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ amend_form.non_field_errors }}{% for hidden in amend_form.hidden_fields %}{{ hidden.errors }}{% endfor %}{% for field in amend_form.visible_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+        {% for field in amend_form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+        <div class="actions"><button class="button button--secondary" name="action" value="amend" type="submit">Retificar documento</button></div>
+        <p class="help-text">A retificação cria um novo rascunho vinculado. A versão atual é preservada e marcada como substituída ao finalizar a nova versão.</p>
+      </form>
+      {% endif %}
+      {% endif %}
+    </section>
+    {% elif encounter.state == "open" %}
+    <form method="post" class="panel">{% csrf_token %}
+      <h2>Escolha um modelo de especialidade</h2>
+      <p>O modelo orienta o preenchimento sem sugerir condutas. Esta versão ficará vinculada ao documento.</p>
+      {% if templates %}<div class="field"><label for="template-id">Modelo de especialidade</label><select name="template_id" id="template-id" required><option value="">Selecione</option>{% for template in templates %}<option value="{{ template.pk }}">{{ template.title }} · versão {{ template.version }}</option>{% endfor %}</select></div><button class="button" type="submit" name="action" value="template">Criar rascunho</button>{% else %}<p>Nenhum modelo disponível. Solicite a configuração à administração da clínica.</p>{% endif %}
+    </form>
+    {% endif %}
+    {% if encounter.state == "open" and not draft %}
+    <form method="post" id="close-form">{% csrf_token %}
+      <input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+      <button class="button button--secondary" type="submit" name="action" value="close">Encerrar atendimento</button>
+      <p class="help-text">O encerramento é definitivo. Retificações em documentos finalizados continuam possíveis.</p>
+    </form>
+    {% endif %}
+    {% if versions %}
+    <section class="panel" aria-labelledby="versions-title">
+      <h2 id="versions-title">Versões do documento</h2>
+      {% for item in versions %}
+      <article data-version-row="{{ item.pk }}" data-state="{{ item.state }}"{% if item.amendment_of_id %} data-amendment-of="{{ item.amendment_of_id }}"{% endif %}>
+        <h3>Versão {{ item.version }} · {{ item.get_state_display }}</h3>
+        <p>{% if item.finalized_at %}Finalizada em {{ item.finalized_at|date:"d/m/Y H:i" }} · {% endif %}Criada em {{ item.created_at|date:"d/m/Y H:i" }}{% if item.amendment_of_id %} · Retifica a versão {{ item.amendment_of.version }} · Motivo: {{ item.amendment_reason }}{% endif %}</p>
+        {% if item.state != "discarded" %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="version_id" value="{{ item.pk }}"><button class="button button--secondary" type="submit" name="action" value="review">Revisar versão</button></form>{% else %}<p class="help-text">Rascunho descartado. O conteúdo não é exibido.</p>{% endif %}
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+    {% if review %}
+    <section class="panel" data-review="{{ review.pk }}" data-state="{{ review.state }}"{% if review.content_digest %} data-digest="{{ review.content_digest }}"{% endif %} aria-labelledby="review-title">
+      <h2 id="review-title">Revisão da versão {{ review.version }} · {{ review.get_state_display }}</h2>
+      {% if review.state == "superseded" %}<p class="feedback">Versão substituída pela versão {{ current.version }}. O conteúdo abaixo é o original preservado.</p>{% endif %}
+      {% if review.finalized_at %}<p>Finalizada localmente em {{ review.finalized_at|date:"d/m/Y H:i" }} · Sem assinatura digital.</p>
+      <p class="help-text">Resumo do conteúdo (SHA-256): <code>{{ review.content_digest }}</code></p>{% endif %}
+      {% if review.amendment_of_id %}<p>Retificação da versão {{ review.amendment_of.version }} · Motivo: {{ review.amendment_reason }}</p>{% endif %}
+      <dl class="record-review">
+        <div><dt>Subjetivo</dt><dd>{{ review.subjective }}</dd></div>
+        <div><dt>Objetivo</dt><dd>{{ review.objective }}</dd></div>
+        <div><dt>Avaliação</dt><dd>{{ review.assessment }}</dd></div>
+        <div><dt>Plano</dt><dd>{{ review.plan }}</dd></div>
+      </dl>
+      <form method="post">{% csrf_token %}<button class="button button--secondary" type="submit" name="action" value="current">Voltar à versão atual</button></form>
+    </section>
+    {% endif %}
+    {% if intake_references %}<section class="panel"><h2>Pré-consulta vinculada</h2><p>Referências aos envios preservados na abertura deste atendimento. Reabrir um questionário não altera estes registros.</p>{% for reference in intake_references %}<p data-submission="{{ reference.submission_id }}">{{ reference.submission.response.template.title }} · Modelo versão {{ reference.submission.response.template.version }} · Envio revisão {{ reference.submission.revision }} · {{ reference.submission.created_at|date:"d/m/Y H:i" }}</p>{% endfor %}</section>{% endif %}
+  {% endtimezone %}
+  {% else %}<section class="panel"><h2>Abra uma consulta pela agenda</h2><p>Somente o médico responsável pode iniciar ou continuar este atendimento.</p></section>{% endif %}
+</section>
+{% endblock %}

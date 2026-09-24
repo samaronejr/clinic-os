@@ -35,7 +35,7 @@ from ops.testing.isolation_terminal_publication import publish_terminal_file
 from ops.testing.process_helpers import run_process
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LEDGER_PATH = (PROJECT_ROOT / ".omo/evidence/isolation-ledger-phase1a.json").resolve()
+LEDGER_PATH = PROJECT_ROOT / ".omo/evidence/isolation-ledger-phase1a.json"
 
 
 def build_final_input_request(

@@ -91,7 +91,7 @@ def test_multi_device_selector_is_visibly_labeled_and_errors_are_described(
             {"otp_device": first.persistent_id, "otp_token": "not-a-code"},
         )
 
-    assert b'<label for="id_otp_device">Authenticator:</label>' in (
+    assert b'<label for="id_otp_device">Aplicativo autenticador:</label>' in (
         default_response.content
     )
     assert b'<select name="otp_device"' in default_response.content

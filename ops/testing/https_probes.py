@@ -16,6 +16,7 @@ from ops.testing.process_helpers import ProcessResult, run_process
 from ops.testing.tls_contract import WEB_HOST
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ops.testing.https_stack_specs import HttpsStackPlan
@@ -26,6 +27,7 @@ def run_https_probes(
     plan: HttpsStackPlan,
     containers: dict[str, str],
     ca_path: Path,
+    browser_probe: Callable[[Path], None] | None = None,
 ) -> None:
     """Run role setup, release, TLS/HBA assertions, and browser fixture checks."""
     inspect_https_runtime(plan, containers)
@@ -33,7 +35,10 @@ def run_https_probes(
     run_docker_command(("exec", containers["release"], "/app/ops/container/release.sh"))
     _probe_database_tls(containers["release"], plan)
     _probe_https(plan, ca_path)
-    _probe_browser_fixture(repository)
+    if browser_probe is None:
+        _probe_browser_fixture(repository)
+    else:
+        browser_probe(repository)
 
 
 def _probe_database_tls(container_id: str, plan: HttpsStackPlan) -> None:

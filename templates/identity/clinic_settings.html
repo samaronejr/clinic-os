@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Configurações da clínica · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="settings-title">
+  <p class="eyebrow">{{ clinic.name }} · Administração</p>
+  <h1 id="settings-title">Configurações da clínica</h1>
+  <p class="lede">Alterações valem somente para esta clínica. Documentos finalizados, assinaturas, consentimentos aceitos e lembretes já agendados permanecem inalterados.</p>
+  <p role="note">Fuso horário: <strong>{{ clinic.timezone }}</strong>. A alteração continua exclusiva da operação controlada pelo titular, em clínica vazia. Esta tela não altera fuso, permissões, alertas ou auditoria.</p>
+  <section class="panel" aria-labelledby="branding-title">
+    <h2 id="branding-title">Contato, identidade e lembretes</h2>
+    <p>Versão atual: <strong data-configuration-version>{{ configuration.version|default:0 }}</strong>. Cores aprovadas mantêm o contraste; logos são decorativos e não substituem avisos.</p>
+    <p>O intervalo em horas corridas será usado somente em novas reservas ou reagendamentos. Se o horário do lembrete já passou, ele não será criado. Preferências e destinos verificados continuam obrigatórios.</p>
+    <form method="post" enctype="multipart/form-data" novalidate data-settings-form="settings">
+      {% csrf_token %}{{ settings_form.non_field_errors }}
+      {% for field in settings_form %}{% if field.is_hidden %}{{ field }}{% else %}<div class="field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="field-hint">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}
+      <button class="button" name="action" value="settings" type="submit">Salvar configuração</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="specialty-title">
+    <h2 id="specialty-title">Nova versão de modelo de especialidade</h2>
+    <p>Somente orientações em texto simples para os quatro campos SOAP. O código identifica a série; a publicação cria a próxima versão, sem modificar documentos existentes.</p>
+    <ul>{% for model in templates %}<li data-specialty-version="{{ model.version }}">{{ model.title }} · {{ model.key }} · versão {{ model.version }}</li>{% empty %}<li>Nenhum modelo publicado.</li>{% endfor %}</ul>
+    <form method="post" novalidate data-settings-form="specialty">
+      {% csrf_token %}{{ specialty_form.non_field_errors }}
+      {% for field in specialty_form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" name="action" value="specialty" type="submit">Publicar modelo</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="consent-title">
+    <h2 id="consent-title">Nova versão de texto de consentimento</h2>
+    <p>A publicação não constitui aprovação jurídica. Somente o paciente pode aceitar a nova versão; comprovantes anteriores preservam o texto e a decisão originais.</p>
+    <ul>{% for text in texts %}<li data-consent-version="{{ text.version }}">{{ text.get_purpose_display }} · versão {{ text.version }}</li>{% empty %}<li>Nenhum texto publicado.</li>{% endfor %}</ul>
+    <form method="post" novalidate data-settings-form="consent">
+      {% csrf_token %}{{ consent_form.non_field_errors }}
+      {% for field in consent_form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" name="action" value="consent" type="submit">Publicar consentimento</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="questionnaire-title">
+    <h2 id="questionnaire-title">Nova versão de questionário pré-consulta</h2>
+    <p>Perguntas de configuração, não orientação médica. Somente texto livre, escolha entre opções ou sim/não; sem fórmulas nem condições. A publicação cria a próxima versão do código; questionários já atribuídos mantêm a versão original. O médico atribui o questionário pela agenda.</p>
+    <ul>{% for model in questionnaires %}<li data-questionnaire-version="{{ model.version }}">{{ model.title }} · {{ model.key }} · versão {{ model.version }}</li>{% empty %}<li>Nenhum questionário publicado.</li>{% endfor %}</ul>
+    <form method="post" novalidate data-settings-form="questionnaire">
+      {% csrf_token %}{{ questionnaire_form.non_field_errors }}
+      <div class="field">{{ questionnaire_form.key.label_tag }}{{ questionnaire_form.key }}{{ questionnaire_form.key.errors }}</div>
+      <div class="field">{{ questionnaire_form.title.label_tag }}{{ questionnaire_form.title }}{{ questionnaire_form.title.errors }}</div>
+      {% for row in questionnaire_form.question_rows %}
+      <fieldset class="settings-question" data-question-row="{{ forloop.counter }}">
+        <legend>Pergunta {{ forloop.counter }}{% if forloop.first %} (obrigatória){% else %} (opcional){% endif %}</legend>
+        {% for field in row %}{% if field.widget_type == "checkbox" %}<div class="field settings-check">{{ field }}{{ field.label_tag }}{{ field.errors }}</div>{% else %}<div class="field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="field-hint">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}
+      </fieldset>
+      {% endfor %}
+      <button class="button" name="action" value="questionnaire" type="submit">Publicar questionário</button>
+    </form>
+  </section>
+</section>
+{% endblock %}

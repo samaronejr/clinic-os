@@ -55,7 +55,7 @@ if TYPE_CHECKING:
     )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LEDGER = (PROJECT_ROOT / ".omo/evidence/isolation-ledger-phase1a.json").resolve()
+LEDGER = PROJECT_ROOT / ".omo/evidence/isolation-ledger-phase1a.json"
 
 
 @dataclass(slots=True)

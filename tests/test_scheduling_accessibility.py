@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 from django.contrib.staticfiles import finders
+from django.utils.translation import gettext
 
 from accessible_document import Document
 from appointment_http_support import (
@@ -127,13 +128,25 @@ def test_populated_agenda_exposes_an_accessible_table(
     document = Document(response.content)
     assert response.status_code == 200
     _assert_shared_contract(document)
-    assert b"<caption>Appointments in this day</caption>" in response.content
+    caption = gettext("Appointments on this day")
+    assert f'<caption id="agenda-table-caption">{caption}</caption>'.encode() in (
+        response.content
+    )
     assert document.attributes_for("agenda-status")["role"] == "status"
     assert {attributes.get("scope") for attributes in document.tagged("th")} == {
         "col",
         "row",
     }
     assert document.tagged("form") == []
+    # Every row action carries a distinct accessible name: verb plus the row.
+    action = gettext("Reschedule")
+    hidden = gettext("%(patient)s at %(start)s") % {
+        "patient": "Nina Synthetic Testpatient",
+        "start": "08:15",
+    }
+    assert f'{action}<span class="visually-hidden"> {hidden}</span>'.encode() in (
+        response.content
+    )
 
 
 def test_malformed_agenda_announces_an_accessible_alert(
@@ -245,7 +258,11 @@ def test_patient_results_book_control_stays_accessible(
         "col",
         "row",
     }
-    assert b"Book Nina Synthetic Testpatient" in response.content
+    action = gettext("Book appointment")
+    hidden = gettext("for %(name)s") % {"name": "Nina Synthetic Testpatient"}
+    assert f'{action}<span class="visually-hidden"> {hidden}</span>'.encode() in (
+        response.content
+    )
 
 
 def test_booked_agenda_keeps_its_transition_links_state_free(

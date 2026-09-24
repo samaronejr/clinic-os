@@ -5,10 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from apps.audit.services import record_phase1_event, verify_chain
-from apps.scheduling import (
-    appointment_cancellation,
-    appointment_rescheduling,
-)
+from apps.scheduling import patient_authority
 from apps.scheduling.models import Appointment
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
@@ -77,7 +74,7 @@ def test_invalid_inputs_and_failed_audits_leave_transition_state_reusable(
             )
 
         monkeypatch.setattr(
-            appointment_rescheduling,
+            patient_authority,
             "record_phase1_event",
             append_then_fail,
         )
@@ -92,7 +89,7 @@ def test_invalid_inputs_and_failed_audits_leave_transition_state_reusable(
         appointment.refresh_from_db()
         assert (appointment.start_at, appointment.end_at) == original_range
         monkeypatch.setattr(
-            appointment_rescheduling,
+            patient_authority,
             "record_phase1_event",
             original_append,
         )
@@ -105,7 +102,7 @@ def test_invalid_inputs_and_failed_audits_leave_transition_state_reusable(
         )
 
         monkeypatch.setattr(
-            appointment_cancellation,
+            patient_authority,
             "record_phase1_event",
             append_then_fail,
         )
@@ -117,7 +114,7 @@ def test_invalid_inputs_and_failed_audits_leave_transition_state_reusable(
         appointment.refresh_from_db()
         assert appointment.status == Appointment.Status.SCHEDULED
         monkeypatch.setattr(
-            appointment_cancellation,
+            patient_authority,
             "record_phase1_event",
             original_append,
         )

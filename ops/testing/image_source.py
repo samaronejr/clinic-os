@@ -32,6 +32,7 @@ APPLICATION_PREFIXES: Final = (
     "apps/",
     "config/",
     "ops/container/",
+    "ops/release/",
     "static/",
     "templates/",
 )
@@ -53,6 +54,9 @@ DOCKERFILE = {
     "application": "Dockerfile",
     "browser-runner": "ops/testing/browser-runner.Dockerfile",
 }
+REQUIRED_CONTEXT_TARGETS: Final = frozenset(
+    {".dockerignore", "Dockerfile", "pyproject.toml", "uv.lock"}
+)
 
 
 def assemble_candidate_context(
@@ -71,9 +75,9 @@ def assemble_candidate_context(
         for _, _, source_path in sources
         if (target := _target_path(kind, source_path)) is not None
     ]
-    if not {".dockerignore", "Dockerfile", "pyproject.toml", "uv.lock"} <= set(
-        targets
-    ) or len(targets) != len(set(targets)):
+    if not set(targets) >= REQUIRED_CONTEXT_TARGETS or len(targets) != len(
+        set(targets)
+    ):
         _fail()
     destination.mkdir(mode=0o700)
     tree = _text_command(repository, "rev-parse", f"{revision}^{{tree}}")
@@ -116,6 +120,26 @@ def assemble_candidate_context(
         "source_manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
         "tree_sha": tree,
     }
+
+
+def candidate_context_target(kind: str, source_path: str) -> str | None:
+    """Project one repository path into its candidate context target."""
+    if kind not in DOCKERIGNORE:
+        _fail()
+    return _target_path(kind, source_path)
+
+
+def candidate_available_suites(kind: str, source_paths: set[str]) -> list[str]:
+    """Return the closed suite IDs whose suite modules are present."""
+    if kind not in DOCKERIGNORE:
+        _fail()
+    if kind == "application":
+        return []
+    return sorted(
+        suite_id
+        for suite_id, source_path in RUNNER_SUITE_PATHS.items()
+        if source_path in source_paths
+    )
 
 
 def _available_suites(kind: str, sources: list[tuple[str, str, str]]) -> list[str]:

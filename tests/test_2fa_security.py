@@ -71,7 +71,7 @@ def test_replayed_totp_is_rejected_after_session_verification_is_cleared(
 
     assert first.status_code == 302
     assert replay.status_code == 200
-    assert b"not valid" in replay.content.lower()
+    assert "inválido" in replay.content.decode().lower()
     assert protected.status_code == 302
     assert protected.headers["Location"].startswith("/auth/verify/")
 

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% load static tz %}
+{% block extra_head %}<meta name="referrer" content="same-origin"><meta name="robots" content="noindex, nofollow"><link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-clinician.js' %}" defer></script>{% endblock %}
+{% block title %}Teleconsulta · Clinic OS{% endblock %}
+{% block meta_description %}Sala de teleconsulta do médico com as anotações do atendimento.{% endblock %}
+{% block content %}
+{% timezone encounter.clinic.timezone %}
+<section class="shell-wide tc-workspace" aria-labelledby="workspace-title" data-teleconsult="clinician" data-session="{{ session.pk }}" data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}">
+  <header class="tc-head">
+    <div class="tc-identity">
+      <h1 id="workspace-title" data-patient>{{ encounter.patient.full_name }}</h1>
+      <p class="tc-context">Teleconsulta · Consulta de <time datetime="{{ encounter.appointment.start_at|date:'c' }}">{{ encounter.appointment.start_at|date:"d/m/Y H:i" }}</time> · Horário da clínica · Gravação desativada</p>
+      <p class="tc-badges">
+        <span class="badge {% if encounter.state == 'open' %}badge--success{% else %}badge--muted{% endif %}" data-encounter-badge>Atendimento {{ encounter.get_state_display|lower }}</span>
+        <span class="badge {% if state == 'active' %}badge--success{% elif state == 'waiting' %}badge--pending{% elif state == 'failed' %}badge--error{% else %}badge--muted{% endif %}" data-session-badge>Sessão: {{ state_label }}</span>
+      </p>
+    </div>
+    <div class="tc-head-actions">
+      <form method="post" action="{{ record_url }}" data-leave-form>
+        {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+        <button class="button button--secondary" name="action" value="show" type="submit" data-open-record>Registro completo</button>
+      </form>
+      <a class="button button--quiet" href="{{ staff_url }}" data-leave data-leave-room>Sair da sala</a>
+    </div>
+    <div class="feedback feedback--error tc-leave-guard" role="alert" tabindex="-1" data-leave-guard hidden>
+      <h2>Alterações não salvas</h2>
+      <p>O rascunho tem alterações que ainda não foram salvas. Se sair sem salvar, elas serão perdidas; o que já foi salvo permanece.</p>
+      <div class="actions">
+        <button class="button" type="button" data-leave-stay>Continuar editando</button>
+        <button class="button button--danger" type="button" data-leave-discard>Sair sem salvar</button>
+      </div>
+    </div>
+    {% if session_error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ session_error }}</div>{% endif %}
+  </header>
+  <div class="tc-switch" role="tablist" aria-label="Painéis da consulta" data-switch hidden>
+    <button class="button tc-tab" type="button" role="tab" id="tab-video" aria-controls="room-panel" aria-selected="true" data-tab="video">Vídeo</button>
+    <button class="button tc-tab" type="button" role="tab" id="tab-notes" aria-controls="notes-panel" aria-selected="false" tabindex="-1" data-tab="notes">Anotações <span class="badge badge--error" data-tab-unsaved hidden>não salvo</span></button>
+  </div>
+  <div class="tc-grid">
+    <section class="panel tc-panel tc-panel--video" id="room-panel" data-panel="video" data-title="video-title" data-role="physician" data-session="{{ session.pk }}" data-state="{{ state }}" data-connection="idle" data-status-url="{{ staff_url }}" aria-labelledby="video-title">
+      <h2 id="video-title">Vídeo</h2>
+      {% include "teleconsult/partials/synthetic_notice.html" %}
+      <div class="tele-stage" role="group" aria-label="Vídeo da consulta">
+        <div class="tele-remote" data-remote>
+          <p class="tele-remote-text" data-remote-text>{% if state == "active" %}Consulta em andamento{% elif state == "ended" %}Vídeo encerrado{% elif state == "failed" %}Vídeo indisponível{% elif patient_joined %}O paciente está na sala{% else %}Aguardando o paciente entrar{% endif %}</p>
+        </div>
+        <div class="tele-self" data-self hidden>
+          <video data-self-video autoplay muted playsinline aria-label="Sua câmera"></video>
+          <p class="tele-self-off" data-self-off hidden>Câmera desligada</p>
+        </div>
+      </div>
+      <form class="tele-status-form" method="post" data-status-form>
+        {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}">
+      </form>
+      <div class="tele-controls" role="group" aria-label="Controles da chamada">
+        <button class="button button--secondary tele-toggle" type="button" data-toggle="microphone" aria-pressed="true" disabled>Microfone ligado</button>
+        <button class="button button--secondary tele-toggle" type="button" data-toggle="camera" aria-pressed="true" disabled>Câmera ligada</button>
+      </div>
+      <noscript><p class="feedback feedback--muted" role="status">O vídeo precisa de JavaScript ativado. As anotações abaixo funcionam sem ele.</p></noscript>
+      <p class="feedback" role="status" aria-live="polite" data-connection-status tabindex="-1">Preparando câmera e microfone…</p>
+      <div class="feedback feedback--error" role="alert" data-room-error tabindex="-1" hidden>
+        <h3 data-room-error-title></h3>
+        <p data-room-error-text></p>
+        <p data-room-error-help></p>
+        <div class="actions" data-room-error-actions>
+          <button class="button button--secondary" type="button" data-retry-media hidden>Tentar câmera e microfone de novo</button>
+          <button class="button button--secondary" type="button" data-reconnect hidden>Reconectar</button>
+        </div>
+      </div>
+      <div class="actions tc-check">
+        <button class="button button--quiet" type="button" data-refresh-status hidden>Verificar estado agora</button>
+      </div>
+      {% include "teleconsult/partials/clinician_session.html" %}
+    </section>
+    {% include "teleconsult/partials/clinician_notes.html" %}
+  </div>
+</section>
+{% endtimezone %}
+{% endblock %}

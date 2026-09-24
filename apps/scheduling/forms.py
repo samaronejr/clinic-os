@@ -6,20 +6,23 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from django.http import QueryDict
 
-BLANK_CHOICE: Final = ("", "Select a physician")
-INVALID_CREATE_MESSAGE: Final = (
+BLANK_CHOICE: Final = ("", _("Select a physician"))
+INVALID_CREATE_MESSAGE: Final = _(
     "Enter a future clinic-local window that ends after it starts."
 )
-CONFLICTING_KEY_MESSAGE: Final = "This availability was already submitted differently."
-OVERLAP_MESSAGE: Final = "That physician already promises part of this window."
-PRACTITIONER_MESSAGE: Final = "Select an active physician for this clinic."
-DEPENDENT_MESSAGE: Final = (
+CONFLICTING_KEY_MESSAGE: Final = _(
+    "This availability was already submitted differently."
+)
+OVERLAP_MESSAGE: Final = _("That physician already promises part of this window.")
+PRACTITIONER_MESSAGE: Final = _("Select an active physician for this clinic.")
+DEPENDENT_MESSAGE: Final = _(
     "This block still has future appointments and cannot be retired."
 )
 CREATE_DESCRIPTIONS: Final = {
@@ -52,17 +55,17 @@ def bind_error_descriptions(form: forms.Form, descriptions: dict[str, str]) -> N
 class AvailabilityCreateForm(forms.Form):
     """Collect one idempotent clinic-local availability window from the body."""
 
-    practitioner = forms.ChoiceField(label="Physician")
+    practitioner = forms.ChoiceField(label=_("Physician"))
     local_date = forms.DateField(
-        label="Date",
-        widget=forms.DateInput(attrs={"type": "date"}),
+        label=_("Date"),
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
     )
     start_time = forms.TimeField(
-        label="Start time",
+        label=_("Start time"),
         widget=forms.TimeInput(attrs={"type": "time"}),
     )
     end_time = forms.TimeField(
-        label="End time",
+        label=_("End time"),
         widget=forms.TimeInput(attrs={"type": "time"}),
     )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())

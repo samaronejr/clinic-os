@@ -1,7 +1,7 @@
 """Tenant-bound recent-verification challenge views."""
 
 from django.contrib.auth import logout as session_logout
-from django.http import HttpRequest, HttpResponse, HttpResponseBase
+from django.http import HttpRequest, HttpResponseBase
 from django.shortcuts import render
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_http_methods
@@ -16,7 +16,12 @@ from apps.identity.otp import (
     record_otp_verification,
     safe_next_url,
 )
-from apps.identity.stepup import StepUpRequired, assert_step_up
+from apps.identity.stepup import (
+    StepUpRequired,
+    assert_step_up,
+    clear_step_up_intent,
+    step_up_intent_for,
+)
 
 
 def _current_active_user(request: HttpRequest) -> User | None:
@@ -43,11 +48,12 @@ def step_up_view(request: HttpRequest) -> HttpResponseBase:
     except StepUpRequired:
         freshness_is_valid = False
     if freshness_is_valid:
+        clear_step_up_intent(request)
         return auth_redirect(request, target)
 
     devices = list(confirmed_devices(user.pk))
     if not devices:
-        return auth_response(HttpResponse(status=403))
+        return auth_response(render(request, "403.html", status=403))
 
     data = request.POST if request.method == "POST" else None
     form = ExplicitOTPTokenForm(user, devices, request=request, data=data)
@@ -55,11 +61,18 @@ def step_up_view(request: HttpRequest) -> HttpResponseBase:
         device = form.selected_device()
         if device is not None:
             record_otp_verification(request, device)
+            clear_step_up_intent(request)
             return auth_redirect(request, target)
 
+    # The intent is display-only context for the action that sent the user
+    # here; it is shown only for its own continuation target.
     response = render(
         request,
         "identity/step_up.html",
-        {"form": form, "next": target},
+        {
+            "form": form,
+            "next": target,
+            "intent": step_up_intent_for(request, target),
+        },
     )
     return auth_response(response)

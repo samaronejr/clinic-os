@@ -89,6 +89,15 @@ def current_actor_id() -> UserId:
     return UserId(actor.pk)
 
 
+def current_actor_username() -> str:
+    """Return the current actor's username for display-bound records."""
+    actor = _load_current_actor()
+    username = actor.username
+    if not isinstance(username, str) or not username:
+        raise _InvalidUsernameError
+    return username
+
+
 def require_current_actor_clinic_roles(
     clinic_id: UUID,
     roles: ClinicRoles,

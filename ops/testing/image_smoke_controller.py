@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 from typing import Never
 from uuid import uuid4
@@ -25,9 +24,11 @@ from ops.testing.isolation_common import (
     JsonObject,
     JsonValue,
     canonical_bytes,
+    ensure_private_directory,
     load_json,
     utc_now,
 )
+from ops.testing.runtime_paths import runtime_directory
 
 CONTROLLER_ARGUMENT_COUNT = 4
 
@@ -75,8 +76,7 @@ def build_candidate(
         "kind": "filesystem",
         "purpose": f"{prefix}-publisher",
     }
-    with tempfile.TemporaryDirectory(dir="/tmp/opencode") as temporary:
-        staging = Path(temporary)
+    with runtime_directory(_run_root(ledger_path), purpose="image") as staging:
         spec_path = _immutable_json(staging / "spec.json", spec)
         reserve_claim(ledger_path, spec_path)
         claim_root = attempt_root / "claims" / claim_id
@@ -152,6 +152,14 @@ def smoke_candidate(
     image_id = _text(validated.get("image_id"))
     sys.stdout.write(f"{image_id}\n")
     return image_id
+
+
+def _run_root(ledger_path: Path) -> Path:
+    """Provision this caller's private run root under the attempt root."""
+    ledger, _ = load_json(ledger_path)
+    root = Path(_text(ledger.get("attempt_root"))) / "runtime"
+    ensure_private_directory(root)
+    return root
 
 
 def _candidate_observation(spec: JsonObject) -> JsonObject:

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Suas ofertas de horário · Clinic OS{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="offers-title">
+  <p class="eyebrow">Portal do paciente</p>
+  <h1 id="offers-title">Suas ofertas de horário</h1>
+  <p class="lede">{{ scope.clinic_name }} · Horários da clínica: {{ scope.timezone }}</p>
+  <p>Uma oferta dura <strong>30 minutos</strong> e não reserva o horário. Sua consulta só é confirmada depois que você aceita e a disponibilidade é conferida.</p>
+  <div class="actions">
+    <a class="button button--secondary" href="{% url 'scheduling:patient-booking' %}">Consultar outros horários</a>
+    <a class="button button--quiet" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
+  </div>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  {% timezone scope.timezone %}
+  {% for offer in offers %}
+  <article class="panel" data-offer="{{ offer.pk }}" data-state="{{ offer.state }}">
+    <h2>{{ offer.start_at|date:"d/m/Y" }} · {{ offer.start_at|date:"H:i" }}–{{ offer.end_at|date:"H:i" }}</h2>
+    <p>{{ offer.entry.practitioner_label }}</p>
+    <p><strong>{{ offer.get_state_display }}</strong></p>
+    <p>Prazo para aceitar: <time datetime="{{ offer.expires_at|date:'c' }}">{{ offer.expires_at|date:"d/m/Y H:i" }}</time>. Validade: 30 minutos após a emissão.</p>
+    {% if offer.state == 'pending' %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="offer_id" value="{{ offer.pk }}">
+        <div class="actions">
+          <button class="button" type="submit" name="action" value="accept">Aceitar e agendar</button>
+          <button class="button button--secondary" type="submit" name="action" value="decline">Recusar oferta</button>
+        </div>
+      </form>
+    {% elif offer.state == 'accepted' %}
+      <p>Consulta agendada. Reenviar esta oferta não cria outra consulta.</p>
+      <a class="button button--secondary" href="{% url 'scheduling:patient-booking' %}">Ver suas consultas</a>
+    {% else %}
+      <p>Esta oferta foi encerrada. Você pode consultar outros horários ou falar com a clínica para uma nova solicitação.</p>
+      {% if offer.state == 'unavailable' %}<p>Sua solicitação continua na fila para outra abertura.</p>{% endif %}
+    {% endif %}
+  </article>
+  {% empty %}<div class="panel" role="status"><h2>Nenhuma oferta por enquanto</h2><p>Fale com a clínica para entrar na lista de espera. Você também pode consultar outros horários.</p></div>{% endfor %}
+  {% endtimezone %}
+</section>
+{% endblock %}

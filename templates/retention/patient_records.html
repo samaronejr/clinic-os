@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Your records · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "View and export the records the clinic released to you." %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="patient-records-title">
+  <p class="eyebrow">{% trans "Patient portal" %}</p>
+  <h1 id="patient-records-title">Seus registros</h1>
+  <p class="lede">Somente os documentos liberados pela clínica aparecem aqui. A exportação gera um pacote com manifesto e resumos de integridade.</p>
+  {% if records %}
+  <section class="panel" aria-labelledby="released-title">
+    <h2 id="released-title">Documentos liberados</h2>
+    {% for record in records %}
+    <article class="record-review" data-release="{{ record.release_id }}" data-version="{{ record.version_id }}" data-state="{{ record.state }}">
+      <h3>Documento versão {{ record.version }}{% if record.state == "superseded" %} · substituído{% endif %}</h3>
+      <p>Finalizado em {{ record.finalized_at|date:"d/m/Y H:i" }} · Autor: {{ record.author_label }}{% if record.amendment_of_version %} · Retifica a versão {{ record.amendment_of_version }}{% endif %}</p>
+      <dl class="record-review">
+        <div><dt>Subjetivo</dt><dd>{{ record.subjective }}</dd></div>
+        <div><dt>Objetivo</dt><dd>{{ record.objective }}</dd></div>
+        <div><dt>Avaliação</dt><dd>{{ record.assessment }}</dd></div>
+        <div><dt>Plano</dt><dd>{{ record.plan }}</dd></div>
+      </dl>
+      <p class="help-text">Resumo do conteúdo (SHA-256): <code>{{ record.content_digest }}</code></p>
+    </article>
+    {% endfor %}
+  </section>
+  <form method="post" action="{% url 'retention:patient-records' %}" id="export-form">
+    {% csrf_token %}
+    <button class="button" type="submit" name="action" value="export" id="export-button">Exportar meus registros</button>
+    <p class="help-text">O download acontece agora, nesta sessão. O pacote não fica guardado no navegador.</p>
+  </form>
+  {% else %}
+  <section class="panel"><p id="records-empty">Nenhum documento foi liberado para você ainda.</p></section>
+  {% endif %}
+  <p><a href="{% url 'intake:patient-home' %}">Voltar</a></p>
+</section>
+{% endblock %}

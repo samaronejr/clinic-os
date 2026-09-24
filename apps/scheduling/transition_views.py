@@ -9,18 +9,27 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
-from apps.scheduling.agenda_presenter import agenda_screen
+from apps.scheduling.agenda_presenter import (
+    DAY_VIEW,
+    LOCAL_DATE_LENGTH,
+    LOCAL_TIME_SLICE,
+    agenda_screen,
+    agenda_url,
+)
 from apps.scheduling.appointment_forms import (
     BOOKING_PRACTITIONER_MESSAGE,
     CANCELLATION_CONFLICT_MESSAGE,
+    CANCELLED_MESSAGE,
     INVALID_CANCELLATION_MESSAGE,
     INVALID_RESCHEDULE_MESSAGE,
+    RESCHEDULED_MESSAGE,
     SLOT_MESSAGE,
     TERMINAL_MESSAGE,
     WINDOW_MESSAGE,
@@ -57,6 +66,8 @@ TRANSITION_TEMPLATE: Final = "scheduling/appointment_transition.html"
 TRANSITION_PARTIAL: Final = "scheduling/partials/transition_panel.html"
 RESCHEDULE_KIND: Final = "reschedule"
 CANCEL_KIND: Final = "cancel"
+RESCHEDULED_TAG: Final = "scheduling.appointment.rescheduled"
+CANCELLED_TAG: Final = "scheduling.appointment.cancelled"
 
 
 def reschedule_continuation(appointment_id: UUID) -> str:
@@ -84,8 +95,15 @@ def _context(
             if kind == RESCHEDULE_KIND
             else cancel_continuation(current.appointment_id)
         ),
-        "agenda_url": reverse("scheduling:agenda", args=(current.clinic_id,)),
+        # The return link opens the agenda day this appointment sits on.
+        "agenda_url": agenda_url(
+            current.clinic_id,
+            DAY_VIEW,
+            current.start_local[:LOCAL_DATE_LENGTH],
+            1,
+        ),
         "appointment": current,
+        "end_time": current.end_local[LOCAL_TIME_SLICE],
         "form": form,
         "is_scheduled": current.status == Appointment.Status.SCHEDULED,
         "kind": kind,
@@ -103,7 +121,11 @@ def _render(
     return render(request, template, _context(current, form, kind))
 
 
-def _completed(request: HttpRequest, target: str) -> HttpResponseBase:
+def _completed(
+    request: HttpRequest, target: str, tag: str, text: str
+) -> HttpResponseBase:
+    # Completion feedback names the next step and carries no identifier.
+    messages.success(request, text, extra_tags=tag)
     if _is_htmx(request):
         response: HttpResponseBase = HttpResponse(status=NO_CONTENT)
         response.headers["HX-Redirect"] = target
@@ -160,7 +182,12 @@ def appointment_reschedule_view(
         if request.method == "POST":
             form = AppointmentRescheduleForm(request.POST)
             if form.is_valid() and _rescheduled(form, appointment_id):
-                return _completed(request, reschedule_continuation(appointment_id))
+                return _completed(
+                    request,
+                    reschedule_continuation(appointment_id),
+                    RESCHEDULED_TAG,
+                    str(RESCHEDULED_MESSAGE),
+                )
         else:
             form = AppointmentRescheduleForm()
         current = view_appointment_for_transition(appointment_id=appointment_id)
@@ -180,7 +207,12 @@ def appointment_cancel_view(
         if request.method == "POST":
             form = AppointmentCancelForm(request.POST)
             if form.is_valid() and _cancelled(form, appointment_id):
-                return _completed(request, cancel_continuation(appointment_id))
+                return _completed(
+                    request,
+                    cancel_continuation(appointment_id),
+                    CANCELLED_TAG,
+                    str(CANCELLED_MESSAGE),
+                )
         else:
             form = AppointmentCancelForm()
         current = view_appointment_for_transition(appointment_id=appointment_id)

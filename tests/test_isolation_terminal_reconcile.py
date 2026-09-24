@@ -7,7 +7,6 @@ import pytest
 from ops.testing.isolation_accepted_close import close_accepted_attempt
 from ops.testing.isolation_common import JsonObject, load_json, raw_sha256
 from ops.testing.isolation_terminal_reconcile import reconcile_terminal_final
-from ops.testing.process_helpers import ProcessResult
 
 from isolation_claim_fixtures import FOUNDATION_SHA
 from isolation_rejection_fixtures import empty_inventory
@@ -153,19 +152,9 @@ def test_terminal_reconcile_rebinds_prepared_acceptance_after_reboot(
 def test_terminal_reconcile_replays_every_approved_publisher_release_prefix(
     tmp_path: Path,
     crash_stage: str,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given: a sealed approval with the persistent publisher still active.
     fixture = approved_active_publisher_gate(tmp_path)
-
-    def clean_bound_worktree(arguments: tuple[str, ...]) -> ProcessResult:
-        stdout = f"{FOUNDATION_SHA}\n" if "rev-parse" in arguments else ""
-        return ProcessResult(0, stdout, "")
-
-    monkeypatch.setattr(
-        "ops.testing.isolation_terminal_publisher_journal.run_process",
-        clean_bound_worktree,
-    )
 
     def crash(stage: str, _record: JsonObject) -> None:
         if stage == crash_stage:

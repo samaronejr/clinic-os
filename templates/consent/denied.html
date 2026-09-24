@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Consentimento indisponível · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow intake-create" aria-labelledby="consent-denied-title">
+  <p class="eyebrow">Portal do paciente</p>
+  <h1 id="consent-denied-title">Consentimento indisponível</h1>
+  <p class="lede">Não foi possível concluir esta ação. Nenhum consentimento foi alterado.</p>
+  <p>Volte ao portal para consultar os consentimentos disponíveis neste acesso. Se precisar de ajuda, entre em contato com a clínica.</p>
+  <a class="button" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
+</section>
+{% endblock %}

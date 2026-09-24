@@ -1,68 +1,75 @@
-<div id="scheduling-booking" class="scheduling-card">
+{% load i18n %}
+<div id="scheduling-booking" class="panel booking-panel">
   {% if form.errors %}
-  <div class="feedback feedback--error" id="booking-errors" role="alert" tabindex="-1">
-    <h3>We could not book that appointment</h3>
-    {% if form.non_field_errors %}
-      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-    {% else %}
-      <p>Check the highlighted fields and try again.</p>
-    {% endif %}
+  <div class="feedback feedback--error" id="booking-errors" role="alert" tabindex="-1" data-focus-error autofocus>
+    <h2>{% trans "We could not book that appointment" %}</h2>
+    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    {% for field in form.visible_fields %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
+    {% if form.idempotency_key.errors or form.enrollment_id.errors %}<p>{% trans "Return to the patient registry and start this booking again." %}</p>{% endif %}
   </div>
   {% endif %}
-  <h3 id="booking-windows-title">Availability this clinic already promised</h3>
   <p class="scheduling-status" id="booking-windows-status" role="status">
-    {% if window_count %}{{ window_count }} promised window{{ window_count|pluralize }}. Choose any exact start and end inside one of them.{% else %}No physician has promised a future window in this clinic yet.{% endif %}
+    {% if window_count %}{% blocktrans count total=window_count %}{{ total }} offered window. Choose a start and end inside it.{% plural %}{{ total }} offered windows. Choose a start and end inside one of them.{% endblocktrans %}{% else %}{% trans "No physician offers a future window in this clinic yet. Add availability first, then book." %}{% endif %}
   </p>
   {% if window_count %}
-  <table class="scheduling-table">
-    <caption>Promised availability windows</caption>
-    <thead>
-      <tr>
-        <th scope="col">Physician</th>
-        <th scope="col">Window starts</th>
-        <th scope="col">Window ends</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for practitioner in practitioners %}{% for window in practitioner.windows %}
-      <tr>
-        <th scope="row">{{ practitioner.display_identifier }}</th>
-        <td>{{ window.start_local }}</td>
-        <td>{{ window.end_local }}</td>
-      </tr>
-      {% endfor %}{% endfor %}
-    </tbody>
-  </table>
+  <div class="table-scroll" role="region" aria-labelledby="booking-windows-caption" tabindex="0">
+    <table class="table booking-windows" role="table" aria-labelledby="booking-windows-caption">
+      <caption id="booking-windows-caption">{% trans "Availability by physician and day" %}</caption>
+      <thead role="rowgroup">
+        <tr role="row">
+          <th scope="col" role="columnheader">{% trans "Physician" %}</th>
+          <th scope="col" role="columnheader">{% trans "Day" %}</th>
+          <th scope="col" role="columnheader">{% trans "Window" %}</th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        {% for window in windows %}
+        <tr role="row">
+          <th scope="row" role="rowheader">{{ window.practitioner_label }}</th>
+          <td role="cell" class="booking-window-day"><time datetime="{{ window.date|date:'Y-m-d' }}">{{ window.date|date:"D"|capfirst }}, {{ window.date|date:"SHORT_DATE_FORMAT" }}</time></td>
+          <td role="cell" class="booking-window-range"><time datetime="{{ window.start_local }}">{{ window.start_time }}</time> – <time datetime="{{ window.end_local }}">{{ window.end_time }}</time></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% endif %}
-  <h3 id="booking-form-title">Choose an exact start and end</h3>
+  <h2 id="booking-form-title">{% trans "Choose the physician and the exact time" %}</h2>
   <form method="post" action="{{ book_url }}" hx-post="{{ book_url }}"
         hx-target="#scheduling-booking" hx-swap="outerHTML"
-        hx-indicator="#booking-progress">
+        hx-indicator="#booking-progress" data-auth-form>
     {% csrf_token %}
+    <p class="feedback feedback--error" role="alert" tabindex="-1"
+       data-network-error hidden>
+      {% trans "The request did not complete. Check the agenda before trying again." %}
+    </p>
     <input type="hidden" name="mode" value="create">
-    <div class="field{% if form.practitioner.errors %} field--error{% endif %}">
-      {{ form.practitioner.label_tag }}
-      {{ form.practitioner }}
-      <p class="hint" id="booking-practitioner-help">Only active physicians assigned to this clinic are listed.</p>
-      {% if form.practitioner.errors %}<div class="field-errors" id="{{ form.practitioner.auto_id }}_error">{% for error in form.practitioner.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
-    </div>
-    <div class="field{% if form.start_local.errors %} field--error{% endif %}">
-      {{ form.start_local.label_tag }}
-      {{ form.start_local }}
-      <p class="hint" id="booking-start-help">Enter the exact clinic-local minute this appointment begins.</p>
-      {% if form.start_local.errors %}<div class="field-errors" id="{{ form.start_local.auto_id }}_error">{% for error in form.start_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
-    </div>
-    <div class="field{% if form.end_local.errors %} field--error{% endif %}">
-      {{ form.end_local.label_tag }}
-      {{ form.end_local }}
-      <p class="hint" id="booking-end-help">Enter the exact clinic-local minute it ends, on the same date.</p>
-      {% if form.end_local.errors %}<div class="field-errors" id="{{ form.end_local.auto_id }}_error">{% for error in form.end_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+    <div class="booking-fields">
+      <div class="field booking-field--practitioner{% if form.practitioner.errors %} field--error{% endif %}">
+        {{ form.practitioner.label_tag }}
+        {{ form.practitioner }}
+        <p class="hint" id="booking-practitioner-help">{% trans "Only active physicians assigned to this clinic are listed." %}</p>
+        {% if form.practitioner.errors %}<div class="field-errors" id="{{ form.practitioner.auto_id }}_error">{% for error in form.practitioner.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="field{% if form.start_local.errors %} field--error{% endif %}">
+        {{ form.start_local.label_tag }}
+        {{ form.start_local }}
+        <p class="hint" id="booking-start-help">{% trans "Enter the exact clinic-local minute this appointment begins." %}</p>
+        {% if form.start_local.errors %}<div class="field-errors" id="{{ form.start_local.auto_id }}_error">{% for error in form.start_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="field{% if form.end_local.errors %} field--error{% endif %}">
+        {{ form.end_local.label_tag }}
+        {{ form.end_local }}
+        <p class="hint" id="booking-end-help">{% trans "Enter the exact clinic-local minute it ends, on the same date." %}</p>
+        {% if form.end_local.errors %}<div class="field-errors" id="{{ form.end_local.auto_id }}_error">{% for error in form.end_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
     </div>
     {{ form.enrollment_id }}
     {{ form.idempotency_key }}
     <div class="actions">
-      <button type="submit">Book this appointment</button>
-      <span class="htmx-indicator" id="booking-progress" role="status">Booking…</span>
+      <button type="submit">{% trans "Book this appointment" %}</button>
+      <span class="htmx-indicator" id="booking-progress" role="status">{% trans "Booking…" %}</span>
+      <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to the patient registry" %}</a>
     </div>
   </form>
 </div>

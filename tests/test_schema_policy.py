@@ -2,7 +2,13 @@ from typing import Final
 
 import psycopg
 import pytest
-from apps.identity.models import Clinic, Organization, UserClinicRole
+from apps.comms.rls import ALL_COMMS_RLS_TARGETS
+from apps.identity.models import (
+    Clinic,
+    ClinicConfiguration,
+    Organization,
+    UserClinicRole,
+)
 from apps.intake.rls import INTAKE_RLS_TARGETS
 from apps.scheduling.rls import ALL_SCHEDULING_RLS_TARGETS
 from apps.tenancy.models import TenantScopedModel
@@ -16,13 +22,23 @@ FOUNDATION_TENANT_COLUMNS: Final = dict(TENANT_RLS_TARGETS)
 PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS) | dict(
     ALL_SCHEDULING_RLS_TARGETS
 )
-EXPECTED_TENANT_COLUMNS: Final = FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS
+COMMS_TENANT_COLUMNS: Final = dict(ALL_COMMS_RLS_TARGETS)
+EXPECTED_TENANT_COLUMNS: Final = (
+    FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS | COMMS_TENANT_COLUMNS
+)
 SELECT_ONLY_RUNTIME_TABLES: Final = {
     "identity_organization",
     "identity_clinic",
     "identity_userclinicrole",
+    # Patient sessions are minted only by the resolver-owned redemption
+    # function; the runtime role can read and revoke but never insert.
+    "intake_patientsession",
+    # Reminder snapshots are inserted only by the appointment trigger.
+    "comms_appointmentreminder",
 }
-SELECT_INSERT_RUNTIME_TABLES: Final = set(PHASE1A_TENANT_COLUMNS)
+SELECT_INSERT_RUNTIME_TABLES: Final = (
+    set(PHASE1A_TENANT_COLUMNS) | set(COMMS_TENANT_COLUMNS)
+) - SELECT_ONLY_RUNTIME_TABLES
 
 
 def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
@@ -33,7 +49,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         if issubclass(model, TenantScopedModel) and not model._meta.abstract
     }
     tenant_models.update(
-        model._meta.db_table for model in (Organization, Clinic, UserClinicRole)
+        model._meta.db_table
+        for model in (Organization, Clinic, ClinicConfiguration, UserClinicRole)
     )
 
     # When: table flags and the tenant-table policies are read
@@ -63,12 +80,77 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         policies = set(cursor.fetchall())
 
     # Then: missing models, missing policies, and extra policies all fail
-    assert tenant_models == set(EXPECTED_TENANT_COLUMNS)
+    # Task-16 session/clinical policies are checked independently, including
+    # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
+    assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+        # Bounded append-only clinic settings: test_clinic_settings.
+        "identity_clinicconfiguration",
+        # Exact clinical predicates and ACLs are checked in test_encounters.
+        # Exact append-only history policies/ACLs: test_clinical_history.
+        "ehr_historyassessment",
+        "ehr_problem",
+        "ehr_allergy",
+        "ehr_specialtytemplate",
+        "ehr_encounter",
+        "ehr_clinicaldocument",
+        "ehr_clinicaldocumentversion",
+        "ehr_encounterintakereference",
+        # Exact quarantine policies and ACLs are checked in test_attachments.
+        "ehr_clinicalattachment",
+        # Task-32 author-only drafts and snapshots: test_prescription_drafts.
+        "prescription_prescriptiondraft",
+        "prescription_prescriptionitem",
+        # Task-33/34 artifacts and signing lifecycle: test_document_artifacts
+        # and test_signatures check exact policies and ACLs.
+        "prescription_prescriptiondocument",
+        "prescription_signatureoperation",
+        "prescription_signaturecallback",
+        # Task-35 release/revocation policies and ACLs are checked exactly
+        # in test_prescription_drafts and test_document_verification.
+        "prescription_prescriptiondocumentrelease",
+        "prescription_prescriptiondocumentrevocation",
+        "intake_questionnairetemplate",
+        "intake_questionnaireresponse",
+        "intake_questionnaireevent",
+        # Task-26 immutable patient decisions are checked in test_consent.
+        "consent_consenttext",
+        "consent_consentacceptance",
+        "consent_consentrevocation",
+        "scheduling_patientbookingevent",
+        # Task-18 manager/patient policies are checked exactly in test_waitlist.
+        "scheduling_waitlistentry",
+        "scheduling_waitlistoffer",
+        # Retention policies/ACLs are checked exactly in test_retention.
+        "retention_retentionpolicy",
+        "retention_legalhold",
+        "retention_recordrelease",
+        "retention_recordexport",
+        # Teleconsult session policies are checked in test_teleconsult_sessions.
+        "teleconsult_teleconsultsession",
+        "teleconsult_teleconsultroom",
+        "teleconsult_teleconsultcredential",
+        "teleconsult_teleconsultevent",
+        # Exact clinic billing policies and ACLs are checked in test_invoices.
+        "billing_invoice",
+        "billing_invoicerevision",
+        "billing_settlement",
+        "billing_receipt",
+        # Immutable synthetic operations/results: test_pix_adapter.
+        "billing_pixoperation",
+        "billing_pixcharge",
+        # Append-only authenticated payment events: test_payment_reconciliation.
+        "billing_paymentevent",
+    }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS
     }
     assert policies == {
         (table, "tenant_isolation") for table in EXPECTED_TENANT_COLUMNS
+    } | {
+        ("scheduling_availabilityblock", "patient_booking_read"),
+        ("scheduling_appointment", "patient_booking_read"),
+        ("scheduling_appointment", "patient_booking_insert"),
+        ("scheduling_appointment", "patient_booking_update"),
     }
 
 
@@ -83,6 +165,7 @@ def test_tenant_policies_are_public_permissive_all_and_fail_closed() -> None:
             FROM pg_catalog.pg_policies AS policies
             WHERE policies.schemaname = 'clinic_app'
               AND policies.tablename = ANY(%s)
+              AND policies.policyname = 'tenant_isolation'
             ORDER BY policies.tablename
             """,
             [list(EXPECTED_TENANT_COLUMNS)],
@@ -179,6 +262,23 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     }
     assert user_grants == []
     assert tenant_column_updates == {
+        ("comms_integrationoperation", "attempt_count"),
+        ("comms_integrationoperation", "last_callback_event_id"),
+        ("comms_integrationoperation", "last_error"),
+        ("comms_integrationoperation", "provider_reference"),
+        ("comms_integrationoperation", "status"),
+        ("comms_integrationoperation", "updated_at"),
+        ("intake_patientchannelpreference", "opted_in"),
+        ("intake_patientchannelpreference", "updated_at"),
+        ("intake_patientchannelpreference", "version"),
+        ("intake_patientcontact", "destination"),
+        ("intake_patientcontact", "destination_version"),
+        ("intake_patientcontact", "updated_at"),
+        ("intake_patientaccessgrant", "revoked_at"),
+        ("intake_patientcontact", "verification_method"),
+        ("intake_patientcontact", "verified_at"),
+        ("intake_patientcontact", "verified_version"),
+        ("intake_patientsession", "revoked_at"),
         ("scheduling_appointment", "cancellation_reason"),
         ("scheduling_appointment", "cancelled_at"),
         ("scheduling_appointment", "end_at"),

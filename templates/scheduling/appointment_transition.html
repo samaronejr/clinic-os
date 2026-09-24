@@ -1,13 +1,24 @@
 {% extends "base.html" %}
-{% block title %}{% if kind == "reschedule" %}Reschedule an appointment{% else %}Cancel an appointment{% endif %} · Clinic OS{% endblock %}
-{% block meta_description %}Change one clinic appointment without exposing patient identifiers in the address bar.{% endblock %}
+{% load i18n %}
+{% block title %}{% if kind == "reschedule" %}{% trans "Reschedule an appointment" %}{% else %}{% trans "Cancel an appointment" %}{% endif %} · Clinic OS{% endblock %}
+{% block meta_description %}{% trans "Change one clinic appointment without exposing patient identifiers in the address bar." %}{% endblock %}
 {% block content %}
-<section class="scheduling-shell" aria-labelledby="transition-title">
-  <p class="eyebrow">Clinic schedule</p>
-  <h1 id="transition-title">{% if kind == "reschedule" %}Reschedule an appointment{% else %}Cancel an appointment{% endif %}</h1>
-  <h2 id="transition-lede-title">This screen never changes the patient or the physician</h2>
-  <p class="lede" id="transition-lede">Every minute below is this clinic's local time ({{ timezone_key }}).</p>
+<section class="scheduling-task transition-shell" aria-labelledby="transition-title">
+  <h1 id="transition-title">{% if kind == "reschedule" %}{% trans "Reschedule an appointment" %}{% else %}{% trans "Cancel an appointment" %}{% endif %}</h1>
+  <p class="lede" id="transition-lede">{% if kind == "reschedule" %}{% blocktrans %}Choose a new start and end for the same patient with the same physician. Times use the clinic time zone ({{ timezone_key }}).{% endblocktrans %}{% else %}{% blocktrans %}Choose why this appointment will not happen. The window opens again and the record keeps its history. Times use the clinic time zone ({{ timezone_key }}).{% endblocktrans %}{% endif %}</p>
+  {% for message in messages %}
+    {% if "scheduling.appointment.rescheduled" in message.tags %}
+      <div class="feedback feedback--success" id="appointment-rescheduled" role="status">
+        <h2>{% trans "Appointment rescheduled" %}</h2>
+        <p>{{ message }}</p>
+      </div>
+    {% elif "scheduling.appointment.cancelled" in message.tags %}
+      <div class="feedback feedback--success" id="appointment-cancelled" role="status">
+        <h2>{% trans "Appointment cancelled" %}</h2>
+        <p>{{ message }}</p>
+      </div>
+    {% endif %}
+  {% endfor %}
   {% include "scheduling/partials/transition_panel.html" %}
-  <p class="scheduling-links"><a href="{{ agenda_url }}">Back to the clinic agenda</a></p>
 </section>
 {% endblock %}

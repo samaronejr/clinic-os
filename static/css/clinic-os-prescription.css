@@ -1,0 +1,507 @@
+/* Prescribing: author, review, identity, signature and result screens.
+   Fields, actions, notices, badges and panels come from clinic-os.css; this
+   sheet arranges them and adds the three surfaces this workflow needs: the
+   fixed subject band, the workflow steps and the operation progress ledger.
+   Every value is a token. */
+
+.rx-shell {
+  width: min(var(--measure-prose), 100%);
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.rx-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: baseline;
+  margin-bottom: var(--space-2);
+}
+
+.rx-title-row h1 {
+  margin-bottom: 0;
+}
+
+.rx-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  margin-bottom: var(--space-3);
+}
+
+/* ------------------------------------------------------------------ */
+/* Subject band: who and what this workflow is about. It opens every    */
+/* screen of the workflow, reads identically on all of them, and is     */
+/* never an editable control. It is deliberately not sticky: a floating */
+/* band would cover the clinical field the author is typing into.       */
+/* ------------------------------------------------------------------ */
+
+.rx-context {
+  min-width: 0;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  overflow-wrap: anywhere;
+  border: var(--line-1) solid var(--color-line);
+  border-inline-start: var(--line-3) solid var(--color-primary);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+}
+
+.rx-context-grid {
+  display: grid;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.rx-context-fact {
+  min-width: 0;
+}
+
+.rx-context-fact dt {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.rx-context-fact dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-label);
+}
+
+.rx-context-fact--patient dd {
+  font-size: var(--text-lede);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+
+.rx-context-fact--patient {
+  grid-column: 1 / -1;
+}
+
+.rx-context .badge {
+  margin-inline-start: var(--space-2);
+  /* A state word never breaks across lines inside its pill. */
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* Workflow steps: one current step, the others done or ahead.          */
+/* ------------------------------------------------------------------ */
+
+.rx-steps {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+  counter-reset: rx-step;
+}
+
+.rx-step {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
+  border: var(--line-1) solid transparent;
+  border-radius: var(--radius-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+  counter-increment: rx-step;
+}
+
+.rx-step::before {
+  content: counter(rx-step);
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-5);
+  height: var(--space-5);
+  border: var(--line-1) solid var(--color-control-border);
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+}
+
+.rx-step--done {
+  color: var(--color-success);
+}
+
+.rx-step--done::before {
+  content: "\2713";
+  border-color: var(--color-success);
+  background: var(--color-success-tint);
+}
+
+.rx-step--failed {
+  color: var(--color-error);
+}
+
+.rx-step--failed::before {
+  content: "\00d7";
+  border-color: var(--color-error);
+  background: var(--color-error-tint);
+}
+
+.rx-step[aria-current="step"] {
+  border-color: var(--color-line);
+  background: var(--color-selection);
+  color: var(--color-ink);
+}
+
+.rx-step[aria-current="step"]::before {
+  border-color: var(--color-primary);
+  background: var(--color-surface-raised);
+  color: var(--color-primary-strong);
+}
+
+/* ------------------------------------------------------------------ */
+/* Author: the document history is an immutable ledger of versions.     */
+/* ------------------------------------------------------------------ */
+
+.rx-history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rx-history-item {
+  padding-block: var(--space-4);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.rx-history-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rx-history-item:last-child {
+  padding-bottom: 0;
+}
+
+.rx-history-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-1);
+}
+
+.rx-history-line h3 {
+  margin: 0;
+}
+
+.rx-history-item .meta {
+  margin-bottom: var(--space-3);
+}
+
+.rx-history-item--muted h3,
+.rx-history-item--muted .meta {
+  color: var(--color-ink-soft);
+}
+
+.rx-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rx-history-actions form {
+  display: contents;
+}
+
+.rx-history-actions .button {
+  flex: 1 1 auto;
+}
+
+.rx-empty {
+  margin: 0;
+  padding: var(--space-4);
+  border: var(--line-1) dashed var(--color-control-border);
+  border-radius: var(--radius-1);
+  color: var(--color-ink-soft);
+}
+
+.rx-render {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+/* Item entry inside the author panel: a bounded group, never a nested
+   card (DESIGN.md: panels do not nest). */
+.rx-fieldset {
+  min-width: 0;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) 0 0;
+  border: 0;
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.rx-fieldset legend {
+  padding: 0;
+  color: var(--color-ink);
+  font-size: var(--text-body);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-heading);
+}
+
+.rx-fieldset > :last-child {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Review: the exact frozen content, field by field, never re-flowed.   */
+/* ------------------------------------------------------------------ */
+
+.rx-facts {
+  display: grid;
+  gap: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.rx-fact {
+  min-width: 0;
+}
+
+.rx-fact dt {
+  margin-bottom: var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.rx-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.rx-fact--wide {
+  grid-column: 1 / -1;
+}
+
+.rx-fact code,
+.rx-digest {
+  overflow-wrap: anywhere;
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.rx-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rx-item {
+  padding-block: var(--space-4);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.rx-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rx-item:last-child {
+  padding-bottom: 0;
+}
+
+.rx-item h3 {
+  margin-bottom: var(--space-3);
+}
+
+.rx-item .rx-facts {
+  margin-bottom: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Signature: the operation as explicit steps, then the result.         */
+/* ------------------------------------------------------------------ */
+
+.rx-progress {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.rx-progress-step {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-1);
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+}
+
+.rx-progress-step--done {
+  border-color: var(--color-success);
+  background: var(--color-success-tint);
+  color: var(--color-success);
+}
+
+.rx-progress-step--current {
+  border-color: var(--color-primary);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+}
+
+.rx-progress-step--failed {
+  border-color: var(--color-error);
+  background: var(--color-error-tint);
+  color: var(--color-error);
+}
+
+.rx-progress-label {
+  flex: 1 1 12rem;
+  font-weight: var(--weight-label);
+}
+
+.rx-progress-step .badge {
+  margin-inline-start: auto;
+}
+
+.rx-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.rx-result h2 {
+  margin: 0;
+}
+
+.rx-attempts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rx-attempt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+  padding-block: var(--space-3);
+  border-top: var(--line-1) solid var(--color-line);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+.rx-attempt:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rx-attempt:last-child {
+  padding-bottom: 0;
+}
+
+.rx-attempt-time {
+  color: var(--color-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.rx-attempt--current .rx-attempt-time {
+  color: var(--color-ink);
+  font-weight: var(--weight-label);
+}
+
+/* Submit feedback: the server serializes repeated submits; the disabled
+   look and the progress line only tell the physician the click landed. */
+.rx-once-status {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+}
+
+form[data-once][aria-busy="true"] .rx-once-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+}
+
+.rx-shell [hidden] {
+  display: none !important;
+}
+
+.rx-verify-link {
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive                                                          */
+/* ------------------------------------------------------------------ */
+
+@media (min-width: 48rem) {
+  .rx-context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rx-context-fact--patient {
+    grid-column: auto;
+  }
+
+  .rx-steps {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  .rx-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rx-history-actions .button {
+    flex: 0 1 auto;
+  }
+}
+
+@media (min-width: 64rem) {
+  .rx-context-grid {
+    grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Preferences                                                        */
+/* ------------------------------------------------------------------ */
+
+@media (forced-colors: active) {
+  .rx-context,
+  .rx-step::before,
+  .rx-history-item,
+  .rx-item,
+  .rx-attempt,
+  .rx-fieldset,
+  .rx-progress-step,
+  .rx-empty,
+  .rx-render {
+    border-color: CanvasText;
+  }
+
+  .rx-step[aria-current="step"] {
+    border-color: CanvasText;
+    text-decoration: underline;
+    text-decoration-thickness: var(--line-2);
+    text-underline-offset: 0.3em;
+  }
+
+  .rx-progress-step--current {
+    text-decoration: underline;
+  }
+}

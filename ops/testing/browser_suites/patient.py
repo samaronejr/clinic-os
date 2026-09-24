@@ -127,16 +127,14 @@ def _paginate(
     artifacts: dict[str, bytes],
 ) -> list[dict[str, str]]:
     first_row = page.inner_text(".intake-table tbody tr:first-child")
-    page.click("form:has(input[name='page'][value='2']) button[type=submit]")
-    page.wait_for_function(
-        "() => (document.querySelector('#patient-results-status')?.textContent"
-        " || '').includes('Page 2 of')"
-    )
+    with page.expect_response(lambda response: response.request.method == "POST"):
+        page.click("form:has(input[name='page'][value='2']) button[type=submit]")
+    page.locator("#patient-results-status").filter(has_text="Página 2 de").wait_for()
     page.wait_for_selector(".intake-table")
     if page.inner_text(".intake-table tbody tr:first-child") == first_row:
         message = "pagination did not advance beyond the first result page"
         raise VisualContractError(message)
-    if "Previous page" not in page.inner_text(".intake-pagination"):
+    if "Página anterior" not in page.inner_text(".intake-pagination"):
         message = "second result page did not offer a previous-page control"
         raise VisualContractError(message)
     require_no_state_in_url("pagination", page.url, (SEARCH_TERM, "page="))

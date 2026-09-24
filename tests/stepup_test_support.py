@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from apps.identity.models import User, UserClinicRole
 from django.contrib.auth.hashers import make_password
+from django.contrib.sessions.backends.db import SessionStore
 from django.db import connection, transaction
+from django.http import HttpRequest, HttpResponse
 from django.test import Client
 from django_otp import DEVICE_ID_SESSION_KEY
+from django_otp.middleware import OTPMiddleware
 
-from otp_test_support import runtime_role
+from otp_test_support import create_totp_device, runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 
 if TYPE_CHECKING:
@@ -51,6 +55,26 @@ def clear_freshness(client: Client) -> None:
     session = client.session
     session.pop(STEP_UP_SESSION_KEY, None)
     session.save()
+
+
+def verified_request(user_id: UUID, *, verified_at: int | None = None) -> HttpRequest:
+    """Build the exact request shape OTPMiddleware yields after real step-up.
+
+    The session carries the persistent id of a freshly created confirmed TOTP
+    device plus the verification timestamp; the lazy user resolves the device
+    from the session exactly as production middleware does, so service-boundary
+    checks see a genuine recent-verification authority rather than a flag.
+    """
+    device = create_totp_device(user_id, confirmed=True)
+    request = HttpRequest()
+    request.session = SessionStore()
+    request.session[DEVICE_ID_SESSION_KEY] = device.persistent_id
+    request.session[STEP_UP_SESSION_KEY] = (
+        int(time.time()) if verified_at is None else verified_at
+    )
+    request.user = User.objects.get(pk=user_id)
+    OTPMiddleware(lambda _request: HttpResponse())(request)
+    return request
 
 
 def create_role_actor(

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Suas consultas · Clinic OS{% endblock %}
+{% block content %}
+<section class="intake-shell patient-booking" aria-labelledby="self-booking-title">
+  <p class="eyebrow">Portal do paciente</p>
+  <h1 id="self-booking-title">Suas consultas</h1>
+  <p class="lede">{{ scope.clinic_name }} · Horários da clínica: {{ scope.timezone }}</p>
+  <a class="button button--secondary" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
+  <a class="button button--secondary" href="{% url 'scheduling:patient-offers' %}">Suas ofertas de horário</a>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  <section class="panel" aria-labelledby="appointments-title">
+    <h2 id="appointments-title">Consultas agendadas</h2>
+    {% timezone scope.timezone %}
+    {% for appointment in appointments %}
+      <article class="patient-detail" data-appointment="{{ appointment.pk }}" data-status="{{ appointment.status }}">
+        <h3>{{ appointment.start_at|date:"d/m/Y" }} · {{ appointment.start_at|date:"H:i" }}–{{ appointment.end_at|date:"H:i" }}</h3>
+        {% if appointment.status == 'scheduled' %}
+        <p>Agendada</p>
+        <form method="post">{% csrf_token %}
+          <input type="hidden" name="appointment_id" value="{{ appointment.pk }}">
+          <input type="hidden" name="day" value="{{ day }}">
+          <button class="button button--secondary" type="submit" name="action" value="choose">Escolher novo horário</button>
+          <button class="button button--secondary" type="submit" name="action" value="cancel">Cancelar consulta</button>
+        </form>
+        {% else %}<p>Cancelada</p>{% endif %}
+      </article>
+    {% empty %}<p>Você ainda não tem consultas nesta clínica.</p>{% endfor %}
+    {% endtimezone %}
+  </section>
+  <section class="panel" aria-labelledby="slots-title">
+    <h2 id="slots-title">{% if appointment_id %}Reagendar consulta{% else %}Agendar consulta{% endif %}</h2>
+    <p>Consultas de 30 minutos. O horário é confirmado ao concluir o agendamento.</p>
+    <form class="booking-day-form" method="{% if appointment_id %}post{% else %}get{% endif %}">
+      {% if appointment_id %}{% csrf_token %}<input type="hidden" name="appointment_id" value="{{ appointment_id }}"><input type="hidden" name="action" value="choose">{% endif %}
+      <label for="booking-day">Data da consulta</label>
+      <input id="booking-day" type="date" name="day" value="{{ day }}" required>
+      <button class="button button--secondary" type="submit">Ver horários</button>
+    </form>
+    {% for slot in slots %}
+      <form method="post" class="patient-detail" data-slot>
+        {% csrf_token %}
+        <input type="hidden" name="day" value="{{ day }}">
+        <input type="hidden" name="slot" value="{{ slot.token }}">
+        <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+        {% if appointment_id %}<input type="hidden" name="appointment_id" value="{{ appointment_id }}">{% endif %}
+        {% timezone scope.timezone %}<p><strong>{{ slot.start_at|date:"H:i" }}–{{ slot.end_at|date:"H:i" }}</strong> · {{ slot.practitioner }}</p>{% endtimezone %}
+        <button class="button" type="submit" name="action" value="{% if appointment_id %}reschedule{% else %}book{% endif %}">{% if appointment_id %}Confirmar novo horário{% else %}Agendar este horário{% endif %}</button>
+      </form>
+    {% empty %}<p role="status">Não há horários disponíveis nesta data. Escolha outra data ou fale com a clínica.</p>{% endfor %}
+  </section>
+</section>
+{% endblock %}

@@ -1,43 +1,72 @@
-<div id="availability-blocks" class="scheduling-results">
+{% load i18n %}
+<div id="availability-blocks" class="availability-results">
+  {% for message in messages %}
+    {% if "scheduling.availability.created" in message.tags %}
+      <div class="feedback feedback--success" id="availability-created" role="status">
+        <h2>{% trans "Period added" %}</h2>
+        <p>{{ message }}</p>
+      </div>
+    {% elif "scheduling.availability.retired" in message.tags %}
+      <div class="feedback feedback--success" id="availability-retired" role="status">
+        <h2>{% trans "Period retired" %}</h2>
+        <p>{{ message }}</p>
+      </div>
+    {% endif %}
+  {% endfor %}
   {% if banner %}
-  <div class="feedback feedback--error" id="scheduling-retire-error" role="alert" tabindex="-1">
-    <h2>We could not retire that window</h2>
+  <div class="feedback feedback--error" id="scheduling-retire-error" role="alert" tabindex="-1" data-focus-error autofocus>
+    <h2>{% trans "We could not retire that window" %}</h2>
     <p>{{ banner }}</p>
   </div>
   {% endif %}
-  <p class="scheduling-status" id="availability-status" role="status">
-    {% if blocks %}{{ blocks|length }} active availability window{{ blocks|length|pluralize }} in {{ timezone_key }}.{% else %}No active availability windows for this clinic.{% endif %}
+  <p class="availability-status" id="availability-status" role="status">
+    {% if total %}{% blocktrans count total=total %}{{ total }} active availability period.{% plural %}{{ total }} active availability periods.{% endblocktrans %}{% else %}{% trans "No active availability windows for this clinic." %}{% endif %}
   </p>
-  {% if blocks %}
-  <table class="scheduling-table">
-    <caption>Active availability in this clinic</caption>
-    <thead>
-      <tr>
-        <th scope="col">Physician</th>
-        <th scope="col">Starts</th>
-        <th scope="col">Ends</th>
-        {% if can_manage %}<th scope="col">Retirement</th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for block in blocks %}
-      <tr>
-        <th scope="row">{{ block.row.practitioner_label }}</th>
-        <td>{{ block.row.start_local }}</td>
-        <td>{{ block.row.end_local }}</td>
-        {% if can_manage %}
-        <td>
-          <form method="post" action="{{ block.retire_url }}"
-                hx-post="{{ block.retire_url }}"
-                hx-target="#availability-blocks" hx-swap="outerHTML">
-            {% csrf_token %}
-            <button type="submit">Retire the {{ block.row.start_local }} window</button>
-          </form>
-        </td>
-        {% endif %}
-      </tr>
+  {% for group in groups %}
+  <div class="table-scroll availability-practitioner" role="region" aria-labelledby="availability-caption-{{ forloop.counter }}" tabindex="0">
+    <table class="table availability-table" role="table" aria-labelledby="availability-caption-{{ forloop.counter }}">
+      <caption id="availability-caption-{{ forloop.counter }}">{{ group.practitioner_label }} <span class="badge">{% blocktrans count total=group.total %}{{ total }} period{% plural %}{{ total }} periods{% endblocktrans %}</span></caption>
+      <thead role="rowgroup">
+        <tr role="row">
+          <th scope="col" role="columnheader">{% trans "Starts" %}</th>
+          <th scope="col" role="columnheader">{% trans "Ends" %}</th>
+          {% if can_manage %}<th scope="col" role="columnheader">{% trans "Retirement" %}</th>{% endif %}
+        </tr>
+      </thead>
+      {% for day in group.days %}
+      <tbody class="availability-day" role="rowgroup">
+        <tr class="availability-day-row" role="row">
+          <th scope="rowgroup" role="rowheader" colspan="{% if can_manage %}3{% else %}2{% endif %}"><time datetime="{{ day.date|date:'Y-m-d' }}">{{ day.date|date:"l" }}, {{ day.date|date:"SHORT_DATE_FORMAT" }}</time></th>
+        </tr>
+        {% for window in day.windows %}
+        <tr class="availability-window{% if window.availability_id == retire_failed_id %} table-row--error{% endif %}" role="row">
+          <th scope="row" role="rowheader"><time datetime="{{ window.start_local }}">{{ window.start|time:"H:i" }}</time></th>
+          <td role="cell"><time datetime="{{ window.end_local }}">{{ window.end|time:"H:i" }}</time></td>
+          {% if can_manage %}
+          <td role="cell" class="availability-retire">
+            <form method="post" action="{% url 'scheduling:availability-retire' clinic_id window.availability_id %}"
+                  hx-post="{% url 'scheduling:availability-retire' clinic_id window.availability_id %}"
+                  hx-target="#availability-blocks" hx-swap="outerHTML" data-auth-form>
+              {% csrf_token %}
+              <button class="button button--secondary" type="submit">{% trans "Retire period" %}<span class="visually-hidden"> {% blocktrans with start=window.start|time:"H:i" end=window.end|time:"H:i" day=day.date|date:"SHORT_DATE_FORMAT" practitioner=group.practitioner_label %}from {{ start }} to {{ end }} on {{ day }}, {{ practitioner }}{% endblocktrans %}</span></button>
+              <span class="htmx-indicator" role="status">{% trans "Retiring…" %}</span>
+              {% if window.availability_id == retire_failed_id %}<span class="badge badge--error">{% trans "Has appointments" %}</span>{% endif %}
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
       {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
+    </table>
+  </div>
+  {% empty %}
+  <div class="table-empty availability-empty">
+    {% if can_manage %}
+      <p>{% trans "Add the first period above: choose the physician, the date and the hours the clinic offers." %}</p>
+    {% else %}
+      <p>{% trans "Periods the clinic offers for you will appear here, grouped by day." %}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
 </div>

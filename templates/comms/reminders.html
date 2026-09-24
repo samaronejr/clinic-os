@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Lembretes de consulta · Clinic OS{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="reminders-title">
+  <p class="eyebrow">Agenda · {{ clinic.name }}</p>
+  <h1 id="reminders-title">Lembretes de consulta</h1>
+  <p class="lede">Acompanhe cada envio, sem confundir uma tentativa com uma entrega.</p>
+  <p>Programação: 24 horas antes da consulta, somente quando esse momento ainda estiver no futuro. Horários da clínica: {{ clinic.timezone }}.</p>
+  <a class="button button--secondary" href="{% url 'scheduling:agenda' clinic.pk %}">Voltar à agenda</a>
+  <a class="button button--secondary" href="{% url 'scheduling:reminders' clinic.pk %}">Atualizar situação</a>
+  <section class="panel" aria-labelledby="channels-title">
+    <h2 id="channels-title">Canais independentes</h2>
+    <p>Envios reais bloqueados: faltam provedor, credenciais e aprovação responsável. Uma simulação não confirma entrega real.</p>
+    <ul>{% for capability in capabilities %}<li data-channel="{{ capability.channel }}">{{ capability.channel|upper }} · {% if capability.synthetic_enabled %}simulação habilitada{% else %}bloqueado{% endif %}</li>{% endfor %}</ul>
+  </section>
+  <section class="panel" aria-labelledby="history-title">
+    <h2 id="history-title">Fila e comprovantes</h2>
+    <p>Até 100 lembretes recentes. Contato verificado e autorização são conferidos novamente antes do envio. Cancelamentos, reagendamentos e revogações impedem avisos antigos.</p>
+    {% for row in rows %}{% with reminder=row.reminder operation=row.operation %}
+    {% timezone reminder.timezone %}
+    <article class="patient-detail" data-operation="{{ operation.pk }}" data-state="{{ row.state }}">
+      <h3>{{ reminder.appointment.patient.full_name }}</h3>
+      <p>{{ operation.get_channel_display }} · <strong>{{ row.label }}</strong></p>
+      <p>Consulta: {{ reminder.start_at|date:"d/m/Y H:i" }}–{{ reminder.end_at|date:"H:i" }}</p>
+      <p>Envio programado: {{ operation.not_before|date:"d/m/Y H:i" }} ({{ reminder.timezone }})</p>
+      <p>Tentativas: {{ operation.attempt_count }} de {{ operation.max_attempts }}. Modelo: versão {{ reminder.template_version }}.</p>
+      {% if row.synthetic %}<p class="badge">Simulação · sem envio externo</p>{% endif %}
+      {% if operation.provider_reference %}<p data-receipt="{{ operation.provider_reference }}">Comprovante: {{ operation.provider_reference|truncatechars:38 }}</p>{% endif %}
+      {% if row.state == 'failed' %}<p>Não há confirmação de entrega. Confira o canal e a autorização antes de programar outro aviso. Nenhuma nova tentativa automática após o limite.</p>{% endif %}
+    </article>
+    {% endtimezone %}
+    {% endwith %}{% empty %}<p role="status">Nenhum lembrete programado. Ao agendar, usamos somente o canal autorizado e verificado do paciente.</p>{% endfor %}
+  </section>
+</section>
+{% endblock %}

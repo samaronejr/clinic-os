@@ -1,69 +1,81 @@
-<div id="scheduling-transition" class="scheduling-card">
+{% load i18n clinic_locale %}
+<div id="scheduling-transition" class="panel transition-panel{% if not is_scheduled %} transition-panel--terminal{% endif %}">
   {% if form.errors %}
-  <div class="feedback feedback--error" id="transition-errors" role="alert" tabindex="-1">
-    <h3>We could not change that appointment</h3>
-    {% if form.non_field_errors %}
-      {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-    {% else %}
-      <p>Check the highlighted fields and try again.</p>
-    {% endif %}
+  <div class="feedback feedback--error" id="transition-errors" role="alert" tabindex="-1" data-focus-error autofocus>
+    <h2>{% trans "We could not change that appointment" %}</h2>
+    {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+    {% for field in form.visible_fields %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
   </div>
   {% endif %}
-  <h3 id="transition-summary-title">Current appointment</h3>
-  <table class="scheduling-table">
-    <caption>The appointment as this clinic currently records it</caption>
-    <tbody>
-      <tr>
-        <th scope="row">Patient</th>
-        <td>{{ appointment.patient_display_name }}</td>
+  <table class="table transition-summary" role="table" aria-labelledby="transition-summary-title">
+    <caption id="transition-summary-title">{% trans "The appointment as recorded" %}</caption>
+    <tbody role="rowgroup">
+      <tr role="row">
+        <th scope="row" role="rowheader">{% trans "Patient" %}</th>
+        <td role="cell">{{ appointment.patient_display_name }}</td>
       </tr>
-      <tr>
-        <th scope="row">Clinic-local range</th>
-        <td>{{ appointment.start_local }} to {{ appointment.end_local }} ({{ timezone_key }})</td>
+      <tr role="row">
+        <th scope="row" role="rowheader">{% trans "Time" %}</th>
+        <td role="cell"><time datetime="{{ appointment.start_local }}">{{ appointment.start_local|clinic_minute }}</time> – <time datetime="{{ appointment.end_local }}">{{ end_time }}</time></td>
       </tr>
-      <tr>
-        <th scope="row">Physician</th>
-        <td>{{ appointment.practitioner_display_identifier }}</td>
+      <tr role="row">
+        <th scope="row" role="rowheader">{% trans "Physician" %}</th>
+        <td role="cell">{{ appointment.practitioner_display_identifier }}</td>
       </tr>
-      <tr>
-        <th scope="row">Status</th>
-        <td>{{ appointment.status }}{% if appointment.cancellation_reason %} ({{ appointment.cancellation_reason }}){% endif %}</td>
+      <tr role="row">
+        <th scope="row" role="rowheader">{% trans "Status" %}</th>
+        <td role="cell"><span class="badge{% if not is_scheduled %} badge--muted{% endif %}">{{ appointment.status|appointment_label }}</span>{% if appointment.cancellation_reason %} <span class="transition-reason">{{ appointment.cancellation_reason|appointment_label }}</span>{% endif %}</td>
       </tr>
     </tbody>
   </table>
   {% if is_scheduled %}
-  <h3 id="transition-form-title">{% if kind == "reschedule" %}Move this appointment{% else %}Cancel this appointment{% endif %}</h3>
   <form method="post" action="{{ action_url }}" hx-post="{{ action_url }}"
         hx-target="#scheduling-transition" hx-swap="outerHTML"
-        hx-indicator="#transition-progress">
+        hx-indicator="#transition-progress" data-auth-form>
     {% csrf_token %}
+    <p class="feedback feedback--error" role="alert" tabindex="-1"
+       data-network-error hidden>
+      {% trans "The request did not complete. Check the agenda before trying again." %}
+    </p>
     {% if kind == "reschedule" %}
-    <div class="field{% if form.start_local.errors %} field--error{% endif %}">
-      {{ form.start_local.label_tag }}
-      {{ form.start_local }}
-      <p class="hint" id="reschedule-start-help">Enter the exact clinic-local minute the appointment should begin.</p>
-      {% if form.start_local.errors %}<div class="field-errors" id="{{ form.start_local.auto_id }}_error">{% for error in form.start_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
-    </div>
-    <div class="field{% if form.end_local.errors %} field--error{% endif %}">
-      {{ form.end_local.label_tag }}
-      {{ form.end_local }}
-      <p class="hint" id="reschedule-end-help">The new window stays with the same patient and the same physician.</p>
-      {% if form.end_local.errors %}<div class="field-errors" id="{{ form.end_local.auto_id }}_error">{% for error in form.end_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+    <h2 id="transition-form-title">{% trans "New time" %}</h2>
+    <div class="transition-fields">
+      <div class="field{% if form.start_local.errors %} field--error{% endif %}">
+        {{ form.start_local.label_tag }}
+        {{ form.start_local }}
+        <p class="hint" id="reschedule-start-help">{% trans "Enter the exact clinic-local minute the appointment should begin." %}</p>
+        {% if form.start_local.errors %}<div class="field-errors" id="{{ form.start_local.auto_id }}_error">{% for error in form.start_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="field{% if form.end_local.errors %} field--error{% endif %}">
+        {{ form.end_local.label_tag }}
+        {{ form.end_local }}
+        <p class="hint" id="reschedule-end-help">{% trans "The new window stays with the same patient and the same physician." %}</p>
+        {% if form.end_local.errors %}<div class="field-errors" id="{{ form.end_local.auto_id }}_error">{% for error in form.end_local.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
     </div>
     {% else %}
+    <h2 id="transition-form-title">{% trans "Reason" %}</h2>
     <div class="field{% if form.reason.errors %} field--error{% endif %}">
       {{ form.reason.label_tag }}
       {{ form.reason }}
-      <p class="hint" id="cancel-reason-help">Choose one listed reason. Cancellation keeps the appointment history.</p>
+      <p class="hint" id="cancel-reason-help">{% trans "Choose one listed reason. Cancellation keeps the appointment history." %}</p>
       {% if form.reason.errors %}<div class="field-errors" id="{{ form.reason.auto_id }}_error">{% for error in form.reason.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
     </div>
     {% endif %}
     <div class="actions">
-      <button type="submit">{% if kind == "reschedule" %}Save the new window{% else %}Cancel the appointment{% endif %}</button>
-      <span class="htmx-indicator" id="transition-progress" role="status">Saving…</span>
+      {% if kind == "reschedule" %}
+      <button type="submit">{% trans "Save the new time" %}</button>
+      {% else %}
+      <button class="button--danger" type="submit">{% trans "Cancel the appointment" %}</button>
+      {% endif %}
+      <span class="htmx-indicator" id="transition-progress" role="status">{% trans "Saving…" %}</span>
+      <a class="button button--quiet" href="{{ agenda_url }}">{% trans "Back to the day's agenda" %}</a>
     </div>
   </form>
   {% else %}
-  <p class="scheduling-status" id="transition-status" role="status">This appointment is cancelled, so it can no longer be changed.</p>
+  <p class="feedback feedback--muted transition-terminal" id="transition-status" role="status">{% trans "This appointment is cancelled, so it can no longer be changed." %}</p>
+  <div class="actions">
+    <a class="button button--secondary" href="{{ agenda_url }}">{% trans "Back to the day's agenda" %}</a>
+  </div>
   {% endif %}
 </div>

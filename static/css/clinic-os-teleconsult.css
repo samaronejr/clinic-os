@@ -1,0 +1,572 @@
+/* Teleconsult: the patient waiting room, device checks and the room surface.
+   Fields, actions, notices, badges and panels come from clinic-os.css; this
+   sheet arranges them and adds the video stage, which is the one surface whose
+   content (camera frames) is not paper. Every value is a token. */
+
+.tele-shell,
+.tele-room {
+  min-width: 0;
+}
+
+/* Facts: label over value, two columns from 48rem. */
+.tele-facts {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+}
+
+.tele-fact {
+  min-width: 0;
+}
+
+.tele-fact dt {
+  margin-bottom: var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.tele-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tele-join .hint {
+  margin: var(--space-3) 0 0;
+}
+
+/* Device check: a 4:3 preview bounded by a rule, then per-device badges. */
+.tele-preview {
+  position: relative;
+  width: min(20rem, 100%);
+  aspect-ratio: 4 / 3;
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-sunken);
+}
+
+.tele-preview video,
+.tele-self video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tele-preview-off,
+.tele-self-off,
+.tele-remote-text {
+  margin: 0;
+  max-width: none;
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-small);
+  text-align: center;
+}
+
+.tele-preview-off {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+}
+
+.tele-device-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+
+.tele-device {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.tele-device dt {
+  min-width: 6rem;
+  font-weight: var(--weight-label);
+}
+
+.tele-device dd {
+  margin: 0;
+}
+
+/* Inside these surfaces the hidden attribute beats `.button`'s inline-flex. */
+.tele-shell [hidden],
+.tele-room [hidden] {
+  display: none !important;
+}
+
+/* History: one line per past consultation with its provenance folded away. */
+.tele-history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tele-history-item {
+  padding-block: var(--space-3);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.tele-history-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.tele-history-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.tele-history-item .hint {
+  margin-bottom: var(--space-2);
+}
+
+.tele-provenance summary {
+  min-height: 44px;
+  padding-block: var(--space-3);
+  color: var(--color-primary-strong);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  cursor: pointer;
+}
+
+.tele-provenance .event-history {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+/* Room: stage first, status column beside it from 64rem. */
+.tele-room-head {
+  margin-bottom: var(--space-5);
+}
+
+.tele-room-grid {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.tele-room-panel {
+  margin-bottom: 0;
+}
+
+.tele-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-sunken);
+}
+
+/* The caption sits top-left so the self view below never covers it. */
+.tele-remote {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  padding: var(--space-4);
+}
+
+.tele-remote-text {
+  font-size: var(--text-body);
+  text-align: left;
+}
+
+/* Self view: a small framed picture inside the stage, never over the text. */
+.tele-self {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  width: clamp(6rem, 30%, 14rem);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: var(--line-2) solid var(--color-surface-raised);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+}
+
+.tele-self-off {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  background: var(--color-surface-raised);
+}
+
+.tele-status-form {
+  display: none;
+}
+
+.tele-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.tele-controls > * {
+  flex: 1 1 auto;
+}
+
+/* An "off" toggle keeps its 44px target and reads as muted, not disabled. */
+.tele-toggle[aria-pressed="false"] {
+  border-color: var(--color-control-border);
+  background: var(--color-surface-sunken);
+  color: var(--color-ink);
+}
+
+.tele-toggle[aria-pressed="false"]:hover {
+  background: var(--color-selection);
+  color: var(--color-ink);
+}
+
+.tele-state {
+  margin-bottom: var(--space-3);
+}
+
+.tele-side .feedback {
+  margin-bottom: var(--space-4);
+}
+
+.tele-side .actions {
+  margin-bottom: var(--space-5);
+}
+
+/* A recovery action inside a notice: spaced from its text, flush below. */
+.tele-side .feedback .actions,
+.tele-devices .feedback .actions {
+  margin: var(--space-3) 0 0;
+}
+
+/* A primary anchor action inside a notice keeps its button ink, not link ink. */
+.tele-side .feedback a.button {
+  color: var(--color-on-primary);
+}
+
+.tele-side .tele-facts {
+  margin-bottom: 0;
+}
+
+/* Ended or failed rooms mute the stage; the notice carries the next step. */
+.tele-room-panel[data-state="ended"] .tele-stage,
+.tele-room-panel[data-state="failed"] .tele-stage,
+.tele-room-panel[data-connection="expired"] .tele-stage,
+.tele-room-panel[data-connection="left"] .tele-stage {
+  border-style: dashed;
+}
+
+/* Clinician workspace: the patient's identity as the page title, then a
+   panel switch below 64rem (one panel at a time, the other stays mounted so
+   edits survive) and, from 64rem, the video panel kept in view beside the
+   notes panel. Every value is a token from clinic-os.css. */
+.tc-workspace {
+  min-width: 0;
+}
+
+.tc-workspace [hidden] {
+  display: none !important;
+}
+
+.tc-head {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.tc-identity {
+  min-width: 0;
+}
+
+.tc-identity h1 {
+  margin-bottom: var(--space-1);
+}
+
+.tc-context {
+  margin: 0 0 var(--space-3);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  line-height: var(--leading-small);
+}
+
+.tc-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.tc-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.tc-head-actions > * {
+  flex: 1 1 auto;
+}
+
+/* The record action is a form (the encounter binding travels in the body);
+   its button fills the same slot the link filled. */
+.tc-head-actions form {
+  display: flex;
+}
+
+.tc-head-actions form > .button {
+  flex: 1 1 auto;
+}
+
+.tc-leave-guard {
+  margin: 0;
+}
+
+.tc-leave-guard .actions {
+  margin-top: var(--space-3);
+}
+
+/* Panel switch: a segmented pair of 44px tabs; the current one takes the
+   selection tint and a Trust Teal rule, underlined in forced colors. */
+.tc-switch {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-1);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+}
+
+.tc-tab {
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  border-color: transparent;
+  background: var(--color-surface-raised);
+  color: var(--color-primary-strong);
+  overflow-wrap: normal;
+}
+
+.tc-tab:hover {
+  border-color: transparent;
+  background: var(--color-selection);
+  color: var(--color-primary-strong);
+}
+
+.tc-tab[aria-selected="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-selection);
+  color: var(--color-ink);
+}
+
+.tc-grid {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.tc-panel {
+  margin-bottom: 0;
+}
+
+/* With JavaScript below 64rem only the active panel is shown; the other
+   stays in the document so its fields, stream and state are untouched. */
+.tc-workspace[data-active="video"] .tc-panel--notes,
+.tc-workspace[data-active="notes"] .tc-panel--video {
+  display: none;
+}
+
+.tc-panel--video .feedback {
+  margin-bottom: var(--space-4);
+}
+
+.tc-panel--video .feedback .actions {
+  margin: var(--space-3) 0 0;
+}
+
+.tc-check {
+  margin-bottom: var(--space-4);
+}
+
+.tc-session-actions {
+  margin-bottom: var(--space-4);
+}
+
+.tc-session-actions .actions {
+  margin-bottom: var(--space-3);
+}
+
+.tc-session-actions .hint {
+  margin: 0;
+}
+
+.tc-session-actions form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.tc-session-actions form > .button {
+  flex: 1 1 auto;
+}
+
+.tc-facts {
+  margin-bottom: 0;
+}
+
+.tc-notes-head {
+  margin-bottom: var(--space-4);
+}
+
+.tc-notes-head h2 {
+  margin-bottom: var(--space-1);
+}
+
+.tc-notes-head .meta {
+  margin: 0;
+}
+
+.tc-panel--notes textarea {
+  min-height: calc(var(--control-height) * 3);
+}
+
+.tc-panel--notes form + form {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+/* Finalized content reads as label-over-value facts; text keeps its lines. */
+.tc-panel--notes .record-review {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.tc-panel--notes .record-review dt {
+  margin-bottom: var(--space-1);
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: var(--weight-label);
+  line-height: var(--leading-label);
+}
+
+.tc-panel--notes .record-review dd {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.tc-panel--notes .record-review + .hint {
+  margin-bottom: var(--space-5);
+}
+
+/* Foot: the record action (a form; the binding travels in the body) over a
+   hint about what the full record adds. */
+.tc-notes-foot {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  margin: var(--space-5) 0 0;
+}
+
+.tc-notes-foot .hint {
+  margin: 0;
+}
+
+/* Terminal video states mute the stage; the notice carries the next step. */
+.tc-panel--video[data-connection="ended"] .tele-stage,
+.tc-panel--video[data-connection="failed"] .tele-stage,
+.tc-panel--video[data-connection="expired"] .tele-stage,
+.tc-panel--video[data-state="ended"] .tele-stage,
+.tc-panel--video[data-state="failed"] .tele-stage {
+  border-style: dashed;
+}
+
+@media (min-width: 48rem) {
+  .tele-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tele-controls > * {
+    flex: 0 1 auto;
+  }
+
+  .tc-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .tc-head-actions > * {
+    flex: 0 1 auto;
+  }
+
+  .tc-leave-guard,
+  .tc-head > .feedback {
+    grid-column: 1 / -1;
+  }
+
+  .tc-session-actions form > .button {
+    flex: 0 1 auto;
+  }
+}
+
+@media (min-width: 64rem) {
+  .tele-room-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
+  }
+
+  .tc-switch {
+    display: none;
+  }
+
+  .tc-workspace[data-active] .tc-panel {
+    display: block;
+  }
+
+  .tc-grid {
+    grid-template-columns: minmax(18rem, 2fr) minmax(0, 3fr);
+  }
+
+  .tc-panel--video {
+    position: sticky;
+    top: var(--space-5);
+  }
+}
+
+@media (forced-colors: active) {
+  .tele-preview,
+  .tele-stage,
+  .tele-self {
+    border-color: CanvasText;
+  }
+
+  .tele-toggle[aria-pressed="false"] {
+    text-decoration: line-through;
+  }
+
+  .tc-switch {
+    border-color: CanvasText;
+  }
+
+  .tc-tab[aria-selected="true"] {
+    text-decoration: underline;
+    text-decoration-thickness: var(--line-2);
+    text-underline-offset: 0.3em;
+  }
+}

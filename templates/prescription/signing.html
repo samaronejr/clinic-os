@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% load static tz %}
+{% block title %}Prescrição · {% if step == "result" %}resultado{% else %}assinatura{% endif %} · Clinic OS{% endblock %}
+{% block meta_description %}Estado explícito de uma operação de assinatura e as evidências do documento resultante.{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-prescription.css' %}"><script src="{% static 'js/prescription-workflow.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="rx-shell" aria-labelledby="signing-title">
+  <div class="rx-title-row">
+    <h1 id="signing-title">{% if view.complete %}Resultado da assinatura{% elif view.failed %}Assinatura não concluída{% else %}Assinatura em andamento{% endif %} · versão {{ document.document_version }}</h1>
+    <span class="badge badge--muted">ensaio sintético · sem emissão real</span>
+  </div>
+  <p class="lede">{% if view.complete %}O ensaio terminou. O artefato assinado é imutável e continua sem validade legal.{% elif view.failed and newer_attempt %}Nada foi emitido nesta tentativa. Uma tentativa mais recente já existe para este documento.{% elif view.failed %}Nada foi emitido. O documento não mudou e pode receber uma nova tentativa.{% else %}Cada etapa muda somente quando o servidor a confirma. Atualize a página para ver o estado atual.{% endif %}</p>
+  <a class="rx-back" href="{{ review_url }}">Voltar à revisão desta versão</a>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus data-outcome="{{ error_code }}"><h2>A ação não foi concluída</h2><p>{{ error }}</p></div>{% endif %}
+  {% include "prescription/partials/context.html" %}
+  {% include "prescription/partials/steps.html" with failed=view.failed %}
+  {% timezone subject.clinic_timezone %}
+  <section class="panel{% if view.failed %} panel--error{% elif view.complete %} panel--success{% endif %}" aria-labelledby="state-title" data-operation="{{ operation.pk }}" data-state="{{ operation.state }}"{% if view.failed %} data-failure="{{ operation.failure_reason }}"{% endif %}{% if view.live %} aria-busy="true"{% endif %}>
+    <div class="rx-result">
+      <h2 id="state-title">{{ view.badge.1 }}</h2>
+      <span class="badge badge--{{ view.badge.0 }}">{{ operation.get_state_display }}</span>
+      {% if view.synthetic %}<span class="badge badge--muted">sintético</span>{% endif %}
+    </div>
+    <p class="panel-progress" role="status">Aguardando o provedor…</p>
+    <ol class="rx-progress" aria-label="Etapas da operação">
+      {% for item in progress %}
+      <li class="rx-progress-step rx-progress-step--{{ item.state }}" data-progress="{{ item.key }}" data-progress-state="{{ item.state }}">
+        <span class="rx-progress-label">{{ item.label }}</span>
+        {% if item.state == "done" %}<span class="badge badge--success">concluída</span>{% elif item.state == "current" %}<span class="badge badge--pending">em andamento</span>{% elif item.state == "failed" %}<span class="badge badge--error">falhou</span>{% else %}<span class="badge badge--muted">não iniciada</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% if view.complete %}
+      <div class="feedback{% if view.synthetic %} feedback--muted{% else %} feedback--success{% endif %}" role="status" data-result="{{ operation.state }}">
+        <h3>{% if view.synthetic %}Resultado sintético, sem validade{% else %}Documento emitido{% endif %}</h3>
+        <p>{% if view.synthetic %}A assinatura foi verificada pelo ensaio, mas este artefato não é um documento emitido: não tem validade legal nem clínica e não deve ser entregue como receita.{% else %}O documento foi assinado e emitido. O conteúdo assinado não pode ser alterado.{% endif %}</p>
+      </div>
+      <form method="post" class="actions">{% csrf_token %}
+        <button class="button" name="action" value="download_signed" type="submit">{% if view.synthetic %}Baixar o artefato do ensaio{% else %}Baixar documento assinado{% endif %}</button>
+        <a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho e ao histórico</a>
+      </form>
+    {% elif view.failed %}
+      <div class="feedback feedback--error" role="alert" data-failure-reason="{{ operation.failure_reason }}">
+        <h3>{{ view.failure_title }}</h3>
+        {% if newer_attempt %}<p>Acompanhe a tentativa mais recente.</p>{% else %}<p>{{ view.failure_recovery }}</p>{% endif %}
+        <p>Registrado em {{ operation.completed_at|date:"d/m/Y H:i" }}. Esta tentativa é terminal e permanece no histórico.</p>
+      </div>
+      {% if newer_attempt %}
+      <div class="feedback" role="status" data-superseded="{{ newer_attempt.operation.pk }}">
+        <h3>Esta tentativa foi substituída</h3>
+        <p>Uma tentativa mais recente já existe para este documento{% if newer_attempt.complete %} e já terminou{% elif newer_attempt.live %} e está em andamento{% endif %}. O estado atual está na página dela.</p>
+      </div>
+      <div class="actions">
+        <a class="button" href="{% url 'prescription:signing' clinic_id newer_attempt.operation.pk %}">Ver a tentativa atual</a>
+        <a class="button button--secondary" href="{{ review_url }}">Voltar à revisão</a>
+      </div>
+      {% elif operation.failure_reason != "content_digest_mismatch" and not revoked %}
+      <form method="post" data-once>{% csrf_token %}
+        <div class="actions">
+          <button class="button" name="action" value="restart_signature" type="submit">Tentar novamente com o mesmo documento</button>
+          <span class="rx-once-status" data-once-status role="status" hidden>Iniciando nova tentativa…</span>
+          <a class="button button--secondary" href="{{ review_url }}">Rever o conteúdo antes</a>
+        </div>
+        <p class="hint">Uma nova tentativa exige identidade confirmada e evidência de registro atual. O conteúdo do documento não muda.</p>
+      </form>
+      {% else %}
+      <div class="actions"><a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho</a></div>
+      {% endif %}
+    {% else %}
+      <p class="feedback" role="status">{% if operation.state == "signing" %}A operação está com o provedor. O resultado chega pelo retorno autenticado; até lá nada foi emitido.{% elif operation.state == "prepared" %}Identidade e registro verificados; o envio ao provedor ainda não foi confirmado.{% else %}A operação foi interrompida antes da confirmação de identidade. Volte à revisão para confirmar e assinar.{% endif %}</p>
+      <div class="actions">
+        <a class="button button--secondary" href="{% url 'prescription:signing' clinic_id operation.pk %}">Atualizar estado</a>
+        {% if operation.state == "prepared" %}
+        <form method="post" data-once>{% csrf_token %}<button class="button" name="action" value="retry_dispatch" type="submit">Reenviar ao provedor</button><span class="rx-once-status" data-once-status role="status" hidden>Reenviando…</span></form>
+        {% endif %}
+        <form method="post" data-once>{% csrf_token %}<button class="button button--danger" name="action" value="abandon" type="submit">Abandonar operação</button><span class="rx-once-status" data-once-status role="status" hidden>Abandonando…</span></form>
+      </div>
+      <p class="hint">Abandonar registra a tentativa como falha e libera o documento para uma nova assinatura.</p>
+    {% endif %}
+  </section>
+  <section class="panel" aria-labelledby="evidence-title">
+    <h2 id="evidence-title">Evidências desta operação</h2>
+    <dl class="rx-facts">
+      <div class="rx-fact"><dt>Provedor</dt><dd data-evidence="provider">{{ view.provider_label }} <span class="meta">· {{ operation.provider }}</span></dd></div>
+      <div class="rx-fact"><dt>Referência no provedor</dt><dd data-evidence="operation_ref">{% if operation.operation_id %}<code>{{ operation.operation_id }}</code>{% else %}<span class="meta">ainda não atribuída</span>{% endif %}</dd></div>
+      <div class="rx-fact"><dt>Identidade de assinatura</dt><dd data-evidence="signer"><code>{{ operation.signer_subject }}</code></dd></div>
+      <div class="rx-fact"><dt>Registro profissional verificado</dt><dd data-evidence="registration">{% if evidence %}{{ evidence.jurisdiction }} {{ evidence.registration_number }} · {{ evidence.status }}{% if evidence.synthetic %} <span class="badge badge--muted">evidência sintética</span>{% endif %}<span class="meta"> · conferido em {{ evidence.checked_at|date:"d/m/Y H:i:s"|default:"—" }}</span>{% else %}<span class="meta">não verificado nesta tentativa</span>{% endif %}</dd></div>
+      <div class="rx-fact"><dt>Autorização válida até</dt><dd data-evidence="authorized_until">{% if operation.authorized_until %}{{ operation.authorized_until|date:"d/m/Y H:i:s" }}{% else %}<span class="meta">—</span>{% endif %}</dd></div>
+      <div class="rx-fact"><dt>Iniciada em</dt><dd>{{ operation.created_at|date:"d/m/Y H:i:s" }}</dd></div>
+      <div class="rx-fact rx-fact--wide"><dt>Resumo do conteúdo (SHA-256)</dt><dd data-evidence="content_digest"><code>{{ operation.content_digest }}</code></dd></div>
+      {% if view.complete %}
+      <div class="rx-fact rx-fact--wide"><dt>Resumo do artefato assinado (SHA-256)</dt><dd data-evidence="signed_digest"><code>{{ operation.signed_digest }}</code></dd></div>
+      <div class="rx-fact"><dt>Assinatura verificada em</dt><dd data-evidence="completed_at">{{ operation.completed_at|date:"d/m/Y H:i:s" }} <span class="meta">· horário da evidência de assinatura, não do servidor</span></dd></div>
+      <div class="rx-fact"><dt>Verificação pública</dt><dd data-evidence="verify"><a class="rx-verify-link" href="{{ verify_path }}">{{ verify_path }}</a><span class="meta"> · informa somente o estado; nunca o conteúdo</span></dd></div>
+      {% endif %}
+    </dl>
+    {% if view.complete %}
+    <p class="hint">{% if revoked %}Este documento foi revogado depois da assinatura; a verificação pública informa “revogado”.{% elif release %}Liberado ao paciente. Avisos e revogações ficam no histórico do rascunho.{% else %}Ainda não liberado ao paciente. A liberação é feita no histórico do rascunho.{% endif %}</p>
+    {% endif %}
+  </section>
+  {% if attempts|length > 1 %}
+  <section class="panel" aria-labelledby="attempts-title">
+    <h2 id="attempts-title">Histórico de tentativas desta versão</h2>
+    <ol class="rx-attempts" aria-label="Tentativas de assinatura">
+      {% for attempt in attempts %}
+      <li class="rx-attempt{% if attempt.operation.pk == operation.pk %} rx-attempt--current{% endif %}" data-attempt="{{ attempt.operation.pk }}" data-attempt-state="{{ attempt.operation.state }}">
+        <span class="rx-attempt-time">{{ attempt.operation.created_at|date:"d/m/Y H:i" }}</span>
+        <span class="badge badge--{{ attempt.badge.0 }}">{{ attempt.badge.1 }}</span>
+        {% if attempt.failed %}<span>{{ attempt.failure_title }}</span>{% endif %}
+        {% if attempt.operation.pk == operation.pk %}<span class="meta">esta página</span>{% else %}<a href="{% url 'prescription:signing' clinic_id attempt.operation.pk %}">Detalhes</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+  {% endtimezone %}
+</section>
+{% endblock %}

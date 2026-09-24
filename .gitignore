@@ -1,5 +1,7 @@
-.codegraph/
+# Local agent state; frozen CI inputs belong in docs/plans.
+.codegraph
 .omo/
+.omx/
 .env
 .env.*
 !.env.example
@@ -14,3 +16,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+staticfiles/
+var/
+evidence/
+.omo

@@ -169,15 +169,8 @@ def _authenticate_receipts(root: Path) -> list[JsonValue]:
     expected = [
         f"task-{todo}-clinic-os-phase-1a-staff-scheduling.json" for todo in range(1, 21)
     ]
-    actual = sorted(path.name for path in root.iterdir())
-    supplemental = sorted(name for name in actual if name.startswith("review-fix-"))
-    expected_supplemental = [
-        f"review-fix-{index}.json" for index in range(1, len(supplemental) + 1)
-    ]
-    if actual != sorted([*expected, *supplemental]) or supplemental != sorted(
-        expected_supplemental
-    ):
-        _fail("final input receipt set is not twenty primaries plus contiguous fixes")
+    if sorted(path.name for path in root.iterdir()) != sorted(expected):
+        _fail("final input receipt set is not exactly twenty primary receipts")
     entries: list[JsonValue] = []
     for todo, name in enumerate(expected, 1):
         receipt, raw = _immutable_json(root / name, "todo receipt")

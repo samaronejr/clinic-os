@@ -127,6 +127,8 @@ def test_spoofed_forwarded_proto_is_ignored_and_redirected(tmp_path: Path) -> No
                 f"clinic?{query}"
             ),
             "CLINIC_DATA_MODE": "synthetic",
+            "CLINIC_SECRET_BACKEND": "synthetic-file",
+            "CLINIC_SECRET_DIR": str(tmp_path / "secrets"),
             "DJANGO_SETTINGS_MODULE": "config.settings.prod",
             "SECRET_KEY": VALID_RUNTIME_TOKEN,
             "SECURE_SSL_HOST": "app.qa.clinic-os.dev",

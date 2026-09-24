@@ -13,11 +13,13 @@ from uuid import UUID
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-type CreateKind = Literal["patient", "availability", "appointment"]
+type CreateKind = Literal["patient", "availability", "appointment", "invoice"]
 
 DOMAIN: Final = b"clinic-idempotency-v1\0"
 MAX_PATIENT_NAME_LENGTH: Final = 255
 UTC_MINUTE: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00Z")
+MINOR_AMOUNT: Final = re.compile(r"[1-9][0-9]*")
+CURRENCY: Final = re.compile(r"[A-Z]{3}")
 EXPECTED_FIELDS: Final[dict[CreateKind, tuple[str, ...]]] = {
     "patient": ("birth_date", "clinic_id", "full_name"),
     "availability": ("clinic_id", "end_utc", "practitioner_id", "start_utc"),
@@ -28,6 +30,7 @@ EXPECTED_FIELDS: Final[dict[CreateKind, tuple[str, ...]]] = {
         "practitioner_id",
         "start_utc",
     ),
+    "invoice": ("amount_minor", "clinic_id", "currency", "patient_id"),
 }
 
 
@@ -81,13 +84,15 @@ def create_fingerprint(kind: CreateKind, values: Mapping[str, str]) -> bytes:
 def _canonical_scalar(field: str, value: str) -> bool:
     if field.endswith("_id"):
         return _canonical_uuid(value)
-    if field == "birth_date":
-        return _canonical_date(value)
-    if field == "full_name":
-        return _canonical_name(value)
     if field.endswith("_utc"):
         return _canonical_utc_minute(value)
-    return False
+    named = {
+        "birth_date": _canonical_date,
+        "full_name": _canonical_name,
+        "amount_minor": _canonical_minor_amount,
+        "currency": _canonical_currency,
+    }.get(field)
+    return named is not None and named(value)
 
 
 def _canonical_uuid(value: str) -> bool:
@@ -109,6 +114,14 @@ def _canonical_name(value: str) -> bool:
         return normalize_patient_name(value) == value
     except PatientNameValueError:
         return False
+
+
+def _canonical_minor_amount(value: str) -> bool:
+    return MINOR_AMOUNT.fullmatch(value) is not None
+
+
+def _canonical_currency(value: str) -> bool:
+    return CURRENCY.fullmatch(value) is not None
 
 
 def _canonical_utc_minute(value: str) -> bool:

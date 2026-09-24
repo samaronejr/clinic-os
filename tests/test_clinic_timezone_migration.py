@@ -7,6 +7,8 @@ import pytest
 from django.db import DatabaseError, connection
 from django.db.migrations.executor import MigrationExecutor
 
+from test_intake_migrations import _default_connection, _scratch_database
+
 MIGRATION_MODULE = "apps.identity.migrations.0005_clinic_timezone"
 TODO2_MIGRATION = ("identity", "0004_current_actor_acl_and_physician_catalog")
 TIMEZONE_MIGRATION = ("identity", "0005_clinic_timezone")
@@ -89,122 +91,146 @@ def test_timezone_migration_orders_nullable_backfill_required_and_check() -> Non
 
 
 @pytest.mark.django_db(transaction=True)
-def test_two_tenant_backfill_restores_role_and_gucs() -> None:
-    try:
-        _migrate([TODO2_MIGRATION])
-        _seed_foundation_clinics()
-        _set_session_context(ORG_B)
+def test_two_tenant_backfill_restores_role_and_gucs(
+    superuser_database_url: str,
+) -> None:
+    # The protected-field migrations are irreversible, so the migrate-back
+    # to TODO2_MIGRATION runs on a scratch database that never applied them.
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        try:
+            _migrate([TODO2_MIGRATION])
+            _seed_foundation_clinics()
+            _set_session_context(ORG_B)
 
-        _migrate([TIMEZONE_MIGRATION])
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT current_setting('role'), "
-                "current_setting('app.current_tenant', true), "
-                "current_setting('app.current_user_id', true)"
-            )
-            assert cursor.fetchone() == (
-                "clinic_owner",
-                str(ORG_B),
-                str(ACTOR_ID),
-            )
-            for organization_id, clinic_id in ((ORG_A, CLINIC_A), (ORG_B, CLINIC_B)):
-                cursor.execute(
-                    "SELECT pg_catalog.set_config('app.current_tenant', %s, false)",
-                    [str(organization_id)],
-                )
-                cursor.execute(
-                    "SELECT timezone FROM clinic_app.identity_clinic WHERE id = %s",
-                    [clinic_id],
-                )
-                assert cursor.fetchone() == ("America/Sao_Paulo",)
-    finally:
-        _reset_session_context()
-        _migrate_head()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_failed_backfill_restores_role_and_gucs() -> None:
-    try:
-        _migrate([TODO2_MIGRATION])
-        _seed_foundation_clinics()
-        _set_session_context(ORG_B)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                CREATE FUNCTION clinic_app.todo3_fail_timezone_update()
-                RETURNS trigger LANGUAGE plpgsql AS $function$
-                BEGIN
-                    RAISE EXCEPTION 'synthetic timezone failure'
-                        USING ERRCODE = 'check_violation';
-                END
-                $function$
-                """
-            )
-            cursor.execute(
-                "CREATE TRIGGER todo3_fail_timezone_update "
-                "BEFORE UPDATE ON clinic_app.identity_clinic "
-                "FOR EACH ROW EXECUTE FUNCTION "
-                "clinic_app.todo3_fail_timezone_update()"
-            )
-
-        with pytest.raises(DatabaseError, match="synthetic timezone failure"):
             _migrate([TIMEZONE_MIGRATION])
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT current_setting('role'), "
-                "current_setting('app.current_tenant', true), "
-                "current_setting('app.current_user_id', true)"
-            )
-            assert cursor.fetchone() == (
-                "clinic_owner",
-                str(ORG_B),
-                str(ACTOR_ID),
-            )
-    finally:
-        _reset_session_context()
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "DROP TRIGGER IF EXISTS todo3_fail_timezone_update "
-                "ON clinic_app.identity_clinic"
-            )
-            cursor.execute(
-                "DROP FUNCTION IF EXISTS clinic_app.todo3_fail_timezone_update()"
-            )
-        _migrate_head()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT current_setting('role'), "
+                    "current_setting('app.current_tenant', true), "
+                    "current_setting('app.current_user_id', true)"
+                )
+                assert cursor.fetchone() == (
+                    "clinic_owner",
+                    str(ORG_B),
+                    str(ACTOR_ID),
+                )
+                for organization_id, clinic_id in (
+                    (ORG_A, CLINIC_A),
+                    (ORG_B, CLINIC_B),
+                ):
+                    cursor.execute(
+                        "SELECT pg_catalog.set_config('app.current_tenant', %s, false)",
+                        [str(organization_id)],
+                    )
+                    cursor.execute(
+                        "SELECT timezone FROM clinic_app.identity_clinic WHERE id = %s",
+                        [clinic_id],
+                    )
+                    assert cursor.fetchone() == ("America/Sao_Paulo",)
+        finally:
+            _reset_session_context()
+            _migrate_head()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_timezone_migration_reverses_reapplies_and_installs_named_check() -> None:
-    try:
-        _migrate([TODO2_MIGRATION])
-        _seed_foundation_clinics()
+def test_failed_backfill_restores_role_and_gucs(
+    superuser_database_url: str,
+) -> None:
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        try:
+            _migrate([TODO2_MIGRATION])
+            _seed_foundation_clinics()
+            _set_session_context(ORG_B)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE FUNCTION clinic_app.todo3_fail_timezone_update()
+                    RETURNS trigger LANGUAGE plpgsql AS $function$
+                    BEGIN
+                        RAISE EXCEPTION 'synthetic timezone failure'
+                            USING ERRCODE = 'check_violation';
+                    END
+                    $function$
+                    """
+                )
+                cursor.execute(
+                    "CREATE TRIGGER todo3_fail_timezone_update "
+                    "BEFORE UPDATE ON clinic_app.identity_clinic "
+                    "FOR EACH ROW EXECUTE FUNCTION "
+                    "clinic_app.todo3_fail_timezone_update()"
+                )
 
-        _migrate([TIMEZONE_MIGRATION])
-        _migrate([TODO2_MIGRATION])
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_schema = 'clinic_app' "
-                "AND table_name = 'identity_clinic' AND column_name = 'timezone'"
-            )
-            assert cursor.fetchone() is None
+            with pytest.raises(DatabaseError, match="synthetic timezone failure"):
+                _migrate([TIMEZONE_MIGRATION])
 
-        _migrate([TIMEZONE_MIGRATION])
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
-                "WHERE conrelid = 'clinic_app.identity_clinic'::regclass "
-                "AND conname = 'identity_clinic_timezone_nonblank'"
-            )
-            definition = cursor.fetchone()
-            assert definition is not None
-            assert "btrim" in definition[0]
-            assert "<> ''::text" in definition[0]
-    finally:
-        _reset_session_context()
-        _migrate_head()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT current_setting('role'), "
+                    "current_setting('app.current_tenant', true), "
+                    "current_setting('app.current_user_id', true)"
+                )
+                assert cursor.fetchone() == (
+                    "clinic_owner",
+                    str(ORG_B),
+                    str(ACTOR_ID),
+                )
+        finally:
+            _reset_session_context()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "DROP TRIGGER IF EXISTS todo3_fail_timezone_update "
+                    "ON clinic_app.identity_clinic"
+                )
+                cursor.execute(
+                    "DROP FUNCTION IF EXISTS clinic_app.todo3_fail_timezone_update()"
+                )
+            _migrate_head()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_timezone_migration_reverses_reapplies_and_installs_named_check(
+    superuser_database_url: str,
+) -> None:
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        try:
+            _migrate([TODO2_MIGRATION])
+            _seed_foundation_clinics()
+
+            _migrate([TIMEZONE_MIGRATION])
+            _migrate([TODO2_MIGRATION])
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = 'clinic_app' "
+                    "AND table_name = 'identity_clinic' "
+                    "AND column_name = 'timezone'"
+                )
+                assert cursor.fetchone() is None
+
+            _migrate([TIMEZONE_MIGRATION])
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conrelid = 'clinic_app.identity_clinic'::regclass "
+                    "AND conname = 'identity_clinic_timezone_nonblank'"
+                )
+                definition = cursor.fetchone()
+                assert definition is not None
+                assert "btrim" in definition[0]
+                assert "<> ''::text" in definition[0]
+        finally:
+            _reset_session_context()
+            _migrate_head()
 
 
 def test_timezone_migration_never_disables_rls_or_names_a_superuser() -> None:

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_head %}<meta name="referrer" content="same-origin"><meta name="robots" content="noindex, nofollow"><link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-patient.js' %}" defer></script>{% endblock %}
+{% block title %}Sala de teleconsulta · Clinic OS{% endblock %}
+{% block meta_description %}Sala de teleconsulta do paciente.{% endblock %}
+{% block content %}
+<section class="shell-wide tele-room" aria-labelledby="room-title" data-teleconsult="room">
+  <div class="tele-room-head">
+    <h1 id="room-title">Sala de teleconsulta</h1>
+    <p class="lede">Você está na sala da sua consulta. Gravação e transcrição estão desativadas.</p>
+    {% include "teleconsult/partials/synthetic_notice.html" %}
+  </div>
+  <div class="tele-room-grid">
+    <section class="panel tele-room-panel" id="room-panel" aria-labelledby="stage-title" data-session="{{ entry.session.pk }}" data-state="{{ entry.state }}" data-role="{{ entry.role }}" data-connection="idle" data-status-url="{% url 'teleconsult:patient' %}">
+      <h2 id="stage-title" class="visually-hidden">Vídeo</h2>
+      <div class="tele-stage" role="group" aria-label="Vídeo da consulta">
+        <div class="tele-remote" data-remote>
+          <p class="tele-remote-text" data-remote-text>{% if entry.state == "active" %}Consulta em andamento{% elif row.physician_joined %}O médico já está na sala{% else %}Aguardando o médico entrar{% endif %}</p>
+        </div>
+        <div class="tele-self" data-self hidden>
+          <video data-self-video autoplay muted playsinline aria-label="Sua câmera"></video>
+          <p class="tele-self-off" data-self-off hidden>Câmera desligada</p>
+        </div>
+      </div>
+      <form class="tele-status-form" method="post" data-status-form>
+        {% csrf_token %}<input type="hidden" name="session_id" value="{{ entry.session.pk }}"><input type="hidden" name="action" value="status">
+      </form>
+      <div class="tele-controls" role="group" aria-label="Controles da chamada">
+        <button class="button button--secondary tele-toggle" type="button" data-toggle="microphone" aria-pressed="true" disabled>Microfone ligado</button>
+        <button class="button button--secondary tele-toggle" type="button" data-toggle="camera" aria-pressed="true" disabled>Câmera ligada</button>
+        <a class="button button--danger" href="{% url 'teleconsult:patient' %}" data-leave>Sair da sala</a>
+      </div>
+      <noscript><p class="feedback feedback--muted" role="status">O vídeo precisa de JavaScript ativado. Ative-o ou use outro navegador; se não for possível, a clínica pode continuar por telefone.</p></noscript>
+    </section>
+    <aside class="tele-side" aria-label="Estado e recuperação">
+      <div class="panel">
+        <h2 id="status-title">Estado da consulta</h2>
+        <p class="tele-state"><span class="badge {% if entry.state == 'active' %}badge--success{% else %}badge--pending{% endif %}" data-state-badge>{{ row.patient_label }}</span></p>
+        <p class="feedback" role="status" aria-live="polite" data-connection-status tabindex="-1">Preparando câmera e microfone…</p>
+        <div class="feedback feedback--error" role="alert" data-room-error tabindex="-1" hidden>
+          <h3 data-room-error-title></h3>
+          <p data-room-error-text></p>
+          <p data-room-error-help></p>
+          <div class="actions" data-room-error-actions>
+            <button class="button button--secondary" type="button" data-retry-media hidden>Tentar câmera e microfone de novo</button>
+            <button class="button button--secondary" type="button" data-reconnect hidden>Reconectar</button>
+            <a class="button" href="{% url 'teleconsult:patient' %}" data-back hidden>Voltar à sala de espera</a>
+            <a class="button" href="{% url 'intake:patient-home' %}" data-portal hidden>Voltar ao portal</a>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="button button--quiet" type="button" data-refresh-status>Verificar estado agora</button>
+        </div>
+        <dl class="tele-facts">
+          <div class="tele-fact">
+            <dt>Médico</dt>
+            <dd data-physician>{% if row.physician_joined %}Já está na sala{% else %}Ainda não entrou{% endif %}</dd>
+          </div>
+          <div class="tele-fact">
+            <dt>Gravação</dt>
+            <dd>Desativada</dd>
+          </div>
+          <div class="tele-fact">
+            <dt>Referência da sala</dt>
+            <dd class="meta" id="room-name">{{ entry.room_name }}</dd>
+          </div>
+        </dl>
+      </div>
+    </aside>
+  </div>
+</section>
+{% endblock %}

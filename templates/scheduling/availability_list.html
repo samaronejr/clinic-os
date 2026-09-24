@@ -1,59 +1,58 @@
 {% extends "base.html" %}
-{% block title %}Physician availability · Clinic OS{% endblock %}
-{% block meta_description %}Manage clinic physician availability without exposing scheduling identifiers in the address bar.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Physician availability · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Manage clinic physician availability without exposing scheduling identifiers in the address bar." %}{% endblock %}
 {% block content %}
-<section class="scheduling-shell" aria-labelledby="scheduling-title">
-  <p class="eyebrow">Clinic schedule</p>
-  <h1 id="scheduling-title">Physician availability</h1>
-  <p class="lede" id="scheduling-lede">Every window below is shown in this clinic's local time ({{ timezone_key }}). Retiring a block never deletes history.</p>
+<section class="availability-shell" id="availability-shell" aria-labelledby="scheduling-title">
+  <h1 id="scheduling-title">{% trans "Physician availability" %}</h1>
+  <p class="lede" id="scheduling-lede">{% blocktrans %}Hours follow the clinic time zone ({{ timezone_key }}). Retiring a period stops new bookings in it and never cancels an appointment.{% endblocktrans %}</p>
   {% if can_manage %}
-  <div class="scheduling-card" id="scheduling-panel">
+  {# A refused submit re-renders the whole section so no earlier notice survives beside the error. #}
+  <form class="panel availability-create" id="scheduling-panel" method="post" action="{{ list_url }}"
+        hx-post="{{ list_url }}" hx-target="#availability-shell" hx-select="#availability-shell"
+        hx-swap="outerHTML" hx-indicator="#scheduling-progress" data-auth-form>
+    {% csrf_token %}
+    <h2 id="scheduling-create-title">{% trans "Add an availability window" %}</h2>
     {% if form.errors %}
-      <div class="feedback feedback--error" id="scheduling-errors" role="alert" tabindex="-1">
-        <h2>We could not add that availability</h2>
-        {% if form.non_field_errors %}
-          {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
-        {% else %}
-          <p>Check the highlighted fields and try again.</p>
-        {% endif %}
+      <div class="feedback feedback--error" id="scheduling-errors" role="alert" tabindex="-1" data-focus-error autofocus>
+        <h3>{% trans "We could not add that availability" %}</h3>
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        {% for field in form.visible_fields %}{% for error in field.errors %}<p>{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
+        {% if form.idempotency_key.errors %}<p>{% trans "Reload this page and submit the period again." %}</p>{% endif %}
       </div>
     {% endif %}
-    <h2 id="scheduling-create-title">Add an availability window</h2>
-    <form method="post" action="{{ list_url }}" hx-post="{{ list_url }}"
-          hx-target="#scheduling-panel" hx-select="#scheduling-panel"
-          hx-swap="outerHTML" hx-indicator="#scheduling-progress">
-      {% csrf_token %}
-      <div class="field{% if form.practitioner.errors %} field--error{% endif %}">
+    <div class="availability-fields">
+      <div class="field availability-field--practitioner{% if form.practitioner.errors %} field--error{% endif %}">
         {{ form.practitioner.label_tag }}
         {{ form.practitioner }}
-        <p class="hint" id="availability-practitioner-help">Only active physicians assigned to this clinic are listed.</p>
+        <p class="hint" id="availability-practitioner-help">{% trans "Only active physicians assigned to this clinic are listed." %}</p>
         {% if form.practitioner.errors %}<div class="field-errors" id="{{ form.practitioner.auto_id }}_error">{% for error in form.practitioner.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="field{% if form.local_date.errors %} field--error{% endif %}">
         {{ form.local_date.label_tag }}
         {{ form.local_date }}
-        <p class="hint" id="availability-date-help">Use a future date in this clinic's local calendar.</p>
+        <p class="hint" id="availability-date-help">{% trans "Use a future date in this clinic's local calendar." %}</p>
         {% if form.local_date.errors %}<div class="field-errors" id="{{ form.local_date.auto_id }}_error">{% for error in form.local_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="field{% if form.start_time.errors %} field--error{% endif %}">
         {{ form.start_time.label_tag }}
         {{ form.start_time }}
-        <p class="hint" id="availability-start-help">Windows start and end on the same clinic-local date.</p>
+        <p class="hint" id="availability-start-help">{% trans "Windows start and end on the same clinic-local date." %}</p>
         {% if form.start_time.errors %}<div class="field-errors" id="{{ form.start_time.auto_id }}_error">{% for error in form.start_time.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="field{% if form.end_time.errors %} field--error{% endif %}">
         {{ form.end_time.label_tag }}
         {{ form.end_time }}
-        <p class="hint" id="availability-end-help">The end time must be later than the start time.</p>
+        <p class="hint" id="availability-end-help">{% trans "The end time must be later than the start time." %}</p>
         {% if form.end_time.errors %}<div class="field-errors" id="{{ form.end_time.auto_id }}_error">{% for error in form.end_time.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
-      {{ form.idempotency_key }}
-      <div class="actions">
-        <button type="submit">Add availability</button>
-        <span class="htmx-indicator" id="scheduling-progress" role="status">Saving…</span>
-      </div>
-    </form>
-  </div>
+    </div>
+    {{ form.idempotency_key }}
+    <div class="actions">
+      <button type="submit">{% trans "Add availability" %}</button>
+      <span class="htmx-indicator" id="scheduling-progress" role="status">{% trans "Saving…" %}</span>
+    </div>
+  </form>
   {% endif %}
   {% include "scheduling/partials/availability_blocks.html" %}
 </section>

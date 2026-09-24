@@ -25,6 +25,7 @@ WEEK_MONDAY: Final = "2031-03-03"
 PROMISED_WINDOW: Final = ("09:00", "12:00")
 BOOKING_START: Final = f"{LOCAL_DATE}T09:30"
 BOOKING_END: Final = f"{LOCAL_DATE}T10:15"
+LOCAL_DISPLAY_DATE: Final = "05/03/2031"
 MOVED_START: Final = f"{LOCAL_DATE}T10:30"
 MOVED_END: Final = f"{LOCAL_DATE}T11:00"
 PATIENT_NAME: Final = "Otto Synthetic Testpatient"
@@ -79,9 +80,9 @@ def prepare_clinic(page: Page, journey: Journey) -> list[dict[str, str]]:
     page.fill("#id_local_date", LOCAL_DATE)
     page.fill("#id_start_time", PROMISED_WINDOW[0])
     page.fill("#id_end_time", PROMISED_WINDOW[1])
-    page.click(".scheduling-card button[type=submit]")
+    page.click("#scheduling-panel button[type=submit]")
     page.wait_for_url(availability)
-    page.wait_for_selector(".scheduling-table tbody tr")
+    page.wait_for_selector(".availability-window")
     findings = _screen(page, journey, "promised-availability")
     _require_ok(page, journey.patients("new/"), "registered-patient")
     page.fill("#id_full_name", PATIENT_NAME)
@@ -94,7 +95,7 @@ def prepare_clinic(page: Page, journey: Journey) -> list[dict[str, str]]:
 def book_from_search(page: Page, journey: Journey) -> list[dict[str, str]]:
     """Search the registry and open the booking screen from a result row."""
     page.fill("#id_q", SEARCH_TERM)
-    page.click(".intake-card form button[type=submit]")
+    page.click("#patient-search-form button[type=submit]")
     page.wait_for_selector(".intake-table tbody tr")
     sentinels = (SEARCH_TERM, PATIENT_BIRTH_DATE)
     require_no_state_in_url("search-result", page.url, sentinels)
@@ -106,7 +107,7 @@ def book_from_search(page: Page, journey: Journey) -> list[dict[str, str]]:
     require_post_only_forms_on(page, "booking-windows")
     require_no_state_in_url("booking-windows", page.url, (PATIENT_NAME, "enrollment"))
     panel = page.inner_text("#scheduling-booking")
-    if f"{LOCAL_DATE}T{PROMISED_WINDOW[0]}" not in panel:
+    if f"{LOCAL_DISPLAY_DATE}" not in panel or PROMISED_WINDOW[0] not in panel:
         message = "booking-windows: the promised availability window is missing"
         raise VisualContractError(message)
     return findings + _screen(page, journey, "booking-windows")
@@ -120,9 +121,9 @@ def create_appointment(page: Page, journey: Journey) -> list[dict[str, str]]:
     page.fill("#id_end_local", BOOKING_END)
     page.click("#scheduling-booking button[type=submit]")
     page.wait_for_url(agenda)
-    page.wait_for_selector(".scheduling-table tbody tr")
+    page.wait_for_selector(".agenda-table tbody tr")
     require_no_state_in_url("day-agenda", page.url, (PATIENT_NAME, "enrollment"))
-    if BOOKING_START not in page.inner_text(".scheduling-table"):
+    if "09:30" not in page.inner_text(".agenda-table"):
         message = "day-agenda: the booked window is missing from the agenda"
         raise VisualContractError(message)
     return _screen(page, journey, "day-agenda")
@@ -131,9 +132,9 @@ def create_appointment(page: Page, journey: Journey) -> list[dict[str, str]]:
 def read_week(page: Page, journey: Journey) -> list[dict[str, str]]:
     """Switch to the ISO-week agenda that contains the booked civil date."""
     page.click(f"a[href$='/agenda/week/{LOCAL_DATE}/1/']")
-    page.wait_for_selector(".scheduling-table tbody tr")
+    page.wait_for_selector(".agenda-table tbody tr")
     require_no_state_in_url("week-agenda", page.url, (PATIENT_NAME, "enrollment"))
-    if PATIENT_NAME not in page.inner_text(".scheduling-table"):
+    if PATIENT_NAME not in page.inner_text(".agenda-table"):
         message = "week-agenda: the booked appointment left its own ISO week"
         raise VisualContractError(message)
     return _screen(page, journey, "week-agenda")
@@ -146,12 +147,11 @@ def reschedule(page: Page, journey: Journey) -> list[dict[str, str]]:
     findings = _screen(page, journey, "reschedule-form")
     page.fill("#id_start_local", MOVED_START)
     page.fill("#id_end_local", MOVED_END)
-    page.click("#scheduling-transition button[type=submit]")
-    page.wait_for_function(
-        "(value) => document.querySelector('#scheduling-transition')"
-        "?.textContent.includes(value)",
-        arg=MOVED_START,
-    )
+    with page.expect_response(lambda response: response.request.method == "POST"):
+        page.click("#scheduling-transition button[type=submit]")
+    page.locator("#scheduling-transition").filter(
+        has_text=f"{LOCAL_DISPLAY_DATE} 10:30"
+    ).wait_for()
     require_no_state_in_url("rescheduled", page.url, (PATIENT_NAME, MOVED_START))
     return findings + _screen(page, journey, "rescheduled")
 
@@ -176,7 +176,7 @@ def rebook(page: Page, journey: Journey) -> list[dict[str, str]]:
     """Reuse the freed window to prove cancellation released the slot."""
     _require_ok(page, journey.patients(), "rebooked")
     page.fill("#id_q", SEARCH_TERM)
-    page.click(".intake-card form button[type=submit]")
+    page.click("#patient-search-form button[type=submit]")
     page.wait_for_selector(".intake-table tbody tr")
     page.click(".intake-table tbody tr:first-child button[type=submit]")
     page.wait_for_selector("#scheduling-booking")
@@ -207,7 +207,7 @@ def without_javascript(
         sign_in_as(page, journey.base_url, config["username"], config["password"])
         _require_ok(page, journey.patients(), "javascript-disabled")
         page.fill("#id_q", SEARCH_TERM)
-        page.click(".intake-card form button[type=submit]")
+        page.click("#patient-search-form button[type=submit]")
         page.wait_for_selector(".intake-table tbody tr")
         page.click(".intake-table tbody tr:first-child button[type=submit]")
         page.wait_for_selector("#scheduling-booking")

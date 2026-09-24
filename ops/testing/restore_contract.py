@@ -5,22 +5,79 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Never
 
-TABLE_DATA: Final = (
-    "clinic_app.audit_event",
-    "clinic_app.identity_clinic",
-    "clinic_app.identity_organization",
-    "clinic_app.identity_user",
-    "clinic_app.identity_userclinicrole",
-    "clinic_app.intake_patient",
-    "clinic_app.intake_patientclinicenrollment",
-    "clinic_app.otp_totp_totpdevice",
-    "clinic_app.scheduling_appointment",
-    "clinic_app.scheduling_availabilityblock",
+DOMAIN_RELATIONS: Final = (
+    "audit_event",
+    "billing_invoice",
+    "billing_invoicerevision",
+    "billing_paymentevent",
+    "billing_pixcharge",
+    "billing_pixoperation",
+    "billing_receipt",
+    "billing_settlement",
+    "comms_appointmentreminder",
+    "comms_integrationoperation",
+    "consent_consentacceptance",
+    "consent_consentrevocation",
+    "consent_consenttext",
+    "ehr_allergy",
+    "ehr_clinicalattachment",
+    "ehr_clinicaldocument",
+    "ehr_clinicaldocumentversion",
+    "ehr_discarded_content",
+    "ehr_encounter",
+    "ehr_encounterintakereference",
+    "ehr_historyassessment",
+    "ehr_problem",
+    "ehr_specialtytemplate",
+    "identity_clinic",
+    "identity_clinicconfiguration",
+    "identity_organization",
+    "identity_physicianevidence",
+    "identity_physicianprofile",
+    "identity_user",
+    "identity_userclinicrole",
+    "intake_patient",
+    "intake_patientaccessgrant",
+    "intake_patientchannelpreference",
+    "intake_patientclinicenrollment",
+    "intake_patientcontact",
+    "intake_patientcontactevent",
+    "intake_patientsession",
+    "intake_questionnaireevent",
+    "intake_questionnaireresponse",
+    "intake_questionnairetemplate",
+    "otp_totp_totpdevice",
+    "prescription_prescriptiondocument",
+    "prescription_prescriptiondocumentrelease",
+    "prescription_prescriptiondocumentrevocation",
+    "prescription_prescriptiondraft",
+    "prescription_prescriptionitem",
+    "prescription_signaturecallback",
+    "prescription_signatureoperation",
+    "prescription_verificationprobe",
+    "retention_legalhold",
+    "retention_recordexport",
+    "retention_recordrelease",
+    "retention_retentionpolicy",
+    "scheduling_appointment",
+    "scheduling_availabilityblock",
+    "scheduling_patientbookingevent",
+    "scheduling_waitlistentry",
+    "scheduling_waitlistoffer",
+    "teleconsult_teleconsultcredential",
+    "teleconsult_teleconsultevent",
+    "teleconsult_teleconsultroom",
+    "teleconsult_teleconsultsession",
+    "tenancy_tenantdatakey",
 )
-SEQUENCE_SET: Final = (
-    "clinic_app.audit_event_seq_seq",
-    "clinic_app.otp_totp_totpdevice_id_seq",
-)
+TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
+SEQUENCE_TARGETS: Final = {
+    "audit_event_seq_seq": ("audit_event", "seq"),
+    "otp_totp_totpdevice_id_seq": ("otp_totp_totpdevice", "id"),
+    "scheduling_waitlistentry_id_seq": ("scheduling_waitlistentry", "id"),
+    "teleconsult_teleconsultevent_id_seq": ("teleconsult_teleconsultevent", "id"),
+}
+SEQUENCE_SET: Final = tuple(f"clinic_app.{name}" for name in sorted(SEQUENCE_TARGETS))
 REQUIRED_EMPTY: Final = (
     "identity_user_groups",
     "identity_user_user_permissions",
@@ -53,6 +110,7 @@ class SourceScope:
     foreign_audit_organization_count: int
     identity_user_count: int
     organization_count: int
+    tenant_data_key_count: int
     totp_without_identity_count: int
     unexpected_domain_relations: tuple[str, ...]
     users_without_role_count: int
@@ -95,6 +153,11 @@ def restore_argv(database: str) -> tuple[str, ...]:
         "--no-acl",
         "--single-transaction",
         "--exit-on-error",
+        # Guards and binding triggers enforce write-time invariants; during a
+        # data-only restore the rows are already valid and load order is not
+        # dependency order, so the superuser session disables them. Posture,
+        # fingerprint, chain and RLS proofs run after the load completes.
+        "--disable-triggers",
         f"--dbname={database}",
         "--host=127.0.0.1",
         "--username=clinic_super",
@@ -160,6 +223,8 @@ def require_source_scope(scope: SourceScope) -> None:
         _fail("source TOTP scope is not identity-bound")
     if scope.foreign_audit_organization_count != 0:
         _fail("source audit organization scope is not closed")
+    if scope.tenant_data_key_count < 1:
+        _fail("source has no tenant data key to prove restorable")
     if set(scope.empty_relation_counts) != set(REQUIRED_EMPTY) or any(
         count != 0 for count in scope.empty_relation_counts.values()
     ):

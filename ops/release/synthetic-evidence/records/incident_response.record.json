@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "incident_response",
+  "environment": "synthetic",
+  "evidence_path": "evidence/incident_response.json",
+  "evidence_sha256": "1b5d0de32638dbd63a78e1fc38732beef9713ed744b2b03b4b11e02b20f8d57c",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the incident_response capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

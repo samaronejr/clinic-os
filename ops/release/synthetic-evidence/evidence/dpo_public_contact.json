@@ -1,0 +1,8 @@
+{
+  "attestation": "synthetic release-evidence fixture",
+  "capability": "dpo_public_contact",
+  "note": "Synthetic fixture bytes only; this file is not approval evidence and authorizes nothing.",
+  "public_contact": "dpo@synthetic.example.invalid",
+  "published": true,
+  "validated": true
+}

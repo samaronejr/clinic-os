@@ -20,6 +20,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Install uv and Python
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -28,12 +29,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
+      - name: Install PDF inspection prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          command -v pdftotext
+          command -v pdftoppm
+          pdftotext -v 2>&1 | head -1
       - name: Run claimed database quality gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
           ops/testing/ci_postgres.sh up
           source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+          export CELERY_BROKER_URL="memory://"
+          rm -f "$GITHUB_WORKSPACE/.omo"
           uv sync --locked --all-groups
           make db-bootstrap
           make migrate
@@ -41,8 +58,15 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy .
-          uv run pytest --reuse-db --cov=apps.audit --cov=apps.identity --cov=apps.intake --cov=apps.scheduling --cov=apps.tenancy --cov-report=term-missing --cov-fail-under=90 tests
+          CLINIC_PDF_TOOLS=required uv run pytest --reuse-db $(grep -v '^#' ops/testing/coverage-targets.txt | tr '\n' ' ') --cov-report=term-missing --cov-report=xml:"$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml" --cov-fail-under=90 tests
           uv run pip-audit --local
+      - name: Publish machine-readable coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-coverage-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/coverage-${{ matrix.python-version }}.xml
+          retention-days: 3
 
   contracts:
     name: Migration, image, browser, and TLS contracts
@@ -60,7 +84,14 @@ jobs:
           python-version: "3.12"
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run claimed migration and contract gates
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -72,8 +103,202 @@ jobs:
           make db-posture
           ops/testing/image_smoke.sh build --sha "$GITHUB_SHA"
           ops/testing/browser_runner.sh probe --require-suite availability --require-suite patient --require-suite scheduling
-          uv run pytest -q tests/test_schema_policy.py tests/test_phase1_audit_migration.py tests/test_browser_runner_contract.py tests/test_container_contract.py
+          uv run pytest -q --reuse-db tests/test_schema_policy.py tests/test_phase1_audit_migration.py tests/test_browser_runner_contract.py tests/test_container_contract.py
           ops/testing/tls_stack.sh smoke
+
+  renewal-browser:
+    name: Renewal browser suites ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - "clinic-settings,billing,prescription-draft,prescribing,document-verification"
+          - "consent,amendments,attachments,clinical-history,clinician-video"
+          - "video-recovery,encounter,end-to-end"
+          - "agenda,availability,contacts,locale,patient-access"
+          - "patient-video,questionnaires,self-booking,waitlist"
+          - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind task-owned evidence root
+        run: ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+      - name: Verify browser prerequisites
+        run: |
+          command -v google-chrome || command -v google-chrome-stable || command -v chromium
+          google-chrome --version 2>/dev/null || google-chrome-stable --version 2>/dev/null || chromium --version
+      - name: Run renewal browser suites
+        env:
+          RENEWAL_SUITES: ${{ matrix.shard }}
+        run: |
+          set -u
+          uv sync --locked --all-groups
+          status=0
+          for suite in ${RENEWAL_SUITES//,/ }; do
+            if ! uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner \
+                browser --suite "$suite" \
+                --artifact-root "$RUNNER_TEMP/renewal/$suite"; then
+              status=1
+            fi
+          done
+          exit $status
+      - name: Publish suite evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-browser-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/renewal/
+          retention-days: 3
+
+  worker-integration:
+    name: Real broker and worker integration gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
+      - name: Install the broker prerequisite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          command -v redis-server
+          redis-server --version
+      - name: Run broker and worker integration gate
+        run: |
+          trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
+          ops/testing/ci_postgres.sh up
+          source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+          uv sync --locked --all-groups
+          make db-bootstrap
+          make migrate
+          rm -f "$GITHUB_WORKSPACE/.omo"
+          install -d "$RUNNER_TEMP/worker-integration"
+          CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
+            --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
+            tests/renewal/test_broker_delivery.py
+      - name: Publish broker gate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-worker-integration
+          path: ${{ runner.temp }}/worker-integration/
+          retention-days: 3
+
+  migration-upgrade:
+    name: Fresh-install and base-to-candidate upgrade
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
+      - name: Run fresh install and upgrade verification
+        run: |
+          trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
+          ops/testing/ci_postgres.sh up
+          source "$RUNNER_TEMP/clinic-phase1a-ci-postgres/ci-postgres.env"
+          uv sync --locked --all-groups
+          make db-bootstrap
+          make migrate
+          base_sha="$(git merge-base origin/main HEAD)"
+          echo "upgrade base: $base_sha"
+          ops/testing/migration_upgrade.sh "$base_sha"
+      - name: Publish upgrade evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: renewal-migration-upgrade
+          path: ${{ runner.temp }}/migration-upgrade/
+          retention-days: 3
+
+  renewal-acceptance:
+    name: Renewal RC acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    needs: [test, contracts, renewal-browser, worker-integration, migration-upgrade, actionlint]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: false
+          python-version: "3.12"
+          version: "0.11.28"
+      - name: Authenticate repository snapshot
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Collect job outcomes
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: printf '%s' "$NEEDS_JSON" > "$RUNNER_TEMP/needs.json"
+      - name: Download renewal evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: renewal-*
+          path: ${{ runner.temp }}/renewal-artifacts
+      - name: Validate the renewal release candidate
+        run: |
+          uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_acceptance \
+            --workflow .github/workflows/ci.yml \
+            --needs-json "$RUNNER_TEMP/needs.json" \
+            --artifacts "$RUNNER_TEMP/renewal-artifacts"
 
   actionlint:
     name: actionlint and action provenance
@@ -91,8 +316,13 @@ jobs:
           python-version: "3.12"
           version: "0.11.28"
       - name: Authenticate repository snapshot
-        run: python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
+        env:
+          CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
+      - name: Bind job-owned authority and TLS identity
+        run: |
+          install -d -m 0700 /tmp/opencode
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Validate closed action provenance
-        run: python ops/testing/validate_action_pins.py
-      - name: Check workflow syntax
-        uses: raven-actions/actionlint@963d4779ef039e217e5d0e6fd73ce9ab7764e493 # v2.1.0
+        run: uv run --locked python ops/testing/validate_action_pins.py

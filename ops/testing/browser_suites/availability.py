@@ -122,7 +122,7 @@ def _prepare(page: Page, journey: _Journey) -> Page:
 
 def _rows(page: Page) -> int:
     raw: object = page.evaluate(
-        "() => document.querySelectorAll('.scheduling-table tbody tr').length"
+        "() => document.querySelectorAll('.availability-window').length"
     )
     if not isinstance(raw, int):
         raise AvailabilitySuiteError
@@ -131,8 +131,7 @@ def _rows(page: Page) -> int:
 
 def _await_rows(page: Page, expected: int) -> None:
     page.wait_for_function(
-        "(count) => document.querySelectorAll("
-        "'.scheduling-table tbody tr').length === count",
+        "(count) => document.querySelectorAll('.availability-window').length === count",
         arg=expected,
     )
 
@@ -161,7 +160,7 @@ def _submit(page: Page, window: tuple[str, str]) -> None:
     page.fill("#id_local_date", LOCAL_DATE)
     page.fill("#id_start_time", start_time)
     page.fill("#id_end_time", end_time)
-    page.click(".scheduling-card button[type=submit]")
+    page.click("#scheduling-panel button[type=submit]")
 
 
 def _create(
@@ -186,7 +185,7 @@ def _replay(page: Page, journey: _Journey) -> list[dict[str, str]]:
     page.wait_for_selector("#scheduling-errors")
     _await_rows(page, 2)
     require_expected_screen(page, journey.list_url, "availability-replay")
-    if "already promises" not in page.inner_text("#scheduling-errors"):
+    if "já tem disponibilidade cadastrada" not in page.inner_text("#scheduling-errors"):
         message = "availability-replay: an overlapping resubmission was accepted"
         raise VisualContractError(message)
     findings = audit(page, "availability-replay", journey.console)
@@ -198,7 +197,7 @@ def _retire(page: Page, journey: _Journey) -> list[dict[str, str]]:
     list_url = journey.list_url
     page.goto(list_url, wait_until="load")
     _await_rows(page, 2)
-    page.click(".scheduling-table tbody tr:first-child button[type=submit]")
+    page.locator(".availability-window button[type=submit]").first.click()
     page.wait_for_url(list_url)
     _await_rows(page, 1)
     require_no_state_in_url("availability-retired", page.url, (LOCAL_DATE, "retire"))
@@ -238,7 +237,7 @@ def _physician(
         page.wait_for_url(list_url)
         require_expected_screen(page, list_url, "physician-availability")
         _await_rows(page, 1)
-        if page.locator(".scheduling-card").count():
+        if page.locator("#scheduling-panel").count():
             message = "physician-availability: a physician was offered write controls"
             raise VisualContractError(message)
         findings += audit(page, "physician-availability", journey.console)

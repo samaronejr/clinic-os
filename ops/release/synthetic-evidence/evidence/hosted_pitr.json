@@ -1,0 +1,5 @@
+{
+  "attestation": "synthetic release-evidence fixture",
+  "capability": "hosted_pitr",
+  "note": "Synthetic fixture bytes only; this file is not approval evidence and authorizes nothing."
+}

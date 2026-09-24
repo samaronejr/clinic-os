@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from ops.testing.isolation_snapshot import LOCK_NAME
 from ops.testing.isolation_snapshot_records import ROOT_KEYS
 
 if TYPE_CHECKING:
@@ -32,6 +34,8 @@ MAX_AGE: Final = timedelta(seconds=60)
 BOOT_ID_PATH: Final = Path("/proc/sys/kernel/random/boot_id")
 LEDGER_SCHEMA_VERSION: Final = 2
 TIMESTAMP_LENGTH: Final = 27
+RUNTIME_SUBTREE: Final = "clinic-os-phase1a-runtime"
+PRIVATE_FILE_MODE: Final = 0o600
 
 
 def validate_authority_root(
@@ -63,7 +67,12 @@ def validate_authority_root(
     _canonical_directory(Path(worktree))
     attempt_root = Path(text(ledger.get("attempt_root")))
     _canonical_directory(attempt_root)
-    if Path(worktree) == attempt_root or Path(worktree) in attempt_root.parents:
+    lock_path = Path(text(ledger.get("lock_path")))
+    if lock_path.name != LOCK_NAME:
+        raise ValueError
+    _canonical_directory(lock_path.parent)
+    _lock_file(lock_path)
+    if attempt_root != lock_path.parent / RUNTIME_SUBTREE / attempt_id:
         raise ValueError
     if not isinstance(ledger.get("claims"), list):
         raise TypeError
@@ -142,6 +151,17 @@ def _canonical_directory(path: Path) -> None:
     identity = path.stat(follow_symlinks=False)
     if (
         not path.is_dir()
+        or identity.st_uid != os.geteuid()
+        or identity.st_gid != os.getegid()
+    ):
+        raise ValueError
+
+
+def _lock_file(path: Path) -> None:
+    identity = path.stat(follow_symlinks=False)
+    if (
+        not stat.S_ISREG(identity.st_mode)
+        or stat.S_IMODE(identity.st_mode) != PRIVATE_FILE_MODE
         or identity.st_uid != os.geteuid()
         or identity.st_gid != os.getegid()
     ):

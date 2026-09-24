@@ -8,7 +8,7 @@ dependencies = [
   "django==5.2.*",
   "django-environ",
   "django-otp==1.7.*",
-  "djangorestframework",
+  "djangorestframework==3.17.*",
   "gunicorn",
   "psycopg[binary]>=3.2",
   "qrcode[pil]",
@@ -99,6 +99,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["celery", "celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["qrcode", "qrcode.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

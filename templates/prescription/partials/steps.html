@@ -1,0 +1,13 @@
+{% comment %}
+Workflow steps. ``step`` is one of author, review, sign, result; the identity
+step happens on the step-up screen and is shown as done once a later step is
+current. Steps before the current one read as done, later ones as ahead.
+``failed`` marks the signature step as failed instead of done, so a terminal
+failure never renders as a completed signature.
+{% endcomment %}<ol class="rx-steps" aria-label="Etapas da emissão" data-step="{{ step }}">
+  <li class="rx-step{% if step != "author" %} rx-step--done{% endif %}"{% if step == "author" %} aria-current="step"{% endif %}>Autoria</li>
+  <li class="rx-step{% if step == "sign" or step == "result" %} rx-step--done{% endif %}"{% if step == "review" %} aria-current="step"{% endif %}>Revisão</li>
+  <li class="rx-step{% if step == "sign" or step == "result" %} rx-step--done{% endif %}">Identidade</li>
+  <li class="rx-step{% if failed %} rx-step--failed{% elif step == "result" %} rx-step--done{% endif %}"{% if step == "sign" %} aria-current="step"{% endif %}>Assinatura</li>
+  <li class="rx-step"{% if step == "result" %} aria-current="step"{% endif %}>Resultado</li>
+</ol>

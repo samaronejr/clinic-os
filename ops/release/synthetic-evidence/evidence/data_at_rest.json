@@ -1,0 +1,5 @@
+{
+  "attestation": "synthetic release-evidence fixture",
+  "capability": "data_at_rest",
+  "note": "Synthetic fixture bytes only; this file is not approval evidence and authorizes nothing."
+}

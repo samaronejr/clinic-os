@@ -61,10 +61,12 @@ def test_manager_get_never_lists_a_foreign_clinic_window(
         response = client.get(url)
 
     assert response.status_code == 200
-    assert response.content.count(b"<tbody>") == 1
-    assert b"08:00" in response.content
-    assert b"09:00</td>" in response.content
-    assert response.content.count(b'<th scope="row">') == 1
+    assert response.content.count(b'class="table availability-table"') == 1
+    assert response.content.count(b'class="availability-day"') == 1
+    assert response.content.count(b'class="availability-window"') == 1
+    assert b'<time datetime="2031-03-04T08:00">08:00</time>' in response.content
+    assert b'<time datetime="2031-03-04T09:00">09:00</time></td>' in response.content
+    assert response.content.count(b'<th scope="row"') == 1
 
 
 def test_physician_sees_only_own_windows_without_management_controls(
@@ -78,6 +80,6 @@ def test_physician_sees_only_own_windows_without_management_controls(
         response = physician.get(availability_list_url(rbac_graph.clinic_a))
 
     assert response.status_code == 200
-    assert b"Add an availability window" not in response.content
-    assert b"Retire the" not in response.content
+    assert b'id="scheduling-create-title"' not in response.content
+    assert b"/retire/" not in response.content
     assert b"08:00" in response.content

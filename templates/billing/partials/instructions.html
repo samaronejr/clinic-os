@@ -1,0 +1,32 @@
+{% comment %}
+Payment instruction primitive: exactly the stored copy text and stored image.
+
+Context:
+  instructions  PixInstructions (required).
+  patient       True for the patient wording; staff wording otherwise.
+
+An expired request hides its code and image so nobody pays a dead code, and
+says what happens next. The copy text stays selectable without JavaScript;
+the copy button only appears when the browser can write to the clipboard.
+{% endcomment %}
+<div class="billing-instructions" data-instructions data-expired="{% if instructions.expired %}true{% else %}false{% endif %}">
+  <div class="billing-instructions-head">
+    <h3 id="pix-title">Código de pagamento PIX</h3>
+    <span class="badge badge--muted">ensaio sintético · não pagável</span>
+  </div>
+  {% if instructions.expired %}
+    <p class="billing-expired" data-expiry>Este código expirou e não pode mais ser usado. {% if patient %}Peça um novo código à clínica; o valor da cobrança continua o mesmo.{% else %}Gere um novo código abaixo; a cobrança e o valor continuam os mesmos.{% endif %}</p>
+  {% else %}
+    <p class="billing-expiry" data-expiry>Válido até {{ instructions.expires_at|date:"d/m/Y H:i" }}, horário da clínica.</p>
+    <div class="billing-instructions-body">
+      <img class="billing-qr" src="data:image/png;base64,{{ instructions.qr_base64 }}"{% if instructions.qr_width %} width="{{ instructions.qr_width }}" height="{{ instructions.qr_height }}"{% endif %} alt="QR code com o código de pagamento desta cobrança. O mesmo código está disponível como texto abaixo." data-qr>
+      <div class="billing-copy">
+        <p class="field-label" id="pix-code-label">Código para copiar e colar</p>
+        <code class="billing-code" id="pix-code" data-code tabindex="0" aria-labelledby="pix-code-label">{{ instructions.copy_code }}</code>
+        <button class="button button--secondary" type="button" data-copy="pix-code" aria-describedby="pix-copy-status" hidden>Copiar código</button>
+        <p class="hint" id="pix-copy-hint">Selecione o texto acima para copiar manualmente, se preferir.</p>
+        <p class="action-outcome" role="status" id="pix-copy-status" data-copy-status></p>
+      </div>
+    </div>
+  {% endif %}
+</div>

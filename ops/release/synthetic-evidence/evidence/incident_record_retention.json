@@ -1,0 +1,8 @@
+{
+  "attestation": "synthetic release-evidence fixture",
+  "capability": "incident_record_retention",
+  "covers_unnotified": true,
+  "measured_from": "registration",
+  "minimum_years": 5,
+  "note": "Synthetic fixture bytes only; this file is not approval evidence and authorizes nothing."
+}

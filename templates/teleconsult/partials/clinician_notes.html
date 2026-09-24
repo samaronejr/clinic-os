@@ -1,0 +1,78 @@
+{% load tz %}{% timezone encounter.clinic.timezone %}
+<section class="panel tc-panel tc-panel--notes" id="notes-panel" data-panel="notes" data-title="notes-title" aria-labelledby="notes-title" data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}"{% if version %} data-version="{{ version.pk }}" data-revision="{{ version.revision }}" data-state="{{ version.state }}" data-template-version="{{ version.template.version }}"{% if version.content_digest %} data-digest="{{ version.content_digest }}"{% endif %}{% if version.amendment_of_id %} data-amendment-of="{{ version.amendment_of_id }}"{% endif %}{% endif %}>
+  <div class="tc-notes-head">
+    <h2 id="notes-title">Anotações do atendimento</h2>
+    {% if version %}<p class="meta">{{ version.template.title }} · modelo versão {{ version.template.version }} · documento versão {{ version.version }} · revisão salva {{ version.revision }} · última gravação {{ version.updated_at|date:"d/m/Y H:i" }}</p>{% else %}<p class="meta">Atendimento {{ encounter.get_state_display|lower }} · iniciado em {{ encounter.created_at|date:"d/m/Y H:i" }}</p>{% endif %}
+  </div>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus data-notes-error>{{ error }}</div>{% endif %}
+  {% if message %}<p class="feedback feedback--success" role="status" data-notes-message>{{ message }}</p>{% endif %}
+  {% if version and version.state == "draft" %}
+  {% if version.amendment_of_id %}<p class="feedback">Retificação da versão {{ version.amendment_of.version }} · Motivo: {{ version.amendment_reason }}</p>{% endif %}
+  <p class="feedback{% if unsaved %} feedback--error{% endif %}" id="save-state" role="status" aria-live="polite" tabindex="-1" data-state="{% if unsaved %}unsaved{% else %}saved{% endif %}">{% if unsaved %}Alterações não salvas.{% else %}Versão salva carregada. Novas alterações precisam ser salvas.{% endif %}</p>
+  <form method="post" action="{{ staff_url }}" id="soap-form" hx-post="{{ staff_url }}" hx-target="#notes-panel" hx-swap="outerHTML" hx-indicator="#notes-progress" data-auth-form>
+    {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}"><input type="hidden" name="surface" value="workspace">
+    {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus data-save-error>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}<p>Nada foi gravado; o texto abaixo continua como você digitou.</p></div>{% endif %}
+    {% for field in form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="hint">{{ field.help_text }}</p>{% endif %}{{ field }}{{ field.errors }}</div>{% endfor %}
+    <div class="actions">
+      <button class="button" name="action" value="note-save" type="submit">Salvar rascunho</button>
+      <span class="htmx-indicator" id="notes-progress" role="status">Salvando…</span>
+    </div>
+    <p class="hint">Sem salvamento automático. Um rascunho não é um documento finalizado.</p>
+  </form>
+  <form method="post" action="{{ staff_url }}" id="finalize-form" hx-post="{{ staff_url }}" hx-target="#notes-panel" hx-swap="outerHTML" data-auth-form>
+    {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}"><input type="hidden" name="version_id" value="{{ version.pk }}"><input type="hidden" name="revision" value="{{ version.revision }}">
+    <div class="actions">
+      <button class="button button--secondary" name="action" value="note-finalize" type="submit" data-finalize>Finalizar documento</button>
+      <button class="button button--danger" name="action" value="note-discard" type="submit" data-discard>Descartar rascunho</button>
+      <span class="htmx-indicator" role="status">Processando…</span>
+    </div>
+    <p class="hint" data-finalize-hint="saved">Finalizar usa a revisão salva {{ version.revision }}, torna o conteúdo imutável e exige verificação recente do autenticador. A finalização local não é uma assinatura digital.</p>
+    <p class="hint" data-finalize-hint="unsaved" hidden>Salve o rascunho antes de finalizar: a finalização usa somente a revisão salva.</p>
+  </form>
+  {% elif version %}
+  <p class="feedback feedback--success" role="status" data-finalization="local">Versão finalizada localmente em {{ version.finalized_at|date:"d/m/Y H:i" }} · Conteúdo imutável. Este registro não é uma assinatura digital.</p>
+  <dl class="record-review">
+    <div><dt>Subjetivo</dt><dd>{{ version.subjective }}</dd></div>
+    <div><dt>Objetivo</dt><dd>{{ version.objective }}</dd></div>
+    <div><dt>Avaliação</dt><dd>{{ version.assessment }}</dd></div>
+    <div><dt>Plano</dt><dd>{{ version.plan }}</dd></div>
+  </dl>
+  <p class="hint">Resumo do conteúdo (SHA-256): <code>{{ version.content_digest }}</code></p>
+  {% if amend_form %}
+  <form method="post" action="{{ staff_url }}" id="amend-form" hx-post="{{ staff_url }}" hx-target="#notes-panel" hx-swap="outerHTML" data-auth-form>
+    {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}">
+    {% for hidden in amend_form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% if amend_form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ amend_form.non_field_errors }}{% for hidden in amend_form.hidden_fields %}{{ hidden.errors }}{% endfor %}{% for field in amend_form.visible_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+    {% for field in amend_form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+    <div class="actions">
+      <button class="button button--secondary" name="action" value="note-amend" type="submit">Retificar documento</button>
+      <span class="htmx-indicator" role="status">Criando retificação…</span>
+    </div>
+    <p class="hint">A retificação cria um novo rascunho vinculado. A versão atual é preservada e marcada como substituída ao finalizar a nova versão.</p>
+  </form>
+  {% endif %}
+  {% elif templates is not None %}
+  <form method="post" action="{{ staff_url }}" id="template-form" hx-post="{{ staff_url }}" hx-target="#notes-panel" hx-swap="outerHTML" data-auth-form>
+    {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}">
+    <p>Escolha o modelo de especialidade para começar o registro. O modelo orienta o preenchimento sem sugerir condutas e fica vinculado ao documento.</p>
+    {% if templates %}
+    <div class="field"><label for="template-id">Modelo de especialidade</label><select name="template_id" id="template-id" required><option value="">Selecione</option>{% for template in templates %}<option value="{{ template.pk }}">{{ template.title }} · versão {{ template.version }}</option>{% endfor %}</select></div>
+    <div class="actions">
+      <button class="button" type="submit" name="action" value="note-template">Criar rascunho</button>
+      <span class="htmx-indicator" role="status">Criando rascunho…</span>
+    </div>
+    {% else %}<p class="feedback feedback--muted" role="status">Nenhum modelo disponível. Solicite a configuração à administração da clínica.</p>{% endif %}
+  </form>
+  {% else %}
+  <p class="feedback feedback--muted" role="status">O atendimento está encerrado sem documento. Novos documentos não podem ser criados.</p>
+  {% endif %}
+  <div class="tc-notes-foot">
+    <form method="post" action="{{ record_url }}" data-leave-form>
+      {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+      <button class="button button--quiet" name="action" value="show" type="submit">Abrir o registro completo</button>
+    </form>
+    <p class="hint">Versões anteriores, revisão, problemas, alergias e anexos ficam no registro completo do atendimento.</p>
+  </div>
+</section>
+{% endtimezone %}

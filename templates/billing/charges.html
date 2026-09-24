@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% load static tz clinic_locale %}
+{% block title %}Cobranças · Clinic OS{% endblock %}
+{% block meta_description %}Cobranças da clínica com valor em reais, estado de pagamento e recibo.{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}"><script src="{% static 'js/billing-payment.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="billing-shell" aria-labelledby="charges-title">
+  <h1 id="charges-title">Cobranças</h1>
+  <p class="lede">Valores em reais, estado de pagamento e recibos desta clínica. Uma cobrança só fica paga depois que o pagamento é confirmado no servidor.</p>
+  {% for message in messages %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endfor %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  {% timezone clinic_timezone %}
+  <div class="table-scroll" role="region" aria-labelledby="charges-caption" tabindex="0">
+    <table class="table billing-table" role="table" aria-labelledby="charges-caption">
+      <caption id="charges-caption">Cobranças desta clínica</caption>
+      <thead role="rowgroup">
+        <tr role="row">
+          <th scope="col" role="columnheader">Paciente</th>
+          <th scope="col" role="columnheader">Valor</th>
+          <th scope="col" role="columnheader">Estado</th>
+          <th scope="col" role="columnheader">Criada em</th>
+          <th scope="col" role="columnheader">Detalhes</th>
+        </tr>
+      </thead>
+      <tbody role="rowgroup">
+        {% for row in charges %}
+        <tr role="row" data-charge="{{ row.charge.invoice_id }}" data-state="{{ row.charge.state }}">
+          <th scope="row" role="rowheader">{{ row.patient_name }}</th>
+          <td role="cell" data-label="Valor" class="billing-amount">{{ row.charge.amount|brl }}</td>
+          <td role="cell" data-label="Estado"><span class="badge badge--{{ row.charge.tone }}">{{ row.charge.label }}</span></td>
+          <td role="cell" data-label="Criada em">{{ row.created_at|date:"d/m/Y H:i" }}</td>
+          <td role="cell" class="billing-open"><a class="button button--secondary" href="{% url 'billing:invoice' clinic_id row.charge.invoice_id %}">Abrir<span class="visually-hidden"> a cobrança de {{ row.patient_name }} no valor de {{ row.charge.amount|brl }}</span></a></td>
+        </tr>
+        {% empty %}
+        <tr role="row">
+          <td role="cell" colspan="5"><p class="table-empty" id="charges-empty">Nenhuma cobrança registrada nesta clínica. Crie a primeira no formulário abaixo.</p></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endtimezone %}
+  <section class="panel" aria-labelledby="new-charge-title">
+    <h2 id="new-charge-title">Nova cobrança</h2>
+    <p>O rascunho pode ser conferido antes de emitir. Emitir congela o valor; só depois é possível gerar o código de pagamento.</p>
+    <form method="post" id="charge-form" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="feedback feedback--error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      {% if repeat %}<p class="feedback feedback--muted" role="status" data-repeat-of="{{ repeat.charge.invoice_id }}">Esta será uma segunda cobrança, separada e igual à de {{ repeat.patient_name }} no valor de {{ repeat.charge.amount|brl }}. Confira os dados antes de criar.</p>{% endif %}
+      {% include "includes/field.html" with field=form.patient_id %}
+      {% include "includes/field.html" with field=form.amount hint=form.amount.help_text %}
+      {{ form.repeat_of }}
+      <div class="actions">
+        <button class="button" type="submit" name="action" value="create">Criar rascunho</button>
+      </div>
+      <p class="hint">Recarregar esta página, voltar no navegador ou enviar este formulário de novo não cria uma segunda cobrança: os mesmos dados abrem sempre a mesma cobrança. Para cobrar o mesmo valor outra vez, use “Criar outra cobrança igual” na tela da cobrança.</p>
+    </form>
+  </section>
+</section>
+{% endblock %}

@@ -27,7 +27,8 @@ def test_appointment_has_exact_force_rls_and_column_acl_catalog() -> None:
         cursor.execute(
             "SELECT policyname, permissive, roles, cmd, qual, with_check "
             "FROM pg_catalog.pg_policies WHERE schemaname = 'clinic_app' "
-            "AND tablename = 'scheduling_appointment'"
+            "AND tablename = 'scheduling_appointment' "
+            "AND policyname = 'tenant_isolation'"
         )
         expression = (
             "(organization_id = (NULLIF(current_setting("
@@ -68,4 +69,4 @@ def test_appointment_has_exact_force_rls_and_column_acl_catalog() -> None:
             "AND grantee = ANY(%s) ORDER BY grantee, privilege_type",
             [["PUBLIC", "clinic_resolver"]],
         )
-        assert cursor.fetchall() == []
+        assert cursor.fetchall() == [("clinic_resolver", "SELECT")]

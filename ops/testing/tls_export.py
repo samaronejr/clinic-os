@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,12 +15,18 @@ from ops.testing.isolation_claim_transitions import (
     release_claim,
     reserve_claim,
 )
-from ops.testing.isolation_common import JsonObject, canonical_bytes, load_json
+from ops.testing.isolation_common import (
+    JsonObject,
+    canonical_bytes,
+    ensure_private_directory,
+    load_json,
+)
 from ops.testing.isolation_docker_metadata import run_docker_command
 from ops.testing.isolation_filesystem_claim import (
     load_current_filesystem_observation,
 )
 from ops.testing.isolation_refresh import verify_claim
+from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -71,8 +76,9 @@ def public_ca_export(
         "kind": "filesystem",
         "purpose": "tls-public-ca-export",
     }
-    with tempfile.TemporaryDirectory(dir="/tmp/opencode") as temporary:
-        staging = Path(temporary)
+    with runtime_directory(
+        _run_root(materializer.ledger_path), purpose="ca-export"
+    ) as staging:
         spec_path = _immutable_json(staging / "spec.json", spec)
         reserve_claim(materializer.ledger_path, spec_path)
         claim_root = attempt_root / "claims" / claim_id
@@ -92,6 +98,14 @@ def public_ca_export(
             export_path.unlink()
             claim_root.rmdir()
             release_claim(materializer.ledger_path, claim_id)
+
+
+def _run_root(ledger_path: Path) -> Path:
+    """Provision this caller's private run root under the attempt root."""
+    record, _ = load_json(ledger_path)
+    root = Path(_text(record.get("attempt_root"))) / "runtime"
+    ensure_private_directory(root)
+    return root
 
 
 def _immutable_json(path: Path, value: JsonObject) -> Path:

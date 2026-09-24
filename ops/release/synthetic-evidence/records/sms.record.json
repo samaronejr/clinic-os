@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "sms",
+  "environment": "synthetic",
+  "evidence_path": "evidence/sms.json",
+  "evidence_sha256": "e7c69c89cfa18099a191f070113d1128a9dfc16cbd96050819bb0be277f00ad5",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the sms capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

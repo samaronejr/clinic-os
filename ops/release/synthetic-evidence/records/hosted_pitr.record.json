@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "hosted_pitr",
+  "environment": "synthetic",
+  "evidence_path": "evidence/hosted_pitr.json",
+  "evidence_sha256": "6694925d2d6e1170b5effa5cc9b277453d9b069a9b7e6581ffb4d2afd9cf1fe6",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the hosted_pitr capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

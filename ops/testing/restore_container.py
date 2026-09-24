@@ -29,6 +29,15 @@ class _ContainerRunner(Protocol):
     ) -> bytes: ...
 
 
+class _ProbeRunner(Protocol):
+    def __call__(
+        self,
+        argv: tuple[str, ...],
+        standard_input: bytes | None,
+        environment: dict[str, str],
+    ) -> tuple[int, str, str]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class VersionEvidence:
     """Record exact source/target client and server patch versions."""
@@ -45,7 +54,9 @@ class ContainerPostgres:
     container_id: str
     database: str
     password: str
+    role: str = "clinic_super"
     runner: _ContainerRunner | None = None
+    probe_runner: _ProbeRunner | None = None
 
     def __post_init__(self) -> None:
         """Reject identifiers or credentials that cannot enter closed argv/env."""
@@ -59,10 +70,22 @@ class ContainerPostgres:
             or not self.database.replace("_", "a").isalnum()
             or not self.password
             or "\x00" in self.password
+            or self.role not in {"clinic_app", "clinic_owner", "clinic_super"}
         ):
             _fail("container PostgreSQL binding is invalid")
         if self.runner is not None and not callable(self.runner):
             _fail("container PostgreSQL runner is invalid")
+
+    def for_role(self, role: str, password: str) -> ContainerPostgres:
+        """Rebind this container to one different authenticated role."""
+        return ContainerPostgres(
+            container_id=self.container_id,
+            database=self.database,
+            password=password,
+            role=role,
+            runner=self.runner,
+            probe_runner=self.probe_runner,
+        )
 
     def require_postgresql_16_14(self) -> VersionEvidence:
         """Require both container clients and the server to be exactly 16.14."""
@@ -107,13 +130,53 @@ class ContainerPostgres:
                 "--tuples-only",
                 "--no-align",
                 "--host=127.0.0.1",
-                "--username=clinic_super",
+                f"--username={self.role}",
                 f"--dbname={self.database}",
                 "--command",
                 statement,
             )
         )
         return raw.decode("utf-8")
+
+    def try_sql(self, statement: str) -> tuple[int, str, str]:
+        """Run one statement and return (exit code, stdout, stderr).
+
+        Denial probes must observe the database's own refusal, so a nonzero
+        exit is data here, not a transport failure.
+        """
+        if not statement or "\x00" in statement:
+            _fail("container SQL statement is invalid")
+        argv = (
+            DOCKER,
+            "exec",
+            "-i",
+            "--env",
+            "PGPASSWORD",
+            self.container_id,
+            "psql",
+            "--no-psqlrc",
+            "--set=ON_ERROR_STOP=1",
+            "--tuples-only",
+            "--no-align",
+            "--host=127.0.0.1",
+            f"--username={self.role}",
+            f"--dbname={self.database}",
+            "--command",
+            statement,
+        )
+        environment = {
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PATH": "/usr/bin:/bin",
+            "PGPASSWORD": self.password,
+            "TZ": "UTC",
+        }
+        selected = (
+            self.probe_runner if self.probe_runner is not None else run_container_probe
+        )
+        if not callable(selected):
+            _fail("container PostgreSQL runner is invalid")
+        return selected(argv, None, environment)
 
     def execute(
         self, inner: tuple[str, ...], standard_input: bytes | None = None
@@ -145,6 +208,45 @@ def run_container_command(
 ) -> bytes:
     """Run one bounded Docker exec and return stdout only on exit zero."""
     return asyncio.run(_run_container_command(argv, standard_input, environment))
+
+
+def run_container_probe(
+    argv: tuple[str, ...],
+    standard_input: bytes | None,
+    environment: dict[str, str],
+) -> tuple[int, str, str]:
+    """Run one bounded Docker exec and return exit code and both streams."""
+    return asyncio.run(_run_container_probe(argv, standard_input, environment))
+
+
+async def _run_container_probe(
+    argv: tuple[str, ...],
+    standard_input: bytes | None,
+    environment: dict[str, str],
+) -> tuple[int, str, str]:
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=environment,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(standard_input),
+            timeout=TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        _fail("container PostgreSQL command timed out")
+    if process.returncode is None:
+        _fail("container PostgreSQL command did not exit")
+    return (
+        process.returncode,
+        stdout.decode("utf-8", errors="replace"),
+        stderr.decode("utf-8", errors="replace"),
+    )
 
 
 async def _run_container_command(

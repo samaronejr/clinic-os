@@ -2,14 +2,50 @@ from __future__ import annotations
 
 import os
 import stat
+import warnings
 from pathlib import Path
-from typing import Final, Never
+from typing import TYPE_CHECKING, Final, Never
 from urllib.parse import parse_qsl, unquote, urlsplit
 
+import environ
 from django.core.exceptions import ImproperlyConfigured
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 BASE_QUERY_KEYS: Final = frozenset({"connect_timeout", "sslmode", "sslrootcert"})
 MAX_CONNECT_TIMEOUT: Final = 3
+# The DSN ``env.db("APP_DATABASE_URL")`` falls back to when the variable is
+# absent; the synthetic isolation check must derive the same effective
+# endpoint, so the default lives here next to the DSN contract.
+DEFAULT_APP_DATABASE_URL: Final = (
+    "postgresql://clinic_app:clinic_app_password@localhost:5432/clinic"
+)
+
+
+def resolve_app_database_config(environment: Mapping[str, str]) -> dict[str, object]:
+    """Return the database config ``env.db("APP_DATABASE_URL")`` derives.
+
+    Settings modules resolve ``APP_DATABASE_URL`` through
+    ``environ.Env.db``, whose ``get_value`` resolves ``$VARIABLE`` proxy
+    indirection recursively — a missing proxy target falls back to the
+    default — before ``db_url_config`` parses the result. The startup
+    isolation check must evaluate that same effective configuration, so
+    it resolves through the identical ``env.db`` call against the
+    supplied environment rather than re-reading the raw variable. A
+    proxy cycle raises ``RecursionError`` and an unparseable result
+    raises ``TypeError``/``ValueError``; callers fail closed on both.
+    """
+    resolver = environ.Env()
+    resolver.ENVIRON = environment
+    with warnings.catch_warnings():
+        # environ warns on unrecognized schemes; the warning policy must
+        # not change what the caller derives (pytest runs -W error).
+        warnings.simplefilter("ignore")
+        config: dict[str, object] = resolver.db(
+            "APP_DATABASE_URL", default=DEFAULT_APP_DATABASE_URL
+        )
+    return config
 
 
 def parse_database_url(

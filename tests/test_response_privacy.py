@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 PRIVACY_MIDDLEWARE = "apps.core.middleware.ResponsePrivacyMiddleware"
+LIVE_HALT_MIDDLEWARE = "apps.core.middleware.LiveModeHaltMiddleware"
 SECURITY_MIDDLEWARE = "django.middleware.security.SecurityMiddleware"
 WHITENOISE_MIDDLEWARE = "whitenoise.middleware.WhiteNoiseMiddleware"
 PRIVATE_DIRECTIVES = ("private", "no-store", "no-cache", "must-revalidate")
@@ -22,8 +23,11 @@ def test_privacy_middleware_precedes_the_preserved_security_whitenoise_pair() ->
     middleware = list(settings.MIDDLEWARE)
 
     assert middleware[0] == PRIVACY_MIDDLEWARE
+    # The live-mode halt sits between privacy and security so halted
+    # responses still carry the private cache contract.
+    assert middleware[1] == LIVE_HALT_MIDDLEWARE
     security = middleware.index(SECURITY_MIDDLEWARE)
-    assert middleware[security - 1] == PRIVACY_MIDDLEWARE
+    assert middleware[security - 1] == LIVE_HALT_MIDDLEWARE
     assert middleware[security + 1] == WHITENOISE_MIDDLEWARE
 
 

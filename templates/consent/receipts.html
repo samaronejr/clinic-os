@@ -1,0 +1,29 @@
+<section class="panel" aria-labelledby="receipts-title">
+  <h2 id="receipts-title">Comprovantes de consentimento</h2>
+  {% for receipt in receipts %}
+  <article class="field" data-receipt="{{ receipt.pk }}" data-state="{% if receipt.revocation %}revoked{% else %}accepted{% endif %}">
+    <h3>{{ receipt.text.get_purpose_display }} · Versão {{ receipt.text.version }}</h3>
+    <p>{% if receipt.revocation %}<strong>Revogado</strong> em {{ receipt.revocation.revoked_at|date:"d/m/Y H:i:s" }}.{% else %}<strong>Aceito</strong>. Uma versão mais recente exige nova leitura e aceitação para uso futuro.{% endif %}</p>
+    <p>Aceito por ação explícita do paciente em {{ receipt.accepted_at|date:"d/m/Y H:i:s" }} · {{ receipt.text.language }}</p>
+    <details class="consent-provenance">
+      <summary>Inspecionar texto e proveniência</summary>
+      <div class="accepted-text consent-text">{{ receipt.text.text }}</div>
+      <dl class="patient-details">
+        <div><dt>Comprovante</dt><dd>{{ receipt.pk }}</dd></div>
+        <div><dt>Resumo SHA-256 do texto UTF-8</dt><dd>{{ receipt.text.digest }}</dd></div>
+        <div><dt>Paciente</dt><dd>{{ receipt.patient_id }}</dd></div>
+        <div><dt>Vínculo com a clínica</dt><dd>{{ receipt.enrollment_id }}</dd></div>
+        <div><dt>Autoridade</dt><dd>Ação explícita do paciente no portal</dd></div>
+        {% if receipt.revocation %}<div><dt>Evento de revogação</dt><dd>{{ receipt.revocation.pk }}</dd></div>{% endif %}
+      </dl>
+    </details>
+    {% if patient and not receipt.revocation %}
+    <form method="post">
+      {% csrf_token %}<input type="hidden" name="acceptance_id" value="{{ receipt.pk }}">
+      <p>Revogar bloqueia usos futuros, sem apagar o histórico clínico ou este comprovante.</p>
+      <button class="button button--danger" type="submit" name="action" value="revoke">Revogar consentimento</button>
+    </form>
+    {% endif %}
+  </article>
+  {% empty %}<p>Nenhum consentimento registrado para esta consulta.</p>{% endfor %}
+</section>

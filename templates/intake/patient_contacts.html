@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Contacts and preferences · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Manage one patient's verified contacts and messaging preferences without exposing destinations in the address bar." %}{% endblock %}
+{% block content %}
+<section class="intake-shell contacts-shell" aria-labelledby="contacts-title">
+  <h1 id="contacts-title">{% trans "Contacts and messaging preferences" %}</h1>
+  {% if overview is None %}
+    <p class="lede">{% trans "Find the patient in the registry to manage their contacts and messaging preferences." %}</p>
+    <div class="actions">
+      <a class="button button--secondary" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+    </div>
+  {% else %}
+    <p class="lede">{% blocktrans with name=overview.patient_display_name %}Contacts and automated-message preferences for {{ name }} in this clinic.{% endblocktrans %}</p>
+    {% if messages %}
+      {% for message in messages %}
+        <div class="feedback feedback--success" role="status"><p>{{ message }}</p></div>
+      {% endfor %}
+    {% endif %}
+    {% if error %}
+      <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>
+        <h2>{% trans "We could not complete that action" %}</h2>
+        <p>{{ error }}</p>
+      </div>
+    {% endif %}
+
+    <section class="panel contacts-panel" aria-labelledby="contacts-destinations">
+      <h2 id="contacts-destinations">{% trans "Destinations" %}</h2>
+      <p class="hint">{% trans "Destinations stay masked here. Open the edit screen to see or change the full value; changing it requires a new verification before automated messages can use it." %}</p>
+      <ul class="contacts-list">
+        {% for row in contact_rows %}
+        <li class="contacts-item">
+          <div class="contacts-item-main">
+            <h3>{{ row.label }}</h3>
+            {% if row.contact %}
+              <p class="contacts-destination"><code>{{ row.contact.masked_destination }}</code></p>
+              {% if row.contact.verified %}
+                <p class="contacts-status contacts-status--verified">{% trans "Verified" %}</p>
+              {% else %}
+                <p class="contacts-status contacts-status--pending">{% trans "Not verified" %}</p>
+              {% endif %}
+            {% else %}
+              <p class="contacts-status contacts-status--empty">{% trans "No destination recorded" %}</p>
+            {% endif %}
+          </div>
+          <div class="contacts-item-actions">
+            <form method="post" action="{{ contacts_url }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="edit">
+              <input type="hidden" name="enrollment_id" value="{{ enrollment_id }}">
+              <input type="hidden" name="channel" value="{{ row.channel }}">
+              <button class="button button--secondary" type="submit">
+                {% if row.contact %}{% trans "Edit destination" %}{% else %}{% trans "Add destination" %}{% endif %}
+                <span class="visually-hidden"> {% blocktrans with channel=row.label %}for {{ channel }}{% endblocktrans %}</span>
+              </button>
+            </form>
+            {% if row.contact and not row.contact.verified %}
+            <form method="post" action="{{ contacts_url }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="verify">
+              <input type="hidden" name="enrollment_id" value="{{ enrollment_id }}">
+              <input type="hidden" name="channel" value="{{ row.channel }}">
+              <input type="hidden" name="expected_version" value="{{ row.contact.destination_version }}">
+              <button class="button button--secondary" type="submit">
+                {% trans "Mark as verified" %}<span class="visually-hidden"> {% blocktrans with channel=row.label %}for {{ channel }}{% endblocktrans %}</span>
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="panel contacts-panel" aria-labelledby="contacts-preferences">
+      <h2 id="contacts-preferences">{% trans "Automated messages" %}</h2>
+      <p class="hint">{% trans "Choose one channel per purpose, or choose not to send. Preferences apply to this clinic only and can be revoked at any time." %}</p>
+      {% for row in purpose_rows %}
+      <form class="contacts-purpose" method="post" action="{{ contacts_url }}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="preference">
+        <input type="hidden" name="enrollment_id" value="{{ enrollment_id }}">
+        <input type="hidden" name="purpose" value="{{ row.purpose }}">
+        <fieldset class="contacts-fieldset">
+          <legend>{{ row.label }}</legend>
+          <div class="contacts-choices" role="group">
+            {% for choice in row.channels %}
+            <label class="contacts-choice">
+              <input type="radio" name="channel" value="{{ choice.value }}"{% if row.current == choice.value %} checked{% endif %}>
+              <span>{{ choice.label }}</span>
+            </label>
+            {% endfor %}
+            <label class="contacts-choice">
+              <input type="radio" name="channel" value=""{% if row.current is None %} checked{% endif %}>
+              <span>{% trans "Do not send" %}</span>
+            </label>
+          </div>
+          <div class="actions">
+            <button class="button button--secondary" type="submit">{% trans "Save preference" %}<span class="visually-hidden"> {% blocktrans with purpose=row.label %}for {{ purpose }}{% endblocktrans %}</span></button>
+          </div>
+        </fieldset>
+      </form>
+      {% endfor %}
+    </section>
+
+    <section class="panel contacts-panel" aria-labelledby="contacts-history">
+      <h2 id="contacts-history">{% trans "History" %}</h2>
+      {% if history_rows %}
+      <div class="table-scroll" role="region" aria-labelledby="contacts-history-caption" tabindex="0">
+        <table class="table contacts-table" aria-labelledby="contacts-history-caption">
+          <caption id="contacts-history-caption">{% trans "Contact and preference changes in this clinic" %}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{% trans "Change" %}</th>
+              <th scope="col">{% trans "Channel" %}</th>
+              <th scope="col">{% trans "Purpose" %}</th>
+              <th scope="col">{% trans "Version" %}</th>
+              <th scope="col">{% trans "Recorded by" %}</th>
+              <th scope="col">{% trans "When" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in history_rows %}
+            <tr>
+              <th scope="row">{{ event.label }}</th>
+              <td data-label="{% trans "Channel" %}">{{ event.channel_label }}</td>
+              <td data-label="{% trans "Purpose" %}">{{ event.purpose_label }}</td>
+              <td data-label="{% trans "Version" %}">{{ event.version }}</td>
+              <td data-label="{% trans "Recorded by" %}">{{ event.actor_label }}</td>
+              <td data-label="{% trans "When" %}">{{ event.created_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="contacts-empty">{% trans "No contact or preference changes recorded yet." %}</p>
+      {% endif %}
+    </section>
+
+    <div class="actions">
+      <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

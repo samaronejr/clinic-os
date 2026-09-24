@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 from uuid import uuid4
@@ -16,11 +15,14 @@ from ops.testing.isolation_common import (
     JsonObject,
     JsonValue,
     canonical_bytes,
+    ensure_private_directory,
+    load_json,
 )
 from ops.testing.isolation_docker_metadata import run_docker_command
 from ops.testing.isolation_reconcile import reconcile_same_boot
 from ops.testing.isolation_refresh import verify_claim
 from ops.testing.isolation_runner_create import runner_tmpfs_options
+from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -57,8 +59,8 @@ def probe_runner_image(
         "kind": "stack",
         "purpose": "browser-runner-image-probe",
     }
-    with tempfile.TemporaryDirectory(dir="/tmp/opencode") as temporary:
-        path = Path(temporary) / "spec.json"
+    with runtime_directory(_run_root(ledger_path), purpose="browser-probe") as work:
+        path = work / "spec.json"
         path.write_bytes(canonical_bytes(spec))
         path.chmod(0o400)
         reserve_claim(ledger_path, path)
@@ -103,6 +105,14 @@ def probe_runner_image(
                 )
             run_docker_command(("rm", container_id))
         reconcile_same_boot(ledger_path)
+
+
+def _run_root(ledger_path: Path) -> Path:
+    """Provision this caller's private run root under the attempt root."""
+    ledger, _ = load_json(ledger_path)
+    root = Path(_text(ledger.get("attempt_root"))) / "runtime"
+    ensure_private_directory(root)
+    return root
 
 
 def _service(image_id: str, image_contract: JsonObject) -> JsonObject:

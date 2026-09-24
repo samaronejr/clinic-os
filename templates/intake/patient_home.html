@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Your enrollment · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "View the enrollment this access session is bound to." %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="patient-home-title">
+  <p class="eyebrow">{% trans "Patient portal" %}</p>
+  <h1 id="patient-home-title">{% trans "Your enrollment" %}</h1>
+  <p class="lede">{% trans "This session shows only the enrollment your invitation was issued for." %}</p>
+  <section class="panel" aria-labelledby="patient-enrollment">
+    <h2 id="patient-enrollment">{% trans "Enrollment details" %}</h2>
+    <dl class="patient-details">
+      <div class="patient-detail">
+        <dt>{% trans "Patient" %}</dt>
+        <dd id="patient-name">{{ overview.patient_name }}</dd>
+      </div>
+      <div class="patient-detail">
+        <dt>{% trans "Clinic" %}</dt>
+        <dd id="patient-clinic">{{ overview.clinic_name }}</dd>
+      </div>
+      <div class="patient-detail">
+        <dt>{% trans "Enrolled" %}</dt>
+        <dd>{{ overview.enrolled_at|date:"d/m/Y H:i" }}</dd>
+      </div>
+      <div class="patient-detail">
+        <dt>{% trans "Session ends" %}</dt>
+        <dd>{{ overview.expires_at|date:"d/m/Y H:i" }}</dd>
+      </div>
+    </dl>
+  </section>
+  {% if 'booking' in overview.operations %}<a class="button" href="{% url 'scheduling:patient-booking' %}">Suas consultas</a>{% endif %}
+  {% if 'questionnaires' in overview.operations %}<a class="button" href="{% url 'intake:questionnaires' %}">Questionários antes da consulta</a>{% endif %}
+  {% if 'records' in overview.operations %}<a class="button" href="{% url 'retention:patient-records' %}" id="records-link">Seus registros</a><a class="button" href="{% url 'prescription:patient-documents' %}" id="documents-link">Seus documentos</a>{% endif %}
+  {% if 'consent' in overview.operations %}<a class="button" href="{% url 'consent:patient' %}">Seus consentimentos</a>{% endif %}
+  {% if 'billing' in overview.operations %}<a class="button" href="{% url 'billing:patient-charges' %}" id="charges-link">Suas cobranças</a>{% endif %}
+  {% if 'teleconsult' in overview.operations %}<a class="button" href="{% url 'teleconsult:patient' %}" id="teleconsult-link">Teleconsulta</a>{% endif %}
+  <form method="post" action="{% url 'intake:patient-logout' %}">
+    {% csrf_token %}
+    <button class="button button--secondary" type="submit">{% trans "Sign out" %}</button>
+  </form>
+</section>
+{% endblock %}

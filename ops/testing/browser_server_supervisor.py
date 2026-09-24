@@ -146,6 +146,20 @@ def supervised_argv(interpreter: Path, port: int, access_log: Path) -> list[str]
     ]
 
 
+def _terminate_group(process: subprocess.Popen[bytes]) -> None:
+    """Bounded TERM/wait/KILL/reap for one spawned process group."""
+    if process.poll() is not None:
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=TERMINATION_GRACE_SECONDS)
+
+
 class SupervisedMaster:
     """Own one Gunicorn master process group for the session lifetime."""
 
@@ -168,31 +182,63 @@ class SupervisedMaster:
 
     def terminate(self) -> None:
         """Terminate the whole group with a bounded TERM then KILL and reap."""
-        if self.process.poll() is not None:
-            return
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(self.pgid, signal.SIGTERM)
-        try:
-            self.process.wait(timeout=TERMINATION_GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(self.pgid, signal.SIGKILL)
-            self.process.wait(timeout=TERMINATION_GRACE_SECONDS)
+        _terminate_group(self.process)
 
 
 def start_master(
-    argv: list[str], environment: dict[str, str], log: Path
+    argv: list[str],
+    environment: dict[str, str],
+    log: Path,
+    *,
+    owner: list[SupervisedMaster],
 ) -> SupervisedMaster:
-    """Perform the journaled second phase: exec the master in a new group."""
-    with log.open("wb") as stream:
-        process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
-            argv,
-            env=environment,
-            start_new_session=True,
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-        )
-    return SupervisedMaster(process)
+    """Perform the journaled second phase: exec the master in a new group.
+
+    SIGINT/SIGTERM are blocked for the whole spawn→publish interval, so a
+    cancellation can never land while a live spawned process is unowned:
+    the child restores the inherited mask before exec, the handle is
+    published into ``owner``, and only then is the mask restored — a
+    pending cancellation lands inside the protected region, where the
+    group is reaped before the exception propagates. Any other exception
+    between the spawn and the completed handoff reaps the same way.
+    """
+    process: subprocess.Popen[bytes] | None = None
+    previous_mask = signal.pthread_sigmask(
+        signal.SIG_BLOCK,
+        {signal.SIGINT, signal.SIGTERM},
+    )
+    try:
+        with log.open("wb") as stream:
+            process = subprocess.Popen(  # noqa: S603 - frozen argv, resolved interpreter.
+                argv,
+                env=environment,
+                start_new_session=True,
+                # The child must not inherit the blocked mask: restore it
+                # after fork, before exec, so the master stays killable.
+                preexec_fn=lambda: signal.pthread_sigmask(  # noqa: PLW1509 - single-threaded spawn; the hook is one sigmask call.
+                    signal.SIG_SETMASK,
+                    previous_mask,
+                ),
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+            )
+        master = SupervisedMaster(process)
+        owner.append(master)
+        # Ownership is published; a deferred cancellation now lands inside
+        # this protected region and reaps the group before propagating.
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        return master  # noqa: TRY300 - the return boundary is where a deferred signal is delivered; it must stay inside the protected region.
+    except BaseException:
+        # Still owned here: bounded TERM/KILL/reap, retried once so a second
+        # signal during cleanup cannot orphan the child before propagating.
+        if process is not None:
+            for _attempt in range(2):
+                with contextlib.suppress(Exception):
+                    _terminate_group(process)
+                    break
+        raise
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
 
 
 CONTROLLER_MODULE: Final = "ops.testing.browser_server_controller"

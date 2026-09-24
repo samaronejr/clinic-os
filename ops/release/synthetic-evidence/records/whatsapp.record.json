@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "whatsapp",
+  "environment": "synthetic",
+  "evidence_path": "evidence/whatsapp.json",
+  "evidence_sha256": "5d282b9f9431650ae90bcfa96032f3caa0cfef4360c92bbc0c080afe8cc9947f",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the whatsapp capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

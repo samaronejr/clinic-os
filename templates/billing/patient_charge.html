@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load static tz clinic_locale %}
+{% block title %}Sua cobrança · Clinic OS{% endblock %}
+{% block meta_description %}Valor, instruções de pagamento e recibo de uma cobrança liberada para você.{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-billing.css' %}"><script src="{% static 'js/billing-payment.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="billing-shell billing-shell--patient" aria-labelledby="patient-charge-title">
+  <a class="billing-back" href="{% url 'billing:patient-charges' %}">Voltar às suas cobranças</a>
+  <h1 id="patient-charge-title">Cobrança de {{ view.amount|brl }}</h1>
+  <p class="lede">Instruções de pagamento e recibo desta cobrança. O estado atual fica no painel abaixo.</p>
+  {% timezone clinic_timezone %}
+  <section class="panel billing-status" id="payment-status" aria-labelledby="payment-status-title" aria-live="polite">
+    {% include "billing/partials/patient_status.html" %}
+  </section>
+  {% endtimezone %}
+  <p class="hint">Em caso de dúvida sobre o valor, fale com a clínica. Esta tela não cobra nada por conta própria.</p>
+</section>
+{% endblock %}

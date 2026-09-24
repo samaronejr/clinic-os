@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 from django.db import transaction
 from django.utils import timezone
 
-from apps.audit.services import record_phase1_event
-from apps.scheduling.access import authorized_appointment_manager_clinic
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentCreateInputError,
@@ -32,6 +30,10 @@ from apps.scheduling.appointment_values import (
     validate_appointment_syntax,
 )
 from apps.scheduling.models import Appointment
+from apps.scheduling.patient_authority import (
+    authorized_appointment_clinic,
+    record_appointment_event,
+)
 from apps.scheduling.timezones import parse_local_minute
 
 if TYPE_CHECKING:
@@ -81,7 +83,7 @@ def reschedule_appointment(
         discovered = discover_transition_appointment(appointment_id)
         target = transition_write_target(discovered)
         acquire_appointment_write_gates(target=target)
-        clinic = authorized_appointment_manager_clinic(target.clinic_id)
+        clinic = authorized_appointment_clinic(target.clinic_id)
         current = reload_transition_appointment(target, appointment_id)
         start_at, end_at = _parse_range(clinic, local_range)
         rows = lock_appointment_write_rows(
@@ -91,7 +93,7 @@ def reschedule_appointment(
             additional_ranges=((start_at, end_at),),
             appointment_ids=(appointment_id,),
         )
-        clinic = authorized_appointment_manager_clinic(target.clinic_id)
+        clinic = authorized_appointment_clinic(target.clinic_id)
         current = reload_transition_appointment(
             target,
             appointment_id,
@@ -129,7 +131,7 @@ def reschedule_appointment(
             start_at=start_at,
             end_at=end_at,
         )
-        record_phase1_event(
+        record_appointment_event(
             "scheduling.appointment.rescheduled",
             clinic_id=target.clinic_id,
             affected_record_id=current.pk,

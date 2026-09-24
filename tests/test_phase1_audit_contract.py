@@ -11,6 +11,76 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "identity.clinic_configuration.published": (
+        "tenant",
+        "clinic-os-web",
+        "identity.clinic_configuration",
+        "published",
+    ),
+    "ehr.template.published": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.specialty_template",
+        "published",
+    ),
+    "consent.text.published": ("tenant", "clinic-os-web", "consent.text", "published"),
+    "consent.accepted": ("tenant", "clinic-os-web", "consent.acceptance", "accepted"),
+    "consent.revoked": ("tenant", "clinic-os-web", "consent.revocation", "revoked"),
+    "consent.receipts.viewed": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_clinic_enrollment",
+        "viewed",
+    ),
+    "ehr.history.saved": ("tenant", "clinic-os-web", "ehr.history_assessment", "saved"),
+    "ehr.history.viewed": ("tenant", "clinic-os-web", "ehr.encounter", "viewed"),
+    "ehr.encounter.opened": ("tenant", "clinic-os-web", "ehr.encounter", "opened"),
+    "ehr.document.draft_created": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.document_version",
+        "draft_created",
+    ),
+    "ehr.document.saved": ("tenant", "clinic-os-web", "ehr.document_version", "saved"),
+    "ehr.record.viewed": ("tenant", "clinic-os-web", "ehr.document_version", "viewed"),
+    "ehr.document.finalized": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.document_version",
+        "finalized",
+    ),
+    "ehr.document.amended": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.document_version",
+        "amended",
+    ),
+    "ehr.document.discarded": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.document_version",
+        "discarded",
+    ),
+    "ehr.encounter.closed": ("tenant", "clinic-os-web", "ehr.encounter", "closed"),
+    "ehr.access.denied": ("tenant", "clinic-os-web", "ehr.record", "denied"),
+    "ehr.attachment.uploaded": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.clinical_attachment",
+        "uploaded",
+    ),
+    "ehr.attachment.scanned": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.clinical_attachment",
+        "scanned",
+    ),
+    "ehr.attachment.downloaded": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.clinical_attachment",
+        "downloaded",
+    ),
     "ops.clinic.bootstrapped": (
         "system",
         "clinic-os-ops",
@@ -46,6 +116,54 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "clinic-os-web",
         "identity.clinic",
         "searched",
+    ),
+    "intake.contacts.viewed": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_clinic_enrollment",
+        "viewed",
+    ),
+    "intake.contact.saved": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_contact",
+        "saved",
+    ),
+    "intake.contact.verified": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_contact",
+        "verified",
+    ),
+    "intake.preference.opted_in": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_channel_preference",
+        "opted_in",
+    ),
+    "intake.preference.opted_out": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_channel_preference",
+        "opted_out",
+    ),
+    "intake.patient_access.viewed": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_clinic_enrollment",
+        "viewed",
+    ),
+    "intake.patient_access.issued": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_access_grant",
+        "issued",
+    ),
+    "intake.patient_access.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_access_grant",
+        "revoked",
     ),
     "scheduling.availability.created": (
         "tenant",
@@ -100,6 +218,30 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "clinic-os-web",
         "identity.clinic",
         "viewed",
+    ),
+    "teleconsult.session.created": (
+        "tenant",
+        "clinic-os-web",
+        "teleconsult.session",
+        "created",
+    ),
+    "teleconsult.session.started": (
+        "tenant",
+        "clinic-os-web",
+        "teleconsult.session",
+        "started",
+    ),
+    "teleconsult.session.ended": (
+        "tenant",
+        "clinic-os-web",
+        "teleconsult.session",
+        "ended",
+    ),
+    "teleconsult.access.denied": (
+        "tenant",
+        "clinic-os-web",
+        "teleconsult.session",
+        "denied",
     ),
 }
 

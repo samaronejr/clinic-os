@@ -1,36 +1,92 @@
-{% load static i18n %}
+{% load static i18n workspace clinic_branding %}
 {% get_current_language as LANGUAGE_CODE %}
+{% workspace_context as workspace %}
 <!doctype html>
-<html lang="{{ LANGUAGE_CODE }}">
+<html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js"{% endif %}>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="{% block meta_description %}Clinic OS secure clinical workspace.{% endblock %}">
+    <meta name="description" content="{% block meta_description %}{% trans "Clinic OS secure clinical workspace." %}{% endblock %}">
+    <meta name="theme-color" content="#0f2d3a">
     <title>{% block title %}Clinic OS{% endblock %}</title>
+    <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
     <link rel="icon" href="{% static 'icons/clinic-os.svg' %}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{% static 'brand/clinic-ops-icon-192.png' %}">
     <link rel="stylesheet" href="{% static 'css/clinic-os.css' %}">
     <link rel="stylesheet" href="{% static 'css/clinic-os-auth.css' %}">
+    <link rel="stylesheet" href="{% static 'css/clinic-os-settings.css' %}">
     <link rel="stylesheet" href="{% static 'css/clinic-os-intake.css' %}">
     <link rel="stylesheet" href="{% static 'css/clinic-os-scheduling.css' %}">
     <script src="{% static 'vendor/htmx/htmx.min.js' %}" defer></script>
     <script src="{% static 'js/auth-ui.js' %}" defer></script>
+    <script src="{% static 'js/clinic-os-shell.js' %}" defer></script>
     {% block extra_head %}{% endblock %}
   </head>
   <body>
-    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <a class="skip-link" href="#main-content">{% trans "Skip to main content" %}</a>
     <header class="site-header">
-      <p class="brand">Clinic OS</p>
+      <nav class="nav" aria-label="{% trans "Workspace" %}">
+        <a class="nav-brand" href="{% if workspace %}{{ workspace.home_url }}{% else %}/{% endif %}">
+          <img class="nav-logo" src="{% static 'brand/clinic-ops-logo-compact-dark.svg' %}" alt="" width="144" height="32">
+          <span class="nav-wordmark">Clinic Ops</span>
+        </a>
+        {% if workspace %}
+          {% if workspace.clinic and workspace.other_clinics %}
+            <details class="nav-context nav-switch">
+              <summary class="nav-switch-summary">
+                <span class="nav-context-label">{% trans "Clinic" %}</span>
+                <strong class="nav-clinic">{{ workspace.clinic.name }} <span class="nav-switch-hint">{% trans "change" %}</span></strong>
+              </summary>
+              <ul class="nav-switch-list">
+                {% for clinic in workspace.other_clinics %}
+                  <li><a class="nav-link" href="{{ clinic.agenda_url }}">{{ clinic.name }}</a></li>
+                {% endfor %}
+              </ul>
+            </details>
+          {% elif workspace.clinic %}
+            <p class="nav-context">
+              <span class="nav-context-label">{% trans "Clinic" %}</span>
+              <strong class="nav-clinic">{{ workspace.clinic.name }}</strong>
+            </p>
+          {% else %}
+            <p class="nav-context"><strong class="nav-clinic">{% trans "No clinic assigned" %}</strong></p>
+          {% endif %}
+          <ul class="nav-list">
+            {% for link in workspace.links %}
+              <li><a class="nav-link" href="{{ link.url }}" data-module="{{ link.key }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}{% if link.badge %} <span class="nav-badge">{{ link.badge }}</span>{% endif %}</a></li>
+            {% endfor %}
+            <li class="nav-account">
+              <span class="nav-user">{{ workspace.username }}</span>
+              <a class="nav-link" href="/auth/logout/">{% trans "Sign out" %}</a>
+            </li>
+          </ul>
+        {% endif %}
+      </nav>
     </header>
+    {% if workspace.clinic %}
+      {% clinic_branding workspace.clinic.id as branding %}
+      {% if branding %}
+        <aside class="clinic-brand clinic-brand--{{ branding.brand_token }}" aria-label="Identidade da clínica" data-clinic-brand>
+          {% if branding.logo_png %}<img src="{% url 'identity:clinic-logo' workspace.clinic.id %}" alt="" width="48" height="48">{% endif %}
+          <strong>{{ branding.display_name }}</strong>
+          {% if branding.contact_email %}<p>{{ branding.contact_email }}</p>{% endif %}
+          {% if branding.contact_phone %}<p>{{ branding.contact_phone }}</p>{% endif %}
+        </aside>
+      {% endif %}
+    {% endif %}
     <main id="main-content" tabindex="-1">
       {% block content %}
-      <section aria-labelledby="shell-heading">
-        <h1 id="shell-heading">Foundation shell</h1>
-        <p>The Clinic OS project shell is running.</p>
+      <section class="shell-narrow" aria-labelledby="shell-heading">
+        <h1 id="shell-heading">{% trans "Foundation shell" %}</h1>
+        <p class="lede">{% trans "The Clinic OS project shell is running." %}</p>
+        <div class="actions">
+          <a class="button" href="/auth/login/">{% trans "Sign in" %}</a>
+        </div>
       </section>
       {% endblock %}
     </main>
     <footer class="site-footer">
-      <p>Clinic OS foundation</p>
+      <p>{% trans "Clinic OS foundation" %}</p>
     </footer>
   </body>
 </html>

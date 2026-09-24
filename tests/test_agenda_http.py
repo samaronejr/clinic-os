@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Final
 
 import pytest
 from apps.identity.models import UserClinicRole
+from apps.scheduling.agenda_presenter import clinic_local_today
+from django.utils.translation import gettext
 
 from appointment_http_support import (
     AGENDA_VIEWED_EVENT,
@@ -16,6 +19,7 @@ from appointment_http_support import (
     appointment_create_url,
     create_payload,
     create_zone_clinic,
+    local_time_markup,
     seed_appointment,
     seed_enrollment,
 )
@@ -67,10 +71,10 @@ def test_day_agenda_shows_the_local_range_zone_label_and_status_only(
     body = response.content
     assert response.status_code == 200
     assert SYNTHETIC_PATIENT.encode() in body
-    assert INSIDE_START.encode() in body
-    assert INSIDE_END.encode() in body
+    assert local_time_markup(INSIDE_START) in body
+    assert local_time_markup(INSIDE_END) in body
     assert b"America/Sao_Paulo" in body
-    assert b"Scheduled" in body
+    assert gettext("Scheduled").encode() in body
     assert b"1988-04-05" not in body
     assert audit_event_types(rbac_graph, context.actor).count(AGENDA_VIEWED_EVENT) == 1
 
@@ -85,7 +89,9 @@ def test_default_agenda_uses_the_clinic_local_civil_today(
 
     assert response.status_code == 200
     assert b'id="agenda-status"' in response.content
-    assert b"Day of" in response.content
+    today = clinic_local_today("America/Sao_Paulo")
+    assert f'<time datetime="{today}">'.encode() in response.content
+    assert gettext("today").encode() in response.content
     assert audit_event_types(rbac_graph, context.actor).count(AGENDA_VIEWED_EVENT) == 1
 
 
@@ -133,9 +139,9 @@ def test_daylight_gap_and_fold_days_carry_their_real_civil_bounds(
         fold = client.get(agenda_at_url(clinic_id, "day", FOLD_DATE))
 
     assert [gap.status_code, fold.status_code] == [200, 200]
-    assert f"{GAP_DATE}T01:00".encode() in gap.content
-    assert f"{FOLD_DATE}T00:15".encode() in fold.content
-    assert f"{FOLD_DATE}T00:15".encode() not in gap.content
+    assert local_time_markup(f"{GAP_DATE}T01:00") in gap.content
+    assert local_time_markup(f"{FOLD_DATE}T00:15") in fold.content
+    assert local_time_markup(f"{FOLD_DATE}T00:15") not in gap.content
 
 
 def test_a_nonexistent_local_minute_is_never_booked(rbac_graph: RbacGraph) -> None:
@@ -172,7 +178,8 @@ def test_a_completely_skipped_civil_date_renders_an_empty_agenda(
         response = client.get(agenda_at_url(clinic_id, "day", SKIPPED_DATE))
 
     assert response.status_code == 200
-    assert b"0 appointments in this day" in response.content
+    assert b"0 consulta neste dia." in response.content
+    assert b'id="agenda-empty"' in response.content
     assert b'id="agenda-error"' not in response.content
 
 
@@ -210,9 +217,13 @@ def test_physician_sees_only_their_own_rows_without_any_control(
     body = response.content
     assert response.status_code == 200
     assert SYNTHETIC_PATIENT.encode() in body
-    assert b"<form" not in body
-    assert b"Reschedule the" not in body
-    assert b"Cancel the" not in body
+    # The only controls are the physician's own encounter and questionnaire
+    # actions; reception's scheduling controls never render.
+    actions = re.findall(rb'<button[^>]*name="action" value="([^"]+)"', body)
+    assert actions
+    assert all(value in {b"open", b"appointment"} for value in actions)
+    assert b"/reschedule/" not in body
+    assert b"/cancel/" not in body
     assert b"1988-04-05" not in body
 
 
@@ -268,12 +279,12 @@ def test_agenda_paginates_without_any_query_string(rbac_graph: RbacGraph) -> Non
         second = client.get(agenda_at_url(rbac_graph.clinic_a, "day", FUTURE_DATE, 2))
 
     assert [first.status_code, second.status_code] == [200, 200]
-    assert b"Page 1 of 2" in first.content
-    assert b"Page 2 of 2" in second.content
+    assert "Página 1 de 2".encode() in first.content
+    assert "Página 2 de 2".encode() in second.content
     assert agenda_at_url(rbac_graph.clinic_a, "day", FUTURE_DATE, 2).encode() in (
         first.content
     )
-    assert b"?" not in first.content.split(b'class="scheduling-pagination"')[1][:400]
+    assert b"?" not in first.content.split(b'class="agenda-pagination"')[1][:400]
 
 
 def test_agenda_is_readable_by_a_second_clinic_manager_only_for_its_own_clinic(

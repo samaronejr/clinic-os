@@ -1,0 +1,44 @@
+<div id="video-session" class="tc-session" data-state="{{ state }}" data-patient-joined="{% if patient_joined %}true{% else %}false{% endif %}"{% if failure_label %} data-failure="{{ failure_label }}"{% endif %}>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ error }}</div>{% endif %}
+  {% if state == "ended" or state == "failed" %}
+  <div class="feedback {% if state == 'ended' %}feedback--muted{% else %}feedback--error{% endif %}" role="{% if state == 'ended' %}status{% else %}alert{% endif %}" tabindex="-1" data-session-notice>
+    <h3>{% if state == "ended" %}Vídeo encerrado{% else %}Vídeo indisponível{% endif %}</h3>
+    <p>{% if state == "ended" %}A sessão de vídeo foi encerrada e não reabre.{% elif failure_label %}{{ failure_label }}{% else %}A sessão de vídeo não pôde continuar.{% endif %}</p>
+    <p>O atendimento continua {{ encounter.get_state_display|lower }} e o registro não foi finalizado por isso. Salve ou finalize as anotações normalmente.</p>
+  </div>
+  {% endif %}
+  {% if state == "waiting" or state == "active" %}
+  <div class="tc-session-actions" data-session-actions>
+    <div class="actions">
+    {% comment %}With a draft on the page each button submits the notes form itself, so a native (no-JavaScript) transition carries the typed text back as unsaved; with JavaScript, htmx posts from the button and swaps only the session facts.{% endcomment %}
+    {% if state == "waiting" %}
+    <form method="post" action="{{ staff_url }}" data-auth-form>
+      {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}"><input type="hidden" name="surface" value="workspace">
+      <button class="button" name="action" value="start" type="submit" hx-post="{{ staff_url }}" hx-target="#video-session" hx-swap="outerHTML" hx-indicator="closest form"{% if version.state == "draft" %} form="soap-form"{% endif %}>Iniciar consulta</button>
+      <span class="htmx-indicator" role="status">Iniciando…</span>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ staff_url }}" data-auth-form>
+      {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}"><input type="hidden" name="surface" value="workspace">
+      <button class="button button--danger" name="action" value="end" type="submit" hx-post="{{ staff_url }}" hx-target="#video-session" hx-swap="outerHTML" hx-indicator="closest form"{% if version.state == "draft" %} form="soap-form"{% endif %}>Encerrar vídeo</button>
+      <span class="htmx-indicator" role="status">Encerrando…</span>
+    </form>
+    </div>
+    <p class="hint">Encerrar o vídeo não encerra o atendimento nem finaliza o documento.<noscript> Sem JavaScript, iniciar ou encerrar recarrega a página com o texto digitado ainda não salvo; salve o rascunho em seguida.</noscript></p>
+  </div>
+  {% endif %}
+  <dl class="tele-facts tc-facts">
+    <div class="tele-fact">
+      <dt>Paciente</dt>
+      <dd data-patient-presence>{% if state == "ended" or state == "failed" %}—{% elif patient_joined %}Na sala{% else %}Ainda não entrou{% endif %}</dd>
+    </div>
+    <div class="tele-fact">
+      <dt>Gravação</dt>
+      <dd>Desativada</dd>
+    </div>
+    <div class="tele-fact">
+      <dt>Referência da sala</dt>
+      <dd class="meta" id="room-name">{{ room_name }}</dd>
+    </div>
+  </dl>
+</div>

@@ -13,6 +13,8 @@ from apps.scheduling.timezones import (
 )
 from django.db import connection, transaction
 
+from tenant_key_support import issue_tenant_key_for
+
 
 def test_local_minute_round_trips_through_an_explicit_iana_zone() -> None:
     instant = parse_local_minute("2030-01-02T09:30", "America/Manaus")
@@ -86,6 +88,7 @@ def test_timezone_change_refuses_after_first_dependent_row(table_name: str) -> N
                 name="Synthetic Organization Timezone Guard",
                 cnpj="00000000004001",
             )
+            issue_tenant_key_for(organization_id)
             clinic = Clinic.objects.create(
                 id=clinic_id,
                 organization=organization,
@@ -121,6 +124,7 @@ def test_timezone_change_refuses_after_first_dependent_row(table_name: str) -> N
                 name="Synthetic Organization Appointment Guard",
                 cnpj="00000000004003",
             )
+            issue_tenant_key_for(organization_id)
             clinic = Clinic.objects.create(
                 id=clinic_id,
                 organization=organization,

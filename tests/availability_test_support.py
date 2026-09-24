@@ -9,6 +9,8 @@ from apps.identity.models import Clinic, Organization, User
 from django.db import connection
 from psycopg.errors import DeadlockDetected, ExclusionViolation
 
+from tenant_key_support import issue_tenant_key_for
+
 if TYPE_CHECKING:
     from queue import Queue
     from threading import Barrier
@@ -37,6 +39,7 @@ def seed() -> tuple[Organization, Clinic, Clinic, User, User]:
         name="Synthetic Scheduling Organization",
         cnpj="00000000005001",
     )
+    issue_tenant_key_for(ORG_ID)
     clinic_a = Clinic.objects.create(
         id=CLINIC_A_ID,
         organization=organization,

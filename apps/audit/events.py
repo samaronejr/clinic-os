@@ -46,6 +46,66 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "identity.clinic_configuration.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic_configuration", "published"
+        ),
+        "ehr.template.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_template", "published"
+        ),
+        "consent.text.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.text", "published"
+        ),
+        "consent.accepted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.acceptance", "accepted"
+        ),
+        "consent.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.revocation", "revoked"
+        ),
+        "consent.receipts.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_clinic_enrollment", "viewed"
+        ),
+        "ehr.history.saved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.history_assessment", "saved"
+        ),
+        "ehr.history.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter", "viewed"
+        ),
+        "ehr.encounter.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter", "opened"
+        ),
+        "ehr.document.draft_created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "draft_created"
+        ),
+        "ehr.document.saved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "saved"
+        ),
+        "ehr.record.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "viewed"
+        ),
+        "ehr.document.finalized": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "finalized"
+        ),
+        "ehr.document.amended": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "amended"
+        ),
+        "ehr.document.discarded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "discarded"
+        ),
+        "ehr.encounter.closed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter", "closed"
+        ),
+        "ehr.access.denied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.record", "denied"
+        ),
+        "ehr.attachment.uploaded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.clinical_attachment", "uploaded"
+        ),
+        "ehr.attachment.scanned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.clinical_attachment", "scanned"
+        ),
+        "ehr.attachment.downloaded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.clinical_attachment", "downloaded"
+        ),
         "ops.clinic.bootstrapped": Phase1AuditEventDefinition(
             "system",
             "clinic-os-ops",
@@ -81,6 +141,54 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "clinic-os-web",
             "identity.clinic",
             "searched",
+        ),
+        "intake.contacts.viewed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_clinic_enrollment",
+            "viewed",
+        ),
+        "intake.contact.saved": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_contact",
+            "saved",
+        ),
+        "intake.contact.verified": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_contact",
+            "verified",
+        ),
+        "intake.preference.opted_in": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_channel_preference",
+            "opted_in",
+        ),
+        "intake.preference.opted_out": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_channel_preference",
+            "opted_out",
+        ),
+        "intake.patient_access.viewed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_clinic_enrollment",
+            "viewed",
+        ),
+        "intake.patient_access.issued": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_access_grant",
+            "issued",
+        ),
+        "intake.patient_access.revoked": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "intake.patient_access_grant",
+            "revoked",
         ),
         "scheduling.availability.created": Phase1AuditEventDefinition(
             "tenant",
@@ -136,6 +244,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "identity.clinic",
             "viewed",
         ),
+        "teleconsult.session.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "created"
+        ),
+        "teleconsult.session.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "started"
+        ),
+        "teleconsult.session.ended": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "ended"
+        ),
+        "teleconsult.access.denied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "denied"
+        ),
     }
 )
 
@@ -168,4 +288,99 @@ def build_phase1_audit_event(
             "clinic_id": str(clinic_id),
             "object_verb": definition.object_verb,
         },
+    )
+
+
+INTEGRATION_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = (
+    MappingProxyType(
+        {
+            "comms.operation.enqueued": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-web",
+                "comms.integration_operation",
+                "enqueued",
+            ),
+            "comms.operation.succeeded": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "comms.integration_operation",
+                "succeeded",
+            ),
+            "comms.operation.delivered": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "comms.integration_operation",
+                "delivered",
+            ),
+            "comms.operation.failed": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "comms.integration_operation",
+                "failed",
+            ),
+            "comms.operation.cancelled": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "comms.integration_operation",
+                "cancelled",
+            ),
+            "billing.payment.settled": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "billing.payment_event",
+                "settled",
+            ),
+            "billing.payment.recorded": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "billing.payment_event",
+                "recorded",
+            ),
+            "billing.payment.flagged": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "billing.payment_event",
+                "flagged",
+            ),
+        }
+    )
+)
+
+
+def build_integration_audit_event(
+    event_type: str,
+    *,
+    clinic_id: UUID,
+    affected_record_id: UUID,
+    operation_id: UUID,
+    reason_code: str | None = None,
+) -> Phase1AuditAppend:
+    """Build one fixed integration event carrying only operation metadata."""
+    definition = INTEGRATION_AUDIT_EVENTS.get(event_type)
+    if (
+        definition is None
+        or type(clinic_id) is not UUID
+        or type(affected_record_id) is not UUID
+        or type(operation_id) is not UUID
+        or (reason_code is not None and type(reason_code) is not str)
+    ):
+        raise Phase1AuditEventRejectedError
+    payload = {
+        "clinic_id": str(clinic_id),
+        "object_verb": definition.object_verb,
+        "request_id": str(operation_id),
+    }
+    if reason_code is not None:
+        payload["reason_code"] = reason_code
+    return Phase1AuditAppend(
+        chain=definition.chain,
+        event=AuditEventInput(
+            event_type=event_type,
+            component_id=definition.component_id,
+            component_ip=None,
+            affected_record_type=definition.affected_record_type,
+            affected_record_id=str(affected_record_id),
+            occurred_at_utc=timezone.now(),
+        ),
+        payload=payload,
     )

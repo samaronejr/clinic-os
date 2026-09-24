@@ -22,6 +22,7 @@ from availability_test_support import (
     race_insert,
     seed,
 )
+from test_intake_migrations import _default_connection, _scratch_database
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -202,9 +203,19 @@ def _migrate(targets: Sequence[tuple[str, str | None]]) -> None:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_availability_migration_reverses_and_reapplies() -> None:
+def test_availability_migration_reverses_and_reapplies(
+    superuser_database_url: str,
+) -> None:
     _require_migration()
-    try:
+    # The protected-field migrations are irreversible, so the unapply leg
+    # runs on a scratch database migrated forward to the last reversible
+    # scheduling leaf: the unapply plan then contains only reversible
+    # migrations.
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        _migrate([("scheduling", "0004_waitlistentry_waitlistoffer_and_more")])
         _migrate([("scheduling", None)])
         with connection.cursor() as cursor:
             cursor.execute(
@@ -220,6 +231,3 @@ def test_availability_migration_reverses_and_reapplies() -> None:
                 "'clinic_app.scheduling_availabilityblock')"
             )
             assert cursor.fetchone()[0] is not None
-    finally:
-        executor = MigrationExecutor(connection)
-        executor.migrate(executor.loader.graph.leaf_nodes())

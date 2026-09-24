@@ -14,6 +14,10 @@ from apps.scheduling.locks import (
     user_lock_keys,
 )
 from apps.scheduling.models import Appointment, AvailabilityBlock
+from apps.scheduling.patient_authority import (
+    lock_patient_availability,
+    patient_booking_scope,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -66,9 +70,15 @@ def lock_appointment_write_rows(
     for range_start, range_end in ranges:
         availability_filter |= Q(start_at__lte=range_start, end_at__gte=range_end)
         appointment_overlap |= Q(start_at__lt=range_end, end_at__gt=range_start)
+    availability_query = AvailabilityBlock.objects.all()
+    if patient_booking_scope() is None:
+        availability_query = availability_query.select_for_update()
+    else:
+        availability_query = availability_query.filter(
+            pk__in=lock_patient_availability(target.practitioner_ids, ranges)
+        )
     availability_rows = tuple(
-        AvailabilityBlock.objects.select_for_update()
-        .filter(
+        availability_query.filter(
             organization_id=target.organization_id,
             clinic_id=target.clinic_id,
             practitioner_id__in=target.practitioner_ids,

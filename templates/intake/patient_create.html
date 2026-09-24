@@ -1,44 +1,46 @@
 {% extends "base.html" %}
-{% block title %}Register patient · Clinic OS{% endblock %}
-{% block meta_description %}Register a clinic patient without exposing demographics in the address bar.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Register patient · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Register a clinic patient without exposing demographics in the address bar." %}{% endblock %}
 {% block content %}
-<section class="intake-shell" aria-labelledby="intake-title">
-  <p class="eyebrow">Clinic registry</p>
-  <h1 id="intake-title">Register a patient</h1>
-  <p class="lede" id="intake-lede">Registration is submitted once. Repeating the same submission never creates a duplicate record.</p>
-  <div class="intake-card">
+<section class="shell-narrow intake-create" aria-labelledby="intake-title">
+  <h1 id="intake-title">{% trans "Register a patient" %}</h1>
+  <p class="lede" id="intake-lede">{% trans "Check the name and the birth date before saving. Afterwards you return to the search to book the appointment." %}</p>
+  <div class="panel" id="patient-create-panel">
     {% if form.errors %}
-      <div class="feedback feedback--error" id="intake-errors" role="alert" tabindex="-1">
-        <h2>We could not register that patient</h2>
+      <div class="feedback feedback--error" id="intake-errors" role="alert" tabindex="-1" data-focus-error autofocus>
+        <h2>{% trans "We could not register that patient" %}</h2>
         {% if form.non_field_errors %}
           {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
         {% else %}
-          <p>Check the highlighted fields and try again.</p>
+          <p>{% trans "Check the highlighted fields and try again." %}</p>
         {% endif %}
       </div>
     {% endif %}
     <form method="post" action="{{ create_url }}"
-          hx-post="{{ create_url }}" hx-indicator="#intake-progress">
+          hx-post="{{ create_url }}" hx-target="#patient-create-panel"
+          hx-select="#patient-create-panel" hx-swap="outerHTML"
+          hx-indicator="#intake-progress" data-auth-form>
       {% csrf_token %}
       <div class="field{% if form.full_name.errors %} field--error{% endif %}">
         {{ form.full_name.label_tag }}
         {{ form.full_name }}
-        <p class="hint" id="patient-create-name-help">Use the patient's registered legal name.</p>
+        <p class="hint" id="patient-create-name-help">{% trans "Use the patient's registered legal name." %}</p>
         {% if form.full_name.errors %}<div class="field-errors" id="{{ form.full_name.auto_id }}_error">{% for error in form.full_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="field{% if form.birth_date.errors %} field--error{% endif %}">
         {{ form.birth_date.label_tag }}
         {{ form.birth_date }}
-        <p class="hint" id="patient-create-birth-date-help">The birth date cannot be later than today in this clinic.</p>
+        <p class="hint" id="patient-create-birth-date-help">{% trans "The birth date cannot be later than today in this clinic." %}</p>
         {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
       <div class="actions">
-        <button type="submit">Register patient</button>
-        <span class="htmx-indicator" id="intake-progress" role="status">Registering…</span>
+        <button type="submit">{% trans "Register patient" %}</button>
+        <span class="htmx-indicator" id="intake-progress" role="status">{% trans "Registering…" %}</span>
+        <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
       </div>
     </form>
   </div>
-  <p class="actions"><a class="button" href="{{ list_url }}">Back to patient search</a></p>
 </section>
 {% endblock %}

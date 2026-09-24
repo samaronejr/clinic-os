@@ -36,6 +36,19 @@ def test_create_get_generates_a_fresh_idempotency_key(rbac_graph: RbacGraph) -> 
     assert first_key.group(1) != second_key.group(1)
 
 
+def test_create_get_is_refused_outside_the_actor_clinics(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, _ = receptionist_client(rbac_graph)
+
+    with runtime_role():
+        denied_clinic = client.get(patient_create_url(rbac_graph.clinic_c))
+        denied_unknown = client.get(patient_create_url(uuid4()))
+
+    assert {denied_clinic.status_code, denied_unknown.status_code} == {404}
+    assert b"idempotency_key" not in denied_clinic.content
+
+
 def test_create_post_redirects_without_any_identifier_in_the_location(
     rbac_graph: RbacGraph,
 ) -> None:

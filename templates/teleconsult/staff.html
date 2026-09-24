@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block title %}Teleconsulta · Clinic OS{% endblock %}
+{% block content %}
+{% timezone clinic_timezone %}
+<section class="shell-narrow intake-create" aria-labelledby="teleconsult-title">
+  <p class="eyebrow">Clínica</p>
+  <h1 id="teleconsult-title">Teleconsulta</h1>
+  <p class="lede">Cada sessão pertence a um único atendimento, médico e paciente. A sala é criada pelo provedor sintético de ensaio e o acesso usa credenciais curtas por papel. Gravação e transcrição permanecem desativadas.</p>
+  {% include "teleconsult/partials/synthetic_notice.html" %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</div>{% endif %}
+  <section class="panel" aria-labelledby="encounters-title">
+    <h2 id="encounters-title">Atendimentos abertos</h2>
+    {% for encounter in encounters %}
+    <form method="post" class="field">
+      {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+      <p>Atendimento de {{ encounter.patient.full_name }} · {{ encounter.appointment.start_at|date:"d/m/Y H:i" }}</p>
+      <button class="button" name="action" value="create" type="submit">Criar sessão de teleconsulta</button>
+    </form>
+    {% empty %}<p>Nenhum atendimento aberto disponível para teleconsulta.</p>{% endfor %}
+  </section>
+  <section class="panel" aria-labelledby="sessions-title">
+    <h2 id="sessions-title">Sessões</h2>
+    {% for row in rows %}
+    <article class="panel" data-session="{{ row.session.pk }}" data-state="{{ row.state }}">
+      <h3>Sessão de {{ row.session.patient.full_name }}</h3>
+      <p>Estado: <strong>{{ row.state_label }}</strong>{% if row.session.failure_reason %} · {{ row.failure_label|default:"Falha registrada" }} <code class="meta">{{ row.session.failure_reason }}</code>{% endif %}</p>
+      <form method="post" class="field">
+        {% csrf_token %}<input type="hidden" name="session_id" value="{{ row.session.pk }}">
+        {% if row.state == "waiting" or row.state == "active" %}
+        <button class="button" name="action" value="join" type="submit">Entrar na sala</button>
+        {% endif %}
+        {% if row.state == "waiting" %}
+        <button class="button" name="action" value="start" type="submit">Iniciar consulta</button>
+        {% endif %}
+        {% if row.state == "waiting" or row.state == "active" %}
+        <button class="button button--secondary" name="action" value="end" type="submit">Encerrar sessão</button>
+        {% endif %}
+      </form>
+      <ul class="event-history">
+        {% for event in row.events %}
+        <li data-event="{{ event.kind }}">{{ event.label }} · <time datetime="{{ event.at|date:'c' }}">{{ event.at|date:"d/m/Y H:i" }}</time>{% if event.reason_code %} · {{ event.reason|default:"Falha registrada" }} <code class="meta">{{ event.reason_code }}</code>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% empty %}<p>Nenhuma sessão de teleconsulta nesta clínica.</p>{% endfor %}
+  </section>
+</section>
+{% endtimezone %}
+{% endblock %}

@@ -4,6 +4,8 @@ import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 
+from test_intake_migrations import _default_connection, _scratch_database
+
 type FunctionFact = tuple[
     str,
     str,
@@ -116,18 +118,26 @@ REVERSED_FUNCTIONS: list[FunctionFact] = [
 ]
 
 
+AUDIT_V2 = ("audit", "0005_clinic_metadata_v2")
+AUDIT_V1_BOUNDARY = ("audit", "0003_immutability_and_verification")
+
+
 @pytest.mark.django_db(transaction=True)
-def test_boundary_migration_catalog_and_reverse_are_exact() -> None:
-    assert _append_function_catalog() == LATEST_FUNCTIONS
+def test_boundary_migration_catalog_and_reverse_are_exact(
+    superuser_database_url: str,
+) -> None:
+    # The protected-field migrations are irreversible, so the reverse leg
+    # runs on a scratch database migrated forward to the v2 boundary: the
+    # unapply plan then contains only the reversible audit migrations.
+    with (
+        _scratch_database(superuser_database_url) as wrapper,
+        _default_connection(wrapper),
+    ):
+        MigrationExecutor(connection).migrate([AUDIT_V2])
+        assert _append_function_catalog() == LATEST_FUNCTIONS
 
-    try:
-        MigrationExecutor(connection).migrate(
-            [("audit", "0003_immutability_and_verification")]
-        )
-        reversed_catalog = _append_function_catalog()
-    finally:
-        executor = MigrationExecutor(connection)
-        executor.migrate(executor.loader.graph.leaf_nodes())
+        MigrationExecutor(connection).migrate([AUDIT_V1_BOUNDARY])
+        assert _append_function_catalog() == REVERSED_FUNCTIONS
 
-    assert reversed_catalog == REVERSED_FUNCTIONS
-    assert _append_function_catalog() == LATEST_FUNCTIONS
+        MigrationExecutor(connection).migrate([AUDIT_V2])
+        assert _append_function_catalog() == LATEST_FUNCTIONS

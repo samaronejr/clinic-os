@@ -1,16 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Secure access · Clinic OS{% endblock %}
-{% block meta_description %}Confirm that Clinic OS secure access requirements are complete.{% endblock %}
+{% load i18n %}
+{% block title %}{% trans "Secure access · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Confirm that Clinic OS secure access requirements are complete." %}{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
-  <p class="eyebrow">Secure workspace</p>
-  <h1 id="auth-title">Authentication complete</h1>
+  <p class="eyebrow">{% trans "Secure workspace" %}</p>
+  <h1 id="auth-title">{% trans "Authentication complete" %}</h1>
   <div class="auth-card">
     <div class="feedback feedback--success" role="status">
-      <h2>Access confirmed</h2>
-      <p>Your account meets the security requirements for this route.</p>
+      <h2>{% trans "Access confirmed" %}</h2>
+      <p>{% trans "Your account meets the security requirements for this route." %}</p>
     </div>
-    <a class="button button--secondary" href="{% url 'identity:logout' %}">Sign out safely</a>
+    <a class="button button--secondary" href="{% url 'identity:logout' %}">{% trans "Sign out safely" %}</a>
   </div>
 </section>
 {% endblock %}

@@ -1,0 +1,13 @@
+{
+  "approval_reference": "synthetic-fixture (no approval granted)",
+  "capability": "legal_approval",
+  "environment": "synthetic",
+  "evidence_path": "evidence/legal_approval.json",
+  "evidence_sha256": "0f0ee67d003b1133493d12497a441a954e6124eaecfa6a9a1557bcfcf6a720f2",
+  "issued_at": "2026-09-12T00:00:00+00:00",
+  "owner": "synthetic-fixture (no accountable owner)",
+  "review_by": "2099-12-31T00:00:00+00:00",
+  "scope": "Synthetic fixture for the legal_approval capability; covers no real system, provider or data.",
+  "synthetic": true,
+  "system": "clinic-os"
+}

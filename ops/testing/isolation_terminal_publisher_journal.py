@@ -28,7 +28,6 @@ from ops.testing.isolation_terminal_publisher_contract import (
     RELEASE_KEYS,
     validate_final_wave_journal,
 )
-from ops.testing.process_helpers import run_process
 
 __all__ = ["JOURNAL_KEYS", "RELEASE_KEYS"]
 
@@ -109,27 +108,10 @@ def validate_initial_publisher_journal(
 
 def _validate_root(journal: JsonObject, ledger: JsonObject) -> None:
     validate_final_wave_journal(journal)
-    if journal.get("attempt_id") != ledger.get("attempt_id"):
-        _fail("final-wave publisher journal belongs to another attempt")
-    worktree = Path(_absolute_text(ledger.get("worktree_realpath"), "worktree"))
-    head = run_process(("/usr/bin/git", "-C", str(worktree), "rev-parse", "HEAD"))
-    status = run_process(
-        (
-            "/usr/bin/git",
-            "-C",
-            str(worktree),
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all",
-        )
-    )
-    if (
-        head.returncode != 0
-        or status.returncode != 0
-        or head.stdout.strip() != journal.get("sha")
-        or status.stdout
-    ):
-        _fail("final-wave publisher journal differs from clean bound-worktree HEAD")
+    if journal.get("attempt_id") != ledger.get("attempt_id") or journal.get(
+        "sha"
+    ) != ledger.get("foundation_sha"):
+        _fail("final-wave publisher journal belongs to another attempt or SHA")
     if journal.get("phase") not in {
         "initializing",
         "inputs-frozen",

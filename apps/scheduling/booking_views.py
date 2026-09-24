@@ -7,17 +7,24 @@ blank clinic patient list.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
 
+from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
-from apps.scheduling.agenda_presenter import DAY_VIEW, agenda_url
+from apps.scheduling.agenda_presenter import (
+    DAY_VIEW,
+    agenda_screen,
+    agenda_url,
+    booking_window_rows,
+)
 from apps.scheduling.appointment_forms import (
+    BOOKED_MESSAGE,
     BOOKING_PRACTITIONER_MESSAGE,
     CONFLICTING_BOOKING_KEY_MESSAGE,
     INVALID_BOOKING_MESSAGE,
@@ -40,6 +47,7 @@ from apps.scheduling.services import (
 )
 
 if TYPE_CHECKING:
+    from django.contrib.messages.storage.base import BaseStorage
     from django.http import HttpRequest
 
     from apps.scheduling.services import BookingPreparation
@@ -50,6 +58,7 @@ BOOK_TEMPLATE: Final = "scheduling/appointment_book.html"
 BOOK_PARTIAL: Final = "scheduling/partials/booking_panel.html"
 PREPARE_MODE: Final = "prepare"
 CREATE_MODE: Final = "create"
+BOOKED_TAG: Final = "scheduling.appointment.booked"
 
 
 def appointment_create_continuation(clinic_id: UUID) -> str:
@@ -80,7 +89,9 @@ def _booking_context(
         "list_url": appointment_create_continuation(clinic_id),
         "patient_display_name": preparation.patient_display_name,
         "practitioners": preparation.practitioners,
+        "timezone_key": agenda_screen(clinic_id).timezone_key,
         "window_count": sum(len(entry.windows) for entry in preparation.practitioners),
+        "windows": booking_window_rows(preparation.practitioners),
     }
 
 
@@ -141,6 +152,15 @@ def _booked_response(
     local_date: str,
 ) -> HttpResponseBase:
     target = agenda_url(clinic_id, DAY_VIEW, local_date, 1)
+    # Completion feedback names the next step and carries no identifier. A
+    # retry whose first reply was lost resolves to the same booking, so it
+    # must not queue a second notice the agenda would show as two bookings.
+    # MessageMiddleware is installed, so the request carries real storage.
+    pending = cast("BaseStorage", messages.get_messages(request))
+    already_noticed = any(BOOKED_TAG in message.tags for message in pending)
+    pending.used = False
+    if not already_noticed:
+        messages.success(request, str(BOOKED_MESSAGE), extra_tags=BOOKED_TAG)
     if _is_htmx(request):
         response: HttpResponseBase = HttpResponse(status=NO_CONTENT)
         response.headers["HX-Redirect"] = target

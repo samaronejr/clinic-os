@@ -23,7 +23,10 @@ if TYPE_CHECKING:
     P = ParamSpec("P")
 
 STEP_UP_SESSION_KEY: Final = "otp_verified_at"
+STEP_UP_INTENT_SESSION_KEY: Final = "otp_step_up_intent"
 DEFAULT_STEP_UP_MAX_AGE_SECONDS: Final = int(settings.STEP_UP_MAX_AGE_SECONDS)
+MAX_INTENT_FACTS: Final = 6
+MAX_INTENT_TEXT: Final = 160
 
 
 class StepUpFailureReason(StrEnum):
@@ -61,6 +64,48 @@ def clear_step_up_verification(
 def stamp_step_up_verification(request: HttpRequest) -> None:
     """Record the UTC Unix second of a successful exact-device verification."""
     request.session[STEP_UP_SESSION_KEY] = _utc_now_seconds()
+
+
+def set_step_up_intent(
+    request: HttpRequest,
+    *,
+    target: str,
+    action: str,
+    facts: list[tuple[str, str]],
+) -> None:
+    """Describe, for the challenge screen, the exact action being confirmed.
+
+    The intent is display-only context bound to one continuation target: it
+    names the action and the fixed subject facts (patient, issuer, clinic)
+    so the physician can see what a fresh code will authorize. It carries
+    no authority; the service boundary re-derives everything from stored
+    records. Sessions are server-side, so the facts never reach a cookie.
+    """
+    request.session[STEP_UP_INTENT_SESSION_KEY] = {
+        "target": target,
+        "action": action[:MAX_INTENT_TEXT],
+        "facts": [
+            [str(label)[:MAX_INTENT_TEXT], str(value)[:MAX_INTENT_TEXT]]
+            for label, value in facts[:MAX_INTENT_FACTS]
+        ],
+    }
+
+
+def step_up_intent_for(request: HttpRequest, target: str) -> dict[str, object] | None:
+    """Return the stored intent only when it was set for this exact target."""
+    intent = request.session.get(STEP_UP_INTENT_SESSION_KEY)
+    if not isinstance(intent, dict) or intent.get("target") != target:
+        return None
+    action = intent.get("action")
+    facts = intent.get("facts")
+    if not isinstance(action, str) or not isinstance(facts, list):
+        return None
+    return {"action": action, "facts": facts}
+
+
+def clear_step_up_intent(request: HttpRequest) -> None:
+    """Drop the display intent once the challenge completes or is abandoned."""
+    request.session.pop(STEP_UP_INTENT_SESSION_KEY, None)
 
 
 def _freshness_is_valid(request: HttpRequest, max_age: int) -> bool:

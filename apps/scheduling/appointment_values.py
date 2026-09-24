@@ -18,6 +18,10 @@ from apps.scheduling.appointment_errors import (
     AppointmentPractitionerError,
 )
 from apps.scheduling.models import Appointment
+from apps.scheduling.patient_authority import (
+    patient_enrollment,
+    patient_practitioner_active,
+)
 from apps.scheduling.timezones import LOCAL_MINUTE_PATTERN, parse_local_minute
 
 if TYPE_CHECKING:
@@ -124,12 +128,20 @@ def validate_new_appointment(
 
 def require_active_practitioner(clinic_id: UUID, practitioner_id: UUID) -> None:
     """Require an active exact physician role after advisory gates."""
+    patient_active = patient_practitioner_active(clinic_id, practitioner_id)
+    if patient_active is not None:
+        if not patient_active:
+            raise AppointmentPractitionerError
+        return
     physicians = list_active_clinic_physicians(clinic_id)
     if practitioner_id not in {entry.user_id for entry in physicians}:
         raise AppointmentPractitionerError
 
 
 def _enrollment(clinic: Clinic, enrollment_id: UUID) -> PatientClinicEnrollment:
+    bound = patient_enrollment(clinic, enrollment_id)
+    if bound is not None:
+        return bound
     try:
         return PatientClinicEnrollment.objects.get(
             organization_id=clinic.organization_id,
