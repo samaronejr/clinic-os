@@ -114,12 +114,21 @@ not redone.
 | gate | command | outcome |
 | --- | --- | --- |
 | broker/worker | `CLINIC_BROKER_GATE=required pytest tests/renewal/test_broker_delivery.py` | 9/9 pass — real Redis + separate Celery worker: beat→delivered, rollback non-delivery, lost-dispatch recovery, SIGKILL-restart idempotency, `attempts_exhausted`, forged/duplicate/valid callbacks |
-| verdict logic | `pytest tests/renewal/test_acceptance_gate.py` | 20/20 pass (missing job, cancelled, zero-test, skipped, malformed JUnit, missing suite, digest drift all rejected) |
+| verdict logic | `pytest tests/renewal/test_acceptance_gate.py` | 22/22 pass (missing job, cancelled, zero-test, skipped, malformed JUnit, missing suite, missing revision, revision drift all rejected; diverging per-job manifest digests correctly accepted) |
 | upgrade | `ops/testing/migration_upgrade.sh e622b210…` | PASS incl. no-drift |
 | pins contract | `validate_action_pins.py`, `test_action_pins.py` | pass |
 | lint/type | `ruff check`, `ruff format`, `mypy` on touched files | clean |
 
 Hosted evidence: see PR #13 checks (`Renewal RC acceptance` aggregates them).
+
+> **Hosted verification paused 2026-09-24 ~08:45 UTC**: GitHub Actions on the
+> account is blocked — *"The job was not started because recent account
+> payments have failed or your spending limit needs to be increased"*
+> (check-run annotation; affects all 13 jobs on push and pull_request
+> events). This is an account billing action only the owner can resolve.
+> Last complete hosted evidence: run 35974832738 on `c159a3f` — all 12
+> required jobs green; the acceptance job's positive path was verified
+> locally against that run's real artifacts after the `a84e472` fixes.
 
 ## Defects the new gate exposed (fixed in this change)
 
@@ -136,6 +145,15 @@ Hosted evidence: see PR #13 checks (`Renewal RC acceptance` aggregates them).
 - `current_source_snapshot._open_ledger` did not canonicalize `.omo`,
   which is a symlink in CI; every sibling caller resolves it first
   (`373477d`).
+- `renewal_acceptance` JSON-parsed the `--needs-json` argument value,
+  which is a file path; every hosted run would have been rejected as
+  malformed. It now reads the file (`a84e472`).
+- `renewal_acceptance` compared `source_manifest_sha256` across shards,
+  but the manifest binds per-job ledger state (attempt id/root, ledger
+  bytes, workspace path) and can never match across jobs. Suite reports
+  now carry `revision_sha`/`tree_sha` — the git identity the manifest
+  authenticates — and the validator compares those. Verified end-to-end
+  against the 29 real suite reports from run 35974832738 (`a84e472`).
 
 ## Known limits / non-claims
 
