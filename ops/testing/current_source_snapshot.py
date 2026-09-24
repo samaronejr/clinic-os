@@ -524,6 +524,10 @@ def _print_summary(record: JsonObject) -> None:
 
 def _open_ledger(path: Path) -> AbstractContextManager[LedgerSession]:
     """Select the matching boot relation; the lock re-authenticates everything."""
+    # ``.omo`` is a workspace symlink under the CI evidence binding; every
+    # sibling caller resolves it before opening, so the recorded canonical
+    # ledger path is what gets authenticated.
+    path = path.resolve(strict=True)
     ledger, _ = load_json(path)
     if ledger.get("boot_id") == BOOT_ID_PATH.read_text(encoding="ascii").strip():
         return locked_open_ledger(path)

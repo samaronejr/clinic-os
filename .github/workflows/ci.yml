@@ -185,10 +185,11 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
-      - name: Bind job-owned authority
+      - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          rm -f "$GITHUB_WORKSPACE/.omo"
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Install the broker prerequisite
         run: |
           sudo apt-get update
@@ -203,6 +204,7 @@ jobs:
           uv sync --locked --all-groups
           make db-bootstrap
           make migrate
+          rm -f "$GITHUB_WORKSPACE/.omo"
           install -d "$RUNNER_TEMP/worker-integration"
           CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
             --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
@@ -235,10 +237,11 @@ jobs:
         run: uv run --locked python ops/testing/isolation_ledger.py snapshot --approved-plan "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.md" --tracked-ci-sidecar "$GITHUB_WORKSPACE/docs/plans/clinic-os-phase1a-approved.sha256" --foundation-sha cffbb1900ae2132560f20c27fcf1a514a1ef71aa --worktree "$GITHUB_WORKSPACE"
         env:
           CLINIC_EVIDENCE_ROOT: ${{ github.workspace }}/evidence
-      - name: Bind job-owned authority
+      - name: Bind job-owned authority and TLS identity
         run: |
           install -d -m 0700 /tmp/opencode
-          rm -f "$GITHUB_WORKSPACE/.omo"
+          ln -sfn "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/.omo"
+          echo "127.0.0.1 phase1a-db.qa.clinic-os.dev phase1a-restore-db.qa.clinic-os.dev phase1a.qa.clinic-os.dev" | sudo tee -a /etc/hosts
       - name: Run fresh install and upgrade verification
         run: |
           trap 'ops/testing/ci_postgres.sh down' EXIT HUP INT TERM
@@ -247,7 +250,7 @@ jobs:
           uv sync --locked --all-groups
           make db-bootstrap
           make migrate
-          base_sha="$(git merge-base origin/"${{ github.event.pull_request.base.ref || 'main' }}" HEAD)"
+          base_sha="$(git merge-base origin/main HEAD)"
           echo "upgrade base: $base_sha"
           ops/testing/migration_upgrade.sh "$base_sha"
       - name: Publish upgrade evidence
