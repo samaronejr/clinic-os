@@ -35,6 +35,14 @@ ACTION_MAP: Final = {
         "3d39aea434753780c3b3d4a1a31c854b4dbf49d7",
         "v2.2.0",
     ),
+    "actions/upload-artifact": (
+        "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        "v4.6.2",
+    ),
+    "actions/download-artifact": (
+        "018cc2cf5baa6db3ef3c5f8a56943fffe632ef53",
+        "v6.0.0",
+    ),
 }
 USE = re.compile(
     r"^\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([0-9a-f]{40})\s+#\s+(v\S+)\s*$"
