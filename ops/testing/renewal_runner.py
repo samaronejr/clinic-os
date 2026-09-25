@@ -791,6 +791,8 @@ def _pytest_environment(  # noqa: PLR0913 - closed fixture inputs.
     """Export only the private runner-to-fixture inputs to the suite child."""
     return _child_env(
         {
+            # Suite fixtures and worker subprocesses never reach a host Redis.
+            "CELERY_BROKER_URL": "memory://",
             "CLINIC_BROWSER_ENGINE": engine,
             "CLINIC_RENEWAL_ARTIFACT_ROOT": str(artifact_root),
             "CLINIC_RENEWAL_BASE_URL": base_url,
@@ -1137,6 +1139,9 @@ def _gate_coverage(
         environment = _child_env(
             {
                 "APP_DATABASE_URL": database.app_dsn,
+                # As in hosted CI: the default broker is a host Redis that
+                # may belong to another project.
+                "CELERY_BROKER_URL": "memory://",
                 "DJANGO_SETTINGS_MODULE": "config.settings.test",
                 "MIGRATION_DATABASE_URL": database.owner_dsn,
                 "TEST_SUPERUSER_DATABASE_URL": database.super_dsn,

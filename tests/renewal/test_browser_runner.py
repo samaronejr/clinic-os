@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +19,7 @@ from playwright.sync_api import sync_playwright
 from renewal.browser import a11y_support, engines
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
@@ -540,6 +541,7 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
         password="secret-password",  # noqa: S106 - synthetic fixture value.
     )
     assert environment["CLINIC_BROWSER_ENGINE"] == "webkit"
+    assert environment["CELERY_BROKER_URL"] == "memory://"
     assert environment["CLINIC_RENEWAL_BASE_URL"] == "http://127.0.0.1:48000"
     assert environment["CLINIC_RENEWAL_ARTIFACT_ROOT"] == str(tmp_path)
     assert environment["CLINIC_RENEWAL_BROWSER_EXECUTABLE"] == "/usr/bin/google-chrome"
@@ -907,3 +909,43 @@ def test_excluded_predicate_matches_the_snapshot_contract() -> None:
         "README.md",
     ):
         assert runner._excluded(path) is False, path
+
+
+def test_coverage_gate_keeps_celery_on_the_in_memory_broker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The R coverage gate never reaches a host Redis (hosted CI does the same)."""
+    database = runner.ProvisionedDatabase(
+        app_dsn="postgresql://clinic_app:pw@127.0.0.1:55432/clinic",
+        app_password="pw",  # noqa: S106 - synthetic fixture value.
+        container="clinic_renewal_db_x",
+        database="clinic",
+        owner_dsn="postgresql://clinic_owner:pw@127.0.0.1:55432/clinic",
+        owner_password="pw",  # noqa: S106 - synthetic fixture value.
+        port=55432,
+        postgres_password="pw",  # noqa: S106 - synthetic fixture value.
+        super_dsn="postgresql://clinic_super:pw@127.0.0.1:55432/clinic",
+        super_password="pw",  # noqa: S106 - synthetic fixture value.
+        volume="clinic_renewal_db_x_data",
+    )
+
+    @contextmanager
+    def provisioned(*args: object) -> Iterator[runner.ProvisionedDatabase]:
+        yield database
+
+    environments: list[dict[str, str]] = []
+
+    def bounded(
+        argv: list[str], environment: dict[str, str], *args: object, **kwargs: object
+    ) -> int:
+        environments.append(environment)
+        return 0
+
+    monkeypatch.setenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+    monkeypatch.setattr(runner, "_provision_database", provisioned)
+    monkeypatch.setattr(runner, "_create_test_database", lambda *args: None)
+    monkeypatch.setattr(runner, "_migrate", lambda *args: None)
+    monkeypatch.setattr(runner, "_run_bounded", bounded)
+    runner._gate_coverage(REPOSITORY, tmp_path, "deadbeef")
+    assert [env["CELERY_BROKER_URL"] for env in environments] == ["memory://"]
