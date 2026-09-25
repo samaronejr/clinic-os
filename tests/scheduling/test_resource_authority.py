@@ -46,7 +46,10 @@ from scheduling.test_resources import _catalog
 if TYPE_CHECKING:
     from conftest import RbacGraph
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.usefixtures("resource_clock"),
+]
 
 
 @pytest.mark.parametrize(
