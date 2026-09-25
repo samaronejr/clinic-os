@@ -18,7 +18,10 @@ from apps.core.fairness import validate_queue_quotas
 from apps.ehr.attachment_scanner import AttachmentScanUnavailableError, default_scanner
 from apps.ehr.attachments import AttachmentInput, detect_attachment_type
 from apps.ehr.models import ClinicalAttachment
-from apps.identity.current_context import require_current_actor_clinic_roles
+from apps.identity.current_context import (
+    require_current_actor_clinic_roles,
+    require_current_actor_org_admin,
+)
 from apps.identity.models import Clinic, ClinicConfiguration, UserClinicRole
 from apps.identity.overlay_content import validate_overlay_text
 
@@ -142,14 +145,19 @@ def publish_configuration(
 ) -> ClinicConfiguration:
     """Publish one serialized snapshot; existing schedules and artifacts stay intact.
 
-    ``content.queue_quotas`` is the per-organization fair-queue map
-    consumed by ``apps.core.fairness``; ``None`` carries the previous
-    snapshot's map forward unchanged. Quota edits use the same
-    owner/clinic-admin role gate as every other configuration field until
-    the planned org_admin role exists.
+    ``content.queue_quotas`` is the organization-scoped fair-queue map
+    consumed by ``apps.core.fairness``. Quota edits require
+    organization-wide authority — an allowed role on every clinic of the
+    organization until the planned org_admin role exists — so no single
+    clinic's admin can move the organization's limits. ``None`` carries
+    the organization's effective map forward unchanged, so an ordinary
+    clinic settings save can never resurrect a stale quota.
     """
     actor = require_current_actor_clinic_roles(clinic_id, CONFIGURATION_ROLES)
     content.validate()
+    clinic = Clinic.objects.get(pk=clinic_id)
+    if content.queue_quotas is not None:
+        require_current_actor_org_admin(clinic.organization_id, CONFIGURATION_ROLES)
     if (
         type(expected_version) is not int
         or expected_version < 0
@@ -167,20 +175,30 @@ def publish_configuration(
         if expected_version != (previous.version if previous else 0):
             msg = "A configuração mudou. Recarregue antes de editar."
             raise ValidationError(msg)
-        clinic = Clinic.objects.get(pk=clinic_id)
         fields = asdict(content)
         quotas = fields.pop("queue_quotas")
+        # Serialize quota writes and org-effective carry-forward reads so
+        # concurrent publishes cannot resurrect a superseded quota map.
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            [f"clinic-queue-quotas:{clinic.organization_id}"],
+        )
+        if quotas is None:
+            # Carry the organization's effective map forward: the latest
+            # published row across the org.
+            org_latest = (
+                ClinicConfiguration.objects.filter(
+                    organization_id=clinic.organization_id
+                )
+                .order_by("-created_at", "-id")
+                .first()
+            )
+            quotas = dict(org_latest.queue_quotas) if org_latest else {}
         configuration = ClinicConfiguration.objects.create(
             clinic=clinic,
             organization_id=clinic.organization_id,
             version=expected_version + 1,
-            queue_quotas=(
-                validate_queue_quotas(quotas)
-                if quotas is not None
-                else dict(previous.queue_quotas)
-                if previous
-                else {}
-            ),
+            queue_quotas=quotas,
             **fields,
             logo_png=(
                 logo_bytes

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from django.db import connection
 
-from apps.identity.models import User, UserClinicRole
+from apps.identity.models import Clinic, User, UserClinicRole
 
 UserId = NewType("UserId", UUID)
 ClinicId = NewType("ClinicId", UUID)
@@ -112,6 +112,36 @@ def require_current_actor_clinic_roles(
             role__in=roles,
         ).exists()
     ):
+        raise _UnauthorizedActorError
+    return actor_id
+
+
+def require_current_actor_org_admin(
+    organization_id: UUID,
+    roles: ClinicRoles,
+) -> UserId:
+    """Require the current actor to hold an allowed role in every clinic.
+
+    Organization-scoped settings (queue quotas) need authority that no
+    single clinic's admin can satisfy: until a dedicated org_admin role
+    exists, the equivalent existing authority is an allowed role on every
+    clinic of the organization. An organization with no clinics has no
+    satisfiable authority and fails closed.
+    """
+    actor_id = current_actor_id()
+    clinic_ids = set(
+        Clinic.objects.filter(organization_id=organization_id).values_list(
+            "pk", flat=True
+        )
+    )
+    covered = set(
+        UserClinicRole.objects.filter(
+            user_id=actor_id,
+            organization_id=organization_id,
+            role__in=roles,
+        ).values_list("clinic_id", flat=True)
+    )
+    if not roles or not clinic_ids or not clinic_ids <= covered:
         raise _UnauthorizedActorError
     return actor_id
 

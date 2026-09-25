@@ -234,13 +234,18 @@ uv run celery -A config.celery beat
 Per-tenant fairness is enforced by `apps.core.fairness.fair_acquire`, a
 Redis token bucket keyed on `(organization, queue)`. Quotas are tasks per
 minute, published per organization through the validated
-`ClinicConfiguration.queue_quotas` map (owner or clinic-admin role only;
-the planned org_admin role inherits this gate when it lands). A task on a
-regulated queue calls `acquire_or_defer` first; when the bucket is empty
-the task is re-enqueued with a 30-second countdown and a
-`clinic_fairness.deferred` metric is emitted. If Redis is unreachable,
-`bulk`, `ai-batch` and every other queue fail closed (defer) while
-`clinical` fails open so chart saves are never blocked by metering.
+`ClinicConfiguration.queue_quotas` map. Quota edits require
+organization-wide authority — an owner or clinic-admin role on every
+clinic of the organization until the planned org_admin role exists — so
+no single clinic's admin can move the organization's limits, and an
+ordinary clinic settings save carries the organization's effective map
+forward unchanged. A task on a regulated queue calls `acquire_or_defer`
+first; when the bucket is empty the task is re-enqueued with a 30-second
+countdown and a `clinic_fairness.deferred` metric is emitted. If Redis is
+unreachable, `bulk`, `ai-batch` and every other queue fail closed (defer)
+while `clinical` fails open so chart saves are never blocked by metering.
+A malformed stored quota fails closed as well; it never falls back to a
+larger allowance.
 
 ## Stop and reseed
 

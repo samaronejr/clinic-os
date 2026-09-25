@@ -16,18 +16,16 @@ deferral emits the ``clinic_fairness.deferred`` metric hook.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 from uuid import UUID
 
 import redis
 from django.core.exceptions import ValidationError
 from django.db import connection
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -171,12 +169,13 @@ def _client() -> redis.Redis:
     return client
 
 
-def _organization_quotas(organization_id: UUID) -> Mapping[str, int]:
+def _organization_quotas(organization_id: UUID) -> object:
     """Read the published quota map through the resolver function.
 
     ``identity_queue_quotas`` is SECURITY DEFINER over the append-only
-    configuration table, so workers read quotas without a request actor;
-    the stored shape is enforced by the column CHECK constraint.
+    configuration table, so workers read quotas without a request actor.
+    The raw value is returned unvalidated; ``fair_acquire`` fails closed
+    on any malformed shape rather than trusting the CHECK constraint.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -185,10 +184,15 @@ def _organization_quotas(organization_id: UUID) -> Mapping[str, int]:
         )
         row = cursor.fetchone()
     stored = row[0] if row else None
+    # No published configuration means no quotas, not a malformed map.
+    if stored is None:
+        return {}
     # Raw cursors return jsonb as text; decode before the shape check.
+    # An undecodable value stays a non-dict and fails closed downstream.
     if isinstance(stored, str):
-        stored = json.loads(stored)
-    return stored if isinstance(stored, dict) else {}
+        with contextlib.suppress(json.JSONDecodeError):
+            stored = json.loads(stored)
+    return stored
 
 
 def fair_acquire(*, organization_id: UUID, queue: str) -> bool:
@@ -196,16 +200,22 @@ def fair_acquire(*, organization_id: UUID, queue: str) -> bool:
 
     Returns ``True`` when the task may run now and ``False`` when it must
     defer. A Redis outage defers every queue except the fail-open
-    ``clinical`` queue; a missing or invalid quota falls back to
-    ``DEFAULT_QUOTA_PER_MINUTE``.
+    ``clinical`` queue; a missing quota falls back to
+    ``DEFAULT_QUOTA_PER_MINUTE``. A malformed stored map or value fails
+    closed (defer) — a stored quota can never silently grow into the
+    default allowance.
     """
     if type(organization_id) is not UUID or queue not in _QUEUE_SET:
         message = "organization_id and queue are required"
         raise FairnessInputError(message)
     stored = _organization_quotas(organization_id)
+    if not isinstance(stored, dict):
+        _emit_metric("clinic_fairness.deferred", queue=queue, reason="malformed_quota")
+        return False
     quota = stored.get(queue, DEFAULT_QUOTA_PER_MINUTE)
     if type(quota) is not int or not 1 <= quota <= MAX_QUOTA_PER_MINUTE:
-        quota = DEFAULT_QUOTA_PER_MINUTE
+        _emit_metric("clinic_fairness.deferred", queue=queue, reason="malformed_quota")
+        return False
     key = f"{_BUCKET_KEY_PREFIX}:{organization_id}:{queue}"
     try:
         allowed = _client().eval(

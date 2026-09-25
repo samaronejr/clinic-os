@@ -124,7 +124,7 @@ class ClinicConfiguration(models.Model):
                     "'ai-interactive','ai-batch','messaging','finance','bulk']"
                     " = '{}'::jsonb "
                     "AND NOT jsonb_path_exists(queue_quotas, "
-                    '\'$.* ? (@.type() != "number" || @.floor() != @ '
+                    '\'strict $.* ? (@.type() != "number" || @.floor() != @ '
                     "|| @ < 1 || @ > 100000)')",
                     (),
                     output_field=models.BooleanField(),
