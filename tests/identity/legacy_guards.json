@@ -3427,5 +3427,3102 @@
         "physician"
       ]
     }
+  ],
+  "sql_guards": {
+    "clinic_app.__function_name__": {
+      "discovery": {
+        "signatures": [],
+        "migrations": [
+          "apps/audit/migrations/_v2_append_sql.py",
+          "apps/audit/migrations/_v2_boundary_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "migration_only",
+      "probes": [],
+      "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
+    },
+    "clinic_app._phase1a_identity_canonicalization_candidates": {
+      "discovery": {
+        "signatures": [],
+        "migrations": [
+          "apps/identity/phase1a_identity_migration.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "migration_only",
+      "probes": [],
+      "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
+    },
+    "clinic_app.audit_append": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_raw_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_system": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_system_raw_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_system_unchecked_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_system_raw_v1"
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_system_unchecked_v2": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_system"
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_unchecked_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_raw_v1"
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_append_unchecked_v2": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append"
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
+    },
+    "clinic_app.audit_event_reject_mutation": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/audit/migrations/0003_immutability_and_verification.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.auth_lookup": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_username text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "auth_lookup"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.billing_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_invoice_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_patient_charge": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_invoice uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0007_patient_charge_detail.py",
+          "apps/billing/migrations/0009_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.billing_patient_charges": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.billing_payment_event_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0005_payment_events.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_payment_event_recorder": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_operation uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0005_payment_events.py"
+        ],
+        "policies": [
+          "clinic_app.billing_paymentevent:billing_event_recorder"
+        ],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "billing_payment_event_recorder",
+        "billing_payment_event_recorder#stored_actor"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.billing_payment_event_recovered": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, requested_operation uuid, requested_event_id text, observed_status text, observed_amount bigint, observed_currency character varying",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0006_payment_event_superseded.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.billing_payment_event_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, requested_reference text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0005_payment_events.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.billing_payment_event_seen": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, requested_event_id text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0005_payment_events.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.billing_payment_event_superseded": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_operation uuid, observed_at timestamp with time zone, observed_status text, observed_amount bigint, observed_currency character varying",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0006_payment_event_superseded.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.billing_pix_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/0004_pix_policy.py",
+          "apps/billing/migrations/0005_payment_events.py",
+          "apps/billing/migrations/0009_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_revision_snapshot": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_settlement_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_settlement_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.billing_staff_invoice": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_invoice uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/billing/migrations/_invoice_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_invoicerevision:billing_staff",
+          "clinic_app.billing_paymentevent:billing_staff",
+          "clinic_app.billing_pixcharge:billing_staff",
+          "clinic_app.billing_pixoperation:billing_staff",
+          "clinic_app.billing_receipt:billing_staff",
+          "clinic_app.billing_settlement:billing_staff"
+        ],
+        "resolvers": [
+          "clinic_app.billing_payment_event_recorder"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "billing_staff_invoice"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.comms_due_reminders_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_reminder_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.comms_operation_callback_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, requested_reference text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_operation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.comms_operation_reject_delete_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_operation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.comms_operation_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_operation uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_operation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.comms_operation_terminal_guard_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_operation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.comms_recover_pending_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.comms_schedule_reminders_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_reminder_sql.py",
+          "apps/identity/migrations/0010_configuration_reminder_schedule.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.configuration_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/0009_clinic_configuration_policy.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.consent_audit": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/_consent_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.consent_audit_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/_consent_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.consent_audit"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.consent_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/0003_protected_fields.py",
+          "apps/consent/migrations/_consent_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.consent_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/_consent_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.consent_session": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/_consent_sql.py"
+        ],
+        "policies": [
+          "clinic_app.consent_consentacceptance:consent_acceptance_insert",
+          "clinic_app.consent_consentacceptance:consent_acceptance_read",
+          "clinic_app.consent_consentrevocation:consent_revocation_insert",
+          "clinic_app.consent_consentrevocation:consent_revocation_read",
+          "clinic_app.consent_consenttext:consent_text_read"
+        ],
+        "resolvers": [
+          "clinic_app.consent_audit_scope",
+          "clinic_app.consent_guard"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.digest": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "bytea, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          },
+          {
+            "arguments": "text, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_system_unchecked_v1",
+          "clinic_app.audit_append_system_unchecked_v2",
+          "clinic_app.audit_append_unchecked_v1",
+          "clinic_app.audit_append_unchecked_v2",
+          "clinic_app.consent_audit",
+          "clinic_app.prescription_document_viewed",
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_verify",
+          "clinic_app.prescription_verify_synthetic",
+          "clinic_app.retention_record_viewed"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.ehr_assigned": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_encounter uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_clinical_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ehr_allergy:history_insert",
+          "clinic_app.ehr_clinicalattachment:attachment_insert",
+          "clinic_app.ehr_clinicalattachment:attachment_read",
+          "clinic_app.ehr_clinicalattachment:attachment_scan",
+          "clinic_app.ehr_clinicaldocument:clinical_insert",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_insert",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_read",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_update",
+          "clinic_app.ehr_encounter:clinical_lock",
+          "clinic_app.ehr_encounterintakereference:clinical_insert",
+          "clinic_app.ehr_encounterintakereference:clinical_read",
+          "clinic_app.ehr_historyassessment:history_insert",
+          "clinic_app.ehr_problem:history_insert",
+          "clinic_app.identity_physicianevidence:physician_evidence_assigned",
+          "clinic_app.prescription_prescriptiondocument:document_insert",
+          "clinic_app.prescription_prescriptiondocumentrelease:release_insert",
+          "clinic_app.prescription_prescriptiondocumentrelease:release_revoke",
+          "clinic_app.prescription_prescriptiondocumentrevocation:revocation_insert",
+          "clinic_app.prescription_prescriptiondraft:draft_insert",
+          "clinic_app.prescription_prescriptiondraft:draft_read",
+          "clinic_app.prescription_prescriptiondraft:draft_update",
+          "clinic_app.prescription_signaturecallback:signature_callback_insert",
+          "clinic_app.prescription_signatureoperation:signature_insert",
+          "clinic_app.prescription_signatureoperation:signature_read",
+          "clinic_app.prescription_signatureoperation:signature_update",
+          "clinic_app.retention_recordrelease:release_insert",
+          "clinic_app.retention_recordrelease:release_revoke"
+        ],
+        "resolvers": [
+          "clinic_app.ehr_attachment_guard",
+          "clinic_app.ehr_history_guard",
+          "clinic_app.retention_guard"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "ehr_assigned"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.ehr_attachment_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_attachment_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.ehr_binding_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/0009_protected_fields.py",
+          "apps/ehr/migrations/_clinical_sql.py",
+          "apps/ehr/migrations/_finalization_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.ehr_care": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_encounter uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_clinical_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ehr_clinicalattachment:attachment_read",
+          "clinic_app.ehr_clinicaldocumentversion:clinical_read",
+          "clinic_app.prescription_prescriptiondocument:document_read",
+          "clinic_app.prescription_prescriptiondocumentrelease:release_read",
+          "clinic_app.prescription_prescriptiondocumentrevocation:revocation_read"
+        ],
+        "resolvers": [
+          "clinic_app.ehr_history_care"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "ehr_care"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.ehr_encounter_close_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_finalization_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.ehr_history_care": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_encounter uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_history_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ehr_historyassessment:history_read"
+        ],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "ehr_history_care"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.ehr_history_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/0009_protected_fields.py",
+          "apps/ehr/migrations/_history_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.ehr_next_version": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_document uuid",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_finalization_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "data_allocator",
+      "probes": [],
+      "reason": "Document version allocation after service authorization; this function has no authority predicate."
+    },
+    "clinic_app.ehr_version_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_version uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_clinical_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "ehr_version_scope"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.end_patient_session": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0003_patient_access.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.gen_random_bytes": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "integer",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.tenant_dek_issue"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.gen_random_uuid": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_revision_snapshot",
+          "clinic_app.billing_settlement_receipt",
+          "clinic_app.patient_booking_receipt",
+          "clinic_app.questionnaire_receipt"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.has_permission": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_permission_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_careteammembership:scope_read",
+          "clinic_app.identity_professionalregistration:scope_read",
+          "clinic_app.identity_rolegrant:scope_read"
+        ],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "has_permission"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.hmac": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "bytea, bytea, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          },
+          {
+            "arguments": "text, text, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.prescription_verify_synthetic"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.identity_queue_quotas": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "jsonb",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/0012_queue_quotas.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.identity_scope_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_permission_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.intake_contact_event_immutable_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0002_contacts_and_preferences.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.list_active_clinic_physicians": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/phase1a_identity_acl_migration.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "list_active_clinic_physicians"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.load_current_user": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "identity_user",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "load_current_user"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.overlay_plain_text_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/0009_clinic_configuration_policy.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.patient_booking_event_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.patient_booking_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.patient_booking_lock_availability": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "practitioners uuid[], starts timestamp with time zone[], ends timestamp with time zone[]",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.patient_booking_practitioner": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_practitioner uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.patient_booking_slots"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.patient_booking_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.patient_booking_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scheduling_appointment:patient_booking_insert",
+          "clinic_app.scheduling_appointment:patient_booking_read",
+          "clinic_app.scheduling_appointment:patient_booking_update",
+          "clinic_app.scheduling_availabilityblock:patient_booking_read",
+          "clinic_app.scheduling_waitlistentry:waitlist_read",
+          "clinic_app.scheduling_waitlistentry:waitlist_update",
+          "clinic_app.scheduling_waitlistoffer:waitlist_read",
+          "clinic_app.scheduling_waitlistoffer:waitlist_update"
+        ],
+        "resolvers": [
+          "clinic_app.patient_booking_guard",
+          "clinic_app.patient_booking_lock_availability",
+          "clinic_app.patient_booking_practitioner",
+          "clinic_app.patient_booking_receipt",
+          "clinic_app.patient_booking_slots",
+          "clinic_app.scheduling_appointment_guard_v1"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.patient_booking_slots": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_day date, ignored_appointment uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.patient_registry_count": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0004_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "patient_registry_count"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.patient_registry_page": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date, page_offset integer, page_limit integer",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0004_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "patient_registry_page"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.patient_session_overview": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0003_patient_access.py",
+          "apps/intake/migrations/0011_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.pgp_sym_decrypt_bytea": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "bytea, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          },
+          {
+            "arguments": "bytea, text, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.tenant_decrypt",
+          "clinic_app.tenant_dek_rewrap",
+          "clinic_app.tenant_dek_unwrap"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.pgp_sym_encrypt_bytea": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "bytea, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          },
+          {
+            "arguments": "bytea, text, text",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.tenant_dek_issue",
+          "clinic_app.tenant_dek_rewrap",
+          "clinic_app.tenant_encrypt"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.prescription_close_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_draft_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_document_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/_document_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_document_open": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, organization_id uuid, purpose text, envelope bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/0010_protected_documents.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_patient_documents",
+          "clinic_app.prescription_verify"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.prescription_document_viewed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_document uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.prescription_draft_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_draft_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_item_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/0009_protected_fields.py",
+          "apps/prescription/migrations/_draft_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_patient_document_bytes": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_document uuid",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.prescription_patient_documents": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          },
+          {
+            "arguments": "kek text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.prescription_document_viewed"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.prescription_release_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_revocation_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_signature_callback_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_signature_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_signature_callback_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_provider text, requested_reference text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_signature_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.prescription_signature_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_signature_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.prescription_signature_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_operation uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_signature_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.prescription_verify": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_handle text, allow_synthetic boolean",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "public_verification",
+      "probes": [],
+      "reason": "Public document handle/signature verification or rate limit, not staff membership; document-verification tests cover these anonymous boundaries."
+    },
+    "clinic_app.prescription_verify_allowance": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_probe bytea, max_lookups integer, window_seconds integer",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "public_verification",
+      "probes": [],
+      "reason": "Public document handle/signature verification or rate limit, not staff membership; document-verification tests cover these anonymous boundaries."
+    },
+    "clinic_app.prescription_verify_synthetic": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "signed_bytes bytea, content_digest text, signer_subject text, operation_ref text, not_before timestamp with time zone",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_verification_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.prescription_verify"
+        ]
+      },
+      "kind": "public_verification",
+      "probes": [],
+      "reason": "Public document handle/signature verification or rate limit, not staff membership; document-verification tests cover these anonymous boundaries."
+    },
+    "clinic_app.protected_decrypt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, envelope bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0004_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.patient_registry_count",
+          "clinic_app.patient_registry_page",
+          "clinic_app.patient_session_overview"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.protected_encrypt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, plaintext bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0004_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.protected_tenant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0004_protected_fields.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.protected_decrypt",
+          "clinic_app.protected_encrypt"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.providers_capability_binding_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.providers_capability_guard_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.providers_history_binding_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.providers_immutable_row_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.providers_reject_delete_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.providers_version_insert_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.providers_version_transition_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/providers/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.questionnaire_completion": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_enrollment uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_questionnaire_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "questionnaire_completion"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.questionnaire_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_questionnaire_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.questionnaire_patient_enrollment": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_questionnaire_sql.py"
+        ],
+        "policies": [
+          "clinic_app.intake_questionnaireresponse:response_read",
+          "clinic_app.intake_questionnaireresponse:response_write",
+          "clinic_app.intake_questionnairetemplate:template_read"
+        ],
+        "resolvers": [
+          "clinic_app.questionnaire_response_guard"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.questionnaire_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_questionnaire_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.questionnaire_response_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0011_protected_fields.py",
+          "apps/intake/migrations/_questionnaire_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.questionnaire_staff": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, roles text[]",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_questionnaire_sql.py"
+        ],
+        "policies": [
+          "clinic_app.billing_invoice:billing_staff",
+          "clinic_app.consent_consentacceptance:consent_acceptance_read",
+          "clinic_app.consent_consentrevocation:consent_revocation_read",
+          "clinic_app.consent_consenttext:consent_text_insert",
+          "clinic_app.consent_consenttext:consent_text_read",
+          "clinic_app.ehr_encounter:clinical_insert",
+          "clinic_app.ehr_encounter:clinical_read",
+          "clinic_app.ehr_specialtytemplate:clinical_insert",
+          "clinic_app.ehr_specialtytemplate:clinical_read",
+          "clinic_app.identity_careteammembership:scope_read",
+          "clinic_app.identity_clinicconfiguration:configuration_insert",
+          "clinic_app.identity_clinicconfiguration:configuration_read",
+          "clinic_app.identity_professionalregistration:scope_read",
+          "clinic_app.identity_rolegrant:scope_read",
+          "clinic_app.intake_questionnaireevent:event_read",
+          "clinic_app.intake_questionnaireresponse:response_assign",
+          "clinic_app.intake_questionnaireresponse:response_read",
+          "clinic_app.intake_questionnaireresponse:response_write",
+          "clinic_app.intake_questionnairetemplate:template_read",
+          "clinic_app.intake_questionnairetemplate:template_write",
+          "clinic_app.retention_legalhold:hold_insert",
+          "clinic_app.retention_legalhold:hold_read",
+          "clinic_app.retention_legalhold:hold_release",
+          "clinic_app.retention_recordexport:export_read",
+          "clinic_app.retention_recordrelease:release_read",
+          "clinic_app.retention_retentionpolicy:policy_insert",
+          "clinic_app.retention_retentionpolicy:policy_read",
+          "clinic_app.retention_retentionpolicy:policy_update",
+          "clinic_app.teleconsult_teleconsultevent:teleconsult_event_read",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_read",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_insert",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_read"
+        ],
+        "resolvers": [
+          "clinic_app.billing_settlement_guard",
+          "clinic_app.billing_staff_invoice",
+          "clinic_app.configuration_guard",
+          "clinic_app.consent_guard",
+          "clinic_app.ehr_assigned",
+          "clinic_app.ehr_care",
+          "clinic_app.ehr_history_care",
+          "clinic_app.ehr_version_scope",
+          "clinic_app.questionnaire_completion",
+          "clinic_app.questionnaire_response_guard",
+          "clinic_app.retention_author_label",
+          "clinic_app.retention_care",
+          "clinic_app.retention_guard",
+          "clinic_app.retention_record_scope",
+          "clinic_app.teleconsult_assigned"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "questionnaire_staff",
+        "questionnaire_staff#explicit_new_role"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.redeem_patient_invitation": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_hash bytea",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0003_patient_access.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.retention_author_label": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "retention_author_label"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.retention_care": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_patient uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [
+          "clinic_app.retention_recordexport:export_insert_staff"
+        ],
+        "resolvers": [
+          "clinic_app.retention_care_patients",
+          "clinic_app.retention_guard"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "retention_care"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.retention_care_patients": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "retention_care_patients"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.retention_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.retention_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.retention_patient_releases": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/0003_protected_fields.py",
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_record_viewed"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.retention_record_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_class text, requested_record uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_guard"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "retention_record_scope",
+        "retention_record_scope#version"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.retention_record_viewed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_version uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.retention_records_session": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/_retention_sql.py"
+        ],
+        "policies": [
+          "clinic_app.retention_recordexport:export_insert_patient",
+          "clinic_app.retention_recordexport:export_read",
+          "clinic_app.retention_recordrelease:release_read"
+        ],
+        "resolvers": [
+          "clinic_app.prescription_document_viewed",
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_patient_documents",
+          "clinic_app.retention_guard",
+          "clinic_app.retention_patient_releases",
+          "clinic_app.retention_record_viewed"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.scheduling_appointment_guard_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/0003_patient_booking.py",
+          "apps/scheduling/migrations/_appointment_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.scheduling_appointment_reject_delete_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_appointment_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.teleconsult_assigned": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_insert",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_read",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_update",
+          "clinic_app.teleconsult_teleconsultevent:teleconsult_event_insert",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_insert",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_update"
+        ],
+        "resolvers": [
+          "clinic_app.teleconsult_fail"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_assigned"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.teleconsult_binding_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.teleconsult_credential_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.teleconsult_fail": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, reason text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/0003_teleconsult_fail.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_fail"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.teleconsult_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.teleconsult_patient_match": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_insert",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_read",
+          "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_update",
+          "clinic_app.teleconsult_teleconsultevent:teleconsult_event_insert",
+          "clinic_app.teleconsult_teleconsultevent:teleconsult_event_read",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_read",
+          "clinic_app.teleconsult_teleconsultsession:teleconsult_session_read"
+        ],
+        "resolvers": [
+          "clinic_app.teleconsult_fail",
+          "clinic_app.teleconsult_room_state",
+          "clinic_app.teleconsult_session_scope"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.teleconsult_room_state": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_room_state"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.teleconsult_session_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.teleconsult_session_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_session_scope"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.tenant_decrypt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, expected_purpose text, envelope bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.prescription_document_open",
+          "clinic_app.protected_decrypt",
+          "clinic_app.tenant_reencrypt"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.tenant_dek_issue": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.tenant_dek_rewrap": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "old_kek text, new_kek text",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.tenant_dek_unwrap": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_version integer",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.tenant_decrypt",
+          "clinic_app.tenant_encrypt"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.tenant_encrypt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, plaintext bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.protected_encrypt",
+          "clinic_app.tenant_reencrypt"
+        ]
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.tenant_key_status": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.tenant_reencrypt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, envelope bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/_envelope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.touch_patient_session": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0003_patient_access.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.user_has_org": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "user_has_org"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.user_organizations": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "user_organizations"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.waitlist_binding": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_waitlist_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.waitlist_staff": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_waitlist_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scheduling_waitlistentry:waitlist_insert",
+          "clinic_app.scheduling_waitlistentry:waitlist_read",
+          "clinic_app.scheduling_waitlistentry:waitlist_update",
+          "clinic_app.scheduling_waitlistoffer:waitlist_insert",
+          "clinic_app.scheduling_waitlistoffer:waitlist_read",
+          "clinic_app.scheduling_waitlistoffer:waitlist_update"
+        ],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "waitlist_staff"
+      ],
+      "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    }
+  },
+  "sql_method": [
+    "Union of every migration SQL CREATE FUNCTION declaration and live clinic_app/public SECURITY DEFINER or policy-referenced pg_proc function.",
+    "Follow resolver SQL bodies transitively by qualified/unqualified function name, including every overload; SQL string bodies lack reliable pg_depend edges.",
+    "Pin live signatures, migration declaration paths, pg_policy dependencies and resolver callers, independently of runtime Python AST candidates.",
+    "Staff SQL guards have direct positive/negative oracles across all ten roles; non-staff protocols, cryptography, triggers and historical declarations are explicitly classified."
   ]
 }
