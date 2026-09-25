@@ -308,7 +308,7 @@ def test_raw_mutation_deletion_and_binding_forgery_fail_closed(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("purpose", "marketing"),
+        ("purpose", "blanket_care"),
         ("language", "en-US"),
         ("text", " "),
         ("text", "x" * 20001),

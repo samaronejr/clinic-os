@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% load static %}
+{% load i18n %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-consent.css' %}">{% endblock %}
 {% block title %}Consentimentos da clínica · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="staff-consent-title">
   <p class="eyebrow">Clínica · Consentimentos</p>
   <h1 id="staff-consent-title">Textos e comprovantes</h1>
-  <p class="lede">Somente o paciente pode consentir. A equipe consulta comprovantes, sem aceitar ou revogar em seu nome.</p>
+  <p class="lede">Somente o paciente pode consentir ou recusar. A equipe consulta comprovantes, sem aceitar ou revogar em seu nome.</p>
   {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
   {% if error %}<p class="feedback feedback--error" role="alert">{{ error }}</p>{% endif %}
   <section class="panel" aria-labelledby="publish-title">
@@ -18,6 +19,33 @@
       <button class="button" name="action" value="publish" type="submit">Publicar nova versão</button>
     </form>
   </section>
+  <section class="panel" aria-labelledby="notice-publish-title">
+    <h2 id="notice-publish-title">{% trans "Publish an informational notice" %}</h2>
+    <p>{% trans "Notices inform patients (for example about recording or AI use) and never count as consent." %}</p>
+    <form method="post" novalidate>
+      {% csrf_token %}{{ notice_form.non_field_errors }}
+      {% for field in notice_form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" name="action" value="publish_notice" type="submit">{% trans "Publish notice" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="disclosure-title">
+    <h2 id="disclosure-title">{% trans "Record AI-use disclosure" %}</h2>
+    <p>{% trans "Once per encounter, the clinician attests the patient was informed and records any refusal. Patient refusal never blocks care." %}</p>
+    <form method="post" novalidate>
+      {% csrf_token %}{{ disclosure_form.non_field_errors }}
+      {% for field in disclosure_form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" name="action" value="disclosure" type="submit">{% trans "Record disclosure" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="acknowledgment-title">
+    <h2 id="acknowledgment-title">{% trans "Acknowledge a non-patient participant" %}</h2>
+    <p>{% trans "Record that the recording notice was given to a caregiver, companion or interpreter present in the session." %}</p>
+    <form method="post" novalidate>
+      {% csrf_token %}{{ acknowledgment_form.non_field_errors }}
+      {% for field in acknowledgment_form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+      <button class="button" name="action" value="acknowledge" type="submit">{% trans "Record acknowledgment" %}</button>
+    </form>
+  </section>
   <section class="panel" aria-labelledby="lookup-title">
     <h2 id="lookup-title">Consultar comprovantes</h2>
     <form method="post">
@@ -27,5 +55,16 @@
     </form>
   </section>
   {% include "consent/receipts.html" %}
+  {% if refusals %}
+  <section class="panel" aria-labelledby="staff-refusals-title">
+    <h2 id="staff-refusals-title">{% trans "Recorded refusals" %}</h2>
+    {% for refusal in refusals %}
+    <article class="field" data-refusal="{{ refusal.pk }}">
+      <h3>{{ refusal.text.get_purpose_display }} · {% trans "Version" %} {{ refusal.text.version }}</h3>
+      <p><strong>{% trans "Refused" %}</strong> {{ refusal.refused_at|date:"d/m/Y H:i:s" }} · {{ refusal.text.language }}</p>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
 </section>
 {% endblock %}
