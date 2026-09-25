@@ -13,6 +13,7 @@ from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
 from renewal.browser._protected import decrypt
+from renewal.browser.engines import new_context
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -218,7 +219,8 @@ def check_reflow(page: Page, root: Path) -> None:
     assert browser is not None
     # Same browser-zoom metric contract as the existing availability suite:
     # 640 CSS px at DPR 2 is a 1280 physical-pixel window with 200% text.
-    native = browser.new_context(
+    native = new_context(
+        browser,
         locale="pt-BR",
         java_script_enabled=False,
         storage_state=page.context.storage_state(),

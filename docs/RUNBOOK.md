@@ -119,11 +119,9 @@ uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 `browser --suite <name>` runs one registered suite (the full registered
 set is enumerated by `SUITES` in `ops/testing/renewal_runner.py`). In hosted
 CI the `renewal-browser` matrix shards every registered suite across six
-Chromium jobs, plus one Firefox and one WebKit job. Those two run `smoke` and the
-eight suites that once needed Chromium-only APIs (billing, clinic-settings,
-clinical-history, clinician-video, consent, end-to-end, patient-video,
-video-recovery). The `Renewal RC acceptance` verdict binds the shard list,
-per-leg reports and source digests. It captures the working tree
+Chromium jobs, and runs every registered suite again on Firefox and on WebKit
+in three `suite@engine` shards per engine. The `Renewal RC acceptance`
+verdict binds the shard list, per-leg reports and source digests. It captures the working tree
 through the current-source snapshot contract, provisions a unique
 `postgres:16` container and volume, applies migrations and seeds a clinic as
 `clinic_owner`, serves through a supervised Gunicorn master on loopback as

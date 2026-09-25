@@ -17,6 +17,7 @@ from django.contrib.auth.hashers import make_password
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser.engines import failed_responses_logged, new_context
 from renewal.browser.test_availability import (
     _sign_in,
     _sign_in_physician,
@@ -604,7 +605,7 @@ def _matrix_patient(
     data: dict[str, str],
 ) -> tuple[Page, list[str], BrowserContext]:
     """Open one patient context, redeem a records grant and watch its console."""
-    context = browser.new_context(locale="pt-BR", **options)
+    context = new_context(browser, locale="pt-BR", **options)
     page = context.new_page()
     page.set_default_timeout(20_000)
     errors = _watch_errors(page)
@@ -616,7 +617,14 @@ def _matrix_patient(
 
 
 def _consume_expected_error(errors: list[str], status: str) -> None:
-    """Remove the one console error the asserted denial produced."""
+    """Remove the one console error the asserted denial produced.
+
+    Firefox logs no failed response (engines.failed_responses_logged), so
+    there the denial must have left no console line at all.
+    """
+    if not failed_responses_logged():
+        assert not [e for e in errors if status in e], errors
+        return
     expected = next((e for e in errors if status in e), None)
     assert expected is not None, errors
     errors.remove(expected)
@@ -697,7 +705,7 @@ def _matrix_denied(  # noqa: PLR0913 - the scene needs its full context
     version: str,
 ) -> dict[str, object]:
     """Reception reads the workspace but every write stays denied."""
-    context = browser.new_context(locale="pt-BR", **options)
+    context = new_context(browser, locale="pt-BR", **options)
     try:
         page = context.new_page()
         page.set_default_timeout(20_000)
@@ -870,7 +878,7 @@ def _matrix_scene(  # noqa: PLR0913 - the scene needs its full context
     scene_report: dict[str, object] = {}
     states: dict[str, object] = {}
     console: dict[str, list[str]] = {}
-    context = browser.new_context(locale="pt-BR", **options)
+    context = new_context(browser, locale="pt-BR", **options)
     try:
         page = context.new_page()
         page.set_default_timeout(20_000)

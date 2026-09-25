@@ -22,6 +22,12 @@ from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._page_wait import wait_for_js
+from renewal.browser.engines import (
+    focus_reveal,
+    focuses_dialogs_and_scrollers,
+    full_page_screenshot,
+    scroll_width_includes_flex_end_padding,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -74,7 +80,7 @@ MIN_CONTRAST = 4.5
 MIN_LARGE_CONTRAST = 3.0
 MAX_TAB_STOPS = 2000
 
-OVERFLOW_JS = """(root) => {
+OVERFLOW_JS = """(root, flexEndPadding = false) => {
   // Named scroll regions scroll horizontally by design: only the container's
   // own overflow is allowed. Everything inside it is still checked, so a
   // clipped label inside a scrolling tab list or table still fails.
@@ -88,11 +94,17 @@ OVERFLOW_JS = """(root) => {
     // SVG elements have no CSS content box; <text> reports its glyph run.
     if (el instanceof SVGElement) continue;
     if (el.clientWidth === 0) continue;
-    const overflowX = getComputedStyle(el).overflowX;
+    const cs = getComputedStyle(el);
+    const overflowX = cs.overflowX;
     if (el.matches(scrollRegions) && (overflowX === 'auto' || overflowX === 'scroll')) {
       continue;
     }
-    if (el.scrollWidth > el.clientWidth + 1) {
+    // Firefox adds a flex/grid box's end padding to scrollWidth once content
+    // passes the content box; measure to the padding edge, as Chromium does
+    // (engines.scroll_width_includes_flex_end_padding).
+    const endPadding = flexEndPadding && /flex|grid/.test(cs.display)
+      ? parseFloat(cs.paddingRight) : 0;
+    if (el.scrollWidth - endPadding > el.clientWidth + 1) {
       bad.push(el.tagName + '.' + el.className + ' ' +
         el.scrollWidth + '>' + el.clientWidth);
     }
@@ -159,6 +171,23 @@ STATUS_JS = """(status) => {
   };
 }"""
 
+SCROLL_SETTLED_JS = """() => {
+  // Wait until the scroll position has held three frames with the focused
+  // control at least partly on screen, or thirty frames without it: the
+  // engine is not going to scroll further, and the reveal check below fails
+  // with the control's geometry.
+  const position = scrollX + ',' + scrollY;
+  window.__scrollHeld = window.__scrollAt === position
+    ? (window.__scrollHeld || 0) + 1 : 0;
+  window.__scrollAt = position;
+  const el = document.activeElement;
+  let onScreen = true;
+  if (el && el !== document.body) {
+    const rect = el.getBoundingClientRect();
+    onScreen = rect.bottom > 0 && rect.top < window.innerHeight;
+  }
+  return window.__scrollHeld >= (onScreen ? 3 : 30);
+}"""
 FOCUS_JS = """() => {
   const el = document.activeElement;
   if (!el || el === document.body) return null;
@@ -178,6 +207,18 @@ FOCUS_JS = """() => {
     disabled: Boolean(el.disabled) || el.getAttribute('aria-disabled') === 'true',
     within: rect.top >= -1 && rect.left >= -1 &&
       rect.bottom <= window.innerHeight + 1 && rect.right <= window.innerWidth + 1,
+    centerWithin: rect.top + rect.height / 2 >= 0
+      && rect.top + rect.height / 2 <= window.innerHeight
+      && rect.left >= -1 && rect.right <= window.innerWidth + 1,
+    tag: el.tagName,
+    scroller: /auto|scroll/.test(cs.overflowX) || /auto|scroll/.test(cs.overflowY),
+    textEntry: el.matches('textarea, [contenteditable], input:not([type=checkbox])'
+      + ':not([type=radio]):not([type=button]):not([type=submit])'
+      + ':not([type=reset]):not([type=range]):not([type=color]):not([type=file])'),
+    visible: rect.bottom > 0 && rect.top < window.innerHeight
+      && rect.left >= -1 && rect.right <= window.innerWidth + 1,
+    rect: [rect.left, rect.top, rect.right, rect.bottom].map(Math.round),
+    viewport: [window.innerWidth, window.innerHeight],
     primitive: (el.closest('[data-primitive]') || {}).dataset?.primitive || null,
     domIndex: Array.from(document.querySelectorAll('*')).indexOf(el),
   };
@@ -208,7 +249,8 @@ TARGETS_JS = """(minimum) => {
 }"""
 MIN_TARGET_PX = 44
 
-TABBABLE_COUNT_JS = """() => {
+TABBABLE_JS = """() => {
+  const all = Array.from(document.querySelectorAll('*'));
   const selector = 'a[href], button, input, select, textarea, summary, [tabindex]';
   return Array.from(document.querySelectorAll(selector)).filter((el) => {
     if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true') {
@@ -224,8 +266,12 @@ TABBABLE_COUNT_JS = """() => {
     }
     // Closed dialogs, hidden panels and collapsed popups are not in the order.
     return el.checkVisibility({visibilityProperty: true});
-  }).length;
+  }).map((el) => all.indexOf(el));
 }"""
+
+
+def _flex_end_padding(page: Page) -> bool:
+    return scroll_width_includes_flex_end_padding(page.context)
 
 
 def _px(value: str) -> float:
@@ -273,7 +319,10 @@ def _record(report: dict[str, Any], **entry: Any) -> None:  # noqa: ANN401
 
 def _save(page: Page, destination: Path, *, full_page: bool) -> str:
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    destination.write_bytes(page.screenshot(full_page=full_page))
+    if full_page:
+        # Sectioned past the engines' 32767 device-pixel screenshot limit.
+        return ", ".join(str(p) for p in full_page_screenshot(page, destination))
+    destination.write_bytes(page.screenshot())
     destination.chmod(0o600)
     return str(destination)
 
@@ -398,7 +447,7 @@ def test_every_primitive_state_renders_without_overflow_or_low_contrast(
                 assert block.is_visible()
                 heading = block.locator("h3").inner_text().strip().lower()
                 assert heading == gettext(state.capitalize()).lower()
-                overflow = block.evaluate(OVERFLOW_JS)
+                overflow = block.evaluate(OVERFLOW_JS, _flex_end_padding(page))
                 assert overflow == [], (viewport, primitive, state, overflow)
                 rows = block.evaluate(CONTRAST_JS)
                 assert rows, (primitive, state)
@@ -480,7 +529,10 @@ def test_reflow_keeps_one_column_without_horizontal_scroll(
             ".gridTemplateColumns.split(' ').length"
         )
         assert columns == 1
-        overflow = page.evaluate(OVERFLOW_JS, page.locator("main").element_handle())
+        overflow = page.evaluate(
+            f"(root) => ({OVERFLOW_JS})(root, {str(_flex_end_padding(page)).lower()})",
+            page.locator("main").element_handle(),
+        )
         assert overflow == []
         full = _save(page, showcase.root / viewport / "full-page.png", full_page=True)
         _record(
@@ -502,16 +554,26 @@ def test_keyboard_reaches_every_control_with_a_visible_unobscured_ring(
 ) -> None:
     context, page = _open_showcase(showcase, VIEWPORTS[viewport])
     try:
-        expected = page.evaluate(TABBABLE_COUNT_JS)
+        tabbable = set(page.evaluate(TABBABLE_JS))
+        expected = len(tabbable)
         assert expected > 0
         stops: list[dict[str, Any]] = []
         captured: dict[str, str] = {}
         seen_first = False
         for _ in range(MAX_TAB_STOPS):
             page.keyboard.press("Tab")
+            # WebKit scrolls to a focused control asynchronously, sometimes
+            # many frames after the key press: measure once the control is on
+            # screen and the scroll has settled (already final elsewhere).
+            wait_for_js(page, SCROLL_SETTLED_JS)
             info = page.evaluate(FOCUS_JS)
             if info is None:
                 # Focus left the document: the end of the tab sequence.
+                break
+            if stops and info["domIndex"] == stops[-1]["domIndex"]:
+                # Headless Firefox keeps focus on the last control instead of
+                # leaving the document (engines.py, Tab past the end). An early
+                # stop still fails the tab-stop count below.
                 break
             if stops and info["label"] == stops[0]["label"] and seen_first:
                 break
@@ -521,7 +583,21 @@ def test_keyboard_reaches_every_control_with_a_visible_unobscured_ring(
             assert _px(info["outlineWidth"]) >= MIN_RING_PX, info
             assert info["outlineColor"] == (CYAN if info["inNav"] else NAVY), info
             assert not info["disabled"], info
-            assert info["within"], info
+            # What the engine scrolls into view on Tab (engines.focus_reveal):
+            # the whole box, at least part of the control (WCAG 2.4.11
+            # minimum), or nothing; never clipped sideways.
+            reveal = focus_reveal(page.context, text_entry=info["textEntry"])
+            if reveal == "none":
+                # Firefox can leave the focused control off screen: bring it to
+                # view as a user would and require its whole box on screen.
+                page.evaluate(
+                    "document.activeElement.scrollIntoView("
+                    "{block: 'nearest', inline: 'nearest'})"
+                )
+                wait_for_js(page, SCROLL_SETTLED_JS)
+                info = page.evaluate(FOCUS_JS)
+            key = "visible" if reveal == "visible" else "within"
+            assert info[key], json.dumps(info)
             if stops:
                 assert info["domIndex"] > stops[-1]["domIndex"], (stops[-1], info)
             stops.append(info)
@@ -532,7 +608,18 @@ def test_keyboard_reaches_every_control_with_a_visible_unobscured_ring(
                     showcase.root / "keyboard" / viewport / f"{primitive}-focus.png",
                     full_page=False,
                 )
-        assert len(stops) == expected, (len(stops), expected)
+        if focuses_dialogs_and_scrollers(page.context):
+            # Firefox and WebKit also stop on <dialog> elements or scroll
+            # containers (engines.focuses_dialogs_and_scrollers): every counted
+            # control is still reached in DOM order, and nothing else is.
+            visited = {stop["domIndex"] for stop in stops}
+            assert tabbable <= visited, sorted(tabbable - visited)
+            extra = [stop for stop in stops if stop["domIndex"] not in tabbable]
+            assert all(stop["tag"] == "DIALOG" or stop["scroller"] for stop in extra), [
+                json.dumps(stop) for stop in extra if stop["tag"] != "DIALOG"
+            ]
+        else:
+            assert len(stops) == expected, (len(stops), expected)
         assert set(captured) == set(PRIMITIVES) | (set(COMPONENTS) - NON_INTERACTIVE)
         _record(
             showcase.report,
@@ -604,7 +691,7 @@ def test_long_labels_wrap_instead_of_clipping(
     try:
         block = page.locator('[data-stress="long-labels"]')
         block.scroll_into_view_if_needed()
-        overflow = block.evaluate(OVERFLOW_JS)
+        overflow = block.evaluate(OVERFLOW_JS, _flex_end_padding(page))
         assert overflow == [], overflow
         assert page.evaluate("document.scrollingElement.scrollWidth") <= size[0]
         metrics = block.evaluate(
@@ -745,11 +832,13 @@ def test_reduced_motion_removes_transitions_and_the_press_transform(
             arg=selector,
             timeout=2_000,
         )
+        # Read the property itself: a serialized CSSStyleDeclaration only has
+        # named properties on Chromium.
         pressed = page.evaluate(
-            f"getComputedStyle(document.querySelector('{selector}'))"
+            f"getComputedStyle(document.querySelector('{selector}')).transitionDuration"
         )
         page.mouse.up()
-        assert pressed["transitionDuration"].startswith("0.12s")
+        assert pressed.startswith("0.12s")
     finally:
         context.close()
     context, page = _open_showcase(
@@ -770,7 +859,7 @@ def test_reduced_motion_removes_transitions_and_the_press_transform(
         page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
         page.mouse.down()
         pressed = page.evaluate(
-            f"getComputedStyle(document.querySelector('{selector}'))"
+            f"getComputedStyle(document.querySelector('{selector}')).transform"
         )
         capture = _save(
             page,
@@ -778,7 +867,7 @@ def test_reduced_motion_removes_transitions_and_the_press_transform(
             full_page=False,
         )
         page.mouse.up()
-        assert pressed["transform"] == "none"
+        assert pressed == "none"
         assert (
             page.evaluate(
                 "getComputedStyle(document.querySelector('.skeleton')).animationName"
@@ -892,7 +981,7 @@ def test_every_component_state_in_every_theme_density_and_width(
                 assert block.count() == 1, (name, state)
                 block.scroll_into_view_if_needed()
                 assert block.is_visible(), (name, state)
-                overflow = block.evaluate(OVERFLOW_JS)
+                overflow = block.evaluate(OVERFLOW_JS, _flex_end_padding(page))
                 assert overflow == [], (theme, density, viewport, name, state, overflow)
                 rows = block.evaluate(CONTRAST_JS)
                 assert rows, (name, state)
@@ -1374,13 +1463,13 @@ def test_overflow_and_focus_checks_catch_clipped_labels_and_hidden_carets(
         tabs = page.locator('[data-primitive="tabs"][data-state="default"]')
         tabs.scroll_into_view_if_needed()
         # The tab list may scroll; that alone is not a defect.
-        assert tabs.evaluate(OVERFLOW_JS) == []
+        assert tabs.evaluate(OVERFLOW_JS, _flex_end_padding(page)) == []
         # A clipped label inside the scrolling list is.
         tabs.locator(".tab").first.evaluate(
             """(tab) => Object.assign(tab.style, {maxWidth: '24px', minWidth: '24px',
                  overflow: 'hidden', whiteSpace: 'nowrap'})"""
         )
-        clipped = tabs.evaluate(OVERFLOW_JS)
+        clipped = tabs.evaluate(OVERFLOW_JS, _flex_end_padding(page))
         assert any(entry.startswith("A.tab") for entry in clipped), clipped
         # Clipped text inside a table scroll region is caught as well.
         table = page.locator('[data-primitive="table"][data-state="default"]')
@@ -1391,7 +1480,10 @@ def test_overflow_and_focus_checks_catch_clipped_labels_and_hidden_carets(
                   overflow: 'hidden', whiteSpace: 'nowrap'});
                 cell.appendChild(span); }"""
         )
-        assert any(entry.startswith("SPAN") for entry in table.evaluate(OVERFLOW_JS))
+        assert any(
+            entry.startswith("SPAN")
+            for entry in table.evaluate(OVERFLOW_JS, _flex_end_padding(page))
+        )
 
         # A textarea that is partly below the fold is not "within", wherever
         # its caret is: the whole focused box must be visible.

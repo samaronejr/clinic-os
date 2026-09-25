@@ -22,17 +22,6 @@ from ops.testing.renewal_acceptance import (
 from ops.testing.renewal_runner import SUITES
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-# Suites that once drove Chromium-only APIs; CI runs them on every engine.
-PORTED_SUITES = (
-    "billing",
-    "clinic-settings",
-    "clinical-history",
-    "clinician-video",
-    "consent",
-    "end-to-end",
-    "patient-video",
-    "video-recovery",
-)
 
 FIRST_SUITE = sorted(SUITES)[0]
 
@@ -425,7 +414,9 @@ def test_tracked_workflow_binds_every_suite_plus_firefox_and_webkit_legs() -> No
     )
     failures, legs = _binding_failures(workflow, set(SUITES))
     assert failures == []
-    engine_suites = {"smoke", *PORTED_SUITES}
-    assert legs == {(suite, "chromium") for suite in SUITES} | {
-        (suite, engine) for suite in engine_suites for engine in ("firefox", "webkit")
+    # Every registered suite runs on every engine (plan item 14).
+    assert legs == {
+        (suite, engine)
+        for suite in SUITES
+        for engine in ("chromium", "firefox", "webkit")
     }

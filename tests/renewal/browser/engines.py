@@ -50,8 +50,9 @@ Playwright 1.61.0, so this module owns the one place each differs:
   ``service_workers="block"`` (https://playwright.dev/python/docs/api/class-page#page-route).
 * Session history. On Firefox, Playwright's ``page.reload()`` corrupts
   session history: a later ``go_back()`` reloads the current entry instead
-  of returning. It also sometimes never reports ``load`` for a page whose
-  subrequests are being routed. The document's own ``location.reload()`` and
+  of returning. It also never reports ``load`` once the app's service worker
+  is registered for the page (reproduction: fix2/firefox-service-worker-probe.txt).
+  The document's own ``location.reload()`` and
   ``history.back()`` walk the same history as the browser buttons on every
   engine, so journeys that reload and then go back use those. Firefox does
   not restore form controls on Back under Playwright, which disables its
@@ -66,6 +67,62 @@ Playwright 1.61.0, so this module owns the one place each differs:
   .omo/evidence/clinic-ops-premium-intelligence/task-14/fix1/webkit-clipped-mediastream-probe.txt).
   ``displays_clipped_video`` gates only the painted-first-frame check; on
   WebKit the element must still be playing a live camera track.
+* Device scale factor. Firefox drops a context's ``device_scale_factor``
+  whenever a ``Cross-Origin-Opener-Policy`` response swaps the browsing
+  context group (every sign-in and form POST here; reproduction:
+  .omo/evidence/clinic-ops-premium-intelligence/task-14/fix1/firefox-coop-dpr-probe.txt).
+  ``new_context`` therefore applies a requested scale on Firefox through its
+  own ``layout.css.devPixelsPerPx`` pref in a throwaway profile, which holds
+  for every navigation. Other engines use ``browser.new_context`` unchanged.
+* Screenshot size. Firefox and WebKit refuse a screenshot taller or wider
+  than 32767 device pixels ("Cannot take screenshot larger than 32767").
+  ``full_page_screenshot`` captures such a page as consecutive full-width
+  sections (``<name>-partN.png``) that together cover the whole page, on
+  every engine.
+* Keyboard focus reveal. On Tab, only Chromium always scrolls the focused
+  control's whole box into view. WebKit scrolls a text field only as far as
+  its caret line, sometimes leaving only a few pixels of the field on
+  screen. Firefox leaves 32-34 of the component showcase's stops
+  partly past the viewport edge (inline-flex links, padded fields, dialog
+  specimens, grid cells), and after Tab from a text area whose caret is at its
+  start it does not scroll to the next control at all; Chromium leaves no stop
+  outside the viewport on the same page (reproductions:
+  fix2/firefox-focus-after-textarea-probe.txt,
+  .omo/evidence/clinic-ops-premium-intelligence/task-14/fix2/webkit-text-control-focus-reveal-probe.txt
+  and focus-reveal-probes.txt). ``focus_reveal`` says what each engine
+  guarantees: the whole box, part of it (WCAG 2.4.11 minimum), or on Firefox
+  nothing. There, the walk brings the control to view itself and then requires
+  the whole box on screen; nothing may be clipped sideways anywhere.
+* Extra tab stops. Firefox also stops on ``<dialog>`` elements and on scroll
+  containers such as a horizontally scrolling tab list, and WebKit on scroll
+  containers at narrow widths; Chromium stops only on the controls
+  themselves. On the component showcase, Firefox visits 435 stops where 396
+  controls are tabbable, and WebKit visits 422 at 375px (reproduction:
+  fix2/firefox-extra-tab-stops-probe.txt). ``focuses_dialogs_and_scrollers``
+  lets a tab-order walk accept exactly those extra stops.
+* Tab past the end. Chromium and WebKit move focus out of the document
+  after the last control; headless Firefox keeps it on the last control
+  (reproduction: fix2/firefox-tab-past-end-probe.txt). A tab-order walk
+  ends when focus leaves the document or stops moving; its stop count still
+  proves that no control was skipped.
+* Scroll width of flex/grid boxes. Firefox includes a flex/grid box's
+  inline-end padding in ``scrollWidth`` once content passes the content box.
+  Chromium measures to the padding edge. With the same font (DejaVu Sans),
+  "Horário" overflows a 48px content box on both engines, but only Firefox
+  reports 83 > 72 (reproduction: fix2/firefox-flex-scrollwidth-probe.txt).
+  ``scroll_width_includes_flex_end_padding`` lets an overflow check measure
+  to the padding edge on every engine.
+* Service workers. In Playwright's Firefox, a page reached by navigation is
+  never controlled when the worker returns without ``respondWith`` (the
+  app's worker does this for navigations). Only the page that
+  ``clients.claim()`` reaches is controlled
+  (https://github.com/microsoft/playwright/issues/37012; real Firefox does
+  not do this). In WebKit, ``set_offline`` breaks every request a
+  controlling worker would answer
+  (https://github.com/microsoft/playwright/issues/42775).
+  ``navigations_are_worker_controlled`` and ``worker_answers_offline`` gate
+  those checks; the worker cache contents are asserted on every engine.
+  ``offline_navigation_error`` gives each engine's offline navigation error.
 * 200% zoom. ``zoom_200`` opens the page in a context with a halved viewport
   (640x450) at device scale factor 2. This proxy works on every engine.
   Real browser zoom has no Playwright API
@@ -83,11 +140,13 @@ from __future__ import annotations
 import base64
 import os
 import re
+import shutil
+import tempfile
 import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
 import pytest
@@ -100,6 +159,7 @@ if TYPE_CHECKING:
         Browser,
         BrowserContext,
         Error,
+        FloatRect,
         Page,
         Playwright,
     )
@@ -350,6 +410,11 @@ def media_source(context: BrowserContext) -> str:
     return f"{_engine_of(context)} synthetic canvas/oscillator getUserMedia"
 
 
+OFFLINE_NAVIGATION_ERROR: Final = {
+    "chromium": "ERR_INTERNET_DISCONNECTED",
+    "firefox": "NS_ERROR_OFFLINE",
+    "webkit": "WebKit encountered an internal error",
+}
 OFFLINE_CONSOLE: Final = {
     "chromium": "net::ERR_INTERNET_DISCONNECTED",
     "webkit": "WebKit encountered an internal error",
@@ -361,9 +426,78 @@ def logs_failed_responses(context: BrowserContext) -> bool:
     return _engine_of(context) != "firefox"
 
 
+def assert_only_refused_document_logged(
+    page: Page, errors: list[str], status: str, *, documents: int = 1
+) -> None:
+    """The console holds only the refused documents' own failed-response lines.
+
+    Engines that log failed responses must log exactly one line per refused
+    document; Firefox logs none, so there the console must be empty.
+    """
+    if logs_failed_responses(page.context):
+        assert len(errors) == documents, errors
+        assert all(re.search(rf"\b{status}\b", error) for error in errors), errors
+    else:
+        assert errors == [], errors
+
+
+def failed_responses_logged() -> bool:
+    """``logs_failed_responses`` for the runner-selected engine."""
+    return selected_engine() != "firefox"
+
+
+def new_context(browser: Browser, **options: Any) -> BrowserContext:  # noqa: ANN401 - Playwright options pass through
+    """``browser.new_context``; a device scale factor also survives on Firefox."""
+    scale = options.pop("device_scale_factor", None)
+    if scale is None or browser.browser_type.name != "firefox":
+        if scale is not None:
+            options["device_scale_factor"] = scale
+        return browser.new_context(**options)
+    state = options.pop("storage_state", None)
+    profile = tempfile.mkdtemp(
+        prefix="scale-profile-", dir=os.environ["CLINIC_RENEWAL_ARTIFACT_ROOT"]
+    )
+    context = browser.browser_type.launch_persistent_context(
+        profile,
+        executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
+        headless=True,
+        firefox_user_prefs={"layout.css.devPixelsPerPx": str(float(scale))},
+        **options,
+    )
+    context.on("close", lambda _: shutil.rmtree(profile, ignore_errors=True))
+    if state is not None:
+        context.set_storage_state(state)
+    return context
+
+
 def displays_clipped_video(context: BrowserContext) -> bool:
     """Whether a clipped MediaStream <video> reaches HAVE_CURRENT_DATA."""
     return _engine_of(context) != "webkit"
+
+
+def focus_reveal(context: BrowserContext, *, text_entry: bool) -> str:
+    """How much of a Tab-focused control the engine scrolls into view.
+
+    ``"whole"`` (Chromium; WebKit except text fields), ``"visible"`` (at
+    least part of the control, WCAG 2.4.11 Focus Not Obscured (Minimum): WebKit
+    text fields, whose caret-line reveal can leave only a few pixels of the
+    field on screen) or ``"none"`` (Firefox: after Tab from a text area it can
+    leave the next control entirely off screen).
+    """
+    engine = _engine_of(context)
+    if engine == "firefox":
+        return "none"
+    return "visible" if engine == "webkit" and text_entry else "whole"
+
+
+def focuses_dialogs_and_scrollers(context: BrowserContext) -> bool:
+    """Whether Tab also stops on <dialog> elements and scroll containers."""
+    return _engine_of(context) != "chromium"
+
+
+def scroll_width_includes_flex_end_padding(context: BrowserContext) -> bool:
+    """Whether scrollWidth adds a flex/grid box's end padding past overflow."""
+    return _engine_of(context) == "firefox"
 
 
 def restores_forms_on_back(context: BrowserContext) -> bool:
@@ -381,6 +515,21 @@ def history_back(page: Page, url: str) -> None:
     """Go Back the way the document's own Back does, landing on ``url``."""
     with page.expect_navigation(url=url):
         page.evaluate("history.back()")
+
+
+def offline_navigation_error(context: BrowserContext) -> str:
+    """The error text of a navigation refused by ``set_offline``."""
+    return OFFLINE_NAVIGATION_ERROR[_engine_of(context)]
+
+
+def navigations_are_worker_controlled(context: BrowserContext) -> bool:
+    """Whether a navigated page is controlled by the active service worker."""
+    return _engine_of(context) != "firefox"
+
+
+def worker_answers_offline(context: BrowserContext) -> bool:
+    """Whether a controlling service worker can answer while ``set_offline``."""
+    return _engine_of(context) == "chromium"
 
 
 def offline_console(context: BrowserContext) -> str | None:
@@ -407,6 +556,40 @@ def watch_page_errors(page: Page, sink: list[str]) -> None:
         sink.append(str(error))
 
     page.on("pageerror", record)
+
+
+MAX_CAPTURE_DEVICE_PX: Final = 32767
+PAGE_EXTENT_JS: Final = """() => [
+  document.documentElement.scrollWidth,
+  document.documentElement.scrollHeight,
+  devicePixelRatio,
+]"""
+
+
+def full_page_screenshot(page: Page, destination: Path) -> list[Path]:
+    """Capture the whole page, in sections when it exceeds the pixel limit."""
+    width, height, ratio = page.evaluate(PAGE_EXTENT_JS)
+    section = int(MAX_CAPTURE_DEVICE_PX // ratio)
+    if height <= section:
+        page.screenshot(path=str(destination), full_page=True)
+        written = [destination]
+    else:
+        written = []
+        for index, top in enumerate(range(0, height, section), start=1):
+            part = destination.with_name(
+                f"{destination.stem}-part{index}{destination.suffix}"
+            )
+            clip: FloatRect = {
+                "x": 0,
+                "y": top,
+                "width": width,
+                "height": min(section, height - top),
+            }
+            page.screenshot(path=str(part), full_page=True, clip=clip)
+            written.append(part)
+    for path in written:
+        path.chmod(0o600)
+    return written
 
 
 def grant_clipboard(context: BrowserContext) -> None:

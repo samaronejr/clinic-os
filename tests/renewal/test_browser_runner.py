@@ -225,16 +225,6 @@ def test_engine_selection_defaults_to_chromium_and_rejects_the_unknown(
         runner._resolve_engine("Firefox")
 
 
-PORTED_SUITES = (
-    "billing",
-    "clinic-settings",
-    "clinical-history",
-    "clinician-video",
-    "consent",
-    "end-to-end",
-    "patient-video",
-    "video-recovery",
-)
 # Engine-specific Playwright/browser APIs live only in engines.py; a suite
 # that uses one directly would crash or silently fall back to Chromium.
 ENGINE_SPECIFIC_APIS = (
@@ -262,7 +252,7 @@ def test_browser_suites_leave_engine_specific_apis_to_the_engines_module() -> No
 
 
 @pytest.mark.parametrize("engine", ["firefox", "webkit"])
-@pytest.mark.parametrize("suite", PORTED_SUITES)
+@pytest.mark.parametrize("suite", sorted(runner.SUITES))
 def test_every_suite_runs_on_every_engine(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -120,8 +120,12 @@ jobs:
           - "agenda,availability,contacts,locale,patient-access"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
-          - "smoke@firefox,billing@firefox,clinic-settings@firefox,clinical-history@firefox,clinician-video@firefox,consent@firefox,end-to-end@firefox,patient-video@firefox,video-recovery@firefox"
-          - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit"
+          - "smoke@firefox,billing@firefox,clinic-settings@firefox,clinical-history@firefox,clinician-video@firefox,consent@firefox,end-to-end@firefox,patient-video@firefox,video-recovery@firefox,amendments@firefox,document-verification@firefox,prescribing@firefox,prescription-draft@firefox,reminders@firefox,teleconsult@firefox,waitlist@firefox"
+          - "primitives@firefox,workspace@firefox,self-booking@firefox,locale@firefox"
+          - "agenda@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox"
+          - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit,amendments@webkit,document-verification@webkit,prescribing@webkit,prescription-draft@webkit,reminders@webkit,teleconsult@webkit,waitlist@webkit"
+          - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit"
+          - "agenda@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
