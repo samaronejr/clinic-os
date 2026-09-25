@@ -140,6 +140,23 @@ def require_data_mode(value: str, environment: Mapping[str, str] | None = None) 
     raise ImproperlyConfigured(message)
 
 
+def resolved_data_mode() -> str | None:
+    """Return the process data mode, or None when unset or invalid.
+
+    ``require_data_mode`` validates ``CLINIC_DATA_MODE`` at startup, so a
+    missing or unknown value only appears when the setting is absent at
+    call time (for example when a test deletes it). Callers at gate
+    boundaries must fail closed on ``None`` rather than let Django's
+    ``AttributeError`` escape as a denial signal.
+    """
+    from django.conf import settings  # noqa: PLC0415
+
+    value: str | None = getattr(settings, "CLINIC_DATA_MODE", None)
+    if value not in (SYNTHETIC_DATA_MODE, LIVE_DATA_MODE):
+        return None
+    return value
+
+
 def validate_runtime_secret(value: str, *, minimum_length: int = 64) -> str:
     if not minimum_length <= len(value) <= MAX_SECRET_LENGTH or not _printable_ascii(
         value

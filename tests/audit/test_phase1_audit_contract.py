@@ -243,6 +243,54 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "teleconsult.session",
         "denied",
     ),
+    "providers.capability.proposed": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "proposed",
+    ),
+    "providers.capability.selected_in_plan": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "selected_in_plan",
+    ),
+    "providers.capability.approved": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "approved",
+    ),
+    "providers.capability.sandbox": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "sandbox",
+    ),
+    "providers.capability.production_authorized": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "production_authorized",
+    ),
+    "providers.capability.activated": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "activated",
+    ),
+    "providers.capability.degraded": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "degraded",
+    ),
+    "providers.capability.revoked": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "revoked",
+    ),
 }
 
 

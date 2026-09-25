@@ -1,5 +1,6 @@
 {% comment %}
-The only room provider is the synthetic rehearsal slice: capabilities.py hard
-codes real_enabled=False until an approved provider ships its own adapter, and
-that adapter must replace this disclosure. No audio or video leaves the device.
+The only room provider is the synthetic rehearsal slice: the provider
+capability registry keeps the video capability below `activated` until an
+approved provider ships its own adapter, and that adapter must replace this
+disclosure. No audio or video leaves the device.
 {% endcomment %}<p class="feedback feedback--muted" role="note" data-synthetic-room>Ensaio sintético: nenhum áudio ou vídeo é transmitido entre paciente e médico. O provedor de vídeo real ainda não foi aprovado.</p>

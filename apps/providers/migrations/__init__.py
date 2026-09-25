@@ -1,0 +1,1 @@
+"""Provider capability database migrations."""

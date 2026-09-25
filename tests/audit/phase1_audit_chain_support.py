@@ -41,6 +41,18 @@ def tenant_matrix_count() -> int:
     )
 
 
+def system_matrix_count() -> int:
+    """Count the fixed-matrix events that append to the system chain."""
+    return sum(
+        1
+        for event_type in PHASE1_AUDIT_EVENTS
+        if build_phase1_audit_event(
+            event_type, clinic_id=CLINIC_ID, affected_record_id=SYSTEM_ORG_ID
+        ).chain
+        == "system"
+    )
+
+
 def append_fixed_matrix() -> None:
     tenant_seqs: list[int] = []
     with transaction.atomic(), connection.cursor() as cursor:
@@ -59,17 +71,19 @@ def append_fixed_matrix() -> None:
             if append.chain == "tenant":
                 tenant_seqs.append(record_event(append.event, payload=append.payload))
         cursor.execute("RESET ROLE")
-    system_append = build_phase1_audit_event(
-        "ops.clinic.bootstrapped",
-        clinic_id=CLINIC_ID,
-        affected_record_id=UUID("66666666-6666-4666-8666-666666666666"),
-    )
-    system_seq = _record_system_event(
-        system_append.event,
-        payload=system_append.payload,
-    )
+    system_seqs: list[int] = []
+    for position, event_type in enumerate(PHASE1_AUDIT_EVENTS, start=1):
+        append = build_phase1_audit_event(
+            event_type,
+            clinic_id=CLINIC_ID,
+            affected_record_id=UUID(f"66666666-6666-4666-8666-{position:012d}"),
+        )
+        if append.chain == "system":
+            system_seqs.append(
+                _record_system_event(append.event, payload=append.payload)
+            )
     assert len(tenant_seqs) == tenant_matrix_count()
-    assert system_seq > 0
+    assert all(seq > 0 for seq in system_seqs)
     _assert_matrix_rows()
 
 
@@ -155,7 +169,7 @@ def verify_new_chains() -> tuple[int, int | None]:
     system_result = verify_chain()
     # The v1 seed row, the fixed matrix and the two concurrent appends.
     assert tenant_result.row_count == tenant_matrix_count() + 3
-    assert system_result.row_count == 1
+    assert system_result.row_count == system_matrix_count()
     return tenant_result.row_count, tenant_result.last_seq
 
 

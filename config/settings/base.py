@@ -72,6 +72,7 @@ INSTALLED_APPS: list[str] = [
     "apps.comms.apps.CommsConfig",
     "apps.retention.apps.RetentionConfig",
     "apps.interop.apps.InteropConfig",
+    "apps.providers.apps.ProvidersConfig",
 ]
 
 AUTH_USER_MODEL: str = "identity.User"
