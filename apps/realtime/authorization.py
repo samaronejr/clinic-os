@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, Final, cast
@@ -12,8 +11,10 @@ from uuid import UUID
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import SESSION_KEY, get_user
+from django.contrib.sessions.models import Session
 from django.db import connection
 from django.http import HttpRequest
+from django.utils import timezone
 from django_otp import DEVICE_ID_SESSION_KEY
 from django_otp.models import Device
 from django_otp.plugins.otp_totp.models import TOTPDevice
@@ -24,23 +25,24 @@ from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import User
 from apps.identity.otp import is_privileged_user
 from apps.intake.patient_access import PATIENT_SESSION_KEY, patient_session_context
+from apps.realtime.scopes import authorize_scope
+from apps.realtime.topics import (
+    CLINIC_TOPIC,
+    JOB_TOPIC,
+    PATIENT_TOPIC,
+    TOPIC_PERMISSIONS,
+)
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from django.contrib.sessions.backends.base import SessionBase
 
     from apps.identity.otp import TotpDevice
 
 MAX_TOPICS: Final = 8
 MAX_TOPIC_LENGTH: Final = 100
-CLINIC_TOPIC: Final = re.compile(
-    r"clinic:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):"
-    r"(agenda|inbox|queue|messages)"
-)
-# V1 has no clinic-wide clinical-inbox or messaging permission. Do not infer
-# either from demographic access. Their owning todos must add an explicit
-# permission and this mapping together. read_own cannot grant clinic timing.
-TOPIC_PERMISSIONS: Final = {"agenda": "appointment.read", "queue": "appointment.read"}
 
 
 class TopicDeniedError(Exception):
@@ -51,13 +53,19 @@ class TopicDeniedError(Exception):
         super().__init__("subscription unavailable")
 
 
+class TopicExpiredError(TopicDeniedError):
+    """Same HTTP denial, with an explicit terminal stream state."""
+
+
 @dataclass(frozen=True, slots=True)
 class Subscription:
     """Server-side authority reference, never sent in an event."""
 
     session_key: str
-    user_id: UUID
+    user_id: UUID | None
     topics: tuple[str, ...]
+    expires_at: datetime | None = None
+    patient_session_id: UUID | None = None
 
 
 def validated_topics(value: object) -> tuple[str, ...]:
@@ -79,12 +87,16 @@ def validated_topics(value: object) -> tuple[str, ...]:
 def _staff_topics(topics: tuple[str, ...]) -> None:
     for topic in topics:
         match = CLINIC_TOPIC.fullmatch(topic)
-        if match is None or match[2] not in TOPIC_PERMISSIONS:
-            # ai_job:<opaque> is reserved until apps/ai owns durable job scope.
-            # In particular, knowledge of an opaque id is NOT authorization.
+        if match is not None:
+            clinic_id = UUID(match[1])
+            if match[2] in {"inbox", "messages"}:
+                authorize_scope(topic=topic)
+            else:
+                require_permission(TOPIC_PERMISSIONS[match[2]], clinic_id=clinic_id)
+        elif JOB_TOPIC.fullmatch(topic):
+            clinic_id = authorize_scope(topic=topic)
+        else:
             raise TopicDeniedError
-        clinic_id = UUID(match[1])
-        require_permission(TOPIC_PERMISSIONS[match[2]], clinic_id=clinic_id)
         record_phase1_event(
             "realtime.subscription.authorized",
             clinic_id=clinic_id,
@@ -117,26 +129,59 @@ def _verified_staff(session: SessionBase, topics: tuple[str, ...]) -> UUID:
         return user_id
 
 
-def authorize_topics_sync(session_key: str, topics: tuple[str, ...]) -> Subscription:
+def _patient_topics(
+    session_key: str,
+    patient_id: UUID,
+    topics: tuple[str, ...],
+    expires_at: datetime,
+) -> Subscription:
+    with patient_session_context(patient_id) as binding:
+        if binding is None:
+            raise TopicDeniedError
+        for topic in topics:
+            match = PATIENT_TOPIC.fullmatch(topic)
+            if (
+                match is None
+                or UUID(match[1]) != binding.enrollment_id
+                or match[2] not in binding.operations
+            ):
+                raise TopicDeniedError
+        return Subscription(
+            session_key,
+            None,
+            topics,
+            min(expires_at, binding.expires_at, binding.idle_expires_at),
+            patient_id,
+        )
+
+
+def authorize_topics_sync(*, session_key: str, topics: tuple[str, ...]) -> Subscription:
     """Reload session, password hash, OTP, membership and permissions, then close.
 
     A session id is a reference, not a cached authentication result. The check
     uses the normal auth backend inside exactly one short tenant transaction.
     Patient sessions never acquire staff GUCs or clinic-wide activity rights.
-    No patient/job topic exists yet; valid and invalid sessions both fail closed
-    until an owning domain supplies a patient-scoped contract.
+    Patient topics bind the exact enrollment and allowed patient operation.
     """
     try:
         require_live_runtime(os.environ)
         topics = validated_topics(topics)
+        expires_at = (
+            Session.objects.filter(session_key=session_key)
+            .values_list("expire_date", flat=True)
+            .first()
+        )
+        if expires_at is None:
+            raise TopicDeniedError
+        if expires_at <= timezone.now():
+            raise TopicExpiredError
         session: SessionBase = import_module(settings.SESSION_ENGINE).SessionStore(
             session_key=session_key
         )
         if patient_id := session.get(PATIENT_SESSION_KEY):
-            with patient_session_context(UUID(patient_id)):
-                raise TopicDeniedError
+            return _patient_topics(session_key, UUID(patient_id), topics, expires_at)
         user_id = _verified_staff(session, topics)
-        return Subscription(session_key, user_id, topics)
+        return Subscription(session_key, user_id, topics, expires_at)
     except (
         KeyError,
         TypeError,
@@ -151,8 +196,10 @@ def authorize_topics_sync(session_key: str, topics: tuple[str, ...]) -> Subscrip
         connection.close()
 
 
-async def authorize_topics(session_key: str, topics: tuple[str, ...]) -> Subscription:
+async def authorize_topics(
+    *, session_key: str, topics: tuple[str, ...]
+) -> Subscription:
     """Perform one bounded synchronous check off the ASGI event loop."""
     return await sync_to_async(authorize_topics_sync, thread_sensitive=True)(
-        session_key, topics
+        session_key=session_key, topics=topics
     )

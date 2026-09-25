@@ -80,7 +80,7 @@ def test_stream_has_no_database_backend_while_idle_and_filters_payloads(
         os.environ["TEST_SUPERUSER_DATABASE_URL"], str(connection.settings_dict["NAME"])
     )
     with runtime_connection() as application_name:
-        subscription = authorize_topics_sync(key, (topic,))
+        subscription = authorize_topics_sync(session_key=key, topics=(topic,))
 
         async def exercise() -> None:
             stream = EventStream(subscription)
@@ -129,7 +129,7 @@ def test_stream_closes_on_revocation_or_deadline(
     clock = [0.0]
     monkeypatch.setattr(stream_module, "monotonic", lambda: clock[0])
     with runtime_connection():
-        subscription = authorize_topics_sync(key, (topic,))
+        subscription = authorize_topics_sync(session_key=key, topics=(topic,))
 
         async def exercise() -> None:
             stream = EventStream(subscription)
@@ -177,7 +177,7 @@ def test_idle_receive_cannot_outlive_the_absolute_connection_cap(
     clock = [0.0]
     monkeypatch.setattr(stream_module, "monotonic", lambda: clock[0])
     with runtime_connection():
-        subscription = authorize_topics_sync(key, (topic,))
+        subscription = authorize_topics_sync(session_key=key, topics=(topic,))
 
         async def exercise() -> None:
             stream = EventStream(subscription)
@@ -208,7 +208,7 @@ def test_disconnecting_before_body_iteration_opens_no_redis_subscription(
 ) -> None:
     key = session_key(rbac_graph)
     topic = f"clinic:{rbac_graph.clinic_a}:agenda"
-    ticket = issue_ticket(key, (topic,))
+    ticket = issue_ticket(session_key=key, topics=(topic,))
     request = RequestFactory().get("/rt/stream", {"t": ticket})
     request.COOKIES["sessionid"] = key
     with runtime_connection():
@@ -225,4 +225,4 @@ def test_publish_cannot_run_inside_uncommitted_transaction() -> None:
         transaction.atomic(),
         pytest.raises(RuntimeError, match="committed transaction"),
     ):
-        publish(f"clinic:{uuid4()}:agenda", "agenda", 1)
+        publish(topic=f"clinic:{uuid4()}:agenda", kind="agenda", version=1)

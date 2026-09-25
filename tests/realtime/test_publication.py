@@ -36,7 +36,7 @@ def test_publication_is_after_commit_and_rollback_discards_it(
 
     def publish(topic: str, kind: str, version: int) -> None:
         called.append(connection.in_atomic_block)
-        real_publish(topic, kind, version)
+        real_publish(topic=topic, kind=kind, version=version)
 
     monkeypatch.setattr(transport, "publish", publish)
     with redis_client() as client, client.pubsub() as listener:
@@ -45,12 +45,12 @@ def test_publication_is_after_commit_and_rollback_discards_it(
         assert acknowledgment is not None
         assert acknowledgment["type"] == "subscribe"
         with transaction.atomic():
-            publish_on_commit(topic, "agenda", 1)
+            publish_on_commit(topic=topic, kind="agenda", version=1)
             assert called == []
             transaction.set_rollback(True)
         assert called == []
         with transaction.atomic():
-            publish_on_commit(topic, "agenda", 2)
+            publish_on_commit(topic=topic, kind="agenda", version=2)
             assert called == []
         assert called == [False]
         message = listener.get_message(timeout=3)

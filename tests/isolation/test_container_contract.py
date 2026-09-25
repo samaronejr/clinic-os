@@ -13,6 +13,8 @@ from ops.testing.image_source import assemble_candidate_context
 from ops.testing.isolation_candidate_contract import envelope_binding
 from ops.testing.process_helpers import run_process
 
+from isolation.realtime_container_contract import assert_realtime_contracts
+
 if TYPE_CHECKING:
     from ops.testing.isolation_common import JsonObject
 
@@ -117,6 +119,7 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
     assert 'exec "$@"' in entrypoint
     start = (PROJECT_ROOT / "ops/container/start.sh").read_text()
     assert re.search(r"(^|\s)(python|pip)(\s|$)", entrypoint + start) is None
+    assert_realtime_contracts()
 
 
 def test_application_context_is_assembled_from_clean_git_objects(

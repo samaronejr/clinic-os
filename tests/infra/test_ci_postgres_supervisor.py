@@ -30,6 +30,7 @@ def supervisor(
         "import os\n"
         "import signal\n"
         f"sys.path.insert(0, {str(controller.PROJECT_ROOT)!r})\n"
+        f"sys.path.insert(0, {str(controller.PROJECT_ROOT / 'tests')!r})\n"
         "from contextlib import contextmanager\n"
         "from pathlib import Path\n"
         "from ops.testing import ci_postgres_daemon as daemon\n"
@@ -43,6 +44,11 @@ def supervisor(
         "    yield None\n"
         "@contextmanager\n"
         "def database(*args):\n"
+        "    if mode == 'realtime':\n"
+        "        from infra.ci_realtime_cleanup_fixture import redis_cleanup_lease\n"
+        "        with redis_cleanup_lease(root.parent):\n"
+        "            yield None\n"
+        "        return\n"
         "    if mode == 'startup':\n"
         "        raise RuntimeError('fixture_startup_failure')\n"
         "    if mode == 'hung':\n"
@@ -104,6 +110,16 @@ def test_normal_supervisor_lifecycle_cleans_owned_state(supervisor: Path) -> Non
 
     # Then: success removes only owned supervisor state.
     assert status == 0
+    assert not root.exists()
+
+
+def test_realtime_resources_allow_supervisor_cleanup_proof(supervisor: Path) -> None:
+    # The real daemon holds the real Redis fixture across up/down. A leaked
+    # anonymous volume must fail cleanup rather than produce a cleaned marker.
+    (supervisor / "mode").write_text("realtime")
+    controller._up()
+    root = supervisor / controller.STATE_NAME
+    assert _stop_daemon(root) == 0
     assert not root.exists()
 
 

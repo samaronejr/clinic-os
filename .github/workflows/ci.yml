@@ -148,6 +148,7 @@ jobs:
         run: |
           set -u
           uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m playwright install ffmpeg
           status=0
           for suite in ${RENEWAL_SUITES//,/ }; do
             if ! uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner \

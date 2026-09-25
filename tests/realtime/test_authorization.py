@@ -45,7 +45,7 @@ def test_topics_recheck_permission_and_close_database(rbac_graph: RbacGraph) -> 
     key = session_key(rbac_graph)
     topic = f"clinic:{rbac_graph.clinic_a}:agenda"
     with runtime_role():
-        grants = authorize_topics_sync(key, (topic,))
+        grants = authorize_topics_sync(session_key=key, topics=(topic,))
         assert grants.topics == (topic,)
         assert grants.user_id == rbac_graph.shared_user
         assert not connection.in_atomic_block
@@ -66,7 +66,7 @@ def test_unknown_and_forbidden_topics_have_identical_denial(
     key = session_key(rbac_graph)
     with runtime_role():
         with pytest.raises(TopicDeniedError, match="subscription unavailable"):
-            authorize_topics_sync(key, (topics[kind],))
+            authorize_topics_sync(session_key=key, topics=(topics[kind],))
         assert connection.connection is None
 
 
@@ -86,7 +86,9 @@ def test_narrowed_role_cannot_mint_or_reauthorize(rbac_graph: RbacGraph) -> None
         )
     with runtime_role():
         with pytest.raises(TopicDeniedError):
-            authorize_topics_sync(key, (f"clinic:{rbac_graph.clinic_a}:agenda",))
+            authorize_topics_sync(
+                session_key=key, topics=(f"clinic:{rbac_graph.clinic_a}:agenda",)
+            )
         assert connection.connection is None
 
 
@@ -117,10 +119,15 @@ def test_privileged_subscription_keeps_exact_totp_policy(
     topics = (f"clinic:{rbac_graph.clinic_b}:agenda",)
     with runtime_role():
         if state == "verified":
-            assert authorize_topics_sync(session.session_key, topics).user_id == user.pk
+            assert (
+                authorize_topics_sync(
+                    session_key=session.session_key, topics=topics
+                ).user_id
+                == user.pk
+            )
         else:
             with pytest.raises(TopicDeniedError):
-                authorize_topics_sync(session.session_key, topics)
+                authorize_topics_sync(session_key=session.session_key, topics=topics)
         assert connection.connection is None
 
 
@@ -138,7 +145,9 @@ def test_session_authentication_is_not_cached(
         session["active_org_id"] = "SINTETICO-SENTINELA-PHI"
     session.save()
     with runtime_role(), pytest.raises(TopicDeniedError):
-        authorize_topics_sync(key, (f"clinic:{rbac_graph.clinic_a}:agenda",))
+        authorize_topics_sync(
+            session_key=key, topics=(f"clinic:{rbac_graph.clinic_a}:agenda",)
+        )
 
 
 def test_patient_session_never_becomes_clinic_wide_staff_authority(
@@ -150,7 +159,9 @@ def test_patient_session_never_becomes_clinic_wide_staff_authority(
     assert key is not None
     with runtime_role(), CaptureQueriesContext(connection) as queries:
         with pytest.raises(TopicDeniedError):
-            authorize_topics_sync(key, (f"clinic:{setup.clinic_id}:agenda",))
+            authorize_topics_sync(
+                session_key=key, topics=(f"clinic:{setup.clinic_id}:agenda",)
+            )
         assert connection.connection is None
     statements = [query["sql"] for query in queries.captured_queries]
     assert any("touch_patient_session" in sql for sql in statements)

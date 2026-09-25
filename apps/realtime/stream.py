@@ -9,11 +9,17 @@ from time import monotonic
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from django.conf import settings
+from django.utils import timezone
 from ops.release.activation import LiveModeHaltedError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from apps.realtime.authorization import Subscription, TopicDeniedError, authorize_topics
+from apps.realtime.authorization import (
+    Subscription,
+    TopicDeniedError,
+    TopicExpiredError,
+    authorize_topics,
+)
 from apps.realtime.transport import EVENT_KINDS, MAX_VERSION, event_bytes, topic_hash
 
 if TYPE_CHECKING:
@@ -68,7 +74,9 @@ class EventStream:
         )
         self.pubsub: PubSub = self.client.pubsub()
         self.hashes = frozenset(topic_hash(topic) for topic in subscription.topics)
-        self.revocation = "authz:user:" + str(subscription.user_id)
+        self.revocation = "authz:user:" + str(
+            subscription.patient_session_id or subscription.user_id
+        )
         self.control = frozenset(
             {topic_hash(self.revocation), topic_hash("authz:halt")}
         )
@@ -86,12 +94,44 @@ class EventStream:
                     await self.pubsub.get_message(
                         ignore_subscribe_messages=False, timeout=None
                     )
-                await authorize_topics(
-                    self.subscription.session_key, self.subscription.topics
-                )
+                await self._reauthorize()
         except BaseException:
             await self.close()
             raise
+
+    async def _reauthorize(self) -> None:
+        remaining = self.opened_at + CONNECTION_SECONDS - monotonic()
+        if remaining <= 0:
+            raise TopicExpiredError
+        async with asyncio.timeout(min(AUTHORIZATION_TIMEOUT_SECONDS, remaining)):
+            self.subscription = await authorize_topics(
+                session_key=self.subscription.session_key,
+                topics=self.subscription.topics,
+            )
+
+    def _session_seconds(self) -> float:
+        expiry = self.subscription.expires_at
+        return (
+            (expiry - timezone.now()).total_seconds() if expiry else CONNECTION_SECONDS
+        )
+
+    async def _receive(self, next_check: float) -> dict[str, object] | None:
+        now = monotonic()
+        remaining = self.opened_at + CONNECTION_SECONDS - now
+        timeout = max(
+            0,
+            min(
+                HEARTBEAT_SECONDS, next_check - now, remaining, self._session_seconds()
+            ),
+        )
+        message = await self.pubsub.get_message(
+            ignore_subscribe_messages=True, timeout=timeout
+        )
+        if monotonic() >= self.opened_at + CONNECTION_SECONDS:
+            raise TopicExpiredError
+        if self._session_seconds() <= 0:
+            await self._reauthorize()
+        return cast("dict[str, object] | None", message)
 
     async def close(self) -> None:
         """Release the pub/sub socket on denial, disconnect, timeout or cancellation."""
@@ -121,32 +161,25 @@ class EventStream:
                 if now >= self.opened_at + CONNECTION_SECONDS:
                     yield self._closed("expired")
                     return
-                remaining = self.opened_at + CONNECTION_SECONDS - now
-                if now >= next_check:
-                    async with asyncio.timeout(
-                        min(AUTHORIZATION_TIMEOUT_SECONDS, remaining)
-                    ):
-                        await authorize_topics(
-                            self.subscription.session_key, self.subscription.topics
-                        )
+                if now >= next_check or self._session_seconds() <= 0:
+                    await self._reauthorize()
                     next_check = monotonic() + REAUTHORIZE_SECONDS
-                remaining = self.opened_at + CONNECTION_SECONDS - monotonic()
-                timeout = max(0, min(HEARTBEAT_SECONDS, next_check - now, remaining))
-                message = await self.pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=timeout
-                )
-                if monotonic() >= self.opened_at + CONNECTION_SECONDS:
-                    yield self._closed("expired")
-                    return
+                message = await self._receive(next_check)
                 if message is None:
                     yield b": heartbeat\n\n"
                     continue
                 channel = message["channel"]
                 if channel in {("rt:" + item).encode() for item in self.control}:
+                    await self._reauthorize()
                     yield self._closed("revoked")
                     return
                 if frame := _event(message["data"], self.hashes):
+                    # Also fences raw SQL changes and lost/queued control messages.
+                    # No domain frame is released on the strength of old authority.
+                    await self._reauthorize()
                     yield frame
+        except TopicExpiredError:
+            yield self._closed("expired")
         except (TopicDeniedError, LiveModeHaltedError):
             yield self._closed("revoked")
         except (RedisError, TimeoutError):

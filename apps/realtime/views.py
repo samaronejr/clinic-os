@@ -57,8 +57,10 @@ def ticket_view(request: HttpRequest) -> HttpResponseBase:
             return denial()
         topics = validated_topics(payload["topics"])
         session_key = _session_key(request)
-        authorize_topics_sync(session_key, topics)
-        return JsonResponse({"ticket": issue_ticket(session_key, topics)})
+        authorize_topics_sync(session_key=session_key, topics=topics)
+        return JsonResponse(
+            {"ticket": issue_ticket(session_key=session_key, topics=topics)}
+        )
     except (TopicDeniedError, ValueError, UnicodeDecodeError):
         logger.info("realtime subscription denied")
         return denial()
@@ -79,8 +81,10 @@ async def stream_view(request: HttpRequest) -> HttpResponseBase:
         ):
             return denial()
         session_key = _session_key(request)
-        topics = await sync_to_async(consume_ticket)(request.GET["t"], session_key)
-        subscription = await authorize_topics(session_key, topics)
+        topics = await sync_to_async(consume_ticket)(
+            ticket=request.GET["t"], session_key=session_key
+        )
+        subscription = await authorize_topics(session_key=session_key, topics=topics)
         stream = EventStream(subscription)
     except (TopicDeniedError, LiveModeHaltedError):
         return denial()

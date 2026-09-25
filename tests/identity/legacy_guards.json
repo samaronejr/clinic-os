@@ -1930,6 +1930,42 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
+      "symbol": "apps.realtime.authorization._patient_topics",
+      "signals": ["tenant_boundary"],
+      "kind": "nonstaff",
+      "reason": "Exact patient-session enrollment and operation authority, exercised through ticket and stream views in tests/realtime/test_topics.py; never installs staff GUCs."
+    },
+    {
+      "symbol": "apps.realtime.hooks.permission_changed",
+      "signals": ["membership"],
+      "kind": "infrastructure",
+      "reason": "Selects affected subjects only to publish commit-bound invalidations, never grants permission; real idle-stream revocation is exercised in tests/realtime/test_invalidation.py."
+    },
+    {
+      "symbol": "apps.realtime.scopes._schedule_scope",
+      "signals": ["scope_name"],
+      "kind": "infrastructure",
+      "reason": "Serializes a signed, bounded transport binding after commit; caller permissions and subscriber permissions are independently checked in tests/realtime/test_topics.py."
+    },
+    {
+      "symbol": "apps.realtime.scopes.authorize_scope",
+      "signals": ["actor", "denial", "scope_name"],
+      "kind": "v2",
+      "reason": "Verifies exact signed topic/subject binding and current originating permission, including clinical subject scope; tests/realtime/test_topics.py exercises ownership, transplantation and care-team revocation."
+    },
+    {
+      "symbol": "apps.realtime.scopes.grant_clinic_topic",
+      "signals": ["denial", "membership"],
+      "kind": "v2",
+      "reason": "New transport-lease boundary requires current staff.organization permission and exact-clinic target membership; positive and denied calls are exercised in tests/realtime/test_topics.py."
+    },
+    {
+      "symbol": "apps.realtime.scopes.revoke_clinic_topic",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "Revokes only the exact topic/subject lease after checking current staff.organization permission; tests/realtime/test_topics.py proves subsequent subscription denial."
+    },
+    {
       "symbol": "apps.realtime.authorization._verified_staff",
       "signals": ["authentication", "tenant_boundary"],
       "kind": "v2",
@@ -1937,7 +1973,7 @@
     },
     {
       "symbol": "apps.realtime.authorization.authorize_topics_sync",
-      "signals": ["scope_name", "tenant_boundary"],
+      "signals": ["scope_name"],
       "kind": "v2",
       "reason": "New SSE short-transaction boundary, including patient-session isolation and fresh revocation checks; tests/realtime/test_stream.py proves backend release and reauthorization."
     },

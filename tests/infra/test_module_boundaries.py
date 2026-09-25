@@ -14,6 +14,7 @@ from apps.interop.services import exchange_clinical_record
 from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.services import issue_prescription
 from apps.providers.services import current_version, is_live
+from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy
 from apps.teleconsult.services import create_session
 from django.apps import apps as django_apps
@@ -57,6 +58,42 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (authorization.authorize_topics_sync, ["session_key", "topics"], {}),
+        (authorization.authorize_topics, ["session_key", "topics"], {}),
+        (tickets.issue_ticket, ["session_key", "topics"], {}),
+        (tickets.consume_ticket, ["ticket", "session_key"], {}),
+        (transport.publish, ["topic", "kind", "version"], {}),
+        (transport.publish_on_commit, ["topic", "kind", "version"], {}),
+        (scopes.grant_clinic_topic, ["clinic_id", "user_id", "kind", "permission"], {}),
+        (scopes.revoke_clinic_topic, ["clinic_id", "user_id", "kind"], {}),
+        (
+            scopes.register_job_topic,
+            ["clinic_id", "permission", "patient_enrollment_id"],
+            {"patient_enrollment_id": None},
+        ),
+        (scopes.authorize_scope, ["topic"], {}),
+    ],
+)
+def test_realtime_public_services_have_exact_keyword_only_boundaries(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
+    assert {
+        name: parameter.default
+        for name, parameter in parameters.items()
+        if parameter.default is not Parameter.empty
+    } == defaults
 
 
 def test_permission_boundary_derives_actor_and_requires_clinic_scope() -> None:

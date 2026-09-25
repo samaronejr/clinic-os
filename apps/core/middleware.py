@@ -168,7 +168,7 @@ class LiveModeHaltMiddleware:
         try:
             require_live_runtime(os.environ)
         except LiveModeHaltedError:
-            publish_on_commit("authz:halt", "halted", 1)
+            publish_on_commit(topic="authz:halt", kind="halted", version=1)
             return HttpResponse(status=SERVICE_UNAVAILABLE_STATUS)
         return self.get_response(request)
 

@@ -20,7 +20,7 @@ def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def issue_ticket(session_key: str, topics: tuple[str, ...]) -> str:
+def issue_ticket(*, session_key: str, topics: tuple[str, ...]) -> str:
     """Store authority selectors privately, bounded in size and lifetime."""
     ticket = secrets.token_urlsafe(32)
     payload = json.dumps({"session": _digest(session_key), "topics": topics})
@@ -29,7 +29,7 @@ def issue_ticket(session_key: str, topics: tuple[str, ...]) -> str:
     return ticket
 
 
-def consume_ticket(ticket: str, session_key: str) -> tuple[str, ...]:
+def consume_ticket(*, ticket: str, session_key: str) -> tuple[str, ...]:
     """Atomically burn before checking binding; replay cannot race GETDEL."""
     if TICKET_PATTERN.fullmatch(ticket) is None or not session_key:
         raise TopicDeniedError
