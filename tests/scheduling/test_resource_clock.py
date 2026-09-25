@@ -6,13 +6,19 @@ from uuid import uuid4
 
 import pytest
 from apps.scheduling.appointment_persistence import _constraint_name
-from apps.scheduling.models import Appointment
-from apps.scheduling.services import AvailabilityCreateInputError, create_availability
+from apps.scheduling.models import Appointment, AvailabilityBlock, AvailabilityTemplate
+from apps.scheduling.services import (
+    AvailabilityCreateInputError,
+    cancel_appointment,
+    create_availability,
+)
 from apps.tenancy.db import tenant_context
 from django.db import IntegrityError, transaction
 
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import seed_appointment_setup
+from scheduling.test_resource_rules import book
+from scheduling.test_resources import _catalog
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -48,3 +54,29 @@ def test_frozen_resource_clock_keeps_python_and_sql_future_guards(
             )
         assert _constraint_name(error.value) == "scheduling_appointment_future_check"
         assert not Appointment.objects.exists()
+
+
+def test_template_retirement_guard_and_timestamps_share_resource_clock(
+    rbac_graph: RbacGraph, resource_clock: datetime
+) -> None:
+    setup = seed_appointment_setup(rbac_graph)
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        catalog = _catalog(setup)
+        appointment = book(setup, catalog)
+        block = AvailabilityBlock.objects.get(resource=catalog[0])
+        assert block.template_id is not None
+        with pytest.raises(IntegrityError) as error, transaction.atomic():
+            AvailabilityTemplate.objects.filter(pk=block.template_id).update(
+                active=False
+            )
+        assert _constraint_name(error.value) == "scheduling_resource_conflict"
+        cancel_appointment(appointment_id=appointment.pk, reason="clinic_request")
+        assert (
+            AvailabilityTemplate.objects.filter(pk=block.template_id).update(
+                active=False
+            )
+            == 1
+        )
+        block.refresh_from_db()
+        assert block.retired_at == resource_clock
+        assert block.updated_at == resource_clock
