@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from apps.ehr import attachments, finalization, history, services
 from apps.identity import physician_verification
 from apps.intake import access
+from apps.intake import demographics as intake_demographics
 from apps.intake.models import PatientClinicEnrollment
 from apps.prescription import services as prescription
 from apps.retention import services as retention
@@ -222,6 +223,36 @@ BOUNDARIES = (
         "scope",
         MANAGERS,
         lambda w, ok: access.authorized_enrollment(w.clinic_for(ok), _enrollment(w)),
+    ),
+    Boundary(
+        "apps.intake.access.authorized_enrollment_for",
+        "scope",
+        # demographics.read is granted to receptionist and physician bundles
+        # plus the clinic admin/manager bundles.
+        ("physician", "receptionist", "clinic_admin"),
+        lambda w, ok: access.authorized_enrollment_for(
+            w.clinic_for(ok), _enrollment(w), "demographics.read"
+        ),
+    ),
+    Boundary(
+        "apps.intake.demographics.search_patient_identifiers",
+        "scope",
+        ("physician", "receptionist", "clinic_admin"),
+        lambda w, ok: intake_demographics.search_patient_identifiers(
+            clinic_id=w.clinic_for(ok),
+            kind="cpf",
+            value="52998224725",
+        ),
+    ),
+    Boundary(
+        "apps.intake.demographics.set_intake_policy",
+        "roles",
+        # staff.clinic is a clinic-scope grant; the owner/org_admin bundle
+        # carries staff.organization instead.
+        ("clinic_admin",),
+        lambda w, ok: intake_demographics.set_intake_policy(
+            clinic_id=w.clinic_for(ok), required_fields=("legal_name",)
+        ),
     ),
     Boundary(
         "apps.retention.services._require_manager",

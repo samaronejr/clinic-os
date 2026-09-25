@@ -46,6 +46,14 @@ class EnvelopeFormatError(EnvelopeError):
 
 
 @dataclass(frozen=True, slots=True)
+class BlindIndex:
+    """One tenant-keyed HMAC digest bound to its DEK version."""
+
+    digest: bytes
+    key_version: int
+
+
+@dataclass(frozen=True, slots=True)
 class TenantKeyStatus:
     """One wrapped DEK version's lifecycle state for the current tenant."""
 
@@ -87,6 +95,7 @@ def _kek() -> str:
 
 
 _PURPOSE_MAX_LENGTH: Final = 128
+_BLIND_INDEX_DIGEST_LENGTH: Final = 32
 _PURPOSE_MIN_CODEPOINT: Final = 0x20
 _PURPOSE_DELETE_CODEPOINT: Final = 0x7F
 
@@ -208,6 +217,38 @@ def reveal(*, purpose: str, envelope: bytes) -> bytes:
     if type(result) is not bytes and not isinstance(result, memoryview):
         raise EnvelopeUnavailableError
     return bytes(result)
+
+
+def blind_indexes(*, purpose: str, plaintext: bytes) -> tuple[BlindIndex, ...]:
+    """Return tenant-keyed HMAC digests for one normalized lookup value.
+
+    One digest is computed per DEK version so lookups still resolve rows
+    indexed before a key rotation; callers persist the highest-version
+    digest on writes and match any returned digest on reads. The plaintext
+    is never returned or stored by the boundary.
+    """
+    _validate_purpose(purpose)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT blind_index, key_version "
+                "FROM clinic_app.protected_blind_index(%s, %s, %s)",
+                (_kek(), purpose, plaintext),
+            )
+            rows = cursor.fetchall()
+    except DatabaseError as error:
+        _raise_mapped(error)
+    indexes: list[BlindIndex] = []
+    for raw_digest, key_version in rows:
+        digest = bytes(raw_digest) if isinstance(raw_digest, memoryview) else raw_digest
+        if type(digest) is not bytes or len(digest) != _BLIND_INDEX_DIGEST_LENGTH:
+            raise EnvelopeUnavailableError
+        if type(key_version) is not int or key_version < 1:
+            raise EnvelopeUnavailableError
+        indexes.append(BlindIndex(digest=digest, key_version=key_version))
+    if not indexes:
+        raise EnvelopeUnavailableError
+    return tuple(indexes)
 
 
 def rewrap_tenant_keys(*, new_kek: str) -> int:

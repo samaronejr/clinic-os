@@ -1021,6 +1021,9 @@ button:disabled:active,
   margin-bottom: var(--space-5);
   overflow-x: auto;
   border-radius: var(--radius-1);
+  /* Positioned so absolutely placed .visually-hidden cell text stays inside
+     the scroll region instead of widening the page. */
+  position: relative;
 }
 
 .table {

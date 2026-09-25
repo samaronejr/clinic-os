@@ -26,7 +26,7 @@
       <tbody role="rowgroup">
         {% for item in results.items %}
         <tr role="row">
-          <th scope="row" role="rowheader">{{ item.full_name }}</th>
+          <th scope="row" role="rowheader">{{ item.display_name }}{% if item.display_name != item.full_name %}<br><small>{{ item.full_name }}</small>{% endif %}</th>
           <td role="cell" data-label="{% trans "Birth date" %}">{{ item.birth_date|date:"SHORT_DATE_FORMAT" }}</td>
           <td role="cell" class="intake-book">
             <form method="post" action="{{ book_url }}">
@@ -34,6 +34,12 @@
               <input type="hidden" name="mode" value="prepare">
               <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
               <button class="button button--secondary" type="submit">{% trans "Book appointment" %}<span class="visually-hidden"> {% blocktrans with name=item.full_name %}for {{ name }}{% endblocktrans %}</span></button>
+            </form>
+            <form method="post" action="{{ demographics_url }}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="manage">
+              <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--quiet" type="submit">{% trans "Demographics" %}<span class="visually-hidden"> {% blocktrans with name=item.full_name %}for {{ name }}{% endblocktrans %}</span></button>
             </form>
             <form method="post" action="{{ contacts_url }}">
               {% csrf_token %}

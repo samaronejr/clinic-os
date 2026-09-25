@@ -11,6 +11,13 @@ INTAKE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
         ("intake_patientcontactevent", "organization_id"),
         ("intake_patientaccessgrant", "organization_id"),
         ("intake_patientsession", "organization_id"),
+        ("intake_patientdemographics", "organization_id"),
+        ("intake_demographicscorrection", "organization_id"),
+        ("intake_patientidentifier", "organization_id"),
+        ("intake_patientaddress", "organization_id"),
+        ("intake_emergencycontact", "organization_id"),
+        ("intake_insurancemembership", "organization_id"),
+        ("intake_clinicintakepolicy", "organization_id"),
     }
 )
 
@@ -38,6 +45,14 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "intake_questionnairetemplate": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireresponse": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireevent": frozenset({"SELECT"}),
+    # Demographics versions and their correction receipts are append-only.
+    "intake_patientdemographics": frozenset({"SELECT", "INSERT"}),
+    "intake_demographicscorrection": frozenset({"SELECT", "INSERT"}),
+    "intake_patientidentifier": frozenset({"SELECT", "INSERT"}),
+    "intake_patientaddress": frozenset({"SELECT", "INSERT"}),
+    "intake_emergencycontact": frozenset({"SELECT", "INSERT"}),
+    "intake_insurancemembership": frozenset({"SELECT", "INSERT"}),
+    "intake_clinicintakepolicy": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
@@ -59,6 +74,40 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("intake_questionnaireresponse", "state", "UPDATE"),
         ("intake_questionnaireresponse", "submitted_at", "UPDATE"),
         ("intake_questionnaireresponse", "updated_at", "UPDATE"),
+        # Corrections mirror legal_name onto the registry row so the
+        # envelope search boundary keeps matching the corrected identity.
+        ("intake_patient", "full_name", "UPDATE"),
+        ("intake_patientidentifier", "value", "UPDATE"),
+        ("intake_patientidentifier", "blind_index", "UPDATE"),
+        ("intake_patientidentifier", "index_key_version", "UPDATE"),
+        ("intake_patientidentifier", "issuer", "UPDATE"),
+        ("intake_patientidentifier", "version", "UPDATE"),
+        ("intake_patientidentifier", "retired_at", "UPDATE"),
+        ("intake_patientidentifier", "updated_at", "UPDATE"),
+        ("intake_patientaddress", "postal_code", "UPDATE"),
+        ("intake_patientaddress", "street", "UPDATE"),
+        ("intake_patientaddress", "street_number", "UPDATE"),
+        ("intake_patientaddress", "complement", "UPDATE"),
+        ("intake_patientaddress", "district", "UPDATE"),
+        ("intake_patientaddress", "city", "UPDATE"),
+        ("intake_patientaddress", "state_code", "UPDATE"),
+        ("intake_patientaddress", "version", "UPDATE"),
+        ("intake_patientaddress", "retired_at", "UPDATE"),
+        ("intake_patientaddress", "updated_at", "UPDATE"),
+        ("intake_emergencycontact", "name", "UPDATE"),
+        ("intake_emergencycontact", "relationship", "UPDATE"),
+        ("intake_emergencycontact", "phone", "UPDATE"),
+        ("intake_emergencycontact", "version", "UPDATE"),
+        ("intake_emergencycontact", "retired_at", "UPDATE"),
+        ("intake_emergencycontact", "updated_at", "UPDATE"),
+        ("intake_insurancemembership", "payer_name", "UPDATE"),
+        ("intake_insurancemembership", "ans_number", "UPDATE"),
+        ("intake_insurancemembership", "membership_number", "UPDATE"),
+        ("intake_insurancemembership", "plan_name", "UPDATE"),
+        ("intake_insurancemembership", "valid_until", "UPDATE"),
+        ("intake_insurancemembership", "version", "UPDATE"),
+        ("intake_insurancemembership", "retired_at", "UPDATE"),
+        ("intake_insurancemembership", "updated_at", "UPDATE"),
     }
 )
 

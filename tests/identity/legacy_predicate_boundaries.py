@@ -10,6 +10,7 @@ from apps.identity import current_context, otp, preferences
 from apps.identity.auth_backends import ClinicBackend
 from apps.identity.models import User, UserClinicRole
 from apps.intake import contacts, patient_access, questionnaire_views
+from apps.intake import demographics as intake_demographics
 from apps.retention import services as retention
 from apps.teleconsult import services as teleconsult
 from django.contrib.auth.models import AnonymousUser
@@ -45,13 +46,17 @@ def _actor_context(w: LegacyWorld, valid: bool) -> object:
     return result
 
 
-def _label(w: LegacyWorld, valid: bool, *, contact: bool) -> str:
+def _label(w: LegacyWorld, valid: bool, *, which: str) -> str:
     if not valid:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
             )
-    return contacts._actor_label() if contact else patient_access._actor_label()
+    if which == "contacts":
+        return contacts._actor_label()
+    if which == "demographics":
+        return intake_demographics._actor_label()
+    return patient_access._actor_label()
 
 
 def _unverified(w: LegacyWorld, valid: bool) -> object:
@@ -152,13 +157,19 @@ BOUNDARIES = (
         "apps.intake.contacts._actor_label",
         "actor",
         LEGACY,
-        lambda w, ok: _label(w, ok, contact=True),
+        lambda w, ok: _label(w, ok, which="contacts"),
+    ),
+    Boundary(
+        "apps.intake.demographics._actor_label",
+        "actor",
+        LEGACY,
+        lambda w, ok: _label(w, ok, which="demographics"),
     ),
     Boundary(
         "apps.intake.patient_access._actor_label",
         "actor",
         LEGACY,
-        lambda w, ok: _label(w, ok, contact=False),
+        lambda w, ok: _label(w, ok, which="patient_access"),
     ),
     # These functions are terminal denial sinks: fabricating an ALLOW oracle
     # would invert their contract. Their paired success paths are the real

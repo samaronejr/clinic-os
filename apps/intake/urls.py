@@ -29,6 +29,11 @@ urlpatterns: list[URLPattern] = [
         name="patient-create",
     ),
     path(
+        "intake/clinics/<uuid:clinic_id>/demographics/",
+        views.patient_demographics_view,
+        name="patient-demographics",
+    ),
+    path(
         "intake/clinics/<uuid:clinic_id>/contacts/",
         views.patient_contacts_view,
         name="patient-contacts",

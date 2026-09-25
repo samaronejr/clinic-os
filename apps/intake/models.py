@@ -211,6 +211,424 @@ class PatientChannelPreference(TenantScopedModel):
         ]
 
 
+DEMOGRAPHICS_SOURCE_VALUES: Final = [
+    "staff_recorded",
+    "patient_reported",
+]
+SEX_AT_BIRTH_VALUES: Final = [
+    "female",
+    "intersex",
+    "male",
+    "not_informed",
+]
+GENDER_IDENTITY_VALUES: Final = [
+    "man",
+    "non_binary",
+    "not_informed",
+    "other",
+    "woman",
+]
+IDENTIFIER_KIND_VALUES: Final = [
+    "cpf",
+    "cns",
+    "passport",
+    "rg",
+    "other",
+]
+ADDRESS_KIND_VALUES: Final = ["home", "other", "work"]
+# Deliberate non-answers are stored verbatim: a field the patient chose not to
+# give is a real value, never an invented placeholder.
+UNKNOWN_DEMOGRAPHIC_VALUES: Final = frozenset({"not_informed", "declined"})
+
+
+class PatientDemographics(TenantScopedModel):
+    """One immutable demographics version for an organization patient.
+
+    A demographics row is append-only: every accepted correction inserts the
+    next ``version`` and a matching ``DemographicsCorrection`` receipt, so the
+    update surface needs no UPDATE grant and history is never rewritten.
+    ``source`` records who supplied the version; questionnaire carry-forward
+    writes ``patient_reported`` versions that staff review as unverified.
+    """
+
+    class Source(models.TextChoices):
+        """Provenance of one recorded version."""
+
+        STAFF_RECORDED = "staff_recorded", "Staff recorded"
+        PATIENT_REPORTED = "patient_reported", "Reported by patient"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    enrollment = models.ForeignKey(PatientClinicEnrollment, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField()
+    legal_name = EncryptedPatientNameField(
+        purpose="intake.patientdemographics.legal_name", null=True
+    )
+    social_name = EncryptedTextField(
+        purpose="intake.patientdemographics.social_name", null=True
+    )
+    preferred_name = EncryptedTextField(
+        purpose="intake.patientdemographics.preferred_name", null=True
+    )
+    sex_at_birth = EncryptedTextField(
+        purpose="intake.patientdemographics.sex_at_birth", null=True
+    )
+    gender_identity = EncryptedTextField(
+        purpose="intake.patientdemographics.gender_identity", null=True
+    )
+    pronouns = EncryptedTextField(
+        purpose="intake.patientdemographics.pronouns", null=True
+    )
+    language = EncryptedTextField(
+        purpose="intake.patientdemographics.language", null=True
+    )
+    accessibility_needs = EncryptedTextField(
+        purpose="intake.patientdemographics.accessibility_needs", null=True
+    )
+    occupation = EncryptedTextField(
+        purpose="intake.patientdemographics.occupation", null=True
+    )
+    source = models.CharField(
+        max_length=32,
+        choices=Source.choices,
+        default=Source.STAFF_RECORDED,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Keep versions append-only, dense per patient and org-scoped."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_demographics_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "patient", "version"),
+                name="intake_demographics_org_patient_version_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=1),
+                name="intake_demographics_version_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(source__in=DEMOGRAPHICS_SOURCE_VALUES),
+                name="intake_demographics_source_check",
+            ),
+        ]
+
+
+class DemographicsCorrection(TenantScopedModel):
+    """Append-only receipt binding one demographics version to its correction.
+
+    ``demographics`` is the version the correction produced; ``previous`` is
+    the version it superseded (empty for the first record). The prior field
+    values live only in the superseded version row, so history never carries
+    a plaintext shadow copy.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    demographics = models.ForeignKey(PatientDemographics, on_delete=models.PROTECT)
+    previous = models.ForeignKey(
+        PatientDemographics,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    actor_label = models.CharField(max_length=150)
+    reason = EncryptedTextField(
+        purpose="intake.demographicscorrection.reason", null=True
+    )
+    changed_fields = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """One correction receipt per produced version, org-scoped."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_demographics_correction_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "demographics"),
+                name="intake_demographics_correction_version_uniq",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.expressions.RawSQL(
+                        "jsonb_typeof(changed_fields) = 'array'",
+                        (),
+                        output_field=models.BooleanField(),
+                    )
+                ),
+                name="intake_demographics_correction_fields_check",
+            ),
+        ]
+
+
+class PatientIdentifier(TenantScopedModel):
+    """One current identifier of a kind for an organization patient.
+
+    ``value`` is a tenant envelope; ``blind_index`` is a tenant-keyed HMAC of
+    the normalized value that powers exact-match lookup without feeding
+    ciphertext or plaintext into SQL predicates. Two patients may hold the
+    same identifier: services surface a ``possible_duplicate`` review hint
+    instead of silently blocking registration. ``retired_at`` replaces hard
+    deletion so the audit trail and history stay reconstructable.
+    """
+
+    class Kind(models.TextChoices):
+        """Identifier kinds accepted at registration."""
+
+        CPF = "cpf", "CPF"
+        CNS = "cns", "CNS"
+        RG = "rg", "RG"
+        PASSPORT = "passport", "Passport"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    value = EncryptedTextField(purpose="intake.patientidentifier.value")
+    blind_index = models.BinaryField(max_length=32, editable=False)
+    index_key_version = models.PositiveIntegerField(default=1)
+    issuer = EncryptedTextField(purpose="intake.patientidentifier.issuer", null=True)
+    version = models.PositiveIntegerField(default=1)
+    retired_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep one current identifier per patient and kind."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_identifier_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "patient", "kind"),
+                name="intake_identifier_org_patient_kind_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=IDENTIFIER_KIND_VALUES),
+                name="intake_identifier_kind_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=1),
+                name="intake_identifier_version_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.expressions.RawSQL(
+                    "pg_catalog.octet_length(blind_index) = 32",
+                    (),
+                    output_field=models.BooleanField(),
+                ),
+                name="intake_identifier_blind_index_32_check",
+            ),
+        ]
+
+
+class PatientAddress(TenantScopedModel):
+    """One current address per kind for an organization patient."""
+
+    class Kind(models.TextChoices):
+        """Address kinds a clinic may record."""
+
+        HOME = "home", "Home"
+        WORK = "work", "Work"
+        OTHER = "other", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    postal_code = EncryptedTextField(
+        purpose="intake.patientaddress.postal_code", null=True
+    )
+    street = EncryptedTextField(purpose="intake.patientaddress.street", null=True)
+    street_number = EncryptedTextField(
+        purpose="intake.patientaddress.street_number", null=True
+    )
+    complement = EncryptedTextField(
+        purpose="intake.patientaddress.complement", null=True
+    )
+    district = EncryptedTextField(purpose="intake.patientaddress.district", null=True)
+    city = EncryptedTextField(purpose="intake.patientaddress.city", null=True)
+    state_code = EncryptedTextField(
+        purpose="intake.patientaddress.state_code", null=True
+    )
+    version = models.PositiveIntegerField(default=1)
+    retired_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep one current address per patient and kind."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_address_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "patient", "kind"),
+                name="intake_address_org_patient_kind_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=ADDRESS_KIND_VALUES),
+                name="intake_address_kind_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=1),
+                name="intake_address_version_positive",
+            ),
+        ]
+
+
+class EmergencyContact(TenantScopedModel):
+    """One current emergency contact slot for an organization patient."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    sequence = models.PositiveSmallIntegerField(default=1)
+    name = EncryptedTextField(purpose="intake.emergencycontact.name", null=True)
+    relationship = EncryptedTextField(
+        purpose="intake.emergencycontact.relationship", null=True
+    )
+    phone = EncryptedTextField(purpose="intake.emergencycontact.phone", null=True)
+    version = models.PositiveIntegerField(default=1)
+    retired_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep contact slots bounded and unique per patient."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_emergency_contact_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "patient", "sequence"),
+                name="intake_emergency_contact_org_patient_seq_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(sequence__gte=1) & models.Q(sequence__lte=3),
+                name="intake_emergency_contact_sequence_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=1),
+                name="intake_emergency_contact_version_positive",
+            ),
+        ]
+
+
+class InsuranceMembership(TenantScopedModel):
+    """One payer membership slot for an organization patient.
+
+    Payer identity is encrypted free text until todo 59 introduces the
+    ``insurance.Payer`` table and a nullable foreign key plus matcher; no
+    plaintext shadow column is kept for it.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    sequence = models.PositiveSmallIntegerField(default=1)
+    payer_name = EncryptedTextField(
+        purpose="intake.insurancemembership.payer_name", null=True
+    )
+    ans_number = EncryptedTextField(
+        purpose="intake.insurancemembership.ans_number", null=True
+    )
+    membership_number = EncryptedTextField(
+        purpose="intake.insurancemembership.membership_number", null=True
+    )
+    plan_name = EncryptedTextField(
+        purpose="intake.insurancemembership.plan_name", null=True
+    )
+    valid_until = EncryptedDateField(
+        purpose="intake.insurancemembership.valid_until", null=True
+    )
+    version = models.PositiveIntegerField(default=1)
+    retired_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep membership slots bounded and unique per patient."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_membership_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "patient", "sequence"),
+                name="intake_membership_org_patient_seq_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(sequence__gte=1) & models.Q(sequence__lte=3),
+                name="intake_membership_sequence_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=1),
+                name="intake_membership_version_positive",
+            ),
+        ]
+
+
+class ClinicIntakePolicy(TenantScopedModel):
+    """Append-only clinic policy marking required demographics fields.
+
+    The current policy is the latest ``version``; ``required_fields`` is a
+    JSON array of demographic field names that ``update_demographics``
+    refuses to leave empty. Fields absent from the list stay optional, and
+    the explicit ``not_informed``/``declined`` sentinels always satisfy a
+    requirement without inventing values.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField()
+    required_fields = models.JSONField(default=list)
+    published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Keep versions monotonic and field names closed."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"),
+                name="intake_policy_org_id_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("organization", "clinic", "version"),
+                name="intake_policy_org_clinic_version_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=1),
+                name="intake_policy_version_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.expressions.RawSQL(
+                    "jsonb_typeof(required_fields) = 'array'",
+                    (),
+                    output_field=models.BooleanField(),
+                ),
+                name="intake_policy_fields_check",
+            ),
+        ]
+
+
 PATIENT_OPERATION_VALUES: Final = [
     "enrollment_view",
     "questionnaires",

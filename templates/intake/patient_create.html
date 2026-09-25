@@ -34,6 +34,25 @@
         <p class="hint" id="patient-create-birth-date-help">{% trans "The birth date cannot be later than today in this clinic." %}</p>
         {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
+      <div class="field{% if form.social_name.errors %} field--error{% endif %}">
+        {{ form.social_name.label_tag }}
+        {{ form.social_name }}
+        <p class="hint" id="patient-create-social-name-help">{% trans "The name the patient uses socially, when different from the legal name." %}</p>
+        {% if form.social_name.errors %}<div class="field-errors" id="{{ form.social_name.auto_id }}_error">{% for error in form.social_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="intake-search-fields">
+        <div class="field{% if form.identifier_kind.errors %} field--error{% endif %}">
+          {{ form.identifier_kind.label_tag }}
+          {{ form.identifier_kind }}
+          {% if form.identifier_kind.errors %}<div class="field-errors" id="{{ form.identifier_kind.auto_id }}_error">{% for error in form.identifier_kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        </div>
+        <div class="field{% if form.identifier_value.errors %} field--error{% endif %}">
+          {{ form.identifier_value.label_tag }}
+          {{ form.identifier_value }}
+          <p class="hint" id="patient-create-identifier-help">{% trans "Optional. CPF or another identification document, exactly as printed." %}</p>
+          {% if form.identifier_value.errors %}<div class="field-errors" id="{{ form.identifier_value.auto_id }}_error">{% for error in form.identifier_value.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        </div>
+      </div>
       <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
       <div class="actions">
         <button type="submit">{% trans "Register patient" %}</button>

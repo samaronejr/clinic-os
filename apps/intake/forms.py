@@ -9,13 +9,34 @@ from django import forms
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
-from apps.intake.models import CONTACT_CHANNEL_VALUES, CONTACT_PURPOSE_VALUES
+from apps.intake.models import (
+    CONTACT_CHANNEL_VALUES,
+    CONTACT_PURPOSE_VALUES,
+    GENDER_IDENTITY_VALUES,
+    IDENTIFIER_KIND_VALUES,
+    SEX_AT_BIRTH_VALUES,
+)
 from apps.intake.patient_search import MAX_QUERY_LENGTH, MIN_QUERY_LENGTH
 
 if TYPE_CHECKING:
     from django.http import QueryDict
 
 FIRST_PAGE: Final = 1
+MAX_IDENTIFIER_LENGTH: Final = 64
+
+SEX_AT_BIRTH_LABELS: Final = {
+    "female": _("Female"),
+    "intersex": _("Intersex"),
+    "male": _("Male"),
+    "not_informed": _("Not informed"),
+}
+GENDER_IDENTITY_LABELS: Final = {
+    "man": _("Man"),
+    "non_binary": _("Non-binary"),
+    "not_informed": _("Not informed"),
+    "other": _("Other"),
+    "woman": _("Woman"),
+}
 INVALID_CREATE_MESSAGE: Final = _("Enter a patient name and a valid birth date.")
 CONFLICTING_KEY_MESSAGE: Final = _(
     "This registration was already submitted differently."
@@ -48,18 +69,35 @@ def _bind_error_descriptions(form: forms.Form, descriptions: dict[str, str]) -> 
 
 
 class PatientSearchForm(forms.Form):
-    """Collect one deterministic registry selection from the POST body."""
+    """Collect one registry search or exact-identifier lookup from the body.
+
+    When ``identifier_value`` is present the form performs an exact
+    identifier search instead of a name search: ``q`` and ``birth_date``
+    are ignored and ``identifier_kind`` becomes required.
+    """
 
     q = forms.CharField(
         label=_("Patient name"),
         min_length=MIN_QUERY_LENGTH,
         max_length=MAX_QUERY_LENGTH,
         strip=True,
+        required=False,
     )
     birth_date = forms.DateField(
         label=_("Birth date (optional)"),
         required=False,
         widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+    )
+    identifier_kind = forms.ChoiceField(
+        label=_("Document type"),
+        choices=tuple((value, value.upper()) for value in IDENTIFIER_KIND_VALUES),
+        required=False,
+    )
+    identifier_value = forms.CharField(
+        label=_("Document number (exact)"),
+        max_length=MAX_IDENTIFIER_LENGTH,
+        strip=True,
+        required=False,
     )
     page = forms.IntegerField(
         label=_("Results page"),
@@ -72,16 +110,53 @@ class PatientSearchForm(forms.Form):
         """Attach the accessible descriptions this screen always renders."""
         super().__init__(data=data)
         _describe(self, SEARCH_DESCRIPTIONS)
+        self.fields["identifier_value"].widget.attrs.update(
+            {
+                "autocomplete": "off",
+                "aria-describedby": "patient-search-identifier-help",
+            }
+        )
 
     def full_clean(self) -> None:
         """Connect bound field errors to their rendered descriptions."""
         super().full_clean()
         _bind_error_descriptions(self, SEARCH_DESCRIPTIONS)
 
+    def clean(self) -> dict[str, object]:
+        """Require a name unless an exact identifier lookup was requested."""
+        cleaned = super().clean()
+        if cleaned is None:
+            return {}
+        identifier_value = cleaned.get("identifier_value")
+        if identifier_value:
+            if not cleaned.get("identifier_kind"):
+                self.add_error(
+                    "identifier_kind",
+                    ValidationError(_("Choose the document type."), code="required"),
+                )
+            return cleaned
+        if not cleaned.get("q"):
+            self.add_error(
+                "q",
+                ValidationError(
+                    _("Enter a name or a document number to search."),
+                    code="required",
+                ),
+            )
+        return cleaned
+
     def selected_page(self) -> int:
         """Return the requested page, defaulting to the first result page."""
         page = self.cleaned_data.get("page")
         return page if isinstance(page, int) else FIRST_PAGE
+
+    def identifier_search(self) -> tuple[str, str] | None:
+        """Return ``(kind, value)`` when the form is an identifier lookup."""
+        kind = self.cleaned_data.get("identifier_kind")
+        value = self.cleaned_data.get("identifier_value")
+        if not kind or not value:
+            return None
+        return str(kind), str(value)
 
 
 class EnrollmentForm(forms.Form):
@@ -200,6 +275,23 @@ class PatientCreateForm(forms.Form):
         label=_("Birth date"),
         widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
     )
+    social_name = forms.CharField(
+        label=_("Social name (optional)"),
+        max_length=255,
+        strip=True,
+        required=False,
+    )
+    identifier_kind = forms.ChoiceField(
+        label=_("Document type"),
+        choices=tuple((value, value.upper()) for value in IDENTIFIER_KIND_VALUES),
+        required=False,
+    )
+    identifier_value = forms.CharField(
+        label=_("Document number (optional)"),
+        max_length=MAX_IDENTIFIER_LENGTH,
+        strip=True,
+        required=False,
+    )
     idempotency_key = forms.UUIDField(widget=forms.HiddenInput())
 
     def __init__(self, data: QueryDict | None = None) -> None:
@@ -211,6 +303,129 @@ class PatientCreateForm(forms.Form):
         """Connect bound field errors to their rendered descriptions."""
         super().full_clean()
         _bind_error_descriptions(self, CREATE_DESCRIPTIONS)
+
+    def clean(self) -> dict[str, object]:
+        """Require the document type when a document number was entered."""
+        cleaned = super().clean()
+        if cleaned is None:
+            return {}
+        if cleaned.get("identifier_value") and not cleaned.get("identifier_kind"):
+            self.add_error(
+                "identifier_kind",
+                ValidationError(_("Choose the document type."), code="required"),
+            )
+        return cleaned
+
+
+class DemographicsForm(EnrollmentForm):
+    """Collect one versioned demographics correction from the POST body."""
+
+    social_name = forms.CharField(
+        label=_("Social name"), max_length=255, strip=True, required=False
+    )
+    preferred_name = forms.CharField(
+        label=_("Preferred name"), max_length=255, strip=True, required=False
+    )
+    sex_at_birth = forms.ChoiceField(
+        label=_("Sex at birth"),
+        choices=(
+            ("", _("Not recorded")),
+            *[(value, value) for value in SEX_AT_BIRTH_VALUES],
+        ),
+        required=False,
+    )
+    gender_identity = forms.ChoiceField(
+        label=_("Gender identity"),
+        choices=(
+            ("", _("Not recorded")),
+            *[(value, value) for value in GENDER_IDENTITY_VALUES],
+        ),
+        required=False,
+    )
+    pronouns = forms.CharField(
+        label=_("Pronouns"), max_length=64, strip=True, required=False
+    )
+    language = forms.CharField(
+        label=_("Preferred language"), max_length=64, strip=True, required=False
+    )
+    accessibility_needs = forms.CharField(
+        label=_("Accessibility needs"),
+        max_length=255,
+        strip=True,
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    occupation = forms.CharField(
+        label=_("Occupation"), max_length=255, strip=True, required=False
+    )
+    reason = forms.CharField(
+        label=_("Correction reason"), max_length=512, strip=True, required=False
+    )
+    expected_version = forms.IntegerField(min_value=0, widget=forms.HiddenInput())
+
+    def selected_version(self) -> int:
+        """Return the demographics version the form rendered."""
+        version = self.cleaned_data["expected_version"]
+        if not isinstance(version, int):
+            raise ValidationError(_("Enter a valid version."), code="invalid")
+        return version
+
+    def cleaned_changes(self) -> dict[str, str]:
+        """Return the field map the correction carries into the service."""
+        return {
+            field: str(self.cleaned_data.get(field) or "")
+            for field in (
+                "social_name",
+                "preferred_name",
+                "sex_at_birth",
+                "gender_identity",
+                "pronouns",
+                "language",
+                "accessibility_needs",
+                "occupation",
+            )
+        }
+
+
+class IdentifierAddForm(EnrollmentForm):
+    """Collect one new identifier for the enrolled patient."""
+
+    kind = forms.ChoiceField(
+        label=_("Document type"),
+        choices=tuple((value, value.upper()) for value in IDENTIFIER_KIND_VALUES),
+    )
+    value = forms.CharField(label=_("Document number"), max_length=64, strip=True)
+    issuer = forms.CharField(
+        label=_("Issuing body (optional)"),
+        max_length=255,
+        strip=True,
+        required=False,
+    )
+
+    def selected_kind(self) -> str:
+        """Return the validated identifier kind."""
+        return str(self.cleaned_data["kind"])
+
+
+class IdentifierRetireForm(EnrollmentForm):
+    """Bind the kind and rendered version of an identifier retirement."""
+
+    kind = forms.ChoiceField(
+        choices=tuple((value, value.upper()) for value in IDENTIFIER_KIND_VALUES),
+        widget=forms.HiddenInput(),
+    )
+    expected_version = forms.IntegerField(min_value=1, widget=forms.HiddenInput())
+
+    def selected_kind(self) -> str:
+        """Return the validated identifier kind."""
+        return str(self.cleaned_data["kind"])
+
+    def selected_version(self) -> int:
+        """Return the rendered identifier version."""
+        version = self.cleaned_data["expected_version"]
+        if not isinstance(version, int):
+            raise ValidationError(_("Enter a valid version."), code="invalid")
+        return version
 
 
 class AccessRevokeForm(EnrollmentForm):
