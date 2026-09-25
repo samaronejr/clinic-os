@@ -17,7 +17,6 @@ from apps.billing.adapters import (
     PixResponseError,
     PixUnavailableError,
     SyntheticPixAdapter,
-    pix_capability,
 )
 from apps.billing.models import Invoice, PixCharge, PixOperation, Receipt, Settlement
 from apps.billing.pix import complete_pix_charge, prepare_pix_charge
@@ -34,6 +33,7 @@ from django.utils import timezone
 from psycopg import sql
 
 from patient_service_support import runtime_role
+from provider_gate_support import assert_capability_gate_closed
 from scheduling.appointment_service_support import seed_appointment_setup
 
 if TYPE_CHECKING:
@@ -85,7 +85,7 @@ def complete(
 
 
 def test_exact_synthetic_charge_replays_without_settlement(
-    issued: tuple[AppointmentSetup, Invoice],
+    issued: tuple[AppointmentSetup, Invoice], settings: SettingsWrapper
 ) -> None:
     setup, invoice = issued
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
@@ -113,7 +113,7 @@ def test_exact_synthetic_charge_replays_without_settlement(
         assert not Settlement.objects.exists()
         invoice.refresh_from_db()
         assert invoice.state == "open"
-    assert pix_capability().real_enabled is False
+    assert_capability_gate_closed(settings, "pix")
 
 
 @pytest.mark.parametrize("provider", ["asaas", "asaas-sandbox", "production"])
@@ -129,7 +129,7 @@ def test_unapproved_providers_cannot_be_enabled(
                 clinic_id=setup.clinic_id, invoice_id=invoice.pk, provider=provider
             )
         assert not PixOperation.objects.exists()
-    assert pix_capability().real_enabled is False
+    assert_capability_gate_closed(settings, "pix")
 
 
 @pytest.mark.parametrize(("mode", "enabled"), [("live", True), ("synthetic", False)])

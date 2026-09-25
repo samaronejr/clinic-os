@@ -2,6 +2,10 @@
 
 The task-6 physician_registration capability is unavailable (2026-09-24-v2).
 A synthetic response is never an authorized sandbox response or live approval.
+``registry_capability().real_enabled`` is answered by
+``apps.providers.services.is_live`` against the ``physician_registration``
+capability: True only while the registry holds an ``activated`` version AND
+the process runs the approved live data mode.
 """
 
 from __future__ import annotations
@@ -12,6 +16,8 @@ from typing import TYPE_CHECKING, Protocol
 
 from django.conf import settings
 from django.utils.timezone import now as utc_now
+
+from apps.providers.services import is_live
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -69,18 +75,19 @@ class PhysicianRegistry(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class RegistryCapability:
-    """Explicit synthetic opt-in with a permanently closed current live gate."""
+    """Explicit synthetic opt-in plus the registry-gated live answer."""
 
     synthetic_enabled: bool
-    real_enabled: bool = False
+    real_enabled: bool
     reason: str = "missing_registry_provider_and_owner_approval"
 
 
 def registry_capability() -> RegistryCapability:
-    """Reflect the unavailable task-6 record, not caller claims of approval."""
+    """Reflect the lifecycle registry, not caller claims of approval."""
     return RegistryCapability(
         synthetic_enabled=getattr(settings, "PHYSICIAN_SYNTHETIC_REGISTRY", False)
-        is True
+        is True,
+        real_enabled=is_live("physician_registration", clinic_id=None),
     )
 
 

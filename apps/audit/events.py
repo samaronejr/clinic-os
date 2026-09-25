@@ -256,6 +256,36 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "teleconsult.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "teleconsult.session", "denied"
         ),
+        "providers.capability.proposed": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "proposed",
+        ),
+        "providers.capability.approved": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "approved",
+        ),
+        "providers.capability.activated": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "activated",
+        ),
+        "providers.capability.degraded": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "degraded",
+        ),
+        "providers.capability.revoked": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "revoked",
+        ),
     }
 )
 

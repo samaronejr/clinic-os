@@ -49,6 +49,45 @@ The [protected data inventory](records/protected-data-v1.md) specifies required
 coverage and the search, migration, key rotation and restoration decisions that
 must precede task 43. It is a contract, not evidence of encryption in operation.
 
+## Lifecycle status
+
+The provider capability registry (`apps/providers`) tracks each capability's
+honest lifecycle state. Regenerate this table with
+`uv run python manage.py provider_capability report --markdown` as the
+`clinic_owner` role.
+
+| Capability | Scope | State | Provider | Environment | Region |
+| --- | --- | --- | --- | --- | --- |
+| `asr` | platform | selected_in_plan | AWS Transcribe | production | sa-east-1 |
+| `attachment_scanning` | platform | selected_in_plan | GuardDuty Malware Protection for S3 | production | sa-east-1 |
+| `attachment_storage` | platform | selected_in_plan | Amazon S3 | production | sa-east-1 |
+| `data_at_rest` | platform | selected_in_plan | Amazon RDS storage encryption | production | sa-east-1 |
+| `email` | platform | selected_in_plan | Amazon SES | production | sa-east-1 |
+| `hosted_pitr` | platform | selected_in_plan | Amazon RDS PITR | production | sa-east-1 |
+| `llm_inference` | platform | selected_in_plan | Amazon Bedrock (in-region models only) | production | sa-east-1 |
+| `managed_secrets` | platform | selected_in_plan | AWS Secrets Manager | production | sa-east-1 |
+| `nfse` | platform | selected_in_plan | NFS-e Padrao Nacional API (gov.br) | production | - |
+| `object_storage_media` | platform | selected_in_plan | Amazon S3 with KMS | production | sa-east-1 |
+| `pdf_rendering` | platform | researched | unselected | - | - |
+| `physician_registration` | platform | researched | unselected | - | - |
+| `pix` | platform | selected_in_plan | Asaas | production | - |
+| `psp_card` | platform | selected_in_plan | Asaas | production | - |
+| `qualified_signing` | platform | selected_in_plan | BirdID (Soluti) | production | - |
+| `rnds` | platform | selected_in_plan | DATASUS RNDS credentialing | production | - |
+| `signature_verification` | platform | researched | unselected | - | - |
+| `sms` | platform | selected_in_plan | Amazon SNS | production | sa-east-1 |
+| `sncr` | platform | selected_in_plan | Anvisa SNCR API | production | - |
+| `tenant_key_management` | platform | selected_in_plan | AWS KMS | production | sa-east-1 |
+| `tiss` | platform | selected_in_plan | direct XML webservice per operadora | production | - |
+| `tls_transport` | platform | researched | unselected | - | - |
+| `video` | platform | selected_in_plan | LiveKit Cloud | production | - |
+| `whatsapp` | platform | selected_in_plan | Meta WhatsApp Cloud API | production | - |
+
+`selected_in_plan` records the plan's proposed primary; it is not an
+approval. Only an owner decision through `provider_capability approve`
+moves a version to `approved_to_test`, and only `activated` plus the live
+data mode makes `apps.providers.services.is_live` return True.
+
 ## Reading and updating a record
 
 Each record names a candidate or example, source date/version, owner decision,

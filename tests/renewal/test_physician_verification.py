@@ -33,6 +33,7 @@ from django.test import override_settings
 
 from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
+from provider_gate_support import assert_capability_gate_closed
 from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_appointment_setup,
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from django.http import HttpRequest
+    from pytest_django.fixtures import SettingsWrapper
 
     from rbac_fixtures import RbacGraph
 
@@ -260,8 +262,11 @@ def test_signer_and_profile_binding_fail_closed(setup: SigningSetup, case: str) 
         assert not PhysicianEvidence.objects.exists()
 
 
-def test_real_gate_and_synthetic_opt_in_cannot_be_bypassed(setup: SigningSetup) -> None:
+def test_real_gate_and_synthetic_opt_in_cannot_be_bypassed(
+    setup: SigningSetup, settings: SettingsWrapper
+) -> None:
     graph = setup.graph
+    assert_capability_gate_closed(settings, "physician_registration")
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert registry_capability().real_enabled is False
         with pytest.raises(

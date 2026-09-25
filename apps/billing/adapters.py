@@ -26,6 +26,8 @@ import qrcode
 from django.conf import settings
 from django.utils import timezone
 
+from apps.providers.services import is_live
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime
@@ -124,10 +126,10 @@ class PaymentEventAdapter(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class PixCapability:
-    """Report the unavailable task-6 record, never inferred readiness."""
+    """Report the registry-gated live answer, never inferred readiness."""
 
     synthetic_enabled: bool
-    real_enabled: bool = False
+    real_enabled: bool
     reason: str = "missing_pix_provider_owner_and_sandbox_approval"
 
 
@@ -135,7 +137,8 @@ def pix_capability() -> PixCapability:
     """Permit only explicit rehearsal opt-in in synthetic data mode."""
     return PixCapability(
         synthetic_enabled=settings.CLINIC_DATA_MODE == "synthetic"
-        and getattr(settings, "BILLING_SYNTHETIC_PIX", False) is True
+        and getattr(settings, "BILLING_SYNTHETIC_PIX", False) is True,
+        real_enabled=is_live("pix", clinic_id=None),
     )
 
 

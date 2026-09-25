@@ -6,7 +6,10 @@ format profile, verifier package or sandbox is selected. This module pins
 the provider contract and supplies an explicitly synthetic implementation
 for the rehearsal lifecycle only. The synthetic provider signs with a fixed
 test key, never a credential, and refuses to run outside synthetic data
-mode. ``signature_capability().real_enabled`` is permanently ``False``.
+mode. ``signature_capability().real_enabled`` is answered by
+``apps.providers.services.is_live`` against the ``qualified_signing``
+capability: it is True only while the registry holds an ``activated``
+version AND the process runs the approved live data mode.
 """
 
 from __future__ import annotations
@@ -26,6 +29,8 @@ import rfc8785
 from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import now as utc_now
+
+from apps.providers.services import is_live
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -115,18 +120,19 @@ class VerifiedSignature:
 
 @dataclass(frozen=True, slots=True)
 class SignatureCapability:
-    """Explicit synthetic opt-in with a permanently closed live gate."""
+    """Explicit synthetic opt-in plus the registry-gated live answer."""
 
     synthetic_enabled: bool
-    real_enabled: bool = False
+    real_enabled: bool
     reason: str = "missing_signing_provider_and_owner_approval"
 
 
 def signature_capability() -> SignatureCapability:
-    """Reflect the unavailable task-6 record, not caller claims of approval."""
+    """Reflect the lifecycle registry, not caller claims of approval."""
     return SignatureCapability(
         synthetic_enabled=getattr(settings, "PRESCRIPTION_SYNTHETIC_SIGNING", False)
-        is True
+        is True,
+        real_enabled=is_live("qualified_signing", clinic_id=None),
     )
 
 

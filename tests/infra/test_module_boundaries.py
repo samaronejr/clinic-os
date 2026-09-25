@@ -11,6 +11,7 @@ from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.services import issue_prescription
+from apps.providers.services import current_version, is_live
 from apps.retention.services import apply_retention_policy
 from apps.teleconsult.services import create_session
 from django.apps import apps as django_apps
@@ -41,6 +42,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.intake.apps.IntakeConfig",
         "apps.interop.apps.InteropConfig",
         "apps.prescription.apps.PrescriptionConfig",
+        "apps.providers.apps.ProvidersConfig",
         "apps.retention.apps.RetentionConfig",
         "apps.scheduling.apps.SchedulingConfig",
         "apps.teleconsult.apps.TeleconsultConfig",
@@ -163,6 +165,23 @@ def test_intake_submission_requires_explicit_response_and_revision() -> None:
     parameters = signature(submit_intake).parameters
     assert list(parameters) == ["response_id", "answers", "expected_revision"]
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+def test_provider_gate_is_keyword_scoped_and_environment_injectable() -> None:
+    is_live_parameters = signature(is_live).parameters
+    version_parameters = signature(current_version).parameters
+
+    assert list(is_live_parameters) == ["key", "clinic_id", "environment"]
+    assert list(version_parameters) == ["key", "clinic_id"]
+    assert is_live_parameters["key"].kind is Parameter.POSITIONAL_OR_KEYWORD
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY
+        for parameter in (
+            is_live_parameters["clinic_id"],
+            is_live_parameters["environment"],
+            version_parameters["clinic_id"],
+        )
+    )
 
 
 def test_intake_service_boundaries_derive_context_and_keep_search_body_only() -> None:

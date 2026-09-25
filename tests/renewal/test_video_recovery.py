@@ -46,6 +46,7 @@ from django.db import connection
 from django.utils import timezone
 
 from patient_service_support import runtime_role
+from provider_gate_support import assert_capability_gate_closed
 from renewal.test_encounters import CONTENT, setup_context
 from renewal.test_teleconsult_sessions import (
     _create,
@@ -372,6 +373,7 @@ def test_unapproved_end_callbacks_and_forged_callbacks_fail_closed(
     rbac_graph: RbacGraph,
     synthetic_provider: SyntheticRoomAdapter,
     callbacks: None,
+    settings: SettingsWrapper,
 ) -> None:
     graph = rbac_graph
     _, encounter, _, _, _ = seed(graph)
@@ -387,4 +389,4 @@ def test_unapproved_end_callbacks_and_forged_callbacks_fail_closed(
     assert _operation(graph, session).status == "succeeded"
     assert _kinds(graph, session) == ["created"]
     assert room_capability().synthetic_enabled
-    assert not room_capability().real_enabled
+    assert_capability_gate_closed(settings, "video")
