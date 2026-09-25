@@ -71,8 +71,16 @@ class _TraceEventHandler(logging.Handler):
 
 
 def _on_worker_ready(**_kwargs: object) -> None:
+    # Solo pool: trace records are emitted in this (main) process.
     logging.getLogger().addHandler(_TraceEventHandler())
     _emit_event("ready")
 
 
+def _on_worker_process_init(**_kwargs: object) -> None:
+    # Prefork pool: trace records are emitted in the forked child, after the
+    # inherited allowlisted console handler.
+    logging.getLogger().addHandler(_TraceEventHandler())
+
+
 signals.worker_ready.connect(_on_worker_ready, weak=False)
+signals.worker_process_init.connect(_on_worker_process_init, weak=False)

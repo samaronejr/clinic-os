@@ -92,7 +92,10 @@ def configure_worker_logging(**_kwargs: object) -> None:
     from django.conf import settings  # noqa: PLC0415
 
     logging.config.dictConfig(settings.LOGGING)
-    app.log.redirect_stdouts(loglevel=logging.WARNING)
+    # The level must be a *name*: Celery exports it as
+    # CELERY_LOG_REDIRECT_LEVEL and every prefork child re-applies it through
+    # mlevel(), which rejects digit strings ("30") and kills the pool.
+    app.log.redirect_stdouts(loglevel=app.conf.worker_redirect_stdouts_level)
 
 
 setup_logging.connect(

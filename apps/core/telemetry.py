@@ -110,6 +110,9 @@ LOG_MESSAGE_ALLOWLIST: Final = frozenset(
         _celery_trace.LOG_IGNORED,
         _celery_trace.LOG_REJECTED,
         _celery_trace.LOG_RETRY,
+        # Worker readiness (celery.apps.worker); the hostname arg is dropped.
+        # Operators and the broker gate detect readiness from this line.
+        "%s ready.",
     }
 )
 

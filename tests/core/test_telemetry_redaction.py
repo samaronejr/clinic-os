@@ -1296,28 +1296,26 @@ _REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 _WORKER_EVENT_TIMEOUT_SECONDS: Final = 120.0
 
 
-def _await_worker_events(
-    events_fd: int,
-    worker: subprocess.Popen[bytes],
-    expected: set[str],
-) -> None:
-    """Block on the FIFO (and the worker's pidfd) until ``expected`` arrive."""
-    pidfd = os.pidfd_open(worker.pid)
+def _await_worker_events(events_fd: int, exit_fd: int, expected: set[str]) -> None:
+    """Block on the event FIFO until ``expected`` arrive.
+
+    ``exit_fd`` is the read end of a pipe whose only write end the worker
+    inherited: it turns readable (EOF) exactly when the worker exits, so an
+    early exit fails fast without platform-specific process handles or polling.
+    """
     pending = set(expected)
     buffer = b""
     deadline = time.monotonic() + _WORKER_EVENT_TIMEOUT_SECONDS
-    try:
-        while pending:
-            remaining = deadline - time.monotonic()
-            assert remaining > 0, f"worker events never arrived: {sorted(pending)}"
-            readable, _, _ = select.select([events_fd, pidfd], [], [], remaining)
-            assert pidfd not in readable, "worker exited before signalling"
-            if events_fd in readable:
-                buffer += os.read(events_fd, 4096)
-                *lines, buffer = buffer.split(b"\n")
-                pending -= {line.decode() for line in lines}
-    finally:
-        os.close(pidfd)
+    while pending:
+        remaining = deadline - time.monotonic()
+        assert remaining > 0, f"worker events never arrived: {sorted(pending)}"
+        readable, _, _ = select.select([events_fd, exit_fd], [], [], remaining)
+        if events_fd in readable:
+            buffer += os.read(events_fd, 4096)
+            *lines, buffer = buffer.split(b"\n")
+            pending -= {line.decode() for line in lines}
+        elif exit_fd in readable:
+            assert os.read(exit_fd, 1), "worker exited before signalling"
 
 
 _PROBE_BROKER_URL: Final = "filesystem://"
@@ -1351,6 +1349,7 @@ def _run_probe_worker(
         "CLINIC_PROBE_TRANSPORT_OPTIONS": json.dumps(transport_options),
         "CLINIC_PROBE_EVENTS_FIFO": str(events_fifo),
     }
+    exit_read, exit_write = os.pipe()
     with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
         worker = subprocess.Popen(
             [
@@ -1360,7 +1359,9 @@ def _run_probe_worker(
                 "-A",
                 "tests.core.celery_worker_probe",
                 "worker",
-                "--pool=solo",
+                # The production pool: task logs and trace records are emitted
+                # in forked children that re-apply the redirect level.
+                "--pool=prefork",
                 "--concurrency=1",
                 "--loglevel=INFO",
                 "--without-gossip",
@@ -1372,10 +1373,12 @@ def _run_probe_worker(
             env=environment,
             stdout=stdout,
             stderr=stderr,
+            pass_fds=(exit_write,),
         )
+    os.close(exit_write)
     producer = Celery("probe-producer", set_as_current=False, fixups=[])
     try:
-        _await_worker_events(events_fd, worker, {"ready"})
+        _await_worker_events(events_fd, exit_read, {"ready"})
         with (
             producer.connection_for_write(
                 _PROBE_BROKER_URL, transport_options=transport_options
@@ -1392,12 +1395,13 @@ def _run_probe_worker(
                     producer=publisher,
                 )
         # One success (info) and one unexpected failure (error) trace record.
-        _await_worker_events(events_fd, worker, {"info", "error"})
+        _await_worker_events(events_fd, exit_read, {"info", "error"})
     finally:
         producer.close()
         worker.send_signal(signal.SIGTERM)
         worker.wait(timeout=60)
         os.close(events_fd)
+        os.close(exit_read)
     return worker, stdout_path, stderr_path
 
 
