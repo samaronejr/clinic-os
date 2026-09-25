@@ -120,13 +120,14 @@ def require_current_actor_org_admin(
     organization_id: UUID,
     roles: ClinicRoles,
 ) -> UserId:
-    """Require the current actor to hold an allowed role in every clinic.
+    """Require organization-wide authority without widening clinic assignments.
 
-    Organization-scoped settings (queue quotas) need authority that no
-    single clinic's admin can satisfy: until a dedicated org_admin role
-    exists, the equivalent existing authority is an allowed role on every
-    clinic of the organization. An organization with no clinics has no
-    satisfiable authority and fails closed.
+    Keep the caller's legacy role equivalence on every clinic. A canonical
+    org_admin assignment can cover a clinic only through the permission
+    resolver, including its remove-only grants. Neither one clinic's admin
+    nor one clinic's org_admin assignment confers organization-wide power.
+    Empty organizations and empty legacy role contracts still fail closed.
+    Callers retain their own exact-clinic/domain guards.
     """
     actor_id = current_actor_id()
     clinic_ids = set(
@@ -134,15 +135,28 @@ def require_current_actor_org_admin(
             "pk", flat=True
         )
     )
-    covered = set(
-        UserClinicRole.objects.filter(
-            user_id=actor_id,
-            organization_id=organization_id,
-            role__in=roles,
-        ).values_list("clinic_id", flat=True)
-    )
-    if not roles or not clinic_ids or not clinic_ids <= covered:
+    if not roles or not clinic_ids:
         raise _UnauthorizedActorError
+    assignments = UserClinicRole.objects.filter(
+        user_id=actor_id,
+        organization_id=organization_id,
+        role__in=(*roles, UserClinicRole.Role.ORG_ADMIN),
+    ).values_list("clinic_id", "role")
+    covered = {
+        clinic_id
+        for clinic_id, role in assignments
+        if role != UserClinicRole.Role.ORG_ADMIN
+    }
+    permission_scoped = {
+        clinic_id
+        for clinic_id, role in assignments
+        if role == UserClinicRole.Role.ORG_ADMIN
+    }
+    missing = clinic_ids - covered
+    if not missing <= permission_scoped:
+        raise _UnauthorizedActorError
+    for clinic_id in missing:
+        require_permission("staff.organization", clinic_id=clinic_id)
     return actor_id
 
 
