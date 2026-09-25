@@ -195,6 +195,58 @@ re-run the same command.
 | `smoke-current-source` fails inside `ci` | 1 | Usually the prior-boot ledger gate above; the `ci` report records the real exit rather than weakening the check |
 | `renewal runner interrupted` | 130 | SIGINT/SIGTERM; owned containers, volumes and processes are removed before exit |
 
+## Celery queues and workers
+
+Celery workloads are split across seven queues so one tenant's bulk or AI
+burst cannot delay another tenant's clinical work. Queue names are declared
+in `config/celery.py` and tasks route by module prefix; the existing
+`comms.*` outbox tasks stay on `clinic-integrations`.
+
+| Queue | Workload |
+| --- | --- |
+| `clinic-integrations` | comms outbox operations and reminder dispatch (existing) |
+| `clinical` | chart-facing tasks; isolated and fail-open under a Redis outage |
+| `ai-interactive` | latency-sensitive AI work (for example scribe chunk processing) |
+| `ai-batch` | deferred AI work (drafting, extraction); per-tenant quota |
+| `messaging` | patient messaging tasks; per-tenant quota |
+| `finance` | billing, insurance and subscription tasks; per-tenant quota |
+| `bulk` | imports, retention and workflow runs; per-tenant quota |
+
+Run one worker per queue (or a small set of queues) with the broker URL
+exported in the environment:
+
+```sh
+uv run celery -A config.celery worker -Q clinic-integrations -c 2
+uv run celery -A config.celery worker -Q clinical -c 2
+uv run celery -A config.celery worker -Q ai-interactive -c 2
+uv run celery -A config.celery worker -Q ai-batch -c 2
+uv run celery -A config.celery worker -Q messaging -c 2
+uv run celery -A config.celery worker -Q finance -c 2
+uv run celery -A config.celery worker -Q bulk -c 2
+```
+
+Beat is unchanged and schedules only the existing `comms.*` tasks:
+
+```sh
+uv run celery -A config.celery beat
+```
+
+Per-tenant fairness is enforced by `apps.core.fairness.fair_acquire`, a
+Redis token bucket keyed on `(organization, queue)`. Quotas are tasks per
+minute, published per organization through the validated
+`ClinicConfiguration.queue_quotas` map. Quota edits require
+organization-wide authority — an owner or clinic-admin role on every
+clinic of the organization until the planned org_admin role exists — so
+no single clinic's admin can move the organization's limits, and an
+ordinary clinic settings save carries the organization's effective map
+forward unchanged. A task on a regulated queue calls `acquire_or_defer`
+first; when the bucket is empty the task is re-enqueued with a 30-second
+countdown and a `clinic_fairness.deferred` metric is emitted. If Redis is
+unreachable, `bulk`, `ai-batch` and every other queue fail closed (defer)
+while `clinical` fails open so chart saves are never blocked by metering.
+A malformed stored quota fails closed as well; it never falls back to a
+larger allowance.
+
 ## Stop and reseed
 
 Stop containers while preserving local database data:

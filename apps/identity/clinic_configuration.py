@@ -14,14 +14,19 @@ from django.db import connection, transaction
 from PIL import Image, UnidentifiedImageError
 
 from apps.audit.services import record_phase1_event
+from apps.core.fairness import _organization_quotas, validate_queue_quotas
 from apps.ehr.attachment_scanner import AttachmentScanUnavailableError, default_scanner
 from apps.ehr.attachments import AttachmentInput, detect_attachment_type
 from apps.ehr.models import ClinicalAttachment
-from apps.identity.current_context import require_current_actor_clinic_roles
+from apps.identity.current_context import (
+    require_current_actor_clinic_roles,
+    require_current_actor_org_admin,
+)
 from apps.identity.models import Clinic, ClinicConfiguration, UserClinicRole
 from apps.identity.overlay_content import validate_overlay_text
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
 CONFIGURATION_ROLES = (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
@@ -42,10 +47,13 @@ class ConfigurationContent:
     contact_phone: str = ""
     brand_token: str = DEFAULT_BRAND
     reminder_hours: int = 24
+    queue_quotas: Mapping[str, int] | None = None
 
     def validate(self) -> None:
         """Validate text, formats and fixed tokens at the service boundary."""
         validate_overlay_text(self.display_name)
+        if self.queue_quotas is not None:
+            validate_queue_quotas(self.queue_quotas)
         if (
             not self.display_name.strip()
             or len(self.display_name) > MAX_DISPLAY_NAME
@@ -135,9 +143,21 @@ def publish_configuration(
     logo: AttachmentInput | None = None,
     remove_logo: bool = False,
 ) -> ClinicConfiguration:
-    """Publish one serialized snapshot; existing schedules and artifacts stay intact."""
+    """Publish one serialized snapshot; existing schedules and artifacts stay intact.
+
+    ``content.queue_quotas`` is the organization-scoped fair-queue map
+    consumed by ``apps.core.fairness``. Quota edits require
+    organization-wide authority — an allowed role on every clinic of the
+    organization until the planned org_admin role exists — so no single
+    clinic's admin can move the organization's limits. ``None`` carries
+    the organization's effective map forward unchanged, so an ordinary
+    clinic settings save can never resurrect a stale quota.
+    """
     actor = require_current_actor_clinic_roles(clinic_id, CONFIGURATION_ROLES)
     content.validate()
+    clinic = Clinic.objects.get(pk=clinic_id)
+    if content.queue_quotas is not None:
+        require_current_actor_org_admin(clinic.organization_id, CONFIGURATION_ROLES)
     if (
         type(expected_version) is not int
         or expected_version < 0
@@ -155,12 +175,31 @@ def publish_configuration(
         if expected_version != (previous.version if previous else 0):
             msg = "A configuração mudou. Recarregue antes de editar."
             raise ValidationError(msg)
-        clinic = Clinic.objects.get(pk=clinic_id)
+        fields = asdict(content)
+        quotas = fields.pop("queue_quotas")
+        # Serialize quota writes and org-effective carry-forward reads so
+        # concurrent publishes cannot resurrect a superseded quota map.
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            [f"clinic-queue-quotas:{clinic.organization_id}"],
+        )
+        if quotas is None:
+            # Carry the organization's effective map forward. This read
+            # MUST go through the SECURITY DEFINER organization resolver,
+            # not an ORM query: configuration_read is clinic-scoped, so a
+            # clinic-only admin cannot see other clinics' newer snapshots
+            # and would resurrect a stale org quota.
+            carried = _organization_quotas(clinic.organization_id)
+            if not isinstance(carried, dict):
+                carried = {}
+            validate_queue_quotas(carried)
+            quotas = dict(carried)
         configuration = ClinicConfiguration.objects.create(
             clinic=clinic,
             organization_id=clinic.organization_id,
             version=expected_version + 1,
-            **asdict(content),
+            queue_quotas=quotas,
+            **fields,
             logo_png=(
                 logo_bytes
                 if logo_bytes is not None

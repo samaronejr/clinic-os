@@ -99,6 +99,7 @@ class ClinicConfiguration(models.Model):
         max_length=8, choices=(("navy", "Azul"), ("teal", "Verde")), default="navy"
     )
     reminder_hours = models.PositiveSmallIntegerField(default=24)
+    queue_quotas = models.JSONField(default=dict, blank=True)
     logo_png = models.BinaryField(default=bytes, blank=True)
     published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -115,6 +116,22 @@ class ClinicConfiguration(models.Model):
                 & models.Q(reminder_hours__in=(1, 2, 6, 12, 24, 48, 72))
                 & models.Q(brand_token__in=("navy", "teal")),
                 name="identity_config_bounded_values",
+            ),
+            models.CheckConstraint(
+                condition=models.expressions.RawSQL(
+                    "jsonb_typeof(queue_quotas) = 'object' "
+                    "AND queue_quotas - ARRAY['clinic-integrations','clinical',"
+                    "'ai-interactive','ai-batch','messaging','finance','bulk']"
+                    " = '{}'::jsonb "
+                    "AND queue_quotas::text ~ "
+                    '\'^\\{("[a-z-]+": [0-9]+(, "[a-z-]+": [0-9]+)*)?\\}$\' '
+                    "AND NOT jsonb_path_exists(queue_quotas, "
+                    '\'strict $.* ? (@.type() != "number" '
+                    "|| @ < 1 || @ > 100000)')",
+                    (),
+                    output_field=models.BooleanField(),
+                ),
+                name="identity_config_queue_quotas_shape",
             ),
         ]
 
