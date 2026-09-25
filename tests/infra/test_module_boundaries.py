@@ -7,6 +7,8 @@ from apps.billing.services import create_invoice
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
 from apps.ehr.services import record_clinical_note
+from apps.identity import scope_provisioning
+from apps.identity.current_context import require_permission
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.prescription.services import create_draft as create_prescription_draft
@@ -54,6 +56,40 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+def test_permission_boundary_derives_actor_and_requires_clinic_scope() -> None:
+    parameters = signature(require_permission).parameters
+    assert list(parameters) == ["permission", "clinic_id", "patient_enrollment_id"]
+    assert parameters["permission"].kind is Parameter.POSITIONAL_OR_KEYWORD
+    assert parameters["clinic_id"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["patient_enrollment_id"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["patient_enrollment_id"].default is None
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("narrow_role", ["clinic_id", "role", "permission", "valid_from", "valid_to"]),
+        (
+            "assign_care_team",
+            ["clinic_id", "assignment", "valid_from", "valid_to"],
+        ),
+        (
+            "register_professional",
+            ["clinic_id", "identity", "valid_from", "valid_to"],
+        ),
+        ("revoke_care_team", ["clinic_id", "membership_id"]),
+        ("revoke_professional", ["clinic_id", "registration_id"]),
+    ],
+)
+def test_scope_provisioning_requires_clinic_and_never_accepts_actor(
+    name: str,
+    expected: list[str],
+) -> None:
+    parameters = signature(getattr(scope_provisioning, name)).parameters
+    assert list(parameters) == expected
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 def test_existing_foundation_apps_remain_registered() -> None:
