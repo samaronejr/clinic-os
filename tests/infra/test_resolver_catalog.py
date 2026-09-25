@@ -244,6 +244,7 @@ FUNCTION_SIGNATURES: Final = {
     ("ehr_next_version", "requested_document uuid"),
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"),
     ("end_patient_session", "requested_session uuid"),
+    ("identity_queue_quotas", "requested_org uuid"),
     ("list_active_clinic_physicians", "requested_clinic uuid"),
     ("load_current_user", ""),
     ("overlay_plain_text_guard", ""),
@@ -410,6 +411,7 @@ FUNCTION_RESULTS: Final = {
     ("ehr_next_version", "requested_document uuid"): "integer",
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"): "uuid",
     ("end_patient_session", "requested_session uuid"): "void",
+    ("identity_queue_quotas", "requested_org uuid"): "jsonb",
     ("list_active_clinic_physicians", "requested_clinic uuid"): (
         "TABLE(user_id uuid, display_label text)"
     ),

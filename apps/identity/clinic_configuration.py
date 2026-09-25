@@ -14,6 +14,7 @@ from django.db import connection, transaction
 from PIL import Image, UnidentifiedImageError
 
 from apps.audit.services import record_phase1_event
+from apps.core.fairness import validate_queue_quotas
 from apps.ehr.attachment_scanner import AttachmentScanUnavailableError, default_scanner
 from apps.ehr.attachments import AttachmentInput, detect_attachment_type
 from apps.ehr.models import ClinicalAttachment
@@ -22,6 +23,7 @@ from apps.identity.models import Clinic, ClinicConfiguration, UserClinicRole
 from apps.identity.overlay_content import validate_overlay_text
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from uuid import UUID
 
 CONFIGURATION_ROLES = (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
@@ -42,10 +44,13 @@ class ConfigurationContent:
     contact_phone: str = ""
     brand_token: str = DEFAULT_BRAND
     reminder_hours: int = 24
+    queue_quotas: Mapping[str, int] | None = None
 
     def validate(self) -> None:
         """Validate text, formats and fixed tokens at the service boundary."""
         validate_overlay_text(self.display_name)
+        if self.queue_quotas is not None:
+            validate_queue_quotas(self.queue_quotas)
         if (
             not self.display_name.strip()
             or len(self.display_name) > MAX_DISPLAY_NAME
@@ -135,7 +140,14 @@ def publish_configuration(
     logo: AttachmentInput | None = None,
     remove_logo: bool = False,
 ) -> ClinicConfiguration:
-    """Publish one serialized snapshot; existing schedules and artifacts stay intact."""
+    """Publish one serialized snapshot; existing schedules and artifacts stay intact.
+
+    ``content.queue_quotas`` is the per-organization fair-queue map
+    consumed by ``apps.core.fairness``; ``None`` carries the previous
+    snapshot's map forward unchanged. Quota edits use the same
+    owner/clinic-admin role gate as every other configuration field until
+    the planned org_admin role exists.
+    """
     actor = require_current_actor_clinic_roles(clinic_id, CONFIGURATION_ROLES)
     content.validate()
     if (
@@ -156,11 +168,20 @@ def publish_configuration(
             msg = "A configuração mudou. Recarregue antes de editar."
             raise ValidationError(msg)
         clinic = Clinic.objects.get(pk=clinic_id)
+        fields = asdict(content)
+        quotas = fields.pop("queue_quotas")
         configuration = ClinicConfiguration.objects.create(
             clinic=clinic,
             organization_id=clinic.organization_id,
             version=expected_version + 1,
-            **asdict(content),
+            queue_quotas=(
+                validate_queue_quotas(quotas)
+                if quotas is not None
+                else dict(previous.queue_quotas)
+                if previous
+                else {}
+            ),
+            **fields,
             logo_png=(
                 logo_bytes
                 if logo_bytes is not None
