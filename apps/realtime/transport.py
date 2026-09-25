@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 from functools import partial
 from typing import Final
 
@@ -13,6 +12,8 @@ from django.conf import settings
 from django.db import connection, transaction
 from redis import Redis
 from redis.exceptions import RedisError
+
+from apps.realtime.topics import TOPIC_PATTERN
 
 EVENT_KINDS: Final = frozenset(
     {
@@ -26,10 +27,6 @@ EVENT_KINDS: Final = frozenset(
         "expired",
         "halted",
     }
-)
-TOPIC_PATTERN: Final = re.compile(
-    r"(?:clinic:[0-9a-f-]{36}:(?:agenda|inbox|queue|messages)|"
-    r"ai_job:[A-Za-z0-9_-]{22,64}|authz:user:[0-9a-f-]{36}|authz:halt)"
 )
 MAX_VERSION: Final = 2**53 - 1
 logger = logging.getLogger(__name__)
@@ -69,7 +66,7 @@ def redis_client() -> Redis:
     )
 
 
-def publish(topic: str, kind: str, version: int) -> None:
+def publish(*, topic: str, kind: str, version: int) -> None:
     """Publish a refetch hint after commit; never interrupt committed domain work.
 
     Redis loss is explicitly observable and recoverable by client polling. It
@@ -86,8 +83,8 @@ def publish(topic: str, kind: str, version: int) -> None:
         logger.warning("realtime publication unavailable; polling required")
 
 
-def publish_on_commit(topic: str, kind: str, version: int) -> None:
+def publish_on_commit(*, topic: str, kind: str, version: int) -> None:
     """Register the only domain publication path; rollback discards the hint."""
     event_bytes(topic, kind, version)
     if settings.REALTIME_ENABLED:
-        transaction.on_commit(partial(publish, topic, kind, version))
+        transaction.on_commit(partial(publish, topic=topic, kind=kind, version=version))

@@ -79,7 +79,7 @@ def test_failed_publication_is_observable_without_echoing_exception(
         raise RedisConnectionError(message)
 
     monkeypatch.setattr(transport, "redis_client", unavailable)
-    transport.publish(f"clinic:{uuid4()}:agenda", "agenda", 1)
+    transport.publish(topic=f"clinic:{uuid4()}:agenda", kind="agenda", version=1)
     assert len(caplog.records) == 1
     assert caplog.records[0].levelname == "WARNING"
     assert "SINTETICO-SENTINELA-PHI" not in caplog.text

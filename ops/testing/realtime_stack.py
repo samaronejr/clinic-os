@@ -124,7 +124,9 @@ def redis_server(repository: Path, root: Path) -> Iterator[str]:
             if observer.stdout is not None:
                 observer.stdout.close()
         subprocess.run(  # noqa: S603 - fixed Docker argv; exact owned container.
-            ["/usr/bin/docker", "rm", "-f", name],
+            # Redis declares VOLUME /data even with persistence disabled.
+            # Remove that owned anonymous volume, not just its container.
+            ["/usr/bin/docker", "rm", "-f", "-v", name],
             check=True,
             capture_output=True,
             cwd=repository,

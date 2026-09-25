@@ -27,13 +27,13 @@ pytestmark = pytest.mark.usefixtures("real_redis")
 def test_ticket_is_consumed_once_under_concurrent_redemption() -> None:
     topic = f"clinic:{uuid4()}:agenda"
     session = uuid4().hex
-    ticket = issue_ticket(session, (topic,))
+    ticket = issue_ticket(session_key=session, topics=(topic,))
     barrier = Barrier(2, timeout=5)
 
     def redeem() -> tuple[str, ...] | None:
         barrier.wait()
         try:
-            return consume_ticket(ticket, session)
+            return consume_ticket(ticket=ticket, session_key=session)
         except TopicDeniedError:
             return None
 
@@ -47,12 +47,12 @@ def test_ticket_is_consumed_once_under_concurrent_redemption() -> None:
 def test_ticket_binds_session_and_expiry_without_a_sleep() -> None:
     topic = f"clinic:{uuid4()}:agenda"
     session = uuid4().hex
-    ticket = issue_ticket(session, (topic,))
+    ticket = issue_ticket(session_key=session, topics=(topic,))
     with pytest.raises(TopicDeniedError):
-        consume_ticket(ticket, uuid4().hex)
+        consume_ticket(ticket=ticket, session_key=uuid4().hex)
     with pytest.raises(TopicDeniedError):
-        consume_ticket(ticket, session)
-    ticket = issue_ticket(session, (topic,))
+        consume_ticket(ticket=ticket, session_key=session)
+    ticket = issue_ticket(session_key=session, topics=(topic,))
     # Observe Redis's actual TTL, then expire the exact key server-side. No
     # mocked GETDEL and no timing-luck wait for a sixty-second expiry.
     key = "rt-ticket:" + hashlib.sha256(ticket.encode()).hexdigest()
@@ -60,7 +60,7 @@ def test_ticket_binds_session_and_expiry_without_a_sleep() -> None:
         assert 0 < client.ttl(key) <= 60
         client.expire(key, 0)
     with pytest.raises(TopicDeniedError):
-        consume_ticket(ticket, session)
+        consume_ticket(ticket=ticket, session_key=session)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -105,4 +105,4 @@ def test_ticket_http_denials_csrf_and_private_headers(rbac_graph: RbacGraph) -> 
 @pytest.mark.parametrize("ticket", ["", "../", "x" * 1000, "SINTETICO-SENTINELA-PHI"])
 def test_forged_ticket_is_refused(ticket: str) -> None:
     with pytest.raises(TopicDeniedError):
-        consume_ticket(ticket, uuid4().hex)
+        consume_ticket(ticket=ticket, session_key=uuid4().hex)

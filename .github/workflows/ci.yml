@@ -159,6 +159,7 @@ jobs:
         run: |
           set -u
           uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m playwright install ffmpeg
           status=0
           for entry in ${RENEWAL_SUITES//,/ }; do
             suite="${entry%%@*}"
