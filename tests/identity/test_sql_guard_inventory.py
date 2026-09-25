@@ -11,6 +11,7 @@ from identity import legacy_sql_inventory
 from identity.legacy_guard_inventory import discover_sql
 from identity.legacy_sql_inventory import assert_sql_inventory
 from identity.sql_guard_probes import ALL_ROLES, PROBES
+from identity.test_metrics_guard_parity import METRICS_SQL_ORACLES
 from identity.test_permission_parity import INVENTORY
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
     entries = INVENTORY["sql_guards"]
     assert_sql_inventory(entries)
     listed = set()
+    operation_oracles = {}
     for name, entry in entries.items():
         if entry["kind"] == "staff_guard":
             assert len(entry["discovery"]["signatures"]) == 1, name
@@ -33,6 +35,10 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
                 assert probe.roles
                 assert set(probe.roles) <= set(ALL_ROLES)
                 listed.add(key)
+        elif entry["kind"] == "operations_aggregate":
+            assert entry["reason"], name
+            assert entry["probes"], name
+            operation_oracles[name] = entry["probes"]
         else:
             assert entry["kind"] in {
                 "migration_only",
@@ -47,6 +53,7 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert entry["reason"], name
             assert not entry["probes"], name
     assert listed == set(PROBES)
+    assert operation_oracles == METRICS_SQL_ORACLES
 
 
 def test_omitting_a_deployed_sql_guard_breaks_the_inventory() -> None:

@@ -48,6 +48,10 @@ SIGNALS = {
         r"@(?:privileged_totp_required|login_required|require_recent_verification)"
     ),
     "tenant_boundary": r"\b(?:tenant_context|patient_session_context)\(",
+    "operations_auth": (
+        r"OPS_METRICS_(?:TOKEN|NETWORKS)_ENV|"
+        r"\b(?:_allowed_networks|_client_ip_allowed|_ops_token_valid)\("
+    ),
 }
 
 
