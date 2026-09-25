@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from datetime import date
 from typing import TYPE_CHECKING, Final
 
 import pytest
@@ -19,11 +21,38 @@ from patient_http_support import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 SEEDED: Final = tuple(f"Marina Synthetic P{index:03d}" for index in range(30))
+# Mirror of patient_http_support.seed_patients birth dates (days 1-27 of
+# January 1990): asserted against the rows actually read back so the leak
+# checks can never pass on an empty or drifted fixture set.
+EXPECTED_SEEDED_BIRTH_DATES: Final = frozenset(
+    date(1990, 1, day) for day in range(1, 28)
+)
+UUID_PATTERN: Final = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+    r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+CSRF_TOKEN_PATTERN: Final = re.compile(r'name="csrfmiddlewaretoken" value="([^"]+)"')
+
+
+def _without_opaque_identifiers(text: str, csrf_tokens: Iterable[str]) -> str:
+    """Blank the page's opaque identifiers so year substrings cannot hit them.
+
+    enrollment_id and clinic UUIDs plus csrfmiddlewaretoken values are the
+    only opaque identifiers this page renders (static URLs are unhashed in
+    tests); random ones can contain a birth year like "1990" (hosted CI run
+    36091656875).
+    """
+    scrubbed = UUID_PATTERN.sub("", text)
+    for token in csrf_tokens:
+        scrubbed = scrubbed.replace(token, "")
+    return scrubbed
 
 
 def _search_page(graph: RbacGraph) -> bytes:
@@ -90,8 +119,9 @@ def test_search_results_expose_an_accessible_table_and_pagination(
         "rowheader",
     }
     # Birth dates are table cells only: never status text, labels or
-    # attributes. Match the exact rendered dates, not a bare year substring:
-    # enrollment UUIDs can contain "1990" (hosted CI run 36091656875).
+    # attributes. Check the seeded patients' birth year plus every rendered
+    # date format, but only on text scrubbed of opaque identifiers so random
+    # UUIDs/CSRF tokens cannot collide with the year.
     with (
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
@@ -101,6 +131,11 @@ def test_search_results_expose_an_accessible_table_and_pagination(
                 organization_id=rbac_graph.organization_a
             ).values_list("birth_date", flat=True)
         )
+    assert birth_dates
+    assert set(birth_dates) >= EXPECTED_SEEDED_BIRTH_DATES
+    expected_years = {item.year for item in EXPECTED_SEEDED_BIRTH_DATES}
+    assert {item.year for item in birth_dates} == expected_years
+    birth_years = {str(year) for year in expected_years}
     rendered_dates = {
         rendered
         for birth_date in birth_dates
@@ -110,13 +145,26 @@ def test_search_results_expose_an_accessible_table_and_pagination(
             date_format(birth_date, "SHORT_DATE_FORMAT"),
         )
     }
-    header = content.split(b"<tbody")[0]
-    assert not [rendered for rendered in rendered_dates if rendered.encode() in header]
+    csrf_tokens = set(CSRF_TOKEN_PATTERN.findall(content.decode()))
+    header = _without_opaque_identifiers(
+        content.decode().split("<tbody")[0], csrf_tokens
+    )
+    assert not [year for year in birth_years if year in header]
+    assert not [rendered for rendered in rendered_dates if rendered in header]
     assert not [
         attributes
         for _tag, attributes in document.elements
         if any(
-            rendered in (value or "")
+            year in _without_opaque_identifiers(value or "", csrf_tokens)
+            for year in birth_years
+            for value in attributes.values()
+        )
+    ]
+    assert not [
+        attributes
+        for _tag, attributes in document.elements
+        if any(
+            rendered in _without_opaque_identifiers(value or "", csrf_tokens)
             for rendered in rendered_dates
             for value in attributes.values()
         )
