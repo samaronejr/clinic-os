@@ -11,6 +11,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.utils import timezone
+from django.utils.translation import gettext
 
 from apps.audit.events import build_phase1_audit_event
 from apps.audit.services import AuditTrustedContext, _content_hash, record_phase1_event
@@ -38,17 +39,10 @@ if TYPE_CHECKING:
 MAX_TEXT = 20000
 OFFER_MAX_AGE = 1800
 STAFF_ROLES = tuple(UserClinicRole.Role)
-READ_ROLES = (
-    UserClinicRole.Role.OWNER,
-    UserClinicRole.Role.CLINIC_ADMIN,
-    UserClinicRole.Role.RECEPTIONIST,
-    UserClinicRole.Role.PHYSICIAN,
-)
-CLINICIAN_ROLES = (
-    UserClinicRole.Role.PHYSICIAN,
-    UserClinicRole.Role.NURSE,
-    UserClinicRole.Role.ALLIED_PROFESSIONAL,
-)
+# Clinical attestations on an encounter are physician-scoped in this codebase:
+# the ehr_encounter read policy admits only physicians, and the DB insert
+# guard enforces the same set. Keep both in lockstep.
+CLINICIAN_ROLES = (UserClinicRole.Role.PHYSICIAN,)
 
 
 @dataclass(frozen=True)
@@ -93,7 +87,7 @@ def publish_text(
         or not text.strip()
         or len(text) > MAX_TEXT
     ):
-        msg = "Texto, finalidade ou idioma inválido."
+        msg = gettext("Invalid text, purpose or language.")
         raise ValidationError(msg)
     validate_overlay_text(text)
     with transaction.atomic():
@@ -135,7 +129,7 @@ def publish_notice(
         or not text.strip()
         or len(text) > MAX_TEXT
     ):
-        msg = "Texto, finalidade ou idioma inválido."
+        msg = gettext("Invalid text, topic or language.")
         raise ValidationError(msg)
     validate_overlay_text(text)
     with transaction.atomic():
@@ -244,7 +238,7 @@ def _resolve_offer(
         .first()
     )
     if current is None or current.pk != text_id or current.digest != data.get("digest"):
-        msg = "O texto mudou. Leia a versão atual antes de consentir."
+        msg = gettext("The text changed. Read the current version before consenting.")
         raise ValidationError(msg)
     return current
 
@@ -253,7 +247,7 @@ def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAccept
     """Accept only the text actually offered to this patient session and purpose."""
     authority = patient_authority()
     if accepted is not True:
-        msg = "Marque a opção somente se desejar consentir."
+        msg = gettext("Check the box only if you wish to consent.")
         raise ValidationError(msg)
     with transaction.atomic():
         current = _resolve_offer(offer, purpose, authority)
@@ -269,7 +263,7 @@ def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAccept
             },
         )
         if ConsentRevocation.objects.filter(acceptance=result).exists():
-            msg = "Este consentimento foi revogado. O comprovante permanece disponível."
+            msg = gettext("This consent was revoked. The receipt remains available.")
             raise ValidationError(msg)
         if created:
             _patient_audit("consent.accepted", result.pk, authority)
@@ -287,9 +281,9 @@ def record_refusal(*, offer: str, purpose: str) -> RefusalRecord:
             text=current,
             revocation__isnull=True,
         ).exists():
-            msg = (
-                "Este consentimento está aceito. Revogue-o em vez de registrar "
-                "uma recusa."
+            msg = gettext(
+                "This consent is already accepted. Revoke it instead of "
+                "recording a refusal."
             )
             raise ValidationError(msg)
         result, created = RefusalRecord.objects.get_or_create(
@@ -388,7 +382,7 @@ def consent_for_future_use(
     """
     require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
     if purpose not in ConsentPurpose.values:
-        msg = "Finalidade fora da taxonomia de consentimento."
+        msg = gettext("Purpose outside the consent taxonomy.")
         raise ValidationError(msg)
     current = (
         ConsentText.objects.filter(clinic_id=clinic_id, purpose=purpose)
@@ -418,7 +412,7 @@ def record_ai_disclosure(
         or type(refused) is not bool
         or (refused and not informed)
     ):
-        msg = "Divulgação de uso de IA inválida."
+        msg = gettext("Invalid AI-use disclosure.")
         raise ValidationError(msg)
     encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=encounter_id).first()
     if encounter is None:
@@ -437,7 +431,7 @@ def record_ai_disclosure(
             },
         )
         if not created and (result.informed != informed or result.refused != refused):
-            msg = "Já existe uma divulgação registrada para este atendimento."
+            msg = gettext("A disclosure is already recorded for this encounter.")
             raise ValidationError(msg)
         if created:
             record_phase1_event(
@@ -469,20 +463,27 @@ def acknowledge_participant(
     """Record that the recording notice reached one non-patient voice."""
     actor = require_current_actor_clinic_roles(clinic_id, CLINICIAN_ROLES)
     if participant_kind not in ParticipantKind.values:
-        msg = "Tipo de participante inválido."
+        msg = gettext("Invalid participant kind.")
         raise ValidationError(msg)
     encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=session_id).first()
     if encounter is None:
         raise PatientAccessDeniedError
-    result, _ = ParticipantAcknowledgment.objects.get_or_create(
-        session=encounter,
-        participant_kind=participant_kind,
-        defaults={
-            "organization_id": encounter.organization_id,
-            "clinic_id": clinic_id,
-            "acknowledged_by_clinician_id": actor,
-            "acknowledged_at": timezone.now(),
-        },
-    )
-    result.refresh_from_db()
-    return result
+    with transaction.atomic():
+        result, created = ParticipantAcknowledgment.objects.get_or_create(
+            session=encounter,
+            participant_kind=participant_kind,
+            defaults={
+                "organization_id": encounter.organization_id,
+                "clinic_id": clinic_id,
+                "acknowledged_by_clinician_id": actor,
+                "acknowledged_at": timezone.now(),
+            },
+        )
+        if created:
+            record_phase1_event(
+                "consent.participant.acknowledged",
+                clinic_id=clinic_id,
+                affected_record_id=result.pk,
+            )
+        result.refresh_from_db()
+        return result

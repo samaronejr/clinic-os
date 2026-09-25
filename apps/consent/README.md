@@ -39,12 +39,13 @@ care.
   by replay. A new consent requires a new text version and a fresh
   explicit action. No consent action mutates EHR records, releases or
   messages.
-- `ParticipantAcknowledgment` records that the clinician delivered the
+- `ParticipantAcknowledgment` records that the physician delivered the
   recording notice to a non-patient voice (caregiver, companion,
   interpreter) present in a clinical session, without creating a patient
-  record for them. `AIUseDisclosure` is the per-encounter clinician
+  record for them. `AIUseDisclosure` is the per-encounter physician
   attestation that the patient was informed about AI assistance, plus the
-  recorded refusal; one immutable row per encounter.
+  recorded refusal; one immutable row per encounter. Both writes are
+  physician-only at the service and the DB insert guard.
 - `consent_for_future_use(*, clinic_id, enrollment_id, purpose)` returns
   the exact current, unrevoked acceptance for any purpose under authorized
   clinic scope, or `None`; a purpose outside the taxonomy is rejected.
