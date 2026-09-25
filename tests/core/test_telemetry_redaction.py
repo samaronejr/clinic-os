@@ -18,6 +18,7 @@ import os
 import re
 import select
 import signal
+import socket
 import subprocess
 import sys
 import textwrap
@@ -49,7 +50,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
-from sentry_sdk.transport import Transport
+from sentry_sdk.crons import capture_checkin
+from sentry_sdk.crons.consts import MonitorStatus
+from sentry_sdk.scope import use_isolation_scope, use_scope
+from sentry_sdk.transport import HttpTransport, Transport
 
 from patient_service_support import runtime_role
 
@@ -58,6 +62,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from opentelemetry.sdk.trace import ReadableSpan
+    from sentry_sdk.consts import EndpointType
     from sentry_sdk.envelope import Envelope
     from sentry_sdk.types import Event as SentryEvent
     from sentry_sdk.types import Hint as SentryHint
@@ -860,6 +865,7 @@ def test_sentry_event_with_soap_exception_keeps_only_type() -> None:
         "message": soap,
     }
     scrubbed = telemetry.scrub_sentry_event(event, {})
+    assert scrubbed is not None
     serialized = json.dumps(scrubbed, default=str)
     _assert_no_phi(serialized)
     exception = scrubbed["exception"]
@@ -930,6 +936,7 @@ def test_sentry_event_scrubs_nested_payload_recursively() -> None:
         "spans": [{"description": "SELECT * FROM patients WHERE cpf=12345678901"}],
     }
     scrubbed = telemetry.scrub_sentry_event(event, {})
+    assert scrubbed is not None
     blob = json.dumps(scrubbed, default=str)
     _assert_no_phi(blob)
     for dropped in (
@@ -1186,6 +1193,101 @@ def test_sentry_sdk_transport_receives_only_closed_vocabulary() -> None:
     assert all(re.fullmatch(r"[0-9a-f]{32}", v) for v in hostile["tags"].values())
 
 
+_REJECTED_METADATA: Final = "sintetico_boreal"
+
+
+class _CaptureHttpTransport(HttpTransport):
+    """The real HTTP transport pipeline (worker queue, client reports).
+
+    Only the final network request is replaced: each prepared envelope,
+    including appended client-report items, is recorded instead of sent.
+    """
+
+    def __init__(self, options: dict[str, object]) -> None:
+        super().__init__(options)
+        self.sent: list[Envelope] = []
+
+    def _send_request(
+        self,
+        body: bytes,
+        headers: dict[str, str],
+        endpoint_type: EndpointType,
+        envelope: Envelope | None = None,
+    ) -> None:
+        assert envelope is not None
+        self.sent.append(envelope)
+
+
+def test_sentry_every_envelope_type_excludes_rejected_env_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Round-3 repro: a rejected SENTRY_RELEASE came back through the SDK's own
+    # fallback (release=None means "infer it") inside a session envelope.
+    rejected = _REJECTED_METADATA
+    trace_id = "ab" * 16
+    for variable in ("SENTRY_RELEASE", "HEROKU_BUILD_COMMIT", "SOURCE_VERSION"):
+        monkeypatch.setenv(variable, rejected)
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", rejected)
+    monkeypatch.setenv("SENTRY_TRACE", f"{trace_id}-{'cd' * 8}-1")
+    monkeypatch.setenv(
+        "SENTRY_BAGGAGE",
+        f"sentry-trace_id={trace_id},sentry-release={rejected},"
+        f"sentry-environment={rejected},sentry-transaction={rejected},"
+        "sentry-public_key=public",
+    )
+    monkeypatch.setattr(socket, "gethostname", lambda: rejected)
+    # Production options, plus tracing switched on so a transaction really
+    # exists: it must still never leave (before_send_transaction drops it).
+    client = sentry_sdk.Client(
+        **sentry_options("https://public@sentry.invalid/1"),
+        transport=_CaptureHttpTransport,
+        traces_sample_rate=1.0,
+    )
+    transport = client.transport
+    assert isinstance(transport, _CaptureHttpTransport)
+    # Fresh scopes read SENTRY_TRACE/SENTRY_BAGGAGE into their propagation.
+    isolation = sentry_sdk.Scope(client=client)
+    current = sentry_sdk.Scope(client=client)
+    with use_isolation_scope(isolation), use_scope(current):
+        try:
+            _raise_phi(rejected)
+        except ValueError:
+            sentry_sdk.capture_exception()
+        isolation.start_session()
+        isolation.end_session()
+        isolation.start_session(session_mode="request")
+        isolation.end_session()
+        with sentry_sdk.start_transaction(
+            name=rejected, op="http.server", sampled=True
+        ):
+            pass
+        capture_checkin(monitor_slug=rejected, status=MonitorStatus.OK)
+    client.flush(timeout=10)
+    client.close()
+
+    item_types = {item.type for envelope in transport.sent for item in envelope.items}
+    # Error events, both session kinds and client reports were actually sent;
+    # transactions and check-ins were produced and dropped (counted in reports).
+    assert {"event", "session", "sessions", "client_report"} <= item_types
+    assert not item_types & {"transaction", "check_in"}
+    for envelope in transport.sent:
+        assert rejected not in envelope.serialize().decode()
+    reports = [
+        item.payload.json
+        for envelope in transport.sent
+        for item in envelope.items
+        if item.type == "client_report"
+    ]
+    discarded = {
+        entry["category"]
+        for report in reports
+        if report is not None
+        for entry in report.get("discarded_events", [])
+    }
+    # The transaction and the check-in (an "error"-category drop) were real.
+    assert {"transaction", "error"} <= discarded
+
+
 # ---------------------------------------------------------------------------
 # Real Celery worker (reviewer B1): worker/task loggers use the allowlist.
 # ---------------------------------------------------------------------------
@@ -1218,18 +1320,15 @@ def _await_worker_events(
         os.close(pidfd)
 
 
-def test_real_celery_worker_logs_only_through_the_allowlist(tmp_path: Path) -> None:
-    from celery import Celery  # noqa: PLC0415
-    from celery.app import trace as celery_trace  # noqa: PLC0415
+_PROBE_BROKER_URL: Final = "filesystem://"
 
-    broker = tmp_path / "broker"
-    (broker / "queue").mkdir(parents=True)
-    (broker / "control").mkdir()
-    transport_options = {
-        "data_folder_in": str(broker / "queue"),
-        "data_folder_out": str(broker / "queue"),
-        "control_folder": str(broker / "control"),
-    }
+
+def _run_probe_worker(
+    tmp_path: Path, transport_options: dict[str, object]
+) -> tuple[subprocess.Popen[bytes], Path, Path]:
+    """Run the probe worker, publish both probe tasks, wait, then stop it."""
+    from celery import Celery  # noqa: PLC0415
+
     events_fifo = tmp_path / "events"
     os.mkfifo(events_fifo)
     # O_RDWR keeps a writer open, so the FIFO never reports a spurious EOF.
@@ -1243,9 +1342,13 @@ def test_real_celery_worker_logs_only_through_the_allowlist(tmp_path: Path) -> N
     environment = {
         **os.environ,
         "DJANGO_SETTINGS_MODULE": "config.settings.test",
-        "CELERY_BROKER_URL": "filesystem://",
-        "PYTHONPATH": str(_REPO_ROOT),
-        "CLINIC_PROBE_BROKER_DIR": str(broker),
+        # Explicit values override whatever broker/backend the shell exported.
+        "CELERY_BROKER_URL": _PROBE_BROKER_URL,
+        "CELERY_RESULT_BACKEND": "",
+        "PYTHONPATH": os.pathsep.join(
+            filter(None, (str(_REPO_ROOT), os.environ.get("PYTHONPATH")))
+        ),
+        "CLINIC_PROBE_TRANSPORT_OPTIONS": json.dumps(transport_options),
         "CLINIC_PROBE_EVENTS_FIFO": str(events_fifo),
     }
     with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
@@ -1271,17 +1374,23 @@ def test_real_celery_worker_logs_only_through_the_allowlist(tmp_path: Path) -> N
             stderr=stderr,
         )
     producer = Celery("probe-producer", set_as_current=False, fixups=[])
-    producer.conf.update(
-        broker_url="filesystem://", broker_transport_options=transport_options
-    )
     try:
         _await_worker_events(events_fd, worker, {"ready"})
-        producer.send_task(
-            "probe.phi_echo", args=[body], kwargs={"note": note}, queue="probe"
-        )
-        producer.send_task(
-            "probe.phi_raise", args=[body], kwargs={"note": note}, queue="probe"
-        )
+        with (
+            producer.connection_for_write(
+                _PROBE_BROKER_URL, transport_options=transport_options
+            ) as connection,
+            connection.Producer() as publisher,
+        ):
+            assert connection.transport_cls == "filesystem"
+            for task in ("probe.phi_echo", "probe.phi_raise"):
+                producer.send_task(
+                    task,
+                    args=[body],
+                    kwargs={"note": note},
+                    queue="probe",
+                    producer=publisher,
+                )
         # One success (info) and one unexpected failure (error) trace record.
         _await_worker_events(events_fd, worker, {"info", "error"})
     finally:
@@ -1289,7 +1398,30 @@ def test_real_celery_worker_logs_only_through_the_allowlist(tmp_path: Path) -> N
         worker.send_signal(signal.SIGTERM)
         worker.wait(timeout=60)
         os.close(events_fd)
+    return worker, stdout_path, stderr_path
 
+
+def test_real_celery_worker_logs_only_through_the_allowlist(tmp_path: Path) -> None:
+    from celery.app import trace as celery_trace  # noqa: PLC0415
+    from ops.testing.runtime_paths import runtime_directory  # noqa: PLC0415
+
+    # Both sides use ONE private transport, independent of any inherited
+    # CELERY_BROKER_URL: the worker gets it through its own environment, the
+    # producer through an explicit connection URL (Celery lets the env var
+    # outrank app config, so config alone cannot pin it).
+    tmp_path.chmod(0o700)
+    with runtime_directory(tmp_path, purpose="celery-broker") as broker:
+        (broker / "queue").mkdir()
+        (broker / "control").mkdir()
+        transport_options = {
+            "data_folder_in": str(broker / "queue"),
+            "data_folder_out": str(broker / "queue"),
+            "control_folder": str(broker / "control"),
+            "polling_interval": 0.05,
+        }
+        worker, stdout_path, stderr_path = _run_probe_worker(
+            tmp_path, transport_options
+        )
     stdout_text = stdout_path.read_text()
     stderr_text = stderr_path.read_text()
     _assert_no_phi(stdout_text + stderr_text)

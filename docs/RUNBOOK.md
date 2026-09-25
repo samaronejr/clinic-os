@@ -290,9 +290,15 @@ integration record set, pinned by test to the `apps/providers` seed); AI labels
 are `AI_INVOCATION_PURPOSES` (to be replaced by todo 38 model purposes).
 Logger names must resolve to an imported module or a framework logger.
 Sentry events are rebuilt from those vocabularies: the SDK timestamp is
-re-rendered from a strict parse, `environment`/`release` are closed at
-configuration time (`SENTRY_ENVIRONMENT`, 40-hex `SENTRY_RELEASE`), and
-`server_name`, `extra`, `user`, messages and nested `data` never leave.
+re-rendered from a strict parse, and `server_name`, `extra`, `user`,
+messages and nested `data` never leave. Options the SDK would otherwise infer
+from the environment are passed explicitly, because inferred values reach
+session and client-report envelopes outside `before_send`: `environment`
+is `SENTRY_ENVIRONMENT` only when it is a listed value, `release` is
+`SENTRY_RELEASE` only when it is a 40-hex SHA (else the fixed `unversioned`),
+`server_name` is fixed, automatic session tracking and Spotlight are off,
+transactions are dropped and check-ins are discarded. Set `SENTRY_RELEASE`
+to the deployed commit SHA to get release attribution.
 
 Celery workers use the same pipeline: `config/celery.py` connects
 `setup_logging`, applies Django `LOGGING` and redirects task stdout into

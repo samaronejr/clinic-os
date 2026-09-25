@@ -3,44 +3,33 @@
 Started as ``celery -A tests.core.celery_worker_probe worker`` by
 ``test_real_celery_worker_logs_only_through_the_allowlist``. It reuses the
 production ``config.celery.app`` (and therefore its logging configuration),
-swaps the broker for a private filesystem transport, registers two probe
+uses the private filesystem transport chosen by the test, registers two probe
 tasks and reports lifecycle events through a FIFO so the test waits on
 exact events instead of timers.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from pathlib import Path
 
 from celery import signals
 from config.celery import app
 
-_BROKER_ROOT = Path(os.environ["CLINIC_PROBE_BROKER_DIR"])
-_EVENTS_FIFO = os.environ["CLINIC_PROBE_EVENTS_FIFO"]
 PROBE_QUEUE = "probe"
 
-
-def broker_transport_options(root: Path) -> dict[str, object]:
-    """Return the shared filesystem-transport layout under ``root``."""
-    return {
-        "data_folder_in": str(root / "queue"),
-        "data_folder_out": str(root / "queue"),
-        "control_folder": str(root / "control"),
-        "polling_interval": 0.05,
-    }
-
-
+# The test owns the transport: it passes the exact broker URL and transport
+# options (a private runtime directory) so producer and worker share them.
 app.conf.update(
-    broker_transport_options=broker_transport_options(_BROKER_ROOT),
+    broker_transport_options=json.loads(os.environ["CLINIC_PROBE_TRANSPORT_OPTIONS"]),
     task_default_queue=PROBE_QUEUE,
 )
-# The broker URL comes from CELERY_BROKER_URL (it outranks conf.update);
-# refuse to start against anything but the private filesystem transport.
+# CELERY_BROKER_URL outranks conf; refuse anything but the private transport.
 if app.conf.broker_url != "filesystem://":
     message = "probe worker requires CELERY_BROKER_URL=filesystem://"
     raise RuntimeError(message)
+_EVENTS_FIFO = os.environ["CLINIC_PROBE_EVENTS_FIFO"]
 logger = logging.getLogger(__name__)
 
 

@@ -1602,7 +1602,7 @@ _SENTRY_METADATA_VALIDATORS: Final[dict[str, Callable[[object], object]]] = {
 }
 
 
-def scrub_sentry_event(event: SentryEvent, _hint: SentryHint) -> SentryEvent:
+def scrub_sentry_event(event: SentryEvent, _hint: SentryHint) -> SentryEvent | None:
     """Rebuild one Sentry event from closed vocabularies and validated ids.
 
     Survivors: ``event_id`` (hex32), the SDK ``timestamp`` (a ``datetime``
@@ -1615,8 +1615,13 @@ def scrub_sentry_event(event: SentryEvent, _hint: SentryHint) -> SentryEvent:
     ``extra``, ``user``, ``message``, ``logentry``, ``modules``,
     ``fingerprint``, ``spans``, ``server_name``, nested ``data`` — and every
     value failing its validator is dropped before the event leaves.
+
+    Cron check-ins also pass through ``before_send``; the product sends none,
+    so any check-in is dropped rather than rebuilt into an error event.
     """
     source = dict(event)
+    if source.get("type") == "check_in":
+        return None
     scrubbed: dict[str, object] = {}
     for key, validator in _SENTRY_METADATA_VALIDATORS.items():
         cleaned = validator(source.get(key))
