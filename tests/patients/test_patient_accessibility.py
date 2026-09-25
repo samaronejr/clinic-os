@@ -8,6 +8,11 @@ import pytest
 from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.tenancy.db import tenant_context
 from django.contrib.staticfiles import finders
+from django.middleware.csrf import (
+    CSRF_ALLOWED_CHARS,
+    CSRF_SECRET_LENGTH,
+    CSRF_TOKEN_LENGTH,
+)
 from django.utils.formats import date_format
 from django.utils.translation import gettext
 
@@ -38,6 +43,22 @@ CSRF_TOKEN_PATTERN: Final = re.compile(r'name="csrfmiddlewaretoken" value="([^"]
 ENROLLMENT_INPUT_PATTERN: Final = re.compile(r'name="enrollment_id" value="([^"]+)"')
 
 
+def _unmask_csrf_token(token: str) -> str:
+    """Mirror django.middleware.csrf._unmask_cipher_token (not stubbed).
+
+    django-stubs exposes the length/charset constants but not the unmask
+    helper, so the identical algorithm is repeated here: the first half is
+    a mask applied character-wise over CSRF_ALLOWED_CHARS.
+    """
+    mask, cipher = token[:CSRF_SECRET_LENGTH], token[CSRF_SECRET_LENGTH:]
+    pairs = zip(
+        (CSRF_ALLOWED_CHARS.index(x) for x in cipher),
+        (CSRF_ALLOWED_CHARS.index(x) for x in mask),
+        strict=True,
+    )
+    return "".join(CSRF_ALLOWED_CHARS[x - y] for x, y in pairs)
+
+
 def _without_known_identifiers(text: str, identifiers: Iterable[str]) -> str:
     """Blank only the exact identifier values this page legitimately renders.
 
@@ -52,7 +73,8 @@ def _without_known_identifiers(text: str, identifiers: Iterable[str]) -> str:
     return scrubbed
 
 
-def _search_page(graph: RbacGraph) -> bytes:
+def _search_page(graph: RbacGraph) -> tuple[bytes, str]:
+    """Post the seeded search and return the body plus the CSRF cookie secret."""
     client, receptionist = receptionist_client(graph)
     seed_patients(graph, receptionist.pk, graph.clinic_a, SEEDED)
     with runtime_role():
@@ -61,7 +83,14 @@ def _search_page(graph: RbacGraph) -> bytes:
             {"q": "Marina", "page": "1"},
         )
     assert response.status_code == 200
-    return response.content
+    csrf_cookie = client.cookies.get("csrftoken")
+    assert csrf_cookie is not None
+    csrf_secret = csrf_cookie.value
+    if len(csrf_secret) == CSRF_TOKEN_LENGTH:
+        # Django <4.0 masked the secret before storing it in the cookie.
+        csrf_secret = _unmask_csrf_token(csrf_secret)
+    assert len(csrf_secret) == CSRF_SECRET_LENGTH
+    return response.content, csrf_secret
 
 
 def test_blank_search_screen_meets_the_dom_accessibility_contract(
@@ -86,7 +115,7 @@ def test_blank_search_screen_meets_the_dom_accessibility_contract(
 def test_search_results_expose_an_accessible_table_and_pagination(
     rbac_graph: RbacGraph,
 ) -> None:
-    content = _search_page(rbac_graph)
+    content, csrf_secret = _search_page(rbac_graph)
     document = Document(content)
 
     document.assert_unique_identifiers()
@@ -155,7 +184,18 @@ def test_search_results_expose_an_accessible_table_and_pagination(
     # they are not exempted: every exempted value must actually occur,
     # which also keeps the exemption list from silently growing.
     text = content.decode()
-    csrf_tokens = set(CSRF_TOKEN_PATTERN.findall(text))
+    # A csrfmiddlewaretoken value is trusted only with independent
+    # provenance: it must be a well-formed masked token that unmasks to
+    # this client's csrftoken cookie secret. Anything else rendered in a
+    # csrf input stays page text, so a leaked birth date there still fails.
+    trusted_csrf = {
+        candidate
+        for candidate in CSRF_TOKEN_PATTERN.findall(text)
+        if len(candidate) == CSRF_TOKEN_LENGTH
+        and set(candidate) <= set(CSRF_ALLOWED_CHARS)
+        and _unmask_csrf_token(candidate) == csrf_secret
+    }
+    assert trusted_csrf
     rendered_enrollments = set(ENROLLMENT_INPUT_PATTERN.findall(text))
     assert len(enrollment_ids) == len(SEEDED)
     assert rendered_enrollments
@@ -163,7 +203,7 @@ def test_search_results_expose_an_accessible_table_and_pagination(
     known_identifiers = {
         str(rbac_graph.clinic_a),
         *rendered_enrollments,
-        *csrf_tokens,
+        *trusted_csrf,
     }
     assert known_identifiers
     assert not [
