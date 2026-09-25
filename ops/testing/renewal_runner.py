@@ -88,7 +88,10 @@ SUITES: Final = {
     "primitives": ("tests/renewal/browser/test_primitives.py",),
     "smoke": ("tests/renewal/browser/test_smoke.py",),
     "staff-intake": ("tests/renewal/browser/test_staff_intake.py",),
-    "workspace": ("tests/renewal/browser/test_workspace.py",),
+    "workspace": (
+        "tests/renewal/browser/test_workspace.py",
+        "tests/renewal/browser/test_workspace_navigation.py",
+    ),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(

@@ -34,6 +34,7 @@
     <li><a href="#datetime">{% trans "Date and time" %}</a></li>
     <li><a href="#resource_grid">{% trans "Resource grid" %}</a></li>
     <li><a href="#command_palette">{% trans "Command palette" %}</a></li>
+    <li><a href="#patient_banner">{% trans "Patient banner" %}</a></li>
     <li><a href="#toast">{% trans "Announcer and toast" %}</a></li>
     <li><a href="#tabs">{% trans "Tabs" %}</a></li>
     <li><a href="#segmented">{% trans "Segmented control" %}</a></li>
@@ -468,6 +469,15 @@
     {% for state in states %}<article class="spec" data-primitive="command_palette" data-state="{{ state.key }}">
       <h3 id="spec-command_palette-{{ state.key }}">{{ state.label }}</h3>
       {% include "identity/showcase/command_palette.html" with state=state.key sid="command_palette-"|add:state.key ctx="spec-command_palette-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="patient_banner" aria-labelledby="patient_banner-title">
+  <h2 id="patient_banner-title">{% trans "Patient banner" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="patient_banner" data-state="{{ state.key }}">
+      <h3 id="spec-patient_banner-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/patient_banner.html" with state=state.key sid="patient_banner-"|add:state.key ctx="spec-patient_banner-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>

@@ -130,6 +130,24 @@ CHART_SERIES: Final = (
     },
 )
 
+PATIENT_BANNER: Final = {
+    "enrollment_id": "specimen",
+    "name": "Ana Ribeiro Sintética",
+    "social_name": "",
+    "age_label": _("34 years"),
+    "identifiers": ({"kind": "CPF", "masked": "***.***.***-41"},),
+    "allergy_state": "documented",
+    "allergy_label": _("2 active allergies"),
+    "active_encounter": True,
+    "delegate": False,
+    "restricted": True,
+    "actions": (
+        {"key": "book", "label": _("Book appointment")},
+        {"key": "contacts", "label": _("Contacts")},
+    ),
+    "bound": False,
+}
+
 FIXTURES: Final[dict[str, Fixture]] = {
     "patient_options": PATIENT_OPTIONS,
     "patient_selection": PATIENT_SELECTION,
@@ -144,6 +162,7 @@ FIXTURES: Final[dict[str, Fixture]] = {
     "document_regions": DOCUMENT_REGIONS,
     "chart_labels": CHART_LABELS,
     "chart_series": CHART_SERIES,
+    "patient_banner": PATIENT_BANNER,
 }
 
 

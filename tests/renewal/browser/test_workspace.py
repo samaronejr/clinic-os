@@ -245,14 +245,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
 
     _sign_in_receptionist(page, renewal_base_url, workspace_staff)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
-    assert _modules(page) == [
-        "agenda",
-        "patients",
-        "billing",
-        "availability",
-        "retention",
-        "consent",
-    ]
+    assert _modules(page) == ["agenda", "patients", "finance", "operations"]
     _capture(page, root, "receptionist-landing-1280")
 
     # Brand link and Agenda entry both land on today's agenda of this clinic.
@@ -295,7 +288,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
         {
             "surface": "workspace",
             "assertion": "receptionist modules, agenda entry, clinic switcher",
-            "modules": ["agenda", "patients", "availability"],
+            "modules": ["agenda", "patients", "finance", "operations"],
             "console_errors": errors,
         }
     )
@@ -312,10 +305,11 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
     agenda_a = f"/scheduling/clinics/{workspace_staff['clinic_a']}/agenda/"
     _sign_in_receptionist(page, renewal_base_url, workspace_staff)
 
-    # Keyboard order: skip link, brand, clinic switcher, modules, sign out.
+    # Keyboard order: skip link, brand, clinic switcher, search, destinations,
+    # sign out, then the Agenda section row (Agenda, Availability).
     page.goto(f"{renewal_base_url}{agenda_a}")
     order: list[str] = []
-    for _ in range(10):
+    for _ in range(11):
         page.keyboard.press("Tab")
         order.append(
             page.evaluate(
@@ -327,13 +321,14 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         "skip-link",
         "nav-brand",
         "nav-switch-summary",
+        "nav-command",
         "agenda",
         "patients",
-        "billing",
-        "availability",
-        "retention",
-        "consent",
+        "finance",
+        "operations",
         "nav-link",
+        "tab",
+        "tab",
     ]
     assert (
         page.evaluate("getComputedStyle(document.activeElement).outlineStyle") != "none"
@@ -346,7 +341,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         _capture(page, root, f"receptionist-agenda-{width}")
     page.set_viewport_size({"width": 320, "height": 900})
     with page.expect_navigation():
-        page.locator("a[data-module=availability]").click()
+        page.locator(".shell-subnav a[data-tab=availability]").click()
     assert "/availability/" in page.url
     assert _no_overflow(page)
     _capture(page, root, "receptionist-availability-320")
@@ -540,7 +535,7 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     page.locator("#id_otp_token").fill(f"{token:06d}")
     _submit(page, "button[type=submit]")
     page.wait_for_url("**/auth/protected/")
-    assert _modules(page) == ["agenda", "availability", "retention", "consent"]
+    assert _modules(page) == ["agenda", "patients", "operations"]
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator(".nav-switch")).to_have_count(0)
     _capture(page, renewal_artifact_root, "physician-landing-1280")
@@ -549,7 +544,7 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     registry = page.goto(f"{renewal_base_url}{patients_a}")
     assert registry is not None
     assert registry.status == NOT_FOUND
-    assert _modules(page) == ["agenda", "availability", "retention", "consent"]
+    assert _modules(page) == ["agenda", "patients", "operations"]
     expect(page.locator("#id_q")).to_have_count(0)
     csrf = next(
         cookie["value"]

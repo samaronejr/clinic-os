@@ -9,8 +9,9 @@ them. This module declares the remaining identity tables.
 from typing import Final
 
 RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
-# Clinic configuration, preferences, physician verification and authorization
-# scope rows carry bespoke policies in migrations 0007, 0009, 0011 and 0013.
+# Clinic configuration, preferences, physician verification, authorization
+# scope rows and saved views carry bespoke policies in migrations 0007, 0009,
+# 0011, 0013 and 0014.
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
         "identity_clinicconfiguration",
@@ -20,6 +21,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "identity_physicianprofile",
         "identity_physicianevidence",
         "identity_userpreference",
+        "identity_savedview",
     }
 )
 # identity_user is reachable only through resolver-owned functions; the
@@ -34,6 +36,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_physicianprofile": frozenset({"SELECT"}),
     "identity_physicianevidence": frozenset({"SELECT", "INSERT"}),
     "identity_userpreference": frozenset({"SELECT", "INSERT"}),
+    "identity_savedview": frozenset({"SELECT", "INSERT"}),
 }
 # New authorization tables have no runtime column writes: provisioning remains
 # owner-controlled. Column grants below belong to physician checks and preferences.
@@ -44,6 +47,7 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("identity_physicianprofile", "last_checked_at", "UPDATE"),
         ("identity_physicianprofile", "recheck_at", "UPDATE"),
         ("identity_physicianprofile", "status", "UPDATE"),
+        ("identity_savedview", "archived_at", "UPDATE"),
         ("identity_userpreference", "density", "UPDATE"),
         ("identity_userpreference", "theme", "UPDATE"),
         ("identity_userpreference", "updated_at", "UPDATE"),

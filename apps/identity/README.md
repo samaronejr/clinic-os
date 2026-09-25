@@ -120,3 +120,18 @@ protected-field conversion migrations remain non-atomic and irreversible.
 Reversing this additive migration removes only the new tables/helper; role
 values already stored in UserClinicRole are not rewritten. Once new authority
 history exists, use an additive forward correction rather than dropping it.
+
+## Saved views (todo 13)
+
+`SavedView` stores one user's saved workspace view: a destination slug plus at
+most four slug parameters (`apps.identity.saved_views`). Parameters are never
+free text, so a saved view cannot carry patient data; `apps.core.saved_views`
+decides which destinations and values the workspace offers (today the agenda
+day/week view, reopened at the clinic-local date). Migration `0014_saved_views`
+creates the table with FORCE RLS: a row is visible and writable only for
+`app.current_user_id`, in `app.current_tenant`, while the user still holds a
+role in the row's clinic. The runtime role has SELECT and INSERT plus UPDATE of
+`archived_at` only; there is no DELETE. `list_saved_views`, `save_view` and
+`archive_saved_view` are keyword-only with an explicit `clinic_id`; unknown,
+foreign and other users' views share one `SavedViewError`. Reversing the
+migration drops the policy and table; it holds no clinical data.

@@ -70,6 +70,73 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/ui/v1/command/search/:
+    post:
+      operationId: command_search
+      description: Adapt ``core.search_commands``; unknown and foreign clinics answer
+        ``[]``.
+      tags:
+      - command
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandSearchRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CommandResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
     AgendaItem:
@@ -200,6 +267,65 @@ components:
         * `throttled` - throttled
         * `not_found` - not_found
         * `internal_error` - internal_error
+    CommandResult:
+      type: object
+      description: |-
+        One allowed palette row.
+
+        ``token`` stands for a record selector (a patient) held server-side in
+        the session; POST it as ``token`` to ``action_url_name``. ``href`` is the
+        state-free path of a destination or action and is null for tokenized
+        rows. ``label``/``meta`` of a patient row are the name and age only.
+      properties:
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          readOnly: true
+        meta:
+          type: string
+          readOnly: true
+        action_url_name:
+          type: string
+          readOnly: true
+        token:
+          type: string
+          readOnly: true
+          nullable: true
+        href:
+          type: string
+          readOnly: true
+          nullable: true
+        label:
+          type: string
+          readOnly: true
+      required:
+      - action_url_name
+      - href
+      - kind
+      - label
+      - meta
+      - token
+    CommandSearchRequest:
+      type: object
+      description: |-
+        POST body of ``command/search``; search text never travels in a URL.
+
+        ``clinic_id`` is optional: without it the shell's current clinic is used.
+        An unknown or foreign clinic answers exactly like a query with no match.
+      properties:
+        q:
+          type: string
+          maxLength: 100
+        clinic_id:
+          type: string
+          format: uuid
+        page_path:
+          type: string
+          description: Path of the page the palette was opened on (never a record).
+          maxLength: 200
+          pattern: ^/[A-Za-z0-9/_.-]*$
+      required:
+      - q
     Error:
       type: object
       description: The ``{code, message_key}`` refusal body shared by every endpoint.
@@ -211,6 +337,22 @@ components:
       required:
       - code
       - message_key
+    KindEnum:
+      enum:
+      - destination
+      - action
+      - saved_view
+      - save_view
+      - archive_view
+      - patient
+      type: string
+      description: |-
+        * `destination` - destination
+        * `action` - action
+        * `saved_view` - saved_view
+        * `save_view` - save_view
+        * `archive_view` - archive_view
+        * `patient` - patient
     ViewEnum:
       enum:
       - day

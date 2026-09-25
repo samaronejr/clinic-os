@@ -43,6 +43,7 @@ COMPONENTS = (
     "datetime",
     "resource_grid",
     "command_palette",
+    "patient_banner",
     "toast",
     "tabs",
     "segmented",

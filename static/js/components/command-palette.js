@@ -2,9 +2,18 @@
    Ctrl+K / Cmd+K (or a [data-command-open="<id>"] button) opens the first
    palette on the page as a modal dialog and focuses its combobox; Escape
    closes it and focus returns where it was. Choosing an option follows its
-   data-href. Requires combobox.js and dialog semantics from the browser. */
+   data-href; an option without one (a patient) carries only an opaque
+   token, POSTed to the dialog's data-command-run URL through a form built
+   on demand (a patient row's form is requestSubmit-ed with
+   data-context-switch, so patient-context.js can hold it for unsaved work).
+   Requires combobox.js and dialog semantics from the browser. */
 (function () {
   "use strict";
+
+  if (window.ClinicCommandPalette) {
+    return;
+  }
+  window.ClinicCommandPalette = true;
 
   var returnTo = null;
 
@@ -49,8 +58,44 @@
 
   document.addEventListener("combobox:select", function (event) {
     var dialog = event.target.closest("dialog[data-command-palette]");
-    if (dialog && event.detail && event.detail.href) {
+    if (!dialog || !event.detail) {
+      return;
+    }
+    if (event.detail.href) {
       window.location.assign(event.detail.href);
+      return;
+    }
+    var action = dialog.getAttribute("data-command-run");
+    if (!action || !event.detail.value) {
+      return;
+    }
+    var option = Array.prototype.find.call(
+      dialog.querySelectorAll("[role=option][data-kind]"),
+      function (item) { return item.getAttribute("data-value") === event.detail.value; }
+    );
+    var switching = Boolean(option && option.getAttribute("data-kind") === "patient");
+    var cookie = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    var form = document.createElement("form");
+    form.method = "post";
+    form.action = action;
+    form.hidden = true;
+    [["csrfmiddlewaretoken", cookie ? decodeURIComponent(cookie[1]) : ""], ["token", event.detail.value],
+      ["next", dialog.getAttribute("data-command-next") || ""], ["unsaved", ""]]
+      .forEach(function (pair) {
+        var input = document.createElement("input");
+        input.type = "hidden";
+        input.name = pair[0];
+        input.value = pair[1];
+        form.appendChild(input);
+      });
+    if (switching) {
+      form.setAttribute("data-context-switch", "");
+    }
+    document.body.appendChild(form);
+    if (switching && typeof form.requestSubmit === "function") {
+      form.requestSubmit(); /* patient-context.js may hold it */
+    } else {
+      form.submit();
     }
   });
 

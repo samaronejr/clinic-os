@@ -145,8 +145,11 @@ def test_cancel_offers_only_the_closed_reason_vocabulary(
     body = response.content
     assert response.status_code == 200
     assert body.count(b"<option") == len(Appointment.CancellationReason.choices)
-    assert b'type="text"' not in body
-    assert b"<textarea" not in body
+    # The page content offers no free text; the shell's command palette
+    # search field (todo 13, on every workspace page) sits outside <main>.
+    page = body.split(b"<main", 1)[1].split(b"</main>", 1)[0]
+    assert b'type="text"' not in page
+    assert b"<textarea" not in page
 
 
 def test_cancel_post_is_terminal_and_returns_to_the_same_object(

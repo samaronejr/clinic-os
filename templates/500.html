@@ -1,4 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{# Error pages never show the pinned patient (no patient data on denials). #}
+{% block patient_banner %}{% endblock %}{% block context_switch_dialog %}{% endblock %}
 {% block title %}{% trans "Service temporarily unavailable" %} · Clinic OS{% endblock %}
 {% block content %}<section class="auth-shell"><h1>{% trans "Service temporarily unavailable" %}</h1><p>{% trans "Try again shortly. Before repeating a registration or booking, check whether it was saved." %}</p></section>{% endblock %}

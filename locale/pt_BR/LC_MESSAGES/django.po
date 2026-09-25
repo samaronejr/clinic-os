@@ -2378,3 +2378,139 @@ msgstr "Fechar aviso"
 
 msgid "1 result. Use the arrow keys to choose."
 msgstr "1 resultado. Use as setas para escolher."
+
+msgid "Consent"
+msgstr "Consentimentos"
+
+msgid "Clinical Inbox"
+msgstr "Caixa clínica"
+
+msgid "Messages"
+msgstr "Mensagens"
+
+msgid "Finance"
+msgstr "Financeiro"
+
+msgid "Operations"
+msgstr "Operações"
+
+msgid "Automations"
+msgstr "Automações"
+
+msgid "Reports"
+msgstr "Relatórios"
+
+msgid "Settings"
+msgstr "Configurações"
+
+msgid "Search"
+msgstr "Buscar"
+
+msgid "Patients: type the full name."
+msgstr "Pacientes: digite o nome completo."
+
+msgid "Leave this patient and lose unsaved changes?"
+msgstr "Sair deste paciente e perder as alterações não salvas?"
+
+msgid "Changes on this page that were not saved yet will be lost. Keep this patient to go back and save them."
+msgstr "As alterações desta página que ainda não foram salvas serão perdidas. Mantenha este paciente para voltar e salvá-las."
+
+msgid "Discard and switch"
+msgstr "Descartar e trocar"
+
+msgid "Keep this patient"
+msgstr "Manter este paciente"
+
+msgid "Patient in context"
+msgstr "Paciente selecionado"
+
+msgid "No patient in context"
+msgstr "Nenhum paciente selecionado"
+
+msgid "Choose a patient in the search (Ctrl+K) to pin them here."
+msgstr "Escolha um paciente na busca (Ctrl+K) para fixá-lo aqui."
+
+msgid "Legal name:"
+msgstr "Nome de registro:"
+
+msgid "Patient indicators"
+msgstr "Indicadores do paciente"
+
+msgid "Encounter in progress"
+msgstr "Atendimento em andamento"
+
+msgid "Acting for a delegate"
+msgstr "Atuando por um representante"
+
+msgid "Restricted record"
+msgstr "Registro restrito"
+
+msgid "Close patient"
+msgstr "Fechar paciente"
+
+msgid "No allergy documented"
+msgstr "Nenhuma alergia documentada"
+
+msgid "Allergies not assessed"
+msgstr "Alergias não avaliadas"
+
+msgid "Several patients share this name. Use the patient registry to tell them apart."
+msgstr "Vários pacientes têm este nome. Use o cadastro de pacientes para distingui-los."
+
+msgid "Find a destination or action you can use in this clinic. To find a patient, type their full name."
+msgstr "Encontre um destino ou uma ação disponível para você nesta clínica. Para encontrar um paciente, digite o nome completo."
+
+msgid "This search could not run"
+msgstr "Não foi possível fazer esta busca"
+
+msgid "Use at most 100 characters, then search again."
+msgstr "Use no máximo 100 caracteres e busque de novo."
+
+msgid "Nothing matches"
+msgstr "Nada encontrado"
+
+msgid "Check the spelling, or type a patient's full name."
+msgstr "Confira a grafia ou digite o nome completo do paciente."
+
+msgid "Several patients share this name"
+msgstr "Vários pacientes têm este nome"
+
+msgid "Use the patient registry to tell them apart."
+msgstr "Use o cadastro de pacientes para distingui-los."
+
+msgid "Switch patient?"
+msgstr "Trocar de paciente?"
+
+msgid "Work is still bound to the current patient"
+msgstr "Ainda há trabalho vinculado ao paciente atual"
+
+msgid "Nothing moves to the other patient. Keep this patient to finish that work, or discard it to switch."
+msgstr "Nada é transferido para o outro paciente. Mantenha este paciente para concluir esse trabalho ou descarte-o para trocar."
+
+msgid "%(age)s year"
+msgid_plural "%(age)s years"
+msgstr[0] "%(age)s ano"
+msgstr[1] "%(age)s anos"
+
+msgid "%(count)s active allergy"
+msgid_plural "%(count)s active allergies"
+msgstr[0] "%(count)s alergia ativa"
+msgstr[1] "%(count)s alergias ativas"
+
+msgid "Patient banner"
+msgstr "Faixa do paciente"
+
+msgid "34 years"
+msgstr "34 anos"
+
+msgid "2 active allergies"
+msgstr "2 alergias ativas"
+
+msgid "Saved views"
+msgstr "Visões salvas"
+
+msgid "Remove saved view: %(name)s"
+msgstr "Remover visão salva: %(name)s"
+
+msgid "Save this view: %(name)s"
+msgstr "Salvar esta visão: %(name)s"

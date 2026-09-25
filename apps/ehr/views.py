@@ -15,6 +15,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.core.patient_context import bind_patient_context, enrollment_for_patient
 from apps.ehr.finalization import (
     amend_document,
     close_encounter,
@@ -60,6 +61,16 @@ def _context(
     request: HttpRequest, clinic_id: UUID, encounter: Encounter
 ) -> dict[str, object]:
     """Assemble the current draft, finalized version, lineage and review panel."""
+    enrollment_id = enrollment_for_patient(
+        clinic_id=clinic_id, patient_id=encounter.patient_id
+    )
+    if enrollment_id is not None:
+        bind_patient_context(
+            request,
+            clinic_id=clinic_id,
+            enrollment_id=enrollment_id,
+            encounter_id=encounter.pk,
+        )
     versions = list(
         ClinicalDocumentVersion.objects.filter(document__encounter=encounter)
         .select_related("template")

@@ -519,9 +519,24 @@ states, AI drafts awaiting confirmation, held slots and missing citations.
   native `<details>` switcher: the summary adds a Small "trocar" hint, and the
   list of other clinics opens inline below 48rem and as a navy panel bordered
   in Navy Hover above it.
-- **Agenda entry:** the first item, linking to today's agenda of the current
-  clinic, with a `.nav-badge` carrying "hoje" and the clinic-local date so the
-  day is unambiguous across time zones.
+- **Destinations:** the items are the information architecture, in a fixed
+  order: Hoje, Agenda, Pacientes, Caixa clínica, Mensagens, Financeiro,
+  Operações, Automações, Relatórios, Configurações. They come from one
+  registry (`apps/core/navigation.py`) and appear only when the feature is
+  delivered, the user's permission bundle grants it and the route's own guard
+  would open it; an undelivered destination is never a placeholder. A
+  destination leads to its first place the user may open.
+- **Agenda entry:** the first delivered item, linking to today's agenda of the
+  current clinic, with a `.nav-badge` carrying "hoje" and the clinic-local
+  date so the day is unambiguous across time zones.
+- **Search trigger:** after the clinic context, a bordered navy item with the
+  search glyph and "Buscar"; from 48rem it adds a `Ctrl K` key hint. It is a
+  link to the palette page (the no-JavaScript baseline) that opens the command
+  palette in place when scripts run.
+- **Section row:** when the current destination has more than one open place
+  (Agenda and Disponibilidade; Pacientes and Consentimentos), a row of link
+  tabs on paper sits under the navy band, the current place with the Trust
+  Teal bottom rule. A single place renders no row.
 - **Default / hover:** Light Ink Soft text; hover fills Navy Hover.
 - **Current:** `aria-current="page"`, Light Ink text and a 3px cyan bar along
   the bottom edge (an underline in forced colors).
@@ -704,6 +719,28 @@ name, so a page that repeats one keeps every landmark name unique.
   dialog, never drag-only.
 - **Command palette:** Ctrl+K / Cmd+K opens a modal combobox of destinations
   and actions grouped under Label headings; keys shown as `<kbd>` on paper.
+  In the shell it searches the server (POST, never a URL): destinations,
+  actions and saved views the user may open, and patients by exact full name
+  only. A patient row carries an opaque token, never an identifier; choosing
+  it pins the patient in the banner. Enter opens, arrows move, Escape closes
+  the list and then the palette, and focus returns to the opener.
+- **Patient banner:** raised-paper strip under the navigation whenever a
+  patient is in context, bounded below by a 1px Rule. From 48rem it is pinned
+  (sticky) and the page's scroll padding keeps focused fields clear of it;
+  below 48rem it stays in flow at the top of every page, because wrapped it
+  would cover a third of a phone screen.
+  Identity first: the social name when recorded (then "Nome de registro"),
+  the name at Heading weight in body size, then age in completed years and
+  masked identifiers in Small Navy Gray. Indicators are worded badges: the
+  allergy assessment (Error tint when allergies are documented, Warning when
+  not assessed, muted when none is documented; shown only on the assigned
+  physician's encounter, never inferred), "Atendimento em andamento" (Info),
+  delegate context and restricted record (Warning with a lock glyph). Patient
+  actions are quiet buttons ending in "Fechar paciente". The banner never
+  reaches the page title, a URL, a toast or browser storage, and a record
+  page for another patient suppresses it rather than show a mismatch.
+  Switching or closing with unsaved changes opens a danger dialog ("Manter
+  este paciente" / "Descartar e trocar"); nothing is retargeted.
 - **Announcer and toast:** one polite and one assertive live region per page
   plus a toast stack at the inline end; toasts are bordered raised paper in
   their tone, stay until dismissed (no timers) and never carry clinical

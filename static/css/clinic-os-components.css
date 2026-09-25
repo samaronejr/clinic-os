@@ -1670,6 +1670,218 @@ a.citation:hover,
 }
 
 /* ------------------------------------------------------------------ */
+/* Workspace shell: palette trigger, section row, patient banner       */
+/* ------------------------------------------------------------------ */
+
+/* The search trigger sits on the navy band beside the clinic context. */
+.nav-command {
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: var(--line-1) solid var(--color-surface-dark-hover);
+  border-radius: var(--radius-1);
+  color: var(--color-ink-on-dark-soft);
+  font-weight: var(--weight-label);
+  text-decoration: none;
+  transition: var(--transition-state);
+}
+
+.nav-command:hover {
+  background: var(--color-surface-dark-hover);
+  color: var(--color-ink-on-dark);
+}
+
+.nav-command:active {
+  transform: translateY(var(--line-1));
+}
+
+.nav-command .icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+/* The chord only helps a keyboard at a desk; phones keep the word. */
+.nav-command-key {
+  display: none;
+  border-color: var(--color-ink-on-dark-muted);
+  background: transparent;
+  color: var(--color-ink-on-dark-soft);
+}
+
+/* Section row: the open places of the current destination, on paper. */
+.shell-subnav {
+  border-bottom: var(--line-1) solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.shell-subnav .tabs {
+  width: min(var(--measure-wide), 100%);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+
+.shell-subnav .tabs-list {
+  margin: 0;
+  border-bottom: 0;
+}
+
+/* Patient banner: raised strip; identity first, actions last. Phones keep it
+   in flow at the top of every page (wrapped, it would cover a third of the
+   screen); from 48rem it is pinned, and the page scroll padding keeps a
+   focused field clear of it (WCAG 2.4.11). */
+.patient-banner {
+  border-bottom: var(--line-1) solid var(--color-line);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+}
+
+.patient-banner--specimen {
+  position: static;
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-1);
+}
+
+.patient-banner-inner {
+  width: min(var(--measure-wide), 100%);
+  margin-inline: auto;
+  padding: var(--space-2) var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.patient-banner-inner > .state-note {
+  flex: 1 1 100%;
+}
+
+.patient-banner-identity {
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+}
+
+.patient-banner-name {
+  font-size: var(--text-body);
+  font-weight: var(--weight-heading);
+  line-height: var(--leading-label);
+  overflow-wrap: anywhere;
+}
+
+.patient-banner-meta {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.patient-banner-flags {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.patient-banner-flags .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.patient-banner-flags .icon {
+  width: var(--text-small);
+  height: var(--text-small);
+}
+
+.patient-banner-actions {
+  margin-inline-start: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.patient-banner-actions form {
+  margin: 0;
+}
+
+.patient-banner-close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Palette page (the no-JavaScript baseline of Ctrl+K). */
+.command-page-form {
+  margin-block-end: var(--space-5);
+}
+
+.command-page-results h2 {
+  margin-block: var(--space-5) var(--space-2);
+  font-size: var(--text-heading);
+}
+
+.command-page-list {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.command-page-list form {
+  margin: 0;
+}
+
+/* A patient row reads name first, age on its own line under it. */
+.command-page-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: start;
+}
+
+.command-page-meta {
+  color: var(--color-ink-soft);
+  font-size: var(--text-small);
+  font-weight: 400;
+}
+
+@media (min-width: 48rem) {
+  .nav-command-key {
+    display: inline;
+  }
+
+  .patient-banner:not(.patient-banner--specimen) {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+  }
+
+  html:has(.patient-banner:not(.patient-banner--specimen)) {
+    scroll-padding-top: calc(var(--control-height) * 2 + var(--space-5));
+  }
+
+  .shell-subnav .tabs,
+  .patient-banner-inner {
+    padding-inline: var(--space-5);
+  }
+}
+
+@media (min-width: 80rem) {
+  .shell-subnav .tabs,
+  .patient-banner-inner {
+    padding-inline: var(--space-7);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Responsive, preferences, forced colors                              */
 /* ------------------------------------------------------------------ */
 
@@ -1678,8 +1890,13 @@ a.citation:hover,
   .drawer--docked,
   .segmented-option,
   .tab,
-  .citation {
+  .citation,
+  .nav-command {
     transition: none;
+  }
+
+  .nav-command:active {
+    transform: none;
   }
 
   .toast[data-toast-state="entering"],
@@ -1712,7 +1929,9 @@ a.citation:hover,
   .diff,
   .docviewer,
   .docviewer-page,
-  .chart {
+  .chart,
+  .nav-command,
+  .patient-banner {
     border-color: CanvasText;
   }
 

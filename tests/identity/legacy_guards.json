@@ -347,6 +347,54 @@
       ]
     },
     {
+      "symbol": "apps.core.command_views.command_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+    },
+    {
+      "symbol": "apps.core.command_views.command_options",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+    },
+    {
+      "symbol": "apps.core.command_views.command_run",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+    },
+    {
+      "symbol": "apps.core.command_views.patient_close",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+    },
+    {
+      "symbol": "apps.core.navigation.granted_permissions",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+    },
+    {
+      "symbol": "apps.core.workspace.current_clinic",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+    },
+    {
       "symbol": "apps.ehr.attachment_views._workspace",
       "signals": [
         "denial",
@@ -1050,6 +1098,14 @@
       "probes": [
         "apps.identity.preferences_views.preferences_view"
       ]
+    },
+    {
+      "symbol": "apps.identity.saved_views.save_view",
+      "signals": [
+        "actor"
+      ],
+      "kind": "v2",
+      "reason": "Todo 13 per-user saved views (v2): row security binds rows to the actor GUC, tenant and a held clinic role; exercised by tests/core/test_saved_views.py, not a pre-v2 parity oracle."
     },
     {
       "symbol": "apps.identity.scope_provisioning._owner_clinic",

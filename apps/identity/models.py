@@ -409,3 +409,41 @@ class PhysicianEvidence(models.Model):
     def __str__(self) -> str:
         """Return only the stable evidence identifier."""
         return str(self.pk)
+
+
+class SavedView(TenantScopedModel):
+    """One user's saved workspace view: a destination plus closed parameters.
+
+    Parameters are short slugs from each destination's registered vocabulary
+    (``apps.core.saved_views``), never free text, so a saved view can carry
+    no patient data. Row security binds every row to ``app.current_user_id``
+    and a role the user still holds in the clinic; the runtime role may insert
+    and archive, never delete.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    destination = models.CharField(max_length=32)
+    params = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Keep destinations slug-shaped and one active copy per view."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(destination__regex=r"^[a-z][a-z-]{0,31}$"),
+                name="identity_savedview_destination_slug",
+            ),
+            models.UniqueConstraint(
+                fields=("user", "clinic", "destination", "params"),
+                condition=models.Q(archived_at__isnull=True),
+                name="identity_savedview_active_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the stable record identifier."""
+        return str(self.pk)

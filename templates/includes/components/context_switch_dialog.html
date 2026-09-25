@@ -1,0 +1,17 @@
+{% load i18n %}{% comment %}
+Context-switch consequence dialog: shown by static/js/patient-context.js when
+a patient switch or close is held by unsaved work on the page. Script-only
+(it cannot open without JavaScript, and without JavaScript nothing holds a
+switch), so its buttons are type="button" and it holds no form. Rendered by
+base.html only while a patient banner is present.
+Context: specimen (True renders it open in flow, showcase only).
+{% endcomment %}<dialog class="dialog dialog--danger{% if specimen %} dialog--specimen{% endif %}" id="context-switch-dialog" aria-labelledby="context-switch-dialog-title" aria-describedby="context-switch-dialog-body"{% if specimen %} open{% endif %} data-dialog data-context-switch-dialog>
+  <div class="dialog-form">
+    <h2 class="dialog-title" id="context-switch-dialog-title">{% trans "Leave this patient and lose unsaved changes?" %}</h2>
+    <p class="dialog-body" id="context-switch-dialog-body">{% trans "Changes on this page that were not saved yet will be lost. Keep this patient to go back and save them." %}</p>
+    <div class="dialog-actions">
+      <button type="button" class="button--quiet" data-context-keep>{% trans "Keep this patient" %}</button>
+      <button type="button" class="button--danger" data-context-discard>{% trans "Discard changes" %}</button>
+    </div>
+  </div>
+</dialog>

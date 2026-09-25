@@ -1,4 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{# Error pages never show the pinned patient (no patient data on denials). #}
+{% block patient_banner %}{% endblock %}{% block context_switch_dialog %}{% endblock %}
 {% block title %}{% trans "Reload this page" %} · Clinic OS{% endblock %}
 {% block content %}<section class="auth-shell"><h1>{% trans "Reload this page" %}</h1><p>{% trans "This submission could not be verified. Reload the form and try again." %}</p></section>{% endblock %}

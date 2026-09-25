@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Go to or do" %} · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-wide command-page" aria-labelledby="command-title">
+  <h1 id="command-title">{% trans "Go to or do" %}</h1>
+  <p class="lede">{% trans "Find a destination or action you can use in this clinic. To find a patient, type their full name." %}</p>
+  <form class="command-page-form" method="post" action="{% url 'workspace-command' %}" role="search" novalidate>
+    {% csrf_token %}
+    <div class="field">
+      <label class="field-label" for="command-q">{% trans "Search destinations and actions" %}</label>
+      <input id="command-q" name="q" type="text" autocomplete="off" spellcheck="false" maxlength="100"{% if query %} value="{{ query }}"{% endif %} aria-describedby="command-q-hint">
+      <p class="hint" id="command-q-hint">{% trans "Patients: type the full name." %}</p>
+    </div>
+    <div class="actions"><button type="submit">{% trans "Search" %}</button></div>
+  </form>
+  {% if searched %}
+    <div class="command-page-results" id="command-results" tabindex="-1" autofocus>
+      {% if invalid %}
+        {% include "includes/components/state.html" with state="error" title=_("This search could not run") message=_("Use at most 100 characters, then search again.") only %}
+      {% elif not groups %}
+        {% include "includes/components/state.html" with state="empty" title=_("Nothing matches") message=_("Check the spelling, or type a patient's full name.") only %}
+      {% endif %}
+      {% for group in groups %}
+        <h2>{{ group.label }}</h2>
+        <ul class="command-page-list">
+          {% for option in group.items %}
+            <li>{% if option.href %}<a class="button button--secondary" href="{{ option.href }}">{{ option.label }}</a>{% else %}<form method="post" action="{% url 'workspace-command-run' %}" data-context-switch>{% csrf_token %}<input type="hidden" name="token" value="{{ option.token }}"><input type="hidden" name="next" value="{% url 'workspace-home' %}"><input type="hidden" name="unsaved" value=""><button class="button--secondary" type="submit"><span>{{ option.label }}</span>{% if option.meta %}<span class="command-page-meta">{{ option.meta }}</span>{% endif %}</button></form>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      {% endfor %}
+      {% if patient_status == "refine" %}
+        {% include "includes/components/state.html" with state="conflict" title=_("Several patients share this name") message=_("Use the patient registry to tell them apart.") only %}
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Switch patient?" %} · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="switch-title">
+  <h1 id="switch-title">{% trans "Switch patient?" %}</h1>
+  <div class="feedback feedback--error" role="alert" tabindex="-1" autofocus>
+    <h2>{% trans "Work is still bound to the current patient" %}</h2>
+    <ul>{% for consequence in consequences %}<li>{{ consequence.message }}</li>{% endfor %}</ul>
+    <p>{% trans "Nothing moves to the other patient. Keep this patient to finish that work, or discard it to switch." %}</p>
+  </div>
+  <div class="actions">
+    <a class="button button--secondary" href="{{ next }}">{% trans "Keep this patient" %}</a>
+    <form method="post" action="{% if token %}{% url 'workspace-command-run' %}{% else %}{% url 'workspace-patient-close' %}{% endif %}">
+      {% csrf_token %}
+      {% if token %}<input type="hidden" name="token" value="{{ token }}">{% endif %}
+      <input type="hidden" name="next" value="{{ next }}">
+      <input type="hidden" name="consequence" value="discard">
+      <button class="button--danger" type="submit">{% trans "Discard and switch" %}</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
