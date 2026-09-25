@@ -1,0 +1,28 @@
+{% load i18n %}{% comment %}
+Segmented control: one choice among two to five short options. Native radio
+inputs, so arrows, Space, forms and no-JavaScript submits all work; no
+script is needed. The checked option is marked by border and weight, not by
+color alone.
+
+Context:
+  name      Radio group name (required).
+  legend    Visible group label (required).
+  options   Iterable of {value, label, icon, disabled}.
+  value     Checked value.
+  id        Base id (default: name).
+  hint      Supporting text under the options.
+  state     SC-8 state: loading sets aria-busy; disabled disables all;
+            error/success/stale/conflict/offline/permission-denied/empty add
+            a state note; hover/focus/active force the first unchecked option.
+  message   State note or error text.
+{% endcomment %}{% with base=id|default:name %}<fieldset class="segmented" id="{{ base }}"{% if state == "loading" %} aria-busy="true"{% endif %}{% if state == "disabled" or state == "permission-denied" %} disabled{% endif %}{% if hint or message %} aria-describedby="{% if hint %}{{ base }}-hint{% endif %}{% if message %} {{ base }}-message{% endif %}"{% endif %}>
+  <legend>{{ legend }}</legend>
+  <div class="segmented-options">
+    {% for option in options %}<label class="segmented-option{% if option.value != value and forloop.counter == 2 %}{% if state == "hover" %} is-hover{% elif state == "focus" %} is-focus{% elif state == "active" %} is-active{% endif %}{% endif %}">
+      <input type="radio" name="{{ name }}" value="{{ option.value }}"{% if option.value == value %} checked{% endif %}{% if option.disabled %} disabled{% endif %}>
+      {% if option.icon %}{% include "includes/components/icon.html" with name=option.icon only %}{% endif %}<span>{{ option.label }}</span>
+    </label>{% endfor %}
+  </div>
+  {% if hint %}<p class="hint" id="{{ base }}-hint">{{ hint }}</p>{% endif %}
+  {% if state == "error" %}<p class="field-error" id="{{ base }}-message" role="alert">{{ message }}</p>{% elif state == "success" %}<p class="field-success" id="{{ base }}-message" role="status">{{ message }}</p>{% elif state == "loading" %}<p class="field-progress segmented-progress" id="{{ base }}-message" role="status">{{ message|default:_("Saving…") }}</p>{% elif state == "stale" or state == "conflict" or state == "offline" or state == "permission-denied" or state == "empty" %}{% include "includes/components/state.html" with state=state message=message id=base|add:"-message" only %}{% endif %}
+</fieldset>{% endwith %}

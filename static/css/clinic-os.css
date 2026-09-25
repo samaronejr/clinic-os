@@ -50,6 +50,27 @@
   --color-success-marker: var(--brand-teal);
   --color-error: #8f3f1f;
   --color-error-tint: #fbede6;
+  --color-warning: #7a4d00;
+  --color-warning-tint: #fcf0d9;
+  --color-info: #1e5470;
+  --color-info-tint: #e6f0f6;
+  /* Text on a full-strength marker fill (navigation success badge). */
+  --color-on-marker: var(--brand-navy);
+
+  /* Data visualization: six categorical hues, >= 3:1 on raised and canvas
+     surfaces and distinct under protan/deutan/tritan simulation
+     (tests/renewal/test_design_tokens.py). Series also differ by marker. */
+  --viz-1: #007a87;
+  --viz-2: #b36b00;
+  --viz-3: #312a86;
+  --viz-4: #c4337f;
+  --viz-5: #3f6317;
+  --viz-6: #69442f;
+  --viz-range: var(--color-success-tint);
+  --viz-grid: var(--paper-line);
+
+  /* Flat scrim behind a modal dialog (no blur, no gradient). */
+  --color-scrim: rgb(15 45 58 / 0.55);
 
   /* Space (4px base) */
   --space-1: 0.25rem;
@@ -71,6 +92,17 @@
   --ring-width: 0.125rem;
   --ring-offset: 0.125rem;
   --control-height: 2.75rem;
+  --icon-size: 1.125rem;
+
+  /* Density: spacing inside work surfaces. Targets never shrink below
+     --control-height in any density. */
+  --density-stack: var(--space-5);
+  --density-cell-block: var(--space-3);
+  --density-cell-inline: var(--space-3);
+  --density-panel-pad: var(--space-5);
+  --density-notice-block: var(--space-3);
+  --density-gap: var(--space-5);
+  --density-row-min: var(--control-height);
 
   /* Measure */
   --measure-narrow: 36rem;
@@ -89,6 +121,8 @@
   --text-lede: 1.125rem;
   --text-body: 1rem;
   --text-small: 0.875rem;
+  /* Chart axis labels only (SVG user units scale with the chart). */
+  --text-micro: 0.75rem;
   --weight-title: 700;
   --weight-heading: 650;
   --weight-label: 600;
@@ -100,12 +134,65 @@
 
   /* Motion */
   --duration-1: 120ms;
+  --duration-2: 160ms;
+  --duration-3: 240ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* State reveals (drawer, toast, disclosure): opacity and transform only. */
+  --transition-reveal: opacity var(--duration-2) var(--ease-out),
+    transform var(--duration-3) var(--ease-out);
   /* Focus rings are never transitioned: a ring appears instantly. */
   --transition-state: color var(--duration-1) var(--ease-out),
     background-color var(--duration-1) var(--ease-out),
     border-color var(--duration-1) var(--ease-out),
     transform var(--duration-1) var(--ease-out);
+}
+
+/* Dark theme: navy-derived surfaces chosen per user (UserPreference),
+   never by the OS alone. Cyan stays a marker and focus color; actions use a
+   lightened teal with navy text. */
+[data-theme="dark"] {
+  --color-ink: #e6f0f2;
+  --color-ink-soft: #a9c0c8;
+  --color-surface: #0b1f28;
+  --color-surface-raised: #12303d;
+  --color-surface-sunken: #1a3a48;
+  --color-surface-dark: #07161d;
+  --color-surface-dark-hover: #1a3a48;
+  --color-line: #2b4b58;
+  --color-control-border: #8aa3ad;
+  --color-primary: #5cc8d3;
+  --color-primary-strong: #8adbe2;
+  --color-on-primary: #0b1f28;
+  --color-selection: #1b4a55;
+  --color-focus: var(--brand-cyan);
+  --color-success: #7fd8b4;
+  --color-success-tint: #0f3a30;
+  --color-error: #f0aa8a;
+  --color-error-tint: #3a2219;
+  --color-warning: #f0c56c;
+  --color-warning-tint: #33290f;
+  --color-info: #a3cde3;
+  --color-info-tint: #15313f;
+  --color-on-marker: #0b1f28;
+  --viz-1: #5cc8d3;
+  --viz-2: #e0913f;
+  --viz-3: #9a87f5;
+  --viz-4: #ef6f8e;
+  --viz-5: #d8e062;
+  --viz-6: #b9e8b0;
+  --viz-grid: #2b4b58;
+  --color-scrim: rgb(2 10 14 / 0.72);
+  color-scheme: dark;
+}
+
+/* Compact density: tighter rhythm for desk work; same targets and type. */
+[data-density="compact"] {
+  --density-stack: var(--space-3);
+  --density-cell-block: var(--space-1);
+  --density-cell-inline: var(--space-2);
+  --density-panel-pad: var(--space-4);
+  --density-notice-block: var(--space-2);
+  --density-gap: var(--space-3);
 }
 
 /* ------------------------------------------------------------------ */
@@ -118,6 +205,7 @@
 
 html {
   color-scheme: light;
+  scrollbar-color: var(--color-control-border) var(--color-surface);
 }
 
 body {
@@ -547,7 +635,7 @@ main {
 
 .nav-badge--success {
   background: var(--color-success-marker);
-  color: var(--color-ink);
+  color: var(--color-on-marker);
 }
 
 /* ------------------------------------------------------------------ */
@@ -556,7 +644,7 @@ main {
 
 .field {
   min-width: 0;
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--density-stack);
 }
 
 .field label,
@@ -593,6 +681,12 @@ textarea {
   background: var(--color-surface-raised);
   color: var(--color-ink);
   transition: var(--transition-state);
+}
+
+/* Focus scrolling keeps the ring clear of the viewport edge. */
+textarea,
+.table-scroll {
+  scroll-margin-block: var(--space-4);
 }
 
 textarea {
@@ -812,8 +906,8 @@ button:disabled:active,
 
 .feedback {
   min-width: 0;
-  margin-bottom: var(--space-5);
-  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--density-stack);
+  padding: var(--density-notice-block) var(--space-4);
   overflow-wrap: anywhere;
   border: var(--line-1) solid var(--color-line);
   border-radius: var(--radius-1);
@@ -958,7 +1052,7 @@ button:disabled:active,
 
 .table th,
 .table td {
-  padding: var(--space-3);
+  padding: var(--density-cell-block) var(--density-cell-inline);
   border-bottom: var(--line-1) solid var(--color-line);
   text-align: start;
   vertical-align: top;
@@ -1063,8 +1157,8 @@ button:disabled:active,
 .panel,
 .auth-card {
   min-width: 0;
-  margin-bottom: var(--space-5);
-  padding: var(--space-5);
+  margin-bottom: var(--density-stack);
+  padding: var(--density-panel-pad);
   overflow-wrap: anywhere;
   border: var(--line-1) solid var(--color-line);
   border-radius: var(--radius-2);

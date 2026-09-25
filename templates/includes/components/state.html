@@ -1,0 +1,22 @@
+{% load i18n %}{% comment %}
+State note: the shared wording and look for a component-level state.
+
+Context:
+  state          empty | loading | error | success | stale | conflict |
+                 permission-denied | offline | disabled (required)
+  title          Short heading; defaults to the state's standard wording.
+  message        One sentence naming what happened and the next safe step.
+  action_label   Optional recovery action text (a link when action_href is
+                 set, otherwise a button that the page wires up).
+  action_href    Optional destination for the recovery action.
+  id             Optional element id (for aria-describedby).
+Roles: error uses role="alert"; every other state uses role="status";
+loading also sets aria-busy. Never put clinical content in a state note.
+{% endcomment %}<div class="state-note state-note--{{ state }}"{% if id %} id="{{ id }}"{% endif %} role="{% if state == "error" %}alert{% else %}status{% endif %}"{% if state == "loading" %} aria-busy="true"{% endif %} data-state-note="{{ state }}">
+  {% if state == "error" or state == "conflict" or state == "stale" %}{% include "includes/components/icon.html" with name="alert" only %}{% elif state == "success" %}{% include "includes/components/icon.html" with name="check" only %}{% elif state == "permission-denied" or state == "disabled" %}{% include "includes/components/icon.html" with name="lock" only %}{% elif state == "offline" %}{% include "includes/components/icon.html" with name="offline" only %}{% elif state == "loading" %}{% include "includes/components/icon.html" with name="clock" only %}{% else %}{% include "includes/components/icon.html" with name="document" only %}{% endif %}
+  <span class="state-note-body">
+    <strong class="state-note-title">{% if title %}{{ title }}{% elif state == "empty" %}{% trans "Nothing here yet" %}{% elif state == "loading" %}{% trans "Loading…" %}{% elif state == "error" %}{% trans "This could not be loaded" %}{% elif state == "success" %}{% trans "Saved" %}{% elif state == "stale" %}{% trans "This may be out of date" %}{% elif state == "conflict" %}{% trans "Someone else changed this" %}{% elif state == "permission-denied" %}{% trans "You do not have access to this" %}{% elif state == "offline" %}{% trans "No connection" %}{% elif state == "disabled" %}{% trans "Not available yet" %}{% endif %}</strong>
+    <span class="state-note-message">{% if message %}{{ message }}{% elif state == "empty" %}{% trans "When there is something to show, it appears here." %}{% elif state == "loading" %}{% trans "This takes a moment; you can keep working." %}{% elif state == "error" %}{% trans "Try again. If it keeps failing, reload the page." %}{% elif state == "success" %}{% trans "Your change is recorded." %}{% elif state == "stale" %}{% trans "Refresh to see the latest version before you act." %}{% elif state == "conflict" %}{% trans "Compare both versions before you save." %}{% elif state == "permission-denied" %}{% trans "Ask a clinic administrator if you need it." %}{% elif state == "offline" %}{% trans "Nothing was sent. Reconnect, then try again." %}{% elif state == "disabled" %}{% trans "Complete the previous step first." %}{% endif %}</span>
+    {% if action_label %}{% if action_href %}<a class="button button--secondary state-note-action" href="{{ action_href }}">{{ action_label }}</a>{% else %}<button type="button" class="button--secondary state-note-action" data-state-action="{{ state }}">{{ action_label }}</button>{% endif %}{% endif %}
+  </span>
+</div>

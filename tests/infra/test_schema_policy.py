@@ -278,3 +278,38 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         ("clinic_resolver", False, False, True, False),
         ("clinic_super", True, True, False, False),
     }
+
+
+def test_user_preference_table_is_user_bound_without_delete() -> None:
+    # Given: the per-user display preference table (design system v2)
+    # When: its row security and runtime grants are read
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT class.relrowsecurity, class.relforcerowsecurity,
+                   class.relowner::regrole::text
+            FROM pg_catalog.pg_class AS class
+            WHERE class.oid = 'clinic_app.identity_userpreference'::regclass
+            """
+        )
+        posture = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT policyname, roles FROM pg_catalog.pg_policies
+            WHERE schemaname = 'clinic_app' AND tablename = 'identity_userpreference'
+            """
+        )
+        policies = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT privilege_type FROM information_schema.role_table_grants
+            WHERE grantee = 'clinic_app' AND table_schema = 'clinic_app'
+              AND table_name = 'identity_userpreference'
+            """
+        )
+        grants = {row[0] for row in cursor.fetchall()}
+
+    # Then: forced RLS bound to the user GUC, and no DELETE or full UPDATE
+    assert posture == (True, True, "clinic_owner")
+    assert policies == [("userpreference_owner_only", ["clinic_app"])]
+    assert grants == {"SELECT", "INSERT"}

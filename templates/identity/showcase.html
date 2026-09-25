@@ -1,12 +1,24 @@
 {% extends "base.html" %}
-{% load i18n clinic_locale %}
+{% load i18n clinic_locale components %}
 {% load static %}
 {% block title %}{% trans "Workspace primitives · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "Review inert Clinic OS workspace primitives and their states in development." %}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-showcase.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-showcase.css' %}">
+<script src="{% static 'js/components/dialog.js' %}" defer></script>
+<script src="{% static 'js/components/drawer.js' %}" defer></script>
+<script src="{% static 'js/components/combobox.js' %}" defer></script>
+<script src="{% static 'js/components/datetime.js' %}" defer></script>
+<script src="{% static 'js/components/resource-grid.js' %}" defer></script>
+<script src="{% static 'js/components/command-palette.js' %}" defer></script>
+<script src="{% static 'js/components/announcer.js' %}" defer></script>
+<script src="{% static 'js/components/tabs.js' %}" defer></script>
+<script src="{% static 'js/components/editor-shell.js' %}" defer></script>
+<script src="{% static 'js/components/document-viewer.js' %}" defer></script>{% endblock %}
 {% block content %}
 <h1 id="showcase-title">{% trans "Workspace primitives" %}</h1>
 <p class="lede">{% trans "Inert, synthetic states for responsive, keyboard, forced-colors and reduced-motion review. Nothing here is a real patient, secret or code." %}</p>
+{% component_states as states %}{% primitive_extra_states as extra_states %}
 
 <nav class="spec-index" aria-label="{% trans "Primitives on this page" %}">
   <ul>
@@ -16,6 +28,22 @@
     <li><a href="#status">{% trans "Status" %}</a></li>
     <li><a href="#table">{% trans "Table" %}</a></li>
     <li><a href="#panel">{% trans "Panel" %}</a></li>
+    <li><a href="#dialog">{% trans "Dialog" %}</a></li>
+    <li><a href="#drawer">{% trans "Drawer" %}</a></li>
+    <li><a href="#combobox">{% trans "Combobox" %}</a></li>
+    <li><a href="#datetime">{% trans "Date and time" %}</a></li>
+    <li><a href="#resource_grid">{% trans "Resource grid" %}</a></li>
+    <li><a href="#command_palette">{% trans "Command palette" %}</a></li>
+    <li><a href="#toast">{% trans "Announcer and toast" %}</a></li>
+    <li><a href="#tabs">{% trans "Tabs" %}</a></li>
+    <li><a href="#segmented">{% trans "Segmented control" %}</a></li>
+    <li><a href="#editor">{% trans "Editor" %}</a></li>
+    <li><a href="#provenance">{% trans "Provenance" %}</a></li>
+    <li><a href="#citation">{% trans "Source citation" %}</a></li>
+    <li><a href="#diff">{% trans "Diff" %}</a></li>
+    <li><a href="#document_viewer">{% trans "Document viewer" %}</a></li>
+    <li><a href="#chart">{% trans "Chart" %}</a></li>
+    <li><a href="#behaviors">{% trans "Behaviors" %}</a></li>
     <li><a href="#stress">{% trans "Stress cases" %}</a></li>
   </ul>
 </nav>
@@ -84,6 +112,10 @@
         </ul>
       </nav>
     </article>
+    {% for extra in extra_states %}<article class="spec" data-primitive="navigation" data-state="{{ extra.key }}">
+      <h3 id="spec-navigation-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="navigation" state=extra.key label=extra.label ctx="spec-navigation-"|add:extra.key %}
+    </article>{% endfor %}
   </div>
 </section>
 
@@ -138,6 +170,10 @@
         <p class="field-success" id="field-success-success">{% trans "Format accepted." %}</p>
       </div>
     </article>
+    {% for extra in extra_states %}<article class="spec" data-primitive="field" data-state="{{ extra.key }}">
+      <h3 id="spec-field-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="field" state=extra.key label=extra.label ctx="spec-field-"|add:extra.key %}
+    </article>{% endfor %}
   </div>
 </section>
 
@@ -188,6 +224,10 @@
         <p class="action-outcome action-outcome--success" role="status">{% trans "Booked for 14:30." %}</p>
       </div>
     </article>
+    {% for extra in extra_states %}<article class="spec" data-primitive="action" data-state="{{ extra.key }}">
+      <h3 id="spec-action-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="action" state=extra.key label=extra.label ctx="spec-action-"|add:extra.key %}
+    </article>{% endfor %}
   </div>
 </section>
 
@@ -229,6 +269,10 @@
       {% include "includes/notice.html" with tone="success" heading="h4" title=_("Appointment booked") message=_("Marina Duarte Sampaio, 14:30 with Dr. Otávio Lins.") %}
       <p class="badge-row"><span class="badge badge--success">{% trans "Confirmed" %}</span></p>
     </article>
+    {% for extra in extra_states %}<article class="spec" data-primitive="status" data-state="{{ extra.key }}">
+      <h3 id="spec-status-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="status" state=extra.key label=extra.label ctx="spec-status-"|add:extra.key %}
+    </article>{% endfor %}
   </div>
 </section>
 
@@ -236,8 +280,8 @@
   <h2 id="table-title">{% trans "Table" %}</h2>
   <div class="spec-grid spec-grid--stack">
     <article class="spec" data-primitive="table" data-state="default">
-      <h3>{% trans "Default" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-default-caption" tabindex="0">
+      <h3 id="spec-table-default">{% trans "Default" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-default-caption spec-table-default" tabindex="0">
         <table class="table">
           <caption id="table-default-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -250,8 +294,8 @@
       <p class="table-empty">{% trans "No appointments in this week yet. Book one from the patient registry." %}</p>
     </article>
     <article class="spec" data-primitive="table" data-state="focus">
-      <h3>{% trans "Focus" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-focus-caption" tabindex="0">
+      <h3 id="spec-table-focus">{% trans "Focus" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-focus-caption spec-table-focus" tabindex="0">
         <table class="table">
           <caption id="table-focus-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -262,8 +306,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="disabled">
-      <h3>{% trans "Disabled" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-disabled-caption" tabindex="0">
+      <h3 id="spec-table-disabled">{% trans "Disabled" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-disabled-caption spec-table-disabled" tabindex="0">
         <table class="table">
           <caption id="table-disabled-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -274,8 +318,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="loading">
-      <h3>{% trans "Loading" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-loading-caption" tabindex="0">
+      <h3 id="spec-table-loading">{% trans "Loading" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-loading-caption spec-table-loading" tabindex="0">
         <table class="table" aria-busy="true">
           <caption id="table-loading-caption">{% trans "Appointments today" %} <span class="table-progress" role="status">{% trans "Updating…" %}</span></caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th></tr></thead>
@@ -287,8 +331,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="error">
-      <h3>{% trans "Error" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-error-caption" tabindex="0">
+      <h3 id="spec-table-error">{% trans "Error" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-error-caption spec-table-error" tabindex="0">
         <table class="table">
           <caption id="table-error-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -299,8 +343,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="success">
-      <h3>{% trans "Success" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-success-caption" tabindex="0">
+      <h3 id="spec-table-success">{% trans "Success" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-success-caption spec-table-success" tabindex="0">
         <table class="table">
           <caption id="table-success-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -310,6 +354,10 @@
         </table>
       </div>
     </article>
+    {% for extra in extra_states %}<article class="spec" data-primitive="table" data-state="{{ extra.key }}">
+      <h3 id="spec-table-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="table" state=extra.key label=extra.label ctx="spec-table-"|add:extra.key %}
+    </article>{% endfor %}
   </div>
 </section>
 
@@ -362,7 +410,180 @@
         <div class="actions"><a class="button button--secondary" href="#panel">{% trans "Back to agenda" %}</a></div>
       </div>
     </article>
+    {% for extra in extra_states %}<article class="spec" data-primitive="panel" data-state="{{ extra.key }}">
+      <h3 id="spec-panel-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="panel" state=extra.key label=extra.label ctx="spec-panel-"|add:extra.key %}
+    </article>{% endfor %}
   </div>
+</section>
+
+<section class="spec-section" id="dialog" aria-labelledby="dialog-title">
+  <h2 id="dialog-title">{% trans "Dialog" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="dialog" data-state="{{ state.key }}">
+      <h3 id="spec-dialog-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/dialog.html" with state=state.key sid="dialog-"|add:state.key ctx="spec-dialog-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="drawer" aria-labelledby="drawer-title">
+  <h2 id="drawer-title">{% trans "Drawer" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="drawer" data-state="{{ state.key }}">
+      <h3 id="spec-drawer-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/drawer.html" with state=state.key sid="drawer-"|add:state.key ctx="spec-drawer-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="combobox" aria-labelledby="combobox-title">
+  <h2 id="combobox-title">{% trans "Combobox" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="combobox" data-state="{{ state.key }}">
+      <h3 id="spec-combobox-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/combobox.html" with state=state.key sid="combobox-"|add:state.key ctx="spec-combobox-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="datetime" aria-labelledby="datetime-title">
+  <h2 id="datetime-title">{% trans "Date and time" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="datetime" data-state="{{ state.key }}">
+      <h3 id="spec-datetime-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/datetime.html" with state=state.key sid="datetime-"|add:state.key ctx="spec-datetime-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="resource_grid" aria-labelledby="resource_grid-title">
+  <h2 id="resource_grid-title">{% trans "Resource grid" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="resource_grid" data-state="{{ state.key }}">
+      <h3 id="spec-resource_grid-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/resource_grid.html" with state=state.key sid="resource_grid-"|add:state.key ctx="spec-resource_grid-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="command_palette" aria-labelledby="command_palette-title">
+  <h2 id="command_palette-title">{% trans "Command palette" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="command_palette" data-state="{{ state.key }}">
+      <h3 id="spec-command_palette-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/command_palette.html" with state=state.key sid="command_palette-"|add:state.key ctx="spec-command_palette-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="toast" aria-labelledby="toast-title">
+  <h2 id="toast-title">{% trans "Announcer and toast" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="toast" data-state="{{ state.key }}">
+      <h3 id="spec-toast-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/toast.html" with state=state.key sid="toast-"|add:state.key ctx="spec-toast-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="tabs" aria-labelledby="tabs-title">
+  <h2 id="tabs-title">{% trans "Tabs" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="tabs" data-state="{{ state.key }}">
+      <h3 id="spec-tabs-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/tabs.html" with state=state.key sid="tabs-"|add:state.key ctx="spec-tabs-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="segmented" aria-labelledby="segmented-title">
+  <h2 id="segmented-title">{% trans "Segmented control" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="segmented" data-state="{{ state.key }}">
+      <h3 id="spec-segmented-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/segmented.html" with state=state.key sid="segmented-"|add:state.key ctx="spec-segmented-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="editor" aria-labelledby="editor-title">
+  <h2 id="editor-title">{% trans "Editor" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="editor" data-state="{{ state.key }}">
+      <h3 id="spec-editor-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/editor.html" with state=state.key sid="editor-"|add:state.key ctx="spec-editor-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="provenance" aria-labelledby="provenance-title">
+  <h2 id="provenance-title">{% trans "Provenance" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="provenance" data-state="{{ state.key }}">
+      <h3 id="spec-provenance-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/provenance.html" with state=state.key sid="provenance-"|add:state.key ctx="spec-provenance-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="citation" aria-labelledby="citation-title">
+  <h2 id="citation-title">{% trans "Source citation" %}</h2>
+  <div class="spec-grid">
+    {% for state in states %}<article class="spec" data-primitive="citation" data-state="{{ state.key }}">
+      <h3 id="spec-citation-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/citation.html" with state=state.key sid="citation-"|add:state.key ctx="spec-citation-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="diff" aria-labelledby="diff-title">
+  <h2 id="diff-title">{% trans "Diff" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="diff" data-state="{{ state.key }}">
+      <h3 id="spec-diff-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/diff.html" with state=state.key sid="diff-"|add:state.key ctx="spec-diff-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="document_viewer" aria-labelledby="document_viewer-title">
+  <h2 id="document_viewer-title">{% trans "Document viewer" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="document_viewer" data-state="{{ state.key }}">
+      <h3 id="spec-document_viewer-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/document_viewer.html" with state=state.key sid="document_viewer-"|add:state.key ctx="spec-document_viewer-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="chart" aria-labelledby="chart-title">
+  <h2 id="chart-title">{% trans "Chart" %}</h2>
+  <div class="spec-grid spec-grid--wide">
+    {% for state in states %}<article class="spec" data-primitive="chart" data-state="{{ state.key }}">
+      <h3 id="spec-chart-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/chart.html" with state=state.key sid="chart-"|add:state.key ctx="spec-chart-"|add:state.key %}
+    </article>{% endfor %}
+  </div>
+</section>
+<section class="spec-section" id="behaviors" aria-labelledby="behaviors-title">
+  <h2 id="behaviors-title">{% trans "Behaviors" %}</h2>
+  <p>{% trans "Live components for keyboard review: open, move and close them; focus returns to the control that opened them." %}</p>
+  <div class="spec-grid">
+    <article class="spec" data-behavior="dialog">
+      <h3>{% trans "Dialog" %}</h3>
+      <div class="actions"><button type="button" class="button--danger" data-dialog-open="live-dialog">{% trans "Discard changes" %}</button></div>
+      {% include "includes/components/dialog.html" with id="live-dialog" title=_("Discard the unsaved note?") body=_("The text typed since 14:32 will be lost. The saved version stays.") confirm_label=_("Discard changes") cancel_label=_("Keep editing") tone="danger" action="#behaviors" %}
+    </article>
+    <article class="spec" data-behavior="drawer">
+      <h3>{% trans "Drawer" %}</h3>
+      <div class="actions"><button type="button" class="button--secondary" data-drawer-toggle="live-drawer" aria-controls="live-drawer" aria-expanded="true">{% trans "Patient summary" %}</button></div>
+      {% include "includes/components/drawer.html" with id="live-drawer" title=_("Patient summary") body=_("Ana Ribeiro Sintética, 34 years. Allergy on record: dipyrone (reported).") collapsible=True %}
+    </article>
+    <article class="spec" data-behavior="combobox">
+      <h3>{% trans "Combobox" %}</h3>
+      {% load showcase %}{% showcase_fixture "patient_options" as live_options %}
+      {% include "includes/components/combobox.html" with id="live-combobox" name="live-combobox" label=_("Patient") hint=_("Search by full name or CPF; results show age and masked CPF.") options=live_options %}
+    </article>
+    <article class="spec" data-behavior="datetime">
+      <h3>{% trans "Date and time" %}</h3>
+      {% include "includes/components/datetime.html" with id="live-datetime" name="live-datetime" legend=_("Appointment date and time") date_value="04/03/2031" time_value="14:30" timezone="America/Sao_Paulo" timezone_label=_("Brasília time (America/Sao_Paulo)") min="2031-03-03" %}
+    </article>
+    <article class="spec" data-behavior="announcer">
+      <h3>{% trans "Announcer and toast" %}</h3>
+      <div class="actions"><button type="button" class="button--secondary" data-announce="{% trans "Reminder confirmed." %}" data-announce-tone="success">{% trans "Confirm reminder" %}</button></div>
+      <p class="hint">{% trans "Command palette: press Ctrl+K (Cmd+K on Mac)." %} <button type="button" class="button--quiet" data-command-open="live-palette">{% trans "Open commands" %} <kbd>Ctrl</kbd>+<kbd>K</kbd></button></p>
+    </article>
+  </div>
+  {% showcase_fixture "command_groups" as live_groups %}
+  {% include "includes/components/command_palette.html" with id="live-palette" groups=live_groups %}
+  {% include "includes/components/announcer.html" %}
 </section>
 
 <section class="spec-section" id="stress" aria-labelledby="stress-title">

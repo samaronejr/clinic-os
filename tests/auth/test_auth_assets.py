@@ -28,11 +28,13 @@ def test_linked_stylesheets_are_split_into_reviewable_modules() -> None:
         "clinic-os-intake.css",
         "clinic-os-scheduling.css",
     ]
-    # The shell carries tokens, primitives and shared components; each
-    # domain module stays a separately reviewable file.
-    assert _pure_lines(_asset_text("css/clinic-os.css")) <= 1100
+    # The shell carries tokens (light, dark and compact blocks, design system
+    # v2), primitives and shared components; each domain module and the
+    # per-page component library stay separately reviewable files.
+    assert _pure_lines(_asset_text("css/clinic-os.css")) <= 1200
     for path in linked[1:]:
         assert _pure_lines(_asset_text(f"css/{path}")) <= 600
+    assert "clinic-os-components.css" not in linked
 
 
 def test_design_tokens_control_typography_and_tablet_gutters() -> None:

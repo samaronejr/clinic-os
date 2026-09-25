@@ -1,0 +1,26 @@
+{% load i18n %}{% comment %}
+Command palette shell: Ctrl+K / Cmd+K opens a modal <dialog> holding a
+combobox of destinations and actions. static/js/components/command-palette.js
+owns the shortcut, focus return and activation; the combobox behavior is the
+shared combobox.js. Results come from the page (groups) or from the
+server-rendered search endpoint (todo 13) through the combobox endpoint
+contract; the palette never searches patient text client-side.
+
+Context:
+  id        Dialog id (required); open with data-command-open="<id>".
+  groups    Iterable of {label, items: [{value, label, meta, href}]}.
+  endpoint  Optional async search endpoint (POST, see combobox.html).
+  state     SC-8 state for the result area.
+  message   State note text.
+  specimen  True renders it open in flow (showcase only).
+{% endcomment %}<dialog class="command-palette{% if specimen %} command-palette--specimen{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if specimen %} open{% endif %} data-command-palette>
+  <div class="command-palette-body">
+    <h2 class="command-palette-title" id="{{ id }}-title">{% trans "Go to or do" %}</h2>
+    {% trans "Search destinations and actions" as search_label %}
+    {% if state == "empty" %}{% include "includes/components/combobox.html" with id=id|add:"-input" name="q" label=search_label value="xyz" state=state status=_("No destination or action matches. Check the spelling.") endpoint=endpoint %}
+    {% elif state == "loading" or state == "error" or state == "disabled" or state == "permission-denied" %}{% include "includes/components/combobox.html" with id=id|add:"-input" name="q" label=search_label state=state status=message endpoint=endpoint %}
+    {% else %}{% include "includes/components/combobox.html" with id=id|add:"-input" name="q" label=search_label groups=groups expanded=True state=state endpoint=endpoint %}{% endif %}
+    {% if state == "stale" or state == "conflict" or state == "offline" or state == "success" or state == "permission-denied" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+    <p class="command-palette-hint">{% blocktrans %}<kbd>Enter</kbd> opens, <kbd>Esc</kbd> closes.{% endblocktrans %}</p>
+  </div>
+</dialog>

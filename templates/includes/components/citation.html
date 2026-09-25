@@ -1,0 +1,15 @@
+{% load i18n %}{% comment %}
+Source-citation chip: links a drafted sentence to the source span that
+supports it (transcript moment, chart item). The target element carries
+class "citation-source" and the id in href. A missing citation is shown,
+never hidden, so uncited text stays visible for review.
+
+Context:
+  index    Citation number (required unless state is "empty").
+  label    Short source label ("Transcript 00:14").
+  href     "#<source-id>" in-page anchor; no record ids in URLs.
+  state    default | hover | focus | active (current source) | disabled
+           (source withdrawn) | loading | error (source missing) | success
+           (verified) | empty (no citation) | stale | conflict |
+           permission-denied | offline.
+{% endcomment %}{% if state == "disabled" or state == "empty" or state == "permission-denied" or state == "loading" or state == "offline" %}<span class="citation{% if state == "empty" or state == "disabled" or state == "permission-denied" %} citation--missing{% elif state == "offline" %} citation--offline{% endif %}" role="link" aria-disabled="true"{% if state == "loading" %} aria-busy="true"{% endif %}>{% if state == "empty" %}{% include "includes/components/icon.html" with name="alert" only %}{% trans "No source" %}{% elif state == "permission-denied" %}{% include "includes/components/icon.html" with name="lock" only %}<span class="citation-index">[{{ index }}]</span> {% trans "Source restricted" %}{% elif state == "loading" %}<span class="citation-index">[{{ index }}]</span> {% trans "Loading source…" %}{% elif state == "offline" %}{% include "includes/components/icon.html" with name="offline" only %}<span class="citation-index">[{{ index }}]</span> {% trans "Source unavailable offline" %}{% else %}<span class="citation-index">[{{ index }}]</span> {% trans "Source withdrawn" %}{% endif %}</span>{% else %}<a class="citation{% if state == "error" %} citation--error{% elif state == "success" %} citation--success{% elif state == "stale" %} citation--stale{% elif state == "conflict" %} citation--conflict{% elif state == "hover" %} is-hover{% elif state == "focus" %} is-focus{% endif %}" href="{{ href }}"{% if state == "active" %} aria-current="true"{% endif %}>{% if state == "error" or state == "stale" or state == "conflict" %}{% include "includes/components/icon.html" with name="alert" only %}{% elif state == "success" %}{% include "includes/components/icon.html" with name="check" only %}{% endif %}<span class="citation-index">[{{ index }}]</span> <span class="citation-label">{% if state == "error" %}{% trans "Source not found" %}{% elif state == "stale" %}{% blocktrans %}{{ label }}, changed since draft{% endblocktrans %}{% elif state == "conflict" %}{% blocktrans %}{{ label }}, sources disagree{% endblocktrans %}{% else %}{{ label }}{% endif %}</span></a>{% endif %}
