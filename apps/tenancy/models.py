@@ -4,13 +4,11 @@ from typing import ClassVar
 
 from django.db import models
 
-from apps.identity.models import Organization
-
 
 class TenantScopedModel(models.Model):
     """Abstract base for rows owned by one organization."""
 
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
+    organization = models.ForeignKey("identity.Organization", on_delete=models.CASCADE)
 
     class Meta:
         """Keep the tenancy primitive out of the database schema."""
@@ -45,7 +43,7 @@ class TenantDataKey(models.Model):
         RETIRED = "retired", "Retired"
 
     id = models.UUIDField(primary_key=True, editable=False)
-    organization = models.ForeignKey(Organization, on_delete=models.PROTECT)
+    organization = models.ForeignKey("identity.Organization", on_delete=models.PROTECT)
     key_version = models.PositiveIntegerField()
     wrapped_key = models.BinaryField()
     status = models.CharField(max_length=16, choices=Status.choices)
