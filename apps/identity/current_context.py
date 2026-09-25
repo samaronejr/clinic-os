@@ -146,6 +146,38 @@ def require_current_actor_org_admin(
     return actor_id
 
 
+def require_permission(
+    permission: str,
+    *,
+    clinic_id: UUID,
+    patient_enrollment_id: UUID | None = None,
+) -> UserId:
+    """Recheck exact-clinic eligibility in the authoritative database on every call.
+
+    No request cache: role removal, narrowing and care-team revocation take
+    effect at the next statement under the application's READ COMMITTED txn.
+    Unknown permissions/selectors have the same payload-free denial.
+    """
+    if (
+        not isinstance(permission, str)
+        or not isinstance(clinic_id, UUID)
+        or (
+            patient_enrollment_id is not None
+            and not isinstance(patient_enrollment_id, UUID)
+        )
+    ):
+        raise _UnauthorizedActorError
+    actor_id = current_actor_id()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.has_permission(%s, %s, %s)",
+            [permission, clinic_id, patient_enrollment_id],
+        )
+        if cursor.fetchone() != (True,):
+            raise _UnauthorizedActorError
+    return actor_id
+
+
 def _active_clinic_physicians(
     clinic_id: UUID,
 ) -> tuple[PhysicianCatalogEntry, ...]:
