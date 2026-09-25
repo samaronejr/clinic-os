@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 import pytest
 from playwright.sync_api import Browser, BrowserContext, BrowserType, sync_playwright
 
+from renewal.browser.engines import launch, selected_engine
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
@@ -136,14 +138,17 @@ def renewal_owner() -> dict[str, str]:
 
 
 @pytest.fixture(scope="session")
-def renewal_page() -> Iterator[Page]:
-    """Launch the runner-selected real Chromium and yield one page."""
+def renewal_engine() -> str:
+    """Return the runner-selected engine (``CLINIC_BROWSER_ENGINE``)."""
+    return selected_engine()
+
+
+@pytest.fixture(scope="session")
+def renewal_page(renewal_engine: str) -> Iterator[Page]:
+    """Launch the runner-selected real browser engine and yield one page."""
     executable = _required("CLINIC_RENEWAL_BROWSER_EXECUTABLE")
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=executable,
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
+        browser = launch(driver, renewal_engine, executable)
         context = browser.new_context()
         page = context.new_page()
         page.set_default_timeout(NAVIGATION_TIMEOUT_MS)

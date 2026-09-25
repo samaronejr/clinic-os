@@ -4,12 +4,18 @@
 
 * every required dependency job reported ``success`` (a failed, cancelled,
   missing or skipped job rejects acceptance);
-* the workflow's ``renewal-browser`` matrix still binds one-to-one onto the
-  registered ``ops.testing.renewal_runner`` suites — a removed suite or a
-  shard that silently drops one shrinks verification and must fail;
-* every registered suite produced a runner report with a nonzero executed
-  test count, a zero exit, the ``clinic_app`` runtime role and a bound
-  source manifest; all shards must agree on one tested source revision
+* the workflow's ``renewal-browser`` matrix still binds every registered
+  ``ops.testing.renewal_runner`` suite on Chromium — a removed suite or a
+  shard that silently drops one shrinks verification and must fail. A shard
+  entry is ``suite`` (Chromium) or ``suite@engine`` with engine one of
+  ``chromium``, ``firefox`` or ``webkit``; an unknown engine, a malformed
+  entry, a duplicate (suite, engine) leg or a non-Chromium leg of a
+  Chromium-only suite is rejected;
+* every bound leg produced a runner report (artifact directory ``suite`` for
+  Chromium, ``suite@engine`` otherwise) naming the suite and engine, with a
+  nonzero executed test count, a zero exit, the ``clinic_app`` runtime role
+  and a bound source manifest; all shards must agree on one tested source
+  revision
   (the manifest digest itself binds per-job ledger state, so it cannot
   be compared across jobs);
 * every suite's JUnit document parses and carries no failures, errors or
@@ -27,7 +33,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Final
 
-from ops.testing.renewal_runner import SUITES
+from ops.testing.renewal_runner import (
+    CHROMIUM_ONLY_SUITES,
+    DEFAULT_ENGINE,
+    ENGINES,
+    SUITES,
+)
 
 REQUIRED_JOBS: Final = (
     "test",
@@ -47,17 +58,32 @@ SHA_HEX_LENGTH: Final = 40
 EXPECTED_OPTIONS: Final = 3
 
 
-def _shard_suites(workflow: str) -> tuple[list[str], list[str]]:
-    """Return (declared suite list, parse failures) from the workflow text."""
+def _shard_entries(workflow: str) -> tuple[list[str], list[str]]:
+    """Return (declared shard entries, parse failures) from the workflow text."""
     match = SHARD_LIST.search(workflow)
     if match is None:
         return [], ["workflow renewal-browser shard matrix is missing"]
-    suites = [
-        suite
-        for entry in SHARD_ENTRY.findall(match.group(1))
-        for suite in entry.split(",")
+    entries = [
+        entry
+        for shard in SHARD_ENTRY.findall(match.group(1))
+        for entry in shard.split(",")
     ]
-    return [suite.strip() for suite in suites if suite.strip()], []
+    return [entry.strip() for entry in entries if entry.strip()], []
+
+
+def _leg(entry: str) -> tuple[str, str] | None:
+    """Split ``suite`` / ``suite@engine`` into (suite, engine); None if malformed."""
+    suite, separator, engine = entry.partition("@")
+    if not separator:
+        return suite, DEFAULT_ENGINE
+    if not suite or not engine or "@" in engine:
+        return None
+    return suite, engine
+
+
+def artifact_label(suite: str, engine: str) -> str:
+    """Return the per-leg artifact directory name the CI shard writes."""
+    return suite if engine == DEFAULT_ENGINE else f"{suite}@{engine}"
 
 
 def _declared_needs(workflow: str) -> list[str]:
@@ -103,33 +129,42 @@ def _junit_failures(suite: str, junit: Path, tests: int | None) -> list[str]:
     return failures
 
 
-def _validate_suite_report(suite: str, report_path: Path) -> list[str]:
+def _validate_suite_report(suite: str, engine: str, report_path: Path) -> list[str]:
     failures: list[str] = []
+    label = artifact_label(suite, engine)
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return [f"suite {suite}: report is missing or malformed"]
+        return [f"suite {label}: report is missing or malformed"]
     if not isinstance(report, dict):
-        return [f"suite {suite}: report is not an object"]
+        return [f"suite {label}: report is not an object"]
     if report.get("suite") != suite:
-        failures.append(f"suite {suite}: report names a different suite")
+        failures.append(f"suite {label}: report names a different suite")
+    if report.get("engine") != engine:
+        failures.append(f"suite {label}: report names a different engine")
+    junit = report_path.parent / "browser" / f"junit-{suite}.xml"
+    failures.extend(_report_fields(label, report, junit))
+    return failures
+
+
+def _report_fields(label: str, report: dict[str, object], junit: Path) -> list[str]:
+    failures: list[str] = []
     if report.get("pytest_exit") != 0:
-        failures.append(f"suite {suite}: pytest exit is not zero")
+        failures.append(f"suite {label}: pytest exit is not zero")
     tests = report.get("tests")
     if not isinstance(tests, int) or tests <= 0:
-        failures.append(f"suite {suite}: zero executed tests")
+        failures.append(f"suite {label}: zero executed tests")
         tests = None
     if report.get("runtime_role") != "clinic_app":
-        failures.append(f"suite {suite}: runtime role is not clinic_app")
+        failures.append(f"suite {label}: runtime role is not clinic_app")
     digest = report.get("source_manifest_sha256")
     if not isinstance(digest, str) or len(digest) != DIGEST_HEX_LENGTH:
-        failures.append(f"suite {suite}: source manifest digest missing")
+        failures.append(f"suite {label}: source manifest digest missing")
     for field in ("revision_sha", "tree_sha"):
         value = report.get(field)
         if not isinstance(value, str) or len(value) != SHA_HEX_LENGTH:
-            failures.append(f"suite {suite}: source {field} missing")
-    junit = report_path.parent / "browser" / f"junit-{suite}.xml"
-    failures.extend(_junit_failures(suite, junit, tests))
+            failures.append(f"suite {label}: source {field} missing")
+    failures.extend(_junit_failures(label, junit, tests))
     return failures
 
 
@@ -145,10 +180,25 @@ def _needs_failures(needs: dict[str, object]) -> list[str]:
     return failures
 
 
+def _leg_failure(entry: str, registered: set[str]) -> tuple[str, str] | str:
+    """Return the (suite, engine) leg of ``entry`` or why it is rejected."""
+    leg = _leg(entry)
+    if leg is None:
+        return f"shard entry {entry} is malformed"
+    suite, engine = leg
+    if engine not in ENGINES:
+        return f"shard entry {entry} names unknown engine {engine}"
+    if suite not in registered:
+        return f"shard binds unregistered suite {suite}"
+    if engine != DEFAULT_ENGINE and suite in CHROMIUM_ONLY_SUITES:
+        return f"shard entry {entry} runs a Chromium-only suite on {engine}"
+    return leg
+
+
 def _binding_failures(
     workflow: str, registered: set[str]
-) -> tuple[list[str], set[str]]:
-    """Return (failures, bound suite names) for the workflow contract."""
+) -> tuple[list[str], set[tuple[str, str]]]:
+    """Return (failures, bound (suite, engine) legs) for the workflow contract."""
     failures: list[str] = []
     declared = _declared_needs(workflow)
     failures.extend(
@@ -156,36 +206,40 @@ def _binding_failures(
         for job in REQUIRED_JOBS
         if job not in declared
     )
-    shard_suites, parse_failures = _shard_suites(workflow)
+    entries, parse_failures = _shard_entries(workflow)
     failures.extend(parse_failures)
-    seen: set[str] = set()
-    for suite in shard_suites:
-        if suite in seen:
-            failures.append(f"suite {suite} is bound more than once")
-        seen.add(suite)
-        if suite not in registered:
-            failures.append(f"shard binds unregistered suite {suite}")
+    seen: set[tuple[str, str]] = set()
+    for entry in entries:
+        leg = _leg_failure(entry, registered)
+        if isinstance(leg, str):
+            failures.append(leg)
+            continue
+        if leg in seen:
+            failures.append(f"suite {artifact_label(*leg)} is bound more than once")
+        seen.add(leg)
     failures.extend(
         f"registered suite {suite} is not executed in CI"
-        for suite in sorted(registered - seen)
+        for suite in sorted(registered)
+        if (suite, DEFAULT_ENGINE) not in seen
     )
     return failures, seen
 
 
 def _report_failures(
-    registered: set[str], artifacts: Path
+    legs: set[tuple[str, str]], artifacts: Path
 ) -> tuple[list[str], set[tuple[str, str]]]:
     """Return (failures, tested (revision, tree) identities) across reports."""
     failures: list[str] = []
     identities: set[tuple[str, str]] = set()
-    for suite in sorted(registered):
-        candidates = list(artifacts.glob(f"*/{suite}/report.json"))
+    for suite, engine in sorted(legs):
+        label = artifact_label(suite, engine)
+        candidates = list(artifacts.glob(f"*/{label}/report.json"))
         if len(candidates) != 1:
             failures.append(
-                f"suite {suite}: expected exactly one report, found {len(candidates)}"
+                f"suite {label}: expected exactly one report, found {len(candidates)}"
             )
             continue
-        suite_failures = _validate_suite_report(suite, candidates[0])
+        suite_failures = _validate_suite_report(suite, engine, candidates[0])
         failures.extend(suite_failures)
         if not suite_failures:
             report = json.loads(candidates[0].read_text(encoding="utf-8"))
@@ -197,9 +251,12 @@ def validate(workflow: str, needs: dict[str, object], artifacts: Path) -> list[s
     """Return every acceptance failure; an empty list means accepted."""
     registered = set(SUITES)
     failures = _needs_failures(needs)
-    binding, _bound = _binding_failures(workflow, registered)
+    binding, bound = _binding_failures(workflow, registered)
     failures.extend(binding)
-    report_failures, identities = _report_failures(registered, artifacts)
+    # Every registered suite owes a Chromium report even when its binding is
+    # missing; every additional engine leg owes its own report too.
+    legs = {(suite, DEFAULT_ENGINE) for suite in registered} | bound
+    report_failures, identities = _report_failures(legs, artifacts)
     failures.extend(report_failures)
     if not failures and len(identities) != 1:
         failures.append("suite reports disagree on the tested source revision")

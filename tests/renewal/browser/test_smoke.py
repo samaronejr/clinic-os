@@ -3,6 +3,10 @@
 ``/readyz`` only reports ``ok`` when the serving connection resolves to
 ``current_user = clinic_app`` on the ``clinic_app`` schema with every leaf
 migration applied, so a 200 is the runtime-role assertion.
+
+The suite is engine-portable (``CLINIC_BROWSER_ENGINE``): every HTML page
+state runs the shared axe check, and the login surface is driven by touch
+in the iPhone 15 and Pixel 8 emulation profiles.
 """
 
 from __future__ import annotations
@@ -16,6 +20,8 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from renewal.browser._page_wait import wait_for_js
+from renewal.browser.a11y_support import check_page
+from renewal.browser.engines import MOBILE_PROFILES, mobile_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -38,8 +44,13 @@ def test_readiness_reports_the_migrated_app_role(
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
+    renewal_engine: str,
     browser_report: dict[str, object],
 ) -> None:
+    # The launched browser really is the engine the runner selected.
+    browser = renewal_page.context.browser
+    assert browser is not None
+    assert browser.browser_type.name == renewal_engine
     response = renewal_page.goto(f"{renewal_base_url}/readyz", wait_until="load")
     assert response is not None
     assert response.status == OK_STATUS
@@ -51,6 +62,7 @@ def test_readiness_reports_the_migrated_app_role(
         {
             "assertion": "readyz ok implies current_user=clinic_app",
             "capture": _capture(renewal_page, renewal_artifact_root, "readyz"),
+            "engine": renewal_engine,
             "surface": "readyz",
         }
     )
@@ -60,6 +72,7 @@ def test_login_surface_renders_the_real_csrf_form(
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
+    renewal_engine: str,
     browser_report: dict[str, object],
 ) -> None:
     response = renewal_page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
@@ -68,22 +81,74 @@ def test_login_surface_renders_the_real_csrf_form(
     renewal_page.wait_for_selector("input[name=csrfmiddlewaretoken]", state="attached")
     renewal_page.wait_for_selector("#id_username")
     renewal_page.wait_for_selector("#id_password")
+    axe = check_page(renewal_page, renewal_base_url, renewal_artifact_root, "login")
     checks = browser_report["checks"]
     assert isinstance(checks, list)
     checks.append(
         {
-            "assertion": "login form renders with CSRF token",
+            "assertion": "login form renders with CSRF token; axe 0 serious/critical",
+            "axe": axe,
             "capture": _capture(renewal_page, renewal_artifact_root, "login"),
+            "engine": renewal_engine,
             "surface": "auth/login",
         }
     )
 
 
-def test_owner_login_establishes_a_session_and_enters_the_totp_flow(
+@pytest.mark.parametrize("profile", sorted(MOBILE_PROFILES))
+def test_login_surface_by_touch_on_mobile_profiles(  # noqa: PLR0913 - fixtures
+    profile: str,
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    renewal_engine: str,
+    browser_report: dict[str, object],
+) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = mobile_context(browser, profile)
+    try:
+        page = context.new_page()
+        response = page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
+        assert response is not None
+        assert response.status == OK_STATUS
+        device = MOBILE_PROFILES[profile]
+        assert page.evaluate("innerWidth") == device.width
+        # navigator.maxTouchPoints is only emulated by Chromium; the coarse
+        # pointer media query and a real touchstart hold on every engine.
+        assert page.evaluate("matchMedia('(pointer: coarse)').matches") is True
+        assert page.evaluate("document.scrollingElement.scrollWidth") <= device.width
+        page.evaluate(
+            "window.__touched = false; document.addEventListener('touchstart',"
+            " () => { window.__touched = true; }, {once: true})"
+        )
+        page.tap("#id_username")
+        assert page.evaluate("window.__touched") is True
+        assert page.evaluate("document.activeElement.id") == "id_username"
+        axe = check_page(
+            page, renewal_base_url, renewal_artifact_root, f"login-{profile}"
+        )
+        checks = browser_report["checks"]
+        assert isinstance(checks, list)
+        checks.append(
+            {
+                "assertion": f"{device.label}: touch focus, no overflow, axe clean",
+                "axe": axe,
+                "capture": _capture(page, renewal_artifact_root, f"login-{profile}"),
+                "engine": renewal_engine,
+                "surface": "auth/login",
+            }
+        )
+    finally:
+        context.close()
+
+
+def test_owner_login_establishes_a_session_and_enters_the_totp_flow(  # noqa: PLR0913 - fixtures
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     renewal_owner: dict[str, str],
+    renewal_engine: str,
     browser_report: dict[str, object],
 ) -> None:
     renewal_page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
@@ -97,12 +162,15 @@ def test_owner_login_establishes_a_session_and_enters_the_totp_flow(
     # The owner is a privileged role: the protected default target must hand
     # the session to the TOTP enrollment flow, never render it directly.
     renewal_page.wait_for_url("**/auth/enroll/**")
+    axe = check_page(renewal_page, renewal_base_url, renewal_artifact_root, "enroll")
     checks = browser_report["checks"]
     assert isinstance(checks, list)
     checks.append(
         {
             "assertion": "owner login yields a session and the TOTP flow",
+            "axe": axe,
             "capture": _capture(renewal_page, renewal_artifact_root, "login-enrolled"),
+            "engine": renewal_engine,
             "surface": "auth/enroll",
         }
     )

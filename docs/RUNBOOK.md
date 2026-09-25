@@ -108,20 +108,29 @@ contract builds the committed revision, so it requires a clean Git tree.
 
 ```sh
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
+CLINIC_BROWSER_ENGINE=webkit uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 ```
 
 `browser --suite <name>` runs one registered suite (the full registered
 set is enumerated by `SUITES` in `ops/testing/renewal_runner.py`). In hosted
 CI the `renewal-browser` matrix shards every registered suite across six
-jobs and the `Renewal RC acceptance` verdict binds shard list, per-suite
-reports and source digests. It captures the working tree
+Chromium jobs plus the `smoke@firefox` and `smoke@webkit` engine legs, and the
+`Renewal RC acceptance` verdict binds shard list, per-leg reports and source
+digests. It captures the working tree
 through the current-source snapshot contract, provisions a unique
 `postgres:16` container and volume, applies migrations and seeds a clinic as
 `clinic_owner`, serves through a supervised Gunicorn master on loopback as
 `clinic_app` with the real middleware/CSRF/RLS stack, waits on `/readyz`,
-then drives the suite through real Chromium. The junit verdict is enforced:
-zero tests, skips, failures, errors or a missing report all fail the run.
+then drives the suite through a real browser engine. Chromium is the default
+(CI parity); `--engine firefox|webkit` or `CLINIC_BROWSER_ENGINE` selects the
+Playwright-managed Firefox or WebKit (`uv run playwright install firefox
+webkit`; add `--with-deps` or the listed system packages on a new host), and
+`report.json` records the `engine`. An unavailable engine fails the run; it
+never skips or falls back. Suites in `CHROMIUM_ONLY_SUITES` (DevTools
+sessions, fake media devices, chrome:// pages) refuse other engines. `ci`
+always runs Chromium. The junit verdict is enforced: zero tests, skips,
+failures, errors or a missing report all fail the run.
 
 `ci` runs the gates in order and aggregates per-command exits into
 `ci-report.json`: static (Ruff check, Ruff format, strict mypy), migration
@@ -162,7 +171,8 @@ retained as evidence.
 
 `.github/workflows/ci.yml` adds, alongside the frozen three-suite
 `contracts` selector and the `test` matrix: `renewal-browser` (all
-registered suites sharded across six jobs), `worker-integration` (real
+registered suites sharded across six Chromium jobs, plus Firefox and WebKit
+legs declared as `suite@engine` shard entries), `worker-integration` (real
 isolated `redis-server` plus a separate Celery worker proving
 rollback/lost-dispatch/idempotency/revocation/retry-ceiling/callback
 behaviour; `CLINIC_BROKER_GATE=required`), `migration-upgrade`
@@ -189,6 +199,9 @@ re-run the same command.
 | `renewal browser executable is unavailable` | 2 | No Chrome/Chromium on `PATH`; install one or set `CLINIC_RENEWAL_BROWSER_EXECUTABLE` |
 | `renewal browser executable override is not executable` | 2 | The override path is not an absolute, non-symlink, executable file |
 | `renewal browser suite is not registered: <name>` | 2 | Unknown suite; check `SUITES` in `ops/testing/renewal_runner.py` |
+| `renewal browser engine is not supported: <name>` / `name different engines` | 2 | Use `chromium`, `firefox` or `webkit`, and do not pass an `--engine` that contradicts `CLINIC_BROWSER_ENGINE` |
+| `renewal browser engine <name> is unavailable` | 2 | Run `uv run playwright install <name>` (plus `--with-deps` or its system packages) |
+| `renewal browser suite <name> drives Chromium-only APIs` | 2 | The suite is in `CHROMIUM_ONLY_SUITES`; run it on Chromium |
 | `renewal serving DSN must use the clinic_app role` | 2 | `CLINIC_RENEWAL_APP_DATABASE_URL` names an owner/superuser role; use the app role or unset it |
 | `current-source record is stale or drifted` | 2 | A `--record` no longer matches the working tree; re-capture the record |
 | `renewal suite failed` / `ran zero tests` / `skipped tests` | 2 | The suite itself failed or proved nothing; inspect `pytest.log` and the junit XML under the artifact root |

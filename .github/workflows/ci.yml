@@ -120,6 +120,8 @@ jobs:
           - "agenda,availability,contacts,locale,patient-access"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
+          - "smoke@firefox"
+          - "smoke@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -142,6 +144,11 @@ jobs:
         run: |
           command -v google-chrome || command -v google-chrome-stable || command -v chromium
           google-chrome --version 2>/dev/null || google-chrome-stable --version 2>/dev/null || chromium --version
+      - name: Install Playwright-managed Firefox and WebKit
+        if: contains(matrix.shard, '@')
+        run: |
+          uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file playwright install --with-deps firefox webkit
       - name: Run renewal browser suites
         env:
           RENEWAL_SUITES: ${{ matrix.shard }}
@@ -149,10 +156,16 @@ jobs:
           set -u
           uv sync --locked --all-groups
           status=0
-          for suite in ${RENEWAL_SUITES//,/ }; do
-            if ! uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner \
+          for entry in ${RENEWAL_SUITES//,/ }; do
+            suite="${entry%%@*}"
+            engine=chromium
+            if [ "$entry" != "$suite" ]; then engine="${entry#*@}"; fi
+            label="$suite"
+            if [ "$engine" != chromium ]; then label="$suite@$engine"; fi
+            if ! CLINIC_BROWSER_ENGINE="$engine" uv run --frozen --no-sync --no-env-file \
+                python -m ops.testing.renewal_runner \
                 browser --suite "$suite" \
-                --artifact-root "$RUNNER_TEMP/renewal/$suite"; then
+                --artifact-root "$RUNNER_TEMP/renewal/$label"; then
               status=1
             fi
           done
