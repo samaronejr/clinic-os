@@ -228,6 +228,7 @@ def _scheduling_a11y(page: Page, base: str, root: Path, width: int) -> None:
         return r.width < 44 || r.height < 44;
       }).map(el => el.id || el.name)
     """)
+    # Registered B2/SC-8 shared-footer defect belongs to the plan item 13 shell.
     assert small == []
     capture(page, root, "resources", width)
 
