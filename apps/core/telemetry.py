@@ -1,12 +1,13 @@
 """PHI-safe observability: structured logs, traces, metrics and Sentry scrub.
 
-ADR-014 contract: every telemetry egress passes through an allowlist
-redactor. Log records emit only allowlisted fields; span attributes and
-metric labels are filtered by their own allowlists; the Sentry scrubber
-reuses the same vocabulary. Clinical content never leaves the process:
-messages are emitted as templates (``record.msg`` without ``args``
-interpolation), free-form values are pattern-redacted, and metric label
-values are restricted to a safe token charset.
+ADR-014 contract: every telemetry egress passes through a closed-vocabulary
+allowlist, not a charset filter. Log messages must be registered templates
+(args are never interpolated); log/span/metric values are validated per field
+against closed sets (route names, queue names, capability keys, HTTP methods,
+status classes) or strict machine formats (32-hex request ids, UUIDs); the
+Sentry scrubber rebuilds events recursively from the same vocabulary.
+Clinical content — names, SOAP text, identifiers, URLs, bodies — cannot
+leave the process through any of these channels.
 
 The ``/internal/metrics`` endpoint is sessionless: it authenticates with an
 operator bearer token and a loopback/allowlisted-network restriction, never
@@ -61,8 +62,38 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Allowlists (ADR-014): the only vocabulary telemetry may carry.
+# Closed vocabularies (ADR-014): the only values telemetry may carry.
 # ---------------------------------------------------------------------------
+
+# Log messages are a closed set of registered templates. Anything else —
+# including a literal string carrying clinical text — renders as [unlisted].
+LOG_MESSAGE_ALLOWLIST: Final = frozenset(
+    {
+        "http request",
+        "telemetry span export failed",
+        "prescription signature dispatch failed",
+        "billing action failed; rolled back",
+        "retention action failed; rolled back",
+        "patient records export failed; rolled back",
+        "ehr draft save failed; transaction rolled back",
+        "ehr history save failed; transaction rolled back",
+        "ehr attachment upload failed; transaction rolled back",
+        "ehr attachment storage failed",
+        "teleconsult note save failed; transaction rolled back",
+        "prescription save failed; transaction rolled back",
+        "prescription document render failed",
+        "prescription document storage failed",
+        "prescription signed document storage failed",
+        "patient document download failed",
+        # Django's own request lifecycle warnings.
+        "Unauthorized: %s",
+        "Forbidden: %s",
+        "Bad Request: %s",
+        "Not Found: %s",
+        "Method Not Allowed (%s): %s",
+        "SuspiciousOperation at %s",
+    }
+)
 
 LOG_FIELD_ALLOWLIST: Final = frozenset(
     {
@@ -115,29 +146,30 @@ SENTRY_REQUEST_ALLOWLIST: Final = frozenset({"method"})
 SENTRY_BREADCRUMB_ALLOWLIST: Final = frozenset(
     {"type", "category", "level", "timestamp"}
 )
-SENTRY_CONTEXT_ALLOWLIST: Final = frozenset({"trace"})
-# SDK-generated metadata keys that pass through verbatim; they are machine
-# values (event ids, timestamps, versions), never caller-controlled text.
-SENTRY_PASSTHROUGH_KEYS: Final = frozenset(
-    {
-        "event_id",
-        "timestamp",
-        "level",
-        "logger",
-        "platform",
-        "release",
-        "environment",
-        "server_name",
-        "sdk",
-    }
+SENTRY_TRACE_CONTEXT_ALLOWLIST: Final = frozenset(
+    {"trace_id", "span_id", "parent_span_id", "op"}
 )
+SENTRY_LEVELS: Final = frozenset({"fatal", "error", "warning", "info", "debug"})
+HTTP_METHODS: Final = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+)
+AI_INVOCATION_OUTCOMES: Final = frozenset(
+    {"success", "error", "denied", "deferred", "timeout"}
+)
+SCRAPE_ERROR_SOURCES: Final = frozenset({"queue", "queue-config", "outbox"})
+OUTBOX_STATUSES: Final = frozenset(
+    {"pending", "in_progress", "succeeded", "delivered", "failed", "cancelled"}
+)
+_SPAN_INTERNAL_NAMES: Final = frozenset({"http.request"})
+_SPAN_EVENT_NAMES: Final = frozenset({"exception"})
 
 # ---------------------------------------------------------------------------
-# Value hygiene: pattern redaction + strict token charset.
+# Value hygiene: strict formats and closed-set validators.
 # ---------------------------------------------------------------------------
 
 REDACTED: Final = "[redacted]"
 INVALID_LABEL: Final = "[invalid]"
+UNLISTED_MESSAGE: Final = "[unlisted]"
 MAX_FIELD_VALUE_LENGTH: Final = 128
 MAX_LABEL_VALUE_LENGTH: Final = 64
 
@@ -152,13 +184,18 @@ _REDACTION_PATTERNS: Final = (
     # Bearer/authorization material.
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+"),
 )
-# Strict token charset for values that cross an egress boundary: lowercase
-# machine tokens only. Anything else (names, sentences, paths with query
-# strings, uppercase text) collapses to a placeholder.
 _SAFE_TOKEN: Final = re.compile(r"[a-z0-9_.:\-]{1,128}")
-# Exception type names legitimately carry capitals (``ValueError``).
 _SAFE_TYPE_NAME: Final = re.compile(r"[A-Za-z0-9_.]{1,128}")
-_REQUEST_ID: Final = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# Request ids are exactly the minted format: 32 lowercase hex chars.
+_REQUEST_ID_FORMAT: Final = re.compile(r"[0-9a-f]{32}")
+_UUID_FORMAT: Final = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
+_SHA_FORMAT: Final = re.compile(r"[0-9a-f]{40}")
+_ISO_TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}")
+# Multi-segment hyphenated slugs are how synthetic person names arrive; a
+# legitimate machine token never needs three hyphenated segments.
+_SLUG_NAME: Final = re.compile(r"[a-z]+(?:-[a-z0-9]+){2,}")
 _REQUEST_ID_HEADER: Final = "HTTP_X_REQUEST_ID"
 _REQUEST_ID_RESPONSE_HEADER: Final = "X-Request-ID"
 
@@ -171,32 +208,210 @@ def redact_text(value: str) -> str:
     return redacted
 
 
-def _clean_field_value(value: object) -> str | int | float | bool:
-    """Coerce one allowlisted field to a safe scalar or a placeholder."""
-    if isinstance(value, bool):
+def _looks_sensitive(text: str) -> bool:
+    """Report whether a candidate value matches a known-unsafe shape."""
+    return (
+        redact_text(text) != text
+        or _UUID_FORMAT.fullmatch(text) is not None
+        or _REQUEST_ID_FORMAT.fullmatch(text) is not None
+        or _SHA_FORMAT.fullmatch(text) is not None
+        or _SLUG_NAME.fullmatch(text) is not None
+    )
+
+
+def _machine_token(value: object) -> str:
+    """Validate an open-vocabulary machine token; unsafe shapes collapse."""
+    if not isinstance(value, str):
+        return INVALID_LABEL
+    text = value.strip().lower()[:MAX_FIELD_VALUE_LENGTH]
+    if _SAFE_TOKEN.fullmatch(text) is None or _looks_sensitive(text):
+        return INVALID_LABEL
+    return text
+
+
+def _hex32(value: object) -> str:
+    """Validate a 32-hex request/trace id; anything else collapses."""
+    if isinstance(value, str) and _REQUEST_ID_FORMAT.fullmatch(value.lower()):
+        return value.lower()
+    return INVALID_LABEL
+
+
+def _uuid_value(value: object) -> str:
+    """Validate a UUID-shaped identifier (dashed or bare hex)."""
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, str):
+        text = value.lower()
+        if _UUID_FORMAT.fullmatch(text) or _REQUEST_ID_FORMAT.fullmatch(text):
+            return text
+    return INVALID_LABEL
+
+
+def _int_range(value: object, low: int, high: int) -> int | str:
+    """Validate a bounded integer field."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return INVALID_LABEL
+    if low <= value <= high:
         return value
+    return INVALID_LABEL
+
+
+def _number_field(value: object) -> int | float | str:
+    """Validate a numeric field; digit strings and PHI shapes collapse."""
+    if isinstance(value, bool):
+        return INVALID_LABEL
     if isinstance(value, (int, float)):
         return value
-    text = redact_text(str(value))[:MAX_FIELD_VALUE_LENGTH]
-    if _SAFE_TOKEN.fullmatch(text):
-        return text
     return INVALID_LABEL
 
 
-def _safe_label(value: object) -> str:
-    """Coerce one metric label value to the safe token charset."""
-    text = redact_text(str(value))[:MAX_LABEL_VALUE_LENGTH]
-    if _SAFE_TOKEN.fullmatch(text):
-        return text
+def _method_value(value: object) -> str:
+    """Validate an HTTP method against the closed verb set."""
+    if isinstance(value, str) and value.lower() in HTTP_METHODS:
+        return value.lower()
     return INVALID_LABEL
 
 
-def _safe_type_name(value: object) -> str:
-    """Coerce an exception type name; capitals are legitimate here."""
-    text = redact_text(str(value))[:MAX_FIELD_VALUE_LENGTH]
-    if _SAFE_TYPE_NAME.fullmatch(text):
-        return text
+_STATUS_CLASS_FORMAT: Final = re.compile(r"[1-5]xx")
+
+
+def _status_class_value(value: object) -> str:
+    """Validate a Prometheus status-class label (``2xx`` shape)."""
+    if isinstance(value, str) and _STATUS_CLASS_FORMAT.fullmatch(value):
+        return value
     return INVALID_LABEL
+
+
+def _route_names() -> frozenset[str]:
+    """Return the closed set of registered URL route names."""
+    from django.urls import get_resolver  # noqa: PLC0415
+
+    try:
+        resolver = get_resolver()
+        names = {name for name in resolver.reverse_dict if isinstance(name, str)}
+    except Exception:  # noqa: BLE001 - resolver may be unavailable pre-setup
+        return frozenset()
+    return frozenset(names)
+
+
+def _route_name_value(value: object) -> str:
+    """Validate a route label against registered URL names."""
+    if isinstance(value, str) and value in _route_names():
+        return value
+    if value == _UNNAMED_ROUTE:
+        return _UNNAMED_ROUTE
+    return INVALID_LABEL
+
+
+def _task_names() -> frozenset[str]:
+    """Return the closed set of registered Celery task names."""
+    try:
+        from config.celery import app as celery_app  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - celery config may be unavailable
+        return frozenset()
+    return frozenset(celery_app.tasks.keys())
+
+
+def _task_name_value(value: object) -> str:
+    """Validate a task label against registered Celery task names."""
+    if isinstance(value, str) and value in _task_names():
+        return value
+    return INVALID_LABEL
+
+
+def _queue_name_value(value: object) -> str:
+    """Validate a queue label against configured Celery queue names."""
+    if isinstance(value, str) and value in _queue_names(METRICS):
+        return value
+    return INVALID_LABEL
+
+
+def _outbox_status_value(value: object) -> str:
+    """Validate an outbox status label against the model's state set."""
+    if isinstance(value, str) and value in OUTBOX_STATUSES:
+        return value
+    return INVALID_LABEL
+
+
+def _scrape_source_value(value: object) -> str:
+    """Validate a scrape-error source label against the collector set."""
+    if isinstance(value, str) and value in SCRAPE_ERROR_SOURCES:
+        return value
+    return INVALID_LABEL
+
+
+def _ai_outcome_value(value: object) -> str:
+    """Validate an AI invocation outcome against the closed outcome set."""
+    if isinstance(value, str) and value in AI_INVOCATION_OUTCOMES:
+        return value
+    return INVALID_LABEL
+
+
+_AI_CAPABILITIES: set[str] = set()
+
+
+def register_ai_capability(capability: str) -> None:
+    """Register an AI capability key so its aggregates may be labeled."""
+    cleaned = _machine_token(capability)
+    if cleaned != INVALID_LABEL:
+        _AI_CAPABILITIES.add(cleaned)
+
+
+def _span_name_value(value: object) -> str:
+    """Validate a span name: route names, internal names or task names."""
+    if not isinstance(value, str):
+        return INVALID_LABEL
+    if value in _SPAN_INTERNAL_NAMES:
+        return value
+    if value in _route_names() or value in _task_names():
+        return value
+    return INVALID_LABEL
+
+
+def _span_event_name_value(value: object) -> str:
+    """Validate a span event name against the closed event set."""
+    if isinstance(value, str) and value in _SPAN_EVENT_NAMES:
+        return value
+    return INVALID_LABEL
+
+
+_SPAN_ATTRIBUTE_VALIDATORS: Final[dict[str, Callable[[object], object]]] = {
+    "http.request.method": _method_value,
+    "http.route": _route_name_value,
+    "http.response.status_code": lambda value: _int_range(value, 100, 599),
+    "clinic.request_id": _hex32,
+    "clinic.queue": _queue_name_value,
+    "clinic.task": _task_name_value,
+    "clinic.operation_id": _uuid_value,
+    "clinic.reason_code": _machine_token,
+}
+
+
+def _span_attribute_value(key: str, value: object) -> object:
+    """Validate one allowlisted span attribute value by key."""
+    validator = _SPAN_ATTRIBUTE_VALIDATORS.get(key)
+    return validator(value) if validator is not None else INVALID_LABEL
+
+
+_LOG_FIELD_VALIDATORS: Final[dict[str, Callable[[object], object]]] = {
+    "request_id": _hex32,
+    "route": _route_name_value,
+    "method": _method_value,
+    "status": lambda value: _int_range(value, 100, 599),
+    "duration_ms": _number_field,
+    "task": _task_name_value,
+    "queue": _queue_name_value,
+    "operation_id": _uuid_value,
+    "reason_code": _machine_token,
+    "event": _machine_token,
+    "attempt": lambda value: _int_range(value, 0, 100),
+}
+
+
+def _log_field_value(field: str, value: object) -> object:
+    """Validate one allowlisted log field value by field name."""
+    validator = _LOG_FIELD_VALIDATORS.get(field)
+    return validator(value) if validator is not None else INVALID_LABEL
 
 
 # ---------------------------------------------------------------------------
@@ -219,9 +434,9 @@ def _new_request_id() -> str:
 
 
 def _inbound_request_id(request: HttpRequest) -> str:
-    """Accept a well-formed inbound request id, else mint a fresh one."""
+    """Accept a strict-format inbound request id, else mint a fresh one."""
     candidate = request.META.get(_REQUEST_ID_HEADER, "")
-    if isinstance(candidate, str) and _REQUEST_ID.fullmatch(candidate):
+    if isinstance(candidate, str) and _REQUEST_ID_FORMAT.fullmatch(candidate):
         return candidate
     return _new_request_id()
 
@@ -278,31 +493,42 @@ class AllowlistLogFilter(logging.Filter):
 class JsonTelemetryFormatter(logging.Formatter):
     """Render one log record as a single allowlisted JSON object.
 
-    The message is emitted as the literal template (``record.msg``) with
-    pattern redaction; ``args`` are never interpolated, so a caller that
-    passes PHI as a positional argument cannot leak it. Exception output is
-    the exception type name only — never the message or traceback.
+    The message must be a registered template from ``LOG_MESSAGE_ALLOWLIST``;
+    ``args`` are never interpolated, so a caller that passes PHI as a
+    positional argument or as the message itself cannot leak it. Exception
+    output is the exception type name only — never the message or traceback.
     """
 
     def format(self, record: logging.LogRecord) -> str:
         """Serialize the record; non-allowlisted extras are already gone."""
+        template = str(record.msg)
         payload: dict[str, object] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC)
             .isoformat()
             .replace("+00:00", "Z"),
             "level": record.levelname.lower(),
-            "logger": record.name,
-            "message": redact_text(str(record.msg)),
+            "logger": _machine_token(record.name),
+            "message": (
+                template if template in LOG_MESSAGE_ALLOWLIST else UNLISTED_MESSAGE
+            ),
         }
         for field in sorted(LOG_FIELD_ALLOWLIST):
             if field in vars(record):
-                payload[field] = _clean_field_value(getattr(record, field))
-        request_id = current_request_id()
-        if request_id and "request_id" not in payload:
+                payload[field] = _log_field_value(field, getattr(record, field))
+        request_id = _hex32(current_request_id())
+        if request_id != INVALID_LABEL and "request_id" not in payload:
             payload["request_id"] = request_id
         if record.exc_info and record.exc_info[0] is not None:
             payload["exception_type"] = _safe_type_name(record.exc_info[0].__name__)
         return json.dumps(payload, ensure_ascii=True, sort_keys=True)
+
+
+def _safe_type_name(value: object) -> str:
+    """Coerce an exception type name; capitals are legitimate here."""
+    text = redact_text(str(value))[:MAX_FIELD_VALUE_LENGTH]
+    if _SAFE_TYPE_NAME.fullmatch(text):
+        return text
+    return INVALID_LABEL
 
 
 # ---------------------------------------------------------------------------
@@ -322,35 +548,31 @@ _EXPORTER_OTLP: Final = "otlp-http-json"
 def _filtered_attributes(
     attributes: Mapping[str, object] | None,
 ) -> dict[str, AttributeValue]:
-    """Keep allowlisted span attributes; clean every string value."""
+    """Keep allowlisted span attributes; validate every value by key."""
     if not attributes:
         return {}
     filtered: dict[str, AttributeValue] = {}
     for key, value in attributes.items():
         if key not in SPAN_ATTRIBUTE_ALLOWLIST:
             continue
-        if isinstance(value, str):
-            filtered[key] = _clean_field_value(value)
-        elif isinstance(value, (list, tuple)):
-            filtered[key] = cast(
-                "AttributeValue",
-                [
-                    _clean_field_value(item) if isinstance(item, str) else item
-                    for item in value
-                ],
-            )
-        else:
-            filtered[key] = cast("AttributeValue", value)
+        cleaned = _span_attribute_value(key, value)
+        if cleaned == INVALID_LABEL:
+            continue
+        filtered[key] = cast("AttributeValue", cleaned)
     return filtered
 
 
 def _filtered_span(span: ReadableSpan) -> ReadableSpan:
-    """Rebuild one span keeping only allowlisted attributes and safe names."""
-    status = span.status
-    description = redact_text(status.description or "")
+    """Rebuild one span keeping only validated names and attributes.
+
+    Status descriptions are dropped entirely: the SDK fills them with the
+    exception message on error, which is exactly where clinical text would
+    re-enter. Exception events keep only their name; their attributes are
+    filtered like any other.
+    """
     events = tuple(
         Event(
-            name=redact_text(event.name),
+            name=_span_event_name_value(event.name),
             attributes=_filtered_attributes(event.attributes),
             timestamp=event.timestamp,
         )
@@ -361,7 +583,7 @@ def _filtered_span(span: ReadableSpan) -> ReadableSpan:
         for link in span.links
     )
     return ReadableSpan(
-        name=redact_text(span.name),
+        name=_span_name_value(span.name),
         context=span.context,
         parent=span.parent,
         resource=span.resource,
@@ -370,7 +592,7 @@ def _filtered_span(span: ReadableSpan) -> ReadableSpan:
         links=links,
         kind=span.kind,
         instrumentation_scope=span.instrumentation_scope,
-        status=Status(status.status_code, description or None),
+        status=Status(span.status.status_code),
         start_time=span.start_time,
         end_time=span.end_time,
     )
@@ -445,7 +667,7 @@ class OtlpJsonSpanExporter(SpanExporter):
         return SpanExportResult.FAILURE
 
     def shutdown(self) -> None:
-        """No persistent resources to release."""
+        """Release nothing; the exporter holds no persistent resources."""
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:  # noqa: ARG002
         """Report success; the synchronous exporter buffers nothing."""
@@ -553,6 +775,7 @@ REQUEST_LATENCY_BUCKETS_SECONDS: Final = (
     10.0,
 )
 _QUEUE_TIMEOUT_SECONDS: Final = 1.0
+_ENQUEUED_AT_HEADER: Final = "clinic_enqueued_at"
 
 
 @dataclass(frozen=True, slots=True)
@@ -581,7 +804,7 @@ class _Histogram:
 
 
 class MetricsRegistry:
-    """In-process SLI registry; every label value is sanitized on write."""
+    """In-process SLI registry; label values come from closed vocabularies."""
 
     def __init__(self) -> None:
         """Initialize empty metric families."""
@@ -598,9 +821,9 @@ class MetricsRegistry:
     ) -> None:
         """Record one request latency under route-name/method/status labels."""
         key = _HistogramKey(
-            route=_safe_label(route),
-            method=_safe_label(method.lower()),
-            status_class=_safe_label(f"{status // 100}xx"),
+            route=_route_name_value(route),
+            method=_method_value(method),
+            status_class=_status_class_value(f"{status // 100}xx"),
         )
         with self._lock:
             histogram = self._request_histograms.setdefault(key, _Histogram())
@@ -610,7 +833,7 @@ class MetricsRegistry:
         self, *, capability: str, outcome: str, seconds: float, cost_micros: int
     ) -> None:
         """Aggregate one AI invocation by capability/outcome (todo 38 hook)."""
-        key = (_safe_label(capability), _safe_label(outcome))
+        key = (self._capability_label(capability), _ai_outcome_value(outcome))
         with self._lock:
             self._ai_invocations[key] = self._ai_invocations.get(key, 0) + 1
             self._ai_latency_sum[key] = self._ai_latency_sum.get(key, 0.0) + seconds
@@ -620,14 +843,27 @@ class MetricsRegistry:
         self, capability: str, probe: Callable[[], bool]
     ) -> None:
         """Register a provider health probe keyed by capability (todo 4 hook)."""
+        cleaned = _machine_token(capability)
+        if cleaned == INVALID_LABEL:
+            return
         with self._lock:
-            self._provider_probes[_safe_label(capability)] = probe
+            self._provider_probes[cleaned] = probe
+
+    def _capability_label(self, capability: object) -> str:
+        """Closed-set capability label: registered keys or probes only."""
+        if not isinstance(capability, str):
+            return INVALID_LABEL
+        if capability in _AI_CAPABILITIES or capability in self._provider_probes:
+            return capability
+        return INVALID_LABEL
 
     def note_scrape_error(self, source: str) -> None:
         """Count one failed collector so silent gaps stay visible."""
+        cleaned = _scrape_source_value(source)
+        if cleaned == INVALID_LABEL:
+            return
         with self._lock:
-            key = _safe_label(source)
-            self._scrape_errors[key] = self._scrape_errors.get(key, 0) + 1
+            self._scrape_errors[cleaned] = self._scrape_errors.get(cleaned, 0) + 1
 
     def render(self) -> str:
         """Render every family plus fresh collector output as text format."""
@@ -742,14 +978,14 @@ class MetricsRegistry:
 METRICS: Final = MetricsRegistry()
 
 
-def _queue_names(registry: MetricsRegistry) -> list[str]:
+def _queue_names(registry: MetricsRegistry) -> frozenset[str]:
     """Resolve configured Celery queue names from the celery app config."""
     names: set[str] = set()
     try:
         from config.celery import app as celery_app  # noqa: PLC0415
     except Exception:  # noqa: BLE001 - celery config must not break a scrape
         registry.note_scrape_error("queue-config")
-        return []
+        return frozenset()
     conf = celery_app.conf
     default = conf.get("task_default_queue")
     if isinstance(default, str) and default:
@@ -766,11 +1002,27 @@ def _queue_names(registry: MetricsRegistry) -> list[str]:
         name = getattr(queue, "name", None)
         if isinstance(name, str) and name:
             names.add(name)
-    return sorted(names)
+    return frozenset(names)
+
+
+def stamp_enqueue_timestamp(
+    *,
+    headers: dict[str, object] | None = None,
+    **_kwargs: object,
+) -> None:
+    """Stamp the enqueue time on outgoing Celery message headers.
+
+    Connected to ``celery.signals.before_task_publish`` in
+    ``CoreConfig.ready``; protocol-2 headers are embedded in the broker
+    message, so the metrics collector can read the real enqueue age of the
+    oldest queued message without trusting message bodies.
+    """
+    if isinstance(headers, dict):
+        headers[_ENQUEUED_AT_HEADER] = time.time()
 
 
 def _message_enqueued_at(raw: object) -> float | None:
-    """Extract an enqueue timestamp from one broker message, if present."""
+    """Extract the enqueue timestamp stamped by ``stamp_enqueue_timestamp``."""
     if not isinstance(raw, (bytes, str)):
         return None
     try:
@@ -782,7 +1034,7 @@ def _message_enqueued_at(raw: object) -> float | None:
     for section in ("headers", "properties"):
         candidate = message.get(section)
         if isinstance(candidate, dict):
-            stamp = candidate.get("timestamp")
+            stamp = candidate.get(_ENQUEUED_AT_HEADER) or candidate.get("timestamp")
             if (
                 isinstance(stamp, (int, float))
                 and not isinstance(stamp, bool)
@@ -793,12 +1045,11 @@ def _message_enqueued_at(raw: object) -> float | None:
 
 
 def render_queue_metrics(*, registry: MetricsRegistry = METRICS) -> str:
-    """Scrape broker queue depth and best-effort oldest-message age.
+    """Scrape broker queue depth and oldest-message age per queue.
 
-    Depth comes from ``LLEN``. Age is emitted only when the oldest message
-    carries a ``timestamp`` header/property; the Redis transport does not
-    stamp one, so the series is absent rather than fabricated. Durable
-    backlog age is covered by ``clinic_outbox_oldest_age_seconds``.
+    Depth comes from ``LLEN``; age comes from the ``clinic_enqueued_at``
+    header stamped at publish time. Messages published before the stamp
+    existed simply omit the age series rather than fabricating one.
     """
     lines = [
         "# HELP clinic_queue_depth Messages waiting per Celery queue.",
@@ -816,9 +1067,9 @@ def render_queue_metrics(*, registry: MetricsRegistry = METRICS) -> str:
             socket_timeout=_QUEUE_TIMEOUT_SECONDS,
         )
         try:
-            for queue in _queue_names(registry):
+            for queue in sorted(_queue_names(registry)):
                 depth = client.llen(queue)
-                label = _safe_label(queue)
+                label = _queue_name_value(queue)
                 lines.append(f'clinic_queue_depth{{queue="{label}"}} {depth}')
                 if depth:
                     enqueued = _message_enqueued_at(client.lindex(queue, -1))
@@ -860,7 +1111,7 @@ def render_outbox_metrics(*, registry: MetricsRegistry = METRICS) -> str:
         return "\n".join(lines) + "\n"
     now = datetime.now(tz=UTC)
     for status, count, oldest in rows:
-        label = _safe_label(status)
+        label = _outbox_status_value(status)
         lines.append(f'clinic_outbox_operations{{status="{label}"}} {int(count)}')
         if isinstance(oldest, datetime):
             age = max(0.0, (now - oldest).total_seconds())
@@ -911,8 +1162,12 @@ class TelemetryMiddleware:
                 span.set_attribute("clinic.request_id", request_id)
                 response = self.get_response(request)
                 status = response.status_code
-                span.set_attribute("http.route", _route_name(request))
+                route = _route_name(request)
+                span.set_attribute("http.route", route)
                 span.set_attribute("http.response.status_code", status)
+                update_name = getattr(span, "update_name", None)
+                if update_name is not None:
+                    update_name(route)
                 response.headers[_REQUEST_ID_RESPONSE_HEADER] = request_id
                 return response
         finally:
@@ -973,12 +1228,16 @@ def _client_ip_allowed(request: HttpRequest) -> bool:
 
 
 def _ops_token_valid(request: HttpRequest) -> bool:
-    """Require a configured bearer token; fail closed when unset/short."""
+    """Require a configured ASCII bearer token; fail closed when unset."""
     expected = os.environ.get(OPS_METRICS_TOKEN_ENV, "")
-    if len(expected) < _MIN_TOKEN_LENGTH:
+    if len(expected) < _MIN_TOKEN_LENGTH or not expected.isascii():
         return False
     header = request.META.get("HTTP_AUTHORIZATION", "")
-    if not isinstance(header, str) or not header.startswith("Bearer "):
+    if (
+        not isinstance(header, str)
+        or not header.isascii()
+        or not header.startswith("Bearer ")
+    ):
         return False
     return secrets.compare_digest(header[len("Bearer ") :], expected)
 
@@ -1034,7 +1293,7 @@ def _scrub_breadcrumbs(breadcrumbs: object) -> dict[str, object]:
             continue
         scrubbed.append(
             {
-                key: _clean_field_value(value)
+                key: _machine_token(value)
                 for key, value in entry.items()
                 if key in SENTRY_BREADCRUMB_ALLOWLIST
             }
@@ -1042,46 +1301,135 @@ def _scrub_breadcrumbs(breadcrumbs: object) -> dict[str, object]:
     return {"values": scrubbed}
 
 
+def _scrub_trace_context(trace: object) -> dict[str, object]:
+    """Keep only structural trace identifiers; drop ``data`` and the rest."""
+    if not isinstance(trace, dict):
+        return {}
+    kept: dict[str, object] = {}
+    for key, value in trace.items():
+        if key not in SENTRY_TRACE_CONTEXT_ALLOWLIST:
+            continue
+        if key in {"trace_id", "span_id", "parent_span_id"}:
+            cleaned = _hex32(value) if key == "trace_id" else _span_id(value)
+            if cleaned != INVALID_LABEL:
+                kept[key] = cleaned
+        elif key == "op":
+            kept[key] = _machine_token(value)
+    return kept
+
+
+def _span_id(value: object) -> str:
+    if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{16}", value.lower()):
+        return value.lower()
+    return INVALID_LABEL
+
+
+def _scrub_tags(tags: object) -> dict[str, object]:
+    if not isinstance(tags, dict):
+        return {}
+    kept: dict[str, object] = {}
+    for key, value in tags.items():
+        if key not in SENTRY_TAG_ALLOWLIST:
+            continue
+        if key == "request_id":
+            kept[key] = _hex32(value)
+        elif key == "route":
+            kept[key] = _route_name_value(value)
+    return kept
+
+
+def _scrub_request(request: object) -> dict[str, object]:
+    if not isinstance(request, dict):
+        return {}
+    return {
+        key: _method_value(value)
+        for key, value in request.items()
+        if key in SENTRY_REQUEST_ALLOWLIST
+    }
+
+
+def _sentry_timestamp(value: object) -> object:
+    if isinstance(value, str) and _ISO_TIMESTAMP.match(value):
+        return value
+    if isinstance(value, bool):
+        return INVALID_LABEL
+    if isinstance(value, (int, float, datetime)):
+        return value
+    return INVALID_LABEL
+
+
+def _sentry_level(value: object) -> object:
+    return value if isinstance(value, str) and value in SENTRY_LEVELS else INVALID_LABEL
+
+
+def _sentry_platform(value: object) -> object:
+    return value if value == "python" else INVALID_LABEL
+
+
+def _sentry_release(value: object) -> object:
+    if isinstance(value, str) and _SHA_FORMAT.fullmatch(value.lower()):
+        return value.lower()
+    return _machine_token(value)
+
+
+def _sentry_sdk(value: object) -> object:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: _machine_token(item)
+        for key, item in value.items()
+        if key in {"name", "version"}
+    }
+
+
+_SENTRY_METADATA_VALIDATORS: Final[dict[str, Callable[[object], object]]] = {
+    "event_id": _hex32,
+    "timestamp": _sentry_timestamp,
+    "level": _sentry_level,
+    "platform": _sentry_platform,
+    "release": _sentry_release,
+    "transaction": _route_name_value,
+    "logger": _machine_token,
+    "environment": _machine_token,
+    "server_name": _machine_token,
+    "sdk": _sentry_sdk,
+}
+
+
+def _scrub_metadata_value(key: str, value: object) -> object:
+    """Validate one allowlisted top-level metadata value by key."""
+    validator = _SENTRY_METADATA_VALIDATORS.get(key)
+    return validator(value) if validator is not None else INVALID_LABEL
+
+
 def scrub_sentry_event(event: SentryEvent, _hint: SentryHint) -> SentryEvent:
     """Reduce one Sentry event to allowlisted, PHI-free fields.
 
-    The surviving vocabulary is event metadata, the exception *type* (never
-    the message), the request *method* (never URL/headers/body), allowlisted
-    tags such as ``request_id`` and structural breadcrumbs. Everything else
+    The surviving vocabulary is validated event metadata (ids, timestamps,
+    level, release SHA), the exception *type* (never the message), the
+    request *method* (never URL/headers/body), allowlisted tags such as
+    ``request_id``, structural breadcrumbs and a trace context reduced to
+    trace/span ids. Everything else — ``extra``, ``user``, ``message``,
+    ``logentry``, ``modules``, ``fingerprint``, ``spans``, nested ``data`` —
     is dropped before the event leaves the process.
     """
     scrubbed: dict[str, object] = {}
     for key, value in dict(event).items():
         if key not in SENTRY_EVENT_ALLOWLIST:
             continue
-        if key in SENTRY_PASSTHROUGH_KEYS:
-            scrubbed[key] = value
-        elif key == "request" and isinstance(value, dict):
-            scrubbed[key] = {
-                sub: _clean_field_value(
-                    sub_value.lower() if isinstance(sub_value, str) else sub_value
-                )
-                for sub, sub_value in value.items()
-                if sub in SENTRY_REQUEST_ALLOWLIST
-            }
-        elif key == "tags" and isinstance(value, dict):
-            scrubbed[key] = {
-                sub: _clean_field_value(sub_value)
-                for sub, sub_value in value.items()
-                if sub in SENTRY_TAG_ALLOWLIST
-            }
+        if key == "request":
+            scrubbed[key] = _scrub_request(value)
+        elif key == "tags":
+            scrubbed[key] = _scrub_tags(value)
         elif key == "exception":
             scrubbed[key] = _scrub_exception(value)
         elif key == "breadcrumbs":
             scrubbed[key] = _scrub_breadcrumbs(value)
         elif key == "contexts" and isinstance(value, dict):
-            scrubbed[key] = {
-                sub: sub_value
-                for sub, sub_value in value.items()
-                if sub in SENTRY_CONTEXT_ALLOWLIST
-            }
-        elif isinstance(value, str):
-            scrubbed[key] = _clean_field_value(value)
+            trace = _scrub_trace_context(value.get("trace"))
+            scrubbed[key] = {"trace": trace} if trace else {}
         else:
-            scrubbed[key] = value
+            cleaned = _scrub_metadata_value(key, value)
+            if cleaned != INVALID_LABEL:
+                scrubbed[key] = cleaned
     return cast("SentryEvent", scrubbed)

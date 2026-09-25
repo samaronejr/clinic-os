@@ -281,11 +281,24 @@ endpoint never labels metrics with patient or clinic names, raw URLs or
 request bodies (ADR-014).
 
 Structured JSON logs and the Sentry scrubber share the allowlist in
-`apps/core/telemetry.py`; a new field needs an allowlist entry. OpenTelemetry
-tracing is disabled by default: set `CLINIC_OTEL_ENABLED=1` plus
-`CLINIC_OTEL_EXPORTER=console` or `otlp-http-json` with
-`CLINIC_OTEL_OTLP_ENDPOINT=<collector base URL>`. Exporter failures are
-contained and never affect requests.
+`apps/core/telemetry.py`. The boundary is a closed vocabulary: log messages
+must be registered in `LOG_MESSAGE_ALLOWLIST` (args are never interpolated),
+label values come from closed sets (URL route names, Celery queue names,
+registered capability keys, status classes), and open fields validate to
+strict machine formats or collapse to `[invalid]`. Sentry events are rebuilt
+recursively — `contexts.trace`, breadcrumbs, request, tags and exception
+keep only validated structural fields. Queue age requires the enqueue-time
+header stamped by `before_task_publish` in `CoreConfig.ready`; unstamped
+legacy messages simply omit `clinic_queue_oldest_age_seconds`. Gunicorn
+access logs (`ops/container/gunicorn_no_proxy.py` `access_log_format`, also
+passed as `--access-logformat` to the browser harnesses) emit only method,
+status and duration — never the request line, query or peer address.
+
+OpenTelemetry tracing is disabled by default: set `CLINIC_OTEL_ENABLED=1`
+plus `CLINIC_OTEL_EXPORTER=console` or `otlp-http-json` with
+`CLINIC_OTEL_OTLP_ENDPOINT=<collector base URL>`. Span names resolve to
+route names, status descriptions are dropped (they carry exception
+messages), and exporter failures are contained and never affect requests.
 
 ## Troubleshooting
 

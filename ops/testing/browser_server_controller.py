@@ -121,6 +121,9 @@ def start_server(
                 "--preload",
                 "--access-logfile",
                 environment["CLINIC_BROWSER_ACCESS_LOG"],
+                # ADR-014: method + status + duration only; no request line.
+                "--access-logformat",
+                "%(m)s %(s)s %(D)s",
                 "--error-logfile",
                 "-",
                 "config.wsgi:application",

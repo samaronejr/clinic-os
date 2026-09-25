@@ -12,7 +12,13 @@ from .browser_authority_root import integer, object_array, object_value, text
 if TYPE_CHECKING:
     from ops.testing.isolation_common import JsonObject
 
-GUNICORN_CONFIG: Final = b'forwarded_allow_ips = ""\nsecure_scheme_headers = {}\n'
+GUNICORN_CONFIG: Final = (
+    b'forwarded_allow_ips = ""\n'
+    b"secure_scheme_headers = {}\n"
+    b"# ADR-014: access logs carry method + status + duration only; the request\n"
+    b"# line, query, remote address and headers are never logged (PHI boundary).\n"
+    b'access_log_format = "%(m)s %(s)s %(D)s"\n'
+)
 DESIRED_KEYS: Final = frozenset(
     {
         "argv",
