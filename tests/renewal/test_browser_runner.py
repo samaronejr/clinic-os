@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
@@ -15,7 +16,7 @@ from ops.testing.browser_server_supervisor import SupervisedMaster
 from ops.testing.isolation_common import IsolationError, JsonObject
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
@@ -285,6 +286,10 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
     assert environment["CLINIC_RENEWAL_BROWSER_EXECUTABLE"] == "/usr/bin/google-chrome"
     assert environment["CLINIC_RENEWAL_USERNAME"] == "renewal-owner-x"
     assert environment["CLINIC_RENEWAL_PASSWORD"] == "secret-password"  # noqa: S105
+    # Browser-suite worker subprocesses run config.settings.base and inherit
+    # this environment; without the pin they would publish to whatever listens
+    # on the developer workstation's 6379.
+    assert environment["CELERY_BROKER_URL"] == "memory://"
     for leaked in (
         "APP_DATABASE_URL",
         "MIGRATION_DATABASE_URL",
@@ -294,6 +299,65 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
         "POSTGRES_PASSWORD",
     ):
         assert leaked not in environment
+
+
+def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The coverage child must never publish into the workstation's Redis.
+
+    ``_child_env`` rebuilds the environment from scratch, so a host
+    ``CELERY_BROKER_URL`` is already stripped; the explicit pin mirrors
+    ``_server_environment`` and survives ``config.settings`` defaults.
+    """
+    database = runner.ProvisionedDatabase(
+        app_dsn="postgresql://clinic_app:pw@127.0.0.1:55432/clinic",
+        app_password="pw",  # noqa: S106 - synthetic fixture value.
+        container="clinic_renewal_db_covpin",
+        database="clinic",
+        owner_dsn="postgresql://clinic_owner:pw@127.0.0.1:55432/clinic",
+        owner_password="pw",  # noqa: S106 - synthetic fixture value.
+        port=55432,
+        postgres_password="pw",  # noqa: S106 - synthetic fixture value.
+        super_dsn="postgresql://clinic_super:pw@127.0.0.1:55432/clinic",
+        super_password="pw",  # noqa: S106 - synthetic fixture value.
+        volume="clinic_renewal_db_covpin_data",
+    )
+
+    @contextlib.contextmanager
+    def fake_provision(
+        repository: Path, token: str, *, docker: object = None
+    ) -> Iterator[runner.ProvisionedDatabase]:
+        yield database
+
+    captured: list[dict[str, str]] = []
+
+    def fake_run(
+        argv: list[str],
+        environment: dict[str, str],
+        log: Path,
+        *,
+        timeout: int,
+        cwd: Path | None = None,
+    ) -> int:
+        captured.append(environment)
+        return 0
+
+    monkeypatch.setattr(runner, "_provision_database", fake_provision)
+    monkeypatch.setattr(runner, "_create_test_database", lambda *args: None)
+    monkeypatch.setattr(runner, "_migrate", lambda *args: None)
+    monkeypatch.setattr(runner, "_run_bounded", fake_run)
+    results = runner._gate_coverage(REPOSITORY, tmp_path, "covpin")
+    assert results == [{"command": "coverage", "exit": 0}]
+    assert len(captured) == 1
+    environment = captured[0]
+    assert environment["DJANGO_SETTINGS_MODULE"] == "config.settings.test"
+    assert environment["CELERY_BROKER_URL"] == "memory://"
+    assert environment["APP_DATABASE_URL"] == database.app_dsn
+    assert environment["MIGRATION_DATABASE_URL"] == database.owner_dsn
+    assert environment["TEST_SUPERUSER_DATABASE_URL"] == database.super_dsn
+    assert "CELERY_RESULT_BACKEND" not in environment
 
 
 def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
