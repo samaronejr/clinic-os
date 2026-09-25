@@ -1,6 +1,6 @@
 ---
 name: Clinic OS
-description: Warm-paper clinical workspace carrying the Clinic Ops navy and teal identity.
+description: Warm-paper clinical workspace carrying the Clinic Ops navy and teal identity, with a navy dark theme and a compact density.
 colors:
   brand-cyan: "#00e5d0"
   brand-teal: "#00b894"
@@ -28,6 +28,47 @@ colors:
   success-marker: "#00b894"
   error: "#8f3f1f"
   error-tint: "#fbede6"
+  warning: "#7a4d00"
+  warning-tint: "#fcf0d9"
+  info: "#1e5470"
+  info-tint: "#e6f0f6"
+  on-marker: "#0f2d3a"
+  scrim: "rgb(15 45 58 / 0.55)"
+  viz-1: "#007a87"
+  viz-2: "#b36b00"
+  viz-3: "#312a86"
+  viz-4: "#c4337f"
+  viz-5: "#3f6317"
+  viz-6: "#69442f"
+  dark-canvas: "#0b1f28"
+  dark-raised: "#12303d"
+  dark-sunken: "#1a3a48"
+  dark-nav: "#07161d"
+  dark-nav-hover: "#1a3a48"
+  dark-line: "#2b4b58"
+  dark-ink: "#e6f0f2"
+  dark-ink-soft: "#a9c0c8"
+  dark-control-border: "#8aa3ad"
+  dark-primary: "#5cc8d3"
+  dark-primary-strong: "#8adbe2"
+  dark-on-primary: "#0b1f28"
+  dark-selection: "#1b4a55"
+  dark-focus: "#00e5d0"
+  dark-success: "#7fd8b4"
+  dark-success-tint: "#0f3a30"
+  dark-error: "#f0aa8a"
+  dark-error-tint: "#3a2219"
+  dark-warning: "#f0c56c"
+  dark-warning-tint: "#33290f"
+  dark-info: "#a3cde3"
+  dark-info-tint: "#15313f"
+  dark-scrim: "rgb(2 10 14 / 0.72)"
+  dark-viz-1: "#5cc8d3"
+  dark-viz-2: "#e0913f"
+  dark-viz-3: "#9a87f5"
+  dark-viz-4: "#ef6f8e"
+  dark-viz-5: "#d8e062"
+  dark-viz-6: "#b9e8b0"
 typography:
   title:
     fontFamily: "Avenir Next, Segoe UI Variable Text, Segoe UI, system-ui, Helvetica Neue, Arial, sans-serif"
@@ -60,6 +101,11 @@ typography:
     fontSize: "0.875rem"
     fontWeight: 600
     lineHeight: 1.4
+  micro:
+    fontFamily: "Avenir Next, Segoe UI Variable Text, Segoe UI, system-ui, Helvetica Neue, Arial, sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 400
+    fontFeature: "tnum"
 rounded:
   control: "0.375rem"
   surface: "0.75rem"
@@ -150,6 +196,77 @@ components:
   notice-success:
     backgroundColor: "{colors.success-tint}"
     textColor: "{colors.success}"
+  notice-warning:
+    backgroundColor: "{colors.warning-tint}"
+    textColor: "{colors.warning}"
+  notice-info:
+    backgroundColor: "{colors.info-tint}"
+    textColor: "{colors.info}"
+  badge-warning:
+    backgroundColor: "{colors.warning-tint}"
+    textColor: "{colors.warning}"
+  badge-info:
+    backgroundColor: "{colors.info-tint}"
+    textColor: "{colors.info}"
+  state-note:
+    backgroundColor: "{colors.paper-raised}"
+    textColor: "{colors.ink}"
+    typography: "{typography.small}"
+    rounded: "{rounded.control}"
+    padding: "0.75rem"
+  dialog:
+    backgroundColor: "{colors.paper-raised}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.surface}"
+    padding: "1.5rem"
+    width: "32rem"
+  drawer:
+    backgroundColor: "{colors.paper-raised}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.surface}"
+    width: "26rem"
+  combobox-option-current:
+    backgroundColor: "{colors.selection}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    height: "2.75rem"
+  segmented-option-checked:
+    backgroundColor: "{colors.paper-raised}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+  tab-current:
+    textColor: "{colors.ink}"
+    height: "2.75rem"
+  provenance-ai-drafted:
+    backgroundColor: "{colors.warning-tint}"
+    textColor: "{colors.warning}"
+    typography: "{typography.label}"
+    rounded: "{rounded.control}"
+  provenance-confirmed:
+    backgroundColor: "{colors.success-tint}"
+    textColor: "{colors.success}"
+    typography: "{typography.label}"
+    rounded: "{rounded.control}"
+  citation:
+    backgroundColor: "{colors.paper-raised}"
+    textColor: "{colors.primary-strong}"
+    typography: "{typography.label}"
+    rounded: "{rounded.control}"
+    height: "2.75rem"
+  toast:
+    backgroundColor: "{colors.paper-raised}"
+    textColor: "{colors.ink}"
+    typography: "{typography.small}"
+    rounded: "{rounded.control}"
+  button-primary-dark:
+    backgroundColor: "{colors.dark-primary}"
+    textColor: "{colors.dark-on-primary}"
+    rounded: "{rounded.control}"
+    height: "2.75rem"
+  panel-dark:
+    backgroundColor: "{colors.dark-raised}"
+    textColor: "{colors.dark-ink}"
+    rounded: "{rounded.surface}"
 ---
 
 # Design System: Clinic OS
@@ -173,12 +290,26 @@ action. Loading is spoken in words and `aria-busy`, never in spinners.
 Authentication screens stay one narrow column; workspace screens stretch to a
 wide measure so agendas and registries breathe.
 
+Version 2 (this revision) keeps every rule above and adds what a full
+outpatient day needs: a navy **dark theme** for low-light rooms, a
+**compact density** for desk work, status hues for **warning** and **info**,
+a six-hue **data-visualization** palette, **motion tokens** for state
+reveals, and a component library (dialog, drawer, combobox, date and time
+picker, resource grid, command palette, announcer and toasts, tabs,
+segmented control, editor shell, provenance badge, source citation, diff,
+document viewer, chart) in which every component carries all thirteen SC-8
+states. Theme and density are per-user preferences stored on the server
+(`UserPreference`), never in the browser, and applied as `data-theme` and
+`data-density` on `<html>` for signed-in pages.
+
 **Key Characteristics:**
 - Warm paper canvas with white raised work surfaces and tonal depth only
 - Navy text, dark-teal actions, cyan reserved for current and selected markers
 - One UI sans family, fixed rem scale, tabular numerals for data
 - Every primitive carries default, focus, disabled, loading, error and success
 - Plain-language loading and status; no spinners, no decorative motion
+- Light by default; a navy dark theme and a compact density on request, per
+  user, with the same contrast floors
 
 ## Colors
 
@@ -244,6 +375,35 @@ action colors. Decision, implemented in `static/css/clinic-os.css`:
 - **Pending**: neutral badge and sunken paper with a text label; loading never
   gets its own hue.
 
+- **Warning** (`#7a4d00` on `#fcf0d9`): stale data, conflicts waiting for a
+  decision, held slots, AI drafts awaiting review. Never for errors.
+- **Info** (`#1e5470` on `#e6f0f6`): offline and informational notices,
+  imported provenance. Never cyan: info is a deep blue that reads on paper.
+
+### Data visualization
+Six categorical hues, assigned in order and never reused within a chart:
+Trust Teal (`#007a87`), Amber (`#b36b00`), Indigo (`#312a86`), Magenta
+(`#c4337f`), Moss (`#3f6317`) and Umber (`#69442f`). Each holds at least 3:1
+against paper and raised paper, and every pair stays at least 12 ΔE apart
+under simulated protanopia, deuteranopia and tritanopia
+(`tests/renewal/test_design_tokens.py`). Series also differ by marker shape
+(circle, square, triangle, diamond, inverted triangle, bar), so color is
+never the only carrier. Reference ranges are a flat Success tint band with a
+dashed Success edge; out-of-range points get an Error ring and are counted
+in the chart's text summary.
+
+### Dark theme
+Chosen per user, never by the operating system alone. Surfaces are
+navy-derived: canvas `#0b1f28`, raised `#12303d`, sunken and hover
+`#1a3a48`, navigation `#07161d`, rules `#2b4b58`. Ink is `#e6f0f2` with a
+soft `#a9c0c8`; control borders are `#8aa3ad`. The action color lightens to
+`#5cc8d3` (hover `#8adbe2`) with navy `#0b1f28` text on filled buttons; the
+status hues lighten to `#7fd8b4` success, `#f0aa8a` error, `#f0c56c` warning
+and `#a3cde3` info on deep tints. Because every surface is navy, the focus
+ring is cyan (`#00e5d0`) everywhere in dark, which keeps the Two-Ring Rule:
+one ring per surface family. Data-viz hues shift to `#5cc8d3`, `#e0913f`,
+`#9a87f5`, `#ef6f8e`, `#d8e062` and `#b9e8b0`. Navigation ink is unchanged.
+
 ### Named Rules
 **The Navy Ink Rule.** Prose, labels, headings and data are always Clinic Navy
 or Navy Gray. Teal, cyan, success and error colors are semantic and never
@@ -255,6 +415,11 @@ readable on paper uses Trust Teal or darker.
 
 **The Two-Ring Rule.** One focus ring per surface: navy on paper, cyan on navy.
 No component defines a third focus color.
+
+**The Paired Theme Rule.** Every semantic color decided for light is decided
+again for dark, and both meet the same floors: 4.5:1 for text, 3:1 for
+control boundaries, focus rings and data-viz hues. A token added to one theme
+without the other is a defect.
 
 ## Typography
 
@@ -278,6 +443,8 @@ tabular.
 - **Small** (400, 0.875rem, 1.5): hints, metadata, badges, table meta.
 - **Label** (600, 0.875rem, 1.4): field labels, navigation items, status
   titles; sentence case, never uppercase tracking.
+- **Micro** (400, 0.75rem, tabular): chart axis labels only, inside the SVG
+  where they scale with the drawing; never for prose or controls.
 
 ### Named Rules
 **The Fixed Scale Rule.** Sizes are fixed rem steps (ratio about 1.14 to
@@ -299,6 +466,17 @@ scrollable, keyboard-focusable region so that columns keep their meaning at
 320px without forcing the page itself to scroll sideways. The layout stays one
 column at 200% zoom.
 
+### Density
+Two densities scale spacing inside work surfaces through `--density-*`
+tokens: comfortable (default) and compact. Compact moves field and panel
+stacking from `--space-5` to `--space-3`, table and grid cell padding from
+`--space-3` to `--space-1` block and `--space-2` inline, panel padding from
+`--space-5` to `--space-4`, and notice padding from `--space-3` to
+`--space-2`. Type sizes, radii and targets never change.
+
+**The Target Floor Rule.** No density shrinks a target below 44px
+(`--control-height`); compact removes air, never reach.
+
 ## Elevation & Depth
 
 Depth is **tonal shift with structural rules**: white on paper for raised work,
@@ -307,6 +485,11 @@ are no box shadows, glass, glow or gradients anywhere. A panel or notice is
 bounded by a single 1px Rule border; a form control is bounded by a 1px Navy
 Gray border; state changes move the border color (teal for loading and focus
 context, error for invalid, success for verified) rather than adding layers.
+
+The one overlay tone is the **scrim** behind a modal dialog or the command
+palette: a flat navy at 55% (`rgb(15 45 58 / 0.55)`, dark `rgb(2 10 14 /
+0.72)`), no blur. Docked drawers and toasts are bordered raised paper,
+never lifted by shadow.
 
 ### Named Rules
 **The Flat Ledger Rule.** Surfaces are flat at rest and flat in every state.
@@ -317,7 +500,10 @@ Elevation never communicates state; border color and text do.
 Two radii: controls (inputs, buttons, notices, badges' rectangular kin) use
 0.375rem, grouped surfaces (panels) use 0.75rem, and only inline badges are
 pills. Rules are 1px; emphasis rules (table header, current-item bar) are 2px
-to 3px. Corners never mix scales inside one component.
+to 3px. Corners never mix scales inside one component. Provenance badges and
+citation chips are rectangles at the control radius, never pills, so they
+never read as status badges. Dashed borders mean "not yet decided": empty
+states, AI drafts awaiting confirmation, held slots and missing citations.
 
 ## Components
 
@@ -475,9 +661,79 @@ to 3px. Corners never mix scales inside one component.
   are never stored, so offline reloads fail closed instead of replaying
   clinical content. Anonymous allowlisted static fetches still work offline.
 
+### Component library (v2)
+Every component is a template include in `templates/includes/components/`
+with its signature in the include's header comment (mirrored in
+`templates/AGENTS.md`), styles in `static/css/clinic-os-components.css`
+loaded per page, and, where it needs one, a strict plain script in
+`static/js/components/`. Every include accepts `state` with the SC-8
+vocabulary: default, hover, focus, active, disabled, loading, error, success,
+empty, stale, conflict, permission-denied, offline. Component-level states
+speak through one **state note** (`includes/components/state.html`): an
+icon, a Label-weight title and one sentence in the state's tone (error in
+Error, success in Success, stale and conflict in Warning, offline in Info,
+permission-denied and disabled on sunken paper, empty with a dashed Navy
+Gray border). Errors use `role="alert"`; every other state `role="status"`.
+
+- **Dialog:** native `<dialog>` opened with `showModal()` for decisions only
+  (keep or discard, confirm a consequence); raised paper, surface radius,
+  flat scrim, danger tone moves the border and title to Error. Focus is
+  trapped by the browser and returns to the opener.
+- **Drawer:** non-modal context panel, bordered raised paper; docks at the
+  inline end from 64rem, reveals with the reveal motion; Escape closes and
+  returns focus to its toggle. Without JavaScript it renders in flow.
+- **Combobox:** ARIA 1.2 editable combobox with a listbox; the current
+  option takes Selection Tint and an inset focus-colored outline; async
+  search POSTs the term (never a URL) and speaks counts in a status line.
+  A confirmed patient selection shows name, age and masked CPF in a Success
+  line before anything binds to it.
+- **Date and time picker:** DD/MM/AAAA and 24-hour HH:MM text inputs are the
+  source of truth; the calendar grid is pt-BR, starts on Sunday, marks today
+  in the clinic time zone with a border, the chosen day with a Trust Teal
+  fill, and days outside bounds struck through.
+- **Resource grid:** resources by clinic-local time in CSS grid with the ARIA
+  grid pattern and one roving tab stop. Booked slots on Selection Tint, held
+  slots dashed Warning, conflicts on Error tint, completed on Success tint,
+  unavailable cells on sunken paper; every slot is a link, so moving is a
+  dialog, never drag-only.
+- **Command palette:** Ctrl+K / Cmd+K opens a modal combobox of destinations
+  and actions grouped under Label headings; keys shown as `<kbd>` on paper.
+- **Announcer and toast:** one polite and one assertive live region per page
+  plus a toast stack at the inline end; toasts are bordered raised paper in
+  their tone, stay until dismissed (no timers) and never carry clinical
+  content.
+- **Tabs:** Label-weight items with a 3px Trust Teal bottom rule on the
+  current tab; in-page panels upgrade to the ARIA tabs pattern, server
+  routes use links with `aria-current="page"`.
+- **Segmented control:** native radios in a bordered track; the checked
+  option is raised paper with a Trust Teal border, never color alone.
+- **Editor shell:** titled sections of plain text with one save indicator
+  (all saved, saving, unsaved, not saved, offline, changed elsewhere, newer
+  version). A dirty section's field gets a 3px inline-start rule. The
+  server decides every save; nothing is stored in the browser.
+- **Provenance badge:** reported (speech glyph), observed (eye), imported
+  (Info), AI draft (dashed Warning) and confirmed (Success); the kind is
+  always written out.
+- **Source citation:** a numbered chip linking to the supporting source span;
+  the current citation takes a 2px Trust Teal border; missing, restricted
+  and withdrawn sources are dashed and inert, so uncited text stays visible.
+- **Diff viewer:** unified lines with +/− markers, `<ins>`/`<del>` and
+  hidden "Adicionado/Removido" words on Success and Error tints.
+- **Document viewer:** titled frame, page and zoom status, zoom steps of
+  100/125/150%, a sunken canvas holding a raised page, and a list of region
+  anchors that outline their region in Trust Teal.
+- **Chart:** server-rendered SVG trend (`apps/core/charts.py`) with a text
+  summary, a legend that names every series and the reference range, and a
+  "Ver dados em tabela" disclosure holding the same rows as a table.
+
+Motion: state reveals (drawer, toast) animate opacity over `--duration-2`
+(160ms) and transform over `--duration-3` (240ms) with the shared ease-out;
+color and border changes keep `--duration-1` (120ms). Reduced motion removes
+all of it. Focus rings are never transitioned.
+
 ### Primitive showcase
-A DEBUG-only route renders every primitive in every state with inert,
-synthetic content plus stress cases (long labels, error summary, locale
+A DEBUG-only route renders every primitive and component in every SC-8
+state with inert, synthetic content plus stress cases (long labels, error summary, locale
 wrapping) so responsive, keyboard, forced-colors and reduced-motion evidence is
 captured from real CSS. It never contains a secret, a real name or a QR code.
 
@@ -497,7 +753,14 @@ captured from real CSS. It never contains a secret, a real name or a QR code.
   line (HTMX honours it after a swap, the browser on a native response).
 - **Do** keep authentication and single-task forms in the narrow measure and
   workspace content in the wide measure.
-- **Do** put cyan only on navy; on paper use its tint.
+- **Do** put cyan only on navy; on paper use its tint. In the dark theme every
+  surface is navy, so cyan is the focus ring and marker there too.
+- **Do** give every component all thirteen SC-8 states through its `state`
+  argument and the shared state note before a screen uses it.
+- **Do** decide every new color for both themes and prove it in
+  `tests/renewal/test_design_tokens.py`.
+- **Do** keep theme and density server-side (`UserPreference`); the browser
+  never stores them.
 
 ### Don't:
 - **Don't** add a color outside the frontmatter without updating this file
@@ -513,3 +776,7 @@ captured from real CSS. It never contains a secret, a real name or a QR code.
   count.
 - **Don't** nest a panel inside a panel or use a modal where an inline notice
   works.
+- **Don't** shrink a target below 44px in compact density.
+- **Don't** let a toast, announcement or state note carry clinical content,
+  patient names or identifiers.
+- **Don't** convey a chart series, diff change or provenance by color alone.

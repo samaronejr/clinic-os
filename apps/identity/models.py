@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
 
@@ -152,6 +153,51 @@ class UserClinicRole(models.Model):
     def __str__(self) -> str:
         """Return stable identifiers and the stored role value."""
         return f"{self.user_id}:{self.clinic_id}:{self.role}"
+
+
+class UserPreference(models.Model):
+    """Per-user display preferences; each user reads and edits only their row.
+
+    Row security binds the row to ``app.current_user_id``; the runtime role may
+    insert and update theme/density but never delete. Defaults are light and
+    comfortable, so a missing row is a valid state.
+    """
+
+    class Theme(models.TextChoices):
+        """Stored theme values."""
+
+        LIGHT = "light", _("Light")
+        DARK = "dark", _("Dark")
+
+    class Density(models.TextChoices):
+        """Stored density values."""
+
+        COMFORTABLE = "comfortable", _("Comfortable")
+        COMPACT = "compact", _("Compact")
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True
+    )
+    theme = models.CharField(max_length=16, choices=Theme, default=Theme.LIGHT)
+    density = models.CharField(
+        max_length=16, choices=Density, default=Density.COMFORTABLE
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep the stored vocabulary closed at the database."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(theme__in=("light", "dark"))
+                & models.Q(density__in=("comfortable", "compact")),
+                name="identity_userpreference_closed_values",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the stable owner identifier."""
+        return str(self.pk)
 
 
 class PhysicianProfile(models.Model):

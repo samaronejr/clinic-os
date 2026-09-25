@@ -1,0 +1,43 @@
+{% load i18n %}{% comment %}
+Resource grid: resources (professionals, rooms, equipment) by clinic-local
+time. CSS grid with the ARIA grid pattern; static/js/components/resource-grid.js
+adds one roving tab stop (arrow keys, Home/End per row, Ctrl+Home/End for the
+grid) and Enter activates the cell's link. Moving an appointment is a
+dialog, never drag-only. Without JavaScript every slot link is still in the
+tab order.
+
+Context:
+  id         Grid id (required).
+  caption    Visible caption naming the day (required).
+  resources  Iterable of resource names (column headers).
+  rows       Iterable of {time, cells: [{kind, title, meta, href}]} where
+             kind is free | booked | held | conflict | done | blocked.
+  state      SC-8 state: loading dims the grid and speaks "Updating";
+             other states add a state note above the grid.
+  message    State note text.
+  active_cell  "<row>-<col>" (1-based) marked current (showcase).
+{% endcomment %}<div class="resource-grid-wrap" data-resource-grid-wrap>
+  <p class="panel-title" id="{{ id }}-caption">{{ caption }}{% if state == "loading" %} <span class="table-progress" role="status">{% trans "Updating…" %}</span>{% endif %}</p>
+  {% if state and state != "default" and state != "hover" and state != "focus" and state != "active" and state != "loading" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+  <div class="resource-grid-scroll" role="region" aria-labelledby="{{ id }}-caption" tabindex="{% if state == "disabled" or state == "permission-denied" %}0{% else %}-1{% endif %}">
+    <div class="resource-grid" id="{{ id }}" role="grid" aria-labelledby="{{ id }}-caption" aria-rowcount="{{ rows|length|add:1 }}" data-resource-grid{% if state == "loading" %} aria-busy="true"{% endif %}{% if state == "disabled" or state == "permission-denied" %} aria-disabled="true"{% endif %}>
+      <div class="resource-grid-row resource-grid-head" role="row">
+        <span class="resource-grid-cell" role="columnheader">{% trans "Time" %}</span>
+        {% for resource in resources %}<span class="resource-grid-cell" role="columnheader">{{ resource }}</span>{% endfor %}
+      </div>
+      {% for row in rows %}{% with r=forloop.counter %}
+      <div class="resource-grid-row" role="row">
+        <span class="resource-grid-cell" role="rowheader">{{ row.time }}</span>
+        {% for cell in row.cells %}
+        <div class="resource-grid-cell{% if state == "hover" and r == 1 and forloop.first %} is-hover{% endif %}{% if state == "focus" and r == 1 and forloop.first %} is-focus{% endif %}" role="gridcell"{% if cell.kind == "blocked" or state == "disabled" or state == "permission-denied" %} aria-disabled="true"{% endif %} data-grid-cell>
+          {% if cell.kind == "free" %}{% if state == "disabled" or state == "permission-denied" %}<span class="resource-grid-free">{% trans "Free" %}</span>{% else %}<a class="resource-grid-free" href="{{ cell.href|default:"#"|add:id }}">{% trans "Free" %}<span class="visually-hidden"> {{ row.time }}</span></a>{% endif %}
+          {% elif cell.kind == "blocked" %}<span class="resource-grid-free">{{ cell.title }}</span>
+          {% elif state == "disabled" or state == "permission-denied" %}<span class="resource-slot resource-slot--{{ cell.kind }}"><strong>{{ cell.title }}</strong><span class="resource-slot-meta">{{ cell.meta }}</span></span>
+          {% else %}<a class="resource-slot resource-slot--{{ cell.kind }}{% if state == "active" and r == 1 and forloop.first %} is-active{% endif %}" href="{{ cell.href|default:"#"|add:id }}"><strong>{{ cell.title }}</strong><span class="resource-slot-meta">{% if cell.kind == "held" %}{% trans "Held" %} · {% elif cell.kind == "conflict" %}{% trans "Conflict" %} · {% endif %}{{ cell.meta }}</span></a>{% endif %}
+        </div>
+        {% endfor %}
+      </div>{% endwith %}
+      {% endfor %}
+    </div>
+  </div>
+</div>

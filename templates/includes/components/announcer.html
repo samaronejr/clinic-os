@@ -1,0 +1,17 @@
+{% load i18n %}{% comment %}
+Live announcer and toast region: include once per page, at the end of
+<main>. static/js/components/announcer.js exposes
+window.ClinicAnnouncer.announce(message, {tone, toast}) and listens for the
+"clinic:announce" event (HTMX HX-Trigger). Messages are short operational
+confirmations ("Agendamento salvo"), NEVER clinical content, names or
+identifiers: the region is read aloud and may be visible to others.
+Toasts stay until dismissed (no timers); at most three are kept.
+
+Context:
+  toasts    Iterable of {tone, message} rendered server-side (optional).
+  specimen  True renders the region in flow (showcase only).
+  state     Forced interaction state for the first dismiss button.
+{% endcomment %}<div class="visually-hidden" aria-live="polite" aria-atomic="true" data-announcer="polite"></div>
+<div class="visually-hidden" aria-live="assertive" aria-atomic="true" data-announcer="assertive"></div>
+<section class="toast-region{% if specimen %} toast-region--specimen{% endif %}" aria-label="{% trans "Notifications" %}" data-toast-region>{% for toast in toasts %}{% include "includes/components/toast.html" with tone=toast.tone message=toast.message forced=state first=forloop.first only %}{% endfor %}</section>
+<template data-toast-template>{% include "includes/components/toast.html" with tone="neutral" message="" only %}</template>

@@ -16,8 +16,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import pytest
+from apps.core.templatetags.components import COMPONENT_STATES
 from django.template.loader import render_to_string
 from django.utils.translation import gettext
+from playwright.sync_api import expect
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -31,6 +33,31 @@ NOT_FOUND_STATUS = 404
 SHOWCASE_PATH = "/__ui__/auth/"
 PRIMITIVES = ("navigation", "field", "action", "status", "table", "panel")
 STATES = ("default", "focus", "disabled", "loading", "error", "success")
+# Design system v2: the component library, every one with every SC-8 state.
+COMPONENTS = (
+    "dialog",
+    "drawer",
+    "combobox",
+    "datetime",
+    "resource_grid",
+    "command_palette",
+    "toast",
+    "tabs",
+    "segmented",
+    "editor",
+    "provenance",
+    "citation",
+    "diff",
+    "document_viewer",
+    "chart",
+)
+SC8_STATES = tuple(state.key for state in COMPONENT_STATES)
+THEMES = ("light", "dark")
+DENSITIES = ("comfortable", "compact")
+MATRIX_VIEWPORTS = {"1280": (1280, 900), "375": (375, 812), "320": (320, 640)}
+AXE_URL = "/static/vendor/axe/axe.min.js"
+AXE_BLOCKING = ("serious", "critical")
+NON_INTERACTIVE = frozenset({"provenance"})
 VIEWPORTS = {
     "mobile-375": (375, 812),
     "tablet-768": (768, 1024),
@@ -39,15 +66,20 @@ VIEWPORTS = {
 REFLOW_VIEWPORTS = {"reflow-320": (320, 640), "zoom-200-proxy-640": (640, 800)}
 NAVY = "rgb(15, 45, 58)"
 CYAN = "rgb(0, 229, 208)"
+# Every surface is navy in the dark theme, so every ring is cyan there.
+DARK_RING = CYAN
 MIN_RING_PX = 2.0
 MIN_CONTRAST = 4.5
 MIN_LARGE_CONTRAST = 3.0
-MAX_TAB_STOPS = 200
+MAX_TAB_STOPS = 2000
 
 OVERFLOW_JS = """(root) => {
   const bad = [];
   for (const el of root.querySelectorAll('*')) {
-    if (el.closest('.table-scroll') || el.tagName === 'INPUT') continue;
+    // Scroll regions scroll by design; visually hidden text is clipped by design.
+    const clipped = '.table-scroll, .resource-grid-scroll, .tabs-list,'
+      + ' .docviewer-canvas, .visually-hidden, svg';
+    if (el.closest(clipped) || el.tagName === 'INPUT') continue;
     if (el.clientWidth === 0) continue;
     if (el.scrollWidth > el.clientWidth + 1) {
       bad.push(el.tagName + '.' + el.className + ' ' +
@@ -133,20 +165,34 @@ FOCUS_JS = """() => {
     outlineColor: cs.outlineColor,
     inNav: Boolean(el.closest('.nav')),
     disabled: Boolean(el.disabled) || el.getAttribute('aria-disabled') === 'true',
-    within: rect.top >= -1 && rect.left >= -1 &&
-      rect.bottom <= window.innerHeight + 1 && rect.right <= window.innerWidth + 1,
+    // A focused textarea scrolls its caret line into view, not its whole box:
+    // require its top edge, both sides and the whole caret line to be visible.
+    within: rect.top >= -1 && rect.left >= -1 && rect.right <= window.innerWidth + 1 &&
+      (el.tagName === 'TEXTAREA'
+        ? rect.top + parseFloat(cs.paddingTop) + parseFloat(cs.lineHeight)
+          <= window.innerHeight + 1
+        : rect.bottom <= window.innerHeight + 1),
     primitive: (el.closest('[data-primitive]') || {}).dataset?.primitive || null,
     domIndex: Array.from(document.querySelectorAll('*')).indexOf(el),
   };
 }"""
 
 TABBABLE_COUNT_JS = """() => {
-  const selector = 'a[href], button, input, select, textarea, [tabindex]';
+  const selector = 'a[href], button, input, select, textarea, summary, [tabindex]';
   return Array.from(document.querySelectorAll(selector)).filter((el) => {
-    if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+    if (el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true') {
+      return false;
+    }
+    if (el.type === 'hidden') return false;
     if (el.tabIndex < 0) return false;
-    const cs = getComputedStyle(el);
-    return cs.display !== 'none' && cs.visibility !== 'hidden';
+    // A radio group is one tab stop: its checked radio, else its first one.
+    if (el.type === 'radio') {
+      const group = Array.from(document.getElementsByName(el.name));
+      const stop = group.find((radio) => radio.checked) || group[0];
+      if (el !== stop) return false;
+    }
+    // Closed dialogs, hidden panels and collapsed popups are not in the order.
+    return el.checkVisibility({visibilityProperty: true});
   }).length;
 }"""
 
@@ -437,7 +483,7 @@ def test_keyboard_reaches_every_control_with_a_visible_unobscured_ring(
                     full_page=False,
                 )
         assert len(stops) == expected, (len(stops), expected)
-        assert set(captured) == set(PRIMITIVES)
+        assert set(captured) == set(PRIMITIVES) | (set(COMPONENTS) - NON_INTERACTIVE)
         _record(
             showcase.report,
             assertion="tab order = DOM order; every stop focus-visible, ring >= 2px,"
@@ -694,6 +740,568 @@ def test_reduced_motion_removes_transitions_and_the_press_transform(
             " animation; default motion shows the 1px press and 120ms transition",
             capture=capture,
             durations=durations,
+        )
+    finally:
+        context.close()
+
+
+# --------------------------------------------------------------------------
+# Design system v2: component library matrix, axe, themes, density, behavior
+# --------------------------------------------------------------------------
+
+TEXT_OVERLAP_JS = """(root) => {
+  const boxes = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    const el = node.parentElement;
+    if (el.closest('.visually-hidden, [hidden], svg, .nav-wordmark')) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    for (const rect of range.getClientRects()) {
+      if (rect.width < 1 || rect.height < 1) continue;
+      boxes.push({el, rect, text: node.textContent.trim().slice(0, 30)});
+    }
+  }
+  const clip = (el) => {
+    let out = {left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity};
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      const o = getComputedStyle(a);
+      if (o.overflowX !== 'visible' || o.overflowY !== 'visible') {
+        const r = a.getBoundingClientRect();
+        out = {left: Math.max(out.left, r.left), top: Math.max(out.top, r.top),
+               right: Math.min(out.right, r.right),
+               bottom: Math.min(out.bottom, r.bottom)};
+      }
+    }
+    return out;
+  };
+  const visible = boxes.map((b) => {
+    const c = clip(b.el);
+    const r = {left: Math.max(b.rect.left, c.left), top: Math.max(b.rect.top, c.top),
+               right: Math.min(b.rect.right, c.right),
+               bottom: Math.min(b.rect.bottom, c.bottom)};
+    return {...b, r};
+  }).filter((b) => b.r.right - b.r.left > 1 && b.r.bottom - b.r.top > 1);
+  const overlaps = [];
+  for (let i = 0; i < visible.length; i++) {
+    for (let j = i + 1; j < visible.length; j++) {
+      const a = visible[i], b = visible[j];
+      if (a.el === b.el || a.el.contains(b.el) || b.el.contains(a.el)) continue;
+      const w = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
+      const h = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+      if (w > 2 && h > 2) overlaps.push([a.text, b.text, Math.round(w), Math.round(h)]);
+    }
+  }
+  return overlaps.slice(0, 10);
+}"""
+
+AXE_RUN_JS = """async () => {
+  const result = await axe.run(document, {
+    runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa',
+      'wcag22aa', 'best-practice']},
+    resultTypes: ['violations'],
+  });
+  return result.violations.map((v) => ({
+    id: v.id, impact: v.impact, help: v.help,
+    nodes: v.nodes.slice(0, 5).map((n) => n.target.join(' ')),
+    count: v.nodes.length,
+  }));
+}"""
+
+
+def _apply(page: Page, theme: str, density: str) -> None:
+    """Set the preference attributes the shell renders for a signed-in user."""
+    page.evaluate(
+        "([theme, density]) => {"
+        " document.documentElement.dataset.theme = theme;"
+        " document.documentElement.dataset.density = density; }",
+        [theme, density],
+    )
+    background = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    assert background == (
+        "rgb(11, 31, 40)" if theme == "dark" else "rgb(247, 245, 240)"
+    )
+
+
+def _write_json(destination: Path, payload: object) -> str:
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n")
+    destination.chmod(0o600)
+    return str(destination)
+
+
+@pytest.mark.parametrize("viewport", sorted(MATRIX_VIEWPORTS))
+@pytest.mark.parametrize("density", DENSITIES)
+@pytest.mark.parametrize("theme", THEMES)
+def test_every_component_state_in_every_theme_density_and_width(
+    theme: str,
+    density: str,
+    viewport: str,
+    showcase: Showcase,
+) -> None:
+    size = MATRIX_VIEWPORTS[viewport]
+    context, page = _open_showcase(showcase, size)
+    try:
+        _apply(page, theme, density)
+        assert page.evaluate("document.scrollingElement.scrollWidth") <= size[0]
+        folder = showcase.root / "matrix" / f"{theme}-{density}-{viewport}"
+        captures = 0
+        worst: dict[str, float] = {}
+        for name in (*COMPONENTS, *PRIMITIVES):
+            for state in SC8_STATES:
+                block = page.locator(f'[data-primitive="{name}"][data-state="{state}"]')
+                assert block.count() == 1, (name, state)
+                block.scroll_into_view_if_needed()
+                assert block.is_visible(), (name, state)
+                overflow = block.evaluate(OVERFLOW_JS)
+                assert overflow == [], (theme, density, viewport, name, state, overflow)
+                rows = block.evaluate(CONTRAST_JS)
+                assert rows, (name, state)
+                for row in rows:
+                    floor = MIN_LARGE_CONTRAST if row["large"] else MIN_CONTRAST
+                    assert row["ratio"] >= floor, (
+                        theme,
+                        density,
+                        viewport,
+                        name,
+                        state,
+                        row,
+                    )
+                worst[f"{name}-{state}"] = min(row["ratio"] for row in rows)
+                destination = folder / f"{name}-{state}.png"
+                destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                destination.write_bytes(block.screenshot())
+                destination.chmod(0o600)
+                captures += 1
+        assert captures == (len(COMPONENTS) + len(PRIMITIVES)) * len(SC8_STATES)
+        _record(
+            showcase.report,
+            assertion="every component x SC-8 state visible, unclipped, contrast >= AA",
+            theme=theme,
+            density=density,
+            viewport=viewport,
+            captures=captures,
+            folder=str(folder),
+            lowest_contrast=min(worst.values()),
+        )
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("viewport", sorted(MATRIX_VIEWPORTS))
+@pytest.mark.parametrize("density", DENSITIES)
+@pytest.mark.parametrize("theme", THEMES)
+def test_axe_finds_no_serious_or_critical_violation(
+    theme: str,
+    density: str,
+    viewport: str,
+    showcase: Showcase,
+) -> None:
+    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS[viewport])
+    try:
+        _apply(page, theme, density)
+        with page.expect_response(f"{showcase.base_url}{AXE_URL}") as axe_response:
+            page.add_script_tag(url=f"{showcase.base_url}{AXE_URL}")
+        assert axe_response.value.status == OK_STATUS
+        violations = page.evaluate(AXE_RUN_JS)
+        report = _write_json(
+            showcase.root / "axe" / f"{theme}-{density}-{viewport}.json", violations
+        )
+        blocking = [v for v in violations if v["impact"] in AXE_BLOCKING]
+        assert blocking == [], blocking
+        _record(
+            showcase.report,
+            assertion="axe-core 4.13.0 (wcag2a/aa, wcag21a/aa, wcag22aa,"
+            " best-practice):"
+            " 0 serious or critical violations",
+            theme=theme,
+            density=density,
+            viewport=viewport,
+            axe_report=report,
+            nonblocking=[(v["id"], v["impact"], v["count"]) for v in violations],
+        )
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("theme", THEMES)
+def test_dark_and_compact_keep_rings_targets_and_tokens(
+    theme: str,
+    showcase: Showcase,
+) -> None:
+    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS["1280"])
+    try:
+        _apply(page, theme, "compact")
+        ring = NAVY if theme == "light" else DARK_RING
+        page.locator('[data-primitive="action"][data-state="focus"] button').focus()
+        page.keyboard.press("Shift+Tab")
+        page.keyboard.press("Tab")
+        info = page.evaluate(FOCUS_JS)
+        assert info is not None
+        assert info["outlineColor"] == ring, info
+        # Compact tightens cells but no target shrinks below 44px.
+        targets = page.evaluate(
+            """() => Array.from(document.querySelectorAll(
+                 'main button:not(.datetime-day), main .button,'
+                 + ' main input:not([type=radio]),'
+                 + ' main .citation, main .tab, main .segmented-option'))
+               .filter((el) => el.getClientRects().length && !el.closest('[hidden]'))
+               .map((el) => [el.className || el.tagName,
+                             Math.round(el.getBoundingClientRect().height)])"""
+        )
+        small = [target for target in targets if target[1] < 44]
+        assert small == [], small[:5]
+        padding = page.evaluate(
+            "getComputedStyle(document.querySelector('.table td')).paddingTop"
+        )
+        assert padding == "4px"
+        _record(
+            showcase.report,
+            assertion="compact density keeps every target >= 44px; focus ring is"
+            " navy on paper and cyan on the navy dark theme",
+            theme=theme,
+            ring=info["outlineColor"],
+            targets_checked=len(targets),
+            compact_cell_padding=padding,
+        )
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("theme", THEMES)
+def test_zoom_200_with_pt_br_strings_never_overlaps_text(
+    theme: str,
+    showcase: Showcase,
+) -> None:
+    context = showcase.browser.new_context(
+        viewport={"width": 640, "height": 400},
+        device_scale_factor=2,
+        locale="pt-BR",
+    )
+
+    def fulfil(route: Route) -> None:
+        route.fulfill(
+            status=OK_STATUS,
+            content_type="text/html; charset=utf-8",
+            body=showcase.html,
+        )
+
+    context.route(f"{showcase.base_url}{SHOWCASE_PATH}", fulfil)
+    page = context.new_page()
+    try:
+        page.goto(f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
+        _apply(page, theme, "comfortable")
+        assert page.evaluate("document.scrollingElement.scrollWidth") <= 640
+        overlaps: dict[str, Any] = {}
+        for spec in page.locator("[data-primitive]").all():
+            found = spec.evaluate(TEXT_OVERLAP_JS)
+            if found:
+                name = spec.get_attribute("data-primitive")
+                key = f"{name}-{spec.get_attribute('data-state')}"
+                overlaps[key] = found
+        assert overlaps == {}, overlaps
+        capture = _save(
+            page, showcase.root / "zoom-200" / f"{theme}-full-page.png", full_page=True
+        )
+        _record(
+            showcase.report,
+            assertion="200% zoom (640 CSS px at DPR 2) with pt-BR copy: no page"
+            " overflow and no overlapping text in any specimen",
+            theme=theme,
+            capture=capture,
+        )
+    finally:
+        context.close()
+
+
+def test_forced_colors_and_reduced_motion_keep_component_states_visible(
+    showcase: Showcase,
+) -> None:
+    context, page = _open_showcase(
+        showcase,
+        MATRIX_VIEWPORTS["1280"],
+        forced_colors="active",
+        reduced_motion="reduce",
+    )
+    try:
+        borders = page.evaluate(
+            """() => ['.state-note', '.dialog', '.drawer', '.combobox-listbox',
+                      '.resource-grid-scroll', '.toast', '.segmented-options',
+                      '.editor',
+                      '.provenance', '.citation', '.diff', '.docviewer', '.chart']
+              .map((s) => { const el = document.querySelector(s);
+                const cs = getComputedStyle(el);
+                return [s, cs.borderTopStyle, cs.borderTopWidth]; })"""
+        )
+        for selector, style, width in borders:
+            assert style != "none", selector
+            assert _px(width) >= 1.0, selector
+        checked = page.evaluate(
+            "getComputedStyle(document.querySelector("
+            "'.segmented-option:has(input:checked)')).borderTopWidth"
+        )
+        assert _px(checked) >= MIN_RING_PX
+        durations = page.evaluate(
+            """() => ['.toast', '.segmented-option', '.tab', '.citation',
+                      '.resource-slot']
+              .map((s) => getComputedStyle(document.querySelector(s))
+                .transitionDuration)"""
+        )
+        assert set(durations) == {"0s"}
+        page.locator('[data-primitive="tabs"][data-state="default"] .tab').first.focus()
+        info = page.evaluate(FOCUS_JS)
+        assert info is not None
+        assert info["outlineStyle"] == "solid"
+        for name in ("combobox", "datetime", "segmented", "tabs", "citation", "chart"):
+            block = page.locator(f'[data-primitive="{name}"][data-state="focus"]')
+            block.scroll_into_view_if_needed()
+            _save(
+                page,
+                showcase.root / "forced-colors" / f"{name}-focus.png",
+                full_page=False,
+            )
+        capture = _save(
+            page, showcase.root / "forced-colors" / "full-page.png", full_page=True
+        )
+        _record(
+            showcase.report,
+            assertion="forced colors + reduced motion: component boundaries, checked"
+            " segment and focus ring visible; every component transition 0s",
+            capture=capture,
+            durations=durations,
+        )
+    finally:
+        context.close()
+
+
+GRID_INDEX_JS = (
+    "Array.from(document.querySelectorAll('#resource_grid-default [role=gridcell]'))"
+    ".indexOf(document.activeElement)"
+)
+
+
+@pytest.fixture
+def live_page(showcase: Showcase) -> Iterator[Page]:
+    """Open the showcase at desktop width for one keyboard journey."""
+    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS["1280"])
+    try:
+        yield page
+    finally:
+        context.close()
+
+
+def test_dialog_opens_modally_and_returns_focus(
+    live_page: Page, showcase: Showcase
+) -> None:
+    opener = live_page.locator('[data-dialog-open="live-dialog"]')
+    opener.focus()
+    live_page.keyboard.press("Enter")
+    dialog = live_page.locator("#live-dialog")
+    expect(dialog).to_have_attribute("open", "")
+    assert live_page.evaluate("document.activeElement.closest('#live-dialog') !== null")
+    capture = _save(
+        live_page, showcase.root / "behaviors" / "dialog-open.png", full_page=False
+    )
+    live_page.keyboard.press("Escape")
+    expect(dialog).not_to_have_attribute("open", "")
+    assert live_page.evaluate("document.activeElement.dataset.dialogOpen") == (
+        "live-dialog"
+    )
+    _record(
+        showcase.report,
+        assertion="dialog: modal, Escape closes, focus returns",
+        capture=capture,
+    )
+
+
+def test_drawer_is_non_modal_and_escape_returns_focus(
+    live_page: Page, showcase: Showcase
+) -> None:
+    drawer = live_page.locator("#live-drawer")
+    toggle = live_page.locator('[data-drawer-toggle="live-drawer"]')
+    expect(drawer).to_be_hidden()
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+    toggle.focus()
+    live_page.keyboard.press("Enter")
+    expect(drawer).to_be_visible()
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    live_page.keyboard.press("Escape")
+    expect(drawer).to_be_hidden()
+    assert live_page.evaluate("document.activeElement.dataset.drawerToggle") == (
+        "live-drawer"
+    )
+    _record(showcase.report, assertion="drawer: toggle, Escape, focus return")
+
+
+def test_combobox_filters_moves_and_chooses(
+    live_page: Page, showcase: Showcase
+) -> None:
+    combo = live_page.locator("#live-combobox")
+    listbox = live_page.locator("#live-combobox-listbox")
+    combo.focus()
+    live_page.keyboard.type("ans")
+    expect(listbox).to_be_visible()
+    expect(combo).to_have_attribute("aria-expanded", "true")
+    expect(listbox.locator("[role=option]:visible")).to_have_count(1)
+    live_page.keyboard.press("ArrowDown")
+    expect(combo).to_have_attribute("aria-activedescendant", "live-combobox-opt-3")
+    expect(live_page.locator("#live-combobox-opt-3")).to_have_attribute(
+        "aria-selected", "true"
+    )
+    live_page.keyboard.press("Enter")
+    expect(combo).to_have_value("Anselmo Prado Sintético")
+    expect(listbox).to_be_hidden()
+    expect(live_page.locator('input[name="live-combobox_choice"]')).to_have_value("p3")
+    live_page.keyboard.press("Escape")
+    expect(combo).to_have_value("")
+    _record(showcase.report, assertion="combobox: filter, arrows, Enter, Escape")
+
+
+def test_date_picker_moves_by_day_and_month_and_respects_bounds(
+    live_page: Page, showcase: Showcase
+) -> None:
+    toggle = live_page.locator('[aria-controls="live-datetime-calendar"]')
+    expect(toggle).to_be_visible()
+    toggle.focus()
+    live_page.keyboard.press("Enter")
+    calendar = live_page.locator("#live-datetime-calendar")
+    expect(calendar).to_be_visible()
+    active_date = "document.activeElement.dataset.date"
+    assert live_page.evaluate(active_date) == "2031-03-04"
+    live_page.keyboard.press("ArrowLeft")
+    live_page.keyboard.press("ArrowLeft")
+    assert live_page.evaluate(active_date) == "2031-03-02"
+    assert (
+        live_page.evaluate("document.activeElement.getAttribute('aria-disabled')")
+        == "true"
+    )
+    live_page.keyboard.press("Enter")
+    expect(calendar).to_be_visible()
+    for _ in range(3):
+        live_page.keyboard.press("ArrowRight")
+    live_page.keyboard.press("PageDown")
+    assert live_page.evaluate(active_date) == "2031-04-05"
+    capture = _save(
+        live_page, showcase.root / "behaviors" / "calendar.png", full_page=False
+    )
+    live_page.keyboard.press("Enter")
+    expect(live_page.locator("#live-datetime-date")).to_have_value("05/04/2031")
+    expect(calendar).to_be_hidden()
+    assert live_page.evaluate(
+        "document.activeElement.hasAttribute('data-datetime-toggle')"
+    )
+    _record(
+        showcase.report,
+        assertion="date picker: arrows, PageDown, bounds, focus",
+        capture=capture,
+    )
+
+
+def test_resource_grid_has_one_tab_stop_and_arrow_navigation(
+    live_page: Page, showcase: Showcase
+) -> None:
+    grid = live_page.locator("#resource_grid-default")
+    assert grid.locator('[role=gridcell][tabindex="0"]').count() == 1
+    grid.locator("[role=gridcell]").first.focus()
+    live_page.keyboard.press("ArrowRight")
+    assert live_page.evaluate(GRID_INDEX_JS) == 1
+    live_page.keyboard.press("ArrowDown")
+    live_page.keyboard.press("End")
+    assert live_page.evaluate(GRID_INDEX_JS) == 5
+    assert grid.locator('[role=gridcell][tabindex="0"]').count() == 1
+    _record(showcase.report, assertion="resource grid: roving tab stop and arrows")
+
+
+def test_tabs_select_with_arrows_home_and_end(
+    live_page: Page, showcase: Showcase
+) -> None:
+    tabs = live_page.locator('[data-tabs="tabs-default"] [role=tab]')
+    tabs.first.focus()
+    live_page.keyboard.press("ArrowRight")
+    expect(tabs.nth(1)).to_have_attribute("aria-selected", "true")
+    expect(live_page.locator("#tabs-default-timeline")).to_be_visible()
+    expect(live_page.locator("#tabs-default-overview")).to_be_hidden()
+    live_page.keyboard.press("End")
+    expect(tabs.last).to_have_attribute("aria-selected", "true")
+    live_page.keyboard.press("Home")
+    expect(tabs.first).to_have_attribute("aria-selected", "true")
+    _record(showcase.report, assertion="tabs: arrows, Home, End, panels follow")
+
+
+def test_announcer_speaks_and_toast_waits_for_dismissal(
+    live_page: Page, showcase: Showcase
+) -> None:
+    live_page.locator("[data-announce]").click()
+    expect(live_page.locator('[data-announcer="polite"]')).to_have_text(
+        gettext("Reminder confirmed.")
+    )
+    toasts = live_page.locator("#behaviors [data-toast-region] .toast")
+    expect(toasts).to_have_count(1)
+    toasts.first.locator("[data-toast-dismiss]").click()
+    expect(toasts).to_have_count(0)
+    _record(showcase.report, assertion="announcer: polite text, dismissible toast")
+
+
+def test_command_palette_opens_on_ctrl_k_and_closes_on_escape(
+    live_page: Page, showcase: Showcase
+) -> None:
+    live_page.locator("#showcase-title").click()
+    live_page.keyboard.press("Control+k")
+    palette = live_page.locator("#live-palette")
+    expect(palette).to_have_attribute("open", "")
+    expect(live_page.locator("#live-palette-input")).to_be_focused()
+    live_page.keyboard.type("agen")
+    expect(
+        live_page.locator("#live-palette-input-listbox [role=option]:visible")
+    ).to_have_count(2)
+    capture = _save(
+        live_page, showcase.root / "behaviors" / "palette.png", full_page=False
+    )
+    live_page.keyboard.press("Escape")
+    live_page.keyboard.press("Escape")
+    expect(palette).not_to_have_attribute("open", "")
+    _record(
+        showcase.report,
+        assertion="command palette: Ctrl+K, filter, Escape x2",
+        capture=capture,
+    )
+
+
+def test_components_keep_their_native_baseline_without_javascript(
+    showcase: Showcase,
+) -> None:
+    context = showcase.browser.new_context(
+        viewport={"width": 1280, "height": 900}, java_script_enabled=False
+    )
+
+    def fulfil(route: Route) -> None:
+        route.fulfill(
+            status=OK_STATUS,
+            content_type="text/html; charset=utf-8",
+            body=showcase.html,
+        )
+
+    context.route(f"{showcase.base_url}{SHOWCASE_PATH}", fulfil)
+    page = context.new_page()
+    try:
+        page.goto(f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
+        expect(page.locator("#live-drawer")).to_be_visible()
+        expect(page.locator("[data-datetime-toggle]").first).to_be_hidden()
+        expect(page.locator("#live-datetime-date")).to_be_editable()
+        for key in ("overview", "timeline", "results", "documents"):
+            expect(page.locator(f"#tabs-default-{key}")).to_be_visible()
+        expect(page.locator("#resource_grid-default a").first).to_be_visible()
+        capture = _save(
+            page, showcase.root / "no-js" / "behaviors.png", full_page=False
+        )
+        _record(
+            showcase.report,
+            assertion="without JavaScript: drawer in flow, date text inputs, every tab"
+            " panel and every grid slot link reachable",
+            capture=capture,
         )
     finally:
         context.close()

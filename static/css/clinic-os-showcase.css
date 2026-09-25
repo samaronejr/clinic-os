@@ -35,6 +35,10 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 }
 
+.spec-grid--wide {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+}
+
 .spec-grid--stack {
   grid-template-columns: 1fr;
 }

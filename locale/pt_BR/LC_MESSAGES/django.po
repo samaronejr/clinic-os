@@ -1606,3 +1606,772 @@ msgstr "Seus registros · Clinic OS"
 
 msgid "View and export the records the clinic released to you."
 msgstr "Veja e exporte os registros que a clínica liberou para você."
+
+msgid "Hover"
+msgstr "Sob o cursor"
+
+msgid "Empty"
+msgstr "Vazio"
+
+msgid "Stale"
+msgstr "Desatualizado"
+
+msgid "Permission denied"
+msgstr "Sem permissão"
+
+msgid "Offline"
+msgstr "Sem conexão"
+
+msgid "Light"
+msgstr "Claro"
+
+msgid "Dark"
+msgstr "Escuro"
+
+msgid "Comfortable"
+msgstr "Confortável"
+
+msgid "Compact"
+msgstr "Compacta"
+
+msgid "Choose light or dark."
+msgstr "Escolha claro ou escuro."
+
+msgid "Choose comfortable or compact."
+msgstr "Escolha confortável ou compacta."
+
+msgid "34 years · CPF ***.***.***-41"
+msgstr "34 anos · CPF ***.***.***-41"
+
+msgid "8 years · CPF ***.***.***-07"
+msgstr "8 anos · CPF ***.***.***-07"
+
+msgid "71 years · CPF ***.***.***-90"
+msgstr "71 anos · CPF ***.***.***-90"
+
+msgid "Today's schedule"
+msgstr "Agenda de hoje"
+
+msgid "Registry"
+msgstr "Cadastro"
+
+msgid "Opens the booking form"
+msgstr "Abre o formulário de agendamento"
+
+msgid "Record arrival"
+msgstr "Registrar chegada"
+
+msgid "Reception queue"
+msgstr "Fila da recepção"
+
+msgid "Room 2"
+msgstr "Sala 2"
+
+msgid "Ultrasound"
+msgstr "Ultrassom"
+
+msgid "Return visit"
+msgstr "Retorno"
+
+msgid "Hold"
+msgstr "Reserva"
+
+msgid "expires 08:10"
+msgstr "expira 08:10"
+
+msgid "Two bookings"
+msgstr "Dois agendamentos"
+
+msgid "Resolve"
+msgstr "Resolver"
+
+msgid "Unavailable"
+msgstr "Indisponível"
+
+msgid "First visit"
+msgstr "Primeira consulta"
+
+msgid "Overview"
+msgstr "Resumo"
+
+msgid "Timeline"
+msgstr "Linha do tempo"
+
+msgid "Results"
+msgstr "Resultados"
+
+msgid "Documents"
+msgstr "Documentos"
+
+msgid "Documents (no access)"
+msgstr "Documentos (sem acesso)"
+
+msgid "Month"
+msgstr "Mês"
+
+msgid "Subjective"
+msgstr "Subjetivo"
+
+msgid "Synthetic complaint: headache for three days, no fever."
+msgstr "Queixa sintética: dor de cabeça há três dias, sem febre."
+
+msgid "Plan"
+msgstr "Plano"
+
+msgid "Synthetic plan: hydration and review in seven days."
+msgstr "Plano sintético: hidratação e retorno em sete dias."
+
+msgid "Headache for three days."
+msgstr "Dor de cabeça há três dias."
+
+msgid "No fever reported."
+msgstr "Nega febre."
+
+msgid "Low fever reported on day two."
+msgstr "Relata febre baixa no segundo dia."
+
+msgid "Review in seven days."
+msgstr "Retorno em sete dias."
+
+msgid "Hemoglobin"
+msgstr "Hemoglobina"
+
+msgid "Hemoglobin 13.2 g/dL"
+msgstr "Hemoglobina 13,2 g/dL"
+
+msgid "Leukocytes"
+msgstr "Leucócitos"
+
+msgid "Leukocytes 6,400 /µL"
+msgstr "Leucócitos 6.400 /µL"
+
+msgid "Hemoglobin (g/dL)"
+msgstr "Hemoglobina (g/dL)"
+
+msgid "Display preferences"
+msgstr "Preferências de exibição"
+
+msgid "Display preferences · Clinic OS"
+msgstr "Preferências de exibição · Clinic OS"
+
+msgid "Choose the theme and density of your Clinic OS workspace."
+msgstr "Escolha o tema e a densidade do seu espaço de trabalho no Clinic OS."
+
+msgid "These apply to your account on every device. Other people's screens do not change."
+msgstr "Valem para a sua conta em todos os dispositivos. As telas de outras pessoas não mudam."
+
+msgid "We could not save your preferences"
+msgstr "Não foi possível salvar suas preferências"
+
+msgid "Preferences saved"
+msgstr "Preferências salvas"
+
+msgid "The workspace now uses your choices."
+msgstr "O espaço de trabalho já usa suas escolhas."
+
+msgid "Theme"
+msgstr "Tema"
+
+msgid "Dark uses navy surfaces for low-light rooms."
+msgstr "O escuro usa superfícies azul-marinho para salas com pouca luz."
+
+msgid "Density"
+msgstr "Densidade"
+
+msgid "Compact tightens spacing in tables and panels; buttons keep their size."
+msgstr "A compacta reduz os espaços em tabelas e painéis; os botões mantêm o tamanho."
+
+msgid "Save preferences"
+msgstr "Salvar preferências"
+
+msgid "Dialog"
+msgstr "Diálogo"
+
+msgid "Drawer"
+msgstr "Painel lateral"
+
+msgid "Combobox"
+msgstr "Caixa de busca"
+
+msgid "Date and time"
+msgstr "Data e hora"
+
+msgid "Resource grid"
+msgstr "Grade de recursos"
+
+msgid "Command palette"
+msgstr "Paleta de comandos"
+
+msgid "Announcer and toast"
+msgstr "Anúncios e avisos"
+
+msgid "Tabs"
+msgstr "Abas"
+
+msgid "Segmented control"
+msgstr "Controle segmentado"
+
+msgid "Editor"
+msgstr "Editor"
+
+msgid "Provenance"
+msgstr "Origem"
+
+msgid "Source citation"
+msgstr "Citação de fonte"
+
+msgid "Diff"
+msgstr "Comparação"
+
+msgid "Document viewer"
+msgstr "Visualizador de documento"
+
+msgid "Chart"
+msgstr "Gráfico"
+
+msgid "Behaviors"
+msgstr "Comportamentos"
+
+msgid "Live components for keyboard review: open, move and close them; focus returns to the control that opened them."
+msgstr "Componentes ativos para revisão por teclado: abra, navegue e feche; o foco volta ao controle que os abriu."
+
+msgid "Discard the unsaved note?"
+msgstr "Descartar a evolução não salva?"
+
+msgid "The text typed since 14:32 will be lost. The saved version stays."
+msgstr "O texto digitado desde 14:32 será perdido. A versão salva permanece."
+
+msgid "Keep editing"
+msgstr "Continuar editando"
+
+msgid "Patient summary"
+msgstr "Resumo do paciente"
+
+msgid "Ana Ribeiro Sintética, 34 years. Allergy on record: dipyrone (reported)."
+msgstr "Ana Ribeiro Sintética, 34 anos. Alergia registrada: dipirona (relatada)."
+
+msgid "Search by full name or CPF; results show age and masked CPF."
+msgstr "Busque pelo nome completo ou CPF; os resultados mostram idade e CPF mascarado."
+
+msgid "Appointment date and time"
+msgstr "Data e hora da consulta"
+
+msgid "Brasília time (America/Sao_Paulo)"
+msgstr "Horário de Brasília (America/Sao_Paulo)"
+
+msgid "Reminder confirmed."
+msgstr "Lembrete confirmado."
+
+msgid "Confirm reminder"
+msgstr "Confirmar lembrete"
+
+msgid "Command palette: press Ctrl+K (Cmd+K on Mac)."
+msgstr "Paleta de comandos: pressione Ctrl+K (Cmd+K no Mac)."
+
+msgid "Open commands"
+msgstr "Abrir comandos"
+
+msgid "Hemoglobin, last 5 months"
+msgstr "Hemoglobina, últimos 5 meses"
+
+msgid "Latest 13.2 g/dL in 07/2031, inside the reference range 12-16; one value below it in 03/2031."
+msgstr "Último valor 13,2 g/dL em 07/2031, dentro da referência 12-16; um valor abaixo dela em 03/2031."
+
+msgid "Headache for three days"
+msgstr "Dor de cabeça há três dias"
+
+msgid "Transcript 00:14"
+msgstr "Transcrição 00:14"
+
+msgid "Transcript 00:14 · “it started three days ago”"
+msgstr "Transcrição 00:14 · “começou há três dias”"
+
+msgid "Choose the clinic first."
+msgstr "Escolha a clínica primeiro."
+
+msgid "Search failed. Try again."
+msgstr "A busca falhou. Tente novamente."
+
+msgid "No matches. Check the spelling or search by another term."
+msgstr "Nenhum resultado. Confira a grafia ou busque por outro termo."
+
+msgid "Your role cannot search the patient registry."
+msgstr "Seu perfil não pode buscar no cadastro de pacientes."
+
+msgid "That date does not exist. Use DD/MM/YYYY, for example 04/03/2031."
+msgstr "Essa data não existe. Use DD/MM/AAAA, por exemplo 04/03/2031."
+
+msgid "Time available with Dra. Lia Sintética."
+msgstr "Horário disponível com Dra. Lia Sintética."
+
+msgid "There are no unsaved changes, so nothing would be lost."
+msgstr "Não há alterações não salvas; nada seria perdido."
+
+msgid "Nothing to discard."
+msgstr "Nada para descartar."
+
+msgid "Version 3 compared with version 2"
+msgstr "Versão 3 comparada com a versão 2"
+
+msgid "Blood count, 03/2031"
+msgstr "Hemograma, 03/2031"
+
+msgid "Encounter note"
+msgstr "Evolução do atendimento"
+
+#, python-format
+msgid "Workspace, %(state)s"
+msgstr "Espaço de trabalho, %(state)s"
+
+msgid "No module is enabled for your role yet."
+msgstr "Nenhum módulo liberado para o seu perfil ainda."
+
+msgid "out of date"
+msgstr "desatualizada"
+
+msgid "1 conflict"
+msgstr "1 conflito"
+
+msgid "offline"
+msgstr "sem conexão"
+
+msgid "Billing (no access)"
+msgstr "Cobrança (sem acesso)"
+
+msgid "Saved elsewhere as (11) 91234-5678. Keep one of them."
+msgstr "Salvo em outro lugar como (11) 91234-5678. Mantenha um deles."
+
+msgid "Updated by reception at 14:10. Reload before editing."
+msgstr "Atualizado pela recepção às 14:10. Recarregue antes de editar."
+
+msgid "The format check runs again when you reconnect."
+msgstr "A verificação do formato roda de novo quando a conexão voltar."
+
+msgid "Only reception can change contact details."
+msgstr "Só a recepção pode alterar os contatos."
+
+msgid "Social name (optional)"
+msgstr "Nome social (opcional)"
+
+msgid "Leave blank if not used"
+msgstr "Deixe em branco se não usar"
+
+msgid "Empty is valid: the legal name is used instead."
+msgstr "Vazio é válido: usamos o nome civil."
+
+msgid "Shown instead of the legal name when filled."
+msgstr "Aparece no lugar do nome civil quando preenchido."
+
+msgid "This appointment is completed; nothing can be changed."
+msgstr "Esta consulta foi concluída; nada pode ser alterado."
+
+msgid "Refresh"
+msgstr "Atualizar"
+
+msgid "Compare versions"
+msgstr "Comparar versões"
+
+msgid "Open the patient registry"
+msgstr "Abrir o cadastro de pacientes"
+
+msgid "Agenda out of date"
+msgstr "Agenda desatualizada"
+
+msgid "Changes arrived after this page opened. Refresh to see them."
+msgstr "Chegaram alterações depois que esta página abriu. Atualize para vê-las."
+
+msgid "Out of date"
+msgstr "Desatualizada"
+
+msgid "Two bookings overlap"
+msgstr "Dois agendamentos se sobrepõem"
+
+msgid "Move one of them to free the 08:30 slot."
+msgstr "Mova um deles para liberar o horário das 08:30."
+
+msgid "No access"
+msgstr "Sem acesso"
+
+msgid "Ask a clinic administrator for the billing role."
+msgstr "Peça o perfil de cobrança a um administrador da clínica."
+
+msgid "No connection"
+msgstr "Sem conexão"
+
+msgid "Showing the last loaded agenda; nothing new was sent."
+msgstr "Mostrando a última agenda carregada; nada novo foi enviado."
+
+msgid "Your role cannot see other professionals' agendas."
+msgstr "Seu perfil não vê a agenda de outros profissionais."
+
+msgid "Unavailable offline"
+msgstr "Indisponível sem conexão"
+
+msgid "by the patient"
+msgstr "pelo paciente"
+
+msgid "by Dra. Lia"
+msgstr "por Dra. Lia"
+
+msgid "Provenance badges are not interactive; they look the same in this state."
+msgstr "Os selos de origem não são interativos; ficam iguais neste estado."
+
+msgid "by Dra. Lia, 14:32"
+msgstr "por Dra. Lia, 14:32"
+
+msgid "No provenance recorded"
+msgstr "Nenhuma origem registrada"
+
+msgid "Statements typed by hand have no badge."
+msgstr "Textos digitados à mão não levam selo."
+
+msgid "draft 2"
+msgstr "rascunho 2"
+
+msgid "Tuesday, 04/03/2031"
+msgstr "Terça-feira, 04/03/2031"
+
+msgid "No resources on this day"
+msgstr "Nenhum recurso neste dia"
+
+msgid "Add a professional's availability to open the grid."
+msgstr "Cadastre a disponibilidade de um profissional para abrir a grade."
+
+msgid "This view could not be saved. Choose it again."
+msgstr "Não foi possível salvar esta visualização. Escolha de novo."
+
+msgid "View saved."
+msgstr "Visualização salva."
+
+msgid "No view chosen yet; the agenda opens on the day view."
+msgstr "Nenhuma visualização escolhida; a agenda abre no dia."
+
+msgid "Patient record sections"
+msgstr "Seções do prontuário"
+
+msgid "Overview of the synthetic patient: next visit on 04/03/2031."
+msgstr "Resumo do paciente sintético: próxima consulta em 04/03/2031."
+
+msgid "Twelve synthetic events."
+msgstr "Doze eventos sintéticos."
+
+msgid "Three synthetic results."
+msgstr "Três resultados sintéticos."
+
+msgid "No documents yet."
+msgstr "Nenhum documento ainda."
+
+msgid "Notification examples"
+msgstr "Exemplos de avisos"
+
+msgid "Reminder not sent. Try again."
+msgstr "Lembrete não enviado. Tente novamente."
+
+msgid "Appointment saved."
+msgstr "Agendamento salvo."
+
+msgid "The agenda changed. Refresh to see it."
+msgstr "A agenda mudou. Atualize para ver."
+
+msgid "No connection. Changes will not be sent."
+msgstr "Sem conexão. As alterações não serão enviadas."
+
+msgid "No notifications"
+msgstr "Nenhum aviso"
+
+msgid "Confirmations appear here and stay until you close them."
+msgstr "As confirmações aparecem aqui e ficam até você fechar."
+
+msgid "Sending reminder…"
+msgstr "Enviando lembrete…"
+
+msgid "You cannot send reminders for this clinic."
+msgstr "Você não pode enviar lembretes nesta clínica."
+
+msgid "Reminder queued for tomorrow."
+msgstr "Lembrete programado para amanhã."
+
+msgid "Notifications"
+msgstr "Avisos"
+
+msgid "Loading results…"
+msgstr "Carregando resultados…"
+
+msgid "No results in this period"
+msgstr "Nenhum resultado neste período"
+
+msgid "Results appear here as they arrive."
+msgstr "Os resultados aparecem aqui quando chegam."
+
+#, python-format
+msgid "Reference range %(range)s"
+msgstr "Referência %(range)s"
+
+msgid "Show data as a table"
+msgstr "Ver dados em tabela"
+
+msgid "No source"
+msgstr "Sem fonte"
+
+msgid "Source restricted"
+msgstr "Fonte restrita"
+
+msgid "Loading source…"
+msgstr "Carregando fonte…"
+
+msgid "Source unavailable offline"
+msgstr "Fonte indisponível sem conexão"
+
+msgid "Source withdrawn"
+msgstr "Fonte retirada"
+
+msgid "Source not found"
+msgstr "Fonte não encontrada"
+
+#, python-format
+msgid "%(label)s, changed since draft"
+msgstr "%(label)s, alterada após o rascunho"
+
+#, python-format
+msgid "%(label)s, sources disagree"
+msgstr "%(label)s, fontes divergem"
+
+msgid "__N__ results. Use the arrow keys to choose."
+msgstr "__N__ resultados. Use as setas para escolher."
+
+msgid "Selected:"
+msgstr "Selecionado:"
+
+msgid "Go to or do"
+msgstr "Ir para ou fazer"
+
+msgid "Search destinations and actions"
+msgstr "Buscar destinos e ações"
+
+msgid "No destination or action matches. Check the spelling."
+msgstr "Nenhum destino ou ação encontrado. Confira a grafia."
+
+msgid "<kbd>Enter</kbd> opens, <kbd>Esc</kbd> closes."
+msgstr "<kbd>Enter</kbd> abre, <kbd>Esc</kbd> fecha."
+
+msgid "DD/MM/YYYY"
+msgstr "DD/MM/AAAA"
+
+msgid "Choose date"
+msgstr "Escolher data"
+
+msgid "HH:MM"
+msgstr "HH:MM"
+
+#, python-format
+msgid "Clinic time: %(zone)s. 24-hour clock."
+msgstr "Horário da clínica: %(zone)s. Relógio de 24 horas."
+
+msgid "Previous month"
+msgstr "Mês anterior"
+
+msgid "Next month"
+msgstr "Próximo mês"
+
+msgid "Sunday"
+msgstr "domingo"
+
+msgid "Sun"
+msgstr "Dom"
+
+msgid "Monday"
+msgstr "segunda-feira"
+
+msgid "Mon"
+msgstr "Seg"
+
+msgid "Tuesday"
+msgstr "terça-feira"
+
+msgid "Tue"
+msgstr "Ter"
+
+msgid "Wednesday"
+msgstr "quarta-feira"
+
+msgid "Wed"
+msgstr "Qua"
+
+msgid "Thursday"
+msgstr "quinta-feira"
+
+msgid "Thu"
+msgstr "Qui"
+
+msgid "Friday"
+msgstr "sexta-feira"
+
+msgid "Fri"
+msgstr "Sex"
+
+msgid "Saturday"
+msgstr "sábado"
+
+msgid "Sat"
+msgstr "Sáb"
+
+#, python-format
+msgid "%(added)s added · %(removed)s removed"
+msgstr "%(added)s adicionadas · %(removed)s removidas"
+
+msgid "Comparing versions…"
+msgstr "Comparando versões…"
+
+msgid "The versions match"
+msgstr "As versões são iguais"
+
+msgid "There is nothing to compare."
+msgstr "Não há o que comparar."
+
+msgid "Added:"
+msgstr "Adicionado:"
+
+msgid "Removed:"
+msgstr "Removido:"
+
+msgid "Keep this version"
+msgstr "Manter esta versão"
+
+msgid "Page __PAGE__ of __TOTAL__"
+msgstr "Página __PAGE__ de __TOTAL__"
+
+msgid "Opening document…"
+msgstr "Abrindo documento…"
+
+#, python-format
+msgid "Page 1 of %(total)s"
+msgstr "Página 1 de %(total)s"
+
+msgid "Zoom out"
+msgstr "Diminuir zoom"
+
+msgid "Zoom in"
+msgstr "Aumentar zoom"
+
+msgid "Download PDF"
+msgstr "Baixar PDF"
+
+msgid "Document page"
+msgstr "Página do documento"
+
+msgid "Page 1"
+msgstr "Página 1"
+
+msgid "Synthetic document for review."
+msgstr "Documento sintético para revisão."
+
+msgid "Regions in this document"
+msgstr "Regiões deste documento"
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "All changes saved"
+msgstr "Tudo salvo"
+
+msgid "Unsaved changes"
+msgstr "Alterações não salvas"
+
+msgid "Not saved. Try again."
+msgstr "Não salvo. Tente novamente."
+
+msgid "Offline: not saved yet"
+msgstr "Sem conexão: ainda não salvo"
+
+msgid "Changed elsewhere: compare"
+msgstr "Alterado em outro lugar: compare"
+
+msgid "Saved"
+msgstr "Salvo"
+
+msgid "Unsaved"
+msgstr "Não salvo"
+
+msgid "Newer version available"
+msgstr "Há uma versão mais nova"
+
+msgid "No sections in this template"
+msgstr "Este modelo não tem seções"
+
+msgid "Choose a template to start the note."
+msgstr "Escolha um modelo para começar a evolução."
+
+msgid "This section was not saved."
+msgstr "Esta seção não foi salva."
+
+msgid "Save"
+msgstr "Salvar"
+
+msgid "Reported"
+msgstr "Relatado"
+
+msgid "Observed"
+msgstr "Observado"
+
+msgid "Imported"
+msgstr "Importado"
+
+msgid "AI draft"
+msgstr "Rascunho de IA"
+
+msgid "Free"
+msgstr "Livre"
+
+msgid "Held"
+msgstr "Reservado"
+
+msgid "Nothing here yet"
+msgstr "Nada aqui ainda"
+
+msgid "Loading…"
+msgstr "Carregando…"
+
+msgid "This could not be loaded"
+msgstr "Não foi possível carregar"
+
+msgid "This may be out of date"
+msgstr "Isto pode estar desatualizado"
+
+msgid "Someone else changed this"
+msgstr "Outra pessoa alterou isto"
+
+msgid "You do not have access to this"
+msgstr "Você não tem acesso a isto"
+
+msgid "Not available yet"
+msgstr "Ainda indisponível"
+
+msgid "When there is something to show, it appears here."
+msgstr "Quando houver algo para mostrar, aparece aqui."
+
+msgid "This takes a moment; you can keep working."
+msgstr "Isso leva um instante; você pode continuar trabalhando."
+
+msgid "Try again. If it keeps failing, reload the page."
+msgstr "Tente novamente. Se continuar falhando, recarregue a página."
+
+msgid "Your change is recorded."
+msgstr "Sua alteração foi registrada."
+
+msgid "Refresh to see the latest version before you act."
+msgstr "Atualize para ver a versão mais recente antes de agir."
+
+msgid "Compare both versions before you save."
+msgstr "Compare as duas versões antes de salvar."
+
+msgid "Ask a clinic administrator if you need it."
+msgstr "Peça a um administrador da clínica se precisar."
+
+msgid "Nothing was sent. Reconnect, then try again."
+msgstr "Nada foi enviado. Reconecte e tente novamente."
+
+msgid "Complete the previous step first."
+msgstr "Conclua a etapa anterior primeiro."
+
+msgid "Dismiss notification"
+msgstr "Fechar aviso"

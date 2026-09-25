@@ -1,0 +1,49 @@
+{% load i18n %}{% if primitive == "navigation" %}<nav class="nav" aria-label="{% blocktrans with state=label %}Workspace, {{ state }}{% endblocktrans %}">
+  <a class="nav-brand" href="#navigation">Clinic OS</a>
+  {% if state == "empty" %}<p class="nav-context">{% trans "No module is enabled for your role yet." %}</p>
+  {% else %}<ul class="nav-list">
+    <li><a class="nav-link{% if state == "hover" %} is-hover{% elif state == "active" %} is-active{% endif %}" href="#navigation"{% if state == "active" %} aria-current="page"{% endif %}>Agenda{% if state == "stale" %} <span class="nav-badge nav-badge--warning">{% trans "out of date" %}</span>{% elif state == "conflict" %} <span class="nav-badge nav-badge--warning">{% trans "1 conflict" %}</span>{% elif state == "offline" %} <span class="nav-badge nav-badge--info">{% trans "offline" %}</span>{% endif %}</a></li>
+    {% if state == "permission-denied" %}<li><a class="nav-link" role="link" aria-disabled="true">{% trans "Billing (no access)" %}</a></li>{% else %}<li><a class="nav-link" href="#navigation">{% trans "Patients" %}</a></li>{% endif %}
+  </ul>{% endif %}
+</nav>
+{% elif primitive == "field" %}{% with fid="field-"|add:state %}
+  {% if state == "stale" or state == "conflict" or state == "offline" or state == "permission-denied" %}<div class="field{% if state == "conflict" %} field--error{% endif %}">
+    <label for="{{ fid }}">{% trans "Phone" %}</label>
+    <input id="{{ fid }}" name="{{ fid }}" value="(11) 98765-4321" aria-describedby="{{ fid }}-state"{% if state == "permission-denied" %} readonly{% endif %}{% if state == "conflict" %} aria-invalid="true"{% endif %}>
+  </div>{% if state == "conflict" %}{% include "includes/components/state.html" with state="conflict" id=fid|add:"-state" message=_("Saved elsewhere as (11) 91234-5678. Keep one of them.") only %}{% elif state == "stale" %}{% include "includes/components/state.html" with state="stale" id=fid|add:"-state" message=_("Updated by reception at 14:10. Reload before editing.") only %}{% elif state == "offline" %}{% include "includes/components/state.html" with state="offline" id=fid|add:"-state" message=_("The format check runs again when you reconnect.") only %}{% else %}{% include "includes/components/state.html" with state="permission-denied" id=fid|add:"-state" message=_("Only reception can change contact details.") only %}{% endif %}
+  {% else %}<div class="field">
+    <label for="{{ fid }}">{% trans "Social name (optional)" %}</label>
+    <input id="{{ fid }}" name="{{ fid }}"{% if state == "hover" %} class="is-hover" value="Ana"{% elif state == "active" %} class="is-focus is-hover" value="An"{% else %} placeholder="{% trans "Leave blank if not used" %}"{% endif %} aria-describedby="{{ fid }}-hint">
+    <p class="hint" id="{{ fid }}-hint">{% if state == "empty" %}{% trans "Empty is valid: the legal name is used instead." %}{% else %}{% trans "Shown instead of the legal name when filled." %}{% endif %}</p>
+  </div>{% endif %}{% endwith %}
+{% elif primitive == "action" %}
+  <div class="actions">{% if state == "empty" %}{% include "includes/components/state.html" with state="empty" title=_("No action available") message=_("This appointment is completed; nothing can be changed.") only %}
+  {% else %}<button type="button" class="{% if state == "hover" %}is-hover{% elif state == "active" %}is-active{% endif %}"{% if state == "permission-denied" or state == "offline" %} disabled{% endif %}>{% trans "Book appointment" %}</button>{% if state == "stale" %}<button type="button" class="button--secondary">{% trans "Refresh" %}</button>{% elif state == "conflict" %}<button type="button" class="button--secondary">{% trans "Compare versions" %}</button>{% endif %}{% endif %}</div>
+  {% if state == "stale" or state == "conflict" or state == "offline" or state == "permission-denied" %}{% include "includes/components/state.html" with state=state only %}{% endif %}
+{% elif primitive == "status" %}
+  {% if state == "hover" or state == "active" %}<div class="feedback" role="status"><h4>{% trans "Registry search" %}</h4><p><a class="{% if state == "hover" %}is-hover{% else %}is-active{% endif %}" href="#status">{% trans "Open the patient registry" %}</a></p></div>
+  {% elif state == "empty" %}{% include "includes/components/state.html" with state="empty" only %}
+  {% elif state == "stale" %}<div class="feedback feedback--warning" role="status"><h4>{% trans "Agenda out of date" %}</h4><p>{% trans "Changes arrived after this page opened. Refresh to see them." %}</p></div><p class="badge-row"><span class="badge badge--warning">{% trans "Out of date" %}</span></p>
+  {% elif state == "conflict" %}<div class="feedback feedback--warning" role="status"><h4>{% trans "Two bookings overlap" %}</h4><p>{% trans "Move one of them to free the 08:30 slot." %}</p></div><p class="badge-row"><span class="badge badge--warning">{% trans "Conflict" %}</span></p>
+  {% elif state == "permission-denied" %}<div class="feedback feedback--muted" role="status"><h4>{% trans "No access" %}</h4><p>{% trans "Ask a clinic administrator for the billing role." %}</p></div>
+  {% else %}<div class="feedback feedback--info" role="status"><h4>{% trans "No connection" %}</h4><p>{% trans "Showing the last loaded agenda; nothing new was sent." %}</p></div><p class="badge-row"><span class="badge badge--info">{% trans "Offline" %}</span></p>{% endif %}
+{% elif primitive == "table" %}{% with tid="table-"|add:state %}
+  {% if state == "empty" %}<p class="table-empty">{% trans "No appointments in this week yet. Book one from the patient registry." %}</p>
+  {% elif state == "permission-denied" %}{% include "includes/components/state.html" with state="permission-denied" message=_("Your role cannot see other professionals' agendas.") only %}
+  {% else %}{% if state == "stale" or state == "offline" %}{% include "includes/components/state.html" with state=state only %}{% endif %}
+  <div class="table-scroll" role="region" aria-labelledby="{{ tid }}-caption" tabindex="0">
+    <table class="table">
+      <caption id="{{ tid }}-caption">{% trans "Appointments today" %}</caption>
+      <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
+      <tbody>
+        <tr class="{% if state == "hover" %}is-hover{% elif state == "conflict" %}table-row--warning{% elif state == "offline" %}table-row--muted{% endif %}"><th scope="row">Marina Duarte Sampaio</th><td>{% trans "09:00 to 09:30" %}</td><td>{% if state == "conflict" %}<span class="badge badge--warning">{% trans "Conflict" %}</span>{% else %}<span class="badge">{% trans "Scheduled" %}</span>{% endif %}</td><td>{% if state == "offline" %}{% trans "Unavailable offline" %}{% else %}<a class="{% if state == "active" %}is-active{% endif %}" href="#table">{% if state == "conflict" %}{% trans "Choose another time" %}{% else %}{% trans "Reschedule" %}{% endif %}</a>{% endif %}</td></tr>
+      </tbody>
+    </table>
+  </div>{% endif %}{% endwith %}
+{% elif primitive == "panel" %}
+  <div class="panel{% if state == "stale" or state == "conflict" %} panel--warning{% elif state == "permission-denied" %} panel--disabled{% endif %}">
+    <h4 class="panel-title">{% trans "Booking" %}</h4>
+    {% if state == "hover" or state == "active" %}<p>{% trans "Choose a time for Marina Duarte Sampaio with Dr. Otávio Lins." %}</p><div class="actions"><button type="button" class="{% if state == "hover" %}is-hover{% else %}is-active{% endif %}">{% trans "Choose a time" %}</button></div>
+    {% else %}{% include "includes/components/state.html" with state=state only %}{% endif %}
+  </div>
+{% endif %}

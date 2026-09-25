@@ -1,8 +1,9 @@
-{% load static i18n workspace clinic_branding %}
+{% load static i18n workspace clinic_branding ui_preferences %}
 {% get_current_language as LANGUAGE_CODE %}
 {% workspace_context as workspace %}
+{% if workspace %}{% ui_preferences as ui %}{% endif %}
 <!doctype html>
-<html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js"{% endif %}>
+<html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js" data-theme="{{ ui.theme }}" data-density="{{ ui.density }}"{% endif %}>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -86,7 +87,7 @@
       {% endblock %}
     </main>
     <footer class="site-footer">
-      <p>{% trans "Clinic OS foundation" %}</p>
+      <p>{% trans "Clinic OS foundation" %}{% if workspace %} · <a href="{% url 'identity:preferences' %}">{% trans "Display preferences" %}</a>{% endif %}</p>
     </footer>
   </body>
 </html>
