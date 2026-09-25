@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 import pytest
+from apps.intake.models import Patient
+from apps.tenancy.db import tenant_context
 from django.contrib.staticfiles import finders
+from django.utils.formats import date_format
 from django.utils.translation import gettext
 
 from accessible_document import Document
@@ -86,12 +89,37 @@ def test_search_results_expose_an_accessible_table_and_pagination(
         "columnheader",
         "rowheader",
     }
-    # Birth dates are table cells only: never status text, labels or attributes.
-    assert b"1990" not in content.split(b"<tbody")[0]
+    # Birth dates are table cells only: never status text, labels or
+    # attributes. Match the exact rendered dates, not a bare year substring:
+    # enrollment UUIDs can contain "1990" (hosted CI run 36091656875).
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        birth_dates = list(
+            Patient.objects.filter(
+                organization_id=rbac_graph.organization_a
+            ).values_list("birth_date", flat=True)
+        )
+    rendered_dates = {
+        rendered
+        for birth_date in birth_dates
+        for rendered in (
+            birth_date.isoformat(),
+            date_format(birth_date, "DATE_FORMAT"),
+            date_format(birth_date, "SHORT_DATE_FORMAT"),
+        )
+    }
+    header = content.split(b"<tbody")[0]
+    assert not [rendered for rendered in rendered_dates if rendered.encode() in header]
     assert not [
         attributes
         for _tag, attributes in document.elements
-        if any("1990" in (value or "") for value in attributes.values())
+        if any(
+            rendered in (value or "")
+            for rendered in rendered_dates
+            for value in attributes.values()
+        )
     ]
     pagination = [
         item
