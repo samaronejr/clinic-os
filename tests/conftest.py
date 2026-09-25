@@ -14,6 +14,7 @@ from django.db import connection, transaction
 from database_urls import database_url_for_name
 from rbac_fixtures import RbacGraph, rbac_graph
 from tenant_key_support import issue_tenant_key_for, synthetic_secret_backend
+from tenant_probe_support import tenant_probe_pair
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
@@ -23,7 +24,12 @@ SYNTHETIC_AUTH_VALUE_A = "synthetic-hash-a"
 SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
 AUDIT_ROW_TRIGGER = "audit_event_immutable_row"
 AUDIT_TRUNCATE_TRIGGER = "audit_event_immutable_truncate"
-__all__: Final = ("RbacGraph", "rbac_graph", "synthetic_secret_backend")
+__all__: Final = (
+    "RbacGraph",
+    "rbac_graph",
+    "synthetic_secret_backend",
+    "tenant_probe_pair",
+)
 
 
 @dataclass(frozen=True, slots=True)

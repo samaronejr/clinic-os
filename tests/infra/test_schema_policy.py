@@ -2,43 +2,24 @@ from typing import Final
 
 import psycopg
 import pytest
-from apps.comms.rls import ALL_COMMS_RLS_TARGETS
 from apps.identity.models import (
     Clinic,
     ClinicConfiguration,
     Organization,
     UserClinicRole,
 )
-from apps.intake.rls import INTAKE_RLS_TARGETS
-from apps.scheduling.rls import ALL_SCHEDULING_RLS_TARGETS
+from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
-from apps.tenancy.rls import TENANT_RLS_TARGETS
 from django.apps import apps as django_apps
 from django.db import connection
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-FOUNDATION_TENANT_COLUMNS: Final = dict(TENANT_RLS_TARGETS)
-PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS) | dict(
-    ALL_SCHEDULING_RLS_TARGETS
-)
-COMMS_TENANT_COLUMNS: Final = dict(ALL_COMMS_RLS_TARGETS)
-EXPECTED_TENANT_COLUMNS: Final = (
-    FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS | COMMS_TENANT_COLUMNS
-)
-SELECT_ONLY_RUNTIME_TABLES: Final = {
-    "identity_organization",
-    "identity_clinic",
-    "identity_userclinicrole",
-    # Patient sessions are minted only by the resolver-owned redemption
-    # function; the runtime role can read and revoke but never insert.
-    "intake_patientsession",
-    # Reminder snapshots are inserted only by the appointment trigger.
-    "comms_appointmentreminder",
-}
-SELECT_INSERT_RUNTIME_TABLES: Final = (
-    set(PHASE1A_TENANT_COLUMNS) | set(COMMS_TENANT_COLUMNS)
-) - SELECT_ONLY_RUNTIME_TABLES
+# The expected tenant surface is derived from the per-app posture
+# registries (apps/<app>/rls.py) aggregated by apps.tenancy.posture.
+EXPECTED_TENANT_COLUMNS: Final = posture.expected_tenant_columns()
+SELECT_ONLY_RUNTIME_TABLES: Final = posture.select_only_runtime_tables()
+SELECT_INSERT_RUNTIME_TABLES: Final = posture.select_insert_runtime_tables()
 
 
 def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
