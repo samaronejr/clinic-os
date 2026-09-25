@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import select
 import shutil
 import signal
 import socket
@@ -51,6 +52,7 @@ import django  # noqa: E402
 
 django.setup()
 
+import celery.signals  # noqa: E402
 import redis  # noqa: E402
 from apps.core import fairness  # noqa: E402
 from apps.identity.clinic_configuration import (  # noqa: E402
@@ -66,6 +68,7 @@ from apps.identity.models import (  # noqa: E402
 from apps.tenancy.db import tenant_context  # noqa: E402
 from config.celery import app as celery_app  # noqa: E402
 from django.contrib.auth.hashers import make_password  # noqa: E402
+from django.core.exceptions import ValidationError  # noqa: E402
 from django.db import connection, transaction  # noqa: E402
 
 from patient_service_support import runtime_role  # noqa: E402
@@ -83,6 +86,19 @@ PROBE_QUEUE = "ai-batch"
 TASKS_PER_ORG = 200
 WORKER_READY_TIMEOUT = 90.0
 DRAIN_TIMEOUT = 600.0
+
+
+@celery.signals.worker_ready.connect  # type: ignore[untyped-decorator]
+def _signal_worker_ready(**_kwargs: object) -> None:
+    """Write one byte to the driver's FIFO when this worker is ready."""
+    fifo = os.environ.get("QA_WORKER_READY_FIFO")
+    if not fifo:
+        return
+    fd = os.open(fifo, os.O_WRONLY)
+    try:
+        os.write(fd, b"1")
+    finally:
+        os.close(fd)
 
 
 @celery_app.task(name=PROBE_TASK, bind=True)  # type: ignore[untyped-decorator]
@@ -104,8 +120,11 @@ def synthetic_probe(
         queue=PROBE_QUEUE,
     )
     outcome = "admitted" if admitted else "deferred"
-    client.hsetnx(f"cpi-t09-probe:{run_id}:first", probe_id, outcome)
+    first_key = f"cpi-t09-probe:{run_id}:first"
+    if client.hsetnx(first_key, probe_id, outcome):
+        client.rpush(f"cpi-t09-probe:{run_id}:events", f"first:{outcome}")
     client.hincrby(f"cpi-t09-probe:{run_id}:executions", outcome, 1)
+    client.rpush(f"cpi-t09-probe:{run_id}:events", f"exec:{outcome}")
     return outcome
 
 
@@ -155,7 +174,28 @@ def _publish_quotas(
         )
 
 
-def _start_worker(log_path: Path) -> subprocess.Popen[bytes]:
+def _await_worker_readiness(
+    fifo_fd: int,
+    process: subprocess.Popen[bytes],
+    log_path: Path,
+) -> None:
+    """Block until this worker writes to the readiness FIFO.
+
+    The readiness byte is written by the ``worker_ready`` signal handler
+    in this module, so arrival of the byte is the worker's own event, not
+    a timed poll. ``select`` bounds the wait.
+    """
+    ready, _, _ = select.select([fifo_fd], [], [], WORKER_READY_TIMEOUT)
+    if not ready or not os.read(fifo_fd, 1):
+        process.terminate()
+        if process.poll() is not None:
+            message = f"celery worker exited during startup: {log_path}"
+        else:
+            message = f"celery worker did not signal readiness: {log_path}"
+        raise RuntimeError(message)
+
+
+def _start_worker(log_path: Path, ready_fifo: Path) -> subprocess.Popen[bytes]:
     """Spawn one real Celery worker bound to the ai-batch queue."""
     env = {
         "DJANGO_SETTINGS_MODULE": "config.settings.test",
@@ -168,9 +208,10 @@ def _start_worker(log_path: Path) -> subprocess.Popen[bytes]:
         "PYTHONPATH": f"{WORKTREE}:{WORKTREE / 'tests'}",
         "PATH": os.environ["PATH"],
         "HOME": os.environ.get("HOME", "/tmp"),  # noqa: S108 - worker cwd fallback
+        "QA_WORKER_READY_FIFO": str(ready_fifo),
     }
     log = log_path.open("ab")
-    process = subprocess.Popen(  # noqa: S603 - fixed module argv
+    return subprocess.Popen(  # noqa: S603 - fixed module argv
         (
             sys.executable,
             "-m",
@@ -193,31 +234,6 @@ def _start_worker(log_path: Path) -> subprocess.Popen[bytes]:
         stdout=log,
         stderr=subprocess.STDOUT,
     )
-    deadline = time.monotonic() + WORKER_READY_TIMEOUT
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            message = f"celery worker exited during startup: {log_path}"
-            raise RuntimeError(message)
-        try:
-            if b"ready." in log_path.read_bytes()[-65536:]:
-                return process
-        except OSError:
-            pass
-        time.sleep(0.25)
-    process.terminate()
-    message = f"celery worker did not signal readiness: {log_path}"
-    raise RuntimeError(message)
-
-
-def _wait_count(client: redis.Redis, key: str, target: int, timeout: float) -> int:
-    """Wait until the hash holds ``target`` entries; QA scripts may poll."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        count = client.hlen(key)
-        if count >= target:
-            return count
-        time.sleep(0.5)
-    return client.hlen(key)
 
 
 def _provenance(command: str) -> dict[str, object]:
@@ -233,23 +249,43 @@ def _provenance(command: str) -> dict[str, object]:
         "worktree": str(WORKTREE),
         "commit_sha": sha,
         "postgres_container": os.environ.get("POSTGRES_CONTAINER", ""),
-        "redis_container": "cpi-lane-t09-redis",
+        "redis_container": os.environ.get("QA_REDIS_CONTAINER", ""),
         "broker_url": os.environ.get("CELERY_BROKER_URL", ""),
         "generated_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
 
-def scenario_fair() -> int:
+def scenario_fair() -> int:  # noqa: C901, PLR0912, PLR0915 - one linear QA scene
     """Two orgs enqueue 200 real tasks each through real ai-batch workers."""
     run_id = secrets.token_hex(8)
-    client = redis.Redis.from_url(os.environ["CELERY_BROKER_URL"])
+    # socket_timeout must exceed the BLPOP wait: redis-py 8 defaults it to
+    # 5s, which would raise TimeoutError instead of returning None.
+    client = redis.Redis.from_url(os.environ["CELERY_BROKER_URL"], socket_timeout=30)
     org_a, clinic_a, actor_a = _seed_org("fair-a")
     org_b, clinic_b, actor_b = _seed_org("fair-b")
     _publish_quotas(org_a, clinic_a, actor_a, {"ai-batch": 60})
     _publish_quotas(org_b, clinic_b, actor_b, {"ai-batch": 120})
     log_dir = Path(os.environ.get("CLINIC_SECRET_DIR", "/tmp"))  # noqa: S108
-    workers = [_start_worker(log_dir / f"qa-t09-worker-{i}.log") for i in range(2)]
+    ready_fifo = (
+        Path(
+            os.environ.get("CLINIC_SECRET_DIR", "/tmp")  # noqa: S108
+        )
+        / f"qa-t09-ready-{run_id}.fifo"
+    )
+    os.mkfifo(ready_fifo)
+    # O_RDONLY|O_NONBLOCK registers the read end so worker writers can open
+    # the FIFO; select() below supplies the bounded wait for each event.
+    fifo_fd = os.open(ready_fifo, os.O_RDONLY | os.O_NONBLOCK)
+    # A driver-held writer keeps the FIFO from reporting EOF (POLLHUP)
+    # between worker readiness writes.
+    fifo_sink = os.open(ready_fifo, os.O_WRONLY | os.O_NONBLOCK)
+    workers: list[subprocess.Popen[bytes]] = []
     try:
+        for i in range(2):
+            worker_log = log_dir / f"qa-t09-worker-{i}.log"
+            process = _start_worker(worker_log, ready_fifo)
+            workers.append(process)
+            _await_worker_readiness(fifo_fd, process, worker_log)
         org_key = f"cpi-t09-probe:{run_id}:org"
         for org in (org_a, org_b):
             for _ in range(TASKS_PER_ORG):
@@ -262,9 +298,26 @@ def scenario_fair() -> int:
                         "run_id": run_id,
                     }
                 )
-        # Wait until every probe has a first-execution outcome.
+        # Block on the probe event stream until every probe has a
+        # first-execution outcome; workers push one event per execution.
         first_key = f"cpi-t09-probe:{run_id}:first"
-        seen = _wait_count(client, first_key, 2 * TASKS_PER_ORG, 120.0)
+        events_key = f"cpi-t09-probe:{run_id}:events"
+        events_deadline = time.monotonic() + DRAIN_TIMEOUT
+        first_seen = 0
+        admitted_total = 0
+        while first_seen < 2 * TASKS_PER_ORG:
+            remaining = max(1, int(events_deadline - time.monotonic()))
+            item = client.blpop(events_key, timeout=min(5, remaining))
+            if item is None:
+                if time.monotonic() >= events_deadline:
+                    break
+                continue
+            _, event = item
+            if isinstance(event, bytes) and event.startswith(b"first:"):
+                first_seen += 1
+            if event == b"exec:admitted":
+                admitted_total += 1
+        seen = first_seen
         first = client.hgetall(first_key)
         orgs = client.hgetall(org_key)
         per_org: dict[str, dict[str, object]] = {}
@@ -286,14 +339,18 @@ def scenario_fair() -> int:
             }
         admitted_first = sum(1 for value in first.values() if value == b"admitted")
         deferred_first = sum(1 for value in first.values() if value == b"deferred")
-        # Wait for full drain to prove deferred tasks are redelivered.
-        drain_deadline = time.monotonic() + DRAIN_TIMEOUT
-        while time.monotonic() < drain_deadline:
-            executions = client.hgetall(f"cpi-t09-probe:{run_id}:executions")
-            admitted_total = int(executions.get(b"admitted", 0))
-            if admitted_total >= 2 * TASKS_PER_ORG:
-                break
-            time.sleep(2.0)
+        # Keep consuming the event stream until every deferred probe has
+        # been redelivered and admitted; each execution pushes an event.
+        while admitted_total < 2 * TASKS_PER_ORG:
+            remaining = max(1, int(events_deadline - time.monotonic()))
+            item = client.blpop(events_key, timeout=min(5, remaining))
+            if item is None:
+                if time.monotonic() >= events_deadline:
+                    break
+                continue
+            _, event = item
+            if event == b"exec:admitted":
+                admitted_total += 1
         executions = client.hgetall(f"cpi-t09-probe:{run_id}:executions")
         result = {
             "scenario": (
@@ -328,6 +385,7 @@ def scenario_fair() -> int:
             and int(executions.get(b"admitted", 0)) == 2 * TASKS_PER_ORG
         )
         result["verdict"] = "pass" if ok else "fail"
+        result["exit_code"] = 0 if ok else 1
         EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
         (EVIDENCE_DIR / "fair.json").write_text(json.dumps(result, indent=2))
         sys.stdout.write(json.dumps(result, indent=2) + "\n")
@@ -340,10 +398,14 @@ def scenario_fair() -> int:
                 worker.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 worker.kill()
+        os.close(fifo_fd)
+        os.close(fifo_sink)
+        ready_fifo.unlink(missing_ok=True)
         client.delete(
             f"cpi-t09-probe:{run_id}:first",
             f"cpi-t09-probe:{run_id}:executions",
             f"cpi-t09-probe:{run_id}:org",
+            f"cpi-t09-probe:{run_id}:events",
         )
 
 
@@ -371,23 +433,24 @@ def scenario_redis_down() -> int:
                 )
     finally:
         fairness._broker_url = original
+    expected_defer = set(fairness.QUEUE_NAMES) - fairness.FAIL_OPEN_QUEUES
+    ok = all(
+        ("deferred" in line) == (line.split(", ")[1].split(":")[0] in expected_defer)
+        for line in lines[1:]
+    )
     receipt = {
         "provenance": _provenance(
             "uv run --frozen --no-sync --no-env-file python "
             "tests/core/fairness_probe.py redis-down"
         ),
         "lines": lines,
+        "exit_code": 0 if ok else 1,
     }
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     (EVIDENCE_DIR / "redis-down.txt").write_text(
         json.dumps(receipt, indent=2) + "\n" + "\n".join(lines) + "\n"
     )
     sys.stdout.write("\n".join(lines) + "\n")
-    expected_defer = set(fairness.QUEUE_NAMES) - fairness.FAIL_OPEN_QUEUES
-    ok = all(
-        ("deferred" in line) == (line.split(", ")[1].split(":")[0] in expected_defer)
-        for line in lines[1:]
-    )
     return 0 if ok else 1
 
 
@@ -418,7 +481,9 @@ def scenario_quota_forge() -> int:
                         display_name="Clínica Sintética", queue_quotas=attempt
                     ),
                 )
-            except Exception as exc:  # noqa: BLE001 - record the rejection class
+            except ValidationError as exc:
+                # Only the closed-vocabulary validator counts as a
+                # rejection; any other failure class fails loudly below.
                 lines.append(f"forged {attempt!r} -> rejected ({type(exc).__name__})")
             else:
                 lines.append(f"forged {attempt!r} -> ACCEPTED (BUG)")
@@ -430,19 +495,20 @@ def scenario_quota_forge() -> int:
             ),
         )
         lines.append("legitimate {'ai-batch': 60} -> accepted")
+    ok = all("rejected" in line for line in lines[:-1]) and "accepted" in lines[-1]
     receipt = {
         "provenance": _provenance(
             "uv run --frozen --no-sync --no-env-file python "
             "tests/core/fairness_probe.py quota-forge"
         ),
         "lines": lines,
+        "exit_code": 0 if ok else 1,
     }
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     (EVIDENCE_DIR / "quota-forge.txt").write_text(
         json.dumps(receipt, indent=2) + "\n" + "\n".join(lines) + "\n"
     )
     sys.stdout.write("\n".join(lines) + "\n")
-    ok = all("rejected" in line for line in lines[:-1]) and "accepted" in lines[-1]
     return 0 if ok else 1
 
 
