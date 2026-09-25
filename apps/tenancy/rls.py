@@ -11,6 +11,22 @@ TENANT_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
     }
 )
 
+# Posture registry declarations consumed by apps.tenancy.posture.
+RLS_TARGETS: Final[frozenset[tuple[str, str]]] = TENANT_RLS_TARGETS
+# tenancy_tenantdatakey carries bespoke resolver-only policies; the runtime
+# role holds no grants on it at all.
+CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset({"tenancy_tenantdatakey"})
+NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
+# tenancy_tenantprobe intentionally keeps full DML: it is the internal
+# sentinel tests use to prove cross-tenant UPDATE/DELETE are blocked.
+RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    "identity_organization": frozenset({"SELECT"}),
+    "identity_clinic": frozenset({"SELECT"}),
+    "identity_userclinicrole": frozenset({"SELECT"}),
+    "tenancy_tenantprobe": frozenset({"SELECT", "INSERT", "UPDATE", "DELETE"}),
+    "tenancy_tenantdatakey": frozenset(),
+}
+
 
 def apply_tenant_rls(table: str, tenant_col: str) -> str:
     """Build fixed-identifier RLS DDL for one approved tenant table."""
