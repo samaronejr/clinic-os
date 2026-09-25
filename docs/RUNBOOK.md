@@ -283,16 +283,28 @@ request bodies (ADR-014).
 Structured JSON logs and the Sentry scrubber share the allowlist in
 `apps/core/telemetry.py`. The boundary is a closed vocabulary: log messages
 must be registered in `LOG_MESSAGE_ALLOWLIST` (args are never interpolated),
-label values come from closed sets (URL route names, Celery queue names,
-registered capability keys, status classes), and open fields validate to
-strict machine formats or collapse to `[invalid]`. Sentry events are rebuilt
-recursively — `contexts.trace`, breadcrumbs, request, tags and exception
-keep only validated structural fields. Queue age requires the enqueue-time
-header stamped by `before_task_publish` in `CoreConfig.ready`; unstamped
-legacy messages simply omit `clinic_queue_oldest_age_seconds`. Gunicorn
-access logs (`ops/container/gunicorn_no_proxy.py` `access_log_format`, also
-passed as `--access-logformat` to the browser harnesses) emit only method,
-status and duration — never the request line, query or peer address.
+and every emitted value is either a closed-set member or a validated id.
+Route labels are registered URL names, namespaced names included
+(`identity:login`); provider labels are `PROVIDER_CAPABILITY_KEYS` (the v2
+integration record set, to be replaced by the todo 4 registry); AI labels
+are `AI_INVOCATION_PURPOSES` (to be replaced by todo 38 model purposes).
+Logger names must resolve to an imported module or a framework logger.
+Sentry events are rebuilt from those vocabularies: the SDK timestamp is
+re-rendered from a strict parse, `environment`/`release` are closed at
+configuration time (`SENTRY_ENVIRONMENT`, 40-hex `SENTRY_RELEASE`), and
+`server_name`, `extra`, `user`, messages and nested `data` never leave.
+
+Celery workers use the same pipeline: `config/celery.py` connects
+`setup_logging`, applies Django `LOGGING` and redirects task stdout into
+it, so Celery never installs its own handlers (whose formats render task
+args, kwargs and return values). Django's DEBUG console, `mail_admins` and
+runserver handlers are likewise replaced. Queue age requires the
+enqueue-time header stamped by `before_task_publish` in `CoreConfig.ready`;
+unstamped legacy messages simply omit `clinic_queue_oldest_age_seconds`.
+Gunicorn access logs (`ops/container/gunicorn_no_proxy.py`
+`access_log_format`, also passed as `--access-logformat` to the browser
+harnesses) emit only method, status and duration, never the request line,
+query or peer address.
 
 OpenTelemetry tracing is disabled by default: set `CLINIC_OTEL_ENABLED=1`
 plus `CLINIC_OTEL_EXPORTER=console` or `otlp-http-json` with

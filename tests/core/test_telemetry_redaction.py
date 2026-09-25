@@ -16,19 +16,28 @@ import json
 import logging
 import os
 import re
+import select
+import signal
+import subprocess
+import sys
+import textwrap
 import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final
+from pathlib import Path
+from typing import TYPE_CHECKING, Final, cast
 from uuid import uuid4
 
 import pytest
+import sentry_sdk
 from apps.comms.models import IntegrationOperation
 from apps.core import telemetry
 from apps.tenancy.db import tenant_context
+from config.settings.telemetry import sentry_options
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpRequest, HttpResponse
 from django.test import Client, RequestFactory, override_settings
+from django.urls import resolve, reverse
 from django.urls.resolvers import ResolverMatch
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -40,6 +49,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
+from sentry_sdk.transport import Transport
 
 from patient_service_support import runtime_role
 
@@ -48,7 +58,9 @@ if TYPE_CHECKING:
     from typing import Self
 
     from opentelemetry.sdk.trace import ReadableSpan
+    from sentry_sdk.envelope import Envelope
     from sentry_sdk.types import Event as SentryEvent
+    from sentry_sdk.types import Hint as SentryHint
 
     from rbac_fixtures import RbacGraph
 
@@ -100,6 +112,11 @@ _TOKEN_SHAPED_NAMES: Final = (
     "sintetico-aurora-revisao",
     "camila-rocha-viana",
     "sintetico-patient-full-name",
+    # Round-2 reviewer probes: one- and two-segment token spellings.
+    "sintetico-aurora",
+    "sintetico_aurora",
+    "sintetico.aurora",
+    "sinteticoaurora",
 )
 
 PHI_CORPUS: Final = (
@@ -127,7 +144,11 @@ _FORBIDDEN_ATOMS: Final = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
     "sk-live-abcdef1234567890",
     "camila-rocha-viana",
-    "sintetico-aurora-revisao",
+    "sintetico-aurora",
+    "sintetico_aurora",
+    "sintetico.aurora",
+    "sinteticoaurora",
+    "dor toracica",
     "91234-5678",
     "99876-5432",
     *_CPF_SHAPED,
@@ -229,14 +250,31 @@ def test_log_numeric_phi_shapes_collapse(captured_log: io.StringIO) -> None:
     _assert_no_phi(captured_log.getvalue())
 
 
-def test_log_token_shaped_reason_codes_collapse(captured_log: io.StringIO) -> None:
-    # The reviewer repro: token-shaped person names in open fields.
+def test_log_open_token_fields_are_not_emitted(captured_log: io.StringIO) -> None:
+    # Round-2 repro: reason_code/event accepted any token-shaped name. They
+    # have no closed vocabulary, so they are no longer allowlisted at all.
     probe = logging.getLogger("telemetry-corpus")
     for entry in _TOKEN_SHAPED_NAMES + _UUIDS + _BARE_HEX_IDS:
-        probe.info("http request", extra={"reason_code": entry})
+        probe.info("http request", extra={"reason_code": entry, "event": entry})
     lines = [json.loads(line) for line in captured_log.getvalue().splitlines()]
-    assert all(line["reason_code"] == "[invalid]" for line in lines)
+    assert lines
+    assert all("reason_code" not in line and "event" not in line for line in lines)
     _assert_no_phi(captured_log.getvalue())
+
+
+def test_log_logger_name_resolves_to_loaded_modules() -> None:
+    formatter = telemetry.JsonTelemetryFormatter()
+
+    def logger_field(name: str) -> str:
+        record = logging.LogRecord(name, logging.INFO, "", 1, "http request", (), None)
+        return str(json.loads(formatter.format(record))["logger"])
+
+    assert logger_field("apps.core.telemetry") == "apps.core.telemetry"
+    assert logger_field("django.request") == "django.request"
+    # Unknown children collapse to their imported parent module.
+    assert logger_field("apps.core.sintetico_aurora") == "apps.core"
+    for name in _TOKEN_SHAPED_NAMES + _NAMES:
+        assert logger_field(name) == "[invalid]"
 
 
 def test_log_uuid_fields_validate_strictly(captured_log: io.StringIO) -> None:
@@ -288,6 +326,7 @@ def test_span_channel_drops_all_phi_strings() -> None:
         span.set_attribute("http.route", entry)
         span.set_attribute("patient.name", entry)
         span.set_attribute("clinic.request_id", entry)
+        span.set_attribute("clinic.reason_code", entry)
         span.add_event("probe-event", attributes={"soap": entry})
         span.end()
     provider.shutdown()
@@ -424,7 +463,7 @@ def test_metric_labels_drop_all_phi_strings() -> None:
     for entry in PHI_CORPUS:
         registry.observe_request(route=entry, method="get", status=200, seconds=0.01)
         registry.record_ai_invocation(
-            capability=entry, outcome="ok", seconds=0.01, cost_micros=1
+            purpose=entry, outcome="ok", seconds=0.01, cost_micros=1
         )
         registry.register_provider_probe(entry, lambda: True)
         registry.note_scrape_error(entry)
@@ -455,36 +494,81 @@ def test_metric_route_label_is_a_closed_set() -> None:
     assert "/api/patients" not in rendered
 
 
-def test_capability_and_outcome_labels_are_closed() -> None:
+def test_ai_purpose_and_outcome_labels_are_closed() -> None:
     registry = telemetry.MetricsRegistry()
-    telemetry.register_ai_capability("summarize-note")
     registry.record_ai_invocation(
-        capability="summarize-note", outcome="success", seconds=0.2, cost_micros=10
+        purpose="brief", outcome="success", seconds=0.2, cost_micros=10
     )
+    for entry in _TOKEN_SHAPED_NAMES:
+        registry.record_ai_invocation(
+            purpose=entry, outcome="success", seconds=0.2, cost_micros=10
+        )
     registry.record_ai_invocation(
-        capability="camila-rocha-viana", outcome="success", seconds=0.2, cost_micros=10
-    )
-    registry.record_ai_invocation(
-        capability="summarize-note", outcome="bogus", seconds=0.2, cost_micros=10
+        purpose="brief", outcome="bogus", seconds=0.2, cost_micros=10
     )
     rendered = registry._render_ai_invocations()
-    assert 'capability="summarize-note",outcome="success"' in rendered
-    assert 'capability="[invalid]"' in rendered
+    assert 'purpose="brief",outcome="success"' in rendered
+    assert 'purpose="[invalid]"' in rendered
     assert 'outcome="[invalid]"' in rendered
     _assert_no_phi(rendered)
+
+
+def test_provider_labels_come_from_the_capability_key_registry() -> None:
+    # Round-2 repro: register_provider_probe accepted clinical token names
+    # and turned them into provider/AI labels.
+    registry = telemetry.MetricsRegistry()
+    for entry in _TOKEN_SHAPED_NAMES:
+        registry.register_provider_probe(entry, lambda: True)
+    registry.register_provider_probe("sms", lambda: True)
+    registry.record_ai_invocation(
+        purpose="sintetico_aurora", outcome="success", seconds=0.1, cost_micros=1
+    )
+    rendered = registry._render_provider_health() + registry._render_ai_invocations()
+    assert 'clinic_provider_health{capability="sms"} 1' in rendered
+    assert rendered.count("clinic_provider_health{") == 1
+    _assert_no_phi(rendered)
+
+
+def test_namespaced_route_names_are_registered_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Round-2 regression: namespaced routes collapsed to [invalid].
+    registry = telemetry.MetricsRegistry()
+    monkeypatch.setattr(telemetry, "METRICS", registry)
+    factory = RequestFactory()
+    middleware = telemetry.TelemetryMiddleware(_ok_view)
+    phi_handle = _SENTINEL_IDS[3]
+    for path in (
+        "/auth/login/",
+        reverse("prescription:verify-document", kwargs={"handle": phi_handle}),
+        "/healthz",
+    ):
+        request = factory.get(path)
+        request.resolver_match = resolve(path)
+        middleware(request)
+    rendered = registry._render_request_histograms()
+    assert 'route="identity:login"' in rendered
+    assert 'route="prescription:verify-document"' in rendered
+    assert 'route="healthz"' in rendered
+    assert 'route="[invalid]"' not in rendered
+    assert phi_handle not in rendered
+    # Bare url_names are registered identities too; paths are not.
+    assert telemetry._route_name_value("login") == "login"
+    assert telemetry._route_name_value("/auth/login/") == "[invalid]"
+    assert telemetry._route_name_value("identity:sintetico_aurora") == "[invalid]"
 
 
 def test_metrics_render_contains_sli_families() -> None:
     registry = telemetry.MetricsRegistry()
     registry.observe_request(route="index", method="get", status=200, seconds=0.05)
-    telemetry.register_ai_capability("visit-brief")
     registry.record_ai_invocation(
-        capability="visit-brief", outcome="success", seconds=1.5, cost_micros=42
+        purpose="brief", outcome="success", seconds=1.5, cost_micros=42
     )
+    registry.register_provider_probe("llm_inference", lambda: True)
     rendered = registry.render()
     assert "clinic_http_request_duration_seconds_bucket" in rendered
     assert 'route="index"' in rendered
-    assert 'clinic_ai_invocations_total{capability="visit-brief"' in rendered
+    assert 'clinic_ai_invocations_total{purpose="brief"' in rendered
     assert "clinic_queue_depth" in rendered
     assert "clinic_outbox_operations" in rendered
     assert "clinic_provider_health" in rendered
@@ -496,9 +580,9 @@ def test_provider_probe_crash_reports_unhealthy() -> None:
     def _boom() -> bool:
         raise _ProbeError
 
-    registry.register_provider_probe("synthetic-cap", _boom)
+    registry.register_provider_probe("llm_inference", _boom)
     rendered = registry._render_provider_health()
-    assert 'clinic_provider_health{capability="synthetic-cap"} 0' in rendered
+    assert 'clinic_provider_health{capability="llm_inference"} 0' in rendered
 
 
 def test_outbox_status_labels_are_model_states(
@@ -832,8 +916,8 @@ def test_sentry_event_scrubs_nested_payload_recursively() -> None:
     assert trace_ctx["trace_id"] == "f" * 32
     assert "data" not in trace_ctx
     assert "patient" not in scrubbed["contexts"]
-    # Nested tag values are validated, not copied verbatim.
-    assert scrubbed["tags"]["request_id"] == "[invalid]"
+    # Nested tag values are validated; invalid ones are dropped.
+    assert "request_id" not in scrubbed["tags"]
     assert scrubbed["tags"]["route"] == "healthz"
     assert "patient" not in scrubbed["tags"]
     # Exception keeps type only.
@@ -964,3 +1048,262 @@ def test_supervised_argv_uses_phi_free_access_log() -> None:
     argv = supervised_argv(Path(sys.executable), 58419, Path("a.log"))
     index = argv.index("--access-logformat")
     assert argv[index + 1] == "%(m)s %(s)s %(D)s"
+
+
+# ---------------------------------------------------------------------------
+# Real Sentry SDK pipeline (reviewer B3): production options, capture transport.
+# ---------------------------------------------------------------------------
+
+_HOSTILE_TIMESTAMP: Final = (
+    "2026-09-25T12:00:00Z SOAP sintetico: dor toracica; paciente Sintetico Aurora"
+)
+_SDK_TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z")
+
+
+class _CaptureTransport(Transport):
+    """Keep every envelope the client would have sent over the network."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.envelopes: list[Envelope] = []
+
+    def capture_envelope(self, envelope: Envelope) -> None:
+        self.envelopes.append(envelope)
+
+
+def _hostile_metadata(event: SentryEvent, _hint: SentryHint) -> SentryEvent:
+    """Scope event processor: clinical text in every metadata pocket."""
+    hostile: dict[str, object] = dict(event)
+    hostile.update(
+        timestamp=_HOSTILE_TIMESTAMP,
+        logger="sintetico_aurora",
+        environment="sintetico-aurora",
+        server_name="sintetico.aurora",
+        release="sintetico_aurora",
+        transaction=f"/api/patients/{_SENTINEL_IDS[5]}",
+        sdk={"name": "sintetico.aurora", "version": "sintetico_aurora"},
+    )
+    contexts = dict(event.get("contexts") or {})
+    contexts["trace"] = {
+        **dict(contexts.get("trace") or {}),
+        "op": "sintetico_aurora",
+        "data": {"soap": _SOAP_NOTES[1]},
+    }
+    contexts["patient"] = {"name": "Mariana Souza"}
+    hostile["contexts"] = contexts
+    # Deliberately ill-typed values (a string timestamp) model hostile input.
+    return cast("SentryEvent", hostile)
+
+
+def test_sentry_sdk_transport_receives_only_closed_vocabulary() -> None:
+    transport = _CaptureTransport()
+    client = sentry_sdk.Client(
+        **sentry_options("https://public@sentry.invalid/1"), transport=transport
+    )
+    soap = _SOAP_NOTES[0]
+    with sentry_sdk.isolation_scope() as scope:
+        scope.set_client(client)
+        scope.set_tag("patient", "Mariana Souza")
+        scope.set_tag("request_id", f"req-{_UUIDS[0]}")
+        scope.set_tag("route", "sintetico_aurora")
+        scope.set_extra("soap", soap)
+        scope.set_user({"email": _EMAILS[0]})
+        scope.add_breadcrumb(
+            type="sintetico.aurora",
+            category="sintetico_aurora",
+            message=soap,
+            level="info",
+            data={"url": f"/patients/{_SENTINEL_IDS[6]}"},
+        )
+        # Event 1: SDK-native exception event (real timestamp, real sdk info).
+        try:
+            _raise_phi(soap)
+        except ValueError:
+            sentry_sdk.capture_exception()
+        # Event 2: logging-integration event from a clinical logger name.
+        logging.getLogger("sintetico_aurora").error("Forbidden: %s", soap)
+        # Event 3: every metadata pocket replaced with clinical text.
+        scope.add_event_processor(_hostile_metadata)
+        try:
+            _raise_phi(soap)
+        except ValueError:
+            sentry_sdk.capture_exception()
+    client.close()
+
+    assert len(transport.envelopes) == 3
+    for envelope in transport.envelopes:
+        _assert_no_phi(envelope.serialize().decode())
+    native, logged, hostile = (envelope.get_event() for envelope in transport.envelopes)
+    assert native is not None
+    assert logged is not None
+    assert hostile is not None
+    # The SDK's own timestamp survives as a pure ISO instant.
+    assert _SDK_TIMESTAMP.fullmatch(str(native["timestamp"]))
+    assert native["sdk"]["version"] == sentry_sdk.VERSION
+    assert native["exception"]["values"][0]["type"] == "ValueError"
+    assert "logger" not in logged
+    # Hostile metadata is dropped, never passed through or re-derived.
+    for dropped in ("timestamp", "logger", "server_name", "release", "sdk"):
+        assert dropped not in hostile
+    assert "environment" not in hostile or hostile["environment"] == "production"
+    assert set(hostile["contexts"]) == {"trace"}
+    assert "op" not in hostile["contexts"]["trace"]
+    # route/patient tags are dropped; only a valid hex32 request_id may stay.
+    assert set(hostile["tags"]) <= {"request_id"}
+    assert all(re.fullmatch(r"[0-9a-f]{32}", v) for v in hostile["tags"].values())
+
+
+# ---------------------------------------------------------------------------
+# Real Celery worker (reviewer B1): worker/task loggers use the allowlist.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT: Final = Path(__file__).resolve().parents[2]
+_WORKER_EVENT_TIMEOUT_SECONDS: Final = 120.0
+
+
+def _await_worker_events(
+    events_fd: int,
+    worker: subprocess.Popen[bytes],
+    expected: set[str],
+) -> None:
+    """Block on the FIFO (and the worker's pidfd) until ``expected`` arrive."""
+    pidfd = os.pidfd_open(worker.pid)
+    pending = set(expected)
+    buffer = b""
+    deadline = time.monotonic() + _WORKER_EVENT_TIMEOUT_SECONDS
+    try:
+        while pending:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, f"worker events never arrived: {sorted(pending)}"
+            readable, _, _ = select.select([events_fd, pidfd], [], [], remaining)
+            assert pidfd not in readable, "worker exited before signalling"
+            if events_fd in readable:
+                buffer += os.read(events_fd, 4096)
+                *lines, buffer = buffer.split(b"\n")
+                pending -= {line.decode() for line in lines}
+    finally:
+        os.close(pidfd)
+
+
+def test_real_celery_worker_logs_only_through_the_allowlist(tmp_path: Path) -> None:
+    from celery import Celery  # noqa: PLC0415
+    from celery.app import trace as celery_trace  # noqa: PLC0415
+
+    broker = tmp_path / "broker"
+    (broker / "queue").mkdir(parents=True)
+    (broker / "control").mkdir()
+    transport_options = {
+        "data_folder_in": str(broker / "queue"),
+        "data_folder_out": str(broker / "queue"),
+        "control_folder": str(broker / "control"),
+    }
+    events_fifo = tmp_path / "events"
+    os.mkfifo(events_fifo)
+    # O_RDWR keeps a writer open, so the FIFO never reports a spurious EOF.
+    events_fd = os.open(events_fifo, os.O_RDWR | os.O_NONBLOCK)
+    stdout_path = tmp_path / "worker.stdout"
+    stderr_path = tmp_path / "worker.stderr"
+    body = " ".join(
+        (_SENTINEL_IDS[7], "Mariana Souza", _SOAP_NOTES[2], _CPF_SHAPED[4], _EMAILS[1])
+    )
+    note = "sintetico_aurora dor toracica"
+    environment = {
+        **os.environ,
+        "DJANGO_SETTINGS_MODULE": "config.settings.test",
+        "CELERY_BROKER_URL": "filesystem://",
+        "PYTHONPATH": str(_REPO_ROOT),
+        "CLINIC_PROBE_BROKER_DIR": str(broker),
+        "CLINIC_PROBE_EVENTS_FIFO": str(events_fifo),
+    }
+    with stdout_path.open("wb") as stdout, stderr_path.open("wb") as stderr:
+        worker = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "celery",
+                "-A",
+                "tests.core.celery_worker_probe",
+                "worker",
+                "--pool=solo",
+                "--concurrency=1",
+                "--loglevel=INFO",
+                "--without-gossip",
+                "--without-mingle",
+                "--without-heartbeat",
+                "--queues=probe",
+            ],
+            cwd=_REPO_ROOT,
+            env=environment,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    producer = Celery("probe-producer", set_as_current=False, fixups=[])
+    producer.conf.update(
+        broker_url="filesystem://", broker_transport_options=transport_options
+    )
+    try:
+        _await_worker_events(events_fd, worker, {"ready"})
+        producer.send_task(
+            "probe.phi_echo", args=[body], kwargs={"note": note}, queue="probe"
+        )
+        producer.send_task(
+            "probe.phi_raise", args=[body], kwargs={"note": note}, queue="probe"
+        )
+        # One success (info) and one unexpected failure (error) trace record.
+        _await_worker_events(events_fd, worker, {"info", "error"})
+    finally:
+        producer.close()
+        worker.send_signal(signal.SIGTERM)
+        worker.wait(timeout=60)
+        os.close(events_fd)
+
+    stdout_text = stdout_path.read_text()
+    stderr_text = stderr_path.read_text()
+    _assert_no_phi(stdout_text + stderr_text)
+    assert "SOAP" not in stdout_text + stderr_text
+    assert worker.returncode == 0
+    # Every stderr line is an allowlisted JSON record: no raw formatter ran.
+    records = [json.loads(line) for line in stderr_text.splitlines() if line.strip()]
+    messages = {(record["logger"], record["message"]) for record in records}
+    assert ("tests.core.celery_worker_probe", "Forbidden: %s") in messages
+    assert ("celery.app.trace", celery_trace.LOG_SUCCESS) in messages
+    failures = [r for r in records if r["message"] == celery_trace.LOG_FAILURE]
+    assert [r["exception_type"] for r in failures] == ["ValueError"]
+    assert all("reason_code" not in r and "event" not in r for r in records)
+
+
+def test_django_loggers_do_not_bypass_the_allowlist_under_debug() -> None:
+    # Django's DEFAULT_LOGGING console/runserver handlers print raw paths when
+    # DEBUG is on; LOGGING must replace them so everything is allowlisted.
+    script = textwrap.dedent(
+        """
+        import logging, os
+        import django
+        from django.conf import settings
+        django.setup()
+        settings.DEBUG = True
+        phi = os.environ["CLINIC_PROBE_PHI"]
+        logging.getLogger("django.request").error("Internal Server Error: %s", phi)
+        logging.getLogger("django.server").info('"GET %s HTTP/1.1" 200 1', phi)
+        """
+    )
+    phi = f"/prescription/verify/{_SENTINEL_IDS[8]}/ Mariana Souza"
+    result = subprocess.run(  # noqa: S603 - fixed interpreter, inline script.
+        [sys.executable, "-c", script],
+        cwd=_REPO_ROOT,
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "config.settings.test",
+            "CLINIC_PROBE_PHI": phi,
+        },
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    _assert_no_phi(result.stdout + result.stderr)
+    records = [json.loads(line) for line in result.stderr.splitlines() if line]
+    assert [record["message"] for record in records] == [
+        "Internal Server Error: %s",
+        "[unlisted]",
+    ]

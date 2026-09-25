@@ -105,6 +105,8 @@ def test_sentry_initialization_disables_local_variable_capture(
 ) -> None:
     with monkeypatch.context() as scoped, patch("sentry_sdk.init") as sentry_init:
         scoped.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+        scoped.delenv("SENTRY_ENVIRONMENT", raising=False)
+        scoped.delenv("SENTRY_RELEASE", raising=False)
         importlib.reload(base_settings)
 
         sentry_init.assert_called_once_with(
@@ -113,6 +115,8 @@ def test_sentry_initialization_disables_local_variable_capture(
             include_local_variables=False,
             max_request_body_size="never",
             before_send=scrub_sentry_event,
+            environment="production",
+            release=None,
         )
 
     importlib.reload(base_settings)

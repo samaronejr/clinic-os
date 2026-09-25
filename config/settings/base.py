@@ -288,4 +288,11 @@ LOGGING = {
         },
     },
     "root": {"handlers": ["console"], "level": "INFO"},
+    # Replace Django's DEFAULT_LOGGING handlers (DEBUG console, mail_admins,
+    # runserver request lines), which format raw paths and messages; these
+    # loggers propagate to the allowlisted root handler instead.
+    "loggers": {
+        "django": {"handlers": [], "level": "INFO", "propagate": True},
+        "django.server": {"handlers": [], "level": "INFO", "propagate": True},
+    },
 }

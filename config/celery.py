@@ -15,12 +15,19 @@ explicit ``comms.*`` names keep the existing outbox tasks on the unchanged
 ``clinic-integrations`` queue.
 """
 
+import logging
+import logging.config
 import os
 
 from celery import Celery
+from celery.signals import setup_logging
 from kombu import Queue  # type: ignore[import-untyped]
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
+
+# Worker-side log formats never include the message: they only apply if
+# Celery ever configures logging itself, which the receiver below prevents.
+_SAFE_WORKER_LOG_FORMAT = "[%(asctime)s: %(levelname)s/%(processName)s] %(name)s"
 
 app = Celery("clinic")
 app.config_from_object("django.conf:settings", namespace="CELERY")
@@ -56,6 +63,9 @@ app.conf.update(
     task_reject_on_worker_lost=True,
     task_track_started=True,
     worker_prefetch_multiplier=1,
+    worker_hijack_root_logger=False,
+    worker_log_format=_SAFE_WORKER_LOG_FORMAT,
+    worker_task_log_format=_SAFE_WORKER_LOG_FORMAT,
     beat_schedule={
         "appointment-reminders": {
             "task": "comms.dispatch_due_reminders",
@@ -68,3 +78,24 @@ app.conf.update(
     },
 )
 app.autodiscover_tasks()
+
+
+def configure_worker_logging(**_kwargs: object) -> None:
+    """Route every worker log through the ADR-014 allowlist handler.
+
+    Connecting ``setup_logging`` stops Celery from installing its own
+    root/task handlers, whose formats interpolate task args, kwargs and
+    return values. The Django ``LOGGING`` dict (JSON formatter + allowlist
+    filter) is applied instead, and task stdout/stderr is redirected into
+    that same pipeline so ``print`` output cannot bypass it.
+    """
+    from django.conf import settings  # noqa: PLC0415
+
+    logging.config.dictConfig(settings.LOGGING)
+    app.log.redirect_stdouts(loglevel=logging.WARNING)
+
+
+setup_logging.connect(
+    configure_worker_logging,
+    dispatch_uid="config.celery.configure_worker_logging",
+)
