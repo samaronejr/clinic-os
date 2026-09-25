@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-002](../adr/ADR-002-realtime-sse.md),
   [ADR-018](../adr/ADR-018-connection-pooling.md)
 
@@ -64,7 +66,7 @@ flowchart LR
 
 | ID | STRIDE | Threat | Mitigation | Todos |
 | --- | --- | --- | --- | --- |
-| RT-S1 | Spoofing | A stolen or replayed stream URL opens another user's stream. | Tickets are opaque, single-use and expire after 60 s; the stream binds to the session that minted the ticket. | 8 |
+| RT-S1 | Spoofing | A stolen or replayed stream URL opens another user's stream. | Tickets are opaque, single-use and expire after 60 s. **Proposal:** bind the stream to the session that minted the ticket. | 8 |
 | RT-S2 | Spoofing | A cross-site page mints a ticket with the victim's cookie. | Ticket creation is a POST with CSRF and OTP checks, and the ticket is returned only in the response body. | 8, 10 |
 | RT-T1 | Tampering | A client forges events or injects messages into Redis. | The stream is one-way; channel names are `rt:<sha256(topic+secret)>`; Redis is private to the deployment. Events only trigger a refetch that goes through normal authorization. | 8 |
 | RT-R1 | Repudiation | Nobody can tell who subscribed to what after an incident. | Ticket issuance and denials record reason codes and request ids through the audit and telemetry allowlists, with no topic contents. | 8, 11 |

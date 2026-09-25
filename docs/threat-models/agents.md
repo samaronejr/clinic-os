@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-008](../adr/ADR-008-workflows-and-approval-binding.md),
   [ADR-019](../adr/ADR-019-service-principals.md),
   [ADR-006](../adr/ADR-006-ai-gateway-routing.md)

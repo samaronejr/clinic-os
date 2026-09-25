@@ -35,7 +35,10 @@ All model calls go through a provider-neutral gateway in `apps/ai`.
 - Metering lives in the gateway and records no prompt or output content.
 - Every AI feature ships a deterministic fake adapter as its only runnable
   provider until EG-1 and an `approved_to_test` record exist (SC-16).
-- Kill switches default to disabled until an organization opts in.
+- Kill switches default ON, so AI stays disabled until an organization opts
+  in and enables the capability in `ClinicConfiguration`. Opting in doesn't
+  bypass the provider lifecycle or the live-activation checks; both still
+  apply to every real call.
 
 ## Rejected
 

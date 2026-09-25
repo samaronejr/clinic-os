@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-006](../adr/ADR-006-ai-gateway-routing.md),
   [ADR-007](../adr/ADR-007-deterministic-retrieval.md),
   [ADR-014](../adr/ADR-014-observability-redaction.md)
@@ -76,6 +78,7 @@ flowchart LR
 | AG-D2 | Denial of service | A provider outage or slowness blocks clinical work. | Circuit breaker per configuration; every feature has a manual fallback; degraded-mode drills. | 38, 72 |
 | AG-D3 | Denial of service | Cost runaway from loops or abuse. | Per-purpose and per-organization caps, kill switches checked on every call, usage metering tied to entitlements. | 38, 64 |
 | AG-E1 | Elevation of privilege | An organization admin enables a model or region the owner didn't approve. | Owner configures models; org admins can only opt in or out of approved configurations. | 38 |
+| AG-E2 | Elevation of privilege | AI runs for an organization that never opted in. | Kill switches default ON: AI stays disabled until the organization opts in and enables the capability in `ClinicConfiguration`; the provider lifecycle and live-activation checks still apply after opt-in. | 38 |
 
 ## Residual risk and external gates
 

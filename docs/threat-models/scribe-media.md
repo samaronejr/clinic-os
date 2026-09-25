@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-005](../adr/ADR-005-chunked-media-upload.md),
   [ADR-004](../adr/ADR-004-server-side-drafts.md),
   [ADR-016](../adr/ADR-016-recovery-with-key-escrow.md)

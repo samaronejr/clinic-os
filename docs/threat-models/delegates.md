@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-003](../adr/ADR-003-authorization-permission-bundles.md)
 
 ## Scope
@@ -70,7 +72,7 @@ flowchart LR
 | DG-I1 | Information disclosure | A guardian reads restricted content such as adolescent confidential notes. | Records flagged `restricted_from_delegates` are never exposed to delegate sessions; the flag policy is reviewed under EG-2. | 19 |
 | DG-I2 | Information disclosure | Results are released to a delegate before the clinician releases them. | Result release is per audience and happens only after clinician acknowledgment and release. | 31, 55 |
 | DG-I3 | Information disclosure | Messages meant for the patient go to a delegate, or the reverse. | Messaging purpose and consent are per recipient; delegate context is explicit in the portal banner and in message routing. | 20, 50, 51 |
-| DG-D1 | Denial of service | A hostile party revokes or floods grant requests to block the real guardian. | Revocation authority is limited to the grantor and verifier staff; grant requests are rate limited per patient session. | 19 |
+| DG-D1 | Denial of service | A hostile party revokes or floods grant requests to block the real guardian. | Revocation authority is limited to the grantor and verifier staff. **Proposal:** rate limit grant requests per patient session. | 19 |
 | DG-E1 | Elevation of privilege | An expired or revoked grant keeps working in an open session. | Expiry is checked on every use (equality counts as expired); revocation re-validates sessions and closes realtime streams. | 8, 19 |
 | DG-E2 | Elevation of privilege | Blanket guardian access covers every record and operation. | Grants carry purposes and allowed operations; there is no blanket grant type. | 19 |
 

@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-003](../adr/ADR-003-authorization-permission-bundles.md),
   [ADR-014](../adr/ADR-014-observability-redaction.md)
 
@@ -69,9 +71,9 @@ flowchart LR
 | SA-T1 | Tampering | Support staff change clinical records. | Support principals never get clinical write; views are masked by default. | 65 |
 | SA-R1 | Repudiation | Break-glass use goes unreviewed. | Reason required, clinic manager notified at once, patient-visible access log entry, mandatory post-event review task. | 26, 65 |
 | SA-R2 | Repudiation | Support actions can't be tied to a person. | Every support grant and action is audited against the named support user and grant id. | 65 |
-| SA-I1 | Information disclosure | Support sees more than the ticket needs. | Masked-by-default views; unmasking is a separate, audited step inside the grant purpose. | 65 |
+| SA-I1 | Information disclosure | Support sees more than the ticket needs. | Masked-by-default views. **Proposal:** unmasking is a separate, audited step inside the grant purpose. | 65 |
 | SA-I2 | Information disclosure | Support diagnostics pull PHI into tickets. | Diagnostics use allowlisted telemetry and request ids, never payloads. | 11, 78 |
-| SA-D1 | Denial of service | A SCIM sync deprovisions every user by mistake. | Offboarding is revocation, never deletion (D-20); SCIM changes are rate limited and audited so they can be reversed. | 15, 65 |
+| SA-D1 | Denial of service | A SCIM sync deprovisions every user by mistake. | Offboarding is revocation, never deletion (D-20), so a wrong deprovisioning can be undone; the SCIM endpoint is rate limited. | 15, 65 |
 | SA-E1 | Elevation of privilege | IdP group claims grant admin roles automatically. | No automatic role elevation from claims without an approved mapping; bundles can't widen past professional scope. | 6, 65 |
 | SA-E2 | Elevation of privilege | Break-glass is used for non-clinical access or lasts indefinitely. | Break-glass is clinical only, scoped to patient or encounter, capped at 4 h. | 65 |
 | SA-E3 | Elevation of privilege | A revoked support or break-glass grant keeps working in an open session. | Grants are checked on every request; revocation closes realtime streams through the `authz:user:<id>` channel. | 8, 65 |

@@ -26,7 +26,8 @@ without `TenantMiddleware`.
 - Authorization runs in a short tenant transaction when the stream opens and
   again on reauthorization.
 - Events have exactly `{topic, kind, version}`, with the topic sent as an
-  opaque hash. They're published from `transaction.on_commit` through Redis
+  opaque hash. Todo 8's wire contract names that field `topic_hash`, and the
+  implementation follows todo 8. They're published from `transaction.on_commit` through Redis
   pub/sub.
 - Clients refetch the affected fragment through the normal HTTP path. The
   event itself carries no record data.

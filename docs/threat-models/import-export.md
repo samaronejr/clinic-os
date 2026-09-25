@@ -2,7 +2,9 @@
 
 - Status: design baseline, 2026-09-24 (todo 2). Mitigations are planned work
   owned by the listed todos unless a current source path is named. Todo 73
-  maps each mitigation id to the tests that prove it.
+  maps each mitigation id to the tests that prove it. A mitigation that
+  starts with **Proposal:** goes beyond the owning todo's plan text; that
+  todo accepts or rejects it and isn't bound by it until then.
 - Decisions: [ADR-017](../adr/ADR-017-additive-migrations.md),
   [ADR-015](../adr/ADR-015-isolation-encryption-search.md)
 
@@ -76,11 +78,11 @@ flowchart LR
 | IE-R1 | Repudiation | An import or rollback can't be traced. | `ImportJob` state machine with audited transitions; rollback marks the batch superseded instead of deleting. | 66 |
 | IE-I1 | Information disclosure | Patient ids appear in API or webhook URLs. | Opaque external ids; record selectors never in URLs; delivery logs hold no PHI. | 67 |
 | IE-I2 | Information disclosure | The API exposes clinical narrative by default. | v1 scopes exclude clinical narrative unless a scope is approved. | 67 |
-| IE-I3 | Information disclosure | A full export reaches the wrong person. | Export requires org admin authority with step-up; download links are short-lived and audited. | 67 |
+| IE-I3 | Information disclosure | A full export reaches the wrong person. | **Proposal:** export requires org admin authority with step-up, and download links are short-lived and audited. | 67 |
 | IE-D1 | Denial of service | A large import starves chart saves for other tenants. | Commit runs in batches on the `bulk` queue with per-tenant fairness. | 9, 66 |
 | IE-D2 | Denial of service | API clients flood the service. | Redis token-bucket rate limits per client; idempotency key required on writes. | 67 |
 | IE-E1 | Elevation of privilege | A ZIP attachment carries malware into clinical storage. | Attachments are checksummed and scanned in quarantine before linking. | 66 |
-| IE-E2 | Elevation of privilege | An archive path escapes the extraction directory (zip slip). | Archive entries are validated against a flat allowlisted layout before extraction. | 66 |
+| IE-E2 | Elevation of privilege | An archive path escapes the extraction directory (zip slip). | **Proposal:** validate archive entries against a flat allowlisted layout before extraction. | 66 |
 
 ## Residual risk and external gates
 
