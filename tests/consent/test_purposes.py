@@ -51,7 +51,6 @@ from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone, translation
-from django.utils.translation import gettext
 
 from auth.stepup_test_support import create_role_actor
 from patient_service_support import runtime_role
@@ -661,16 +660,36 @@ def test_ai_disclosure_read_is_bound_to_the_disclosed_patient(
 
 
 def test_purpose_labels_render_in_portuguese() -> None:
-    """Every taxonomy label resolves through gettext under the pt-BR catalog."""
+    """Every taxonomy label resolves to its expected pt-BR string."""
+    expected_purposes = {
+        ConsentPurpose.TELECONSULTATION: "Teleconsulta",
+        ConsentPurpose.CONSULTATION_RECORDING: "Gravação da consulta",
+        ConsentPurpose.AI_ASSISTANCE: "Assistência por IA",
+        ConsentPurpose.TRANSACTIONAL_MESSAGING: "Mensagens transacionais",
+        ConsentPurpose.MARKETING: "Marketing",
+        ConsentPurpose.RESEARCH_MODEL_IMPROVEMENT: ("Pesquisa e melhoria de modelos"),
+    }
+    expected_topics = {
+        NoticeTopic.CARE_PROCESSING: "Tratamento de dados assistenciais",
+        NoticeTopic.CONSULTATION_RECORDING: "Gravação da consulta",
+        NoticeTopic.AI_USE: "Uso de IA no atendimento",
+        NoticeTopic.TELECONSULTATION: "Teleconsulta",
+    }
+    expected_kinds = {
+        ParticipantKind.CAREGIVER: "Cuidador",
+        ParticipantKind.COMPANION: "Acompanhante",
+        ParticipantKind.INTERPRETER: "Intérprete",
+    }
+    assert set(expected_purposes) == set(ConsentPurpose)
+    assert set(expected_topics) == set(NoticeTopic)
+    assert set(expected_kinds) == set(ParticipantKind)
     with translation.override("pt-br"):
-        for purpose in ConsentPurpose:
-            assert str(purpose.label) == gettext(str(purpose.label))
-        for topic in NoticeTopic:
-            assert str(topic.label) == gettext(str(topic.label))
-        for kind in ParticipantKind:
-            assert str(kind.label) == gettext(str(kind.label))
-        # The catalog actually translates: never an English echo.
-        assert gettext("Consultation recording") != "Consultation recording"
+        for purpose, expected in expected_purposes.items():
+            assert str(purpose.label) == expected
+        for topic, expected in expected_topics.items():
+            assert str(topic.label) == expected
+        for kind, expected in expected_kinds.items():
+            assert str(kind.label) == expected
 
 
 def test_refusal_records_are_immutable_under_owner_and_runtime_roles(
@@ -698,13 +717,57 @@ def test_refusal_records_are_immutable_under_owner_and_runtime_roles(
             RefusalRecord.objects.filter(pk=refusal.pk).delete()
 
 
+def _session_for_patient(graph: RbacGraph, patient_id: UUID) -> UUID:
+    """Redeem a consent session for one existing clinic-A patient."""
+    with setup_context(graph.organization_a):
+        enrollment = PatientClinicEnrollment.objects.get(
+            patient_id=patient_id, clinic_id=graph.clinic_a
+        )
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        invitation = issue_invitation(
+            clinic_id=graph.clinic_a, enrollment_id=enrollment.pk
+        )
+    with runtime_role():
+        session = redeem_invitation(graph.clinic_a, invitation.secret)
+    assert session is not None
+    return session
+
+
+def _appointment_patient_id(appointment: Appointment) -> UUID:
+    """Resolve the enrolled patient id behind one appointment under owner."""
+    with setup_context(appointment.organization_id):
+        return appointment.patient_id
+
+
 def test_refusal_never_blocks_manual_clinical_note(rbac_graph: RbacGraph) -> None:
-    """A recorded AI-assistance refusal must not gate the manual SOAP path."""
+    """The encounter patient's own refusal must not gate the manual SOAP path."""
     graph = rbac_graph
     appointment, template = clinical_seed(graph)
     _encounter(graph, appointment)
-    session, _ = _patient_session(graph)
+    # The refusal belongs to the same patient the note documents; a
+    # patient-specific care blocker cannot hide behind a foreign refusal.
+    session = _session_for_patient(graph, _appointment_patient_id(appointment))
     _refuse(graph, session, "ai_assistance")
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        version = draft(graph, appointment, template)
+        saved = record_clinical_note(
+            clinic_id=graph.clinic_a,
+            version_id=version.pk,
+            expected_revision=1,
+            content=dict.fromkeys(SOAP_FIELDS, "Sintético após recusa"),
+        )
+        assert saved.revision == 2
+
+
+def test_another_patient_refusal_also_does_not_block_manual_note(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Cross-patient refusal presence changes nothing for the note either."""
+    graph = rbac_graph
+    appointment, template = clinical_seed(graph)
+    _encounter(graph, appointment)
+    foreign_session, _ = _patient_session(graph)
+    _refuse(graph, foreign_session, "ai_assistance")
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         version = draft(graph, appointment, template)
         saved = record_clinical_note(
