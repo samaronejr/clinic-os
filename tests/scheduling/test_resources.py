@@ -40,7 +40,10 @@ if TYPE_CHECKING:
     from conftest import RbacGraph
     from scheduling.appointment_service_support import AppointmentSetup
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True),
+    pytest.mark.usefixtures("resource_clock"),
+]
 
 
 def _catalog(setup: AppointmentSetup) -> tuple[Resource, Resource, ServiceType]:

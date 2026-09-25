@@ -1,4 +1,4 @@
-"""Body-only appointment booking screen for authorized clinic managers.
+"""Body-only legacy manager and RP-authorized service booking screen.
 
 Both booking modes are POST. Neither the enrollment nor any demographic value
 ever reaches a URL, so an unverified privileged challenge can only resume at the
@@ -42,7 +42,10 @@ from apps.scheduling.appointment_forms import (
 from apps.scheduling.availability_presenter import manager_choices
 from apps.scheduling.forms import BLANK_CHOICE
 from apps.scheduling.models import Resource, ServiceType
-from apps.scheduling.resource_booking import service_practitioners
+from apps.scheduling.resource_booking import (
+    authorized_service_clinic,
+    service_practitioners,
+)
 from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
@@ -113,11 +116,14 @@ def _render_booking(
     return render(request, template, context)
 
 
-def _body_enrollment(raw: object) -> UUID:
+def _authorize_service_practitioner(request: HttpRequest, clinic_id: UUID) -> None:
     try:
-        return UUID(str(raw))
-    except ValueError as error:
+        practitioner_id = forms.UUIDField(required=False).clean(
+            request.POST.get("practitioner")
+        )
+    except forms.ValidationError as error:
         raise Http404 from error
+    authorized_service_clinic(clinic_id, practitioner_id)
 
 
 def _configure_resources(form: AppointmentCreateForm, clinic_id: UUID) -> None:
@@ -145,15 +151,36 @@ def _configure_resources(form: AppointmentCreateForm, clinic_id: UUID) -> None:
         ]
 
 
-def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+def _preparation(request: HttpRequest, clinic_id: UUID) -> BookingPreparation:
     form = AppointmentPrepareForm(data=request.POST)
     if not form.is_valid():
         raise Http404
-    enrollment_id = form.selected_enrollment()
-    preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    service_id = form.cleaned_data["service_type_id"]
+    resource_ids: tuple[UUID, ...] = ()
+    if service_id is not None:
+        _authorize_service_practitioner(request, clinic_id)
+        try:
+            resource_ids = tuple(
+                UUID(pk) for pk in request.POST.getlist("resource_ids")
+            )
+        except ValueError as error:
+            raise Http404 from error
+    return prepare_booking(
+        clinic_id=clinic_id,
+        enrollment_id=form.selected_enrollment(),
+        service_type_id=service_id,
+        resource_ids=resource_ids,
+    )
+
+
+def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+    preparation = _preparation(request, clinic_id)
     blank = AppointmentCreateForm(_choices(preparation))
     _configure_resources(blank, clinic_id)
-    blank.initial["enrollment_id"] = str(enrollment_id)
+    blank.initial["enrollment_id"] = str(preparation.enrollment_id)
+    if preparation.service_type_id is not None:
+        blank.initial["service_type_id"] = str(preparation.service_type_id)
+        blank.initial["resource_ids"] = [str(pk) for pk in preparation.resource_ids]
     blank.initial["idempotency_key"] = str(uuid4())
     return _render_booking(request, _booking_context(clinic_id, preparation, blank))
 
@@ -227,12 +254,18 @@ def _booked_response(
 
 
 def _created(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
-    form = AppointmentCreateForm(manager_choices(clinic_id), request.POST)
+    if request.POST.get("service_type_id"):
+        _authorize_service_practitioner(request, clinic_id)
+        choices = tuple(
+            (str(pk), label) for pk, label in service_practitioners(clinic_id)
+        )
+    else:
+        choices = manager_choices(clinic_id)
+    form = AppointmentCreateForm(choices, request.POST)
     _configure_resources(form, clinic_id)
     if form.is_valid() and _booked(form, clinic_id):
         return _booked_response(request, clinic_id, form.local_range().start_local[:10])
-    enrollment_id = _body_enrollment(form.data.get("enrollment_id", ""))
-    preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    preparation = _preparation(request, clinic_id)
     return _render_booking(request, _booking_context(clinic_id, preparation, form))
 
 
@@ -252,3 +285,5 @@ def appointment_create_view(
         return _created(request, clinic_id)
     except (AppointmentAccessDeniedError, AvailabilityAccessDeniedError) as error:
         raise Http404 from error
+    except SchedulingRuleError as error:
+        return HttpResponse(str(error.message), status=409)

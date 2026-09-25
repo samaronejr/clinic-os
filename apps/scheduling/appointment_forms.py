@@ -93,6 +93,7 @@ class AppointmentPrepareForm(forms.Form):
     """Carry one body-only enrollment selection into booking preparation."""
 
     enrollment_id = forms.UUIDField(widget=forms.HiddenInput())
+    service_type_id = forms.UUIDField(required=False, widget=forms.HiddenInput())
 
     def selected_enrollment(self) -> UUID:
         """Return the enrollment the request body selected."""
