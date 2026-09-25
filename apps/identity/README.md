@@ -38,6 +38,16 @@ exact clinic/organization, active removals and subject scope on every call.
 There is no authorization cache. READ COMMITTED observes a committed revocation
 at the next statement, including inside an existing request transaction.
 
+`require_current_actor_org_admin(organization_id, roles)` keeps todo 9's
+organization-wide coverage requirement. Each clinic needs either a caller-allowed
+legacy assignment or a canonical `org_admin` assignment that passes
+`require_permission("staff.organization", clinic_id=...)`. Canonical assignments
+never bypass remove-only grants, even when `org_admin` appears in `roles`.
+A single clinic's assignment, an empty role contract, an empty organization or
+a foreign organization cannot authorize an organization-wide operation. Legacy
+clinic settings still require their existing exact-clinic roles and TOTP; this
+helper does not migrate or bypass those domain guards.
+
 Clinical actions additionally require a current, regular, synthetic professional
 registration matching clinic UF and the exact canonical clinical role. They also
 require an enrollment in that clinic and either a current care-team membership
@@ -82,12 +92,28 @@ care/professional records permit only irreversible `revoked_at` transitions.
 
 No legacy role guard is replaced: none has identical full semantics to the RP
 boundary (for example, legacy owners book, whereas the org-admin default is
-agenda read-only). `tests/identity/legacy_guards.json` inventories all 47 existing
-current-actor guard call sites; parity tests exercise all four legacy role
-truth tables and DRF role gates. Existing services retain their assignment,
-step-up, audit and RLS contracts until their owning feature migrates them.
+agenda read-only). `tests/identity/legacy_guards.json` is a reviewed authorization
+census, not a list of calls to one role helper. Its AST discovery includes
+scope/access functions, membership predicates, SQL resolver calls, denial
+branches, decorators, mixins, current-actor checks and tenant boundaries.
+The parity suite rejects unclassified candidates and inventory drift. Each
+candidate names executable probes, explicitly delegates to probed guards, or
+has a reviewed non-staff/infrastructure/presentation/state-only classification.
+New permission-bundle boundaries remain covered by their dedicated tests.
 
-Migration 0011 is additive, with table creation, default-DML revocation and
+The `legacy_*boundaries.py` adapters call real Python boundaries and PostgreSQL
+resolvers for owner, physician, receptionist and clinic_admin, using valid and
+foreign/missing subjects, unauthenticated requests, stale verification and
+revoked/unassigned scope as appropriate. Every named Python probe must actually
+enter its target callable; role-tuple inference cannot satisfy the test.
+Positive fixtures contain real records, memberships, confirmed devices and
+synthetic provider results. Savepoint rollback isolates each decision. Only the
+verification clock and asynchronous transport handoff are controlled; authority
+is never mocked. Denial-only helpers are paired with successful service probes.
+Existing services retain their assignment, step-up, audit and RLS contracts
+until their owning feature migrates them.
+
+Migration `0013_permission_bundles`, after `0012_queue_quotas`, is additive, with table creation, default-DML revocation and
 FORCE RLS in one DDL transaction. Protected columns are bytea from creation;
 there is no plaintext conversion, backfill or plaintext rollback. Existing
 protected-field conversion migrations remain non-atomic and irreversible.
