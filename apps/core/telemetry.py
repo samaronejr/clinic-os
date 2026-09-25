@@ -634,9 +634,9 @@ class MetricsRegistry:
         sections = [
             self._render_request_histograms(),
             self._render_ai_invocations(),
+            render_queue_metrics(registry=self),
+            render_outbox_metrics(registry=self),
             self._render_scrape_errors(),
-            render_queue_metrics(),
-            render_outbox_metrics(),
             self._render_provider_health(),
         ]
         return "".join(sections)
@@ -742,13 +742,13 @@ class MetricsRegistry:
 METRICS: Final = MetricsRegistry()
 
 
-def _queue_names() -> list[str]:
+def _queue_names(registry: MetricsRegistry) -> list[str]:
     """Resolve configured Celery queue names from the celery app config."""
     names: set[str] = set()
     try:
         from config.celery import app as celery_app  # noqa: PLC0415
     except Exception:  # noqa: BLE001 - celery config must not break a scrape
-        METRICS.note_scrape_error("queue-config")
+        registry.note_scrape_error("queue-config")
         return []
     conf = celery_app.conf
     default = conf.get("task_default_queue")
@@ -792,7 +792,7 @@ def _message_enqueued_at(raw: object) -> float | None:
     return None
 
 
-def render_queue_metrics() -> str:
+def render_queue_metrics(*, registry: MetricsRegistry = METRICS) -> str:
     """Scrape broker queue depth and best-effort oldest-message age.
 
     Depth comes from ``LLEN``. Age is emitted only when the oldest message
@@ -816,7 +816,7 @@ def render_queue_metrics() -> str:
             socket_timeout=_QUEUE_TIMEOUT_SECONDS,
         )
         try:
-            for queue in _queue_names():
+            for queue in _queue_names(registry):
                 depth = client.llen(queue)
                 label = _safe_label(queue)
                 lines.append(f'clinic_queue_depth{{queue="{label}"}} {depth}')
@@ -831,11 +831,11 @@ def render_queue_metrics() -> str:
         finally:
             client.close()
     except Exception:  # noqa: BLE001 - broker down must not break the scrape
-        METRICS.note_scrape_error("queue")
+        registry.note_scrape_error("queue")
     return "\n".join(lines) + "\n"
 
 
-def render_outbox_metrics() -> str:
+def render_outbox_metrics(*, registry: MetricsRegistry = METRICS) -> str:
     """Scrape outbox operation counts and oldest age per status.
 
     Reads through the ``comms_operation_state_counts_v1`` SECURITY DEFINER
@@ -856,7 +856,7 @@ def render_outbox_metrics() -> str:
             )
             rows = cursor.fetchall()
     except Exception:  # noqa: BLE001 - a dead DB must not break the scrape
-        METRICS.note_scrape_error("outbox")
+        registry.note_scrape_error("outbox")
         return "\n".join(lines) + "\n"
     now = datetime.now(tz=UTC)
     for status, count, oldest in rows:
