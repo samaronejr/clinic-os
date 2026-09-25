@@ -61,6 +61,15 @@ invalidate pending notices under the shared send lock. The agenda links to the
 clinic-scoped delivery-status screen. See [communications](../comms/README.md)
 for the 24-hour clinic-local schedule, independent gates and receipt semantics.
 
+## Machine availability reads
+
+Task 7 declares only availability SELECT in `AGENT_GRANTS`. The `clinic_agent`
+role has no appointment or scheduling write privileges. Availability keeps its
+existing tenant policy and additionally applies the restrictive `agent_grant`
+policy, requiring a login-bound, active `appointment.read` grant for that exact
+clinic. Consumers use `.using('agent')` inside `service_principal_context`.
+Booking/moving is not enabled by a read grant and awaits its domain policy.
+
 Current screens and fixtures are synthetic-only; see
 [the architecture](../../docs/ARCHITECTURE.md) and
 [the live-data gate](../../docs/compliance/LIVE-DATA-GATE.md).

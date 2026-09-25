@@ -6,8 +6,13 @@ import pytest
 from apps.billing.services import create_invoice
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
+from apps.core.integration import (
+    ActionOperationRequest,
+    OperationRequest,
+    enqueue_operation,
+)
 from apps.ehr.services import record_clinical_note
-from apps.identity import scope_provisioning
+from apps.identity import scope_provisioning, service_principals
 from apps.identity.current_context import require_permission
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
@@ -16,6 +21,7 @@ from apps.prescription.services import issue_prescription
 from apps.providers.services import current_version, is_live
 from apps.retention.services import apply_retention_policy
 from apps.teleconsult.services import create_session
+from apps.tenancy.db import service_principal_context
 from django.apps import apps as django_apps
 
 FOUNDATION_APP_NAMES: Final = frozenset(
@@ -56,6 +62,49 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+def test_machine_context_never_accepts_a_user_or_tenant_claim() -> None:
+    parameters = signature(service_principal_context).parameters
+    assert list(parameters) == ["principal_id", "clinic_id"]
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert list(signature(enqueue_operation).parameters) == ["request"]
+    assert set(signature(OperationRequest).parameters) == {
+        "channel",
+        "provider",
+        "clinic_id",
+        "subject_type",
+        "subject_id",
+        "idempotency_key",
+        "max_attempts",
+    }
+    assert set(signature(ActionOperationRequest).parameters) == {
+        "provider",
+        "clinic_id",
+        "subject_type",
+        "subject_id",
+        "idempotency_key",
+        "max_attempts",
+        "payload_digest",
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("register_principal", ["clinic_id", "name", "db_identity", "purpose"]),
+        (
+            "grant_principal",
+            ["clinic_id", "principal_id", "permission", "subject_scope"],
+        ),
+        ("revoke_principal", ["clinic_id", "principal_id"]),
+        ("revoke_principal_grant", ["clinic_id", "grant_id"]),
+    ],
+)
+def test_machine_provisioning_derives_operator(name: str, expected: list[str]) -> None:
+    parameters = signature(getattr(service_principals, name)).parameters
+    assert list(parameters) == expected
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 def test_permission_boundary_derives_actor_and_requires_clinic_scope() -> None:

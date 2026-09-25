@@ -45,6 +45,7 @@ class AppPosture:
     non_rls_tables: frozenset[str]
     runtime_grants: dict[str, frozenset[str]]
     column_grants: frozenset[tuple[str, str, str]]
+    agent_grants: dict[str, frozenset[str]]
 
 
 def _domain_app_configs() -> list[AppConfig]:
@@ -92,6 +93,10 @@ def app_postures() -> dict[str, AppPosture]:
                 for table, privileges in module.RUNTIME_GRANTS.items()
             },
             column_grants=frozenset(module.COLUMN_GRANTS),
+            agent_grants={
+                table: frozenset(privileges)
+                for table, privileges in getattr(module, "AGENT_GRANTS", {}).items()
+            },
         )
     return postures
 
@@ -127,6 +132,15 @@ def runtime_grants() -> dict[str, frozenset[str]]:
     for posture in app_postures().values():
         grants.update(posture.runtime_grants)
     return grants
+
+
+def agent_grants() -> dict[str, frozenset[str]]:
+    """Return explicit machine grants; an undeclared app grants nothing."""
+    return {
+        table: privileges
+        for posture in app_postures().values()
+        for table, privileges in posture.agent_grants.items()
+    }
 
 
 def column_grants() -> frozenset[tuple[str, str, str]]:

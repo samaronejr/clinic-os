@@ -13,6 +13,15 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
     "-c search_path=clinic_app,public"
 )
+# Tests authenticate a real clinic_agent connection to the already-migrated
+# default test database. The principal test fixture installs an ephemeral secret;
+# an absent runtime AGENT_DATABASE_URL never enables a runtime fallback.
+DATABASES["agent"] = {
+    **DATABASES["default"],
+    "USER": "clinic_agent",
+    "PASSWORD": "",
+    "TEST": {"MIRROR": "default"},
+}
 PASSWORD_HASHERS: list[str] = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 # Test runs never reach for a developer workstation's Redis: base defaults
 # the broker to redis://localhost:6379/0, which is often another project's

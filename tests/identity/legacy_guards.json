@@ -1076,6 +1076,24 @@
       "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
     },
     {
+      "symbol": "apps.identity.service_principals.grant_principal",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "Task 7 machine authority provisioning; exact owner permission, revocation and audit are exercised by test_principal_provisioning. No legacy staff grant is changed."
+    },
+    {
+      "symbol": "apps.identity.service_principals.revoke_principal",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "Task 7 irreversible machine revocation, exercised by test_principal_provisioning and test_service_principals rather than the pre-machine parity oracle."
+    },
+    {
+      "symbol": "apps.identity.service_principals.revoke_principal_grant",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "Task 7 grant revocation, exercised by test_principal_provisioning and real-login RLS tests in test_service_principals."
+    },
+    {
       "symbol": "apps.identity.services.role_assignments_for_user",
       "signals": [
         "membership"
@@ -2726,6 +2744,12 @@
       "probes": [
         "apps.tenancy.db.tenant_context"
       ]
+    },
+    {
+      "symbol": "apps.tenancy.db.service_principal_context",
+      "signals": ["denial", "resolver"],
+      "kind": "nonstaff",
+      "reason": "Task 7 database-login principal, not a staff actor; real clinic_agent, forged actor, exact clinic, nesting and immediate revocation tests are in test_service_principals."
     },
     {
       "symbol": "apps.tenancy.envelope.issue_tenant_key",

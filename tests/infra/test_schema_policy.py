@@ -68,6 +68,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "identity_clinicconfiguration",
         # Exact v1 scope policies: tests/identity/test_permission_scope.py.
         "identity_rolegrant",
+        # Task 7 owner-only machine authority: test_agent_posture.
+        "identity_serviceprincipal",
+        "identity_serviceprincipalgrant",
         "identity_careteammembership",
         "identity_professionalregistration",
         # Exact clinical predicates and ACLs are checked in test_encounters.
@@ -133,6 +136,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         (table, "tenant_isolation") for table in EXPECTED_TENANT_COLUMNS
     } | {
         ("scheduling_availabilityblock", "patient_booking_read"),
+        ("scheduling_availabilityblock", "agent_grant"),
         ("scheduling_appointment", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_insert"),
         ("scheduling_appointment", "patient_booking_update"),
@@ -229,7 +233,15 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
             FROM pg_catalog.pg_roles
             WHERE rolname = ANY(%s)
             """,
-            [["clinic_owner", "clinic_app", "clinic_resolver", "clinic_super"]],
+            [
+                [
+                    "clinic_owner",
+                    "clinic_app",
+                    "clinic_agent",
+                    "clinic_resolver",
+                    "clinic_super",
+                ]
+            ],
         )
         role_posture = set(cursor.fetchall())
 
@@ -279,6 +291,7 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     assert role_posture == {
         ("clinic_owner", True, False, False, False),
         ("clinic_app", True, False, False, False),
+        ("clinic_agent", True, False, False, False),
         ("clinic_resolver", False, False, True, False),
         ("clinic_super", True, True, False, False),
     }

@@ -11,7 +11,7 @@ from .contracts import (
     resolve_csp_report_only,
     validate_secret_store_env,
 )
-from .database import DEFAULT_APP_DATABASE_URL
+from .database import DEFAULT_APP_DATABASE_URL, agent_database_config
 from .telemetry import configure_sentry
 
 enforce_wheel_timezone()
@@ -128,6 +128,11 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 if "OPTIONS" not in DATABASES["default"]:
     DATABASES["default"]["OPTIONS"] = {}
 DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=clinic_app,public"
+DATABASES.update(
+    agent_database_config(
+        os.environ, primary=DATABASES["default"], strict_tls=CLINIC_DATA_MODE == "live"
+    )
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

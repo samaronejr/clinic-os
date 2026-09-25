@@ -30,6 +30,24 @@ SELECT
           AND NOT rolcreatedb
     )
     AND EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'clinic_agent' AND rolcanlogin
+          AND NOT rolsuper AND NOT rolbypassrls AND NOT rolinherit
+          AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_auth_members WHERE member = 'clinic_agent'::regrole
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_class WHERE relowner = 'clinic_agent'::regrole
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_namespace WHERE nspowner = 'clinic_agent'::regrole
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM pg_database WHERE datdba = 'clinic_agent'::regrole
+    )
+    AND EXISTS (
         SELECT 1
         FROM pg_database
         WHERE datname = current_database()
@@ -82,7 +100,7 @@ def _main() -> int:
         sys.stderr.write(f"{FAILURE_MESSAGE}\n")
         return 1
     sys.stdout.write(
-        "database posture: clinic_app runtime; "
+        "database posture: clinic_app runtime; clinic_agent NOINHERIT NOBYPASSRLS; "
         f"clinic_owner NOCREATEDB; {test_database_name} precreated\n"
     )
     return 0

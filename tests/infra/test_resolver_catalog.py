@@ -36,6 +36,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("identity_professionalregistration", "SELECT"),
     ("identity_physicianprofile", "SELECT"),
     ("identity_rolegrant", "SELECT"),
+    ("identity_serviceprincipal", "SELECT"),
+    ("identity_serviceprincipalgrant", "SELECT"),
     ("identity_clinic", "SELECT"),
     ("identity_clinicconfiguration", "SELECT"),
     ("identity_organization", "SELECT"),
@@ -95,6 +97,8 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),
@@ -251,6 +255,8 @@ FUNCTION_SIGNATURES: Final = {
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"),
     ("end_patient_session", "requested_session uuid"),
     ("has_permission", "perm text, clinic uuid, enrollment uuid"),
+    ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
+    ("principal_has", "perm text, clinic uuid"),
     ("identity_queue_quotas", "requested_org uuid"),
     ("identity_scope_guard", ""),
     ("list_active_clinic_physicians", "requested_clinic uuid"),
@@ -420,6 +426,8 @@ FUNCTION_RESULTS: Final = {
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"): "uuid",
     ("end_patient_session", "requested_session uuid"): "void",
     ("has_permission", "perm text, clinic uuid, enrollment uuid"): "boolean",
+    ("principal_scope", "requested_principal uuid, requested_clinic uuid"): "uuid",
+    ("principal_has", "perm text, clinic uuid"): "boolean",
     ("identity_queue_quotas", "requested_org uuid"): "jsonb",
     ("identity_scope_guard", ""): "trigger",
     ("list_active_clinic_physicians", "requested_clinic uuid"): (

@@ -32,6 +32,10 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "scheduling_waitlistentry": frozenset({"SELECT", "INSERT"}),
     "scheduling_waitlistoffer": frozenset({"SELECT", "INSERT"}),
 }
+# Task 7: restrictive agent_grant RLS additionally checks the current principal.
+AGENT_GRANTS: Final[dict[str, frozenset[str]]] = {
+    "scheduling_availabilityblock": frozenset({"SELECT"}),
+}
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {

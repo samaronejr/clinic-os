@@ -1,7 +1,10 @@
 from importlib import import_module
 from importlib.util import find_spec
+from uuid import UUID
 
 import pytest
+from apps.comms.models import IntegrationOperation
+from apps.core.integration import _operation_fingerprint
 
 CLINIC_ID = "11111111-1111-4111-8111-111111111111"
 PRACTITIONER_ID = "22222222-2222-4222-8222-222222222222"
@@ -88,3 +91,22 @@ def test_version_one_create_payloads_have_exact_bytes_and_hashes() -> None:
     for kind, values in invalid_values:
         with pytest.raises(module.IdempotencyValueError):
             module.create_fingerprint(kind, values)
+
+
+def test_action_operation_fingerprint_has_a_versioned_canonical_hash() -> None:
+    operation = IntegrationOperation(
+        organization_id=UUID("11111111-1111-4111-8111-111111111111"),
+        clinic_id=UUID("22222222-2222-4222-8222-222222222222"),
+        actor_id=UUID("33333333-3333-4333-8333-333333333333"),
+        kind="action",
+        channel="",
+        provider="synthetic-action-v1",
+        subject_type="synthetic.action",
+        subject_id=UUID("44444444-4444-4444-8444-444444444444"),
+        max_attempts=3,
+        payload_digest="a" * 64,
+        idempotency_key=UUID("55555555-5555-4555-8555-555555555555"),
+    )
+    assert _operation_fingerprint(operation).hex() == (
+        "54330fdaa8282e779402e270f9d9a4f3e25ce6546f2c27c6d888ecb8f63b90d4"
+    )

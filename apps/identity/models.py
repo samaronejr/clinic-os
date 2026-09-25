@@ -275,6 +275,61 @@ class PhysicianProfile(models.Model):
         return str(self.pk)
 
 
+class ServicePrincipal(TenantScopedModel):
+    """One immutable machine identity per database login, never a staff user."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    name = models.SlugField(max_length=64)
+    db_identity = models.CharField(max_length=63, unique=True)
+    purpose = models.SlugField(max_length=64)
+    grant_set_version = models.PositiveSmallIntegerField(default=1)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        """Bind one credential to one principal; labels contain no personal data."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"), name="identity_principal_org_id_uniq"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(grant_set_version=1)
+                & models.Q(db_identity__regex=r"^clinic_agent(_[a-z0-9_]+)?$")
+                & models.Q(name__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+                & models.Q(purpose__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$"),
+                name="identity_principal_v1_identity",
+            ),
+        ]
+
+
+class ServicePrincipalGrant(TenantScopedModel):
+    """Explicit machine scope; new permissions require a reviewed grant version."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    principal = models.ForeignKey(ServicePrincipal, on_delete=models.PROTECT)
+    permission = models.CharField(max_length=64)
+    subject_scope = models.CharField(max_length=16, default="clinic")
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        """V1 exposes availability read only, not any clinical or financial action."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("principal", "permission", "subject_scope"),
+                condition=models.Q(active=True),
+                name="identity_principal_active_grant",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    permission="appointment.read", subject_scope="clinic"
+                ),
+                name="identity_principal_grant_v1_scope",
+            ),
+        ]
+
+
 class RoleGrant(TenantScopedModel):
     """Owner-provisioned, append-only clinic subtraction from a versioned bundle."""
 

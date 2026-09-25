@@ -15,6 +15,8 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
         "identity_clinicconfiguration",
         "identity_rolegrant",
+        "identity_serviceprincipal",
+        "identity_serviceprincipalgrant",
         "identity_careteammembership",
         "identity_professionalregistration",
         "identity_physicianprofile",
@@ -27,6 +29,8 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset({"identity_user"})
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_user": frozenset(),
+    "identity_serviceprincipal": frozenset(),
+    "identity_serviceprincipalgrant": frozenset(),
     "identity_rolegrant": frozenset({"SELECT"}),
     "identity_careteammembership": frozenset({"SELECT"}),
     "identity_professionalregistration": frozenset({"SELECT"}),

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import NewType
 from uuid import UUID
 
-from django.db import connection
+from django.db import connection, connections
 
 from apps.identity.models import Clinic, User, UserClinicRole
 
@@ -52,8 +52,14 @@ class _InvalidUsernameError(CurrentActorError):
 
 
 def _actor_uuid_from_guc() -> UserId:
+    if "agent" in connections and connections["agent"].in_atomic_block:
+        raise _UnavailableActorError
     with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_catalog.current_setting('app.current_user_id', true)")
+        cursor.execute(
+            "SELECT pg_catalog.current_setting('app.current_user_id', true) "
+            "WHERE current_user IN ('clinic_app', 'clinic_owner') "
+            "AND NULLIF(current_setting('app.current_principal', true), '') IS NULL"
+        )
         row = cursor.fetchone()
     if row is None or not isinstance(row, tuple) or len(row) != 1:
         raise _UnavailableActorError

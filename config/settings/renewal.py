@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlsplit
 import environ
 
 from . import base
+from .database import agent_database_config
 
 env = environ.Env()
 
@@ -41,6 +42,8 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
     "-c search_path=clinic_app,public"
 )
+
+DATABASES.update(agent_database_config(os.environ, primary=DATABASES["default"]))
 
 DEBUG = False
 SECURE_SSL_REDIRECT = False

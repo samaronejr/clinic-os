@@ -39,7 +39,9 @@ Contract:
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
@@ -48,6 +50,7 @@ from uuid import UUID
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
+import rfc8785
 from django.db import DatabaseError, connection, connections, transaction
 from django.utils import timezone
 
@@ -61,12 +64,33 @@ from apps.comms.adapters import (
     SendAdapter,
     TransientSendError,
 )
-from apps.comms.models import IntegrationOperation
+from apps.comms.models import IntegrationOperation, OperationKind
 from apps.identity.models import UserClinicRole
 from apps.tenancy.db import (
     TenantAccessDeniedError,
     clear_connection_tenant_gucs,
     tenant_context,
+)
+
+__all__ = (
+    "ActionOperationRequest",
+    "CallbackResult",
+    "ExecutionResult",
+    "IdempotencyConflictError",
+    "IntegrationContextError",
+    "IntegrationInputError",
+    "OperationKind",
+    "OperationRequest",
+    "clear_integration_registrations",
+    "enqueue_operation",
+    "execute_operation",
+    "hold_subject_mutation_key",
+    "hold_subject_mutation_lock",
+    "receive_provider_callback",
+    "register_action_adapter",
+    "register_callback_authenticator",
+    "register_send_adapter",
+    "register_subject_recheck",
 )
 
 type ExecutionResult = Literal[
@@ -98,6 +122,7 @@ _SUBJECT_LOCK_NAMESPACE: Final = "clinic-lock-v1:comms-subject:"
 type _PresendDecision = Literal["send", "missing", "ineligible", "revoked"]
 
 _SEND_ADAPTERS: dict[str, SendAdapter] = {}
+_ACTION_ADAPTERS: dict[str, SendAdapter] = {}
 _CALLBACK_AUTHENTICATORS: dict[str, CallbackAuthenticator] = {}
 _SUBJECT_RECHECKS: dict[str, Callable[[OperationScope], bool]] = {}
 _SUBJECT_LOCK_KEYS: dict[str, Callable[[OperationScope, UUID], str | None]] = {}
@@ -132,6 +157,32 @@ class OperationRequest:
     max_attempts: int = DEFAULT_MAX_ATTEMPTS
 
 
+@dataclass(frozen=True, slots=True)
+class ActionOperationRequest:
+    """Bounded non-communication work; persist a digest, never an action body.
+
+    The subject identifies immutable domain input. Its registered recheck and
+    action adapter must reload that input, verify this digest and enforce the
+    domain's permission/approval policy. This transport does not grant authority.
+    """
+
+    provider: str
+    clinic_id: UUID
+    subject_type: str
+    subject_id: UUID
+    idempotency_key: UUID
+    payload_digest: str
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS
+
+
+class IdempotencyConflictError(ValueError):
+    """Reject reuse of a committed operation key for different immutable terms."""
+
+    def __init__(self) -> None:
+        """Expose no tenant, subject, payload or credential in the refusal."""
+        super().__init__("idempotency key conflicts with stored operation")
+
+
 class _ClinicAuthorityRevokedError(RuntimeError):
     """Signal that the stored actor lost clinic authority mid-execution."""
 
@@ -149,6 +200,11 @@ class _ClaimDecision:
 def register_send_adapter(adapter: SendAdapter) -> None:
     """Register the provider send adapter used at execution time."""
     _SEND_ADAPTERS[adapter.provider] = adapter
+
+
+def register_action_adapter(adapter: SendAdapter) -> None:
+    """Register a reviewed action implementation, separate from communication."""
+    _ACTION_ADAPTERS[adapter.provider] = adapter
 
 
 def register_callback_authenticator(authenticator: CallbackAuthenticator) -> None:
@@ -212,15 +268,22 @@ def register_subject_recheck(
 def clear_integration_registrations() -> None:
     """Remove every registered adapter and authenticator."""
     _SEND_ADAPTERS.clear()
+    _ACTION_ADAPTERS.clear()
     _CALLBACK_AUTHENTICATORS.clear()
 
 
 def _trusted_gucs() -> tuple[UUID, UUID]:
-    """Read organization and actor from the transaction-scoped GUCs."""
+    """Read organization and actor only inside a human transaction boundary."""
+    if not connection.in_atomic_block or (
+        "agent" in connections and connections["agent"].in_atomic_block
+    ):
+        raise IntegrationContextError
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT NULLIF(current_setting('app.current_tenant', true), ''), "
-            "NULLIF(current_setting('app.current_user_id', true), '')"
+            "NULLIF(current_setting('app.current_user_id', true), '') "
+            "WHERE current_user IN ('clinic_app', 'clinic_owner') "
+            "AND NULLIF(current_setting('app.current_principal', true), '') IS NULL"
         )
         row = cursor.fetchone()
     if row is None or row[0] is None or row[1] is None:
@@ -323,16 +386,20 @@ def _record_integration_event(
     return record_event(append.event, payload=append.payload)
 
 
-def enqueue_operation(request: OperationRequest) -> UUID:
-    """Record one operation in the tenant transaction; dispatch on commit.
-
-    Organization and actor come from the trusted GUCs, never from caller
-    input. A repeated idempotency key returns the stored operation without
-    dispatching again.
-    """
+def _request_operation(
+    request: OperationRequest | ActionOperationRequest,
+) -> IntegrationOperation:
+    """Validate the typed request and construct its immutable outbox terms."""
+    if isinstance(request, ActionOperationRequest):
+        kind, channel, digest = OperationKind.ACTION, "", request.payload_digest
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise IntegrationInputError
+    else:
+        kind, channel, digest = OperationKind.COMMUNICATION, request.channel, ""
+        if channel not in IntegrationOperation.Channel.values:
+            raise IntegrationInputError
     if (
-        request.channel not in IntegrationOperation.Channel.values
-        or type(request.provider) is not str
+        type(request.provider) is not str
         or not 1 <= len(request.provider) <= MAX_PROVIDER_LENGTH
         or type(request.subject_type) is not str
         or not 1 <= len(request.subject_type) <= MAX_SUBJECT_TYPE_LENGTH
@@ -344,28 +411,81 @@ def enqueue_operation(request: OperationRequest) -> UUID:
     ):
         raise IntegrationInputError
     organization_id, actor_id = _trusted_gucs()
-    operation, created = IntegrationOperation.objects.get_or_create(
+    return IntegrationOperation(
         organization_id=organization_id,
+        actor_id=actor_id,
+        clinic_id=request.clinic_id,
+        kind=kind,
+        channel=channel,
+        payload_digest=digest,
+        provider=request.provider,
+        subject_type=request.subject_type,
+        subject_id=request.subject_id,
+        max_attempts=request.max_attempts,
         idempotency_key=request.idempotency_key,
+    )
+
+
+def _operation_fingerprint(operation: IntegrationOperation) -> bytes:
+    """Hash immutable terms, including the authority and action payload binding.
+
+    Reconstructing from stored fields also covers legacy, trigger-created rows
+    without inventing a fingerprint or rewriting historical outbox data.
+    """
+    return hashlib.sha256(
+        rfc8785.dumps(
+            {
+                "domain": "clinic-operation-v1",
+                "organization_id": str(operation.organization_id),
+                "clinic_id": str(operation.clinic_id),
+                "actor_id": str(operation.actor_id),
+                "kind": operation.kind,
+                "channel": operation.channel,
+                "provider": operation.provider,
+                "subject_type": operation.subject_type,
+                "subject_id": str(operation.subject_id),
+                "max_attempts": operation.max_attempts,
+                "payload_digest": operation.payload_digest,
+                "idempotency_key": str(operation.idempotency_key),
+            }
+        )
+    ).digest()
+
+
+def enqueue_operation(request: OperationRequest | ActionOperationRequest) -> UUID:
+    """Persist intent in a human tenant transaction and dispatch only on commit.
+
+    Replays compare canonical immutable terms, not just the key. Machine
+    execution and approval receipts belong to their domain's action gateway;
+    this boundary never invents a staff actor for a service principal.
+    """
+    proposed = _request_operation(request)
+    operation, created = IntegrationOperation.objects.get_or_create(
+        organization_id=proposed.organization_id,
+        idempotency_key=proposed.idempotency_key,
         defaults={
-            "clinic_id": request.clinic_id,
-            "actor_id": actor_id,
-            "channel": request.channel,
-            "provider": request.provider,
-            "subject_type": request.subject_type,
-            "subject_id": request.subject_id,
-            "max_attempts": request.max_attempts,
+            "clinic_id": proposed.clinic_id,
+            "actor_id": proposed.actor_id,
+            "kind": proposed.kind,
+            "channel": proposed.channel,
+            "payload_digest": proposed.payload_digest,
+            "provider": proposed.provider,
+            "subject_type": proposed.subject_type,
+            "subject_id": proposed.subject_id,
+            "max_attempts": proposed.max_attempts,
         },
     )
     if not created:
+        if _operation_fingerprint(operation) != _operation_fingerprint(proposed):
+            raise IdempotencyConflictError
         return operation.pk
     _record_integration_event(
         "comms.operation.enqueued",
         OperationScope(
             operation_id=operation.pk,
-            organization_id=organization_id,
-            clinic_id=request.clinic_id,
-            actor_id=actor_id,
+            organization_id=proposed.organization_id,
+            clinic_id=proposed.clinic_id,
+            actor_id=proposed.actor_id,
         ),
     )
     operation_id = operation.pk
@@ -541,16 +661,15 @@ def _fail_operation(scope: OperationScope, *, reason_code: str) -> bool:
 def _subject_eligible(scope: OperationScope) -> bool:
     """Run the registered send-time recheck for the operation's subject.
 
-    Subject types without a registered recheck are eligible by default;
-    a registered recheck that cannot confirm current eligibility fails
-    closed.
+    Legacy communication types keep their default eligibility. Actions require
+    an explicit recheck; a missing or negative action policy always fails closed.
     """
     operation = IntegrationOperation.objects.filter(pk=scope.operation_id).first()
     if operation is None:
         return False
     recheck = _SUBJECT_RECHECKS.get(operation.subject_type)
     if recheck is None:
-        return True
+        return operation.kind == OperationKind.COMMUNICATION
     return bool(recheck(scope))
 
 
@@ -789,7 +908,14 @@ def _prepare_with_authority(
 
 def _send_claimed(scope: OperationScope, provider: str) -> ExecutionResult:
     """Prepare inside the tenant transaction, then send outside it."""
-    adapter = _SEND_ADAPTERS.get(provider)
+    with _stored_scope_context(scope):
+        operation = _operation_for_prepare(scope)
+        adapters = (
+            _ACTION_ADAPTERS
+            if operation.kind == OperationKind.ACTION
+            else _SEND_ADAPTERS
+        )
+        adapter = adapters.get(provider)
     if adapter is None:
         return (
             "failed"
