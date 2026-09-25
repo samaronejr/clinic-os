@@ -33,6 +33,7 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
 
 if TYPE_CHECKING:
@@ -402,7 +403,7 @@ def _submit_expecting_error(page: Page) -> None:
     ) as received:
         page.locator(SUBMIT).click()
     assert received.value.status == OK, received.value.status
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
 
 
 def _submit_expecting_success(page: Page, list_path: str) -> None:
@@ -967,7 +968,7 @@ def _refused_retirement(
     ) as refused:
         _row_button(page, ledger_a, 0).click()
     assert refused.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     alert = page.locator(RETIRE_ALERT)
     expect(alert).to_have_attribute("role", "alert")
     expect(alert).to_contain_text(

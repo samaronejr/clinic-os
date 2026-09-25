@@ -8,6 +8,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("sw.js", views.service_worker, name="service-worker"),
     path("healthz", views.healthz, name="healthz"),
     path("readyz", views.readyz, name="readyz"),
+    path("api/ui/v1/", include("apps.core.api.urls")),
     path("", include("apps.identity.urls")),
     path("", include("apps.intake.urls")),
     path("", include("apps.scheduling.urls")),

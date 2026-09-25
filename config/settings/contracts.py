@@ -73,6 +73,23 @@ def resolve_attachment_root(environment: Mapping[str, str]) -> str:
     return value
 
 
+def resolve_csp_report_only(environment: Mapping[str, str], data_mode: str) -> bool:
+    """Return whether CSP ships report-only; only synthetic mode may ask.
+
+    ``CLINIC_CSP_REPORT_ONLY`` is the rollout and rollback lever for the
+    strict policy in synthetic environments. Live mode always enforces, so a
+    live process configured for report-only fails closed at startup. Any
+    value ``environ.Env.bool`` does not read as true keeps enforcement.
+    """
+    resolver = environ.Env()
+    resolver.ENVIRON = environment
+    report_only: bool = resolver.bool("CLINIC_CSP_REPORT_ONLY", default=False)
+    if report_only and data_mode != SYNTHETIC_DATA_MODE:
+        message = "CLINIC_CSP_REPORT_ONLY is allowed only in synthetic data mode"
+        raise ImproperlyConfigured(message)
+    return report_only
+
+
 def require_synthetic_mode(value: str) -> str:
     if value != SYNTHETIC_DATA_MODE:
         message = "synthetic data mode is required"

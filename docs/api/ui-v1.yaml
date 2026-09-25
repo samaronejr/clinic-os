@@ -1,0 +1,230 @@
+openapi: 3.0.3
+info:
+  title: Clinic Ops internal UI API
+  version: '1'
+  description: RPC-style POST endpoints for first-party UI surfaces. Record identifiers
+    travel only in request bodies. Session authentication with the X-CSRFToken header;
+    errors are {code, message_key}.
+paths:
+  /api/ui/v1/agenda/query/:
+    post:
+      operationId: agenda_query
+      description: Adapt ``scheduling.view_agenda``; unknown and foreign clinics match.
+      tags:
+      - agenda
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgendaQueryRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaPage'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+components:
+  schemas:
+    AgendaItem:
+      type: object
+      description: 'Adapt ``scheduling.AgendaItem``: one clinic-local appointment
+        row.'
+      properties:
+        appointment_id:
+          type: string
+          format: uuid
+          readOnly: true
+        patient_display_name:
+          type: string
+          readOnly: true
+        practitioner_id:
+          type: string
+          format: uuid
+          readOnly: true
+        practitioner_display_identifier:
+          type: string
+          readOnly: true
+        start_local:
+          type: string
+          readOnly: true
+        end_local:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+      required:
+      - appointment_id
+      - end_local
+      - patient_display_name
+      - practitioner_display_identifier
+      - practitioner_id
+      - start_local
+      - status
+    AgendaPage:
+      type: object
+      description: 'Adapt ``scheduling.AgendaPage``: one bounded agenda page.'
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgendaItem'
+          readOnly: true
+        view:
+          allOf:
+          - $ref: '#/components/schemas/ViewEnum'
+          readOnly: true
+        date:
+          type: string
+          format: date
+          readOnly: true
+        page:
+          type: integer
+          readOnly: true
+        total:
+          type: integer
+          readOnly: true
+        page_count:
+          type: integer
+          readOnly: true
+        start_at:
+          type: string
+          format: date-time
+          readOnly: true
+        end_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - date
+      - end_at
+      - items
+      - page
+      - page_count
+      - start_at
+      - total
+      - view
+    AgendaQueryRequest:
+      type: object
+      description: POST body of ``agenda/query``; the clinic identifier stays in the
+        body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        view:
+          $ref: '#/components/schemas/ViewEnum'
+        date:
+          type: string
+          format: date
+          description: Clinic-local civil date from 2000-01-01 to 2199-12-31.
+        page:
+          type: integer
+          maximum: 10000
+          minimum: 1
+          default: 1
+      required:
+      - clinic_id
+      - date
+      - view
+    CodeEnum:
+      enum:
+      - access_denied
+      - csrf_failed
+      - step_up_required
+      - malformed_body
+      - invalid_input
+      - method_not_allowed
+      - not_acceptable
+      - unsupported_media_type
+      - throttled
+      - not_found
+      - internal_error
+      type: string
+      description: |-
+        * `access_denied` - access_denied
+        * `csrf_failed` - csrf_failed
+        * `step_up_required` - step_up_required
+        * `malformed_body` - malformed_body
+        * `invalid_input` - invalid_input
+        * `method_not_allowed` - method_not_allowed
+        * `not_acceptable` - not_acceptable
+        * `unsupported_media_type` - unsupported_media_type
+        * `throttled` - throttled
+        * `not_found` - not_found
+        * `internal_error` - internal_error
+    Error:
+      type: object
+      description: The ``{code, message_key}`` refusal body shared by every endpoint.
+      properties:
+        code:
+          $ref: '#/components/schemas/CodeEnum'
+        message_key:
+          type: string
+      required:
+      - code
+      - message_key
+    ViewEnum:
+      enum:
+      - day
+      - week
+      type: string
+      description: |-
+        * `day` - day
+        * `week` - week
+  securitySchemes:
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRFToken
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: sessionid

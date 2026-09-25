@@ -874,9 +874,9 @@ button:disabled:active,
   font-size: var(--text-small);
 }
 
-/* htmx injects `.htmx-indicator { opacity: 0; visibility: hidden }` after this
-   sheet and restores visibility only under `.htmx-request`; a busy container
-   must restore all three properties itself. */
+/* htmx runs with `includeIndicatorStyles: false` (base.html) because the
+   strict CSP refuses its injected inline <style>; this sheet alone hides and
+   reveals indicators, and a busy container restores them itself. */
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator,
 [aria-busy="true"] > .htmx-indicator {
