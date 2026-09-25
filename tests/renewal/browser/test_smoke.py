@@ -8,6 +8,7 @@ migration applied, so a 200 is the runtime-role assertion.
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -114,6 +115,7 @@ def test_owner_login_establishes_a_session_and_enters_the_totp_flow(
 # test decides exactly when the watcher polls again.
 CAPTURE_FRAMES_JS = """() => {
   window.finished = false;
+  window.checks = 0;
   window.frameRequests = 0;
   window.pendingFrame = null;
   window.requestAnimationFrame = (callback) => {
@@ -167,16 +169,50 @@ def test_wait_for_js_deadline_does_not_depend_on_animation_frames(
     csp_page.evaluate(CAPTURE_FRAMES_JS)
 
     with pytest.raises(PlaywrightTimeoutError, match="Timeout 25ms exceeded"):
-        wait_for_js(csp_page, "() => window.finished", timeout=25)
+        wait_for_js(
+            csp_page,
+            "() => { window.checks += 1; return window.finished; }",
+            timeout=25,
+        )
 
     # The predicate turns true only after the deadline: the stopped watcher
-    # neither reports it nor asks for another frame.
-    assert csp_page.evaluate("window.frameRequests") == 1
+    # does not evaluate it again, report it, or ask for another frame.
+    assert csp_page.evaluate("[window.checks, window.frameRequests]") == [1, 1]
     with csp_page.expect_console_message() as reported:
         csp_page.evaluate("window.finished = true")
         assert csp_page.evaluate(RUN_PENDING_FRAME_JS) == 1
         csp_page.evaluate("console.debug('after-late-frame')")
     assert reported.value.text == "after-late-frame"
+    assert csp_page.evaluate("window.checks") == 1
+
+
+# Gate review fix1-B1: a predicate that keeps the renderer busy for a second
+# and then returns true. Time is the behavior under test: the 25 ms deadline
+# must fire from the driver while the page is still busy.
+BUSY_THEN_TRUE_JS = """() => {
+  const end = performance.now() + 1000;
+  while (performance.now() < end) {}
+  return true;
+}"""
+BUSY_TIMEOUT_MS = 25
+# Generous scheduling slack, still far below the 1000 ms the page stays busy.
+DEADLINE_SLACK_MS = 250
+
+
+def test_wait_for_js_deadline_is_not_delayed_by_a_busy_predicate(
+    csp_page: Page,
+) -> None:
+    started = time.monotonic()
+    with pytest.raises(PlaywrightTimeoutError, match="Timeout 25ms exceeded"):
+        wait_for_js(csp_page, BUSY_THEN_TRUE_JS, timeout=BUSY_TIMEOUT_MS)
+    elapsed_ms = (time.monotonic() - started) * 1000
+
+    assert elapsed_ms < BUSY_TIMEOUT_MS + DEADLINE_SLACK_MS
+    # This evaluate runs only once the busy predicate has returned true; a
+    # late success would already be in the console ahead of the marker.
+    with csp_page.expect_console_message() as first:
+        csp_page.evaluate("console.debug('after-busy-predicate')")
+    assert first.value.text == "after-busy-predicate"
 
 
 def test_wait_for_js_honors_the_page_default_timeout(csp_page: Page) -> None:
