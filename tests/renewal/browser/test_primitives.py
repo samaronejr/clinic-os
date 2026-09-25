@@ -1178,6 +1178,9 @@ def test_combobox_filters_moves_and_chooses(
     expect(listbox).to_be_visible()
     expect(combo).to_have_attribute("aria-expanded", "true")
     expect(listbox.locator("[role=option]:visible")).to_have_count(1)
+    expect(live_page.locator("#live-combobox-status")).to_have_text(
+        gettext("1 result. Use the arrow keys to choose.")
+    )
     live_page.keyboard.press("ArrowDown")
     expect(combo).to_have_attribute("aria-activedescendant", "live-combobox-opt-3")
     expect(live_page.locator("#live-combobox-opt-3")).to_have_attribute(

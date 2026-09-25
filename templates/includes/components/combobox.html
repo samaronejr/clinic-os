@@ -19,7 +19,7 @@ Context:
   state        SC-8 state; open, loading, empty, error... shape the popup.
   status       Text for the live status line (result count, errors).
   expanded     True renders the listbox open (showcase and server echo).
-{% endcomment %}<div class="combobox{% if state == "error" %} field--error{% endif %}" data-combobox data-text-results="{% trans "__N__ results. Use the arrow keys to choose." %}" data-text-empty="{% trans "No matches. Check the spelling or search by another term." %}" data-text-loading="{% trans "Searching…" %}" data-text-error="{% trans "Search failed. Try again." %}"{% if endpoint %} data-combobox-endpoint="{{ endpoint }}"{% endif %}{% if state == "loading" %} aria-busy="true"{% endif %}>
+{% endcomment %}<div class="combobox{% if state == "error" %} field--error{% endif %}" data-combobox data-text-result="{% trans "1 result. Use the arrow keys to choose." %}" data-text-results="{% trans "__N__ results. Use the arrow keys to choose." %}" data-text-empty="{% trans "No matches. Check the spelling or search by another term." %}" data-text-loading="{% trans "Searching…" %}" data-text-error="{% trans "Search failed. Try again." %}"{% if endpoint %} data-combobox-endpoint="{{ endpoint }}"{% endif %}{% if state == "loading" %} aria-busy="true"{% endif %}>
   <label class="field-label" for="{{ id }}">{{ label }}</label>
   <div class="combobox-control">
     {% include "includes/components/icon.html" with name="search" only %}

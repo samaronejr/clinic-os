@@ -154,7 +154,8 @@
     if (!this.status) {
       return;
     }
-    this.status.textContent = matches ? this.text("results", matches) : this.text("empty", 0);
+    this.status.textContent = matches === 1 ? this.text("result", 1)
+      : matches ? this.text("results", matches) : this.text("empty", 0);
     if (matches) {
       this.open();
     } else {
