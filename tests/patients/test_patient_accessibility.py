@@ -5,7 +5,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Final
 
 import pytest
-from apps.intake.models import Patient
+from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.tenancy.db import tenant_context
 from django.contrib.staticfiles import finders
 from django.utils.formats import date_format
@@ -34,24 +34,21 @@ SEEDED: Final = tuple(f"Marina Synthetic P{index:03d}" for index in range(30))
 EXPECTED_SEEDED_BIRTH_DATES: Final = frozenset(
     date(1990, 1, day) for day in range(1, 28)
 )
-UUID_PATTERN: Final = re.compile(
-    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
-    r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-)
 CSRF_TOKEN_PATTERN: Final = re.compile(r'name="csrfmiddlewaretoken" value="([^"]+)"')
+ENROLLMENT_INPUT_PATTERN: Final = re.compile(r'name="enrollment_id" value="([^"]+)"')
 
 
-def _without_opaque_identifiers(text: str, csrf_tokens: Iterable[str]) -> str:
-    """Blank the page's opaque identifiers so year substrings cannot hit them.
+def _without_known_identifiers(text: str, identifiers: Iterable[str]) -> str:
+    """Blank only the exact identifier values this page legitimately renders.
 
-    enrollment_id and clinic UUIDs plus csrfmiddlewaretoken values are the
-    only opaque identifiers this page renders (static URLs are unhashed in
-    tests); random ones can contain a birth year like "1990" (hosted CI run
-    36091656875).
+    Exemption is by literal value, never by shape: a birth year spliced into
+    a UUID-shaped string must still be caught, so pattern scrubbing is
+    forbidden (hosted CI run 36091656875 showed real UUIDs can contain the
+    year).
     """
-    scrubbed = UUID_PATTERN.sub("", text)
-    for token in csrf_tokens:
-        scrubbed = scrubbed.replace(token, "")
+    scrubbed = text
+    for identifier in identifiers:
+        scrubbed = scrubbed.replace(identifier, "")
     return scrubbed
 
 
@@ -120,8 +117,8 @@ def test_search_results_expose_an_accessible_table_and_pagination(
     }
     # Birth dates are table cells only: never status text, labels or
     # attributes. Check the seeded patients' birth year plus every rendered
-    # date format, but only on text scrubbed of opaque identifiers so random
-    # UUIDs/CSRF tokens cannot collide with the year.
+    # date format. The year check sees text with only the page's known
+    # opaque identifiers removed; the rendered-date checks see raw text.
     with (
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
@@ -131,6 +128,12 @@ def test_search_results_expose_an_accessible_table_and_pagination(
                 organization_id=rbac_graph.organization_a
             ).values_list("birth_date", flat=True)
         )
+        enrollment_ids = [
+            str(enrollment_id)
+            for enrollment_id in PatientClinicEnrollment.objects.filter(
+                clinic_id=rbac_graph.clinic_a
+            ).values_list("id", flat=True)
+        ]
     assert birth_dates
     assert set(birth_dates) >= EXPECTED_SEEDED_BIRTH_DATES
     expected_years = {item.year for item in EXPECTED_SEEDED_BIRTH_DATES}
@@ -145,17 +148,43 @@ def test_search_results_expose_an_accessible_table_and_pagination(
             date_format(birth_date, "SHORT_DATE_FORMAT"),
         )
     }
-    csrf_tokens = set(CSRF_TOKEN_PATTERN.findall(content.decode()))
-    header = _without_opaque_identifiers(
-        content.decode().split("<tbody")[0], csrf_tokens
-    )
+    # Exempt only literal opaque values known to this page: the rendered
+    # enrollment UUIDs (provenance-checked against the seeded rows, since
+    # page 1 shows only a page-size subset), the clinic UUID in URLs, and
+    # this response's CSRF tokens. Patient UUIDs are never rendered, so
+    # they are not exempted: every exempted value must actually occur,
+    # which also keeps the exemption list from silently growing.
+    text = content.decode()
+    csrf_tokens = set(CSRF_TOKEN_PATTERN.findall(text))
+    rendered_enrollments = set(ENROLLMENT_INPUT_PATTERN.findall(text))
+    assert len(enrollment_ids) == len(SEEDED)
+    assert rendered_enrollments
+    assert rendered_enrollments <= set(enrollment_ids)
+    known_identifiers = {
+        str(rbac_graph.clinic_a),
+        *rendered_enrollments,
+        *csrf_tokens,
+    }
+    assert known_identifiers
+    assert not [
+        identifier for identifier in known_identifiers if identifier not in text
+    ]
+    # An exempted value must be an opaque identifier, never a birth date:
+    # otherwise a leaked date could blanket-mask itself across the page.
+    assert not [
+        identifier
+        for identifier in known_identifiers
+        if any(rendered in identifier for rendered in rendered_dates)
+    ]
+    header = _without_known_identifiers(text.split("<tbody")[0], known_identifiers)
+    raw_header = text.split("<tbody")[0]
     assert not [year for year in birth_years if year in header]
-    assert not [rendered for rendered in rendered_dates if rendered in header]
+    assert not [rendered for rendered in rendered_dates if rendered in raw_header]
     assert not [
         attributes
         for _tag, attributes in document.elements
         if any(
-            year in _without_opaque_identifiers(value or "", csrf_tokens)
+            year in _without_known_identifiers(value or "", known_identifiers)
             for year in birth_years
             for value in attributes.values()
         )
@@ -164,7 +193,7 @@ def test_search_results_expose_an_accessible_table_and_pagination(
         attributes
         for _tag, attributes in document.elements
         if any(
-            rendered in _without_opaque_identifiers(value or "", csrf_tokens)
+            rendered in (value or "")
             for rendered in rendered_dates
             for value in attributes.values()
         )
