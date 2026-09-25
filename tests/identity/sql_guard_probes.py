@@ -16,6 +16,7 @@ from django.db import connection
 from psycopg import sql
 
 from identity.legacy_operational_boundaries import seed_operational
+from identity.legacy_owner_boundaries import _owner_call
 from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
@@ -109,6 +110,28 @@ def _bound_actor(w: SqlWorld, valid: bool) -> list[SqlArgument]:
     return []
 
 
+def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
+    # These patient-facing resolvers still inspect the clinician's staff
+    # membership. They are staff-dependent, not a nonstaff exemption. Keep
+    # patient credentials valid in both cases; only staff membership changes.
+    if not valid:
+        _owner_call(
+            lambda: UserClinicRole.objects.filter(
+                user_id=w.actor.graph.physician,
+                clinic_id=w.actor.clinic,
+                role=UserClinicRole.Role.PHYSICIAN,
+            ).delete()
+        )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_user_id', '', true), "
+            "set_config('app.current_tenant', '', true), "
+            "set_config('app.current_patient_session', %s, true)",
+            [str(w.operational.patient_session)],
+        )
+    return ["2035-06-03", None] if slots else [w.actor.graph.physician]
+
+
 def call(probe: SqlProbe, w: SqlWorld, valid: bool) -> bool:
     arguments = probe.arguments(w, valid)
     with connection.cursor() as cursor:
@@ -128,6 +151,17 @@ def call(probe: SqlProbe, w: SqlWorld, valid: bool) -> bool:
 
 
 PROBES = {
+    "patient_booking_practitioner": SqlProbe(
+        "patient_booking_practitioner",
+        ALL_ROLES,
+        lambda w, ok: _booking(w, ok, slots=False),
+        "boolean",
+    ),
+    "patient_booking_slots": SqlProbe(
+        "patient_booking_slots",
+        ALL_ROLES,
+        lambda w, ok: _booking(w, ok, slots=True),
+    ),
     "auth_lookup": SqlProbe(
         "auth_lookup",
         ALL_ROLES,
