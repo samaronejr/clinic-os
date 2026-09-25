@@ -2,7 +2,7 @@
 
 import pytest
 from apps.tenancy import posture
-from django.db import connection
+from django.db import connection, transaction
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -84,6 +84,37 @@ def test_agent_definer_execute_surface_is_exact() -> None:
             ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
             ("principal_has", "perm text, clinic uuid"),
         }
+
+
+@pytest.mark.parametrize(
+    "table", ["identity_serviceprincipal", "identity_serviceprincipalgrant"]
+)
+def test_principal_provision_policy_set_is_exact(table: str) -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL search_path = pg_catalog")
+        cursor.execute(
+            "SELECT policyname, permissive, cmd, roles, qual, with_check "
+            "FROM pg_catalog.pg_policies "
+            "WHERE schemaname='clinic_app' AND tablename=%s ORDER BY policyname",
+            [table],
+        )
+        policies = cursor.fetchall()
+    tenant_predicate = (
+        "(organization_id = (NULLIF(current_setting("
+        "'app.current_tenant'::text, true), ''::text))::uuid)"
+    )
+    # Inspect every policy on each authority table: an additional permissive
+    # policy must fail just as a widened owner predicate or role target does.
+    assert policies == [
+        (
+            "principal_provision",
+            "PERMISSIVE",
+            "ALL",
+            ["clinic_owner"],
+            tenant_predicate,
+            tenant_predicate,
+        ),
+    ]
 
 
 def test_agent_availability_policy_is_restrictive_and_exact() -> None:

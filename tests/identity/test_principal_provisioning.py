@@ -5,17 +5,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.audit.models import AuditEvent
 from apps.identity.current_context import CurrentActorError
-from apps.identity.models import ServicePrincipal, UserClinicRole
+from apps.identity.models import ServicePrincipal, ServicePrincipalGrant, UserClinicRole
 from apps.identity.service_principals import (
     grant_principal,
     register_principal,
     revoke_principal,
     revoke_principal_grant,
 )
-from django.db import transaction
+from django.db import ProgrammingError, connection, transaction
 
 from identity.permission_support import owner_context
 from identity.test_scope_provisioning import provisioning_context
@@ -25,6 +26,96 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+
+@pytest.fixture
+def principal_pair(rbac_graph: RbacGraph) -> tuple[ServicePrincipal, ServicePrincipal]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT session_user, current_user, rolsuper, rolbypassrls "
+            "FROM pg_roles WHERE rolname=current_user"
+        )
+        assert cursor.fetchone() == ("clinic_owner", "clinic_owner", False, False)
+    principals = []
+    for organization_id, clinic_id, suffix in (
+        (rbac_graph.organization_a, rbac_graph.clinic_a, "a"),
+        (rbac_graph.organization_b, rbac_graph.clinic_c, "b"),
+    ):
+        with owner_context(organization_id):
+            principal = ServicePrincipal.objects.create(
+                organization_id=organization_id,
+                clinic_id=clinic_id,
+                name=f"sintetico-policy-{suffix}",
+                db_identity=f"clinic_agent_{suffix}",
+                purpose="availability",
+            )
+            ServicePrincipalGrant.objects.create(
+                organization_id=organization_id,
+                principal=principal,
+                permission="appointment.read",
+                subject_scope="clinic",
+            )
+            principals.append(principal)
+    return principals[0], principals[1]
+
+
+@pytest.mark.parametrize("model", [ServicePrincipal, ServicePrincipalGrant])
+def test_owner_authority_reads_require_the_matching_tenant(
+    model: type[ServicePrincipal | ServicePrincipalGrant],
+    principal_pair: tuple[ServicePrincipal, ServicePrincipal],
+) -> None:
+    for principal in principal_pair:
+        with owner_context(principal.organization_id):
+            assert list(model.objects.values_list("organization_id", flat=True)) == [
+                principal.organization_id
+            ]
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SELECT set_config('app.current_tenant','',true)")
+        assert not model.objects.exists()
+
+
+@pytest.mark.parametrize("model", [ServicePrincipal, ServicePrincipalGrant])
+@pytest.mark.parametrize("context", ["foreign", "missing"])
+def test_owner_authority_inserts_require_the_matching_tenant(
+    model: type[ServicePrincipal | ServicePrincipalGrant],
+    context: str,
+    principal_pair: tuple[ServicePrincipal, ServicePrincipal],
+) -> None:
+    local, foreign = principal_pair
+    row: ServicePrincipal | ServicePrincipalGrant
+    if model is ServicePrincipal:
+        row = ServicePrincipal(
+            organization_id=foreign.organization_id,
+            clinic_id=foreign.clinic_id,
+            name="sintetico-policy-write",
+            db_identity=f"clinic_agent_{uuid4().hex}",
+            purpose="availability",
+        )
+    else:
+        # Avoid the active-grant uniqueness constraint: only the policy should
+        # reject this otherwise valid organization/principal pair.
+        row = ServicePrincipalGrant(
+            organization_id=foreign.organization_id,
+            principal=foreign,
+            permission="appointment.read",
+            subject_scope="clinic",
+            active=False,
+        )
+    with owner_context(foreign.organization_id):
+        row.save(force_insert=True)
+        assert model.objects.filter(pk=row.pk).exists()
+    row.pk = uuid4()
+    if isinstance(row, ServicePrincipal):
+        row.db_identity = f"clinic_agent_{uuid4().hex}"
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_tenant',%s,true)",
+            [str(local.organization_id) if context == "foreign" else ""],
+        )
+        with pytest.raises(ProgrammingError) as error, transaction.atomic():
+            row.save(force_insert=True)
+        assert isinstance(error.value.__cause__, psycopg.errors.InsufficientPrivilege)
+        assert error.value.__cause__.sqlstate == "42501"
 
 
 def test_owner_registration_grant_and_revocations_are_audited_once(
