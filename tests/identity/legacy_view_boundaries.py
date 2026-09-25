@@ -56,6 +56,7 @@ VIEWS = {
     "apps.intake.views.patient_create_view": MANAGERS,
     "apps.intake.views.patient_contacts_view": MANAGERS,
     "apps.intake.views.patient_access_view": MANAGERS,
+    "apps.intake.views.patient_demographics_view": MANAGERS,
     "apps.prescription.views.draft_workspace": PHYSICIAN,
     "apps.prescription.views.review_view": PHYSICIAN,
     "apps.prescription.views.signing_status_view": PHYSICIAN,

@@ -1,7 +1,7 @@
 {
   "candidates": [
     {
-      "symbol": "apps.audit.services.record_event",
+      "symbol": "apps.audit.services._record_system_event",
       "signals": [
         "resolver"
       ],
@@ -9,7 +9,7 @@
       "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
     },
     {
-      "symbol": "apps.audit.services._record_system_event",
+      "symbol": "apps.audit.services.record_event",
       "signals": [
         "resolver"
       ],
@@ -43,14 +43,6 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.billing.reconciliation._resolve_charge",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "provider",
-      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
-    },
-    {
       "symbol": "apps.billing.reconciliation._event_seen",
       "signals": [
         "resolver"
@@ -59,7 +51,7 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
-      "symbol": "apps.billing.reconciliation._superseded",
+      "symbol": "apps.billing.reconciliation._recovered",
       "signals": [
         "resolver"
       ],
@@ -67,7 +59,15 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
-      "symbol": "apps.billing.reconciliation._recovered",
+      "symbol": "apps.billing.reconciliation._resolve_charge",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+    },
+    {
+      "symbol": "apps.billing.reconciliation._superseded",
       "signals": [
         "resolver"
       ],
@@ -144,11 +144,37 @@
       ]
     },
     {
+      "symbol": "apps.consent.services._patient_audit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.consent.services.consent_for_future_use",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.consent_for_future_use"
+      ]
+    },
+    {
       "symbol": "apps.consent.services.patient_authority",
       "signals": [
         "denial",
         "resolver",
         "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.consent.services.prepare_acceptance",
+      "signals": [
+        "denial"
       ],
       "kind": "nonstaff",
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
@@ -162,22 +188,6 @@
       "probes": [
         "apps.consent.services.publish_text"
       ]
-    },
-    {
-      "symbol": "apps.consent.services.prepare_acceptance",
-      "signals": [
-        "denial"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.consent.services._patient_audit",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
       "symbol": "apps.consent.services.record_consent",
@@ -203,16 +213,6 @@
       "kind": "direct",
       "probes": [
         "apps.consent.services.staff_receipts"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.consent_for_future_use",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.consent_for_future_use"
       ]
     },
     {
@@ -247,28 +247,6 @@
       "reason": "Worker admission-quota projection, not a staff-role grant. Organization-wide writes use require_current_actor_org_admin; tests/core/test_fairness.py covers the resolver and admission behavior."
     },
     {
-      "symbol": "apps.core.integration._resolve_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.integration._resolve_scope"
-      ]
-    },
-    {
-      "symbol": "apps.core.integration._resolve_callback_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.integration._resolve_callback_scope"
-      ]
-    },
-    {
       "symbol": "apps.core.integration._actor_has_clinic_authority",
       "signals": [
         "membership",
@@ -287,6 +265,28 @@
       "kind": "direct",
       "probes": [
         "apps.core.integration._prepare_with_authority"
+      ]
+    },
+    {
+      "symbol": "apps.core.integration._resolve_callback_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.integration._resolve_callback_scope"
+      ]
+    },
+    {
+      "symbol": "apps.core.integration._resolve_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.integration._resolve_scope"
       ]
     },
     {
@@ -368,6 +368,16 @@
       ]
     },
     {
+      "symbol": "apps.ehr.attachments.attachment_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.attachments.attachment_context"
+      ]
+    },
+    {
       "symbol": "apps.ehr.attachments.authorize_attachment_encounter",
       "signals": [
         "denial",
@@ -381,24 +391,13 @@
       ]
     },
     {
-      "symbol": "apps.ehr.attachments.attachment_context",
+      "symbol": "apps.ehr.attachments.download_attachment",
       "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.attachments.attachment_context"
-      ]
-    },
-    {
-      "symbol": "apps.ehr.attachments.upload_attachment",
-      "signals": [
-        "actor"
+        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ehr.attachments.authorize_attachment_encounter",
-        "apps.identity.current_context.current_actor_id"
+        "apps.ehr.attachments.authorize_attachment_encounter"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -414,24 +413,16 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.ehr.attachments.download_attachment",
+      "symbol": "apps.ehr.attachments.upload_attachment",
       "signals": [
-        "denial"
+        "actor"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ehr.attachments.authorize_attachment_encounter"
+        "apps.ehr.attachments.authorize_attachment_encounter",
+        "apps.identity.current_context.current_actor_id"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.ehr.finalization._next_version",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "data_operation",
-      "reason": "Version allocation behind the already authorized document; no staff-role decision."
     },
     {
       "symbol": "apps.ehr.finalization._author_version",
@@ -444,14 +435,13 @@
       ]
     },
     {
-      "symbol": "apps.ehr.finalization.finalize_version",
+      "symbol": "apps.ehr.finalization._next_version",
       "signals": [
-        "authentication"
+        "denial",
+        "resolver"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.finalization.finalize_version"
-      ]
+      "kind": "data_operation",
+      "reason": "Version allocation behind the already authorized document; no staff-role decision."
     },
     {
       "symbol": "apps.ehr.finalization.close_encounter",
@@ -466,16 +456,13 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.ehr.history.authorize_history",
+      "symbol": "apps.ehr.finalization.finalize_version",
       "signals": [
-        "denial",
-        "resolver",
-        "role_helper",
-        "scope_name"
+        "authentication"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ehr.history.authorize_history"
+        "apps.ehr.finalization.finalize_version"
       ]
     },
     {
@@ -486,6 +473,19 @@
       "kind": "direct",
       "probes": [
         "apps.ehr.history._context"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.history.authorize_history",
+      "signals": [
+        "denial",
+        "resolver",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.history.authorize_history"
       ]
     },
     {
@@ -537,17 +537,6 @@
       "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
     },
     {
-      "symbol": "apps.ehr.services._denied",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services._denied"
-      ]
-    },
-    {
       "symbol": "apps.ehr.services._appointment",
       "signals": [
         "actor",
@@ -572,13 +561,25 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.publish_template",
+      "symbol": "apps.ehr.services._denied",
       "signals": [
-        "role_helper"
+        "denial",
+        "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ehr.services.publish_template"
+        "apps.ehr.services._denied"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.create_draft",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services.create_draft"
       ]
     },
     {
@@ -592,14 +593,23 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.create_draft",
+      "symbol": "apps.ehr.services.publish_template",
       "signals": [
-        "denial",
-        "resolver"
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ehr.services.create_draft"
+        "apps.ehr.services.publish_template"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.record_clinical_note",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services.record_clinical_note"
       ]
     },
     {
@@ -616,16 +626,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.record_clinical_note",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services.record_clinical_note"
-      ]
-    },
-    {
       "symbol": "apps.ehr.views._close",
       "signals": [
         "denial"
@@ -637,6 +637,17 @@
         "apps.ehr.services.view_version"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.ehr.views._resume",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.views._resume"
+      ]
     },
     {
       "symbol": "apps.ehr.views._review",
@@ -667,17 +678,6 @@
       "kind": "direct",
       "probes": [
         "apps.ehr.views._show"
-      ]
-    },
-    {
-      "symbol": "apps.ehr.views._resume",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.views._resume"
       ]
     },
     {
@@ -721,6 +721,17 @@
       ]
     },
     {
+      "symbol": "apps.identity.clinic_settings_views.clinic_logo",
+      "signals": [
+        "decorator",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.clinic_settings_views.clinic_logo"
+      ]
+    },
+    {
       "symbol": "apps.identity.clinic_settings_views.clinic_settings",
       "signals": [
         "decorator",
@@ -732,14 +743,13 @@
       ]
     },
     {
-      "symbol": "apps.identity.clinic_settings_views.clinic_logo",
+      "symbol": "apps.identity.current_context._active_clinic_physicians",
       "signals": [
-        "decorator",
-        "role_helper"
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.clinic_settings_views.clinic_logo"
+        "apps.identity.current_context._active_clinic_physicians"
       ]
     },
     {
@@ -771,6 +781,27 @@
       "kind": "direct",
       "probes": [
         "apps.identity.current_context.current_actor_username"
+      ]
+    },
+    {
+      "symbol": "apps.identity.current_context.list_active_clinic_physicians",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.current_context.list_active_clinic_physicians"
+      ]
+    },
+    {
+      "symbol": "apps.identity.current_context.practitioner_display_label",
+      "signals": [
+        "actor",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.current_context.practitioner_display_label"
       ]
     },
     {
@@ -808,37 +839,6 @@
       ],
       "kind": "v2",
       "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
-    },
-    {
-      "symbol": "apps.identity.current_context._active_clinic_physicians",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.current_context._active_clinic_physicians"
-      ]
-    },
-    {
-      "symbol": "apps.identity.current_context.list_active_clinic_physicians",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.current_context.list_active_clinic_physicians"
-      ]
-    },
-    {
-      "symbol": "apps.identity.current_context.practitioner_display_label",
-      "signals": [
-        "actor",
-        "membership"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.current_context.practitioner_display_label"
-      ]
     },
     {
       "symbol": "apps.identity.management.base.assert_owner_database_role",
@@ -907,6 +907,16 @@
       ]
     },
     {
+      "symbol": "apps.identity.models.User.is_clinic_admin_anywhere",
+      "signals": [
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.models.User.is_clinic_admin_anywhere"
+      ]
+    },
+    {
       "symbol": "apps.identity.models.User.is_physician_anywhere",
       "signals": [
         "membership"
@@ -917,13 +927,13 @@
       ]
     },
     {
-      "symbol": "apps.identity.models.User.is_clinic_admin_anywhere",
+      "symbol": "apps.identity.otp.is_confirmed_verified_user",
       "signals": [
-        "membership"
+        "authentication"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.models.User.is_clinic_admin_anywhere"
+        "apps.identity.otp.is_confirmed_verified_user"
       ]
     },
     {
@@ -935,16 +945,6 @@
       "kind": "direct",
       "probes": [
         "apps.identity.otp.is_privileged_user"
-      ]
-    },
-    {
-      "symbol": "apps.identity.otp.is_confirmed_verified_user",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.otp.is_confirmed_verified_user"
       ]
     },
     {
@@ -1076,13 +1076,13 @@
       "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
     },
     {
-      "symbol": "apps.identity.services.role_assignments_for_user",
+      "symbol": "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
       "signals": [
-        "membership"
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.services.role_assignments_for_user"
+        "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user"
       ]
     },
     {
@@ -1107,16 +1107,6 @@
       ]
     },
     {
-      "symbol": "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user"
-      ]
-    },
-    {
       "symbol": "apps.identity.services.resolve_login_organization",
       "signals": [
         "resolver"
@@ -1124,6 +1114,16 @@
       "kind": "direct",
       "probes": [
         "apps.identity.services.resolve_login_organization"
+      ]
+    },
+    {
+      "symbol": "apps.identity.services.role_assignments_for_user",
+      "signals": [
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.services.role_assignments_for_user"
       ]
     },
     {
@@ -1188,18 +1188,6 @@
       ]
     },
     {
-      "symbol": "apps.intake.access.authorized_manager_clinic",
-      "signals": [
-        "denial",
-        "role_helper",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.access.authorized_manager_clinic"
-      ]
-    },
-    {
       "symbol": "apps.intake.access.authorized_enrollment",
       "signals": [
         "denial",
@@ -1209,6 +1197,29 @@
       "kind": "direct",
       "probes": [
         "apps.intake.access.authorized_enrollment"
+      ]
+    },
+    {
+      "symbol": "apps.intake.access.authorized_enrollment_for",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.access.authorized_enrollment_for"
+      ]
+    },
+    {
+      "symbol": "apps.intake.access.authorized_manager_clinic",
+      "signals": [
+        "denial",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.access.authorized_manager_clinic"
       ]
     },
     {
@@ -1223,6 +1234,37 @@
       ]
     },
     {
+      "symbol": "apps.intake.demographics._actor_label",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.demographics._actor_label"
+      ]
+    },
+    {
+      "symbol": "apps.intake.demographics.search_patient_identifiers",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.demographics.search_patient_identifiers"
+      ]
+    },
+    {
+      "symbol": "apps.intake.demographics.set_intake_policy",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.demographics.set_intake_policy"
+      ]
+    },
+    {
       "symbol": "apps.intake.patient_access._actor_label",
       "signals": [
         "actor",
@@ -1234,18 +1276,7 @@
       ]
     },
     {
-      "symbol": "apps.intake.patient_access.revoke_patient_access",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.patient_access.revoke_patient_access"
-      ]
-    },
-    {
-      "symbol": "apps.intake.patient_access.redeem_invitation",
+      "symbol": "apps.intake.patient_access.end_patient_session",
       "signals": [
         "resolver"
       ],
@@ -1270,12 +1301,23 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.intake.patient_access.end_patient_session",
+      "symbol": "apps.intake.patient_access.redeem_invitation",
       "signals": [
         "resolver"
       ],
       "kind": "nonstaff",
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.intake.patient_access.revoke_patient_access",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.patient_access.revoke_patient_access"
+      ]
     },
     {
       "symbol": "apps.intake.patient_search.search_patients",
@@ -1319,13 +1361,14 @@
       ]
     },
     {
-      "symbol": "apps.intake.questionnaires.publish_template",
+      "symbol": "apps.intake.questionnaires.appointment_enrollment",
       "signals": [
+        "denial",
         "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.intake.questionnaires.publish_template"
+        "apps.intake.questionnaires.appointment_enrollment"
       ]
     },
     {
@@ -1338,44 +1381,6 @@
       "probes": [
         "apps.intake.questionnaires.assign_questionnaire"
       ]
-    },
-    {
-      "symbol": "apps.intake.questionnaires.published_templates",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.questionnaires.published_templates"
-      ]
-    },
-    {
-      "symbol": "apps.intake.questionnaires.appointment_enrollment",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.questionnaires.appointment_enrollment"
-      ]
-    },
-    {
-      "symbol": "apps.intake.questionnaires.patient_responses",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.intake.questionnaires.patient_response",
-      "signals": [
-        "denial"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
       "symbol": "apps.intake.questionnaires.clinical_response",
@@ -1399,33 +1404,40 @@
       ]
     },
     {
-      "symbol": "apps.intake.views.patient_list_view",
+      "symbol": "apps.intake.questionnaires.patient_response",
       "signals": [
-        "decorator"
+        "denial"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.intake.questionnaires.patient_responses",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.intake.questionnaires.publish_template",
+      "signals": [
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.intake.views.patient_list_view"
+        "apps.intake.questionnaires.publish_template"
       ]
     },
     {
-      "symbol": "apps.intake.views.patient_create_view",
+      "symbol": "apps.intake.questionnaires.published_templates",
       "signals": [
-        "decorator"
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.intake.views.patient_create_view"
-      ]
-    },
-    {
-      "symbol": "apps.intake.views.patient_contacts_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.views.patient_contacts_view"
+        "apps.intake.questionnaires.published_templates"
       ]
     },
     {
@@ -1449,51 +1461,44 @@
       ]
     },
     {
-      "symbol": "apps.prescription.services.authorize_encounter",
+      "symbol": "apps.intake.views.patient_contacts_view",
       "signals": [
-        "denial",
-        "role_helper",
-        "scope_name"
+        "decorator"
       ],
       "kind": "direct",
       "probes": [
-        "apps.prescription.services.authorize_encounter"
+        "apps.intake.views.patient_contacts_view"
       ]
     },
     {
-      "symbol": "apps.prescription.services._scope",
+      "symbol": "apps.intake.views.patient_create_view",
       "signals": [
-        "denial",
-        "scope_name"
+        "decorator"
       ],
       "kind": "direct",
       "probes": [
-        "apps.prescription.services._scope"
+        "apps.intake.views.patient_create_view"
       ]
     },
     {
-      "symbol": "apps.prescription.services.view_draft",
+      "symbol": "apps.intake.views.patient_demographics_view",
       "signals": [
-        "denial"
+        "decorator"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.prescription.services._scope",
-        "apps.prescription.services.authorize_encounter"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+      "kind": "direct",
+      "probes": [
+        "apps.intake.views.patient_demographics_view"
+      ]
     },
     {
-      "symbol": "apps.prescription.services._frozen_input",
+      "symbol": "apps.intake.views.patient_list_view",
       "signals": [
-        "actor",
-        "denial"
+        "decorator"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+      "kind": "direct",
+      "probes": [
+        "apps.intake.views.patient_list_view"
+      ]
     },
     {
       "symbol": "apps.prescription.services._authorize_document_care",
@@ -1508,6 +1513,41 @@
       ]
     },
     {
+      "symbol": "apps.prescription.services._frozen_input",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.services._scope",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.services._scope"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services.authorize_encounter",
+      "signals": [
+        "denial",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.services.authorize_encounter"
+      ]
+    },
+    {
       "symbol": "apps.prescription.services.download_document",
       "signals": [
         "denial"
@@ -1515,6 +1555,18 @@
       "kind": "delegated",
       "enforced_by": [
         "apps.prescription.services._authorize_document_care"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.services.view_draft",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.prescription.services._scope",
+        "apps.prescription.services.authorize_encounter"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -1529,16 +1581,6 @@
       ]
     },
     {
-      "symbol": "apps.prescription.signing.initiate_signature",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.signing.initiate_signature"
-      ]
-    },
-    {
       "symbol": "apps.prescription.signing._prepare_signature",
       "signals": [
         "denial"
@@ -1547,15 +1589,6 @@
       "probes": [
         "apps.prescription.signing._prepare_signature"
       ]
-    },
-    {
-      "symbol": "apps.prescription.signing._resolve_operation_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "provider",
-      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
       "symbol": "apps.prescription.signing._resolve_callback_scope",
@@ -1567,14 +1600,13 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
-      "symbol": "apps.prescription.signing.signature_status",
+      "symbol": "apps.prescription.signing._resolve_operation_scope",
       "signals": [
-        "denial"
+        "resolver",
+        "scope_name"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.signing.signature_status"
-      ]
+      "kind": "provider",
+      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
       "symbol": "apps.prescription.signing.download_signed_document",
@@ -1588,15 +1620,27 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.verification._allowance",
+      "symbol": "apps.prescription.signing.initiate_signature",
       "signals": [
-        "resolver"
+        "denial"
       ],
-      "kind": "provider",
-      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.signing.initiate_signature"
+      ]
     },
     {
-      "symbol": "apps.prescription.verification._verify_row",
+      "symbol": "apps.prescription.signing.signature_status",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.signing.signature_status"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.verification._allowance",
       "signals": [
         "resolver"
       ],
@@ -1615,22 +1659,53 @@
       ]
     },
     {
+      "symbol": "apps.prescription.verification._patient_session_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.prescription.verification._record_patient_download",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.prescription.verification._verify_row",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+    },
+    {
+      "symbol": "apps.prescription.verification.patient_document_download",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.prescription.verification.patient_documents",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
       "symbol": "apps.prescription.verification.release_document",
       "signals": [
         "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_id",
-        "apps.prescription.verification._issuer_document"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.prescription.verification.revoke_document_release",
-      "signals": [
-        "actor",
-        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
@@ -1653,51 +1728,27 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.verification.patient_documents",
+      "symbol": "apps.prescription.verification.revoke_document_release",
       "signals": [
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.prescription.verification._record_patient_download",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.prescription.verification._patient_session_scope",
-      "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.prescription.verification.patient_document_download",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.prescription.views._subject",
-      "signals": [
-        "actor"
+        "actor",
+        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.identity.current_context.current_actor_username"
+        "apps.identity.current_context.current_actor_id",
+        "apps.prescription.verification._issuer_document"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.views._draft_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.views._draft_document"
+      ]
     },
     {
       "symbol": "apps.prescription.views._identity_state",
@@ -1708,14 +1759,25 @@
       "reason": "Signing readiness presentation; enforcement is verify_physician_for_signing and _prepare_signature."
     },
     {
-      "symbol": "apps.prescription.views._save_bound_form",
+      "symbol": "apps.prescription.views._issuer_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.views._issuer_document"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.views._open_or_sign",
       "signals": [
         "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.prescription.services._scope",
-        "apps.prescription.services.authorize_encounter"
+        "apps.prescription.signing._prepare_signature",
+        "apps.prescription.signing.initiate_signature",
+        "apps.prescription.views._draft_document"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -1733,27 +1795,45 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.views._open_or_sign",
+      "symbol": "apps.prescription.views._restart_signature",
       "signals": [
         "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
+        "apps.identity.current_context.current_actor_username",
+        "apps.prescription.services.authorize_encounter",
         "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature",
-        "apps.prescription.views._draft_document"
+        "apps.prescription.signing.initiate_signature"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.views._draft_document",
+      "symbol": "apps.prescription.views._review_action",
       "signals": [
         "denial"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.views._draft_document"
-      ]
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username",
+        "apps.prescription.services._authorize_document_care",
+        "apps.prescription.services.authorize_encounter",
+        "apps.prescription.signing._prepare_signature",
+        "apps.prescription.signing.initiate_signature"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.views._save_bound_form",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.prescription.services._scope",
+        "apps.prescription.services.authorize_encounter"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.views._selected_encounter",
@@ -1764,6 +1844,33 @@
       "probes": [
         "apps.prescription.views._selected_encounter"
       ]
+    },
+    {
+      "symbol": "apps.prescription.views._signing_action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username",
+        "apps.prescription.services._authorize_document_care",
+        "apps.prescription.services.authorize_encounter",
+        "apps.prescription.signing._prepare_signature",
+        "apps.prescription.signing.initiate_signature",
+        "apps.prescription.signing.signature_status"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.views._subject",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.views._workspace",
@@ -1787,31 +1894,6 @@
       ]
     },
     {
-      "symbol": "apps.prescription.views._issuer_document",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.views._issuer_document"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.views._review_action",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username",
-        "apps.prescription.services._authorize_document_care",
-        "apps.prescription.services.authorize_encounter",
-        "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
       "symbol": "apps.prescription.views.review_view",
       "signals": [
         "decorator",
@@ -1821,36 +1903,6 @@
       "probes": [
         "apps.prescription.views.review_view"
       ]
-    },
-    {
-      "symbol": "apps.prescription.views._restart_signature",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username",
-        "apps.prescription.services.authorize_encounter",
-        "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.prescription.views._signing_action",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username",
-        "apps.prescription.services._authorize_document_care",
-        "apps.prescription.services.authorize_encounter",
-        "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature",
-        "apps.prescription.signing.signature_status"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.views.signing_status_view",
@@ -1864,7 +1916,7 @@
       ]
     },
     {
-      "symbol": "apps.providers.lifecycle.propose_version",
+      "symbol": "apps.providers.lifecycle.activate_version",
       "signals": [
         "authentication"
       ],
@@ -1886,7 +1938,7 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
-      "symbol": "apps.providers.lifecycle.activate_version",
+      "symbol": "apps.providers.lifecycle.degrade_version",
       "signals": [
         "authentication"
       ],
@@ -1897,7 +1949,7 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
-      "symbol": "apps.providers.lifecycle.degrade_version",
+      "symbol": "apps.providers.lifecycle.propose_version",
       "signals": [
         "authentication"
       ],
@@ -1930,6 +1982,25 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
+      "symbol": "apps.retention.services._author_label",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "presentation",
+      "reason": "Author label projection after the export authority check; never a permission grant."
+    },
+    {
+      "symbol": "apps.retention.services._clinic",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services._clinic"
+      ]
+    },
+    {
       "symbol": "apps.retention.services._denied",
       "signals": [
         "denial",
@@ -1941,14 +2012,13 @@
       ]
     },
     {
-      "symbol": "apps.retention.services._clinic",
+      "symbol": "apps.retention.services._record_patient_view",
       "signals": [
-        "denial"
+        "denial",
+        "resolver"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.retention.services._clinic"
-      ]
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
       "symbol": "apps.retention.services._record_scope",
@@ -1974,6 +2044,16 @@
       ]
     },
     {
+      "symbol": "apps.retention.services._session_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
       "symbol": "apps.retention.services.approve_policy",
       "signals": [
         "actor",
@@ -1987,17 +2067,24 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services.retire_policy",
+      "symbol": "apps.retention.services.export_staff_records",
       "signals": [
-        "actor",
-        "denial"
+        "denial",
+        "resolver",
+        "role_helper"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_id",
-        "apps.retention.services._require_manager"
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services.export_staff_records"
+      ]
+    },
+    {
+      "symbol": "apps.retention.services.patient_released_records",
+      "signals": [
+        "resolver"
       ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
       "symbol": "apps.retention.services.place_hold",
@@ -2008,6 +2095,18 @@
       "kind": "delegated",
       "enforced_by": [
         "apps.identity.current_context.current_actor_id",
+        "apps.retention.services._record_scope",
+        "apps.retention.services._require_manager"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.retention.services.record_disposition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
         "apps.retention.services._record_scope",
         "apps.retention.services._require_manager"
       ],
@@ -2027,16 +2126,14 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services.record_disposition",
+      "symbol": "apps.retention.services.release_version",
       "signals": [
         "denial"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.retention.services._record_scope",
-        "apps.retention.services._require_manager"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services.release_version"
+      ]
     },
     {
       "symbol": "apps.retention.services.request_disposal",
@@ -2051,14 +2148,17 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services.release_version",
+      "symbol": "apps.retention.services.retire_policy",
       "signals": [
+        "actor",
         "denial"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.retention.services.release_version"
-      ]
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id",
+        "apps.retention.services._require_manager"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.retention.services.revoke_release",
@@ -2075,54 +2175,6 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services._author_label",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "presentation",
-      "reason": "Author label projection after the export authority check; never a permission grant."
-    },
-    {
-      "symbol": "apps.retention.services._session_scope",
-      "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.retention.services._record_patient_view",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.retention.services.patient_released_records",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.retention.services.export_staff_records",
-      "signals": [
-        "denial",
-        "resolver",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.retention.services.export_staff_records"
-      ]
-    },
-    {
       "symbol": "apps.retention.services.verify_stored_export",
       "signals": [
         "denial",
@@ -2133,6 +2185,18 @@
       "probes": [
         "apps.retention.services.verify_stored_export"
       ]
+    },
+    {
+      "symbol": "apps.retention.views._context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.retention.views._is_manager",
+        "apps.retention.views._is_physician"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.retention.views._is_manager",
@@ -2159,18 +2223,6 @@
       ]
     },
     {
-      "symbol": "apps.retention.views._context",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.retention.views._is_manager",
-        "apps.retention.views._is_physician"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
       "symbol": "apps.retention.views.retention_workspace",
       "signals": [
         "decorator",
@@ -2179,18 +2231,6 @@
       "kind": "direct",
       "probes": [
         "apps.retention.views.retention_workspace"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.access.authorized_manager_clinic",
-      "signals": [
-        "denial",
-        "role_helper",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.access.authorized_manager_clinic"
       ]
     },
     {
@@ -2203,6 +2243,18 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.access.authorized_appointment_manager_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.access.authorized_manager_clinic",
+      "signals": [
+        "denial",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.access.authorized_manager_clinic"
       ]
     },
     {
@@ -2282,16 +2334,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.appointment_values.require_active_practitioner",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.appointment_values.require_active_practitioner"
-      ]
-    },
-    {
       "symbol": "apps.scheduling.appointment_values._enrollment",
       "signals": [
         "denial"
@@ -2299,6 +2341,16 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.appointment_values._enrollment"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_values.require_active_practitioner",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.appointment_values.require_active_practitioner"
       ]
     },
     {
@@ -2373,25 +2425,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.patient_authority.patient_booking_scope",
-      "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.scheduling.patient_authority.require_patient_booking_scope",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
       "symbol": "apps.scheduling.patient_authority.authorized_appointment_clinic",
       "signals": [
         "denial",
@@ -2401,6 +2434,24 @@
       "probes": [
         "apps.scheduling.patient_authority.authorized_appointment_clinic"
       ]
+    },
+    {
+      "symbol": "apps.scheduling.patient_authority.lock_patient_availability",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.scheduling.patient_authority.patient_booking_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
       "symbol": "apps.scheduling.patient_authority.patient_enrollment",
@@ -2420,17 +2471,10 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.scheduling.patient_authority.lock_patient_availability",
+      "symbol": "apps.scheduling.patient_authority.require_patient_booking_scope",
       "signals": [
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.scheduling.patient_booking.patient_slots",
-      "signals": [
-        "resolver"
+        "denial",
+        "scope_name"
       ],
       "kind": "nonstaff",
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
@@ -2452,6 +2496,14 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
+      "symbol": "apps.scheduling.patient_booking.patient_slots",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
       "symbol": "apps.scheduling.patient_booking.reschedule_patient_appointment",
       "signals": [
         "denial"
@@ -2468,16 +2520,6 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.scheduling.transition_views.appointment_reschedule_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.transition_views.appointment_reschedule_view"
-      ]
-    },
-    {
       "symbol": "apps.scheduling.transition_views.appointment_cancel_view",
       "signals": [
         "decorator"
@@ -2485,6 +2527,16 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.transition_views.appointment_cancel_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.transition_views.appointment_reschedule_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.transition_views.appointment_reschedule_view"
       ]
     },
     {
@@ -2529,16 +2581,6 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.scheduling.waitlist_views.waitlist_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.waitlist_views.waitlist_view"
-      ]
-    },
-    {
       "symbol": "apps.scheduling.waitlist_views._patient_submit",
       "signals": [
         "denial"
@@ -2547,35 +2589,13 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.teleconsult.services._denied",
+      "symbol": "apps.scheduling.waitlist_views.waitlist_view",
       "signals": [
-        "denial",
-        "scope_name"
+        "decorator"
       ],
       "kind": "direct",
       "probes": [
-        "apps.teleconsult.services._denied"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._session_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._session_scope"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._room_state",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._room_state"
+        "apps.scheduling.waitlist_views.waitlist_view"
       ]
     },
     {
@@ -2590,37 +2610,18 @@
       ]
     },
     {
-      "symbol": "apps.teleconsult.services._staff_session",
+      "symbol": "apps.teleconsult.services._denied",
       "signals": [
         "denial",
-        "role_helper"
+        "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.teleconsult.services._staff_session"
+        "apps.teleconsult.services._denied"
       ]
     },
     {
-      "symbol": "apps.teleconsult.services._fail",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "data_operation",
-      "reason": "Terminal session transition, not a staff-role decision; caller scope is checked by session guards."
-    },
-    {
-      "symbol": "apps.teleconsult.services.create_session",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services.create_session"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services.request_patient_join",
+      "symbol": "apps.teleconsult.services._enter_as_patient",
       "signals": [
         "denial"
       ],
@@ -2639,12 +2640,55 @@
       ]
     },
     {
-      "symbol": "apps.teleconsult.services._enter_as_patient",
+      "symbol": "apps.teleconsult.services._fail",
       "signals": [
-        "denial"
+        "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "data_operation",
+      "reason": "Terminal session transition, not a staff-role decision; caller scope is checked by session guards."
+    },
+    {
+      "symbol": "apps.teleconsult.services._room_state",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._room_state"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._session_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._session_scope"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._staff_session",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._staff_session"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services.create_session",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services.create_session"
+      ]
     },
     {
       "symbol": "apps.teleconsult.services.enter_room",
@@ -2658,16 +2702,6 @@
         "apps.teleconsult.services._session_scope"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.teleconsult.services.staff_sessions",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services.staff_sessions"
-      ]
     },
     {
       "symbol": "apps.teleconsult.services.open_encounters",
@@ -2688,13 +2722,21 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
-      "symbol": "apps.teleconsult.views.staff_teleconsult",
+      "symbol": "apps.teleconsult.services.request_patient_join",
       "signals": [
-        "decorator"
+        "denial"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.teleconsult.services.staff_sessions",
+      "signals": [
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.teleconsult.views.staff_teleconsult"
+        "apps.teleconsult.services.staff_sessions"
       ]
     },
     {
@@ -2704,6 +2746,16 @@
       ],
       "kind": "nonstaff",
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.teleconsult.views.staff_teleconsult",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.views.staff_teleconsult"
+      ]
     },
     {
       "symbol": "apps.teleconsult.workspace._session_version",
@@ -2728,15 +2780,7 @@
       ]
     },
     {
-      "symbol": "apps.tenancy.envelope.issue_tenant_key",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
-    },
-    {
-      "symbol": "apps.tenancy.envelope.encrypt",
+      "symbol": "apps.tenancy.envelope.blind_indexes",
       "signals": [
         "resolver"
       ],
@@ -2752,7 +2796,15 @@
       "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
     },
     {
-      "symbol": "apps.tenancy.envelope.reencrypt",
+      "symbol": "apps.tenancy.envelope.encrypt",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "infrastructure",
+      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+    },
+    {
+      "symbol": "apps.tenancy.envelope.issue_tenant_key",
       "signals": [
         "resolver"
       ],
@@ -2761,6 +2813,14 @@
     },
     {
       "symbol": "apps.tenancy.envelope.protect",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "infrastructure",
+      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+    },
+    {
+      "symbol": "apps.tenancy.envelope.reencrypt",
       "signals": [
         "resolver"
       ],
@@ -2910,8 +2970,12 @@
     "apps.identity.stepup_views.step_up_view",
     "apps.identity.views.protected_view",
     "apps.intake.access.authorized_enrollment",
+    "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
     "apps.intake.contacts._actor_label",
+    "apps.intake.demographics._actor_label",
+    "apps.intake.demographics.search_patient_identifiers",
+    "apps.intake.demographics.set_intake_policy",
     "apps.intake.patient_access._actor_label",
     "apps.intake.patient_access.revoke_patient_access",
     "apps.intake.questionnaire_views._denied",
@@ -2926,6 +2990,7 @@
     "apps.intake.views.patient_access_view",
     "apps.intake.views.patient_contacts_view",
     "apps.intake.views.patient_create_view",
+    "apps.intake.views.patient_demographics_view",
     "apps.intake.views.patient_list_view",
     "apps.prescription.services._authorize_document_care",
     "apps.prescription.services._scope",

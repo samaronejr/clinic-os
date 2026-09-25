@@ -2378,3 +2378,186 @@ msgstr "Fechar aviso"
 
 msgid "1 result. Use the arrow keys to choose."
 msgstr "1 resultado. Use as setas para escolher."
+
+msgid "Accessibility needs"
+msgstr "Necessidades de acessibilidade"
+
+msgid "Add a document"
+msgstr "Adicionar um documento"
+
+msgid "Add document"
+msgstr "Adicionar documento"
+
+msgid "Changed fields"
+msgstr "Campos alterados"
+
+msgid "Choose a patient from the search to open their demographics. The patient is selected in the request body and never appears in the address bar."
+msgstr "Escolha um paciente na busca para abrir os dados demográficos. A seleção vai no corpo da requisição e nunca aparece na barra de endereço."
+
+msgid "Choose the document type."
+msgstr "Escolha o tipo de documento."
+
+msgid "Correction history"
+msgstr "Histórico de correções"
+
+msgid "Correction reason"
+msgstr "Motivo da correção"
+
+msgid "Demographics"
+msgstr "Dados demográficos"
+
+msgid "Demographics saved."
+msgstr "Dados demográficos salvos."
+
+msgid "Document number"
+msgstr "Número do documento"
+
+msgid "Document number (exact)"
+msgstr "Número do documento (exato)"
+
+msgid "Document number (optional)"
+msgstr "Número do documento (opcional)"
+
+msgid "Document recorded."
+msgstr "Documento registrado."
+
+msgid "Document removed from the record."
+msgstr "Documento removido do cadastro."
+
+msgid "Document type"
+msgstr "Tipo de documento"
+
+msgid "Enrollment"
+msgstr "Vínculo"
+
+msgid "Enter a name or a document number to search."
+msgstr "Digite um nome ou número de documento para buscar."
+
+msgid "Enter the complete document number for an exact match."
+msgstr "Digite o número completo do documento para uma correspondência exata."
+
+msgid "Female"
+msgstr "Feminino"
+
+msgid "Gender identity"
+msgstr "Identidade de gênero"
+
+msgid "Intersex"
+msgstr "Intersexo"
+
+msgid "Issuing body (optional)"
+msgstr "Órgão emissor (opcional)"
+
+msgid "Legal name"
+msgstr "Nome civil"
+
+msgid "Male"
+msgstr "Masculino"
+
+msgid "Man"
+msgstr "Homem"
+
+msgid "Names and identity"
+msgstr "Nomes e identidade"
+
+msgid "No documents recorded."
+msgstr "Nenhum documento registrado."
+
+msgid "No patient with that document in this clinic."
+msgstr "Nenhum paciente com esse documento nesta clínica."
+
+msgid "Non-binary"
+msgstr "Não binário"
+
+msgid "Not informed"
+msgstr "Não informado"
+
+msgid "Not recorded"
+msgstr "Não registrado"
+
+msgid "Number"
+msgstr "Número"
+
+msgid "Occupation"
+msgstr "Profissão"
+
+msgid "Open demographics"
+msgstr "Abrir dados demográficos"
+
+msgid "Optional. CPF or another identification document, exactly as printed."
+msgstr "Opcional. CPF ou outro documento de identificação, exatamente como impresso."
+
+msgid "Passport"
+msgstr "Passaporte"
+
+msgid "Paste the enrollment identifier from the patient search actions."
+msgstr "Cole o identificador do vínculo das ações da busca de pacientes."
+
+msgid "Patient demographics"
+msgstr "Dados demográficos do paciente"
+
+msgid "Patient demographics · Clinic OS"
+msgstr "Dados demográficos do paciente · Clinic OS"
+
+msgid "Preferred language"
+msgstr "Idioma preferido"
+
+msgid "Preferred name"
+msgstr "Nome preferido"
+
+msgid "Pronouns"
+msgstr "Pronomes"
+
+msgid "Recorded by staff"
+msgstr "Registrado pela equipe"
+
+msgid "Recorded corrections"
+msgstr "Correções registradas"
+
+msgid "Recorded documents"
+msgstr "Documentos registrados"
+
+msgid "Record version"
+msgstr "Versão do registro"
+
+msgid "Remove"
+msgstr "Remover"
+
+msgid "Removed"
+msgstr "Removido"
+
+msgid "Reported by patient"
+msgstr "Informado pelo paciente"
+
+msgid "Review and correct an enrolled patient's demographics, documents and contacts without exposing patient data in the address bar."
+msgstr "Revise e corrija dados demográficos, documentos e contatos de um paciente com vínculo sem expor dados do paciente na barra de endereço."
+
+msgid "Save demographics"
+msgstr "Salvar dados demográficos"
+
+msgid "Sex at birth"
+msgstr "Sexo ao nascer"
+
+msgid "Source"
+msgstr "Origem"
+
+msgid "The latest record was reported by the patient and is unverified."
+msgstr "O registro mais recente foi informado pelo paciente e não foi verificado."
+
+msgid "The name the patient uses socially, when different from the legal name."
+msgstr "O nome que o paciente usa socialmente, quando diferente do nome civil."
+
+msgid "This record changed since you opened it. Review the current values and save again."
+msgstr "Este registro mudou desde que você o abriu. Revise os valores atuais e salve novamente."
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "Woman"
+msgstr "Mulher"
+
+msgid "Another registration already uses this document. A reviewer will confirm whether they are the same patient."
+msgstr "Outro cadastro já usa este documento. Um revisor vai confirmar se é o mesmo paciente."
+
+msgid "Possible duplicate"
+msgstr "Possível duplicidade"

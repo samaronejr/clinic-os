@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Patient demographics · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Review and correct an enrolled patient's demographics, documents and contacts without exposing patient data in the address bar." %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="demographics-title">
+  <h1 id="demographics-title">{% trans "Patient demographics" %}</h1>
+  {% if overview is None %}
+  <p class="lede">{% trans "Choose a patient from the search to open their demographics. The patient is selected in the request body and never appears in the address bar." %}</p>
+  <form class="panel" method="post" action="{{ demographics_url }}">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="manage">
+    <div class="field">
+      <label for="id_enrollment_id">{% trans "Enrollment" %}</label>
+      <input type="text" name="enrollment_id" id="id_enrollment_id" required>
+      <p class="hint" id="demographics-enrollment-help">{% trans "Paste the enrollment identifier from the patient search actions." %}</p>
+    </div>
+    <div class="actions">
+      <button type="submit">{% trans "Open demographics" %}</button>
+      <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="panel" id="patient-demographics-panel">
+    <h2>{{ overview.display_name }}</h2>
+    {% if overview.source == "patient_reported" %}
+      <p class="feedback feedback--info" role="note">{% trans "The latest record was reported by the patient and is unverified." %}</p>
+    {% endif %}
+    {% for message in messages %}
+      <div class="feedback feedback--success" role="status"><p>{{ message }}</p></div>
+    {% endfor %}
+    {% if warning %}
+      <div class="feedback feedback--warning" role="status"><p>{{ warning }}</p></div>
+    {% endif %}
+    {% if error %}
+      <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus><p>{{ error }}</p></div>
+    {% endif %}
+    {% if form.errors %}
+      <div class="feedback feedback--error" role="alert"><p>{% trans "Check the highlighted fields and try again." %}</p></div>
+    {% endif %}
+    <dl>
+      <dt>{% trans "Legal name" %}</dt>
+      <dd>{{ overview.values.legal_name|default:"—" }}</dd>
+      <dt>{% trans "Record version" %}</dt>
+      <dd>{{ overview.version }}</dd>
+    </dl>
+    <form method="post" action="{{ demographics_url }}" data-auth-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save">
+      {{ form.enrollment_id }}
+      {{ form.expected_version }}
+      <fieldset>
+        <legend>{% trans "Names and identity" %}</legend>
+        {% for field in form.visible_fields %}
+          <div class="field{% if field.errors %} field--error{% endif %}">
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.errors %}<div class="field-errors" id="{{ field.auto_id }}_error">{% for field_error in field.errors %}<p class="field-error">{{ field_error }}</p>{% endfor %}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </fieldset>
+      <div class="actions">
+        <button type="submit">{% trans "Save demographics" %}</button>
+        <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>{% trans "Documents" %}</h2>
+    {% if overview.identifiers %}
+    <div class="table-scroll" role="region">
+      <table class="table">
+        <caption>{% trans "Recorded documents" %}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{% trans "Type" %}</th>
+            <th scope="col">{% trans "Number" %}</th>
+            <th scope="col">{% trans "Issuing body" %}</th>
+            <th scope="col">{% trans "State" %}</th>
+            <th scope="col">{% trans "Action" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for identifier in overview.identifiers %}
+          <tr>
+            <th scope="row">{{ identifier.kind|upper }}</th>
+            <td>{{ identifier.masked_value }}</td>
+            <td>{{ identifier.issuer|default:"—" }}</td>
+            <td>{% if identifier.retired %}{% trans "Removed" %}{% else %}{% trans "Active" %}{% endif %}</td>
+            <td>
+              {% if not identifier.retired %}
+              <form method="post" action="{{ demographics_url }}" data-auth-form>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="retire_identifier">
+                <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+                <input type="hidden" name="kind" value="{{ identifier.kind }}">
+                <input type="hidden" name="expected_version" value="{{ identifier.version }}">
+                <button class="button button--quiet" type="submit">{% trans "Remove" %}<span class="visually-hidden"> {{ identifier.kind|upper }}</span></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p>{% trans "No documents recorded." %}</p>
+    {% endif %}
+    <form method="post" action="{{ demographics_url }}" data-auth-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_identifier">
+      <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+      <fieldset>
+        <legend>{% trans "Add a document" %}</legend>
+        <div class="intake-search-fields">
+          <div class="field">
+            <label for="id_add_kind">{% trans "Document type" %}</label>
+            <select name="kind" id="id_add_kind" required>
+              <option value="cpf">CPF</option>
+              <option value="cns">CNS</option>
+              <option value="rg">RG</option>
+              <option value="passport">{% trans "Passport" %}</option>
+              <option value="other">{% trans "Other" %}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="id_add_value">{% trans "Document number" %}</label>
+            <input type="text" name="value" id="id_add_value" maxlength="64" required autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="id_add_issuer">{% trans "Issuing body (optional)" %}</label>
+            <input type="text" name="issuer" id="id_add_issuer" maxlength="255" autocomplete="off">
+          </div>
+        </div>
+        <div class="actions">
+          <button class="button button--secondary" type="submit">{% trans "Add document" %}</button>
+        </div>
+      </fieldset>
+    </form>
+  </div>
+
+  {% if overview.corrections %}
+  <div class="panel">
+    <h2>{% trans "Correction history" %}</h2>
+    <div class="table-scroll" role="region">
+      <table class="table">
+        <caption>{% trans "Recorded corrections" %}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{% trans "Version" %}</th>
+            <th scope="col">{% trans "Changed fields" %}</th>
+            <th scope="col">{% trans "Recorded by" %}</th>
+            <th scope="col">{% trans "Source" %}</th>
+            <th scope="col">{% trans "When" %}</th>
+            <th scope="col">{% trans "Reason" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for correction in overview.corrections %}
+          <tr>
+            <td>{{ correction.version }}</td>
+            <td>{{ correction.changed_fields|join:", " }}</td>
+            <td>{{ correction.actor_label }}</td>
+            <td>{% if correction.source == "patient_reported" %}{% trans "Reported by patient" %}{% else %}{% trans "Recorded by staff" %}{% endif %}</td>
+            <td>{{ correction.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>
+            <td>{{ correction.reason|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

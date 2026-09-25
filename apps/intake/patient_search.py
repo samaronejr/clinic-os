@@ -31,11 +31,17 @@ class PatientSearchInputError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class PatientSearchItem:
-    """Expose one body-only clinic enrollment search result."""
+    """Expose one body-only clinic enrollment search result.
+
+    ``display_name`` prefers the recorded social name (then legal name,
+    then the registry name) so staff surfaces greet the patient the way
+    the patient asked; ``full_name`` stays the legal registry name.
+    """
 
     enrollment_id: UUID
     full_name: str
     birth_date: date
+    display_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +95,7 @@ def search_patients(
             count_row = cursor.fetchone()
             total = 0 if count_row is None else int(count_row[0])
             cursor.execute(
-                "SELECT enrollment_id, full_name, birth_date "
+                "SELECT enrollment_id, full_name, birth_date, social_name "
                 "FROM clinic_app.patient_registry_page(%s, %s, %s, %s, %s, %s)",
                 [kek, str(clinic_id), normalized_query, birth_date, offset, PAGE_SIZE],
             )
@@ -99,8 +105,9 @@ def search_patients(
                 enrollment_id=enrollment_id,
                 full_name=full_name,
                 birth_date=stored_birth,
+                display_name=social_name or full_name,
             )
-            for enrollment_id, full_name, stored_birth in rows
+            for enrollment_id, full_name, stored_birth, social_name in rows
         )
         record_phase1_event(
             "intake.patient.searched",

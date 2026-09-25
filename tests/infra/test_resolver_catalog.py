@@ -46,6 +46,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("intake_patientchannelpreference", "SELECT"),
     ("intake_patientclinicenrollment", "SELECT"),
     ("intake_patientcontact", "SELECT"),
+    ("intake_patientdemographics", "SELECT"),
     ("intake_patientsession", "INSERT"),
     ("intake_patientsession", "SELECT"),
     ("intake_questionnaireevent", "INSERT"),

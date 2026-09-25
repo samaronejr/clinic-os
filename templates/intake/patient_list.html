@@ -12,6 +12,11 @@
         <h2>{% trans "Patient registered" %}</h2>
         <p>{{ message }}</p>
       </div>
+    {% elif "intake.patient.possible_duplicate" in message.tags %}
+      <div class="feedback feedback--warning" id="intake-possible-duplicate" role="status">
+        <h2>{% trans "Possible duplicate" %}</h2>
+        <p>{{ message }}</p>
+      </div>
     {% endif %}
   {% endfor %}
   <form class="panel intake-search" id="patient-search-form" method="post" action="{{ list_url }}"
@@ -30,6 +35,19 @@
         {{ form.birth_date }}
         <p class="hint" id="patient-search-birth-date-help">{% trans "Narrow same-name results using the recorded birth date." %}</p>
         {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+    </div>
+    <div class="intake-search-fields">
+      <div class="field{% if form.identifier_kind.errors %} field--error{% endif %}">
+        {{ form.identifier_kind.label_tag }}
+        {{ form.identifier_kind }}
+        {% if form.identifier_kind.errors %}<div class="field-errors" id="{{ form.identifier_kind.auto_id }}_error">{% for error in form.identifier_kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <div class="field{% if form.identifier_value.errors %} field--error{% endif %}">
+        {{ form.identifier_value.label_tag }}
+        {{ form.identifier_value }}
+        <p class="hint" id="patient-search-identifier-help">{% trans "Enter the complete document number for an exact match." %}</p>
+        {% if form.identifier_value.errors %}<div class="field-errors" id="{{ form.identifier_value.auto_id }}_error">{% for error in form.identifier_value.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
     </div>
     <input type="hidden" name="page" value="1">
