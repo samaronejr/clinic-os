@@ -32,7 +32,12 @@ def test_booking_preparation_exposes_active_windows_without_generating_slots(
     prepare_booking = getattr(services, "prepare_booking", None)
     assert callable(prepare_booking)
     parameters = signature(prepare_booking).parameters
-    assert list(parameters) == ["clinic_id", "enrollment_id"]
+    assert list(parameters) == [
+        "clinic_id",
+        "enrollment_id",
+        "service_type_id",
+        "resource_ids",
+    ]
     assert all(value.kind is Parameter.KEYWORD_ONLY for value in parameters.values())
 
     setup = seed_appointment_setup(rbac_graph)

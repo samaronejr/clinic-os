@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
 {% block title %}Configurações da clínica · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="settings-title">
   <p class="eyebrow">{{ clinic.name }} · Administração</p>
   <h1 id="settings-title">Configurações da clínica</h1>
+  <p><a class="button" href="{% url 'scheduling:resource-settings' clinic.pk %}">{% trans "Scheduling settings" %}</a></p>
   <p class="lede">Alterações valem somente para esta clínica. Documentos finalizados, assinaturas, consentimentos aceitos e lembretes já agendados permanecem inalterados.</p>
   <p role="note">Fuso horário: <strong>{{ clinic.timezone }}</strong>. A alteração continua exclusiva da operação controlada pelo titular, em clínica vazia. Esta tela não altera fuso, permissões, alertas ou auditoria.</p>
   <section class="panel" aria-labelledby="branding-title">

@@ -26,13 +26,18 @@ from apps.scheduling.appointment_transition_state import (
 )
 from apps.scheduling.appointment_values import (
     AppointmentLocalRange,
-    require_active_practitioner,
     validate_appointment_syntax,
 )
 from apps.scheduling.models import Appointment
 from apps.scheduling.patient_authority import (
-    authorized_appointment_clinic,
+    patient_booking_scope,
     record_appointment_event,
+)
+from apps.scheduling.resource_booking import (
+    authorized_transition_clinic,
+    booking_selection,
+    require_transition_practitioner,
+    validate_resource_window,
 )
 from apps.scheduling.timezones import parse_local_minute
 
@@ -83,7 +88,7 @@ def reschedule_appointment(
         discovered = discover_transition_appointment(appointment_id)
         target = transition_write_target(discovered)
         acquire_appointment_write_gates(target=target)
-        clinic = authorized_appointment_clinic(target.clinic_id)
+        clinic = authorized_transition_clinic(discovered)
         current = reload_transition_appointment(target, appointment_id)
         start_at, end_at = _parse_range(clinic, local_range)
         rows = lock_appointment_write_rows(
@@ -93,7 +98,7 @@ def reschedule_appointment(
             additional_ranges=((start_at, end_at),),
             appointment_ids=(appointment_id,),
         )
-        clinic = authorized_appointment_clinic(target.clinic_id)
+        clinic = authorized_transition_clinic(current)
         current = reload_transition_appointment(
             target,
             appointment_id,
@@ -102,7 +107,7 @@ def reschedule_appointment(
         start_at, end_at = _parse_range(clinic, local_range)
         if current.status != Appointment.Status.SCHEDULED:
             raise AppointmentTerminalError
-        require_active_practitioner(target.clinic_id, current.practitioner_id)
+        require_transition_practitioner(current)
         if len(rows.additional_availability) != 1:
             raise AppointmentAvailabilityError
         old_availability = rows.availability
@@ -122,6 +127,18 @@ def reschedule_appointment(
                 or availability.end_at < range_end
             ):
                 raise AppointmentAvailabilityError
+        if patient_booking_scope() is None:
+            validate_resource_window(
+                clinic=clinic,
+                practitioner_id=current.practitioner_id,
+                selection=booking_selection(
+                    clinic=clinic,
+                    service_type_id=current.service_type_id,
+                    resource_ids=tuple(current.resource_ids),
+                ),
+                interval=(start_at, end_at),
+                appointment_id=current.pk,
+            )
         if any(pk != current.pk for pk in rows.conflicting_appointment_ids):
             raise SlotConflict
         if current.start_at == start_at and current.end_at == end_at:

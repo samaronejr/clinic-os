@@ -11,6 +11,7 @@ from apps.scheduling.locks import (
     acquire_advisory_locks,
     clinic_lock_key,
     patient_lock_key,
+    resource_lock_keys,
     user_lock_keys,
 )
 from apps.scheduling.models import Appointment, AvailabilityBlock
@@ -41,18 +42,20 @@ class AppointmentWriteTarget:
     clinic_id: UUID
     patient_id: UUID
     practitioner_ids: tuple[UUID, ...]
+    resource_ids: tuple[UUID, ...] = ()
 
 
 def acquire_appointment_write_gates(
     *,
     target: AppointmentWriteTarget,
 ) -> None:
-    """Take clinic, organization-patient, then sorted practitioner gates."""
+    """Take clinic, practitioners, ordered resources, then patient gates."""
     acquire_advisory_locks((clinic_lock_key(target.clinic_id),))
+    acquire_advisory_locks(user_lock_keys(target.practitioner_ids))
+    acquire_advisory_locks(resource_lock_keys(target.resource_ids))
     acquire_advisory_locks(
         (patient_lock_key(target.organization_id, target.patient_id),)
     )
-    acquire_advisory_locks(user_lock_keys(target.practitioner_ids))
 
 
 def lock_appointment_write_rows(

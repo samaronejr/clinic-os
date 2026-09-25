@@ -8,8 +8,19 @@ SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
 APPOINTMENT_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
     {("scheduling_appointment", "organization_id")}
 )
+RESOURCE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
+    (f"scheduling_{table}", "organization_id")
+    for table in (
+        "resource",
+        "servicetype",
+        "availabilitytemplate",
+        "holiday",
+        "absence",
+        "appointmentresource",
+    )
+)
 ALL_SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = (
-    SCHEDULING_RLS_TARGETS | APPOINTMENT_RLS_TARGETS
+    SCHEDULING_RLS_TARGETS | APPOINTMENT_RLS_TARGETS | RESOURCE_RLS_TARGETS
 )
 
 # Posture registry declarations consumed by apps.tenancy.posture.
@@ -31,6 +42,12 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "scheduling_patientbookingevent": frozenset({"SELECT"}),
     "scheduling_waitlistentry": frozenset({"SELECT", "INSERT"}),
     "scheduling_waitlistoffer": frozenset({"SELECT", "INSERT"}),
+    "scheduling_resource": frozenset({"SELECT", "INSERT"}),
+    "scheduling_servicetype": frozenset({"SELECT", "INSERT"}),
+    "scheduling_availabilitytemplate": frozenset({"SELECT", "INSERT"}),
+    "scheduling_holiday": frozenset({"SELECT", "INSERT"}),
+    "scheduling_absence": frozenset({"SELECT", "INSERT"}),
+    "scheduling_appointmentresource": frozenset({"SELECT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
@@ -47,6 +64,11 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("scheduling_waitlistoffer", "appointment_id", "UPDATE"),
         ("scheduling_waitlistoffer", "responded_at", "UPDATE"),
         ("scheduling_waitlistoffer", "state", "UPDATE"),
+        ("scheduling_resource", "active", "UPDATE"),
+        ("scheduling_servicetype", "active", "UPDATE"),
+        ("scheduling_availabilitytemplate", "active", "UPDATE"),
+        ("scheduling_holiday", "active", "UPDATE"),
+        ("scheduling_absence", "active", "UPDATE"),
     }
 )
 

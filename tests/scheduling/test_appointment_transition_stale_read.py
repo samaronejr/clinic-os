@@ -69,7 +69,7 @@ def test_reschedule_reloads_terminal_state_changed_before_patient_gate(
     worker[0].join(timeout=10)
 
     assert not worker[0].is_alive()
-    assert lock_state == (1, 1)
+    assert lock_state == (2, 1)
     assert isinstance(worker[2].get_nowait(), AppointmentTerminalError)
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
         appointment.refresh_from_db()
