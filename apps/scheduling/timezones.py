@@ -39,6 +39,11 @@ CLINIC_DEPENDENCY_QUERIES: Final = (
         "clinic_app.scheduling_availabilityblock WHERE clinic_id = %s)",
     ),
     (
+        "clinic_app.scheduling_availabilitytemplate",
+        "SELECT EXISTS (SELECT 1 FROM "
+        "clinic_app.scheduling_availabilitytemplate WHERE clinic_id = %s)",
+    ),
+    (
         "clinic_app.scheduling_appointment",
         "SELECT EXISTS (SELECT 1 FROM "
         "clinic_app.scheduling_appointment WHERE clinic_id = %s)",

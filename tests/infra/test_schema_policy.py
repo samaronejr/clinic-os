@@ -247,6 +247,11 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     }
     assert user_grants == []
     assert tenant_column_updates == {
+        ("scheduling_resource", "active"),
+        ("scheduling_servicetype", "active"),
+        ("scheduling_availabilitytemplate", "active"),
+        ("scheduling_holiday", "active"),
+        ("scheduling_absence", "active"),
         ("comms_integrationoperation", "attempt_count"),
         ("comms_integrationoperation", "last_callback_event_id"),
         ("comms_integrationoperation", "last_error"),

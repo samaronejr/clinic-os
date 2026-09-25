@@ -31,8 +31,9 @@ def _lock_order(key: str) -> tuple[int, bytes]:
     domains = (
         "clinic-lock-v1:identity-",
         "clinic-lock-v1:clinic:",
-        "clinic-lock-v1:patient:",
         "clinic-lock-v1:user:",
+        "clinic-lock-v1:resource:",
+        "clinic-lock-v1:patient:",
     )
     for index, prefix in enumerate(domains):
         if key.startswith(prefix) and len(key) > len(prefix):
@@ -66,6 +67,11 @@ def patient_lock_key(organization_id: UUID, patient_id: UUID) -> str:
 def user_lock_keys(user_ids: Iterable[UUID]) -> tuple[str, ...]:
     """Return unique target/practitioner gates in UUID order."""
     return tuple(f"clinic-lock-v1:user:{user_id}" for user_id in sorted(set(user_ids)))
+
+
+def resource_lock_keys(resource_ids: Iterable[UUID]) -> tuple[str, ...]:
+    """Return unique resource gates in UUID order, before the patient gate."""
+    return tuple(f"clinic-lock-v1:resource:{pk}" for pk in sorted(set(resource_ids)))
 
 
 def acquire_advisory_locks(keys: Iterable[str]) -> None:

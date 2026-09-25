@@ -10,10 +10,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
 
+from django import forms
 from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
@@ -22,6 +24,10 @@ from apps.scheduling.agenda_presenter import (
     agenda_screen,
     agenda_url,
     booking_window_rows,
+)
+from apps.scheduling.appointment_creation import (
+    ServiceBooking,
+    create_service_appointment,
 )
 from apps.scheduling.appointment_forms import (
     BOOKED_MESSAGE,
@@ -34,6 +40,10 @@ from apps.scheduling.appointment_forms import (
     AppointmentPrepareForm,
 )
 from apps.scheduling.availability_presenter import manager_choices
+from apps.scheduling.forms import BLANK_CHOICE
+from apps.scheduling.models import Resource, ServiceType
+from apps.scheduling.resource_booking import service_practitioners
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
@@ -110,6 +120,31 @@ def _body_enrollment(raw: object) -> UUID:
         raise Http404 from error
 
 
+def _configure_resources(form: AppointmentCreateForm, clinic_id: UUID) -> None:
+    form.configure_resources(
+        [
+            (str(row.pk), f"{row.name} ({row.duration_min} min)")
+            for row in ServiceType.objects.filter(
+                clinic_id=clinic_id, active=True
+            ).order_by("name", "pk")
+        ],
+        [
+            (str(row.pk), row.name)
+            for row in Resource.objects.filter(
+                clinic_id=clinic_id, active=True
+            ).order_by("name", "pk")
+        ],
+    )
+
+    practitioner = form.fields["practitioner"]
+    if form.has_service_types and isinstance(practitioner, forms.ChoiceField):
+        practitioner.label = _("Professional")
+        practitioner.choices = [
+            BLANK_CHOICE,
+            *((str(pk), label) for pk, label in service_practitioners(clinic_id)),
+        ]
+
+
 def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     form = AppointmentPrepareForm(data=request.POST)
     if not form.is_valid():
@@ -117,20 +152,41 @@ def _prepared(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     enrollment_id = form.selected_enrollment()
     preparation = prepare_booking(clinic_id=clinic_id, enrollment_id=enrollment_id)
     blank = AppointmentCreateForm(_choices(preparation))
+    _configure_resources(blank, clinic_id)
     blank.initial["enrollment_id"] = str(enrollment_id)
     blank.initial["idempotency_key"] = str(uuid4())
     return _render_booking(request, _booking_context(clinic_id, preparation, blank))
 
 
 def _booked(form: AppointmentCreateForm, clinic_id: UUID) -> bool:
+    service_id = form.cleaned_data["service_type_id"]
+    if service_id is None and form.cleaned_data["resource_ids"]:
+        form.add_error(None, INVALID_BOOKING_MESSAGE)
+        return False
     try:
-        create_appointment(
-            clinic_id=clinic_id,
-            enrollment_id=form.selected_enrollment(),
-            practitioner_id=form.selected_practitioner(),
-            local_range=form.local_range(),
-            idempotency_key=form.cleaned_data["idempotency_key"],
-        )
+        if service_id is not None:
+            create_service_appointment(
+                clinic_id=clinic_id,
+                enrollment_id=form.selected_enrollment(),
+                practitioner_id=form.selected_practitioner(),
+                booking=ServiceBooking(
+                    form.local_range(),
+                    service_id,
+                    tuple(UUID(pk) for pk in form.cleaned_data["resource_ids"]),
+                ),
+                idempotency_key=form.cleaned_data["idempotency_key"],
+            )
+        else:
+            create_appointment(
+                clinic_id=clinic_id,
+                enrollment_id=form.selected_enrollment(),
+                practitioner_id=form.selected_practitioner(),
+                local_range=form.local_range(),
+                idempotency_key=form.cleaned_data["idempotency_key"],
+            )
+    except SchedulingRuleError as error:
+        form.rule_code = error.code
+        form.add_error(None, str(error.message))
     except AppointmentIdempotencyConflictError:
         form.add_error(None, CONFLICTING_BOOKING_KEY_MESSAGE)
     except SlotConflict:
@@ -172,6 +228,7 @@ def _booked_response(
 
 def _created(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     form = AppointmentCreateForm(manager_choices(clinic_id), request.POST)
+    _configure_resources(form, clinic_id)
     if form.is_valid() and _booked(form, clinic_id):
         return _booked_response(request, clinic_id, form.local_range().start_local[:10])
     enrollment_id = _body_enrollment(form.data.get("enrollment_id", ""))

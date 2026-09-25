@@ -2468,6 +2468,90 @@
       "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
     },
     {
+      "symbol": "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle",
+      "signals": ["tenant_boundary"],
+      "kind": "v2",
+      "reason": "Todo 21 explicit-date job establishes a validated tenant context; command replay and authorization are exercised in tests/scheduling/test_resource_authority.py."
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.authorized_service_clinic",
+      "signals": ["denial", "scope_name"],
+      "kind": "v2",
+      "reason": "Todo 21 service-booking permission boundary, tested with real clinic_app roles in tests/scheduling/test_resource_authority.py; legacy create authority remains unchanged."
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.authorized_transition_clinic",
+      "signals": ["denial", "scope_name"],
+      "kind": "v2",
+      "reason": "Todo 21 service transition permission boundary with legacy and patient delegation; own/staff/patient transitions are exercised in test_resource_authority.py and test_resource_http.py."
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.require_transition_practitioner",
+      "signals": ["scope_name"],
+      "kind": "v2",
+      "reason": "Todo 21 rechecks service professional eligibility and delegates legacy/patient practitioner authority; covered by resource authority and transition tests."
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.service_practitioners",
+      "signals": ["resolver"],
+      "kind": "v2",
+      "reason": "Permission- and clinic-scoped v2 professional projection; real-role and nurse-template tests are in tests/scheduling/test_resource_authority.py."
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.booking_selection",
+      "signals": ["denial"],
+      "kind": "data_operation",
+      "reason": "Validates immutable service/resource selectors inside an already authorized clinic; test_resource_rules.py proves identical unknown/foreign denial."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services.configuration_clinic",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "Todo 21 scheduling configuration permission boundary; exact role matrix and narrowing are tested in test_resource_authority.py and enforced independently in PostgreSQL."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services.create_template",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "New template publication uses the v2 configuration boundary and rejects unavailable clinic timezone/subjects; real-service coverage is in the resource suites."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services._subject",
+      "signals": ["denial", "resolver"],
+      "kind": "data_operation",
+      "reason": "Resolves active resource/professional subjects only within the authorized configuration clinic; it does not grant an additional role."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services.create_closure",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "New holiday/absence command uses the v2 configuration boundary; clinic, subject and overlap checks are exercised in test_resource_rules.py and test_resource_http.py."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services._template",
+      "signals": ["denial"],
+      "kind": "data_operation",
+      "reason": "Opaque clinic-bound template lookup after configuration authority; unknown and foreign records cannot escape the supplied authorized clinic."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services.retire_definition",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "New one-way definition retirement command uses the v2 configuration boundary; terminal replay, foreign selectors and occupied templates are covered by resource tests."
+    },
+    {
+      "symbol": "apps.scheduling.resource_services.require_open_window",
+      "signals": ["scope_name"],
+      "kind": "data_operation",
+      "reason": "Temporal holiday/absence predicate after booking authority, not a role grant; database and stale-slot refusal tests independently exercise it."
+    },
+    {
+      "symbol": "apps.scheduling.resource_views.resource_settings",
+      "signals": ["decorator"],
+      "kind": "v2",
+      "reason": "Todo 21 native Settings route uses privileged TOTP and the new configuration permission boundary; HTTP tests and clinic-settings browser journeys exercise the real surface."
+    },
+    {
       "symbol": "apps.scheduling.transition_views.appointment_reschedule_view",
       "signals": [
         "decorator"

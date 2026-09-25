@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def test_create_takes_patient_gate_before_practitioner_gate(
+def test_create_takes_practitioner_gate_before_patient_gate(
     rbac_graph: RbacGraph,
 ) -> None:
     setup = seed_appointment_setup(rbac_graph)
@@ -57,7 +57,7 @@ def test_create_takes_patient_gate_before_practitioner_gate(
     thread.join(timeout=10)
 
     assert not thread.is_alive()
-    assert lock_state == (2, 1)
+    assert lock_state == (1, 1)
     assert isinstance(outcomes.get_nowait(), Appointment)
 
 

@@ -37,6 +37,7 @@ from apps.scheduling.appointment_forms import (
     AppointmentRescheduleForm,
 )
 from apps.scheduling.models import Appointment
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
@@ -141,6 +142,8 @@ def _rescheduled(form: AppointmentRescheduleForm, appointment_id: UUID) -> bool:
             appointment_id=appointment_id,
             local_range=form.local_range(),
         )
+    except SchedulingRuleError as error:
+        form.add_error(None, str(error.message))
     except AppointmentTerminalError:
         form.add_error(None, TERMINAL_MESSAGE)
     except SlotConflict:

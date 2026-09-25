@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -194,3 +195,107 @@ def test_settings_native_publication_isolation_and_rejection(
     expect(physician.locator('[data-module="settings"]')).to_have_count(0)
     capture(physician, renewal_artifact_root, "physician-denied", width)
     physician_context.close()
+
+
+def _publish_scheduling_resource(page: Page, width: int) -> str:
+    form = page.locator('[data-resource-form="resource"]')
+    form.locator("#id_resource-name").fill(f"Sintetico sala {width}")
+    form.locator("#id_resource-kind").select_option("room")
+    form.locator("#id_resource-capacity").fill("1")
+    submit(page, "resource")
+    row = page.locator('[data-definition-kind="resource"]').filter(
+        has_text=f"Sintetico sala {width}"
+    )
+    expect(row).to_have_attribute("data-active", "true")
+    return str(row.locator('input[name="retire-record_id"]').input_value())
+
+
+def _scheduling_a11y(page: Page, base: str, root: Path, width: int) -> None:
+    with page.expect_response(f"{base}/static/vendor/axe/axe.min.js"):
+        page.add_script_tag(url=f"{base}/static/vendor/axe/axe.min.js")
+    violations = page.evaluate("async () => (await axe.run(document)).violations")
+    destination = root / "clinic-settings"
+    destination.mkdir(exist_ok=True)
+    (destination / f"resources-axe-{width}.json").write_text(
+        json.dumps(violations, ensure_ascii=False), encoding="utf-8"
+    )
+    assert violations == []
+    small = page.locator("[data-resource-settings]").evaluate("""root =>
+      Array.from(root.querySelectorAll('a,button,input:not([type=hidden]),select'))
+      .filter(el => !el.disabled && el.getClientRects().length)
+      .filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.width < 44 || r.height < 44;
+      }).map(el => el.id || el.name)
+    """)
+    assert small == []
+    capture(page, root, "resources", width)
+
+
+@pytest.mark.parametrize("width", [320, 375, 1280])
+def test_resource_settings_native_generation_and_accessibility(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    width: int,
+) -> None:
+    staff = availability_staff
+    manager = seed_settings_manager(staff)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        viewport={"width": width, "height": 900},
+        timezone_id="Asia/Tokyo",
+        locale="pt-BR",
+    )
+    page = context.new_page()
+    sign_in_manager(page, renewal_base_url, staff, manager)
+    page.goto(f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/")
+    with page.expect_navigation():
+        page.locator(
+            f'a[href="/scheduling/clinics/{staff["clinic_a"]}/settings/"]'
+        ).click()
+    room = _publish_scheduling_resource(page, width)
+    form = page.locator('[data-resource-form="template"]')
+    form.locator("#id_template-resource_id").select_option(room)
+    form.locator("#id_template-weekdays").select_option("5")
+    form.locator("#id_template-start_local").fill("08:00")
+    form.locator("#id_template-end_local").fill("12:00")
+    form.locator("#id_template-valid_from").fill("2035-06-02")
+    form.locator("#id_template-valid_to").fill("2035-06-02")
+    submit(page, "template")
+    form = page.locator('[data-resource-form="generate"]')
+    template_id = (
+        form.locator("#id_generate-template_id option")
+        .filter(has_text=f"Sintetico sala {width}")
+        .get_attribute("value")
+    )
+    assert template_id is not None
+    form.locator("#id_generate-template_id").select_option(template_id)
+    form.locator("#id_generate-start_date").fill("2035-06-02")
+    form.locator("#id_generate-end_date").fill("2035-06-02")
+    submit(page, "generate")
+    expect(page.locator("[data-resource-settings]")).to_be_visible()
+    _scheduling_a11y(page, renewal_base_url, renewal_artifact_root, width)
+    context.close()
+
+
+def test_resource_settings_without_javascript(
+    renewal_page: Page,
+    renewal_base_url: str,
+    availability_staff: dict[str, str],
+) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        java_script_enabled=False,
+        viewport={"width": 375, "height": 900},
+        locale="pt-BR",
+    )
+    page = context.new_page()
+    staff = availability_staff
+    sign_in_manager(page, renewal_base_url, staff, seed_settings_manager(staff))
+    page.goto(f"{renewal_base_url}/scheduling/clinics/{staff['clinic_a']}/settings/")
+    _publish_scheduling_resource(page, 376)
+    context.close()

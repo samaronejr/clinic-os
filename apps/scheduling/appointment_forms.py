@@ -102,6 +102,12 @@ class AppointmentPrepareForm(forms.Form):
 class AppointmentCreateForm(forms.Form):
     """Collect one idempotent explicit clinic-local booking from the body."""
 
+    rule_code = ""
+    has_service_types = False
+    service_type_id = forms.UUIDField(
+        label=_("Service type (optional)"), required=False, widget=forms.Select()
+    )
+    resource_ids = forms.MultipleChoiceField(label=_("Resources"), required=False)
     enrollment_id = forms.UUIDField(widget=forms.HiddenInput())
     practitioner = forms.ChoiceField(label=_("Physician"))
     start_local = LocalMinuteField(label=_("Starts (clinic local)"))
@@ -124,6 +130,18 @@ class AppointmentCreateForm(forms.Form):
         """Connect bound field errors to their rendered descriptions."""
         super().full_clean()
         bind_error_descriptions(self, BOOKING_DESCRIPTIONS)
+
+    def configure_resources(
+        self, services: Sequence[tuple[str, str]], resources: Sequence[tuple[str, str]]
+    ) -> None:
+        """Bind only definitions already authorized by the booking view."""
+        self.has_service_types = bool(services)
+        service_widget = self.fields["service_type_id"].widget
+        if isinstance(service_widget, forms.Select):
+            service_widget.choices = [BLANK_CHOICE, *services]
+        resource_field = self.fields["resource_ids"]
+        if isinstance(resource_field, forms.MultipleChoiceField):
+            resource_field.choices = resources
 
     def selected_practitioner(self) -> UUID:
         """Return the resolver-approved practitioner the body selected."""

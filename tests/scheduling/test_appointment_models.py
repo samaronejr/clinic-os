@@ -11,6 +11,10 @@ def test_appointment_exposes_only_the_phase1a_schema_contract() -> None:
     assert appointment_model is not None
     assert issubclass(appointment_model, TenantScopedModel)
     assert {field.name for field in appointment_model._meta.fields} == {
+        "buffer_before",
+        "buffer_after",
+        "service_type",
+        "resource_ids",
         "cancelled_at",
         "cancellation_reason",
         "clinic",

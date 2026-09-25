@@ -53,6 +53,67 @@ waitlist-offer delivery; real messaging remains blocked by independent approvals
 The registered `waitlist` browser suite exercises cancel/offer/accept/FIFO,
 expired/replayed/stale offers, scope denial, and native responsive journeys.
 
+## Resources, services and calendar definitions
+
+Scheduling Settings is linked from clinic Settings at
+`/scheduling/clinics/<clinic>/settings/`. Native, no-store forms publish resources,
+service types, weekly templates, holidays and absences; selectors stay in POST
+bodies. Scheduler, reception and clinic-manager booking permissions authorize
+configuration, as does organization configuration authority. Remove-only permission
+grants are rechecked. Physician booking authority is limited to their own schedule;
+new service bookings also support nurse/allied practitioners when the service's
+required professional roles permit them. Legacy physician-only entrypoints retain
+their existing authority and exclusion semantics.
+
+`prepare_booking(*, clinic_id, enrollment_id, service_type_id=None, resource_ids=())`
+returns scoped availability and selected duration/buffer metadata.
+`create_service_appointment(*, clinic_id, enrollment_id, practitioner_id, booking,
+idempotency_key)` takes `ServiceBooking(local_range, service_type_id, resource_ids)`.
+It shares the legacy `create_appointment` write path, without changing that public
+signature or old fingerprints. Service/resource selection participates in the new
+fingerprint and is immutable after booking. Move and cancel keep those bindings;
+cancellation releases occupancy without deleting reservation history.
+
+A resource represents 1-64 interchangeable units of a room, equipment or location.
+A database-owned trigger allocates the lowest free unit. `AppointmentResource`
+excludes overlapping `[start,end)` effective intervals per `(resource, unit)`;
+runtime callers can only read these rows. Capacity is therefore enforced even
+without Python prechecks. Service buffers also have a separate practitioner
+exclusion; the original practitioner and patient exclusions are unchanged. The
+shared advisory order is identity, clinic, practitioner/user, resource UUIDs, then
+patient. Availability and appointment row locks follow. Clinic row share/exclusive
+locks serialize calendar-definition changes against direct SQL booking writes.
+
+Definitions are immutable except one-way `active -> retired`. Service duration is
+1-720 minutes, each buffer 0-240 minutes. `insurer_billable` and `price_ref` are
+configuration metadata, not a charge or payer authorization. A template has one
+local interval, selected weekdays (Monday=0), inclusive validity dates, exactly one
+practitioner/resource and a captured clinic timezone. Multiple daily intervals use
+separate templates. Template creation freezes clinic timezone before any generation.
+
+The explicit-date `generate_availability` job creates concrete `AvailabilityBlock`
+rows keyed by `(template_id, generated_date)`, with deterministic idempotency UUIDs.
+It is atomic, retryable, bounded to 366 date steps, and never depends on a timer or
+current time. DST gaps/folds are refused, not silently resolved. Settings invokes the
+same job; unattended callers can use `manage.py generate_scheduling_availability`
+with `--user-id --organization-id --clinic-id --template-id --start-date --end-date`
+on the ordinary runtime connection. These are trusted execution bindings, not a
+service-level actor override; revoked permission still refuses the job.
+
+Closures use closed, non-clinical reason codes. A holiday/absence overlapping an
+existing occupied appointment is refused; it never silently invalidates or cancels
+that booking. Occupied generated templates cannot be retired. Service failures expose
+`resource_conflict`, `outside_template`, `holiday` or `buffer_violation` with pt-BR
+messages; unknown and foreign selectors share the same denial. Patient free-slot
+projections also exclude holidays, absences, retired templates and practitioner
+buffers, and submission independently rechecks the database rules.
+
+Migration `0005_resources_templates` is additive. Empty-schema reverse/forward is
+supported; downgrade refuses once any new definition is populated, rather than
+losing history. After rollout, rollback is a restore, not hard deletion. Todo 22
+owns lifecycle widening; capacity guards already name `{held, scheduled, arrived,
+in_progress}` while the existing appointment lifecycle constraints remain unchanged.
+
 ## Appointment reminders
 
 Booking (including patient and waitlist booking) atomically schedules eligible

@@ -30,6 +30,7 @@ from apps.scheduling.models import (
     WaitlistOffer,
 )
 from apps.scheduling.patient_authority import require_patient_booking_scope
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAvailabilityError,
     AppointmentCreateInputError,
@@ -297,6 +298,7 @@ def respond_to_offer(offer_id: UUID, *, accept: bool) -> WaitlistOffer:
         except _ExpiredDuringBookingError:
             return _finish(offer, "expired", "expired")
         except (
+            SchedulingRuleError,
             SlotConflict,
             AppointmentAvailabilityError,
             AppointmentPractitionerError,

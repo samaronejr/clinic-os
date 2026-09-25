@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, TypedDict
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import (
+    ArrayField,
     DateTimeRangeField,
     RangeBoundary,
     RangeOperators,
@@ -18,10 +19,33 @@ from django.utils import timezone
 
 from apps.identity.models import Clinic
 from apps.intake.models import Patient
+from apps.scheduling.resource_models import (
+    Absence,
+    AppointmentResource,
+    AvailabilityTemplate,
+    Holiday,
+    Resource,
+    ServiceType,
+)
 from apps.tenancy.models import TenantScopedModel
 
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint
+
+
+__all__ = (
+    "Absence",
+    "Appointment",
+    "AppointmentResource",
+    "AvailabilityBlock",
+    "AvailabilityTemplate",
+    "Holiday",
+    "PatientBookingEvent",
+    "Resource",
+    "ServiceType",
+    "WaitlistEntry",
+    "WaitlistOffer",
+)
 
 
 class _NullableReasonOptions(TypedDict):
@@ -36,14 +60,23 @@ _NULLABLE_REASON_OPTIONS: Final[_NullableReasonOptions] = {
 
 
 class AvailabilityBlock(TenantScopedModel):
-    """One immutable UTC interval a practitioner promises to one clinic."""
+    """One immutable UTC interval a practitioner or resource promises."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
     practitioner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
     )
+    resource = models.ForeignKey(
+        Resource, on_delete=models.PROTECT, null=True, blank=True
+    )
+    template = models.ForeignKey(
+        AvailabilityTemplate, on_delete=models.PROTECT, null=True, blank=True
+    )
+    generated_date = models.DateField(null=True, blank=True)
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     idempotency_key = models.UUIDField()
@@ -59,6 +92,37 @@ class AvailabilityBlock(TenantScopedModel):
             models.UniqueConstraint(
                 fields=("organization", "idempotency_key"),
                 name="scheduling_availability_org_idempotency_uniq",
+            ),
+            models.CheckConstraint(
+                condition=Q(practitioner__isnull=False, resource__isnull=True)
+                | Q(practitioner__isnull=True, resource__isnull=False),
+                name="scheduling_availability_subject",
+            ),
+            models.CheckConstraint(
+                condition=Q(template__isnull=True, generated_date__isnull=True)
+                | Q(template__isnull=False, generated_date__isnull=False),
+                name="scheduling_availability_generation",
+            ),
+            models.UniqueConstraint(
+                fields=("template", "generated_date"),
+                name="scheduling_template_date_uniq",
+            ),
+            ExclusionConstraint(
+                name="scheduling_availability_resource_excl",
+                expressions=(
+                    ("resource", RangeOperators.EQUAL),
+                    (
+                        models.Func(
+                            "start_at",
+                            "end_at",
+                            RangeBoundary(),
+                            function="TSTZRANGE",
+                            output_field=DateTimeRangeField(),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ),
+                condition=Q(retired_at__isnull=True),
             ),
             models.UniqueConstraint(
                 fields=("organization", "clinic", "id"),
@@ -131,6 +195,18 @@ class Appointment(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
+    service_type = models.ForeignKey(
+        ServiceType, on_delete=models.PROTECT, null=True, blank=True
+    )
+    resource_ids = ArrayField(
+        models.UUIDField(), default=list, db_default=[], blank=True
+    )
+    buffer_before = models.PositiveSmallIntegerField(
+        default=0, db_default=0, editable=False
+    )
+    buffer_after = models.PositiveSmallIntegerField(
+        default=0, db_default=0, editable=False
+    )
     practitioner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -164,6 +240,24 @@ class Appointment(TenantScopedModel):
             models.UniqueConstraint(
                 fields=("organization", "clinic", "id"),
                 name="scheduling_appointment_org_clinic_id_uniq",
+            ),
+            ExclusionConstraint(
+                name="scheduling_z_buffer_practitioner_excl",
+                expressions=(
+                    ("practitioner", RangeOperators.EQUAL),
+                    (
+                        models.Func(
+                            "start_at",
+                            "end_at",
+                            "buffer_before",
+                            "buffer_after",
+                            function="clinic_app.scheduling_effective_interval",
+                            output_field=DateTimeRangeField(),
+                        ),
+                        RangeOperators.OVERLAPS,
+                    ),
+                ),
+                condition=Q(status__in=["held", "scheduled", "arrived", "in_progress"]),
             ),
             ExclusionConstraint(
                 name="scheduling_appointment_scheduled_practitioner_excl",

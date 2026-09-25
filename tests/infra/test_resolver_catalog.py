@@ -66,6 +66,13 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("retention_recordexport", "SELECT"),
     ("retention_recordrelease", "SELECT"),
     ("retention_retentionpolicy", "SELECT"),
+    ("scheduling_resource", "SELECT"),
+    ("scheduling_servicetype", "SELECT"),
+    ("scheduling_availabilitytemplate", "SELECT"),
+    ("scheduling_holiday", "SELECT"),
+    ("scheduling_absence", "SELECT"),
+    ("scheduling_appointmentresource", "SELECT"),
+    ("scheduling_appointmentresource", "INSERT"),
     ("scheduling_appointment", "SELECT"),
     ("scheduling_availabilityblock", "SELECT"),
     ("scheduling_patientbookingevent", "INSERT"),
@@ -82,12 +89,20 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("comms_integrationoperation", "last_error", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
     ("comms_integrationoperation", "updated_at", "UPDATE"),
+    ("identity_clinic", "id", "UPDATE"),
     ("identity_user", "id", "SELECT"),
     ("identity_user", "username", "SELECT"),
     ("intake_patientaccessgrant", "consumed_at", "UPDATE"),
     ("intake_patientsession", "idle_expires_at", "UPDATE"),
     ("intake_patientsession", "revoked_at", "UPDATE"),
     ("scheduling_availabilityblock", "id", "UPDATE"),
+    ("scheduling_availabilityblock", "retired_at", "UPDATE"),
+    ("scheduling_availabilityblock", "updated_at", "UPDATE"),
+    ("scheduling_resource", "id", "UPDATE"),
+    ("scheduling_appointmentresource", "start_at", "UPDATE"),
+    ("scheduling_appointmentresource", "end_at", "UPDATE"),
+    ("scheduling_appointmentresource", "unit", "UPDATE"),
+    ("scheduling_appointmentresource", "occupied", "UPDATE"),
     ("teleconsult_teleconsultsession", "ended_at", "UPDATE"),
     ("teleconsult_teleconsultsession", "failure_reason", "UPDATE"),
     ("teleconsult_teleconsultsession", "revision", "UPDATE"),
@@ -95,6 +110,9 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "scheduling_definition_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_capacity_guard": ("v", False, ["clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),
@@ -199,6 +217,10 @@ POSTURE_OVERRIDES: Final = {
     "waitlist_binding": ("v", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
+    ("scheduling_definition_guard", ""),
+    ("scheduling_generated_block_guard", ""),
+    ("scheduling_capacity_guard", ""),
+    ("scheduling_service_practitioners", "requested_clinic uuid"),
     ("auth_lookup", "requested_username text"),
     ("billing_immutable", ""),
     ("billing_invoice_guard", ""),
@@ -336,6 +358,13 @@ FUNCTION_SIGNATURES: Final = {
     ("waitlist_staff", "requested_clinic uuid"),
 }
 FUNCTION_RESULTS: Final = {
+    ("scheduling_definition_guard", ""): "trigger",
+    ("scheduling_generated_block_guard", ""): "trigger",
+    ("scheduling_capacity_guard", ""): "trigger",
+    (
+        "scheduling_service_practitioners",
+        "requested_clinic uuid",
+    ): "TABLE(user_id uuid, display_label text)",
     ("auth_lookup", "requested_username text"): (
         "TABLE(id uuid, username character varying, "
         "password character varying, is_active boolean)"

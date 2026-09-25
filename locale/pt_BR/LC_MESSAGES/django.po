@@ -2378,3 +2378,186 @@ msgstr "Fechar aviso"
 
 msgid "1 result. Use the arrow keys to choose."
 msgstr "1 resultado. Use as setas para escolher."
+
+msgid "Scheduling settings"
+msgstr "Configurações de agendamento"
+
+msgid "Room"
+msgstr "Sala"
+
+msgid "Equipment"
+msgstr "Equipamento"
+
+msgid "Location"
+msgstr "Local"
+
+msgid "Resource"
+msgstr "Recurso"
+
+msgid "Resources"
+msgstr "Recursos"
+
+msgid "Resource kind"
+msgstr "Tipo de recurso"
+
+msgid "Name"
+msgstr "Nome"
+
+msgid "Capacity"
+msgstr "Capacidade"
+
+msgid "Service types"
+msgstr "Tipos de atendimento"
+
+msgid "Service type (optional)"
+msgstr "Tipo de atendimento (opcional)"
+
+msgid "Duration (minutes)"
+msgstr "Duração (minutos)"
+
+msgid "Buffer before (minutes)"
+msgstr "Intervalo antes (minutos)"
+
+msgid "Buffer after (minutes)"
+msgstr "Intervalo depois (minutos)"
+
+msgid "Required professional roles"
+msgstr "Categorias profissionais exigidas"
+
+msgid "Required resource kinds"
+msgstr "Tipos de recurso exigidos"
+
+msgid "Nurse"
+msgstr "Enfermeiro"
+
+msgid "Allied professional"
+msgstr "Profissional de saúde"
+
+msgid "Insurer billable"
+msgstr "Faturável ao convênio"
+
+msgid "Price reference"
+msgstr "Referência de preço"
+
+msgid "Not selected"
+msgstr "Não selecionado"
+
+msgid "Availability template"
+msgstr "Modelo de disponibilidade"
+
+msgid "Availability templates"
+msgstr "Modelos de disponibilidade"
+
+msgid "Weekdays"
+msgstr "Dias da semana"
+
+msgid "Valid from"
+msgstr "Válido a partir de"
+
+msgid "Valid to"
+msgstr "Válido até"
+
+msgid "Holiday"
+msgstr "Feriado"
+
+msgid "Holidays"
+msgstr "Feriados"
+
+msgid "Clinic closure"
+msgstr "Fechamento da clínica"
+
+msgid "Maintenance"
+msgstr "Manutenção"
+
+msgid "Absences"
+msgstr "Ausências"
+
+msgid "Holidays and absences"
+msgstr "Feriados e ausências"
+
+msgid "Generate from"
+msgstr "Gerar a partir de"
+
+msgid "Generate through"
+msgstr "Gerar até"
+
+msgid "Generate availability"
+msgstr "Gerar disponibilidade"
+
+msgid "Publish definition"
+msgstr "Publicar definição"
+
+msgid "Published definitions"
+msgstr "Definições publicadas"
+
+msgid "Retire"
+msgstr "Desativar"
+
+msgid "Retired"
+msgstr "Desativado"
+
+msgid "minutes"
+msgstr "minutos"
+
+msgid "No definitions published yet."
+msgstr "Nenhuma definição publicada ainda."
+
+msgid "Scheduling settings saved."
+msgstr "Configurações de agendamento salvas."
+
+msgid "Saving scheduling settings..."
+msgstr "Salvando configurações de agendamento..."
+
+msgid "Definitions are immutable. Retire a definition and publish a replacement; existing bookings keep their history."
+msgstr "As definições são imutáveis. Desative uma definição e publique sua substituta; os agendamentos existentes mantêm o histórico."
+
+msgid "A resource is bookable only inside generated availability. Buffers reserve both the professional and every selected resource."
+msgstr "Um recurso só pode ser reservado dentro da disponibilidade gerada. Os intervalos reservam tanto o profissional quanto cada recurso selecionado."
+
+msgid "The scheduling change could not be applied. Review the form below."
+msgstr "Não foi possível aplicar a alteração de agendamento. Confira o formulário abaixo."
+
+msgid "Select a professional or a resource, never both. For a clinic holiday, leave both empty."
+msgstr "Selecione um profissional ou um recurso, nunca ambos. Para um feriado da clínica, deixe ambos vazios."
+
+msgid "Review the highlighted fields."
+msgstr "Confira os campos destacados."
+
+msgid "Choose an unambiguous clinic-local time."
+msgstr "Escolha um horário local da clínica que não seja ambíguo."
+
+msgid "A required resource is unavailable for this window."
+msgstr "Um recurso necessário está indisponível neste período."
+
+msgid "Choose a window inside the resource availability template."
+msgstr "Escolha um período dentro do modelo de disponibilidade do recurso."
+
+msgid "This window overlaps a holiday or absence."
+msgstr "Este período coincide com um feriado ou uma ausência."
+
+msgid "The service duration and buffers must fit the available window."
+msgstr "A duração do atendimento e seus intervalos devem caber no período disponível."
+
+msgid "Enter a plain scheduling name of at most 120 characters."
+msgstr "Informe um nome de agendamento em texto simples com até 120 caracteres."
+
+msgid "Choose a resource kind and capacity from 1 to 64."
+msgstr "Escolha um tipo de recurso e uma capacidade de 1 a 64."
+
+msgid "Enter valid service duration, buffers and requirements."
+msgstr "Informe duração, intervalos e requisitos válidos para o atendimento."
+
+msgid "Choose one template subject and a valid local weekly interval."
+msgstr "Escolha um médico ou recurso e um intervalo semanal local válido."
+
+msgid "Choose a positive closure interval and a listed reason."
+msgstr "Escolha um período de fechamento com duração positiva e um motivo da lista."
+
+msgid "Generate at most one year of availability at a time."
+msgstr "Gere no máximo um ano de disponibilidade por vez."
+
+msgid "Professional"
+msgstr "Profissional"
+
+msgid "Service bookings require an eligible professional. Without a service, choose a physician."
+msgstr "Agendamentos com tipo de atendimento exigem um profissional habilitado. Sem um tipo de atendimento, escolha um médico."

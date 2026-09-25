@@ -15,6 +15,8 @@ from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.services import issue_prescription
 from apps.providers.services import current_version, is_live
 from apps.retention.services import apply_retention_policy
+from apps.scheduling import resource_services as scheduling_resources
+from apps.scheduling.services import create_service_appointment, prepare_booking
 from apps.teleconsult.services import create_session
 from django.apps import apps as django_apps
 
@@ -56,6 +58,42 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "expected"),
+    [
+        (
+            prepare_booking,
+            ["clinic_id", "enrollment_id", "service_type_id", "resource_ids"],
+        ),
+        (
+            create_service_appointment,
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "booking",
+                "idempotency_key",
+            ],
+        ),
+        (scheduling_resources.create_resource, ["clinic_id", "content"]),
+        (scheduling_resources.create_service_type, ["clinic_id", "content"]),
+        (scheduling_resources.create_template, ["clinic_id", "content"]),
+        (scheduling_resources.create_closure, ["clinic_id", "content"]),
+        (
+            scheduling_resources.generate_availability,
+            ["clinic_id", "template_id", "start_date", "end_date"],
+        ),
+        (scheduling_resources.retire_definition, ["clinic_id", "kind", "record_id"]),
+    ],
+)
+def test_resource_scheduling_services_are_keyword_scoped(
+    entrypoint: Callable[..., object], expected: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == expected
+    assert all(value.kind is Parameter.KEYWORD_ONLY for value in parameters.values())
 
 
 def test_permission_boundary_derives_actor_and_requires_clinic_scope() -> None:

@@ -1,5 +1,5 @@
 {% load i18n %}
-<div id="scheduling-booking" class="panel booking-panel">
+<div id="scheduling-booking" class="panel booking-panel"{% if form.rule_code %} data-error-code="{{ form.rule_code }}"{% endif %}>
   {% if form.errors %}
   <div class="feedback feedback--error" id="booking-errors" role="alert" tabindex="-1" data-focus-error autofocus>
     <h2>{% trans "We could not book that appointment" %}</h2>
@@ -45,10 +45,12 @@
     </p>
     <input type="hidden" name="mode" value="create">
     <div class="booking-fields">
+      <div class="field">{{ form.service_type_id.label_tag }}{{ form.service_type_id }}{{ form.service_type_id.errors }}</div>
+      <div class="field">{{ form.resource_ids.label_tag }}{{ form.resource_ids }}{{ form.resource_ids.errors }}</div>
       <div class="field booking-field--practitioner{% if form.practitioner.errors %} field--error{% endif %}">
         {{ form.practitioner.label_tag }}
         {{ form.practitioner }}
-        <p class="hint" id="booking-practitioner-help">{% trans "Only active physicians assigned to this clinic are listed." %}</p>
+        <p class="hint" id="booking-practitioner-help">{% if form.has_service_types %}{% trans "Service bookings require an eligible professional. Without a service, choose a physician." %}{% else %}{% trans "Only active physicians assigned to this clinic are listed." %}{% endif %}</p>
         {% if form.practitioner.errors %}<div class="field-errors" id="{{ form.practitioner.auto_id }}_error">{% for error in form.practitioner.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <div class="field{% if form.start_local.errors %} field--error{% endif %}">

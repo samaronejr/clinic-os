@@ -219,6 +219,36 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "intake.patient_clinic_enrollment",
         "viewed",
     ),
+    "scheduling.resource.created": (
+        "tenant",
+        "clinic-os-web",
+        "scheduling.resource",
+        "created",
+    ),
+    "scheduling.service.created": (
+        "tenant",
+        "clinic-os-web",
+        "scheduling.service_type",
+        "created",
+    ),
+    "scheduling.template.created": (
+        "tenant",
+        "clinic-os-web",
+        "scheduling.availability_template",
+        "created",
+    ),
+    "scheduling.closure.created": (
+        "tenant",
+        "clinic-os-web",
+        "scheduling.closure",
+        "created",
+    ),
+    "scheduling.definition.retired": (
+        "tenant",
+        "clinic-os-web",
+        "scheduling.definition",
+        "retired",
+    ),
     "scheduling.appointment.created": (
         "tenant",
         "clinic-os-web",
