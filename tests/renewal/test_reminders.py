@@ -211,7 +211,9 @@ def test_real_channel_blocked_independently(
 ) -> None:
     _, operation_id = _book(setup, channel)
     settings.COMMS_SYNTHETIC_CHANNELS = tuple(c for c in ADAPTERS if c != channel)
-    assert_capability_gate_closed(settings, channel)
+    assert_capability_gate_closed(
+        settings, channel, probe=lambda: channel_capability(channel)
+    )
     assert not channel_capability(channel).synthetic_enabled
     assert all(
         channel_capability(c).synthetic_enabled for c in ADAPTERS if c != channel

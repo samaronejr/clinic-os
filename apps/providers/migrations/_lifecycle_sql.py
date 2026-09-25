@@ -33,14 +33,28 @@ BEGIN
         RAISE EXCEPTION 'provider_transition_denied'
             USING ERRCODE = 'P0001';
     END IF;
+    -- An approval may be bound exactly when the transition enters the
+    -- first gated state (approved_to_test) or the terminal revoked state,
+    -- so an owner can revoke an unapproved candidate without first
+    -- approving it. Once bound, the approval can never change.
     IF NEW.approval_id IS DISTINCT FROM OLD.approval_id
         AND NOT (
             OLD.approval_id IS NULL
-            AND NEW.state = 'approved_to_test'
+            AND NEW.state IN ('approved_to_test', 'revoked')
         )
     THEN
         RAISE EXCEPTION 'provider_transition_denied'
             USING ERRCODE = 'P0001';
+    END IF;
+    -- The bound approval must belong to the same capability; a foreign
+    -- approval can never govern this key's lifecycle.
+    IF NEW.approval_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM clinic_app.providers_capabilityapproval a
+        WHERE a.id = NEW.approval_id AND a.capability_id = NEW.capability_id
+    )
+    THEN
+        RAISE EXCEPTION 'provider capability binding violated'
+            USING ERRCODE = '23514';
     END IF;
     IF NEW.state NOT IN ('researched', 'selected_in_plan')
         AND NEW.approval_id IS NULL
@@ -116,6 +130,63 @@ CREATE TRIGGER providers_capability_guard
 BEFORE UPDATE ON clinic_app.providers_providercapability
 FOR EACH ROW EXECUTE FUNCTION clinic_app.providers_capability_guard_v1();
 
+CREATE FUNCTION clinic_app.providers_capability_binding_v1()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, clinic_app
+AS $function$
+BEGIN
+    IF NEW.current_version_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM clinic_app.providers_capabilityversion v
+        WHERE v.id = NEW.current_version_id AND v.capability_id = NEW.id
+    )
+    THEN
+        RAISE EXCEPTION 'provider capability binding violated'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION clinic_app.providers_capability_binding_v1()
+    FROM PUBLIC, clinic_app, clinic_resolver;
+CREATE TRIGGER providers_capability_binding
+BEFORE INSERT OR UPDATE ON clinic_app.providers_providercapability
+FOR EACH ROW EXECUTE FUNCTION clinic_app.providers_capability_binding_v1();
+
+CREATE FUNCTION clinic_app.providers_history_binding_v1()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, clinic_app
+AS $function$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM clinic_app.providers_capabilityversion v
+        WHERE v.id = NEW.version_id AND v.capability_id = NEW.capability_id
+    )
+    THEN
+        RAISE EXCEPTION 'provider capability binding violated'
+            USING ERRCODE = '23514';
+    END IF;
+    IF NEW.approval_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM clinic_app.providers_capabilityapproval a
+        WHERE a.id = NEW.approval_id AND a.capability_id = NEW.capability_id
+    )
+    THEN
+        RAISE EXCEPTION 'provider capability binding violated'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION clinic_app.providers_history_binding_v1()
+    FROM PUBLIC, clinic_app, clinic_resolver;
+CREATE TRIGGER providers_activation_binding
+BEFORE INSERT ON clinic_app.providers_activationrecord
+FOR EACH ROW EXECUTE FUNCTION clinic_app.providers_history_binding_v1();
+CREATE TRIGGER providers_healthevent_binding
+BEFORE INSERT ON clinic_app.providers_healthevent
+FOR EACH ROW EXECUTE FUNCTION clinic_app.providers_history_binding_v1();
+
 CREATE FUNCTION clinic_app.providers_reject_delete_v1()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -168,6 +239,14 @@ FOR EACH ROW EXECUTE FUNCTION clinic_app.providers_immutable_row_v1();
 """
 
 REVERSE_TRANSITION_SQL: Final = """
+DROP TRIGGER IF EXISTS providers_healthevent_binding
+    ON clinic_app.providers_healthevent;
+DROP TRIGGER IF EXISTS providers_activation_binding
+    ON clinic_app.providers_activationrecord;
+DROP TRIGGER IF EXISTS providers_capability_binding
+    ON clinic_app.providers_providercapability;
+DROP FUNCTION IF EXISTS clinic_app.providers_history_binding_v1();
+DROP FUNCTION IF EXISTS clinic_app.providers_capability_binding_v1();
 DROP TRIGGER IF EXISTS providers_healthevent_immutable
     ON clinic_app.providers_healthevent;
 DROP TRIGGER IF EXISTS providers_activation_immutable

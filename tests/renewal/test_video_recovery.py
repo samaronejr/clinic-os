@@ -389,4 +389,4 @@ def test_unapproved_end_callbacks_and_forged_callbacks_fail_closed(
     assert _operation(graph, session).status == "succeeded"
     assert _kinds(graph, session) == ["created"]
     assert room_capability().synthetic_enabled
-    assert_capability_gate_closed(settings, "video")
+    assert_capability_gate_closed(settings, "video", probe=room_capability)

@@ -10,7 +10,10 @@ binding and audit events are exercised, never bypassed; call it outside
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import django.apps
 from apps.providers import lifecycle
@@ -20,6 +23,16 @@ from apps.providers.services import current_version, is_live
 
 if TYPE_CHECKING:
     from pytest_django.fixtures import SettingsWrapper
+
+
+class _HasRealEnabled(Protocol):
+    """The adapter capability shape these tests observe."""
+
+    @property
+    def real_enabled(self) -> bool:
+        """Read-only capability flag carried by the frozen dataclasses."""
+        raise NotImplementedError
+
 
 APPROVER = lifecycle.ApprovalInput(
     approver_name="Synthetic Owner",
@@ -55,33 +68,68 @@ def activate_capability(key: str) -> CapabilityVersion:
     return lifecycle.activate_version(key, decision=APPROVER)
 
 
-def assert_capability_gate_closed(settings: SettingsWrapper, key: str) -> None:
-    """Assert the three-condition gate stays closed under the real suite.
+def _probe_not_live(probe: Callable[[], _HasRealEnabled] | None) -> None:
+    """Assert the adapter flag refuses real use, tolerating fail-closed raises.
+
+    ``pix_capability`` reads ``settings.CLINIC_DATA_MODE`` for its synthetic
+    flag, so with the setting absent it raises ``AttributeError`` instead of
+    returning - that is the same fail-closed outcome, observed at the real
+    call site rather than normalized away.
+    """
+    if probe is None:
+        return
+    try:
+        capability = probe()
+    except AttributeError:
+        return
+    assert capability.real_enabled is False
+
+
+def assert_capability_gate_closed(
+    settings: SettingsWrapper,
+    key: str,
+    probe: Callable[[], _HasRealEnabled] | None = None,
+) -> None:
+    """Assert the gate AND the real adapter flag stay closed under the suite.
 
     Proves, without stubbing the gate: a ``researched`` current version is
     not live; a version forced to ``activated`` through the owner path is
     still not live while ``CLINIC_DATA_MODE`` is ``synthetic``; and the
     same activated version is not live when the mode setting is absent or
-    invalid. The process data mode is never flipped to live.
+    invalid. ``probe`` is the adapter's real capability call (for example
+    ``pix_capability`` or ``channel_capability(channel)``), asserted on
+    every combination. The caller's mode setting is restored on exit.
     """
     seed_capabilities()
-    lifecycle.propose_version(
-        key,
-        version_input=lifecycle.VersionInput(provider="synthetic-candidate"),
-    )
-    researched = current_version(key)
-    assert researched is not None
-    assert researched.state == CapabilityVersion.State.RESEARCHED
-    assert is_live(key, clinic_id=None) is False
+    had_mode = hasattr(settings, "CLINIC_DATA_MODE")
+    original_mode = getattr(settings, "CLINIC_DATA_MODE", None)
+    try:
+        lifecycle.propose_version(
+            key,
+            version_input=lifecycle.VersionInput(provider="synthetic-candidate"),
+        )
+        researched = current_version(key)
+        assert researched is not None
+        assert researched.state == CapabilityVersion.State.RESEARCHED
+        assert is_live(key, clinic_id=None) is False
+        _probe_not_live(probe)
 
-    activate_capability(key)
-    activated = current_version(key)
-    assert activated is not None
-    assert activated.state == CapabilityVersion.State.ACTIVATED
-    assert settings.CLINIC_DATA_MODE == "synthetic"
-    assert is_live(key, clinic_id=None) is False
+        activate_capability(key)
+        activated = current_version(key)
+        assert activated is not None
+        assert activated.state == CapabilityVersion.State.ACTIVATED
+        assert settings.CLINIC_DATA_MODE == "synthetic"
+        assert is_live(key, clinic_id=None) is False
+        _probe_not_live(probe)
 
-    del settings.CLINIC_DATA_MODE
-    assert is_live(key, clinic_id=None) is False
-    settings.CLINIC_DATA_MODE = "not-a-mode"
-    assert is_live(key, clinic_id=None) is False
+        del settings.CLINIC_DATA_MODE
+        assert is_live(key, clinic_id=None) is False
+        _probe_not_live(probe)
+        settings.CLINIC_DATA_MODE = "not-a-mode"
+        assert is_live(key, clinic_id=None) is False
+        _probe_not_live(probe)
+    finally:
+        if had_mode:
+            settings.CLINIC_DATA_MODE = original_mode
+        else:
+            del settings.CLINIC_DATA_MODE

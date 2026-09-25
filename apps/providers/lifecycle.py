@@ -107,6 +107,21 @@ def _audit(event_type: str, capability: ProviderCapability, record_id: UUID) -> 
     )
 
 
+# One registered event per entered state; the lifecycle emits exactly one
+# after every persisted transition (SC-4).
+_STATE_EVENT: Final[dict[str, str]] = {
+    CapabilityVersion.State.SELECTED_IN_PLAN: "providers.capability.selected_in_plan",
+    CapabilityVersion.State.APPROVED_TO_TEST: "providers.capability.approved",
+    CapabilityVersion.State.SANDBOX: "providers.capability.sandbox",
+    CapabilityVersion.State.PRODUCTION_AUTHORIZED: (
+        "providers.capability.production_authorized"
+    ),
+    CapabilityVersion.State.ACTIVATED: "providers.capability.activated",
+    CapabilityVersion.State.DEGRADED: "providers.capability.degraded",
+    CapabilityVersion.State.REVOKED: "providers.capability.revoked",
+}
+
+
 def _locked_capability(key: str, clinic_id: UUID | None) -> ProviderCapability:
     """Return the locked capability row or reject without echoing input."""
     capability = (
@@ -190,6 +205,8 @@ def propose_version(
         capability.current_version = version
         capability.save(update_fields=["current_version", "updated_at"])
         _audit("providers.capability.proposed", capability, version.id)
+        if version.state != CapabilityVersion.State.RESEARCHED:
+            _audit(_STATE_EVENT[version.state], capability, version.id)
     return version
 
 
@@ -220,7 +237,7 @@ def approve_version(
                 version.save(update_fields=["approval", "state", "updated_at"])
             else:
                 version.save(update_fields=["state", "updated_at"])
-        _audit("providers.capability.approved", capability, version.id)
+            _audit(_STATE_EVENT[target], capability, version.id)
     return version
 
 
@@ -247,13 +264,13 @@ def activate_version(
         ):
             version.state = target
             version.save(update_fields=["state", "updated_at"])
+            _audit(_STATE_EVENT[target], capability, version.id)
         ActivationRecord.objects.create(
             capability=capability,
             version=version,
             approval=approval,
             activated_at=timezone.now(),
         )
-        _audit("providers.capability.activated", capability, version.id)
     return version
 
 
@@ -298,7 +315,13 @@ def revoke_version(
         version = _locked_current_version(capability)
         approval = _new_approval(capability, decision)
         version.state = CapabilityVersion.State.REVOKED
-        version.save(update_fields=["state", "updated_at"])
+        if version.approval_id is None:
+            # Unapproved candidates bind the revocation decision directly;
+            # the trigger permits binding only on approved_to_test/revoked.
+            version.approval = approval
+            version.save(update_fields=["approval", "state", "updated_at"])
+        else:
+            version.save(update_fields=["state", "updated_at"])
         HealthEvent.objects.create(
             capability=capability,
             version=version,

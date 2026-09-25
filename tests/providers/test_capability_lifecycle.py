@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 import psycopg
@@ -30,6 +30,7 @@ from apps.providers.services import current_version, is_live
 from django.core.management import CommandError, call_command
 from django.db import connection, connections
 from django.db.utils import IntegrityError, ProgrammingError
+from django.utils import timezone
 from ops.release import activation
 
 from provider_gate_support import (
@@ -41,6 +42,7 @@ from provider_gate_support import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from types import FrameType
 
     from pytest_django.fixtures import SettingsWrapper
 
@@ -130,6 +132,65 @@ def test_is_live_requires_all_three_conditions(
     )
 
 
+def test_is_live_snapshots_the_injected_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutable injected mapping cannot smuggle a synthetic no-op.
+
+    ``is_live`` must evaluate the data mode and ``require_live_runtime``
+    against ONE immutable snapshot taken up front. Here a profile hook
+    flips the caller's dict to ``synthetic`` the moment the real
+    ``current_version`` returns - the point where the old code would let
+    ``require_live_runtime`` degrade to its documented non-live no-op and
+    report True without any live-runtime evidence.
+    """
+    import sys  # noqa: PLC0415
+
+    from apps.providers import services  # noqa: PLC0415
+
+    seed_capabilities()
+    activate_capability(KEY)
+    environment: dict[str, str] = {"CLINIC_DATA_MODE": "live"}
+    runtime_gate_calls = 0
+
+    def _observer(frame: FrameType, event: str, _arg: object) -> object:
+        nonlocal runtime_gate_calls
+        if event == "return" and frame.f_code is services.current_version.__code__:
+            environment["CLINIC_DATA_MODE"] = "synthetic"
+        if event == "call" and frame.f_code is (
+            activation.require_live_runtime.__code__
+        ):
+            runtime_gate_calls += 1
+        return _observer
+
+    sys.setprofile(_observer)
+    try:
+        result = is_live(KEY, clinic_id=None, environment=environment)
+    finally:
+        sys.setprofile(None)
+    # The flip to synthetic must not make the gate report live; and the
+    # same snapshot must drive both checks, so the real runtime gate still
+    # sees 'live' and fails closed on the missing activation evidence.
+    assert environment["CLINIC_DATA_MODE"] == "synthetic"
+    assert runtime_gate_calls == 1
+    assert result is False
+
+
+def test_is_live_requires_settings_and_environment_to_agree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without injection, settings and os.environ must both say live."""
+    seed_capabilities()
+    activate_capability(KEY)
+    with monkeypatch.context() as patched:
+        patched.setenv("CLINIC_DATA_MODE", "live")
+        # Process env claims live but the suite's settings say synthetic.
+        assert is_live(KEY, clinic_id=None) is False
+    with monkeypatch.context() as patched:
+        patched.delenv("CLINIC_DATA_MODE", raising=False)
+        assert is_live(KEY, clinic_id=None) is False
+
+
 def test_is_live_fails_closed_on_unknown_key_and_scope() -> None:
     seed_capabilities()
     assert is_live("no_such_capability", clinic_id=None) is False
@@ -203,9 +264,16 @@ def test_lifecycle_walk_and_audit_events() -> None:
             "ORDER BY seq",
             [str(SYSTEM_ORG_ID)],
         )
+        # Every transition appends exactly one event (SC-4): propose at
+        # selected_in_plan records the creation plus the entered state;
+        # approve, activate, degrade, reactivate and revoke append one
+        # event per actual state change, including the walked legs.
         assert [row[0] for row in cursor.fetchall()] == [
             "providers.capability.proposed",
+            "providers.capability.selected_in_plan",
             "providers.capability.approved",
+            "providers.capability.sandbox",
+            "providers.capability.production_authorized",
             "providers.capability.activated",
             "providers.capability.degraded",
             "providers.capability.activated",
@@ -222,6 +290,135 @@ def test_activate_without_approval_is_denied_by_trigger() -> None:
     # The rolled-back transaction leaves no approval or activation behind.
     assert CapabilityApproval.objects.count() == 0
     assert ActivationRecord.objects.count() == 0
+
+
+# The provider-capability SM row, verbatim (plan SM 'Provider capability'):
+# researched->selected_in_plan->approved_to_test->sandbox->
+# production_authorized->activated<->degraded ; any->revoked (terminal).
+_LEGAL_EDGES: Final = {
+    ("researched", "selected_in_plan"),
+    ("selected_in_plan", "approved_to_test"),
+    ("approved_to_test", "sandbox"),
+    ("sandbox", "production_authorized"),
+    ("production_authorized", "activated"),
+    ("activated", "degraded"),
+    ("degraded", "activated"),
+    *(
+        (source, "revoked")
+        for source in (
+            "researched",
+            "selected_in_plan",
+            "approved_to_test",
+            "sandbox",
+            "production_authorized",
+            "activated",
+            "degraded",
+        )
+    ),
+}
+_ALL_STATES: Final = tuple(CapabilityVersion.State.values)
+
+
+def _version_in_state(key: str, state: str) -> CapabilityVersion:
+    """Build a version at ``state`` through the legal owner path."""
+    lifecycle.propose_version(
+        key, version_input=lifecycle.VersionInput(provider="matrix-probe")
+    )
+    if state == "selected_in_plan":
+        _sql_transition(key, "selected_in_plan")
+    elif state == "approved_to_test":
+        lifecycle.approve_version(key, decision=APPROVER)
+    elif state == "sandbox":
+        lifecycle.approve_version(key, decision=APPROVER)
+        _sql_transition(key, "sandbox")
+    elif state == "production_authorized":
+        lifecycle.approve_version(key, decision=APPROVER)
+        _sql_transition(key, "sandbox")
+        _sql_transition(key, "production_authorized")
+    elif state in ("activated", "degraded"):
+        lifecycle.approve_version(key, decision=APPROVER)
+        lifecycle.activate_version(key, decision=APPROVER)
+        if state == "degraded":
+            lifecycle.degrade_version(key, decision=APPROVER, reason="probe")
+    elif state == "revoked":
+        lifecycle.revoke_version(key, decision=APPROVER, reason="probe")
+    # researched needs nothing beyond propose.
+    version = ProviderCapability.objects.get(key=key).current_version
+    assert version is not None
+    assert version.state == state
+    return version
+
+
+def _sql_transition(key: str, target: str) -> None:
+    """Move ``key``'s current version to ``target`` with raw owner SQL."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE clinic_app.providers_capabilityversion SET state = %s, "
+            "updated_at = now() WHERE id = (SELECT current_version_id FROM "
+            "clinic_app.providers_providercapability WHERE key = %s)",
+            [target, key],
+        )
+
+
+def _matrix_attempt(key: str, version: CapabilityVersion, target: str) -> None:
+    """Attempt ``version.state -> target`` as clinic_owner with raw SQL.
+
+    Gated targets need a bound approval, so the attempt binds a fresh
+    approval owned by the SAME capability - mirroring what the owner
+    lifecycle does - and assert separately whether the edge is legal.
+    """
+    with connection.cursor() as cursor:
+        if version.approval_id is None and target not in (
+            "researched",
+            "selected_in_plan",
+        ):
+            # Gated targets need a bound approval owned by the same
+            # capability - what the owner lifecycle supplies.
+            approval = CapabilityApproval.objects.create(
+                capability_id=version.capability_id,
+                approver_name="Synthetic Owner",
+                approver_role="clinic owner",
+                evidence_uri="synthetic://evidence/matrix",
+                decided_at=timezone.now(),
+            )
+            cursor.execute(
+                "UPDATE clinic_app.providers_capabilityversion "
+                "SET state = %s, approval_id = %s, updated_at = now() "
+                "WHERE id = %s",
+                [target, str(approval.id), str(version.id)],
+            )
+        else:
+            cursor.execute(
+                "UPDATE clinic_app.providers_capabilityversion "
+                "SET state = %s, updated_at = now() WHERE id = %s",
+                [target, str(version.id)],
+            )
+
+
+def test_full_transition_matrix_is_enforced() -> None:
+    """Every from->to pair: legal edges apply, every other edge is P0001."""
+    outcome: dict[tuple[str, str], str] = {}
+    for index, source in enumerate(_ALL_STATES):
+        for target in _ALL_STATES:
+            if source == target:
+                continue
+            key = f"matrix_{index}_{target[:6]}"
+            try:
+                version = _version_in_state(key, source)
+                _matrix_attempt(key, version, target)
+            except ProgrammingError as error:
+                outcome[source, target] = (
+                    "P0001" if "provider_transition_denied" in str(error) else "other"
+                )
+            else:
+                outcome[source, target] = "allowed"
+    mismatches = {
+        edge: outcome[edge]
+        for edge in outcome
+        if (edge in _LEGAL_EDGES) != (outcome[edge] == "allowed")
+    }
+    assert mismatches == {}
+    assert len(outcome) == 56
 
 
 def test_trigger_denies_every_illegal_edge() -> None:
@@ -423,6 +620,116 @@ def test_runtime_role_cannot_run_owner_cli(app_database_url: str) -> None:
                 call_command("provider_capability", "report")
         finally:
             cursor.execute("RESET ROLE")
+
+
+def test_cross_capability_bindings_are_rejected() -> None:
+    """Owner DML cannot bind a version/approval/history across capabilities."""
+    seed_capabilities()
+    activate_capability(KEY)
+    other = "tls_transport"
+    lifecycle.propose_version(
+        other, version_input=lifecycle.VersionInput(provider="matrix-probe")
+    )
+    foreign_version = (
+        CapabilityVersion.objects.filter(capability__key=other)
+        .order_by("-created_at")
+        .first()
+    )
+    assert foreign_version is not None
+    foreign_approval = CapabilityApproval.objects.create(
+        capability_id=foreign_version.capability_id,
+        approver_name="Synthetic Owner",
+        approver_role="clinic owner",
+        evidence_uri="synthetic://evidence/binding",
+        decided_at=timezone.now(),
+    )
+    capability = ProviderCapability.objects.get(key=KEY)
+    version = capability.current_version
+    assert version is not None
+
+    # current_version cannot point at another capability's version.
+    with (
+        pytest.raises(IntegrityError),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "UPDATE clinic_app.providers_providercapability "
+            "SET current_version_id = %s, updated_at = now() WHERE id = %s",
+            [str(foreign_version.id), str(capability.id)],
+        )
+    # A selected_in_plan version cannot bind another capability's
+    # approval while advancing to approved_to_test.
+    pending = CapabilityVersion.objects.filter(
+        capability=capability, state="selected_in_plan"
+    ).first()
+    if pending is None:
+        lifecycle.propose_version(
+            KEY,
+            version_input=lifecycle.VersionInput(provider="binding-probe"),
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE clinic_app.providers_capabilityversion "
+                "SET state = 'selected_in_plan', updated_at = now() "
+                "WHERE id = (SELECT current_version_id FROM "
+                "clinic_app.providers_providercapability WHERE key = %s)",
+                [KEY],
+            )
+        pending = ProviderCapability.objects.get(key=KEY).current_version
+        assert pending is not None
+        assert pending.state == "selected_in_plan"
+    with (
+        pytest.raises(IntegrityError),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "UPDATE clinic_app.providers_capabilityversion "
+            "SET state = 'approved_to_test', approval_id = %s, "
+            "updated_at = now() WHERE id = %s",
+            [str(foreign_approval.id), str(pending.id)],
+        )
+    # History rows cannot reference foreign versions or approvals.
+    with (
+        pytest.raises(IntegrityError),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "INSERT INTO clinic_app.providers_activationrecord "
+            "(id, capability_id, version_id, approval_id, activated_at) "
+            "VALUES (gen_random_uuid(), %s, %s, %s, now())",
+            [str(capability.id), str(foreign_version.id), str(foreign_approval.id)],
+        )
+    with (
+        pytest.raises(IntegrityError),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "INSERT INTO clinic_app.providers_healthevent "
+            "(id, capability_id, version_id, approval_id, kind, detail, "
+            "recorded_at) VALUES (gen_random_uuid(), %s, %s, %s, "
+            "'note', 'probe', now())",
+            [str(capability.id), str(version.id), str(foreign_approval.id)],
+        )
+    # INSERT-time binding on the capability row is checked too.
+    with (
+        pytest.raises(IntegrityError),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "INSERT INTO clinic_app.providers_providercapability "
+            "(id, key, clinic_id, record_ref, description, "
+            "current_version_id, created_at, updated_at) "
+            "VALUES (gen_random_uuid(), 'binding_probe', NULL, '', '', %s, "
+            "now(), now())",
+            [str(foreign_version.id)],
+        )
+    # The capability's own version still binds cleanly.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE clinic_app.providers_providercapability "
+            "SET current_version_id = %s, updated_at = now() WHERE id = %s",
+            [str(version.id), str(capability.id)],
+        )
 
 
 def test_gate_closed_under_suite_mode(settings: SettingsWrapper) -> None:

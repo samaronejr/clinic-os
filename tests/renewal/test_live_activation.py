@@ -128,15 +128,31 @@ def _approved_backend_environment(
 ) -> dict[str, str]:
     """Simulate the approved managed backend for the authorization gate.
 
-    No approved backend exists in ``SECRET_BACKENDS`` yet, so tests that
-    need a real (non-rehearsal) activation record simulate one by emptying
-    ``REHEARSAL_SECRET_BACKENDS`` in-process and dropping the rehearsal
-    opt-in. The patch never crosses into subprocesses: production startup
-    still refuses the rehearsal-only backend.
+    No approved backend exists in ``SECRET_BACKENDS`` yet (the managed
+    store is a task-43 boundary), so tests that need a real non-rehearsal
+    activation record simulate only that slot: ``synthetic-file`` is
+    removed from ``REHEARSAL_SECRET_BACKENDS`` and the rehearsal opt-in is
+    dropped. The patch is proven narrow - the unpatched policy must have
+    rejected this exact environment for the rehearsal-backend reason and
+    nothing else may change under the patch - and it never crosses into
+    subprocesses, so production startup still refuses the rehearsal-only
+    backend.
     """
+    unpatched = activation.live_environment_findings(environment)
+    assert unpatched, "fixture must sit outside the live policy unpatched"
+    backend_finding = (
+        "CLINIC_SECRET_BACKEND 'synthetic-file' is a rehearsal-only backend"
+    )
+    assert any(backend_finding in finding for finding in unpatched)
     monkeypatch.setattr(activation, "REHEARSAL_SECRET_BACKENDS", frozenset())
     approved = dict(environment)
     approved[activation.LIVE_REHEARSAL_ENV] = ""
+    # The only difference the patch may buy is the backend slot itself.
+    patched = activation.live_environment_findings(approved)
+    assert set(patched) <= set(unpatched)
+    assert not any(
+        "rehearsal" in finding and "backend" in finding for finding in patched
+    )
     return approved
 
 

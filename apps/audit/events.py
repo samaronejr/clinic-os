@@ -262,11 +262,29 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "providers.capability_version",
             "proposed",
         ),
+        "providers.capability.selected_in_plan": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "selected_in_plan",
+        ),
         "providers.capability.approved": Phase1AuditEventDefinition(
             "system",
             "clinic-os-ops",
             "providers.capability_version",
             "approved",
+        ),
+        "providers.capability.sandbox": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "sandbox",
+        ),
+        "providers.capability.production_authorized": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "production_authorized",
         ),
         "providers.capability.activated": Phase1AuditEventDefinition(
             "system",

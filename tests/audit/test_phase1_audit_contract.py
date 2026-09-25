@@ -249,11 +249,29 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "providers.capability_version",
         "proposed",
     ),
+    "providers.capability.selected_in_plan": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "selected_in_plan",
+    ),
     "providers.capability.approved": (
         "system",
         "clinic-os-ops",
         "providers.capability_version",
         "approved",
+    ),
+    "providers.capability.sandbox": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "sandbox",
+    ),
+    "providers.capability.production_authorized": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "production_authorized",
     ),
     "providers.capability.activated": (
         "system",

@@ -6,12 +6,14 @@ conditions hold:
 
 (i)   the capability's current ``CapabilityVersion`` is in state
       ``activated``;
-(ii)  the resolved process data mode equals ``LIVE_DATA_MODE`` — read from
-      ``django.conf.settings.CLINIC_DATA_MODE`` (validated at startup by
-      ``require_data_mode``) or from an explicitly injected ``environment``
-      mapping in unit tests;
+(ii)  the resolved process data mode equals ``LIVE_DATA_MODE`` — for an
+      injected ``environment`` the mapping's value alone, otherwise both
+      the ``os.environ`` snapshot and ``settings.CLINIC_DATA_MODE`` must
+      agree (``require_data_mode`` validated them at startup);
 (iii) ``ops.release.activation.require_live_runtime`` does not raise for
-      the injected environment or ``os.environ``.
+      the SAME immutable environment snapshot that supplied the mode —
+      the injected mapping is copied once, so mutating the caller's dict
+      mid-call cannot turn the runtime check into its non-live no-op.
 
 Condition (ii) is mandatory and is NOT implied by (iii):
 ``require_live_runtime`` is a documented no-op outside live mode, so an
@@ -70,12 +72,18 @@ def is_live(
     """
     if environment is not None and not isinstance(environment, Mapping):
         return False
-    runtime_environment = os.environ if environment is None else environment
-    if environment is not None:
-        mode = environment.get("CLINIC_DATA_MODE")
-    else:
-        mode = getattr(settings, "CLINIC_DATA_MODE", None)
-    if mode != LIVE_DATA_MODE:
+    # Snapshot the runtime environment ONCE so a caller mutating the
+    # injected mapping between the registry read and the runtime check
+    # cannot degrade ``require_live_runtime`` into its non-live no-op.
+    # Both conditions are evaluated against this same frozen copy.
+    runtime_environment = dict(os.environ) if environment is None else dict(environment)
+    mode = runtime_environment.get("CLINIC_DATA_MODE")
+    # Without injection the process mode comes from settings (validated
+    # by require_data_mode at startup); it must agree with the snapshot.
+    settings_mode = (
+        getattr(settings, "CLINIC_DATA_MODE", None) if environment is None else mode
+    )
+    if mode != LIVE_DATA_MODE or settings_mode != LIVE_DATA_MODE:
         return False
     if clinic_id is not None and type(clinic_id) is not UUID:
         return False

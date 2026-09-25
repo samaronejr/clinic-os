@@ -17,6 +17,7 @@ from apps.billing.adapters import (
     PixResponseError,
     PixUnavailableError,
     SyntheticPixAdapter,
+    pix_capability,
 )
 from apps.billing.models import Invoice, PixCharge, PixOperation, Receipt, Settlement
 from apps.billing.pix import complete_pix_charge, prepare_pix_charge
@@ -113,7 +114,7 @@ def test_exact_synthetic_charge_replays_without_settlement(
         assert not Settlement.objects.exists()
         invoice.refresh_from_db()
         assert invoice.state == "open"
-    assert_capability_gate_closed(settings, "pix")
+    assert_capability_gate_closed(settings, "pix", probe=pix_capability)
 
 
 @pytest.mark.parametrize("provider", ["asaas", "asaas-sandbox", "production"])
@@ -129,7 +130,7 @@ def test_unapproved_providers_cannot_be_enabled(
                 clinic_id=setup.clinic_id, invoice_id=invoice.pk, provider=provider
             )
         assert not PixOperation.objects.exists()
-    assert_capability_gate_closed(settings, "pix")
+    assert_capability_gate_closed(settings, "pix", probe=pix_capability)
 
 
 @pytest.mark.parametrize(("mode", "enabled"), [("live", True), ("synthetic", False)])

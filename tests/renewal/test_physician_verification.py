@@ -266,7 +266,9 @@ def test_real_gate_and_synthetic_opt_in_cannot_be_bypassed(
     setup: SigningSetup, settings: SettingsWrapper
 ) -> None:
     graph = setup.graph
-    assert_capability_gate_closed(settings, "physician_registration")
+    assert_capability_gate_closed(
+        settings, "physician_registration", probe=registry_capability
+    )
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert registry_capability().real_enabled is False
         with pytest.raises(
