@@ -11,7 +11,11 @@ Automated runs never count as real-device evidence.
 Automated coverage is Playwright through `ops.testing.renewal_runner`:
 
 - engines: Chromium (the CI default), Firefox and WebKit, selected with
-  `CLINIC_BROWSER_ENGINE` or `--engine`;
+  `CLINIC_BROWSER_ENGINE` or `--engine`. On Firefox and WebKit, camera and
+  microphone are a synthetic source injected by the test harness, not the
+  browser's capture pipeline. Headless WebKit also cannot display video
+  inside the clipped preview and self-view boxes. So automation never
+  proves that a real Safari shows the camera preview;
 - emulated devices: the iPhone 15 and Pixel 8 profiles in
   `tests/renewal/browser/engines.py` (viewport, pixel density, user agent,
   touch);
@@ -70,7 +74,7 @@ debugging).
 
 | Step | Action | Expected |
 |---|---|---|
-| 1 | Start capture or join a teleconsult for the first time | The OS/browser prompt names the site. The UI explains why the microphone is needed before the prompt appears. |
+| 1 | Start capture or join a teleconsult for the first time | The OS/browser prompt names the site. The UI explains why the microphone is needed before the prompt appears. After the grant, the camera preview and the room self-view show live video (automation cannot prove this on WebKit). |
 | 2 | Deny | The UI shows a permission-denied state with pt-BR recovery instructions. Nothing is captured, and the app shows no fake "recording" state. |
 | 3 | Grant in OS/browser settings, then return | The UI detects the grant after one explicit user action (no silent auto-start). |
 | 4 | Revoke while capturing (Settings > site > Microphone) | Capture stops or pauses with a visible reason. Nothing uploaded before the revoke is lost. |

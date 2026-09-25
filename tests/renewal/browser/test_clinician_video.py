@@ -13,7 +13,6 @@ the stored rows; a session identifier never reaches another patient's note.
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -26,6 +25,14 @@ from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    install_media,
+    launch_selected,
+    logs_failed_responses,
+    media_source,
+    offline_console,
+    watch_page_errors,
+)
 from renewal.browser.test_amendments import (
     stored_encounter,
     stored_versions,
@@ -38,7 +45,7 @@ from renewal.browser.test_availability import (
 )
 from renewal.browser.test_encounter import FIELDS, stored
 from renewal.browser.test_patient_access import _redeem
-from renewal.browser.test_patient_video import MEDIA_ARGS, TRACK_JS
+from renewal.browser.test_patient_video import TRACK_JS
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 from renewal.browser.test_teleconsult import (
     _accept_consent,
@@ -127,18 +134,21 @@ def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:
 
 
 def _context(browser: Browser, case: _Case, *, media: bool) -> BrowserContext:
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = browser.new_context(
-        locale="pt-BR", viewport={"width": case.width, "height": 900}
+        locale="pt-BR",
+        viewport={"width": case.width, "height": 900},
+        service_workers="block",
     )
-    if media:
-        context.grant_permissions(["camera", "microphone"], origin=case.base)
+    install_media(context, case.base, granted=media)
     return context
 
 
 def _page(context: BrowserContext, errors: list[str], console: list[str]) -> Page:
     page = context.new_page()
     page.set_default_timeout(20_000)
-    page.on("pageerror", lambda error: errors.append(str(error)))
+    watch_page_errors(page, errors)
     page.on(
         "console",
         lambda message: (
@@ -769,10 +779,7 @@ def test_clinician_video_journey(
     second = _seed_patient(case, 11, NAMES[1])
     template = _seed_template(case)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts = [
             _context(browser, case, media=True),
             _context(browser, case, media=False),
@@ -804,15 +811,20 @@ def test_clinician_video_journey(
                 _reflow(physician, case, third_session, third["name"])
             assert not errors, errors
             # The browser logs the two deliberate failures: the rejected save
-            # (503) and the offline save (htmx sendError plus its afterRequest).
+            # (503; Firefox logs no failed response) and the offline save
+            # (htmx sendError plus its afterRequest, and the engine's own
+            # offline line where it writes one).
+            offline = offline_console(physician.context)
             unexpected = [
                 message
                 for message in console
                 if not message.startswith(("htmx:sendError", "htmx:afterRequest"))
-                and "net::ERR_INTERNET_DISCONNECTED" not in message
+                and (offline is None or offline not in message)
                 and "status of 503" not in message
             ]
-            assert len([m for m in console if "status of 503" in m]) == 1
+            assert len([m for m in console if "status of 503" in m]) == (
+                1 if logs_failed_responses(physician.context) else 0
+            )
             assert len([m for m in console if m.startswith("htmx:sendError")]) == 1
             assert not unexpected, unexpected
             (case.root / f"accessibility-console-{width}.json").write_text(
@@ -821,7 +833,7 @@ def test_clinician_video_journey(
                         "page_errors": errors,
                         "console_errors": unexpected,
                         "expected_console": [m for m in console if m not in unexpected],
-                        "media": "chromium --use-fake-device-for-media-stream",
+                        "media": media_source(physician.context),
                         "offline": "BrowserContext.set_offline",
                         "failed_save_http": UNAVAILABLE,
                         "cross_patient_http": FORBIDDEN,
@@ -1163,10 +1175,7 @@ def test_clinician_video_preservation(
     second = _seed_patient(case, 11, NAMES[1])
     template = _seed_template(case)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts = [
             _context(browser, case, media=True),
             _context(browser, case, media=False),

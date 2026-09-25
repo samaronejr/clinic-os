@@ -115,9 +115,11 @@ uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 `browser --suite <name>` runs one registered suite (the full registered
 set is enumerated by `SUITES` in `ops/testing/renewal_runner.py`). In hosted
 CI the `renewal-browser` matrix shards every registered suite across six
-Chromium jobs plus the `smoke@firefox` and `smoke@webkit` engine legs, and the
-`Renewal RC acceptance` verdict binds shard list, per-leg reports and source
-digests. It captures the working tree
+Chromium jobs, plus one Firefox and one WebKit job. Those two run `smoke` and the
+eight suites that once needed Chromium-only APIs (billing, clinic-settings,
+clinical-history, clinician-video, consent, end-to-end, patient-video,
+video-recovery). The `Renewal RC acceptance` verdict binds the shard list,
+per-leg reports and source digests. It captures the working tree
 through the current-source snapshot contract, provisions a unique
 `postgres:16` container and volume, applies migrations and seeds a clinic as
 `clinic_owner`, serves through a supervised Gunicorn master on loopback as
@@ -127,9 +129,12 @@ then drives the suite through a real browser engine. Chromium is the default
 Playwright-managed Firefox or WebKit (`uv run playwright install firefox
 webkit`; add `--with-deps` or the listed system packages on a new host), and
 `report.json` records the `engine`. An unavailable engine fails the run; it
-never skips or falls back. Suites in `CHROMIUM_ONLY_SUITES` (DevTools
-sessions, fake media devices, chrome:// pages) refuse other engines. `ci`
-always runs Chromium. The junit verdict is enforced: zero tests, skips,
+never skips or falls back. Every suite runs on every engine. The
+engine-specific mechanisms (fake or synthetic camera/microphone, the 200%
+zoom, clipboard read-back, session history) and each documented engine
+difference live in `tests/renewal/browser/engines.py`. `ci` always runs
+Chromium. Runner children use the in-memory Celery broker (`memory://`), so
+no run reaches a host Redis. The junit verdict is enforced: zero tests, skips,
 failures, errors or a missing report all fail the run.
 
 `ci` runs the gates in order and aggregates per-command exits into
@@ -201,7 +206,6 @@ re-run the same command.
 | `renewal browser suite is not registered: <name>` | 2 | Unknown suite; check `SUITES` in `ops/testing/renewal_runner.py` |
 | `renewal browser engine is not supported: <name>` / `name different engines` | 2 | Use `chromium`, `firefox` or `webkit`, and do not pass an `--engine` that contradicts `CLINIC_BROWSER_ENGINE` |
 | `renewal browser engine <name> is unavailable` | 2 | Run `uv run playwright install <name>` (plus `--with-deps` or its system packages) |
-| `renewal browser suite <name> drives Chromium-only APIs` | 2 | The suite is in `CHROMIUM_ONLY_SUITES`; run it on Chromium |
 | `renewal serving DSN must use the clinic_app role` | 2 | `CLINIC_RENEWAL_APP_DATABASE_URL` names an owner/superuser role; use the app role or unset it |
 | `current-source record is stale or drifted` | 2 | A `--record` no longer matches the working tree; re-capture the record |
 | `renewal suite failed` / `ran zero tests` / `skipped tests` | 2 | The suite itself failed or proved nothing; inspect `pytest.log` and the junit XML under the artifact root |

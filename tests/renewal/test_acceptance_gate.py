@@ -19,9 +19,20 @@ from ops.testing.renewal_acceptance import (
     artifact_label,
     validate,
 )
-from ops.testing.renewal_runner import CHROMIUM_ONLY_SUITES, SUITES
+from ops.testing.renewal_runner import SUITES
 
 REPOSITORY = Path(__file__).resolve().parents[2]
+# Suites that once drove Chromium-only APIs; CI runs them on every engine.
+PORTED_SUITES = (
+    "billing",
+    "clinic-settings",
+    "clinical-history",
+    "clinician-video",
+    "consent",
+    "end-to-end",
+    "patient-video",
+    "video-recovery",
+)
 
 FIRST_SUITE = sorted(SUITES)[0]
 
@@ -352,15 +363,16 @@ def test_engine_leg_of_unregistered_suite_is_rejected(tmp_path: Path) -> None:
     assert "shard binds unregistered suite phantom-suite" in failures
 
 
-def test_chromium_only_suite_on_another_engine_is_rejected(tmp_path: Path) -> None:
-    suite = sorted(CHROMIUM_ONLY_SUITES)[0]
+@pytest.mark.parametrize("engine", ["firefox", "webkit"])
+def test_formerly_chromium_only_suites_bind_engine_legs(
+    tmp_path: Path, engine: str
+) -> None:
+    ported = ["consent", "patient-video", "clinical-history"]
     artifacts = _populate(tmp_path / "artifacts")
-    _write_suite(artifacts, suite, engine="webkit")
-    workflow = _workflow([*sorted(SUITES), f"{suite}@webkit"])
-    failures = validate(workflow, _needs(), artifacts)
-    assert f"shard entry {suite}@webkit runs a Chromium-only suite on webkit" in (
-        failures
-    )
+    for suite in ported:
+        _write_suite(artifacts, suite, engine=engine)
+    workflow = _workflow([*sorted(SUITES), *(f"{s}@{engine}" for s in ported)])
+    assert validate(workflow, _needs(), artifacts) == []
 
 
 def test_engine_leg_never_replaces_the_chromium_binding(tmp_path: Path) -> None:
@@ -413,7 +425,7 @@ def test_tracked_workflow_binds_every_suite_plus_firefox_and_webkit_legs() -> No
     )
     failures, legs = _binding_failures(workflow, set(SUITES))
     assert failures == []
+    engine_suites = {"smoke", *PORTED_SUITES}
     assert legs == {(suite, "chromium") for suite in SUITES} | {
-        ("smoke", "firefox"),
-        ("smoke", "webkit"),
+        (suite, engine) for suite in engine_suites for engine in ("firefox", "webkit")
     }

@@ -209,33 +209,77 @@ def test_engine_selection_defaults_to_chromium_and_rejects_the_unknown(
 ) -> None:
     monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
     assert runner.ENGINES == ("chromium", "firefox", "webkit")
-    assert runner._resolve_engine(None, "smoke") == "chromium"
-    assert runner._resolve_engine("webkit", "smoke") == "webkit"
+    assert runner._resolve_engine(None) == "chromium"
+    assert runner._resolve_engine("webkit") == "webkit"
     monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "firefox")
-    assert runner._resolve_engine(None, "smoke") == "firefox"
-    assert runner._resolve_engine("firefox", "smoke") == "firefox"
+    assert runner._resolve_engine(None) == "firefox"
+    assert runner._resolve_engine("firefox") == "firefox"
     with pytest.raises(IsolationError, match="different engines"):
-        runner._resolve_engine("webkit", "smoke")
+        runner._resolve_engine("webkit")
     monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "netscape")
     with pytest.raises(IsolationError, match="not supported: netscape"):
-        runner._resolve_engine(None, "smoke")
+        runner._resolve_engine(None)
     monkeypatch.delenv("CLINIC_BROWSER_ENGINE")
     with pytest.raises(IsolationError, match="not supported: Firefox"):
-        runner._resolve_engine("Firefox", "smoke")
+        runner._resolve_engine("Firefox")
 
 
-def test_chromium_only_suites_refuse_other_engines(
+PORTED_SUITES = (
+    "billing",
+    "clinic-settings",
+    "clinical-history",
+    "clinician-video",
+    "consent",
+    "end-to-end",
+    "patient-video",
+    "video-recovery",
+)
+# Engine-specific Playwright/browser APIs live only in engines.py; a suite
+# that uses one directly would crash or silently fall back to Chromium.
+ENGINE_SPECIFIC_APIS = (
+    "driver.chromium",
+    ".chromium.launch",
+    "new_cdp_session",
+    "chrome://",
+    "--use-fake-device",
+    "grant_permissions(",
+    "clipboard.readText",
+    "CLINIC_RENEWAL_BROWSER_EXECUTABLE",
+    "wait_for_function(",
+)
+
+
+def test_browser_suites_leave_engine_specific_apis_to_the_engines_module() -> None:
+    offenders = [
+        (relpath, api)
+        for paths in runner.SUITES.values()
+        for relpath in paths
+        for api in ENGINE_SPECIFIC_APIS
+        if api in (REPOSITORY / relpath).read_text(encoding="utf-8")
+    ]
+    assert offenders == []
+
+
+@pytest.mark.parametrize("engine", ["firefox", "webkit"])
+@pytest.mark.parametrize("suite", PORTED_SUITES)
+def test_every_suite_runs_on_every_engine(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    suite: str,
+    engine: str,
 ) -> None:
     monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
-    assert set(runner.SUITES) > runner.CHROMIUM_ONLY_SUITES
-    # CDP sessions, fake media devices or chrome:// pages pin these suites.
-    for suite in runner.CHROMIUM_ONLY_SUITES:
-        assert runner._resolve_engine(None, suite) == "chromium"
-        for engine in ("firefox", "webkit"):
-            with pytest.raises(IsolationError, match="Chromium-only"):
-                runner._resolve_engine(engine, suite)
-    assert "smoke" not in runner.CHROMIUM_ONLY_SUITES
+    started: list[tuple[str, str]] = []
+
+    def fake_suite(*args: object) -> JsonObject:
+        started.append((str(args[1]), str(args[5])))
+        return {"suite": str(args[1]), "engine": str(args[5])}
+
+    monkeypatch.setattr(runner, "_run_browser_suite", fake_suite)
+    artifacts = _private(tmp_path / "artifacts")
+    arguments = ["browser", "--suite", suite, "--engine", engine]
+    assert runner.main([*arguments, "--artifact-root", str(artifacts)]) == 0
+    assert started == [(suite, engine)]
 
 
 @pytest.mark.parametrize(

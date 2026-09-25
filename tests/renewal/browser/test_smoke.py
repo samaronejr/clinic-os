@@ -298,3 +298,48 @@ def test_wait_for_js_resolves_values_and_surfaces_predicate_errors(
 
     with pytest.raises(PlaywrightError, match="predicate threw: sentinel-error"):
         wait_for_js(csp_page, "() => { throw new Error('sentinel-error'); }")
+
+
+INJECT_INLINE_SCRIPT_JS = """() => {
+  const script = document.createElement('script');
+  script.textContent = 'window.inlineScriptRan = true';
+  document.head.append(script);
+}"""
+
+
+def test_csp_console_hook_catches_a_refused_inline_script(
+    csp_page: Page,
+    csp_console_violations: list[dict[str, str]],
+) -> None:
+    # Each engine words the refusal differently; the session hook must see
+    # this one on Chromium, Firefox and WebKit alike.
+    before = len(csp_console_violations)
+    with csp_page.expect_console_message(lambda m: m.type == "error") as refused:
+        csp_page.evaluate(INJECT_INLINE_SCRIPT_JS)
+    assert csp_page.evaluate("window.inlineScriptRan === undefined")
+    assert [v["text"] for v in csp_console_violations[before:]] == [refused.value.text]
+    # The deliberate refusal is this test's subject, not a defect.
+    del csp_console_violations[before:]
+
+
+INJECT_INLINE_STYLE_JS = """() => {
+  const style = document.createElement('style');
+  style.textContent = 'body { outline: 1px solid red; }';
+  document.head.append(style);
+}"""
+
+
+def test_csp_console_hook_tolerates_only_playwright_screenshot_style(
+    csp_page: Page,
+    csp_console_violations: list[dict[str, str]],
+) -> None:
+    # WebKit's screenshotter injects its own style; that alone is not a
+    # violation, but an app inline style right after it still is.
+    before = len(csp_console_violations)
+    csp_page.screenshot()
+    csp_page.locator("form").screenshot()
+    assert csp_console_violations[before:] == []
+    with csp_page.expect_console_message(lambda m: m.type == "error") as refused:
+        csp_page.evaluate(INJECT_INLINE_STYLE_JS)
+    assert [v["text"] for v in csp_console_violations[before:]] == [refused.value.text]
+    del csp_console_violations[before:]

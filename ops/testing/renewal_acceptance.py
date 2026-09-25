@@ -9,8 +9,7 @@
   shard that silently drops one shrinks verification and must fail. A shard
   entry is ``suite`` (Chromium) or ``suite@engine`` with engine one of
   ``chromium``, ``firefox`` or ``webkit``; an unknown engine, a malformed
-  entry, a duplicate (suite, engine) leg or a non-Chromium leg of a
-  Chromium-only suite is rejected;
+  entry or a duplicate (suite, engine) leg is rejected;
 * every bound leg produced a runner report (artifact directory ``suite`` for
   Chromium, ``suite@engine`` otherwise) naming the suite and engine, with a
   nonzero executed test count, a zero exit, the ``clinic_app`` runtime role
@@ -33,12 +32,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Final
 
-from ops.testing.renewal_runner import (
-    CHROMIUM_ONLY_SUITES,
-    DEFAULT_ENGINE,
-    ENGINES,
-    SUITES,
-)
+from ops.testing.renewal_runner import DEFAULT_ENGINE, ENGINES, SUITES
 
 REQUIRED_JOBS: Final = (
     "test",
@@ -190,8 +184,6 @@ def _leg_failure(entry: str, registered: set[str]) -> tuple[str, str] | str:
         return f"shard entry {entry} names unknown engine {engine}"
     if suite not in registered:
         return f"shard binds unregistered suite {suite}"
-    if engine != DEFAULT_ENGINE and suite in CHROMIUM_ONLY_SUITES:
-        return f"shard entry {entry} runs a Chromium-only suite on {engine}"
     return leg
 
 

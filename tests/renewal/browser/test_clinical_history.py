@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import base64
 import json
-import os
 import re
-from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser.engines import browser_zoom_200, zoom_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -194,8 +192,10 @@ def accessibility_checks(page: Page) -> dict[str, object]:
         expect(button).to_have_accessible_name(re.compile(r"\S"))
         bounds = button.bounding_box()
         assert bounds is not None
-        assert bounds["height"] >= 44
-        assert bounds["width"] >= 44
+        # Firefox reports boxes through float32 at devicePixelRatio 2 (a 44px
+        # button measures 43.99997); rounding to 1/1000 px absorbs only that.
+        assert round(bounds["height"], 3) >= 44
+        assert round(bounds["width"], 3) >= 44
     page.locator("#id_description").focus()
     page.keyboard.press("Tab")
     expect(page.locator("#id_status")).to_be_focused()
@@ -236,126 +236,78 @@ def zoom_metrics(page: Page) -> dict[str, float]:
 
 
 def capture_zoom(page: Page, root: Path, state: str) -> None:
-    # Playwright full_page clips to CSS pixels even at native browser zoom.
-    # CDP's screenshot clip uses device-independent pixels, not CSS pixels.
-    session = page.context.new_cdp_session(page)
-    try:
-        layout = session.send("Page.getLayoutMetrics")
-        assert layout["cssVisualViewport"]["zoom"] == 2
-        screenshot = session.send(
-            "Page.captureScreenshot",
-            {
-                "captureBeyondViewport": True,
-                "clip": {**layout["contentSize"], "scale": 1},
-            },
-        )
-        (root / "clinical-history" / f"{state}-1280.png").write_bytes(
-            base64.b64decode(screenshot["data"])
-        )
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    finally:
-        session.detach()
+    zoom_screenshot(page, root / "clinical-history" / f"{state}-1280.png")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 def zoom_journey(page: Page, root: Path) -> None:
-    """Use Chrome's own zoom setting, not device/CSS/pinch-scale emulation."""
-    browser = page.context.browser
-    assert browser is not None
-    with TemporaryDirectory(prefix="history-zoom-profile-", dir=root) as profile:
-        context = browser.browser_type.launch_persistent_context(
-            profile,
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            headless=True,
-            locale="pt-BR",
-            viewport={"width": 1280, "height": 900},
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
+    """Edit and review history at 200% browser zoom (see engines.browser_zoom_200)."""
+    baseline = zoom_metrics(page)
+    with browser_zoom_200(page, root) as (zoomed, zoom_method):
         errors: list[str] = []
         console: list[dict[str, str]] = []
         checks: dict[str, object] = {}
-        try:
-            context.set_storage_state(page.context.storage_state())
-            zoomed = context.pages[0]
-            zoomed.on("pageerror", lambda error: errors.append(str(error)))
-            zoomed.on(
-                "console",
-                lambda message: (
-                    console.append({"type": message.type, "text": message.text})
-                    if message.type in ("warning", "error")
-                    else None
-                ),
-            )
-            zoomed.goto(page.url)
-            baseline = zoom_metrics(zoomed)
-            settings = context.new_page()
-            settings.goto("chrome://settings/appearance")
-            settings.evaluate("""() => new Promise((resolve, reject) => {
-                chrome.settingsPrivate.setDefaultZoom(2, () => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                    } else { resolve(); }
-                });
-            })""")
-            actual_zoom = settings.evaluate("""() => new Promise(resolve =>
-                chrome.settingsPrivate.getDefaultZoom(resolve))""")
-            assert actual_zoom == 2
-            settings.close()
-            zoomed.reload()
-            metrics = zoom_metrics(zoomed)
-            assert baseline["inner_width"] == 1280
-            assert baseline["device_pixel_ratio"] == 1
-            assert metrics == {
-                "inner_width": 640,
-                "inner_height": 450,
-                "device_pixel_ratio": 2,
-                "pinch_scale": 1,
-            }
-            for kind in ("problem", "allergy"):
-                edit(zoomed, kind, "edit")
-                zoomed.locator("#id_description").fill(f"{kind} corrigido em zoom 200%")
-                zoomed.locator("#id_reason").fill("Correção com zoom do navegador")
-                checks[kind] = accessibility_checks(zoomed)
-                capture_zoom(zoomed, root, f"zoom-200-{kind}-editor")
-                with zoomed.expect_navigation():
-                    zoomed.keyboard.press("Enter")
-                expect(zoomed.locator('[data-save-state="saved"]')).to_be_visible()
-                zoomed.reload()
-                section = zoomed.locator(f'[data-kind="{kind}"]')
-                expect(section.locator("[data-entry] h3")).to_have_text(
-                    f"{kind} corrigido em zoom 200%"
-                )
-                summary = section.locator("summary")
-                summary.focus()
+        zoomed.on("pageerror", lambda error: errors.append(str(error)))
+        zoomed.on(
+            "console",
+            lambda message: (
+                console.append({"type": message.type, "text": message.text})
+                if message.type in ("warning", "error")
+                else None
+            ),
+        )
+        zoomed.goto(page.url)
+        metrics = zoom_metrics(zoomed)
+        assert baseline["inner_width"] == 1280
+        assert baseline["device_pixel_ratio"] == 1
+        assert metrics == {
+            "inner_width": 640,
+            "inner_height": 450,
+            "device_pixel_ratio": 2,
+            "pinch_scale": 1,
+        }
+        for kind in ("problem", "allergy"):
+            edit(zoomed, kind, "edit")
+            zoomed.locator("#id_description").fill(f"{kind} corrigido em zoom 200%")
+            zoomed.locator("#id_reason").fill("Correção com zoom do navegador")
+            checks[kind] = accessibility_checks(zoomed)
+            capture_zoom(zoomed, root, f"zoom-200-{kind}-editor")
+            with zoomed.expect_navigation():
                 zoomed.keyboard.press("Enter")
-                expect(section.locator("details")).to_have_attribute("open", "")
-                expect(section.locator("[data-history-version]")).to_have_count(4)
-                capture_zoom(zoomed, root, f"zoom-200-{kind}-saved-history")
-                assert zoom_metrics(zoomed) == metrics
-            (
-                root / "clinical-history" / "accessibility-console-zoom-200.json"
-            ).write_text(
-                json.dumps(
-                    {
-                        "zoom_method": "chrome.settingsPrivate.setDefaultZoom",
-                        "browser_zoom": actual_zoom,
-                        "baseline": baseline,
-                        "zoomed": metrics,
-                        "checks": checks,
-                        "native_keyboard_save_and_history_expansion": True,
-                        "page_errors": errors,
-                        "console_warnings_and_errors": console,
-                        "scope": (
-                            "History editors and saved versions; not a full WCAG audit"
-                        ),
-                    },
-                    indent=2,
-                )
-                + "\n"
+            expect(zoomed.locator('[data-save-state="saved"]')).to_be_visible()
+            zoomed.reload()
+            section = zoomed.locator(f'[data-kind="{kind}"]')
+            expect(section.locator("[data-entry] h3")).to_have_text(
+                f"{kind} corrigido em zoom 200%"
             )
-            assert not errors
-            assert not console
-        finally:
-            context.close()
+            summary = section.locator("summary")
+            summary.focus()
+            zoomed.keyboard.press("Enter")
+            expect(section.locator("details")).to_have_attribute("open", "")
+            expect(section.locator("[data-history-version]")).to_have_count(4)
+            capture_zoom(zoomed, root, f"zoom-200-{kind}-saved-history")
+            assert zoom_metrics(zoomed) == metrics
+        (root / "clinical-history" / "accessibility-console-zoom-200.json").write_text(
+            json.dumps(
+                {
+                    "zoom_method": zoom_method,
+                    "browser_zoom": metrics["device_pixel_ratio"],
+                    "baseline": baseline,
+                    "zoomed": metrics,
+                    "checks": checks,
+                    "native_keyboard_save_and_history_expansion": True,
+                    "page_errors": errors,
+                    "console_warnings_and_errors": console,
+                    "scope": (
+                        "History editors and saved versions; not a full WCAG audit"
+                    ),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        assert not errors
+        assert not console
 
 
 @pytest.mark.parametrize("width", [1280, 768, 375])

@@ -146,21 +146,6 @@ PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end"})
 # Browser engines a suite can run on; chromium keeps CI parity as the default.
 ENGINES: Final = ("chromium", "firefox", "webkit")
 DEFAULT_ENGINE: Final = "chromium"
-# Suites that drive Chromium-only DevTools sessions, fake media devices or
-# chrome:// settings. Running them on another engine would either crash on
-# the missing API or silently launch Chromium under a non-Chromium label.
-CHROMIUM_ONLY_SUITES: Final = frozenset(
-    {
-        "billing",
-        "clinic-settings",
-        "clinical-history",
-        "clinician-video",
-        "consent",
-        "end-to-end",
-        "patient-video",
-        "video-recovery",
-    }
-)
 CI_GATES: Final = (
     "static",
     "migration",
@@ -344,7 +329,7 @@ def _run_root(raw: str | None, artifact_root: Path) -> Path:
     return root
 
 
-def _resolve_engine(option: str | None, suite: str) -> str:
+def _resolve_engine(option: str | None) -> str:
     """Return the engine chosen by ``--engine``/``CLINIC_BROWSER_ENGINE``."""
     environment = os.environ.get("CLINIC_BROWSER_ENGINE", "")
     if option is not None and environment and option != environment:
@@ -352,8 +337,6 @@ def _resolve_engine(option: str | None, suite: str) -> str:
     engine = option if option is not None else environment or DEFAULT_ENGINE
     if engine not in ENGINES:
         _fail(f"renewal browser engine is not supported: {engine}")
-    if engine != DEFAULT_ENGINE and suite in CHROMIUM_ONLY_SUITES:
-        _fail(f"renewal browser suite {suite} drives Chromium-only APIs")
     return engine
 
 
@@ -1417,7 +1400,7 @@ def _browser(arguments: list[str]) -> int:
     suite = options.get("--suite", "")
     if suite not in SUITES:
         _fail(f"renewal browser suite is not registered: {suite or '(missing)'}")
-    engine = _resolve_engine(options.get("--engine"), suite)
+    engine = _resolve_engine(options.get("--engine"))
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
     run_root = _run_root(options.get("--run-root"), artifact_root)
