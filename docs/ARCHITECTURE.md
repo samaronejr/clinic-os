@@ -204,6 +204,39 @@ The disposable logical recovery rehearsal is a synthetic integrity check, not
 a live backup design. Live use remains blocked by
 [LIVE-DATA-GATE.md](compliance/LIVE-DATA-GATE.md).
 
+## ADR index
+
+The architecture decisions for the Clinic Ops successor plan are recorded in
+[`adr/`](adr/), one file per decision, each with context, decision,
+consequences, rejected options and a revisit trigger. They're decisions, not
+implementation claims: everything above still describes the running system
+until the owning todo lands. `tests/infra/test_adr_index.py` checks the
+record structure and that ids run from 000 to 019 without gaps. Threat models
+are indexed in [SECURITY.md](SECURITY.md#adr-index).
+
+| ADR | Decision | Owning todos |
+| --- | --- | --- |
+| [ADR-000](adr/ADR-000-successor-product-contract.md) | Successor product contract supersedes renewal scope bans | 1 |
+| [ADR-001](adr/ADR-001-frontend-htmx-first-islands.md) | HTMX first; bounded React + TypeScript islands only if the agenda slice selects them | 23 |
+| [ADR-002](adr/ADR-002-realtime-sse.md) | Realtime over SSE from a separate ASGI process | 8 |
+| [ADR-003](adr/ADR-003-authorization-permission-bundles.md) | One permission-bundle authorization model | 6 |
+| [ADR-004](adr/ADR-004-server-side-drafts.md) | Server-side durable drafts with compare-and-swap | 27 |
+| [ADR-005](adr/ADR-005-chunked-media-upload.md) | Chunked HTTPS media upload to private encrypted storage | 40 |
+| [ADR-006](adr/ADR-006-ai-gateway-routing.md) | Provider-neutral AI gateway with per-purpose routing | 38 |
+| [ADR-007](adr/ADR-007-deterministic-retrieval.md) | Deterministic patient-scoped retrieval, no vector store at start | 44 |
+| [ADR-008](adr/ADR-008-workflows-and-approval-binding.md) | DB-persisted workflows on Celery with digest-bound approvals | 26, 39 |
+| [ADR-009](adr/ADR-009-official-messaging-adapters.md) | Official messaging adapters and purpose-separated consent | 51 |
+| [ADR-010](adr/ADR-010-prescription-signature-trust.md) | Prescription class taxonomy and qualified signature trust | 35, 36 |
+| [ADR-011](adr/ADR-011-financial-journal.md) | Integer-centavo double-entry journal | 56 |
+| [ADR-012](adr/ADR-012-tiss-rnds-adapters.md) | TISS and RNDS adapters behind the interop boundary | 59, 68 |
+| [ADR-013](adr/ADR-013-offline-and-native.md) | No offline clinical mode; native companion only on a failed criterion | 69 |
+| [ADR-014](adr/ADR-014-observability-redaction.md) | Allowlist-redacted observability | 11 |
+| [ADR-015](adr/ADR-015-isolation-encryption-search.md) | FORCE RLS, envelope encryption and blind-index search | 17, 71 |
+| [ADR-016](adr/ADR-016-recovery-with-key-escrow.md) | Recovery drills include keys and objects | 72 |
+| [ADR-017](adr/ADR-017-additive-migrations.md) | Additive expand/contract migrations | 17, 22, 66 |
+| [ADR-018](adr/ADR-018-connection-pooling.md) | pgbouncer transaction pooling with a session alias for locks | 8 |
+| [ADR-019](adr/ADR-019-service-principals.md) | Service principals on a dedicated `clinic_agent` role | 7 |
+
 Source anchors: [settings](../config/settings/base.py),
 [tenant transaction](../apps/tenancy/db.py),
 [tenant middleware](../apps/tenancy/middleware.py),
