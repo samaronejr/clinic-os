@@ -273,6 +273,55 @@ make db-posture
 it only for disposable local data after confirming no needed work exists in
 that volume. It is not a production recovery procedure.
 
+## Internal metrics and tracing
+
+`GET /internal/metrics` serves the Prometheus text exposition (request
+latency by route name, queue depth/age, outbox states, provider health by
+capability, AI invocation aggregates). It is sessionless and fail-closed:
+requests must come from `CLINIC_OPS_METRICS_ALLOWED_NETWORKS` (default
+loopback only) and carry `Authorization: Bearer $CLINIC_OPS_METRICS_TOKEN`
+(minimum 16 characters; unset or short token denies every request). The
+endpoint never labels metrics with patient or clinic names, raw URLs or
+request bodies (ADR-014).
+
+Structured JSON logs and the Sentry scrubber share the allowlist in
+`apps/core/telemetry.py`. The boundary is a closed vocabulary: log messages
+must be registered in `LOG_MESSAGE_ALLOWLIST` (args are never interpolated),
+and every emitted value is either a closed-set member or a validated id.
+Route labels are registered URL names, namespaced names included
+(`identity:login`); provider labels are `PROVIDER_CAPABILITY_KEYS` (the v2
+integration record set, pinned by test to the `apps/providers` seed); AI labels
+are `AI_INVOCATION_PURPOSES` (to be replaced by todo 38 model purposes).
+Logger names must resolve to an imported module or a framework logger.
+Sentry events are rebuilt from those vocabularies: the SDK timestamp is
+re-rendered from a strict parse, and `server_name`, `extra`, `user`,
+messages and nested `data` never leave. Options the SDK would otherwise infer
+from the environment are passed explicitly, because inferred values reach
+session and client-report envelopes outside `before_send`: `environment`
+is `SENTRY_ENVIRONMENT` only when it is a listed value, `release` is
+`SENTRY_RELEASE` only when it is a 40-hex SHA (else the fixed `unversioned`),
+`server_name` is fixed, automatic session tracking and Spotlight are off,
+transactions are dropped and check-ins are discarded. Set `SENTRY_RELEASE`
+to the deployed commit SHA to get release attribution.
+
+Celery workers use the same pipeline: `config/celery.py` connects
+`setup_logging`, applies Django `LOGGING` and redirects task stdout into
+it, so Celery never installs its own handlers (whose formats render task
+args, kwargs and return values). Django's DEBUG console, `mail_admins` and
+runserver handlers are likewise replaced. Queue age requires the
+enqueue-time header stamped by `before_task_publish` in `CoreConfig.ready`;
+unstamped legacy messages simply omit `clinic_queue_oldest_age_seconds`.
+Gunicorn access logs (`ops/container/gunicorn_no_proxy.py`
+`access_log_format`, also passed as `--access-logformat` to the browser
+harnesses) emit only method, status and duration, never the request line,
+query or peer address.
+
+OpenTelemetry tracing is disabled by default: set `CLINIC_OTEL_ENABLED=1`
+plus `CLINIC_OTEL_EXPORTER=console` or `otlp-http-json` with
+`CLINIC_OTEL_OTLP_ENDPOINT=<collector base URL>`. Span names resolve to
+route names, status descriptions are dropped (they carry exception
+messages), and exporter failures are contained and never affect requests.
+
 ## Troubleshooting
 
 ### Bootstrap or posture fails

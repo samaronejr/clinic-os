@@ -11,7 +11,7 @@ import pytest
 import sentry_sdk
 from apps.identity.models import User
 from config.settings import base as base_settings
-from config.settings.telemetry import scrub_sentry_event
+from config.settings.telemetry import drop_sentry_transaction, scrub_sentry_event
 from django.test import Client, override_settings
 from django.views.debug import ExceptionReporter
 from django_otp.plugins.otp_totp.models import TOTPDevice
@@ -105,6 +105,8 @@ def test_sentry_initialization_disables_local_variable_capture(
 ) -> None:
     with monkeypatch.context() as scoped, patch("sentry_sdk.init") as sentry_init:
         scoped.setenv("SENTRY_DSN", "https://public@example.invalid/1")
+        scoped.delenv("SENTRY_ENVIRONMENT", raising=False)
+        scoped.delenv("SENTRY_RELEASE", raising=False)
         importlib.reload(base_settings)
 
         sentry_init.assert_called_once_with(
@@ -113,6 +115,12 @@ def test_sentry_initialization_disables_local_variable_capture(
             include_local_variables=False,
             max_request_body_size="never",
             before_send=scrub_sentry_event,
+            before_send_transaction=drop_sentry_transaction,
+            environment="production",
+            release="unversioned",
+            server_name="clinic-os",
+            auto_session_tracking=False,
+            spotlight=False,
         )
 
     importlib.reload(base_settings)

@@ -140,6 +140,9 @@ def supervised_argv(interpreter: Path, port: int, access_log: Path) -> list[str]
         "--preload",
         "--access-logfile",
         str(access_log),
+        # ADR-014: method + status + duration only; no request line or peer.
+        "--access-logformat",
+        "%(m)s %(s)s %(D)s",
         "--error-logfile",
         "-",
         "config.wsgi:application",

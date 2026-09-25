@@ -12,7 +12,7 @@ from .contracts import (
     validate_secret_store_env,
 )
 from .database import DEFAULT_APP_DATABASE_URL
-from .telemetry import configure_sentry
+from .telemetry import configure_sentry, configure_tracing
 
 enforce_wheel_timezone()
 
@@ -85,6 +85,9 @@ OTP_TOTP_ISSUER: str = "Clinic OS"
 STEP_UP_MAX_AGE_SECONDS: int = 300
 
 MIDDLEWARE: list[str] = [
+    # Request id binding, latency SLI and access log; outermost so every
+    # response (including early refusals) is measured and correlatable.
+    "apps.core.telemetry.TelemetryMiddleware",
     "apps.core.middleware.ResponsePrivacyMiddleware",
     # Halts every product request once the live activation is disabled or
     # drifted; a pass-through outside live mode.
@@ -211,6 +214,10 @@ X_FRAME_OPTIONS: str = "DENY"
 SENTRY_DSN: str = env("SENTRY_DSN", default="")
 configure_sentry(SENTRY_DSN)
 
+# OpenTelemetry tracing is opt-in (CLINIC_OTEL_ENABLED); exporter failures
+# are contained inside the SDK pipeline and never affect requests.
+configure_tracing(os.environ)
+
 # Synthetic attachment object store; production needs an approved backend.
 # Resolved through the shared contract seam so the startup isolation check
 # evaluates the identical effective root (including $VARIABLE proxies).
@@ -259,20 +266,33 @@ CELERY_TASK_ALWAYS_EAGER: bool = env.bool(
     default=False,
 )
 
+# ADR-014: structured JSON logs through the allowlist filter; non-allowlisted
+# record attributes are dropped before formatting, and the formatter emits the
+# message template only (args are never interpolated) plus exception types.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "allowlist": {"()": "apps.core.telemetry.AllowlistLogFilter"},
+    },
     "formatters": {
         "structured": {
-            "format": "{asctime} {levelname} {name} {message}",
-            "style": "{",
+            "()": "apps.core.telemetry.JsonTelemetryFormatter",
         },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "structured",
+            "filters": ["allowlist"],
         },
     },
     "root": {"handlers": ["console"], "level": "INFO"},
+    # Replace Django's DEFAULT_LOGGING handlers (DEBUG console, mail_admins,
+    # runserver request lines), which format raw paths and messages; these
+    # loggers propagate to the allowlisted root handler instead.
+    "loggers": {
+        "django": {"handlers": [], "level": "INFO", "propagate": True},
+        "django.server": {"handlers": [], "level": "INFO", "propagate": True},
+    },
 }
