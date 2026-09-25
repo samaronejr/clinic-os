@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from django.db import connection, transaction
 
-from identity import legacy_sql_inventory
+from identity import legacy_sql_inventory, test_service_principals
 from identity.legacy_guard_inventory import discover_sql
 from identity.legacy_sql_inventory import assert_sql_inventory
 from identity.sql_guard_probes import ALL_ROLES, PROBES
@@ -25,6 +25,7 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
     assert_sql_inventory(entries)
     listed = set()
     operation_oracles = {}
+    machine_oracles = {}
     for name, entry in entries.items():
         if entry["kind"] == "staff_guard":
             assert len(entry["discovery"]["signatures"]) == 1, name
@@ -39,6 +40,10 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert entry["reason"], name
             assert entry["probes"], name
             operation_oracles[name] = entry["probes"]
+        elif entry["kind"] == "machine_principal":
+            assert entry["reason"], name
+            assert entry["probes"], name
+            machine_oracles[name] = entry["probes"]
         else:
             assert entry["kind"] in {
                 "migration_only",
@@ -54,6 +59,11 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert not entry["probes"], name
     assert listed == set(PROBES)
     assert operation_oracles == METRICS_SQL_ORACLES
+    assert machine_oracles == test_service_principals.PRINCIPAL_SQL_ORACLES
+    assert set(machine_oracles) == set(test_service_principals.MACHINE_SQL_CALLS)
+    for oracles in machine_oracles.values():
+        for oracle in oracles:
+            assert callable(getattr(test_service_principals, oracle)), oracle
 
 
 def test_omitting_a_deployed_sql_guard_breaks_the_inventory() -> None:

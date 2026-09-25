@@ -76,3 +76,31 @@ patient surface, sends through a separate `clinic_app` worker, applies explicitl
 synthetic authenticated receipts, revokes preferences through the contacts UI,
 cancels through the patient UI and observes bounded provider failure. Its
 accelerated due clock is test-only; real providers remain `waiting_external`.
+
+## Action-operation contract (task 7)
+
+The shared outbox now stores `OperationKind` independently of `channel`.
+`OperationRequest` keeps the existing communication contract; SQL producers and
+historical rows default to `communication`. `ActionOperationRequest` represents
+non-communication work with no channel and a required lowercase SHA-256
+`payload_digest`. The referenced domain record owns the typed payload; bodies,
+clinical content, prompts and destinations never enter the outbox. Kind and
+digest are immutable at the database.
+
+`enqueue_operation` compares RFC 8785 canonical fingerprints of tenant, actor,
+clinic, kind, channel, provider, subject type/id, retry limit, payload digest and
+idempotency key. Identical replay returns the original operation without another
+dispatch, including after a transition. Any changed term raises the payload-free
+`IdempotencyConflictError`. Fingerprints are reconstructed from stored immutable
+terms so legacy and trigger-created operations need no invented backfill.
+Concurrent claims use the existing database uniqueness constraint.
+
+Actions require `register_action_adapter` separately from communication adapters
+and an explicit `register_subject_recheck`; either missing fails closed. Reviewed
+adapters prepare under current human clinic authority, verify the referenced
+payload digest and their domain's permissions/approval policy, then perform the
+external effect after commit. Existing subject locks, revocation rechecks,
+bounded reconciliation and fixed outbox audit events remain in force. This
+transport is not a generic tool API, does not approve an action, and never
+impersonates a human on behalf of a service principal. The later machine action
+gateway must use its own principal-bound authorization and receipts.

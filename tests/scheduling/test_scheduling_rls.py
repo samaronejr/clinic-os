@@ -81,7 +81,17 @@ def test_availability_has_exact_force_rls_and_runtime_acl_catalog() -> None:
             "scheduling_availabilityblock.organization_id) "
             "AND (s.clinic_id = scheduling_availabilityblock.clinic_id))))"
         )
+        # Task 7 / ADR-019 adds an exact restrictive machine grant without
+        # changing either legacy tenant or patient-booking policy.
         assert policies == [
+            (
+                "agent_grant",
+                "RESTRICTIVE",
+                ["clinic_agent"],
+                "ALL",
+                "clinic_app.principal_has('appointment.read'::text, clinic_id)",
+                "clinic_app.principal_has('appointment.read'::text, clinic_id)",
+            ),
             (
                 "patient_booking_read",
                 "PERMISSIVE",

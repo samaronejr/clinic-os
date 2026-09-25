@@ -34,6 +34,7 @@ from identity.nonstaff_census import run_nonstaff_census
 from identity.permission_support import owner_context
 from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
+from identity.test_service_principals import agent_login
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -42,7 +43,9 @@ if TYPE_CHECKING:
     from identity.nonstaff_differential import DifferentialReport
     from rbac_fixtures import RbacGraph
 
-pytestmark = pytest.mark.django_db(transaction=True)
+__all__ = ("agent_login",)
+# The census drives the machine-principal boundary through a real agent login.
+pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
 CORE = (
     *IDENTITY_BOUNDARIES,
     *CLINICAL_BOUNDARIES,

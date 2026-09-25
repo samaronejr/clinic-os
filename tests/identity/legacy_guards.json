@@ -1180,6 +1180,39 @@
       ]
     },
     {
+      "symbol": "apps.identity.service_principals.grant_principal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.identity.service_principals.revoke_principal",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.identity.service_principals.revoke_principal_grant",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
       "symbol": "apps.identity.services.role_assignments_for_user",
       "signals": [
         "membership"
@@ -3041,6 +3074,19 @@
       ]
     },
     {
+      "symbol": "apps.tenancy.db.service_principal_context",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Machine-login boundary on the agent alias. Its resolver reads the actor GUC to refuse mixed human context, so the census observes an authority channel and it is an observed boundary, not an absence certificate. Grant, clinic, revocation and forged-actor behaviour are in test_service_principals.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.db.service_principal_context#observed"
+      ]
+    },
+    {
       "symbol": "apps.tenancy.envelope.issue_tenant_key",
       "signals": [
         "resolver"
@@ -3370,6 +3416,7 @@
     "apps.teleconsult.views._patient_status#observed",
     "apps.teleconsult.views.staff_teleconsult",
     "apps.teleconsult.workspace._session_version",
+    "apps.tenancy.db.service_principal_context#observed",
     "apps.tenancy.db.tenant_context",
     "apps.tenancy.envelope.decrypt#observed",
     "apps.tenancy.envelope.encrypt#observed",
@@ -4362,6 +4409,26 @@
       ],
       "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
     },
+    "clinic_app.comms_action_binding_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_action_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
     "clinic_app.comms_due_reminders_v1": {
       "discovery": {
         "signatures": [
@@ -5040,6 +5107,26 @@
       "kind": "crypto_protocol",
       "probes": [],
       "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.identity_principal_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_principal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
     "clinic_app.identity_queue_quotas": {
       "discovery": {
@@ -5806,6 +5893,56 @@
       "kind": "public_verification",
       "probes": [],
       "reason": "Public document handle/signature verification or rate limit, not staff membership; document-verification tests cover these anonymous boundaries."
+    },
+    "clinic_app.principal_has": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_principal_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scheduling_availabilityblock:agent_grant"
+        ],
+        "resolvers": []
+      },
+      "kind": "machine_principal",
+      "probes": [
+        "test_machine_sql_closure_reads_no_staff_authority",
+        "test_staff_state_never_grants_machine_authority"
+      ],
+      "reason": "Machine-principal authority for the clinic_agent login (todo 7), not staff membership. EXECUTE is granted only to clinic_agent; a set actor GUC refuses. The derived catalog closure reads no staff relation and the staff-state differential over every backstop state never grants; both oracles are in test_service_principals."
+    },
+    "clinic_app.principal_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_principal uuid, requested_clinic uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_principal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.principal_has"
+        ]
+      },
+      "kind": "machine_principal",
+      "probes": [
+        "test_machine_sql_closure_reads_no_staff_authority",
+        "test_staff_state_never_grants_machine_authority"
+      ],
+      "reason": "Machine-principal authority for the clinic_agent login (todo 7), not staff membership. EXECUTE is granted only to clinic_agent; a set actor GUC refuses. The derived catalog closure reads no staff relation and the staff-state differential over every backstop state never grants; both oracles are in test_service_principals."
     },
     "clinic_app.protected_decrypt": {
       "discovery": {

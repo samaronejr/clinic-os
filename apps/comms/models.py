@@ -19,6 +19,13 @@ OPERATION_STATUS_VALUES: Final = [
 ]
 
 
+class OperationKind(models.TextChoices):
+    """Routing intent is independent of any communication transport channel."""
+
+    COMMUNICATION = "communication", "Communication"
+    ACTION = "action", "Action"
+
+
 class IntegrationOperation(TenantScopedModel):
     """One committed external-delivery operation owned by a single tenant.
 
@@ -54,7 +61,16 @@ class IntegrationOperation(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     clinic = models.ForeignKey("identity.clinic", on_delete=models.PROTECT)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    channel = models.CharField(max_length=32, choices=Channel.choices)
+    kind = models.CharField(
+        max_length=16,
+        choices=OperationKind.choices,
+        default=OperationKind.COMMUNICATION,
+        db_default=OperationKind.COMMUNICATION,
+    )
+    channel = models.CharField(max_length=32, choices=Channel.choices, blank=True)
+    payload_digest = models.CharField(
+        max_length=64, default="", db_default="", blank=True
+    )
     provider = models.CharField(max_length=64)
     subject_type = models.CharField(max_length=128)
     subject_id = models.UUIDField()
@@ -100,6 +116,16 @@ class IntegrationOperation(TenantScopedModel):
             models.CheckConstraint(
                 condition=models.Q(attempt_count__lte=models.F("max_attempts")),
                 name="comms_operation_attempts_bounded",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="communication", payload_digest="")
+                    & models.Q(channel__in=("sms", "email", "whatsapp", "video"))
+                )
+                | models.Q(
+                    kind="action", channel="", payload_digest__regex=r"^[0-9a-f]{64}$"
+                ),
+                name="comms_operation_kind_contract",
             ),
         ]
 
