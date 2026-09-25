@@ -47,7 +47,19 @@ Condition 2 is mandatory and not implied by 3: `require_live_runtime` is a
 no-op outside live mode, so an `activated` row alone never reports live in
 the synthetic suite. The mode check runs first, so the gate never touches
 the database outside live mode. Unknown keys, unknown scopes and malformed
-arguments fail closed (`False`).
+arguments fail closed (`False`). The injected `environment` and
+`os.environ` are each snapshotted once, so a caller mutating the mapping
+mid-call cannot turn the runtime check into its non-live no-op.
+
+**BLOCKED-ON-EG.** A genuine `is_live(...) is True` cannot be produced
+today: the approved managed secret backend (task 43 / EG) does not exist
+yet, so the unpatched live policy rejects every current environment and
+`require_live_runtime` always raises. The positive live path is verified
+only after the managed secret backend is approved. Until then the gate's
+composition is proven structurally: an exhaustive negative matrix over
+the three conditions and a pass-through spy asserting
+`require_live_runtime` is invoked exactly once, with the same immutable
+snapshot, whenever conditions (i) and (ii) hold.
 
 ## Owner CLI
 

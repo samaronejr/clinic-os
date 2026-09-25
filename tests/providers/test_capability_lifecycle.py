@@ -41,6 +41,7 @@ from provider_gate_support import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
     from types import FrameType
 
@@ -81,55 +82,112 @@ def test_seed_records_every_capability_and_plan_selection() -> None:
         assert all(version.approval_id is None for version in capability.versions.all())
 
 
-def test_is_live_requires_all_three_conditions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The live branch is proven only by a real live environment.
+def _runtime_gate_spy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, str]]:
+    """Wrap the REAL ``require_live_runtime`` without changing its outcome.
 
-    The injected mapping carries a complete approved activation (built by
-    ``ops.release.activation`` itself, never stubbed) so all three
-    conditions hold; dropping the activated state or the live runtime
-    breaks the composition. The process data mode is never flipped.
+    The spy rebinds only the module-level name inside ``services`` (the
+    gate's own call site), records the exact environment snapshot it was
+    invoked with, and delegates - the real policy, findings and
+    ``LiveModeHaltedError`` are untouched.
     """
-    from renewal.test_live_activation import (  # noqa: PLC0415
-        _approved_backend_environment,
-        _live_environment,
-    )
-    from renewal.test_release_readiness import _live_bundle  # noqa: PLC0415
+    from apps.providers import services  # noqa: PLC0415
 
+    calls: list[dict[str, str]] = []
+    real = activation.require_live_runtime
+
+    def _spy(environment: Mapping[str, str]) -> None:
+        calls.append(dict(environment))
+        real(environment)
+
+    monkeypatch.setattr(services, "require_live_runtime", _spy)
+    return calls
+
+
+def test_is_live_negative_matrix_and_runtime_gate_composition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exhaustive negative matrix plus the runtime-gate call contract.
+
+    A genuine ``is_live(...) is True`` is BLOCKED-ON-EG: the approved
+    managed secret backend is task 43's external gate, so the real
+    ``require_live_runtime`` always raises today. This test therefore
+    proves the gate composition honestly: every combination where any of
+    the three conditions fails - and the all-hold case where the real
+    runtime gate raises - returns False; the pass-through spy proves
+    ``require_live_runtime`` is invoked exactly once, with the same
+    immutable snapshot, only when (i) and (ii) hold.
+    """
     seed_capabilities()
-    evidence_root = _live_bundle(tmp_path / "evidence")
-    environment = _approved_backend_environment(
-        monkeypatch, _live_environment(tmp_path, evidence_root)
-    )
-    code, report = activation._activate_report(environment)
-    assert code == 0, report
+    calls = _runtime_gate_spy(monkeypatch)
 
-    # Condition (i) alone missing: researched state under a live runtime.
-    assert is_live(KEY, clinic_id=None, environment=environment) is False
+    # Condition (i) missing: researched state under every mode variant.
+    for environment in (
+        {"CLINIC_DATA_MODE": "live"},
+        {"CLINIC_DATA_MODE": "synthetic"},
+        {"CLINIC_DATA_MODE": "not-a-mode"},
+        {},
+    ):
+        assert is_live(KEY, clinic_id=None, environment=environment) is False
+    assert calls == []  # runtime gate never reached without live mode+state
 
+    # Conditions (i)+(ii) hold: real runtime gate is invoked exactly once
+    # with an immutable snapshot of the injected mapping, then raises.
+    live_environment = {"CLINIC_DATA_MODE": "live", "EXTRA": "kept"}
     activate_capability(KEY)
-    assert _state() == "activated"
-    # All three conditions hold.
-    assert is_live(KEY, clinic_id=None, environment=environment) is True
+    assert is_live(KEY, clinic_id=None, environment=live_environment) is False
+    assert calls == [live_environment]
+    assert calls[0] is not live_environment  # snapshot, not the caller's dict
 
-    # Condition (ii) missing: same activated row, non-live mode.
-    synthetic = dict(environment)
-    synthetic["CLINIC_DATA_MODE"] = "synthetic"
-    assert is_live(KEY, clinic_id=None, environment=synthetic) is False
+    # Condition (ii) variants on the activated row: never reach the gate.
+    for environment in (
+        {"CLINIC_DATA_MODE": "synthetic"},
+        {"CLINIC_DATA_MODE": "not-a-mode"},
+        {},
+    ):
+        assert is_live(KEY, clinic_id=None, environment=environment) is False
+    assert len(calls) == 1
 
-    # Condition (iii) missing: live mode but halted runtime (no record).
-    halted = dict(environment)
-    halted[activation.ACTIVATION_STATE_ENV] = str(tmp_path / "absent.json")
-    assert is_live(KEY, clinic_id=None, environment=halted) is False
+    # Condition (i)+(ii) but halted runtime stays False; each live call
+    # reaches the real gate and is denied by it (absent activation record).
+    assert is_live(KEY, clinic_id=None, environment=live_environment) is False
+    assert calls == [live_environment, live_environment]
 
-    # Malformed arguments fail closed rather than raising, even in live mode.
+    # Malformed arguments fail closed rather than raising, in live mode.
     assert (
-        is_live(KEY, clinic_id="not-a-uuid", environment=environment) is False  # type: ignore[arg-type]
+        is_live(KEY, clinic_id="not-a-uuid", environment=live_environment) is False  # type: ignore[arg-type]
     )
     assert (
         is_live(KEY, clinic_id=None, environment="not-a-mapping") is False  # type: ignore[arg-type]
     )
+    assert len(calls) == 2
+
+
+def test_is_live_rejects_a_complete_rehearsal_activation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real rehearsal activation record never reads as live.
+
+    The legitimate fixture surface (``_live_environment`` plus the real
+    ``_activate_report``) produces a record bound ``rehearsal: true`` and
+    a rehearsal-only secret backend; the unpatched live policy rejects
+    both, so the gate stays False with the real runtime gate invoked.
+    """
+    from renewal.test_live_activation import _live_environment  # noqa: PLC0415
+    from renewal.test_release_readiness import _live_bundle  # noqa: PLC0415
+
+    seed_capabilities()
+    activate_capability(KEY)
+    evidence_root = _live_bundle(tmp_path / "evidence")
+    environment = _live_environment(tmp_path, evidence_root)
+    code, report = activation._activate_report(environment)
+    assert code == 0, report
+    assert report["rehearsal"] is True
+
+    calls = _runtime_gate_spy(monkeypatch)
+    assert is_live(KEY, clinic_id=None, environment=environment) is False
+    assert calls == [environment]
 
 
 def test_is_live_snapshots_the_injected_environment(
@@ -199,14 +257,15 @@ def test_is_live_fails_closed_on_unknown_key_and_scope() -> None:
 
 
 def test_clinic_override_wins_over_platform_row(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from renewal.test_live_activation import (  # noqa: PLC0415
-        _approved_backend_environment,
-        _live_environment,
-    )
-    from renewal.test_release_readiness import _live_bundle  # noqa: PLC0415
+    """A clinic override shadows the platform row for the gate.
 
+    The platform capability is activated while the override stays
+    ``researched``: the platform call reaches the real runtime gate (and
+    fails closed on it), the scoped call resolves the override row and
+    never reaches the gate.
+    """
     seed_capabilities()
     clinic_id = uuid4()
     lifecycle.propose_version(
@@ -215,15 +274,16 @@ def test_clinic_override_wins_over_platform_row(
         version_input=lifecycle.VersionInput(provider="synthetic-clinic-scoped"),
     )
     activate_capability(KEY)
-    evidence_root = _live_bundle(tmp_path / "evidence")
-    environment = _approved_backend_environment(
-        monkeypatch, _live_environment(tmp_path, evidence_root)
-    )
-    assert activation._activate_report(environment)[0] == 0
 
-    # Platform row is activated; the clinic override is still researched.
-    assert is_live(KEY, clinic_id=None, environment=environment) is True
-    assert is_live(KEY, clinic_id=clinic_id, environment=environment) is False
+    calls = _runtime_gate_spy(monkeypatch)
+    live_environment = {"CLINIC_DATA_MODE": "live"}
+    # Platform row is activated: the runtime gate is invoked once and the
+    # real policy denies it (no managed backend yet - BLOCKED-ON-EG).
+    assert is_live(KEY, clinic_id=None, environment=live_environment) is False
+    assert calls == [live_environment]
+    # The clinic override row wins and is not activated: no gate call.
+    assert is_live(KEY, clinic_id=clinic_id, environment=live_environment) is False
+    assert len(calls) == 1
     override = current_version(KEY, clinic_id=clinic_id)
     assert override is not None
     assert override.state == "researched"
@@ -730,6 +790,50 @@ def test_cross_capability_bindings_are_rejected() -> None:
             "SET current_version_id = %s, updated_at = now() WHERE id = %s",
             [str(version.id), str(capability.id)],
         )
+
+
+def test_gate_helper_propagates_unrelated_attribute_errors(
+    settings: SettingsWrapper,
+) -> None:
+    """A probe raising an unrelated AttributeError fails the helper.
+
+    The missing-mode PIX case is whitelisted by exact type, message and
+    attribute name; anything else must propagate - including a different
+    missing attribute under the same deliberately-absent setting.
+    """
+    from provider_gate_support import (  # noqa: PLC0415
+        _HasRealEnabled,
+        _probe_not_live,
+    )
+
+    unrelated_message = "module exploded for another reason"
+
+    def _unrelated_probe() -> _HasRealEnabled:
+        raise AttributeError(unrelated_message)
+
+    del settings.CLINIC_DATA_MODE
+    with pytest.raises(AttributeError, match="module exploded"):
+        _probe_not_live(_unrelated_probe, missing_mode=True)
+
+    wrong_attribute_message = "'Settings' object has no attribute 'OTHER'"
+
+    def _wrong_attribute_probe() -> _HasRealEnabled:
+        raise AttributeError(wrong_attribute_message)
+
+    with pytest.raises(AttributeError, match="OTHER"):
+        _probe_not_live(_wrong_attribute_probe, missing_mode=True)
+
+    def _bare_probe() -> _HasRealEnabled:
+        raise AttributeError
+
+    # A bare AttributeError raised in probe code (not Django's settings
+    # lookup) is not the missing-mode case and propagates.
+    with pytest.raises(AttributeError):
+        _probe_not_live(_bare_probe, missing_mode=True)
+    # And under a present mode any AttributeError propagates regardless.
+    settings.CLINIC_DATA_MODE = "synthetic"
+    with pytest.raises(AttributeError):
+        _probe_not_live(_unrelated_probe, missing_mode=False)
 
 
 def test_gate_closed_under_suite_mode(settings: SettingsWrapper) -> None:

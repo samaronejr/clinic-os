@@ -86,7 +86,10 @@ honest lifecycle state. Regenerate this table with
 `selected_in_plan` records the plan's proposed primary; it is not an
 approval. Only an owner decision through `provider_capability approve`
 moves a version to `approved_to_test`, and only `activated` plus the live
-data mode makes `apps.providers.services.is_live` return True.
+data mode makes `apps.providers.services.is_live` return True. The
+positive live path is verified only after the managed secret backend is
+approved (task 43 / external gate): until then the unpatched live policy
+rejects every environment and `is_live` fails closed everywhere.
 
 ## Reading and updating a record
 
