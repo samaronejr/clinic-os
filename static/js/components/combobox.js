@@ -30,6 +30,7 @@
     this.status = root.querySelector("[data-combobox-status]");
     this.endpoint = root.getAttribute("data-combobox-endpoint");
     this.choice = root.querySelector("[data-combobox-value]");
+    this.selection = root.querySelector("[data-combobox-selection]");
     this.timer = null;
     this.request = null;
     this.bind();
@@ -95,6 +96,22 @@
     var next = index < 0 ? (step > 0 ? 0 : items.length - 1) : index + step;
     next = Math.max(0, Math.min(items.length - 1, next));
     this.setActive(items[next]);
+  };
+
+  /* The typed text no longer names the chosen record: drop the submitted
+     value and the confirmation so the form can never send a stale choice. */
+  Combobox.prototype.invalidate = function () {
+    var hadChoice = Boolean(this.choice && this.choice.value);
+    if (this.choice) {
+      this.choice.value = "";
+    }
+    if (this.selection) {
+      this.selection.hidden = true;
+    }
+    this.input.removeAttribute("aria-activedescendant");
+    if (hadChoice) {
+      this.root.dispatchEvent(new CustomEvent("combobox:clear", { bubbles: true }));
+    }
   };
 
   Combobox.prototype.choose = function (option) {
@@ -189,6 +206,7 @@
     var self = this;
     self.input.addEventListener("input", function () {
       self.setActive(null);
+      self.invalidate();
       if (self.endpoint) {
         window.clearTimeout(self.timer);
         self.timer = window.setTimeout(function () { self.search(); }, DEBOUNCE_MS);
@@ -218,6 +236,7 @@
         } else if (self.input.value && !self.root.closest("dialog")) {
           event.preventDefault();
           self.input.value = "";
+          self.invalidate();
           self.filter();
           self.close();
         }

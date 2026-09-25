@@ -113,8 +113,8 @@
       </nav>
     </article>
     {% for extra in extra_states %}<article class="spec" data-primitive="navigation" data-state="{{ extra.key }}">
-      <h3>{{ extra.label }}</h3>
-      {% include "identity/showcase/primitive_extra.html" with primitive="navigation" state=extra.key label=extra.label %}
+      <h3 id="spec-navigation-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="navigation" state=extra.key label=extra.label ctx="spec-navigation-"|add:extra.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -171,8 +171,8 @@
       </div>
     </article>
     {% for extra in extra_states %}<article class="spec" data-primitive="field" data-state="{{ extra.key }}">
-      <h3>{{ extra.label }}</h3>
-      {% include "identity/showcase/primitive_extra.html" with primitive="field" state=extra.key label=extra.label %}
+      <h3 id="spec-field-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="field" state=extra.key label=extra.label ctx="spec-field-"|add:extra.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -225,8 +225,8 @@
       </div>
     </article>
     {% for extra in extra_states %}<article class="spec" data-primitive="action" data-state="{{ extra.key }}">
-      <h3>{{ extra.label }}</h3>
-      {% include "identity/showcase/primitive_extra.html" with primitive="action" state=extra.key label=extra.label %}
+      <h3 id="spec-action-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="action" state=extra.key label=extra.label ctx="spec-action-"|add:extra.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -270,8 +270,8 @@
       <p class="badge-row"><span class="badge badge--success">{% trans "Confirmed" %}</span></p>
     </article>
     {% for extra in extra_states %}<article class="spec" data-primitive="status" data-state="{{ extra.key }}">
-      <h3>{{ extra.label }}</h3>
-      {% include "identity/showcase/primitive_extra.html" with primitive="status" state=extra.key label=extra.label %}
+      <h3 id="spec-status-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="status" state=extra.key label=extra.label ctx="spec-status-"|add:extra.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -280,8 +280,8 @@
   <h2 id="table-title">{% trans "Table" %}</h2>
   <div class="spec-grid spec-grid--stack">
     <article class="spec" data-primitive="table" data-state="default">
-      <h3>{% trans "Default" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-default-caption" tabindex="0">
+      <h3 id="spec-table-default">{% trans "Default" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-default-caption spec-table-default" tabindex="0">
         <table class="table">
           <caption id="table-default-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -294,8 +294,8 @@
       <p class="table-empty">{% trans "No appointments in this week yet. Book one from the patient registry." %}</p>
     </article>
     <article class="spec" data-primitive="table" data-state="focus">
-      <h3>{% trans "Focus" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-focus-caption" tabindex="0">
+      <h3 id="spec-table-focus">{% trans "Focus" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-focus-caption spec-table-focus" tabindex="0">
         <table class="table">
           <caption id="table-focus-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -306,8 +306,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="disabled">
-      <h3>{% trans "Disabled" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-disabled-caption" tabindex="0">
+      <h3 id="spec-table-disabled">{% trans "Disabled" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-disabled-caption spec-table-disabled" tabindex="0">
         <table class="table">
           <caption id="table-disabled-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -318,8 +318,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="loading">
-      <h3>{% trans "Loading" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-loading-caption" tabindex="0">
+      <h3 id="spec-table-loading">{% trans "Loading" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-loading-caption spec-table-loading" tabindex="0">
         <table class="table" aria-busy="true">
           <caption id="table-loading-caption">{% trans "Appointments today" %} <span class="table-progress" role="status">{% trans "Updating…" %}</span></caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th></tr></thead>
@@ -331,8 +331,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="error">
-      <h3>{% trans "Error" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-error-caption" tabindex="0">
+      <h3 id="spec-table-error">{% trans "Error" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-error-caption spec-table-error" tabindex="0">
         <table class="table">
           <caption id="table-error-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -343,8 +343,8 @@
       </div>
     </article>
     <article class="spec" data-primitive="table" data-state="success">
-      <h3>{% trans "Success" %}</h3>
-      <div class="table-scroll" role="region" aria-labelledby="table-success-caption" tabindex="0">
+      <h3 id="spec-table-success">{% trans "Success" %}</h3>
+      <div class="table-scroll" role="region" aria-labelledby="table-success-caption spec-table-success" tabindex="0">
         <table class="table">
           <caption id="table-success-caption">{% trans "Appointments today" %}</caption>
           <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>
@@ -355,8 +355,8 @@
       </div>
     </article>
     {% for extra in extra_states %}<article class="spec" data-primitive="table" data-state="{{ extra.key }}">
-      <h3>{{ extra.label }}</h3>
-      {% include "identity/showcase/primitive_extra.html" with primitive="table" state=extra.key label=extra.label %}
+      <h3 id="spec-table-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="table" state=extra.key label=extra.label ctx="spec-table-"|add:extra.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -411,8 +411,8 @@
       </div>
     </article>
     {% for extra in extra_states %}<article class="spec" data-primitive="panel" data-state="{{ extra.key }}">
-      <h3>{{ extra.label }}</h3>
-      {% include "identity/showcase/primitive_extra.html" with primitive="panel" state=extra.key label=extra.label %}
+      <h3 id="spec-panel-{{ extra.key }}">{{ extra.label }}</h3>
+      {% include "identity/showcase/primitive_extra.html" with primitive="panel" state=extra.key label=extra.label ctx="spec-panel-"|add:extra.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -421,8 +421,8 @@
   <h2 id="dialog-title">{% trans "Dialog" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="dialog" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/dialog.html" with state=state.key sid="dialog-"|add:state.key %}
+      <h3 id="spec-dialog-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/dialog.html" with state=state.key sid="dialog-"|add:state.key ctx="spec-dialog-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -430,8 +430,8 @@
   <h2 id="drawer-title">{% trans "Drawer" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="drawer" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/drawer.html" with state=state.key sid="drawer-"|add:state.key %}
+      <h3 id="spec-drawer-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/drawer.html" with state=state.key sid="drawer-"|add:state.key ctx="spec-drawer-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -439,8 +439,8 @@
   <h2 id="combobox-title">{% trans "Combobox" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="combobox" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/combobox.html" with state=state.key sid="combobox-"|add:state.key %}
+      <h3 id="spec-combobox-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/combobox.html" with state=state.key sid="combobox-"|add:state.key ctx="spec-combobox-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -448,8 +448,8 @@
   <h2 id="datetime-title">{% trans "Date and time" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="datetime" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/datetime.html" with state=state.key sid="datetime-"|add:state.key %}
+      <h3 id="spec-datetime-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/datetime.html" with state=state.key sid="datetime-"|add:state.key ctx="spec-datetime-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -457,8 +457,8 @@
   <h2 id="resource_grid-title">{% trans "Resource grid" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="resource_grid" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/resource_grid.html" with state=state.key sid="resource_grid-"|add:state.key %}
+      <h3 id="spec-resource_grid-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/resource_grid.html" with state=state.key sid="resource_grid-"|add:state.key ctx="spec-resource_grid-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -466,8 +466,8 @@
   <h2 id="command_palette-title">{% trans "Command palette" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="command_palette" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/command_palette.html" with state=state.key sid="command_palette-"|add:state.key %}
+      <h3 id="spec-command_palette-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/command_palette.html" with state=state.key sid="command_palette-"|add:state.key ctx="spec-command_palette-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -475,8 +475,8 @@
   <h2 id="toast-title">{% trans "Announcer and toast" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="toast" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/toast.html" with state=state.key sid="toast-"|add:state.key %}
+      <h3 id="spec-toast-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/toast.html" with state=state.key sid="toast-"|add:state.key ctx="spec-toast-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -484,8 +484,8 @@
   <h2 id="tabs-title">{% trans "Tabs" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="tabs" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/tabs.html" with state=state.key sid="tabs-"|add:state.key %}
+      <h3 id="spec-tabs-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/tabs.html" with state=state.key sid="tabs-"|add:state.key ctx="spec-tabs-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -493,8 +493,8 @@
   <h2 id="segmented-title">{% trans "Segmented control" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="segmented" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/segmented.html" with state=state.key sid="segmented-"|add:state.key %}
+      <h3 id="spec-segmented-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/segmented.html" with state=state.key sid="segmented-"|add:state.key ctx="spec-segmented-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -502,8 +502,8 @@
   <h2 id="editor-title">{% trans "Editor" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="editor" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/editor.html" with state=state.key sid="editor-"|add:state.key %}
+      <h3 id="spec-editor-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/editor.html" with state=state.key sid="editor-"|add:state.key ctx="spec-editor-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -511,8 +511,8 @@
   <h2 id="provenance-title">{% trans "Provenance" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="provenance" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/provenance.html" with state=state.key sid="provenance-"|add:state.key %}
+      <h3 id="spec-provenance-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/provenance.html" with state=state.key sid="provenance-"|add:state.key ctx="spec-provenance-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -520,8 +520,8 @@
   <h2 id="citation-title">{% trans "Source citation" %}</h2>
   <div class="spec-grid">
     {% for state in states %}<article class="spec" data-primitive="citation" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/citation.html" with state=state.key sid="citation-"|add:state.key %}
+      <h3 id="spec-citation-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/citation.html" with state=state.key sid="citation-"|add:state.key ctx="spec-citation-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -529,8 +529,8 @@
   <h2 id="diff-title">{% trans "Diff" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="diff" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/diff.html" with state=state.key sid="diff-"|add:state.key %}
+      <h3 id="spec-diff-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/diff.html" with state=state.key sid="diff-"|add:state.key ctx="spec-diff-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -538,8 +538,8 @@
   <h2 id="document_viewer-title">{% trans "Document viewer" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="document_viewer" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/document_viewer.html" with state=state.key sid="document_viewer-"|add:state.key %}
+      <h3 id="spec-document_viewer-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/document_viewer.html" with state=state.key sid="document_viewer-"|add:state.key ctx="spec-document_viewer-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>
@@ -547,8 +547,8 @@
   <h2 id="chart-title">{% trans "Chart" %}</h2>
   <div class="spec-grid spec-grid--wide">
     {% for state in states %}<article class="spec" data-primitive="chart" data-state="{{ state.key }}">
-      <h3>{{ state.label }}</h3>
-      {% include "identity/showcase/chart.html" with state=state.key sid="chart-"|add:state.key %}
+      <h3 id="spec-chart-{{ state.key }}">{{ state.label }}</h3>
+      {% include "identity/showcase/chart.html" with state=state.key sid="chart-"|add:state.key ctx="spec-chart-"|add:state.key %}
     </article>{% endfor %}
   </div>
 </section>

@@ -17,7 +17,9 @@ Context:
   collapsible  True lets drawer.js start it closed (hidden) once enhanced.
   state        Optional SC-8 state shown as a state note in the body.
   message      State note text.
-{% endcomment %}<aside class="drawer{% if docked %} drawer--docked{% endif %}{% if state == "hover" %} is-hover{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title" data-drawer{% if collapsible %} data-drawer-collapsible{% endif %}{% if state == "loading" %} aria-busy="true"{% endif %}>
+  name_context Optional id of an element whose text is appended to the
+               landmark name (unique names when a page repeats drawers).
+{% endcomment %}<aside class="drawer{% if docked %} drawer--docked{% endif %}{% if state == "hover" %} is-hover{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title{% if name_context %} {{ name_context }}{% endif %}" data-drawer{% if collapsible %} data-drawer-collapsible{% endif %}{% if state == "loading" %} aria-busy="true"{% endif %}>
   <div class="drawer-header">
     <h2 class="drawer-title" id="{{ id }}-title">{{ title }}</h2>
     <button type="button" class="button--quiet{% if state == "focus" %} is-focus{% elif state == "active" %} is-active{% endif %}" data-drawer-close="{{ id }}"{% if state == "disabled" %} disabled{% endif %}>{% include "includes/components/icon.html" with name="close" only %}<span>{{ close_label|default:_("Close") }}</span></button>

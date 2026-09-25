@@ -56,7 +56,6 @@ THEMES = ("light", "dark")
 DENSITIES = ("comfortable", "compact")
 MATRIX_VIEWPORTS = {"1280": (1280, 900), "375": (375, 812), "320": (320, 640)}
 AXE_URL = "/static/vendor/axe/axe.min.js"
-AXE_BLOCKING = ("serious", "critical")
 NON_INTERACTIVE = frozenset({"provenance"})
 VIEWPORTS = {
     "mobile-375": (375, 812),
@@ -74,13 +73,23 @@ MIN_LARGE_CONTRAST = 3.0
 MAX_TAB_STOPS = 2000
 
 OVERFLOW_JS = """(root) => {
+  // Named scroll regions scroll horizontally by design: only the container's
+  // own overflow is allowed. Everything inside it is still checked, so a
+  // clipped label inside a scrolling tab list or table still fails.
+  const scrollRegions = '.table-scroll, .resource-grid-scroll, .tabs-list,'
+    + ' .docviewer-canvas, .combobox-listbox';
   const bad = [];
   for (const el of root.querySelectorAll('*')) {
-    // Scroll regions scroll by design; visually hidden text is clipped by design.
-    const clipped = '.table-scroll, .resource-grid-scroll, .tabs-list,'
-      + ' .docviewer-canvas, .visually-hidden, svg';
-    if (el.closest(clipped) || el.tagName === 'INPUT') continue;
+    if (el.tagName === 'INPUT') continue;
+    // Visually hidden text is clipped to 1px on purpose.
+    if (el.closest('.visually-hidden')) continue;
+    // SVG elements have no CSS content box; <text> reports its glyph run.
+    if (el instanceof SVGElement) continue;
     if (el.clientWidth === 0) continue;
+    const overflowX = getComputedStyle(el).overflowX;
+    if (el.matches(scrollRegions) && (overflowX === 'auto' || overflowX === 'scroll')) {
+      continue;
+    }
     if (el.scrollWidth > el.clientWidth + 1) {
       bad.push(el.tagName + '.' + el.className + ' ' +
         el.scrollWidth + '>' + el.clientWidth);
@@ -165,17 +174,37 @@ FOCUS_JS = """() => {
     outlineColor: cs.outlineColor,
     inNav: Boolean(el.closest('.nav')),
     disabled: Boolean(el.disabled) || el.getAttribute('aria-disabled') === 'true',
-    // A focused textarea scrolls its caret line into view, not its whole box:
-    // require its top edge, both sides and the whole caret line to be visible.
-    within: rect.top >= -1 && rect.left >= -1 && rect.right <= window.innerWidth + 1 &&
-      (el.tagName === 'TEXTAREA'
-        ? rect.top + parseFloat(cs.paddingTop) + parseFloat(cs.lineHeight)
-          <= window.innerHeight + 1
-        : rect.bottom <= window.innerHeight + 1),
+    within: rect.top >= -1 && rect.left >= -1 &&
+      rect.bottom <= window.innerHeight + 1 && rect.right <= window.innerWidth + 1,
     primitive: (el.closest('[data-primitive]') || {}).dataset?.primitive || null,
     domIndex: Array.from(document.querySelectorAll('*')).indexOf(el),
   };
 }"""
+
+# Every visible interactive target in <main> is at least 44 x 44 CSS px. Only
+# inline links inside running text (WCAG 2.5.8 inline exception) are exempt.
+TARGETS_JS = """(minimum) => {
+  const selector = 'main a[href], main button, main select, main textarea,'
+    + ' main input:not([type=hidden]):not([type=radio]), main summary,'
+    + ' main [role=tab], main [role=gridcell][tabindex], main .segmented-option,'
+    + ' main .combobox-option, main .datetime-day';
+  const small = [];
+  let checked = 0;
+  for (const el of document.querySelectorAll(selector)) {
+    if (!el.checkVisibility({visibilityProperty: true})) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'inline' && el.closest('p, li')) continue;
+    checked += 1;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < minimum - 0.5 || rect.height < minimum - 0.5) {
+      small.push([el.tagName + '.' + String(el.className).slice(0, 40),
+        Math.round(rect.width * 100) / 100, Math.round(rect.height * 100) / 100,
+        (el.closest('[data-primitive]') || {}).dataset?.primitive || null]);
+    }
+  }
+  return {checked, small};
+}"""
+MIN_TARGET_PX = 44
 
 TABBABLE_COUNT_JS = """() => {
   const selector = 'a[href], button, input, select, textarea, summary, [tabindex]';
@@ -253,18 +282,23 @@ def _open_showcase(
     *,
     forced_colors: Literal["active", "none"] | None = None,
     reduced_motion: Literal["reduce", "no-preference"] | None = None,
+    preferences: tuple[str, str] = ("light", "comfortable"),
 ) -> tuple[BrowserContext, Page]:
+    theme, density = preferences
     context = showcase.browser.new_context(
         viewport={"width": viewport[0], "height": viewport[1]},
         forced_colors=forced_colors,
         reduced_motion=reduced_motion,
     )
+    # The shell renders data-theme/data-density on <html> server-side for a
+    # signed-in user; serve them the same way so the first paint is final.
+    body = _with_preferences(showcase.html, theme, density)
 
     def fulfil(route: Route) -> None:
         route.fulfill(
             status=OK_STATUS,
             content_type="text/html; charset=utf-8",
-            body=showcase.html,
+            body=body,
         )
 
     context.route(f"{showcase.base_url}{SHOWCASE_PATH}", fulfil)
@@ -285,8 +319,24 @@ def _open_showcase(
             "getComputedStyle(document.querySelector('.actions button'))"
             ".backgroundColor"
         )
-        assert button_color == "rgb(0, 122, 135)"
+        assert button_color == (
+            "rgb(0, 122, 135)" if theme == "light" else "rgb(92, 200, 211)"
+        )
+        background = page.evaluate("getComputedStyle(document.body).backgroundColor")
+        assert background == (
+            "rgb(247, 245, 240)" if theme == "light" else "rgb(11, 31, 40)"
+        )
     return context, page
+
+
+def _with_preferences(html: str, theme: str, density: str) -> str:
+    """Add the <html> attributes base.html renders from UserPreference."""
+    assert theme in THEMES
+    assert density in DENSITIES
+    opening = re.search(r"<html [^>]*>", html)
+    assert opening is not None
+    attributes = f' data-theme="{theme}" data-density="{density}">'
+    return html.replace(opening.group(0), opening.group(0)[:-1] + attributes, 1)
 
 
 def test_showcase_is_absent_from_the_served_runtime_and_css_is_served(
@@ -812,20 +862,6 @@ AXE_RUN_JS = """async () => {
 }"""
 
 
-def _apply(page: Page, theme: str, density: str) -> None:
-    """Set the preference attributes the shell renders for a signed-in user."""
-    page.evaluate(
-        "([theme, density]) => {"
-        " document.documentElement.dataset.theme = theme;"
-        " document.documentElement.dataset.density = density; }",
-        [theme, density],
-    )
-    background = page.evaluate("getComputedStyle(document.body).backgroundColor")
-    assert background == (
-        "rgb(11, 31, 40)" if theme == "dark" else "rgb(247, 245, 240)"
-    )
-
-
 def _write_json(destination: Path, payload: object) -> str:
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n")
@@ -843,9 +879,8 @@ def test_every_component_state_in_every_theme_density_and_width(
     showcase: Showcase,
 ) -> None:
     size = MATRIX_VIEWPORTS[viewport]
-    context, page = _open_showcase(showcase, size)
+    context, page = _open_showcase(showcase, size, preferences=(theme, density))
     try:
-        _apply(page, theme, density)
         assert page.evaluate("document.scrollingElement.scrollWidth") <= size[0]
         folder = showcase.root / "matrix" / f"{theme}-{density}-{viewport}"
         captures = 0
@@ -877,13 +912,16 @@ def test_every_component_state_in_every_theme_density_and_width(
                 destination.chmod(0o600)
                 captures += 1
         assert captures == (len(COMPONENTS) + len(PRIMITIVES)) * len(SC8_STATES)
+        targets = page.evaluate(TARGETS_JS, MIN_TARGET_PX)
+        assert targets["checked"] > 0
+        assert targets["small"] == [], (theme, density, viewport, targets["small"][:8])
         _record(
             showcase.report,
             assertion="every component x SC-8 state visible, unclipped, contrast >= AA",
-            theme=theme,
-            density=density,
+            preferences=(theme, density),
             viewport=viewport,
             captures=captures,
+            targets_checked=targets["checked"],
             folder=str(folder),
             lowest_contrast=min(worst.values()),
         )
@@ -900,9 +938,10 @@ def test_axe_finds_no_serious_or_critical_violation(
     viewport: str,
     showcase: Showcase,
 ) -> None:
-    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS[viewport])
+    context, page = _open_showcase(
+        showcase, MATRIX_VIEWPORTS[viewport], preferences=(theme, density)
+    )
     try:
-        _apply(page, theme, density)
         with page.expect_response(f"{showcase.base_url}{AXE_URL}") as axe_response:
             page.add_script_tag(url=f"{showcase.base_url}{AXE_URL}")
         assert axe_response.value.status == OK_STATUS
@@ -910,18 +949,17 @@ def test_axe_finds_no_serious_or_critical_violation(
         report = _write_json(
             showcase.root / "axe" / f"{theme}-{density}-{viewport}.json", violations
         )
-        blocking = [v for v in violations if v["impact"] in AXE_BLOCKING]
-        assert blocking == [], blocking
+        # Plan item 12 acceptance: zero violations of any impact on the showcase.
+        assert violations == [], [
+            (v["id"], v["impact"], v["nodes"]) for v in violations
+        ]
         _record(
             showcase.report,
             assertion="axe-core 4.13.0 (wcag2a/aa, wcag21a/aa, wcag22aa,"
-            " best-practice):"
-            " 0 serious or critical violations",
-            theme=theme,
-            density=density,
+            " best-practice): 0 violations of any impact",
+            preferences=(theme, density),
             viewport=viewport,
             axe_report=report,
-            nonblocking=[(v["id"], v["impact"], v["count"]) for v in violations],
         )
     finally:
         context.close()
@@ -932,9 +970,10 @@ def test_dark_and_compact_keep_rings_targets_and_tokens(
     theme: str,
     showcase: Showcase,
 ) -> None:
-    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS["1280"])
+    context, page = _open_showcase(
+        showcase, MATRIX_VIEWPORTS["1280"], preferences=(theme, "compact")
+    )
     try:
-        _apply(page, theme, "compact")
         ring = NAVY if theme == "light" else DARK_RING
         page.locator('[data-primitive="action"][data-state="focus"] button').focus()
         page.keyboard.press("Shift+Tab")
@@ -942,18 +981,10 @@ def test_dark_and_compact_keep_rings_targets_and_tokens(
         info = page.evaluate(FOCUS_JS)
         assert info is not None
         assert info["outlineColor"] == ring, info
-        # Compact tightens cells but no target shrinks below 44px.
-        targets = page.evaluate(
-            """() => Array.from(document.querySelectorAll(
-                 'main button:not(.datetime-day), main .button,'
-                 + ' main input:not([type=radio]),'
-                 + ' main .citation, main .tab, main .segmented-option'))
-               .filter((el) => el.getClientRects().length && !el.closest('[hidden]'))
-               .map((el) => [el.className || el.tagName,
-                             Math.round(el.getBoundingClientRect().height)])"""
-        )
-        small = [target for target in targets if target[1] < 44]
-        assert small == [], small[:5]
+        # Compact tightens cells but no target shrinks below 44 x 44 px.
+        targets = page.evaluate(TARGETS_JS, MIN_TARGET_PX)
+        assert targets["checked"] > 0
+        assert targets["small"] == [], targets["small"][:5]
         padding = page.evaluate(
             "getComputedStyle(document.querySelector('.table td')).paddingTop"
         )
@@ -964,7 +995,7 @@ def test_dark_and_compact_keep_rings_targets_and_tokens(
             " navy on paper and cyan on the navy dark theme",
             theme=theme,
             ring=info["outlineColor"],
-            targets_checked=len(targets),
+            targets_checked=targets["checked"],
             compact_cell_padding=padding,
         )
     finally:
@@ -981,19 +1012,20 @@ def test_zoom_200_with_pt_br_strings_never_overlaps_text(
         device_scale_factor=2,
         locale="pt-BR",
     )
+    body = _with_preferences(showcase.html, theme, "comfortable")
 
     def fulfil(route: Route) -> None:
         route.fulfill(
             status=OK_STATUS,
             content_type="text/html; charset=utf-8",
-            body=showcase.html,
+            body=body,
         )
 
     context.route(f"{showcase.base_url}{SHOWCASE_PATH}", fulfil)
     page = context.new_page()
     try:
         page.goto(f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
-        _apply(page, theme, "comfortable")
+        assert page.evaluate("document.documentElement.dataset.theme") == theme
         assert page.evaluate("document.scrollingElement.scrollWidth") <= 640
         overlaps: dict[str, Any] = {}
         for spec in page.locator("[data-primitive]").all():
@@ -1152,12 +1184,34 @@ def test_combobox_filters_moves_and_chooses(
         "aria-selected", "true"
     )
     live_page.keyboard.press("Enter")
+    choice = live_page.locator('input[name="live-combobox_choice"]')
     expect(combo).to_have_value("Anselmo Prado Sintético")
     expect(listbox).to_be_hidden()
-    expect(live_page.locator('input[name="live-combobox_choice"]')).to_have_value("p3")
+    expect(choice).to_have_value("p3")
+    # Clearing the text clears the submitted record too (never a stale p3).
     live_page.keyboard.press("Escape")
     expect(combo).to_have_value("")
-    _record(showcase.report, assertion="combobox: filter, arrows, Enter, Escape")
+    expect(choice).to_have_value("")
+    expect(combo).not_to_have_attribute("aria-activedescendant", re.compile(".+"))
+    # Choose again, then edit the text: the choice is dropped on the first key.
+    live_page.keyboard.type("ans")
+    live_page.keyboard.press("ArrowDown")
+    live_page.keyboard.press("Enter")
+    expect(choice).to_have_value("p3")
+    live_page.keyboard.press("Backspace")
+    expect(combo).to_have_value("Anselmo Prado Sintétic")
+    expect(choice).to_have_value("")
+    # A server-confirmed selection disappears as soon as the text changes.
+    confirmed = live_page.locator('[data-primitive="combobox"][data-state="success"]')
+    expect(confirmed.locator("[data-combobox-selection]")).to_be_visible()
+    confirmed.locator("[role=combobox]").fill("Ana")
+    expect(confirmed.locator("[data-combobox-selection]")).to_be_hidden()
+    expect(confirmed.locator('input[name$="_choice"]')).to_have_value("")
+    _record(
+        showcase.report,
+        assertion="combobox: filter, arrows, Enter, Escape; clearing or editing the"
+        " text clears the submitted choice and the confirmation",
+    )
 
 
 def test_date_picker_moves_by_day_and_month_and_respects_bounds(
@@ -1301,6 +1355,170 @@ def test_components_keep_their_native_baseline_without_javascript(
             showcase.report,
             assertion="without JavaScript: drawer in flow, date text inputs, every tab"
             " panel and every grid slot link reachable",
+            capture=capture,
+        )
+    finally:
+        context.close()
+
+
+def test_overflow_and_focus_checks_catch_clipped_labels_and_hidden_carets(
+    showcase: Showcase,
+) -> None:
+    """The layout harness itself: its allowances must not hide real defects."""
+    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS["320"])
+    try:
+        tabs = page.locator('[data-primitive="tabs"][data-state="default"]')
+        tabs.scroll_into_view_if_needed()
+        # The tab list may scroll; that alone is not a defect.
+        assert tabs.evaluate(OVERFLOW_JS) == []
+        # A clipped label inside the scrolling list is.
+        tabs.locator(".tab").first.evaluate(
+            """(tab) => Object.assign(tab.style, {maxWidth: '24px', minWidth: '24px',
+                 overflow: 'hidden', whiteSpace: 'nowrap'})"""
+        )
+        clipped = tabs.evaluate(OVERFLOW_JS)
+        assert any(entry.startswith("A.tab") for entry in clipped), clipped
+        # Clipped text inside a table scroll region is caught as well.
+        table = page.locator('[data-primitive="table"][data-state="default"]')
+        table.locator("tbody th").first.evaluate(
+            """(cell) => { const span = document.createElement('span');
+                span.textContent = 'Nome longo que nao cabe';
+                Object.assign(span.style, {display: 'block', width: '20px',
+                  overflow: 'hidden', whiteSpace: 'nowrap'});
+                cell.appendChild(span); }"""
+        )
+        assert any(entry.startswith("SPAN") for entry in table.evaluate(OVERFLOW_JS))
+
+        # A textarea that is partly below the fold is not "within", wherever
+        # its caret is: the whole focused box must be visible.
+        page.set_viewport_size({"width": 320, "height": 640})
+        probe = """([top, caretAtEnd]) => {
+            const ta = document.createElement('textarea');
+            ta.value = 'linha um\\nlinha dois\\nlinha tres';
+            Object.assign(ta.style, {position: 'fixed', top: top + 'px', left: '8px',
+              height: '100px', width: '200px', lineHeight: '24px', margin: '0'});
+            document.body.appendChild(ta);
+            ta.focus({preventScroll: true});
+            const position = caretAtEnd ? ta.value.length : 0;
+            ta.setSelectionRange(position, position);
+            return ta.value.length;
+        }"""
+        for top, caret_at_end in ((600, True), (590, False)):
+            page.evaluate(probe, [top, caret_at_end])
+            partial_textarea = page.evaluate(FOCUS_JS)
+            assert partial_textarea is not None
+            assert partial_textarea["within"] is False, partial_textarea
+            page.evaluate("document.activeElement.remove()")
+        page.evaluate(probe, [100, True])
+        visible_textarea = page.evaluate(FOCUS_JS)
+        assert visible_textarea is not None
+        assert visible_textarea["within"] is True, visible_textarea
+        page.evaluate("document.activeElement.remove()")
+        # Any other control must be fully inside the viewport.
+        page.evaluate(
+            """() => { const b = document.createElement('button');
+                b.textContent = 'Sonda'; Object.assign(b.style, {position: 'fixed',
+                top: '620px', left: '8px'}); document.body.appendChild(b);
+                b.focus({preventScroll: true}); }"""
+        )
+        partial = page.evaluate(FOCUS_JS)
+        assert partial is not None
+        assert partial["within"] is False, partial
+        _record(
+            showcase.report,
+            assertion="harness self-test: clipped tab and table labels are reported"
+            " inside scroll regions; a partly off-screen textarea (caret at start"
+            " or end) and a partly off-screen control fail 'within'",
+        )
+    finally:
+        context.close()
+
+
+def test_calendar_days_and_combobox_hold_at_320(showcase: Showcase) -> None:
+    context, page = _open_showcase(showcase, MATRIX_VIEWPORTS["320"])
+    try:
+        toggle = page.locator('[aria-controls="live-datetime-calendar"]')
+        toggle.scroll_into_view_if_needed()
+        toggle.click()
+        calendar = page.locator("#live-datetime-calendar")
+        expect(calendar).to_be_visible()
+        days = calendar.locator(".datetime-day").evaluate_all(
+            "(days) => days.map((d) => [d.getBoundingClientRect().width,"
+            " d.getBoundingClientRect().height])"
+        )
+        assert len(days) >= 28
+        assert min(width for width, _ in days) >= MIN_TARGET_PX - 0.5, days[:7]
+        assert min(height for _, height in days) >= MIN_TARGET_PX - 0.5, days[:7]
+        assert page.evaluate("document.scrollingElement.scrollWidth") <= 320
+        calendar_capture = _save(
+            page, showcase.root / "fixes-320" / "calendar-open.png", full_page=False
+        )
+        combo = page.locator("#live-combobox")
+        combo.scroll_into_view_if_needed()
+        combo.fill("ans")
+        page.keyboard.press("ArrowDown")
+        page.keyboard.press("Enter")
+        choice = page.locator('input[name="live-combobox_choice"]')
+        expect(choice).to_have_value("p3")
+        page.keyboard.press("Backspace")
+        expect(choice).to_have_value("")
+        combobox_capture = _save(
+            page, showcase.root / "fixes-320" / "combobox-edited.png", full_page=False
+        )
+        confirmed = page.locator('[data-primitive="combobox"][data-state="success"]')
+        confirmed.scroll_into_view_if_needed()
+        confirmed.locator("[role=combobox]").fill("Ana")
+        expect(confirmed.locator("[data-combobox-selection]")).to_be_hidden()
+        confirmed_capture = _save(
+            page,
+            showcase.root / "fixes-320" / "combobox-confirmation-cleared.png",
+            full_page=False,
+        )
+        _record(
+            showcase.report,
+            assertion="320px: every calendar day >= 44 x 44 without page overflow;"
+            " editing the combobox clears the submitted choice and confirmation",
+            smallest_day=[min(w for w, _ in days), min(h for _, h in days)],
+            captures=[calendar_capture, combobox_capture, confirmed_capture],
+        )
+    finally:
+        context.close()
+
+
+def test_editor_shell_brings_a_focused_textarea_fully_into_view(
+    showcase: Showcase,
+) -> None:
+    """Chromium only scrolls the caret line into view; the shell shows the box."""
+    context, page = _open_showcase(showcase, VIEWPORTS["mobile-375"])
+    try:
+        textarea = page.locator("#editor-default-subjective")
+        before = page.locator("#editor-default-title")
+        # Park the textarea so only its first line is above the fold.
+        page.evaluate(
+            """() => {
+                const ta = document.querySelector('#editor-default-subjective');
+                const top = ta.getBoundingClientRect().top;
+                window.scrollBy(0, top - innerHeight + 40);
+            }"""
+        )
+        top = textarea.evaluate("(ta) => ta.getBoundingClientRect().top")
+        assert top > page.evaluate("innerHeight") - 60
+        before.evaluate("(heading) => heading.setAttribute('tabindex', '-1')")
+        before.focus()
+        page.keyboard.press("Tab")
+        info = page.evaluate(FOCUS_JS)
+        assert info is not None
+        assert info["label"].startswith("#editor-default-subjective"), info
+        assert info["within"] is True, info
+        capture = _save(
+            page,
+            showcase.root / "fixes-375" / "editor-textarea-focus.png",
+            full_page=False,
+        )
+        _record(
+            showcase.report,
+            assertion="editor shell: a keyboard-focused textarea is scrolled fully"
+            " into view (box and ring), independent of the browser's caret scroll",
             capture=capture,
         )
     finally:

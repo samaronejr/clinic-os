@@ -15,11 +15,12 @@ Context:
   state      SC-8 state: loading dims the grid and speaks "Updating";
              other states add a state note above the grid.
   message    State note text.
-  active_cell  "<row>-<col>" (1-based) marked current (showcase).
+  name_context  Optional id of an element whose text is appended to the
+             region name (unique names when a page repeats grids).
 {% endcomment %}<div class="resource-grid-wrap" data-resource-grid-wrap>
   <p class="panel-title" id="{{ id }}-caption">{{ caption }}{% if state == "loading" %} <span class="table-progress" role="status">{% trans "Updating…" %}</span>{% endif %}</p>
   {% if state and state != "default" and state != "hover" and state != "focus" and state != "active" and state != "loading" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
-  <div class="resource-grid-scroll" role="region" aria-labelledby="{{ id }}-caption" tabindex="{% if state == "disabled" or state == "permission-denied" %}0{% else %}-1{% endif %}">
+  <div class="resource-grid-scroll" role="region" aria-labelledby="{{ id }}-caption{% if name_context %} {{ name_context }}{% endif %}" tabindex="{% if state == "disabled" or state == "permission-denied" %}0{% else %}-1{% endif %}">
     <div class="resource-grid" id="{{ id }}" role="grid" aria-labelledby="{{ id }}-caption" aria-rowcount="{{ rows|length|add:1 }}" data-resource-grid{% if state == "loading" %} aria-busy="true"{% endif %}{% if state == "disabled" or state == "permission-denied" %} aria-disabled="true"{% endif %}>
       <div class="resource-grid-row resource-grid-head" role="row">
         <span class="resource-grid-cell" role="columnheader">{% trans "Time" %}</span>

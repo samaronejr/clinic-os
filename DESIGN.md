@@ -674,6 +674,9 @@ icon, a Label-weight title and one sentence in the state's tone (error in
 Error, success in Success, stale and conflict in Warning, offline in Info,
 permission-denied and disabled on sunken paper, empty with a dashed Navy
 Gray border). Errors use `role="alert"`; every other state `role="status"`.
+Landmark components (drawer, editor, document viewer, resource grid, chart
+table) accept `name_context`, an element id appended to their accessible
+name, so a page that repeats one keeps every landmark name unique.
 
 - **Dialog:** native `<dialog>` opened with `showModal()` for decisions only
   (keep or discard, confirm a consequence); raised paper, surface radius,
@@ -686,11 +689,14 @@ Gray border). Errors use `role="alert"`; every other state `role="status"`.
   option takes Selection Tint and an inset focus-colored outline; async
   search POSTs the term (never a URL) and speaks counts in a status line.
   A confirmed patient selection shows name, age and masked CPF in a Success
-  line before anything binds to it.
+  line before anything binds to it; editing or clearing the text drops
+  both the submitted choice and that confirmation at once.
 - **Date and time picker:** DD/MM/AAAA and 24-hour HH:MM text inputs are the
   source of truth; the calendar grid is pt-BR, starts on Sunday, marks today
   in the clinic time zone with a border, the chosen day with a Trust Teal
-  fill, and days outside bounds struck through.
+  fill, and days outside bounds struck through. Every day is a 44 x 44
+  target: below 22.5rem the open calendar becomes a popover spanning the
+  viewport width instead of shrinking its days.
 - **Resource grid:** resources by clinic-local time in CSS grid with the ARIA
   grid pattern and one roving tab stop. Booked slots on Selection Tint, held
   slots dashed Warning, conflicts on Error tint, completed on Success tint,
@@ -709,8 +715,10 @@ Gray border). Errors use `role="alert"`; every other state `role="status"`.
   option is raised paper with a Trust Teal border, never color alone.
 - **Editor shell:** titled sections of plain text with one save indicator
   (all saved, saving, unsaved, not saved, offline, changed elsewhere, newer
-  version). A dirty section's field gets a 3px inline-start rule. The
-  server decides every save; nothing is stored in the browser.
+  version). A dirty section's field gets a 3px inline-start rule. A
+  focused field is scrolled fully into view (browsers only reveal the caret
+  line), so its focus ring is never below the fold. The server decides
+  every save; nothing is stored in the browser.
 - **Provenance badge:** reported (speech glyph), observed (eye), imported
   (Info), AI draft (dashed Warning) and confirmed (Success); the kind is
   always written out.

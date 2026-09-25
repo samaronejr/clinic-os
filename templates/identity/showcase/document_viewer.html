@@ -1,1 +1,1 @@
-{% load i18n showcase %}{% showcase_fixture "document_regions" as regions %}{% include "includes/components/document_viewer.html" with id=sid title=_("Blood count, 03/2031") pages=2 regions=regions download_href="#"|add:sid state=state %}
+{% load i18n showcase %}{% showcase_fixture "document_regions" as regions %}{% include "includes/components/document_viewer.html" with id=sid title=_("Blood count, 03/2031") pages=2 regions=regions download_href="#"|add:sid state=state name_context=ctx %}

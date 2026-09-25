@@ -70,6 +70,21 @@
     }
   });
 
+  /* Browsers scroll a focused textarea only until its caret line shows, which
+     can leave the rest of the field and its focus ring below the fold. Bring
+     the whole field into view (CSS scroll-margin keeps room for the ring). */
+  document.addEventListener("focusin", function (event) {
+    var field = event.target;
+    if (!field.matches || !field.matches("[data-editor] textarea")) {
+      return;
+    }
+    var rect = field.getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > window.innerHeight ||
+        rect.left < 0 || rect.right > window.innerWidth) {
+      field.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    }
+  });
+
   window.addEventListener("offline", function () {
     editors().forEach(function (editor) { setState(editor, "offline"); });
   });

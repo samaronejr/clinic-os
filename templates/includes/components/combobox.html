@@ -32,5 +32,5 @@ Context:
     {% else %}{% for option in options %}<li class="combobox-option{% if state == "hover" and forloop.first %} is-hover{% endif %}" role="option" id="{{ id }}-opt-{{ forloop.counter }}" data-value="{{ option.value }}" aria-selected="{% if expanded and state == "default" and forloop.first %}true{% elif state == "active" and forloop.first %}true{% else %}false{% endif %}"{% if option.disabled %} aria-disabled="true"{% endif %}><span>{{ option.label }}</span>{% if option.meta %}<span class="combobox-option-meta">{{ option.meta }}</span>{% endif %}</li>{% endfor %}{% endif %}
   </ul>
   <p class="combobox-status{% if state == "error" %} field-error{% endif %}" id="{{ id }}-status" role="status" data-combobox-status>{% if status %}{{ status }}{% endif %}</p>
-  {% if selection %}<p class="combobox-selection" role="status">{% include "includes/components/icon.html" with name="check" only %}<span>{% trans "Selected:" %} <strong>{{ selection.label }}</strong> · {{ selection.meta }}</span></p>{% endif %}
+  {% if selection %}<p class="combobox-selection" role="status" data-combobox-selection>{% include "includes/components/icon.html" with name="check" only %}<span>{% trans "Selected:" %} <strong>{{ selection.label }}</strong> · {{ selection.meta }}</span></p>{% endif %}
 </div>

@@ -591,7 +591,7 @@ a.is-active {
 
 .datetime-day {
   width: 100%;
-  min-width: 0;
+  min-width: var(--control-height);
   min-height: var(--control-height);
   padding: 0;
   border-color: transparent;
@@ -626,6 +626,26 @@ a.is-active {
 
 .datetime-day--outside {
   color: var(--color-ink-soft);
+}
+
+/* Seven 44px days need 308px plus the frame. Below 22.5rem that no longer
+   fits in the page measure, so the open calendar becomes a popover spanning
+   the full viewport width at its in-flow position (it overlays, never
+   widens the page or its fieldset). Keep ancestors unpositioned. */
+@media (max-width: 22.49rem) {
+  .datetime-calendar {
+    position: absolute;
+    z-index: 3;
+    inset-inline: 0;
+    width: auto;
+    padding-inline: var(--line-2);
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  .datetime-calendar-header {
+    padding-inline: var(--space-2);
+  }
 }
 
 @media (min-width: 30rem) {
@@ -764,6 +784,15 @@ a.resource-slot:hover strong {
 
 .resource-grid-free {
   color: var(--color-ink-soft);
+}
+
+/* A free slot link fills its cell so the whole cell is the 44px target. */
+a.resource-grid-free {
+  min-height: var(--control-height);
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  color: var(--color-primary);
 }
 
 .resource-grid-cell[aria-disabled="true"] {

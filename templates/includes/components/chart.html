@@ -14,6 +14,8 @@ Context:
   state     SC-8 state: loading and empty replace the drawing; error,
             stale, conflict, offline, permission-denied add a state note.
   message   State note text.
+  name_context  Optional id of an element whose text is appended to the
+            data-table region name (unique names on repeated charts).
 {% endcomment %}<figure class="chart{% if state == "stale" or state == "offline" %} chart--muted{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if state == "loading" %} aria-busy="true"{% endif %}>
   <figcaption class="chart-caption"><p class="chart-title" id="{{ id }}-title">{{ title }}</p>{% if summary and state != "loading" and state != "empty" and state != "error" and state != "permission-denied" %}<p class="chart-summary" id="{{ id }}-summary">{{ summary }}</p>{% endif %}</figcaption>
   {% if state == "loading" %}{% include "includes/components/state.html" with state="loading" title=_("Loading results…") only %}
@@ -30,7 +32,7 @@ Context:
   <ul class="chart-legend">{% for line in geo.series %}<li>{% localize off %}<svg viewBox="0 0 24 12" aria-hidden="true" focusable="false"><line class="chart-line chart-series--{{ line.index }}" x1="0" x2="24" y1="6" y2="6"/><path class="chart-point chart-fill--{{ line.index }}" d="{{ line.legend_path }}"/></svg>{% endlocalize %}{{ line.name }}</li>{% endfor %}{% if geo.reference %}<li><svg viewBox="0 0 24 12" aria-hidden="true" focusable="false"><rect class="chart-range" x="1" y="1" width="22" height="10"/></svg>{% blocktrans with range=geo.reference.label %}Reference range {{ range }}{% endblocktrans %}</li>{% endif %}</ul>
   <details class="chart-data"{% if state == "active" %} open{% endif %}>
     <summary class="{% if state == "focus" %}is-focus{% endif %}">{% trans "Show data as a table" %}</summary>
-    <div class="table-scroll" role="region" aria-labelledby="{{ id }}-table-caption" tabindex="0">
+    <div class="table-scroll" role="region" aria-labelledby="{{ id }}-table-caption{% if name_context %} {{ name_context }}{% endif %}" tabindex="0">
       <table class="table">
         <caption id="{{ id }}-table-caption">{{ title }}</caption>
         <thead><tr><th scope="col">{% trans "Date" %}</th>{% for line in geo.series %}<th scope="col">{{ line.name }}</th>{% endfor %}</tr></thead>

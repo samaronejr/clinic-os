@@ -31,7 +31,7 @@
   {% if state == "empty" %}<p class="table-empty">{% trans "No appointments in this week yet. Book one from the patient registry." %}</p>
   {% elif state == "permission-denied" %}{% include "includes/components/state.html" with state="permission-denied" message=_("Your role cannot see other professionals' agendas.") only %}
   {% else %}{% if state == "stale" or state == "offline" %}{% include "includes/components/state.html" with state=state only %}{% endif %}
-  <div class="table-scroll" role="region" aria-labelledby="{{ tid }}-caption" tabindex="0">
+  <div class="table-scroll" role="region" aria-labelledby="{{ tid }}-caption {{ ctx }}" tabindex="0">
     <table class="table">
       <caption id="{{ tid }}-caption">{% trans "Appointments today" %}</caption>
       <thead><tr><th scope="col">{% trans "Patient" %}</th><th scope="col">{% trans "Time" %}</th><th scope="col">{% trans "Status" %}</th><th scope="col">{% trans "Change" %}</th></tr></thead>

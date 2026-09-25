@@ -15,7 +15,9 @@ Context:
   download_href  Download link for the original file (optional).
   state          SC-8 state.
   message        State note text.
-{% endcomment %}<section class="docviewer" id="{{ id }}" aria-labelledby="{{ id }}-title" data-docviewer data-text-status="{% trans "Page __PAGE__ of __TOTAL__" %}" data-pages="{{ pages|default:1 }}" data-zoom="100"{% if state == "loading" %} aria-busy="true"{% endif %}>
+  name_context   Optional id of an element whose text is appended to the
+                 landmark names (unique names when a page repeats it).
+{% endcomment %}<section class="docviewer" id="{{ id }}" aria-labelledby="{{ id }}-title{% if name_context %} {{ name_context }}{% endif %}" data-docviewer data-text-status="{% trans "Page __PAGE__ of __TOTAL__" %}" data-pages="{{ pages|default:1 }}" data-zoom="100"{% if state == "loading" %} aria-busy="true"{% endif %}>
   <div class="docviewer-toolbar">
     <h2 class="docviewer-title" id="{{ id }}-title">{% include "includes/components/icon.html" with name="document" only %} {{ title }}</h2>
     <div class="c-toolbar">
@@ -26,7 +28,7 @@ Context:
     </div>
   </div>
   <div class="docviewer-layout">
-    <div class="docviewer-canvas" role="region" aria-label="{% trans "Document page" %}" tabindex="0">
+    <span class="visually-hidden" id="{{ id }}-canvas-label">{% trans "Document page" %}</span><div class="docviewer-canvas" role="region" aria-labelledby="{{ id }}-canvas-label{% if name_context %} {{ name_context }}{% endif %}" tabindex="0">
       {% if state == "loading" %}<div class="docviewer-page docviewer-page--skeleton"><span class="skeleton"></span><span class="skeleton skeleton--short"></span><span class="skeleton"></span></div>
       {% elif state == "empty" or state == "error" or state == "permission-denied" or state == "offline" %}{% include "includes/components/state.html" with state=state message=message only %}
       {% else %}{% if state == "stale" or state == "conflict" or state == "success" or state == "disabled" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
@@ -36,6 +38,6 @@ Context:
         <p class="meta">{% trans "Synthetic document for review." %}</p>
       </article>{% endif %}
     </div>
-    {% if regions and state != "loading" and state != "empty" and state != "permission-denied" %}<nav aria-label="{% trans "Regions in this document" %}"><ol class="docviewer-anchors">{% for region in regions %}<li><a href="#{{ id }}-{{ region.id }}" data-docviewer-anchor>{{ region.label }}</a></li>{% endfor %}</ol></nav>{% endif %}
+    {% if regions and state != "loading" and state != "empty" and state != "permission-denied" %}<span class="visually-hidden" id="{{ id }}-anchors-label">{% trans "Regions in this document" %}</span><nav aria-labelledby="{{ id }}-anchors-label{% if name_context %} {{ name_context }}{% endif %}"><ol class="docviewer-anchors">{% for region in regions %}<li><a href="#{{ id }}-{{ region.id }}" data-docviewer-anchor>{{ region.label }}</a></li>{% endfor %}</ol></nav>{% endif %}
   </div>
 </section>

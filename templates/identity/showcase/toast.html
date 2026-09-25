@@ -1,4 +1,4 @@
-{% load i18n %}<section class="toast-region toast-region--specimen" aria-label="{% trans "Notification examples" %}">
+{% load i18n %}<span class="visually-hidden" id="{{ sid }}-toasts-label">{% trans "Notification examples" %}</span><section class="toast-region toast-region--specimen" aria-labelledby="{{ sid }}-toasts-label {{ ctx }}">
 {% if state == "error" %}{% include "includes/components/toast.html" with tone="error" message=_("Reminder not sent. Try again.") only %}
 {% elif state == "success" %}{% include "includes/components/toast.html" with tone="success" message=_("Appointment saved.") only %}
 {% elif state == "stale" or state == "conflict" %}{% include "includes/components/toast.html" with tone="warning" message=_("The agenda changed. Refresh to see it.") only %}
