@@ -45,9 +45,10 @@ NAV_CLINIC: Final = re.compile(
     r'<strong class="nav-clinic">([^<]+?)\s*(?:<span|</strong>)'
 )
 PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
-# A physician sees every module their role opens, and never the registry
-# or the clinic billing ledger.
-PHYSICIAN_MODULES: Final = {"agenda", "availability", "consent", "retention"}
+# A physician sees every IA destination their bundle and routes open (plan
+# annex IA, todo 13): Patients leads to consent, never to the registry, and
+# the clinic billing ledger stays hidden.
+PHYSICIAN_MODULES: Final = {"agenda", "patients", "operations"}
 
 
 def _modules(content: bytes) -> dict[str, tuple[str, bool]]:
@@ -98,15 +99,15 @@ def test_receptionist_sees_manager_modules_for_the_url_clinic(
     modules = _modules(response.content)
     assert modules == {
         "agenda": (agenda, True),
-        "billing": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
-        "consent": (f"/clinics/{rbac_graph.clinic_a}/consent/", False),
+        "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
         "patients": (f"/intake/clinics/{rbac_graph.clinic_a}/patients/", False),
-        "retention": (f"/retention/clinics/{rbac_graph.clinic_a}/", False),
-        "availability": (
-            f"/scheduling/clinics/{rbac_graph.clinic_a}/availability/",
-            False,
-        ),
+        "operations": (f"/retention/clinics/{rbac_graph.clinic_a}/", False),
     }
+    # Availability and consent moved into the Agenda and Patients sections.
+    assert (
+        f'href="/scheduling/clinics/{rbac_graph.clinic_a}/availability/" '
+        'data-tab="availability"'
+    ).encode() in response.content
     assert _clinics_in_nav(response.content) == ["Todo 8 Clinic A"]
     assert b'href="/auth/logout/"' in response.content
     assert gettext("Sign out").encode() in response.content
@@ -133,7 +134,17 @@ def test_physician_never_sees_the_registry_and_the_route_still_denies(
 
     assert allowed.status_code == OK
     assert set(_modules(allowed.content)) == PHYSICIAN_MODULES
-    assert _modules(allowed.content)["availability"] == (availability, True)
+    assert _modules(allowed.content)["agenda"] == (
+        f"/scheduling/clinics/{rbac_graph.clinic_a}/agenda/",
+        True,
+    )
+    assert _modules(allowed.content)["patients"] == (
+        f"/clinics/{rbac_graph.clinic_a}/consent/",
+        False,
+    )
+    assert (
+        f'href="{availability}" aria-current="page" data-tab="availability"'
+    ).encode() in allowed.content
     # The registry fails closed on the blank GET as well as on the search, and
     # the shell never offers the module to a physician.
     assert blank.status_code == NOT_FOUND

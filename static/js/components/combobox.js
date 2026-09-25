@@ -3,7 +3,8 @@
    Alt+Down opens, Enter chooses, Escape closes (a second Escape clears),
    Tab leaves. Static options are filtered here; with
    data-combobox-endpoint the typed text is POSTed (never put in a URL) and
-   the server returns <li role="option"> markup. Nothing is stored. */
+   the server returns <li role="option"> markup; data-combobox-context (a
+   page path, never a record) travels in the same body. Nothing is stored. */
 (function () {
   "use strict";
 
@@ -172,6 +173,10 @@
     self.request = new AbortController();
     var body = new URLSearchParams();
     body.set("q", self.input.value);
+    var context = self.root.getAttribute("data-combobox-context");
+    if (context) {
+      body.set("context", context);
+    }
     self.root.setAttribute("aria-busy", "true");
     if (self.status) {
       self.status.textContent = self.text("loading", 0);

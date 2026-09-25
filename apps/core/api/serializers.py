@@ -8,6 +8,7 @@ from typing import Any, Final
 from rest_framework import serializers
 
 from apps.core.api.errors import ERROR_CODES
+from apps.core.command_search import MAX_COMMAND_QUERY
 from apps.scheduling.agenda_queries import AgendaPage
 
 
@@ -71,3 +72,54 @@ class AgendaPageSerializer(serializers.Serializer[AgendaPage]):
     page_count = serializers.IntegerField(read_only=True)
     start_at = serializers.DateTimeField(read_only=True)
     end_at = serializers.DateTimeField(read_only=True)
+
+
+class CommandSearchRequestSerializer(serializers.Serializer[None]):
+    """POST body of ``command/search``; search text never travels in a URL.
+
+    ``clinic_id`` is optional: without it the shell's current clinic is used.
+    An unknown or foreign clinic answers exactly like a query with no match.
+    """
+
+    q = serializers.CharField(
+        max_length=MAX_COMMAND_QUERY, allow_blank=True, trim_whitespace=False
+    )
+    clinic_id = serializers.UUIDField(required=False)
+    page_path = serializers.RegexField(
+        r"^/[A-Za-z0-9/_.-]*$",
+        max_length=200,
+        required=False,
+        help_text="Path of the page the palette was opened on (never a record).",
+    )
+
+
+class CommandResultSerializer(serializers.Serializer[Any]):
+    """One allowed palette row.
+
+    ``token`` stands for a record selector (a patient) held server-side in
+    the session; POST it as ``token`` to ``action_url_name``. ``href`` is the
+    state-free path of a destination or action and is null for tokenized
+    rows. ``label``/``meta`` of a patient row are the name and age only.
+    """
+
+    kind = serializers.ChoiceField(
+        choices=(
+            ("destination", "destination"),
+            ("action", "action"),
+            ("saved_view", "saved_view"),
+            ("save_view", "save_view"),
+            ("archive_view", "archive_view"),
+            ("patient", "patient"),
+        ),
+        read_only=True,
+    )
+    meta = serializers.CharField(read_only=True)
+    action_url_name = serializers.CharField(read_only=True)
+    token = serializers.CharField(read_only=True, allow_null=True)
+    href = serializers.CharField(read_only=True, allow_null=True)
+
+    def get_fields(self) -> dict[str, serializers.Field[Any, Any, Any, Any]]:
+        """Add ``label`` here: as a class attribute it would shadow ``Field.label``."""
+        fields = super().get_fields()
+        fields["label"] = serializers.CharField(read_only=True)
+        return fields

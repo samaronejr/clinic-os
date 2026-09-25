@@ -1,0 +1,1 @@
+{% load showcase %}{% showcase_fixture "patient_banner" as banner_patient %}{% include "includes/components/patient_banner.html" with id=sid name_context=ctx patient=banner_patient state=state specimen=True next="#" csrf_token=csrf_token only %}

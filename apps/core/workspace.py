@@ -1,25 +1,30 @@
-"""Current clinic context and role-aware navigation for the shared shell.
+"""Current clinic context, navigation and patient banner for the shared shell.
 
-The navigation only reflects authorization; every module route keeps its own
-server-side gate. Clinic visibility is bounded by row-level security on the
-active tenant, so a clinic from another organization can never be resolved.
+The destinations come from the ``apps.core.navigation`` registry, filtered by
+the actor's permission bundle and each route's own guard; every module route
+keeps its own server-side gate. Clinic visibility is bounded by row-level
+security on the active tenant, so a clinic from another organization can
+never be resolved.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.contrib.auth import SESSION_KEY
 from django.urls import reverse
-from django.utils.formats import date_format
-from django.utils.translation import gettext_lazy as _
 
+from apps.core.navigation import (
+    NavLink,
+    PaletteGroup,
+    build_navigation,
+    granted_permissions,
+)
+from apps.core.patient_context import PatientBanner, resolve_patient_banner
 from apps.identity.current_context import MANAGER_ROLES
 from apps.identity.models import User, UserClinicRole
-from apps.scheduling.agenda_presenter import clinic_local_today
 
 if TYPE_CHECKING:
     from django.http import HttpRequest
@@ -35,24 +40,6 @@ AUTH_FLOW_VIEWS: Final = frozenset(
     }
 )
 _STAFF_ROLES: Final = (*MANAGER_ROLES, UserClinicRole.Role.PHYSICIAN)
-_VIEW_SECTIONS: Final = {
-    "scheduling:agenda": "agenda",
-    "scheduling:agenda-at": "agenda",
-    "scheduling:appointment-create": "agenda",
-    "scheduling:appointment-reschedule": "agenda",
-    "scheduling:appointment-cancel": "agenda",
-    "intake:patient-list": "patients",
-    "intake:patient-create": "patients",
-    "intake:patient-contacts": "patients",
-    "intake:patient-access": "patients",
-    "scheduling:availability-list": "availability",
-    "scheduling:availability-retire": "availability",
-    "retention:status": "retention",
-    "consent:staff": "consent",
-    "billing:charges": "billing",
-    "billing:invoice": "billing",
-    "identity:clinic-settings": "settings",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,24 +58,19 @@ class WorkspaceClinic:
 
 
 @dataclass(frozen=True, slots=True)
-class WorkspaceLink:
-    """One working module the current role may open."""
-
-    key: str
-    label: str
-    url: str
-    current: bool
-    badge: str = ""
-
-
-@dataclass(frozen=True, slots=True)
 class Workspace:
     """Everything the shell needs to orient an authenticated user."""
 
     username: str
     clinic: WorkspaceClinic | None
     other_clinics: tuple[WorkspaceClinic, ...]
-    links: tuple[WorkspaceLink, ...]
+    links: tuple[NavLink, ...]
+    section: tuple[NavLink, ...] = ()
+    section_label: str = ""
+    section_current: str = ""
+    palette_groups: tuple[PaletteGroup, ...] = ()
+    patient: PatientBanner | None = None
+    resume_path: str = ""
 
     @property
     def home_url(self) -> str:
@@ -164,78 +146,27 @@ def _select_clinic(
     return selected
 
 
-def _agenda_badge(clinic: WorkspaceClinic) -> str:
-    today = date.fromisoformat(clinic_local_today(clinic.timezone))
-    return str(_("today %(day)s") % {"day": date_format(today, "d/m")})
+def _targets_clinic(request: HttpRequest, clinic: WorkspaceClinic) -> bool:
+    """Report whether the request names no clinic or the shell's own clinic.
 
-
-def _links(request: HttpRequest, clinic: WorkspaceClinic) -> tuple[WorkspaceLink, ...]:
+    A request for another clinic (refused, so the shell fell back to the
+    remembered clinic) shows neither that clinic nor the pinned patient.
+    """
     match = request.resolver_match
-    section = _VIEW_SECTIONS.get(match.view_name, "") if match else ""
-    manager = bool(clinic.roles.intersection(MANAGER_ROLES))
-    links = [
-        WorkspaceLink(
-            key="agenda",
-            label=str(_("Agenda")),
-            url=clinic.agenda_url,
-            current=section == "agenda",
-            badge=_agenda_badge(clinic),
-        )
-    ]
-    if clinic.roles.intersection(
-        {UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN}
-    ):
-        links.append(
-            WorkspaceLink(
-                key="settings",
-                label="Configurações",
-                url=reverse("identity:clinic-settings", args=(clinic.id,)),
-                current=section == "settings",
-            )
-        )
-    if manager:
-        links.append(
-            WorkspaceLink(
-                key="patients",
-                label=str(_("Patients")),
-                url=reverse("intake:patient-list", args=(clinic.id,)),
-                current=section == "patients",
-            )
-        )
-        links.append(
-            WorkspaceLink(
-                key="billing",
-                label="Cobranças",
-                url=reverse("billing:charges", args=(clinic.id,)),
-                current=section == "billing",
-            )
-        )
-    links.append(
-        WorkspaceLink(
-            key="availability",
-            label=str(_("Availability")),
-            url=reverse("scheduling:availability-list", args=(clinic.id,)),
-            current=section == "availability",
-        )
-    )
-    if manager or UserClinicRole.Role.PHYSICIAN in clinic.roles:
-        links.append(
-            WorkspaceLink(
-                key="retention",
-                label=str(_("Retention")),
-                url=reverse("retention:status", args=(clinic.id,)),
-                current=section == "retention",
-            )
-        )
-    links.append(
-        WorkspaceLink(
-            key="consent",
-            label="Consentimentos",
-            url=reverse("consent:staff", args=(clinic.id,)),
-            current=section == "consent",
-        )
-    )
-    return tuple(links)
+    requested = match.kwargs.get("clinic_id") if match else None
+    return requested is None or _parse_uuid(requested) == clinic.id
+
+
+def _resume_path(request: HttpRequest, clinic: WorkspaceClinic) -> str:
+    """Return the page to come back to after a palette switch.
+
+    Only a path inside the clinic in context is echoed back; a refused page
+    for another clinic resumes at the workspace home, so no response ever
+    repeats a foreign clinic's identifier.
+    """
+    if not _targets_clinic(request, clinic):
+        return reverse("workspace-home")
+    return request.path
 
 
 def resolve_workspace(request: HttpRequest) -> Workspace | None:
@@ -251,9 +182,66 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
         return None
     clinics = _visible_clinics(user.pk)
     clinic = _select_clinic(request, clinics)
+    others = tuple(entry for entry in clinics if entry is not clinic)
+    if clinic is None:
+        return Workspace(user.get_username(), None, others, ())
+    view_name = request.resolver_match.view_name
+    granted = granted_permissions(clinic.id)
+    navigation = build_navigation(
+        clinic_id=clinic.id,
+        timezone=clinic.timezone,
+        roles=clinic.roles,
+        granted=granted,
+        view_name=view_name,
+    )
     return Workspace(
         username=user.get_username(),
         clinic=clinic,
-        other_clinics=tuple(entry for entry in clinics if entry is not clinic),
-        links=_links(request, clinic) if clinic else (),
+        other_clinics=others,
+        links=navigation.links,
+        section=navigation.section,
+        section_label=navigation.section_label,
+        section_current=navigation.section_current,
+        palette_groups=navigation.palette,
+        resume_path=_resume_path(request, clinic),
+        patient=(
+            resolve_patient_banner(
+                request,
+                clinic_id=clinic.id,
+                timezone=clinic.timezone,
+                roles=clinic.roles,
+                granted=granted,
+                view_name=view_name,
+            )
+            if _targets_clinic(request, clinic)
+            else None
+        ),
+    )
+
+
+def current_clinic(request: HttpRequest) -> WorkspaceClinic | None:
+    """Return the shell's clinic for a request whose path names no clinic.
+
+    The palette endpoints use the clinic the shell last showed (the session's
+    remembered clinic when the actor still holds a role there), resolved by
+    the same membership query as the shell itself.
+    """
+    user = request.user
+    if (
+        request.resolver_match is None
+        or not user.is_authenticated
+        or not isinstance(user, User)
+    ):
+        return None
+    return _select_clinic(request, _visible_clinics(user.pk))
+
+
+def clinic_of_actor(user_id: UUID, clinic_id: UUID) -> WorkspaceClinic | None:
+    """Return one clinic the actor holds a shell role in, else ``None``.
+
+    Unknown, foreign-organization and unassigned clinics are indistinguishable.
+    """
+    return next(
+        (clinic for clinic in _visible_clinics(user_id) if clinic.id == clinic_id),
+        None,
     )
