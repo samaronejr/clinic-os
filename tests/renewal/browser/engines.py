@@ -50,7 +50,8 @@ Playwright 1.61.0, so this module owns the one place each differs:
   ``service_workers="block"`` (https://playwright.dev/python/docs/api/class-page#page-route).
 * Session history. On Firefox, Playwright's ``page.reload()`` corrupts
   session history: a later ``go_back()`` reloads the current entry instead
-  of returning. The document's own ``location.reload()`` and
+  of returning. It also sometimes never reports ``load`` for a page whose
+  subrequests are being routed. The document's own ``location.reload()`` and
   ``history.back()`` walk the same history as the browser buttons on every
   engine, so journeys that reload and then go back use those. Firefox does
   not restore form controls on Back under Playwright, which disables its

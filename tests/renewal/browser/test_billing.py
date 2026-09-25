@@ -423,7 +423,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         # A lost connection stops the chain and says the screen may be stale.
         patient.route(STATUS_PATTERN, lambda route: route.abort())
-        patient.reload()
+        history_reload(patient)
         expect(patient.locator("[data-offline]")).to_be_visible()
         expect_state(patient, "pending")
         capture(patient, root, "patient-offline", width)
