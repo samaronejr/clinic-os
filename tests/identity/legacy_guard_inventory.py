@@ -12,6 +12,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from identity.legacy_sql_inventory import discover_sql
+
+__all__ = ["declared_probes", "discover", "discover_sql"]
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -63,6 +67,8 @@ def discover() -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for path in sorted((ROOT / "apps").rglob("*.py")):
         if "migrations" in path.parts:
+            # Python entry points only. discover_sql independently inventories
+            # SQL definitions here and deployed policy/resolver dependencies.
             continue
         module = str(path.relative_to(ROOT))[:-3].replace("/", ".")
         for name, node in _functions(ast.parse(path.read_text()).body):

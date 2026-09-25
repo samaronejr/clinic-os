@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 import pytest
 from apps.identity import stepup
 from apps.identity.models import UserClinicRole
+from apps.tenancy.db import tenant_context
+from django.db import DatabaseError, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
@@ -24,8 +26,11 @@ from identity.legacy_owner_boundaries import BOUNDARIES as OWNER_BOUNDARIES
 from identity.legacy_parity_support import LEGACY, exercise, target_code, world
 from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDARIES
 from identity.legacy_scope_boundaries import BOUNDARIES as SCOPE_BOUNDARIES
+from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventory
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
 from identity.permission_support import owner_context
+from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
+from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
@@ -54,6 +59,7 @@ class Inventory(TypedDict):
     candidates: list[Candidate]
     probes: list[str]
     method: list[str]
+    sql_guards: dict[str, SqlInventoryEntry]
 
 
 INVENTORY = cast(
@@ -101,6 +107,7 @@ def test_every_authorization_candidate_is_accounted_for() -> None:
     for row in candidates:
         if "role_helper" in row["signals"]:
             assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
+    assert_sql_inventory(INVENTORY["sql_guards"])
 
 
 @pytest.fixture(autouse=True)
@@ -167,3 +174,32 @@ def test_actual_domain_boundaries(
 @pytest.mark.parametrize("legacy_role", LEGACY)
 def test_actual_tenant_boundaries(rbac_graph: RbacGraph, legacy_role: str) -> None:
     exercise_tenant_boundaries(world(rbac_graph, legacy_role))
+
+
+@pytest.mark.parametrize("role", ALL_ROLES)
+@override_settings(BILLING_SYNTHETIC_PIX=True, TELECONSULT_SYNTHETIC_PROVIDER=True)
+def test_sql_guards_allow_and_deny_all_staff_roles(
+    rbac_graph: RbacGraph,
+    role: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    subject = seed_sql_world(rbac_graph, role, monkeypatch)
+    with (
+        runtime_role(),
+        tenant_context(subject.actor.actor.pk, rbac_graph.organization_a),
+    ):
+        for name, probe in PROBES.items():
+            for valid in (True, False):
+                expected = valid and role in probe.roles
+                if not expected and probe.refusal_state is not None:
+                    with pytest.raises(DatabaseError) as caught, transaction.atomic():
+                        call(probe, subject, valid)
+                    assert (
+                        getattr(caught.value.__cause__, "sqlstate", None)
+                        == probe.refusal_state
+                    ), name
+                else:
+                    with transaction.atomic():
+                        actual = call(probe, subject, valid)
+                        transaction.set_rollback(True)
+                    assert actual is expected, (name, role, valid, actual)
