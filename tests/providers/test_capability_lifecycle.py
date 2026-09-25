@@ -792,48 +792,54 @@ def test_cross_capability_bindings_are_rejected() -> None:
         )
 
 
-def test_gate_helper_propagates_unrelated_attribute_errors(
+def test_missing_mode_is_fail_closed_at_the_gate_not_the_helper(
     settings: SettingsWrapper,
 ) -> None:
-    """A probe raising an unrelated AttributeError fails the helper.
+    """The reviewer's OTHER-attribute repro: nothing is swallowed.
 
-    The missing-mode PIX case is whitelisted by exact type, message and
-    attribute name; anything else must propagate - including a different
-    missing attribute under the same deliberately-absent setting.
+    With ``CLINIC_DATA_MODE`` deleted, ``pix_capability`` resolves the
+    mode through ``resolved_data_mode`` and returns the refusal result;
+    a probe reading a different missing setting raises its AttributeError
+    straight through the helper.
     """
+    from apps.billing.adapters import pix_capability  # noqa: PLC0415
+
     from provider_gate_support import (  # noqa: PLC0415
         _HasRealEnabled,
         _probe_not_live,
     )
+
+    settings.OTHER = "sentinel"
+    del settings.CLINIC_DATA_MODE
+    del settings.OTHER
+
+    # The PIX adapter under the deliberately-missing mode returns
+    # not-live/refusal - no AttributeError escapes production code.
+    capability = pix_capability()
+    assert capability.real_enabled is False
+    assert capability.synthetic_enabled is False
+    _probe_not_live(pix_capability)
+
+    def _other_probe() -> _HasRealEnabled:
+        value: _HasRealEnabled = settings.OTHER
+        return value
+
+    # A probe touching an unrelated missing setting fails loudly; the
+    # helper classifies nothing and swallows nothing.
+    with pytest.raises(AttributeError):
+        _probe_not_live(_other_probe)
 
     unrelated_message = "module exploded for another reason"
 
     def _unrelated_probe() -> _HasRealEnabled:
         raise AttributeError(unrelated_message)
 
-    del settings.CLINIC_DATA_MODE
     with pytest.raises(AttributeError, match="module exploded"):
-        _probe_not_live(_unrelated_probe, missing_mode=True)
+        _probe_not_live(_unrelated_probe)
 
-    wrong_attribute_message = "'Settings' object has no attribute 'OTHER'"
-
-    def _wrong_attribute_probe() -> _HasRealEnabled:
-        raise AttributeError(wrong_attribute_message)
-
-    with pytest.raises(AttributeError, match="OTHER"):
-        _probe_not_live(_wrong_attribute_probe, missing_mode=True)
-
-    def _bare_probe() -> _HasRealEnabled:
-        raise AttributeError
-
-    # A bare AttributeError raised in probe code (not Django's settings
-    # lookup) is not the missing-mode case and propagates.
-    with pytest.raises(AttributeError):
-        _probe_not_live(_bare_probe, missing_mode=True)
-    # And under a present mode any AttributeError propagates regardless.
     settings.CLINIC_DATA_MODE = "synthetic"
     with pytest.raises(AttributeError):
-        _probe_not_live(_unrelated_probe, missing_mode=False)
+        _probe_not_live(_unrelated_probe)
 
 
 def test_gate_closed_under_suite_mode(settings: SettingsWrapper) -> None:

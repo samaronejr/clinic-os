@@ -28,8 +28,7 @@ import os
 from collections.abc import Mapping
 from uuid import UUID
 
-from config.settings.contracts import LIVE_DATA_MODE
-from django.conf import settings
+from config.settings.contracts import LIVE_DATA_MODE, resolved_data_mode
 from ops.release.activation import LiveModeHaltedError, require_live_runtime
 
 from apps.providers.models import CapabilityVersion, ProviderCapability
@@ -80,9 +79,9 @@ def is_live(
     mode = runtime_environment.get("CLINIC_DATA_MODE")
     # Without injection the process mode comes from settings (validated
     # by require_data_mode at startup); it must agree with the snapshot.
-    settings_mode = (
-        getattr(settings, "CLINIC_DATA_MODE", None) if environment is None else mode
-    )
+    # ``resolved_data_mode`` fails closed to None when the setting is
+    # absent or invalid instead of leaking AttributeError.
+    settings_mode = resolved_data_mode() if environment is None else mode
     if mode != LIVE_DATA_MODE or settings_mode != LIVE_DATA_MODE:
         return False
     if clinic_id is not None and type(clinic_id) is not UUID:

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import qrcode
+from config.settings.contracts import resolved_data_mode
 from django.conf import settings
 from django.utils import timezone
 
@@ -134,9 +135,14 @@ class PixCapability:
 
 
 def pix_capability() -> PixCapability:
-    """Permit only explicit rehearsal opt-in in synthetic data mode."""
+    """Permit only explicit rehearsal opt-in in synthetic data mode.
+
+    ``resolved_data_mode`` returns ``None`` when ``CLINIC_DATA_MODE`` is
+    absent or invalid, so a missing mode fails closed (both flags False)
+    instead of leaking ``AttributeError`` from the settings holder.
+    """
     return PixCapability(
-        synthetic_enabled=settings.CLINIC_DATA_MODE == "synthetic"
+        synthetic_enabled=resolved_data_mode() == "synthetic"
         and getattr(settings, "BILLING_SYNTHETIC_PIX", False) is True,
         real_enabled=is_live("pix", clinic_id=None),
     )

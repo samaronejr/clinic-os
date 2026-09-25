@@ -68,54 +68,20 @@ def activate_capability(key: str) -> CapabilityVersion:
     return lifecycle.activate_version(key, decision=APPROVER)
 
 
-def _is_missing_clinic_data_mode(error: AttributeError) -> bool:
-    """True only when ``error`` is the settings CLINIC_DATA_MODE miss.
+def _probe_not_live(probe: Callable[[], _HasRealEnabled] | None) -> None:
+    """Assert the adapter flag refuses real use. Swallows nothing.
 
-    Django raises this two ways depending on the holder: a named message
-    (``'Settings' object has no attribute 'CLINIC_DATA_MODE'``) or a bare
-    ``AttributeError`` from ``UserSettingsHolder.__getattr__`` under the
-    pytest ``settings`` fixture. For the bare form the name is proven from
-    the traceback's last frame - it must be Django's settings attribute
-    lookup, not adapter code.
-    """
-    if "CLINIC_DATA_MODE" in str(error):
-        return True
-    if str(error):
-        return False
-    frame = error.__traceback__
-    while frame is not None and frame.tb_next is not None:
-        frame = frame.tb_next
-    if frame is None:
-        return False
-    code = frame.tb_frame.f_code
-    return code.co_name == "__getattr__" and "django/conf" in (
-        code.co_filename.replace("\\", "/")
-    )
-
-
-def _probe_not_live(
-    probe: Callable[[], _HasRealEnabled] | None,
-    *,
-    missing_mode: bool = False,
-) -> None:
-    """Assert the adapter flag refuses real use.
-
-    Only the deliberate missing-``CLINIC_DATA_MODE`` PIX case may raise:
-    ``pix_capability`` reads the setting for its synthetic flag, so with
-    the setting absent the adapter raises the exact settings-miss
-    ``AttributeError`` for ``CLINIC_DATA_MODE``. Any other AttributeError
-    - different attribute, different origin, or under a present setting -
-    propagates and fails the test rather than being normalized into a
-    pass.
+    The missing/invalid ``CLINIC_DATA_MODE`` case is handled in production
+    code: ``pix_capability`` resolves the mode through
+    ``config.settings.contracts.resolved_data_mode``, which returns None
+    for absent or unknown values, so the adapter returns its refusal
+    result (``real_enabled=False``) instead of raising ``AttributeError``.
+    Any exception the probe still raises - including any AttributeError -
+    therefore propagates and fails the test.
     """
     if probe is None:
         return
-    try:
-        capability = probe()
-    except AttributeError as error:
-        if missing_mode and _is_missing_clinic_data_mode(error):
-            return
-        raise
+    capability = probe()
     assert capability.real_enabled is False
 
 
@@ -158,7 +124,7 @@ def assert_capability_gate_closed(
 
         del settings.CLINIC_DATA_MODE
         assert is_live(key, clinic_id=None) is False
-        _probe_not_live(probe, missing_mode=True)
+        _probe_not_live(probe)
         settings.CLINIC_DATA_MODE = "not-a-mode"
         assert is_live(key, clinic_id=None) is False
         _probe_not_live(probe)
