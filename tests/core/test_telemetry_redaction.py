@@ -262,6 +262,33 @@ def test_log_open_token_fields_are_not_emitted(captured_log: io.StringIO) -> Non
     _assert_no_phi(captured_log.getvalue())
 
 
+def test_log_template_arguments_render_only_through_validators(
+    captured_log: io.StringIO,
+) -> None:
+    template = "UI API internal error: route=%s exception=%s frames=%s"
+    probe = logging.getLogger("telemetry-corpus")
+    probe.error(
+        template,
+        "ui_api:agenda-query",
+        "builtins.RuntimeError",
+        "views.py:40:explode < test_ui_api.py:12:fail_underneath",
+    )
+    for entry in _TOKEN_SHAPED_NAMES + _NAMES + _SOAP_NOTES:
+        probe.error(template, entry, entry, f"views.py:40:explode < {entry}")
+    first, *hostile = [
+        json.loads(line)["message"] for line in captured_log.getvalue().splitlines()
+    ]
+    assert first == (
+        "UI API internal error: route=ui_api:agenda-query "
+        "exception=builtins.RuntimeError "
+        "frames=views.py:40:explode < test_ui_api.py:12:fail_underneath"
+    )
+    assert set(hostile) == {
+        "UI API internal error: route=[invalid] exception=[invalid] frames=[invalid]"
+    }
+    _assert_no_phi(captured_log.getvalue())
+
+
 def test_log_logger_name_resolves_to_loaded_modules() -> None:
     formatter = telemetry.JsonTelemetryFormatter()
 
@@ -815,7 +842,7 @@ def test_sentry_event_with_soap_exception_keeps_only_type() -> None:
         "exception": {
             "values": [
                 {
-                    "type": "ClinicalNoteError",
+                    "type": "ValueError",
                     "value": soap,
                     "stacktrace": {"frames": [{"vars": {"note": soap}}]},
                 }
@@ -832,7 +859,7 @@ def test_sentry_event_with_soap_exception_keeps_only_type() -> None:
     exception = scrubbed["exception"]
     assert isinstance(exception, dict)
     (entry,) = exception["values"]
-    assert entry == {"type": "ClinicalNoteError"}
+    assert entry == {"type": "ValueError"}
     assert scrubbed["tags"] == {"request_id": "b" * 32}
     assert scrubbed["request"] == {"method": "post"}
     assert "extra" not in scrubbed

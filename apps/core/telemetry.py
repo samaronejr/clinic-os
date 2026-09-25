@@ -561,27 +561,99 @@ class AllowlistLogFilter(logging.Filter):
         return True
 
 
+_FRAME_LOCATION_FORMAT: Final = re.compile(
+    r"[A-Za-z0-9_.<>-]{1,128}:\d{1,6}:[A-Za-z0-9_<>]{1,128}"
+)
+_MAX_FRAME_LOCATIONS: Final = 64
+
+
+def _is_exception_type(module_name: str, qualname: str) -> bool:
+    """Report whether ``module_name.qualname`` is a real exception class."""
+    target: object = sys.modules.get(module_name)
+    for part in qualname.split("."):
+        if target is None or not part.isidentifier():
+            return False
+        target = getattr(target, part, None)
+    return isinstance(target, type) and issubclass(target, BaseException)
+
+
+def _qualified_type_value(value: object) -> str:
+    """Accept ``module.QualName`` only when it names a real exception class."""
+    if not isinstance(value, str):
+        return INVALID_LABEL
+    parts = value.split(".")
+    for split in range(len(parts) - 1, 0, -1):
+        module_name = ".".join(parts[:split])
+        if module_name in sys.modules:
+            qualname = ".".join(parts[split:])
+            return value if _is_exception_type(module_name, qualname) else INVALID_LABEL
+    return INVALID_LABEL
+
+
+def _frame_locations_value(value: object) -> str:
+    """Validate ``file.py:line:function`` locations joined by `` < ``."""
+    if not isinstance(value, str):
+        return INVALID_LABEL
+    frames = value.split(" < ")
+    if len(frames) > _MAX_FRAME_LOCATIONS or not all(
+        _FRAME_LOCATION_FORMAT.fullmatch(frame) for frame in frames
+    ):
+        return INVALID_LABEL
+    return value
+
+
+# Registered templates whose arguments are rendered, each through its own
+# validator; every other template renders without arguments.
+LOG_TEMPLATE_ARGUMENT_VALIDATORS: Final[
+    dict[str, tuple[Callable[[object], str], ...]]
+] = {
+    "UI API internal error: route=%s exception=%s frames=%s": (
+        _route_name_value,
+        _qualified_type_value,
+        _frame_locations_value,
+    ),
+}
+
+
+def _render_message(record: logging.LogRecord) -> str:
+    template = str(record.msg)
+    if template not in LOG_MESSAGE_ALLOWLIST:
+        return UNLISTED_MESSAGE
+    validators = LOG_TEMPLATE_ARGUMENT_VALIDATORS.get(template)
+    arguments = record.args
+    if (
+        validators is None
+        or not isinstance(arguments, tuple)
+        or len(arguments) != len(validators)
+    ):
+        return template
+    return template % tuple(
+        validator(argument)
+        for validator, argument in zip(validators, arguments, strict=True)
+    )
+
+
 class JsonTelemetryFormatter(logging.Formatter):
     """Render one log record as a single allowlisted JSON object.
 
-    The message must be a registered template from ``LOG_MESSAGE_ALLOWLIST``;
-    ``args`` are never interpolated, so a caller that passes PHI as a
-    positional argument or as the message itself cannot leak it. Exception
-    output is the exception type name only — never the message or traceback.
+    The message must be a registered template from ``LOG_MESSAGE_ALLOWLIST``.
+    ``args`` are rendered only for templates listed in
+    ``LOG_TEMPLATE_ARGUMENT_VALIDATORS``, each argument through its own
+    closed-set/format validator; all other templates render without their
+    args, so PHI passed positionally or as the message itself cannot leak.
+    Exception output is the exception type name only, never the message or
+    traceback.
     """
 
     def format(self, record: logging.LogRecord) -> str:
         """Serialize the record; non-allowlisted extras are already gone."""
-        template = str(record.msg)
         payload: dict[str, object] = {
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC)
             .isoformat()
             .replace("+00:00", "Z"),
             "level": record.levelname.lower(),
             "logger": _logger_name_value(record.name),
-            "message": (
-                template if template in LOG_MESSAGE_ALLOWLIST else UNLISTED_MESSAGE
-            ),
+            "message": _render_message(record),
         }
         for field in sorted(LOG_FIELD_ALLOWLIST):
             if field in vars(record):
@@ -1347,7 +1419,11 @@ def _valid(value: object) -> bool:
 
 
 def _scrub_exception(exception: object) -> dict[str, object]:
-    """Keep each exception's type name and closed mechanism type only."""
+    """Keep each exception's type and closed mechanism type only.
+
+    The type survives only when ``module.type`` resolves to a real exception
+    class in an imported module (the SDK omits ``module`` for builtins).
+    """
     if not isinstance(exception, dict):
         return {}
     values = exception.get("values")
@@ -1358,8 +1434,13 @@ def _scrub_exception(exception: object) -> dict[str, object]:
         if not isinstance(entry, dict):
             continue
         kept: dict[str, object] = {}
-        type_name = _safe_type_name(entry.get("type"))
-        if _valid(type_name):
+        type_name = entry.get("type")
+        module_name = entry.get("module") or "builtins"
+        if (
+            isinstance(type_name, str)
+            and isinstance(module_name, str)
+            and _is_exception_type(module_name, type_name)
+        ):
             kept["type"] = type_name
         mechanism = entry.get("mechanism")
         if isinstance(mechanism, dict):
