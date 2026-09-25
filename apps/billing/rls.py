@@ -30,3 +30,14 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "billing_pixcharge": frozenset({"SELECT", "INSERT"}),
     "billing_paymentevent": frozenset({"SELECT", "INSERT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("billing_invoice", "amount_minor", "UPDATE"),
+        ("billing_invoice", "currency", "UPDATE"),
+        ("billing_invoice", "issued_at", "UPDATE"),
+        ("billing_invoice", "released_at", "UPDATE"),
+        ("billing_invoice", "revision", "UPDATE"),
+        ("billing_invoice", "state", "UPDATE"),
+    }
+)

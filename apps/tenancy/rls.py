@@ -26,6 +26,9 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "tenancy_tenantprobe": frozenset({"SELECT", "INSERT", "UPDATE", "DELETE"}),
     "tenancy_tenantdatakey": frozenset(),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+# tenancy_tenantprobe's UPDATE is table-level; it has no column ACLs.
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset()
 
 
 def apply_tenant_rls(table: str, tenant_col: str) -> str:

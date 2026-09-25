@@ -23,3 +23,15 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "teleconsult_teleconsultcredential": frozenset({"SELECT", "INSERT"}),
     "teleconsult_teleconsultevent": frozenset({"SELECT", "INSERT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("teleconsult_teleconsultcredential", "first_used_at", "UPDATE"),
+        ("teleconsult_teleconsultcredential", "revoked_at", "UPDATE"),
+        ("teleconsult_teleconsultsession", "ended_at", "UPDATE"),
+        ("teleconsult_teleconsultsession", "failure_reason", "UPDATE"),
+        ("teleconsult_teleconsultsession", "revision", "UPDATE"),
+        ("teleconsult_teleconsultsession", "started_at", "UPDATE"),
+        ("teleconsult_teleconsultsession", "state", "UPDATE"),
+    }
+)

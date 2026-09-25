@@ -13,3 +13,5 @@ NON_RLS_TABLES: Final[frozenset[str]] = frozenset({"audit_event"})
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "audit_event": frozenset(),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset()

@@ -18,6 +18,17 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     # Reminder snapshots are inserted only by the appointment trigger.
     "comms_appointmentreminder": frozenset({"SELECT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("comms_integrationoperation", "attempt_count", "UPDATE"),
+        ("comms_integrationoperation", "last_callback_event_id", "UPDATE"),
+        ("comms_integrationoperation", "last_error", "UPDATE"),
+        ("comms_integrationoperation", "provider_reference", "UPDATE"),
+        ("comms_integrationoperation", "status", "UPDATE"),
+        ("comms_integrationoperation", "updated_at", "UPDATE"),
+    }
+)
 
 
 def apply_comms_rls(table: str, tenant_column: str) -> str:

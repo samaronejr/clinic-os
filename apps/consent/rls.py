@@ -21,3 +21,5 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "consent_consentacceptance": frozenset({"SELECT", "INSERT"}),
     "consent_consentrevocation": frozenset({"SELECT", "INSERT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset()

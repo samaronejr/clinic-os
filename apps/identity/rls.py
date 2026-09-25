@@ -27,3 +27,12 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_physicianprofile": frozenset({"SELECT"}),
     "identity_physicianevidence": frozenset({"SELECT", "INSERT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("identity_physicianprofile", "expires_at", "UPDATE"),
+        ("identity_physicianprofile", "last_checked_at", "UPDATE"),
+        ("identity_physicianprofile", "recheck_at", "UPDATE"),
+        ("identity_physicianprofile", "status", "UPDATE"),
+    }
+)

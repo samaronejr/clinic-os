@@ -2,10 +2,11 @@
 
 Every installed domain app that owns models must declare its tenant posture
 in ``apps/<app>/rls.py`` (``RLS_TARGETS``, ``CUSTOM_RLS_TABLES``,
-``NON_RLS_TABLES``, ``RUNTIME_GRANTS``). These tests prove the declarations
-are complete, that bespoke-policy tables really are FORCE-RLS in the
-database, and that the runtime role's table grants match the declarations
-exactly - so a new app or table cannot silently weaken RLS or grants.
+``NON_RLS_TABLES``, ``RUNTIME_GRANTS``, ``COLUMN_GRANTS``). These tests
+prove the declarations are complete, that bespoke-policy tables really are
+FORCE-RLS in the database, and that the runtime role's table and column
+grants match the declarations exactly - so a new app or table cannot
+silently weaken RLS or grants.
 """
 
 from __future__ import annotations
@@ -130,8 +131,46 @@ def test_runtime_grants_match_declarations_exactly() -> None:
         )
 
 
+def test_column_grants_match_declarations_exactly() -> None:
+    # Given: every domain model table and the declared column-grant set
+    model_tables = set().union(*_domain_model_tables().values())
+    declared = posture.column_grants()
+
+    # When: the runtime role's actual column-level grants are enumerated
+    # (pg_attribute.attacl holds only column-level entries; table-level
+    # grants are not expanded here, unlike role_column_grants)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT class.relname, attribute.attname, acl.privilege_type
+            FROM pg_catalog.pg_class AS class
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = class.relnamespace
+            JOIN pg_catalog.pg_attribute AS attribute
+              ON attribute.attrelid = class.oid
+            CROSS JOIN LATERAL aclexplode(attribute.attacl) AS acl
+            WHERE namespace.nspname = %s
+              AND class.relkind = 'r'
+              AND class.relname = ANY(%s)
+              AND NOT attribute.attisdropped
+              AND acl.grantee = %s::pg_catalog.regrole
+            """,
+            [posture.APP_SCHEMA, sorted(model_tables), posture.RUNTIME_ROLE],
+        )
+        actual = set(cursor.fetchall())
+
+    # Then: column grants match the declarations exactly, so no
+    # column-scoped privilege (e.g. REFERENCES) can slip past the
+    # table-level check
+    assert actual == declared, (
+        "column grant drift: "
+        f"undeclared={sorted(actual - declared)} "
+        f"missing={sorted(declared - actual)}"
+    )
+
+
 def test_no_forbidden_runtime_privileges_are_declared() -> None:
-    # Given: the merged runtime grant declarations
+    # Given: the merged runtime table and column grant declarations
     # When: forbidden privileges are intersected per table
     # Then: only the documented probe sentinel keeps DELETE
     offenders = {
@@ -139,6 +178,11 @@ def test_no_forbidden_runtime_privileges_are_declared() -> None:
         for table, privileges in posture.runtime_grants().items()
         for privilege in privileges & posture.FORBIDDEN_RUNTIME_PRIVILEGES
         if table not in posture.FORBIDDEN_GRANT_EXEMPTIONS
+    } | {
+        (table, privilege)
+        for table, _column, privilege in posture.column_grants()
+        if privilege in posture.FORBIDDEN_RUNTIME_PRIVILEGES
+        and table not in posture.FORBIDDEN_GRANT_EXEMPTIONS
     }
     assert offenders == set()
 

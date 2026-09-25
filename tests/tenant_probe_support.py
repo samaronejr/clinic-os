@@ -30,19 +30,14 @@ def tenant_probe_pair(rbac_graph: RbacGraph) -> RbacGraph:
     return rbac_graph
 
 
-def assert_no_cross_tenant_rows(
-    graph: RbacGraph,
-    model: type[Model],
-    *,
-    require_rows: bool = True,
-) -> None:
+def assert_no_cross_tenant_rows(graph: RbacGraph, model: type[Model]) -> None:
     """Assert ``model`` exposes zero cross-tenant rows under ``clinic_app``.
 
     Runs as the runtime role inside ``tenant_context`` for each
     organization of ``graph`` and counts rows owned by the other
-    organization; any visible row fails. With ``require_rows`` the probe
-    also fails when the organization owns no rows at all, so the assertion
-    cannot pass vacuously on an empty table.
+    organization; any visible row fails. The probe always fails when the
+    organization owns no rows at all, so the assertion can never pass
+    vacuously on an empty table: callers must seed rows first.
     """
     pairs = (
         (graph.organization_a, graph.organization_b),
@@ -50,6 +45,11 @@ def assert_no_cross_tenant_rows(
     )
     for own_org, other_org in pairs:
         with runtime_role(), tenant_context(graph.shared_user, own_org):
+            own_rows = model._default_manager.filter(organization_id=own_org).count()
+            assert own_rows > 0, (
+                f"{model._meta.db_table}: probe is vacuous, "
+                "the organization owns no rows"
+            )
             cross_tenant = model._default_manager.filter(
                 organization_id=other_org
             ).count()
@@ -57,11 +57,3 @@ def assert_no_cross_tenant_rows(
                 f"{model._meta.db_table}: {cross_tenant} rows from another "
                 "organization are visible to the runtime role"
             )
-            if require_rows:
-                own_rows = model._default_manager.filter(
-                    organization_id=own_org
-                ).count()
-                assert own_rows > 0, (
-                    f"{model._meta.db_table}: probe is vacuous, "
-                    "the organization owns no rows"
-                )

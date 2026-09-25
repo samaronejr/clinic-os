@@ -34,3 +34,23 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "ehr_problem": frozenset({"SELECT", "INSERT"}),
     "ehr_allergy": frozenset({"SELECT", "INSERT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("ehr_clinicalattachment", "scan_attempts", "UPDATE"),
+        ("ehr_clinicalattachment", "scan_reason", "UPDATE"),
+        ("ehr_clinicalattachment", "scanned_at", "UPDATE"),
+        ("ehr_clinicalattachment", "state", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "amendment_reason", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "content", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "content_digest", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "content_sha256", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "finalized_at", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "revision", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "state", "UPDATE"),
+        ("ehr_clinicaldocumentversion", "updated_at", "UPDATE"),
+        ("ehr_encounter", "closed_at", "UPDATE"),
+        ("ehr_encounter", "revision", "UPDATE"),
+        ("ehr_encounter", "state", "UPDATE"),
+    }
+)

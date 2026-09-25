@@ -39,6 +39,28 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "intake_questionnaireresponse": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireevent": frozenset({"SELECT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("intake_patientaccessgrant", "revoked_at", "UPDATE"),
+        ("intake_patientchannelpreference", "opted_in", "UPDATE"),
+        ("intake_patientchannelpreference", "updated_at", "UPDATE"),
+        ("intake_patientchannelpreference", "version", "UPDATE"),
+        ("intake_patientcontact", "destination", "UPDATE"),
+        ("intake_patientcontact", "destination_version", "UPDATE"),
+        ("intake_patientcontact", "updated_at", "UPDATE"),
+        ("intake_patientcontact", "verification_method", "UPDATE"),
+        ("intake_patientcontact", "verified_at", "UPDATE"),
+        ("intake_patientcontact", "verified_version", "UPDATE"),
+        ("intake_patientsession", "revoked_at", "UPDATE"),
+        ("intake_questionnaireresponse", "answers", "UPDATE"),
+        ("intake_questionnaireresponse", "reopen_reason", "UPDATE"),
+        ("intake_questionnaireresponse", "revision", "UPDATE"),
+        ("intake_questionnaireresponse", "state", "UPDATE"),
+        ("intake_questionnaireresponse", "submitted_at", "UPDATE"),
+        ("intake_questionnaireresponse", "updated_at", "UPDATE"),
+    }
+)
 
 
 def apply_intake_rls(table: str, tenant_column: str) -> str:

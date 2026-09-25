@@ -32,6 +32,23 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "scheduling_waitlistentry": frozenset({"SELECT", "INSERT"}),
     "scheduling_waitlistoffer": frozenset({"SELECT", "INSERT"}),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("scheduling_appointment", "cancellation_reason", "UPDATE"),
+        ("scheduling_appointment", "cancelled_at", "UPDATE"),
+        ("scheduling_appointment", "end_at", "UPDATE"),
+        ("scheduling_appointment", "start_at", "UPDATE"),
+        ("scheduling_appointment", "status", "UPDATE"),
+        ("scheduling_appointment", "updated_at", "UPDATE"),
+        ("scheduling_availabilityblock", "retired_at", "UPDATE"),
+        ("scheduling_availabilityblock", "updated_at", "UPDATE"),
+        ("scheduling_waitlistentry", "state", "UPDATE"),
+        ("scheduling_waitlistoffer", "appointment_id", "UPDATE"),
+        ("scheduling_waitlistoffer", "responded_at", "UPDATE"),
+        ("scheduling_waitlistoffer", "state", "UPDATE"),
+    }
+)
 
 
 def apply_scheduling_rls(table: str, tenant_column: str) -> str:

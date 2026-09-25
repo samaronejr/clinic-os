@@ -8,7 +8,9 @@ declaring:
 - ``CUSTOM_RLS_TABLES``: tables carrying bespoke FORCE-RLS policies;
 - ``NON_RLS_TABLES``: tables intentionally without RLS (resolver-only);
 - ``RUNTIME_GRANTS``: ``table -> frozenset`` of the table-level privileges
-  held by the ``clinic_app`` runtime role.
+  held by the ``clinic_app`` runtime role;
+- ``COLUMN_GRANTS``: ``(table, column, privilege)`` triples of the
+  column-level privileges held by the runtime role.
 
 Posture tests call these functions; they read the populated Django app
 registry, so they must not run at import time or inside migrations.
@@ -42,6 +44,7 @@ class AppPosture:
     custom_rls_tables: frozenset[str]
     non_rls_tables: frozenset[str]
     runtime_grants: dict[str, frozenset[str]]
+    column_grants: frozenset[tuple[str, str, str]]
 
 
 def _domain_app_configs() -> list[AppConfig]:
@@ -88,6 +91,7 @@ def app_postures() -> dict[str, AppPosture]:
                 table: frozenset(privileges)
                 for table, privileges in module.RUNTIME_GRANTS.items()
             },
+            column_grants=frozenset(module.COLUMN_GRANTS),
         )
     return postures
 
@@ -123,6 +127,13 @@ def runtime_grants() -> dict[str, frozenset[str]]:
     for posture in app_postures().values():
         grants.update(posture.runtime_grants)
     return grants
+
+
+def column_grants() -> frozenset[tuple[str, str, str]]:
+    """Return the merged ``(table, column, privilege)`` grant set."""
+    return frozenset(
+        grant for posture in app_postures().values() for grant in posture.column_grants
+    )
 
 
 def select_only_runtime_tables() -> frozenset[str]:

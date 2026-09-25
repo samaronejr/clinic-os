@@ -34,3 +34,22 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     # function; the runtime role holds no grants.
     "prescription_verificationprobe": frozenset(),
 }
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("prescription_prescriptiondocumentrelease", "revoked_at", "UPDATE"),
+        ("prescription_prescriptiondocumentrelease", "revoked_by_id", "UPDATE"),
+        ("prescription_prescriptiondraft", "state", "UPDATE"),
+        ("prescription_prescriptiondraft", "updated_at", "UPDATE"),
+        ("prescription_prescriptiondraft", "version", "UPDATE"),
+        ("prescription_signatureoperation", "authorized_until", "UPDATE"),
+        ("prescription_signatureoperation", "completed_at", "UPDATE"),
+        ("prescription_signatureoperation", "evidence_id", "UPDATE"),
+        ("prescription_signatureoperation", "evidence_snapshot", "UPDATE"),
+        ("prescription_signatureoperation", "failure_reason", "UPDATE"),
+        ("prescription_signatureoperation", "operation_id", "UPDATE"),
+        ("prescription_signatureoperation", "signed_bytes", "UPDATE"),
+        ("prescription_signatureoperation", "signed_digest", "UPDATE"),
+        ("prescription_signatureoperation", "state", "UPDATE"),
+    }
+)
