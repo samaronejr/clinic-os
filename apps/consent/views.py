@@ -9,6 +9,7 @@ from uuid import UUID
 from django.core.exceptions import ValidationError
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
@@ -80,35 +81,33 @@ def patient_consent(request: HttpRequest) -> HttpResponse:
                 form = AcceptanceForm(request.POST)
                 if form.is_valid():
                     record_consent(**form.cleaned_data)
-                    context["notice"] = (
-                        "Consentimento registrado. Guarde seu comprovante abaixo."
-                    )
+                    context["notice"] = _("Consent recorded. Keep your receipt below.")
                 else:
-                    context["error"] = (
-                        "Nenhum consentimento registrado. Leia o texto e marque "
-                        "a opção somente se desejar aceitar."
+                    context["error"] = _(
+                        "No consent recorded. Read the text and check the box "
+                        "only if you wish to accept."
                     )
                     status = 400
             elif action == "refuse":
                 refusal_form = RefusalForm(request.POST, prefix="refusal")
                 if refusal_form.is_valid():
                     record_refusal(**refusal_form.cleaned_data)
-                    context["notice"] = (
-                        "Recusa registrada. O atendimento não depende desta "
-                        "autorização e seu histórico foi preservado."
+                    context["notice"] = _(
+                        "Refusal recorded. Care does not depend on this "
+                        "authorization and your history was preserved."
                     )
                 else:
-                    context["error"] = (
-                        "Nenhuma recusa registrada. Leia o texto da versão atual."
+                    context["error"] = _(
+                        "No refusal recorded. Read the current version text."
                     )
                     status = 400
             elif action == "revoke":
                 revoke_consent(
                     acceptance_id=UUID(request.POST.get("acceptance_id", ""))
                 )
-                context["notice"] = (
-                    "Consentimento revogado. O histórico clínico e o comprovante "
-                    "foram preservados."
+                context["notice"] = _(
+                    "Consent revoked. Your clinical history and the receipt "
+                    "were preserved."
                 )
             else:
                 return _private(render(request, "consent/denied.html", status=403))
@@ -149,9 +148,9 @@ def _publish_version(
     if not form.is_valid():
         return HTTPStatus.BAD_REQUEST
     published = publish_text(clinic_id=clinic_id, **form.cleaned_data)
-    context["notice"] = (
-        f"Versão {published.version} publicada. Os textos anteriores foram preservados."
-    )
+    context["notice"] = _(
+        "Version %(version)s published. Earlier texts were preserved."
+    ) % {"version": published.version}
     context["form"] = TextForm()
     return HTTPStatus.OK
 
@@ -164,10 +163,10 @@ def _publish_notice_version(
     if not form.is_valid():
         return HTTPStatus.BAD_REQUEST
     published = publish_notice(clinic_id=clinic_id, **form.cleaned_data)
-    context["notice"] = (
-        f"Aviso versão {published.version} publicado. "
-        "Avisos informam e não substituem consentimento."
-    )
+    context["notice"] = _(
+        "Notice version %(version)s published. Notices inform and do not "
+        "replace consent."
+    ) % {"version": published.version}
     context["notice_form"] = NoticeForm(prefix="notice")
     return HTTPStatus.OK
 
@@ -180,7 +179,7 @@ def _record_disclosure(
     if not form.is_valid():
         return HTTPStatus.BAD_REQUEST
     record_ai_disclosure(clinic_id=clinic_id, **form.cleaned_data)
-    context["notice"] = "Divulgação de uso de IA registrada para o atendimento."
+    context["notice"] = _("AI-use disclosure recorded for the encounter.")
     context["disclosure_form"] = DisclosureForm(prefix="disclosure")
     return HTTPStatus.OK
 
@@ -193,7 +192,7 @@ def _record_acknowledgment(
     if not form.is_valid():
         return HTTPStatus.BAD_REQUEST
     acknowledge_participant(clinic_id=clinic_id, **form.cleaned_data)
-    context["notice"] = "Aviso de gravação registrado para o participante."
+    context["notice"] = _("Recording notice recorded for the participant.")
     context["acknowledgment_form"] = AcknowledgmentForm(prefix="ack")
     return HTTPStatus.OK
 

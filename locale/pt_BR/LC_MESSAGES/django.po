@@ -2489,3 +2489,62 @@ msgstr "Registre que o aviso de gravação foi comunicado a um cuidador, acompan
 
 msgid "Record acknowledgment"
 msgstr "Registrar comunicação"
+
+msgid "Invalid text, purpose or language."
+msgstr "Texto, finalidade ou idioma inválido."
+
+msgid "Invalid text, topic or language."
+msgstr "Texto, tema ou idioma inválido."
+
+msgid "The text changed. Read the current version before consenting."
+msgstr "O texto mudou. Leia a versão atual antes de consentir."
+
+msgid "Check the box only if you wish to consent."
+msgstr "Marque a opção somente se desejar consentir."
+
+msgid "This consent was revoked. The receipt remains available."
+msgstr "Este consentimento foi revogado. O comprovante permanece disponível."
+
+msgid "This consent is already accepted. Revoke it instead of recording a refusal."
+msgstr "Este consentimento está aceito. Revogue-o em vez de registrar uma recusa."
+
+msgid "Purpose outside the consent taxonomy."
+msgstr "Finalidade fora da taxonomia de consentimento."
+
+msgid "Invalid AI-use disclosure."
+msgstr "Divulgação de uso de IA inválida."
+
+msgid "A disclosure is already recorded for this encounter."
+msgstr "Já existe uma divulgação registrada para este atendimento."
+
+msgid "Invalid participant kind."
+msgstr "Tipo de participante inválido."
+
+msgid "Consent recorded. Keep your receipt below."
+msgstr "Consentimento registrado. Guarde seu comprovante abaixo."
+
+msgid "No consent recorded. Read the text and check the box only if you wish to accept."
+msgstr "Nenhum consentimento registrado. Leia o texto e marque a opção somente se desejar aceitar."
+
+msgid "Refusal recorded. Care does not depend on this authorization and your history was preserved."
+msgstr "Recusa registrada. O atendimento não depende desta autorização e seu histórico foi preservado."
+
+msgid "No refusal recorded. Read the current version text."
+msgstr "Nenhuma recusa registrada. Leia o texto da versão atual."
+
+msgid "Consent revoked. Your clinical history and the receipt were preserved."
+msgstr "Consentimento revogado. O histórico clínico e o comprovante foram preservados."
+
+#, python-format
+msgid "Version %(version)s published. Earlier texts were preserved."
+msgstr "Versão %(version)s publicada. Os textos anteriores foram preservados."
+
+#, python-format
+msgid "Notice version %(version)s published. Notices inform and do not replace consent."
+msgstr "Aviso versão %(version)s publicado. Avisos informam e não substituem consentimento."
+
+msgid "AI-use disclosure recorded for the encounter."
+msgstr "Divulgação de uso de IA registrada para o atendimento."
+
+msgid "Recording notice recorded for the participant."
+msgstr "Aviso de gravação registrado para o participante."

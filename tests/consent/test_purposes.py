@@ -13,8 +13,10 @@ from apps.consent.models import (
     AIUseDisclosure,
     ConsentPurpose,
     ConsentText,
+    NoticeTopic,
     NoticeVersion,
     ParticipantAcknowledgment,
+    ParticipantKind,
     RefusalRecord,
 )
 from apps.consent.services import (
@@ -32,9 +34,12 @@ from apps.consent.services import (
     record_refusal,
     staff_refusals,
 )
-from apps.ehr.services import open_encounter
+from apps.ehr.models import Encounter
+from apps.ehr.services import SOAP_FIELDS, open_encounter, record_clinical_note
 from apps.identity.current_context import CurrentActorError
+from apps.identity.models import User, UserClinicRole
 from apps.intake.access import PatientAccessDeniedError
+from apps.intake.models import PatientClinicEnrollment
 from apps.intake.patient_access import (
     issue_invitation,
     patient_session_context,
@@ -42,19 +47,25 @@ from apps.intake.patient_access import (
 )
 from apps.intake.services import create_patient
 from apps.tenancy.db import tenant_context
+from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, transaction
-from django.utils import translation
+from django.utils import timezone, translation
+from django.utils.translation import gettext
 
+from auth.stepup_test_support import create_role_actor
 from patient_service_support import runtime_role
+from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_consent import accept as accept_offered
+from renewal.test_consent import patient_client
 from renewal.test_consent import seed as consent_seed
-from renewal.test_encounters import seed as clinical_seed
 from renewal.test_encounters import (
+    draft,
     seed_appointment_setup_for_existing,
     setup_context,
 )
-from renewal.test_retention import admin
+from renewal.test_encounters import seed as clinical_seed
+from renewal.test_retention import admin, staff_client
 from scheduling.appointment_service_support import create_synthetic_appointment
 
 if TYPE_CHECKING:
@@ -436,6 +447,13 @@ def test_participant_acknowledgment_for_non_patient_voices(
             participant_kind="interpreter",
         )
         assert interpreter.pk != caregiver.pk
+        # Retries converge on the same row without duplicating the audit event.
+        again_interpreter = acknowledge_participant(
+            clinic_id=graph.clinic_a,
+            session_id=encounter_id,
+            participant_kind="interpreter",
+        )
+        assert again_interpreter.pk == interpreter.pk
         with pytest.raises(ValidationError):
             acknowledge_participant(
                 clinic_id=graph.clinic_a,
@@ -461,6 +479,22 @@ def test_participant_acknowledgment_for_non_patient_voices(
     # No patient record is created for acknowledged participants.
     with setup_context(graph.organization_a):
         assert ParticipantAcknowledgment.objects.count() == 2
+        events = AuditEvent.objects.filter(
+            event_type="consent.participant.acknowledged"
+        )
+        assert [event.affected_record_id for event in events] == [
+            str(caregiver.pk),
+            str(interpreter.pk),
+        ]
+        for event in events:
+            assert set(event.payload) <= {
+                "clinic_id",
+                "http_method",
+                "http_status",
+                "object_verb",
+                "reason_code",
+                "request_id",
+            }
 
 
 def test_taxonomy_tables_hold_no_destructive_privileges_and_stay_isolated(
@@ -468,13 +502,29 @@ def test_taxonomy_tables_hold_no_destructive_privileges_and_stay_isolated(
 ) -> None:
     graph = rbac_graph
     text, session, _, _ = consent_seed(graph)
+    appointment, _ = clinical_seed(graph)
+    encounter_id = _encounter(graph, appointment)
     with runtime_role(), patient_session_context(session):
         accept_offered(text)
+    refusal = _refuse(graph, session, "ai_assistance")
     manager = admin(graph)
     with runtime_role(), tenant_context(manager.pk, graph.organization_a):
         publish_notice(
             clinic_id=graph.clinic_a, topic="care_processing", text=NOTICE_TEXT
         )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        record_ai_disclosure(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter_id,
+            informed=True,
+            refused=False,
+        )
+        acknowledge_participant(
+            clinic_id=graph.clinic_a,
+            session_id=encounter_id,
+            participant_kind="companion",
+        )
+    assert refusal is not None
     tables = [
         "consent_noticeversion",
         "consent_refusalrecord",
@@ -495,6 +545,7 @@ def test_taxonomy_tables_hold_no_destructive_privileges_and_stay_isolated(
                 [f"clinic_app.{table}"] * 2,
             )
             assert cursor.fetchone() == (False, False)
+    # Populated foreign-organization probe: every taxonomy table stays empty.
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_b):
         assert NoticeVersion.objects.count() == 0
         assert RefusalRecord.objects.count() == 0
@@ -507,16 +558,229 @@ def test_taxonomy_tables_hold_no_destructive_privileges_and_stay_isolated(
             NoticeVersion.objects.filter(pk=notice.pk).update(topic="ai_use")
         with pytest.raises(DatabaseError), transaction.atomic():
             NoticeVersion.objects.filter(pk=notice.pk).delete()
+        assert ParticipantAcknowledgment.objects.count() == 1
+        with pytest.raises(DatabaseError), transaction.atomic():
+            ParticipantAcknowledgment.objects.update(participant_kind="interpreter")
+        with pytest.raises(DatabaseError), transaction.atomic():
+            ParticipantAcknowledgment.objects.all().delete()
+        assert AIUseDisclosure.objects.count() == 1
+        with pytest.raises(DatabaseError), transaction.atomic():
+            AIUseDisclosure.objects.update(informed=False)
+        with pytest.raises(DatabaseError), transaction.atomic():
+            AIUseDisclosure.objects.all().delete()
+
+
+def _refuse(graph: RbacGraph, session: UUID, purpose: str) -> RefusalRecord:
+    """Publish if needed and record one refusal inside the patient session."""
+    manager = admin(graph)
+    with runtime_role(), tenant_context(manager.pk, graph.organization_a):
+        text = (
+            ConsentText.objects.filter(clinic_id=graph.clinic_a, purpose=purpose)
+            .order_by("-version")
+            .first()
+        )
+        if text is None:
+            text = publish_text(
+                clinic_id=graph.clinic_a,
+                purpose=purpose,
+                text=f"{RECORDING_TEXT}\nFinalidade {purpose}.",
+            )
+    with runtime_role(), patient_session_context(session):
+        _, offer = prepare_acceptance(text_id=text.pk)
+        return record_refusal(offer=offer, purpose=purpose)
+
+
+def _foreign_org_patient_session(graph: RbacGraph) -> UUID:
+    """Redeem a consent session for a synthetic patient of organization B."""
+    with setup_context(graph.organization_b):
+        manager = User.objects.create(
+            username=f"todo20-orgb-receptionist-{uuid4().hex}",
+            password=make_password(RBAC_RAW_CREDENTIAL),
+        )
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_b,
+            clinic_id=graph.clinic_c,
+            user_id=manager.pk,
+            role=UserClinicRole.Role.RECEPTIONIST,
+        )
+    with runtime_role(), tenant_context(manager.pk, graph.organization_b):
+        registration = create_patient(
+            clinic_id=graph.clinic_c,
+            full_name="Paciente Sintético Outra Organização",
+            birth_date=date(1992, 3, 3),
+            idempotency_key=uuid4(),
+        )
+        invitation = issue_invitation(
+            clinic_id=graph.clinic_c, enrollment_id=registration.enrollment.pk
+        )
+    with runtime_role():
+        session = redeem_invitation(graph.clinic_c, invitation.secret)
+    assert session is not None
+    return session
+
+
+def test_ai_disclosure_read_is_bound_to_the_disclosed_patient(
+    rbac_graph: RbacGraph,
+) -> None:
+    """A patient session reads only its own disclosures, never foreign ones."""
+    graph = rbac_graph
+    appointment, _ = clinical_seed(graph)
+    encounter_id = _encounter(graph, appointment)
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        disclosure = record_ai_disclosure(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter_id,
+            informed=True,
+            refused=True,
+        )
+    # An unrelated patient session in the same clinic sees no disclosure.
+    other_session, _ = _patient_session(graph)
+    with runtime_role(), patient_session_context(other_session):
+        assert not AIUseDisclosure.objects.filter(pk=disclosure.pk).exists()
+        assert AIUseDisclosure.objects.count() == 0
+    # A patient session in another organization sees nothing either.
+    foreign_session = _foreign_org_patient_session(graph)
+    with runtime_role(), patient_session_context(foreign_session):
+        assert not AIUseDisclosure.objects.filter(pk=disclosure.pk).exists()
+        assert AIUseDisclosure.objects.count() == 0
+    # The disclosed patient's own session reads exactly its own row.
+    with setup_context(graph.organization_a):
+        enrollment = PatientClinicEnrollment.objects.get(
+            patient_id=Encounter.objects.get(pk=encounter_id).patient_id,
+            clinic_id=graph.clinic_a,
+        )
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        invitation = issue_invitation(
+            clinic_id=graph.clinic_a, enrollment_id=enrollment.pk
+        )
+    with runtime_role():
+        own_session = redeem_invitation(graph.clinic_a, invitation.secret)
+    assert own_session is not None
+    with runtime_role(), patient_session_context(own_session):
+        assert list(AIUseDisclosure.objects.all()) == [disclosure]
 
 
 def test_purpose_labels_render_in_portuguese() -> None:
+    """Every taxonomy label resolves through gettext under the pt-BR catalog."""
     with translation.override("pt-br"):
-        assert str(ConsentPurpose.TELECONSULTATION.label) == "Teleconsulta"
-        assert str(ConsentPurpose.CONSULTATION_RECORDING.label) == (
-            "Gravação da consulta"
+        for purpose in ConsentPurpose:
+            assert str(purpose.label) == gettext(str(purpose.label))
+        for topic in NoticeTopic:
+            assert str(topic.label) == gettext(str(topic.label))
+        for kind in ParticipantKind:
+            assert str(kind.label) == gettext(str(kind.label))
+        # The catalog actually translates: never an English echo.
+        assert gettext("Consultation recording") != "Consultation recording"
+
+
+def test_refusal_records_are_immutable_under_owner_and_runtime_roles(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Populated refusal rows reject UPDATE and DELETE for every principal."""
+    graph = rbac_graph
+    session, _ = _patient_session(graph)
+    refusal = _refuse(graph, session, "ai_assistance")
+    with setup_context(graph.organization_a):
+        assert RefusalRecord.objects.count() == 1
+        with pytest.raises(DatabaseError), transaction.atomic():
+            RefusalRecord.objects.filter(pk=refusal.pk).update(
+                refused_at=timezone.now()
+            )
+        with pytest.raises(DatabaseError), transaction.atomic():
+            RefusalRecord.objects.filter(pk=refusal.pk).delete()
+        assert RefusalRecord.objects.get(pk=refusal.pk) is not None
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        with pytest.raises(DatabaseError), transaction.atomic():
+            RefusalRecord.objects.filter(pk=refusal.pk).update(
+                refused_at=timezone.now()
+            )
+        with pytest.raises(DatabaseError), transaction.atomic():
+            RefusalRecord.objects.filter(pk=refusal.pk).delete()
+
+
+def test_refusal_never_blocks_manual_clinical_note(rbac_graph: RbacGraph) -> None:
+    """A recorded AI-assistance refusal must not gate the manual SOAP path."""
+    graph = rbac_graph
+    appointment, template = clinical_seed(graph)
+    _encounter(graph, appointment)
+    session, _ = _patient_session(graph)
+    _refuse(graph, session, "ai_assistance")
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        version = draft(graph, appointment, template)
+        saved = record_clinical_note(
+            clinic_id=graph.clinic_a,
+            version_id=version.pk,
+            expected_revision=1,
+            content=dict.fromkeys(SOAP_FIELDS, "Sintético após recusa"),
         )
-        assert str(ConsentPurpose.AI_ASSISTANCE.label) == "Assistência por IA"
-        assert str(ConsentPurpose.RESEARCH_MODEL_IMPROVEMENT.label) == (
-            "Pesquisa e melhoria de modelos"
+        assert saved.revision == 2
+
+
+@pytest.mark.parametrize("action", ["disclosure", "acknowledge"])
+def test_staff_clinical_actions_require_physician_and_deny_identically(
+    rbac_graph: RbacGraph, action: str
+) -> None:
+    """Every non-physician role, wrong clinic and unknown session share 403."""
+    graph = rbac_graph
+    appointment, _ = clinical_seed(graph)
+    encounter_id = _encounter(graph, appointment)
+    url = f"/clinics/{graph.clinic_a}/consent/"
+    unknown = str(uuid4())
+
+    def payload(target: str) -> dict[str, str]:
+        if action == "disclosure":
+            return {
+                "action": action,
+                "disclosure-encounter_id": target,
+                "disclosure-informed": "on",
+            }
+        return {
+            "action": action,
+            "ack-session_id": target,
+            "ack-participant_kind": "caregiver",
+        }
+
+    # The physician succeeds on the real encounter and denies on an unknown id.
+    with staff_client(graph.physician) as staff:
+        reference = staff.post(url, payload(unknown))
+        assert reference.status_code == 403
+        assert staff.post(url, payload(str(encounter_id))).status_code == 200
+
+    # A physician on a different clinic and every other role deny identically;
+    # the denial is independent of whether the encounter exists.
+    def deny_identically(actor_pk: UUID) -> None:
+        with staff_client(actor_pk) as staff:
+            denied = staff.post(url, payload(str(encounter_id)))
+            assert denied.status_code == 403
+            denied_unknown = staff.post(url, payload(unknown))
+            assert denied_unknown.status_code == 403
+            # Same actor, same surface: existence of the record must not leak
+            # through a different denial body or status.
+            assert denied.content == denied_unknown.content
+
+    # A physician on a different clinic and every other role deny identically.
+    for role in (
+        UserClinicRole.Role.OWNER,
+        UserClinicRole.Role.RECEPTIONIST,
+        UserClinicRole.Role.CLINIC_ADMIN,
+        UserClinicRole.Role.NURSE,
+        UserClinicRole.Role.ALLIED_PROFESSIONAL,
+        UserClinicRole.Role.FINANCE,
+    ):
+        deny_identically(create_role_actor(graph, role).pk)
+    # Mixed roles cannot widen the physician scope.
+    mixed = create_role_actor(graph, UserClinicRole.Role.NURSE)
+    with setup_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=mixed.pk,
+            role=UserClinicRole.Role.RECEPTIONIST,
         )
-        assert AIUseDisclosure._meta.model_name == "aiusedisclosure"
+    deny_identically(mixed.pk)
+    # An org-B physician holds no clinic-A role; the denial stays identical.
+    deny_identically(graph.shared_user)
+    # A patient session never reaches the staff surface.
+    session, _ = _patient_session(graph)
+    patient = patient_client(session)
+    assert patient.post(url, payload(str(encounter_id))).status_code == 403

@@ -69,6 +69,12 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "consent.ai_use_disclosure",
         "recorded",
     ),
+    "consent.participant.acknowledged": (
+        "tenant",
+        "clinic-os-web",
+        "consent.participant_acknowledgment",
+        "acknowledged",
+    ),
     "consent.receipts.viewed": (
         "tenant",
         "clinic-os-web",

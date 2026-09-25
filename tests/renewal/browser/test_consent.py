@@ -262,7 +262,7 @@ def verify_stored(staff: dict[str, str], receipt_id: str) -> None:
 
 def accessibility_scenes(patient: Page, root: Path) -> None:
     patient.set_viewport_size({"width": 320, "height": 900})
-    patient.locator("summary").click()
+    patient.locator("[data-receipt] summary").click()
     capture(patient, root, "reflow", 320)
     patient.emulate_media(forced_colors="active", reduced_motion="reduce")
     capture(patient, root, "forced-colors-reduced-motion", 320)
@@ -381,7 +381,8 @@ def test_accept_revoke_receipt_and_replay_denials(
         assert (
             post_action(admin, staff_url, {"action": "accept", "offer": token}) == 403
         )
-        # A token cannot be used for a different purpose.
+        # A token signed for teleconsultation cannot be replayed as another
+        # purpose; the service denies identically to a forged token.
         assert (
             post_action(
                 patient,
@@ -393,7 +394,7 @@ def test_accept_revoke_receipt_and_replay_denials(
                     "accepted": "on",
                 },
             )
-            == 400
+            == 403
         )
         press(patient, "read")
         token = patient.locator("#id_offer").input_value()

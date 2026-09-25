@@ -246,7 +246,8 @@ CREATE POLICY consent_ai_disclosure_read ON clinic_app.consent_aiusedisclosure
  USING (clinic_app.questionnaire_staff(clinic_id,
    ARRAY['owner','clinic_admin','receptionist','physician'])
  OR EXISTS (SELECT 1 FROM clinic_app.consent_session() s
-   WHERE s.patient_id=patient_id AND s.clinic_id=clinic_id));
+   WHERE consent_aiusedisclosure.patient_id=s.patient_id
+   AND consent_aiusedisclosure.clinic_id=s.clinic_id));
 CREATE POLICY consent_ai_disclosure_insert ON clinic_app.consent_aiusedisclosure
  FOR INSERT TO clinic_app
  WITH CHECK (clinic_app.questionnaire_staff(clinic_id,ARRAY['physician']));
