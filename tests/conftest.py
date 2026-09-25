@@ -32,6 +32,30 @@ __all__: Final = (
 )
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Include the session-lock mirror whenever a test uses the runtime database.
+
+    Todo 8 splits session locks from transaction-pooled queries; both aliases
+    address the same test database. Django must permit and close both, rather
+    than bypassing its connection guard or leaking session locks across tests.
+    Explicit non-default database selections remain unchanged.
+    """
+    for item in items:
+        marker = item.get_closest_marker("django_db")
+        if marker is None:
+            continue
+        aliases = marker.kwargs.get("databases")
+        if aliases == "__all__":
+            continue
+        selected = set(aliases or ("default",))
+        if "default" in selected:
+            options = dict(marker.kwargs)
+            options["databases"] = sorted(selected | {"locks"})
+            item.add_marker(
+                pytest.mark.django_db(*marker.args, **options), append=False
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class TenantGraph:
     organization_a: UUID

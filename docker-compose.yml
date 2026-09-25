@@ -23,6 +23,73 @@ services:
       retries: 20
       start_period: 5s
 
+  # Optional synthetic local stack. Default Compose remains the isolated DB.
+  pgbouncer:
+    profiles: [realtime]
+    image: edoburu/pgbouncer@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
+    environment:
+      DB_HOST: db
+      DB_NAME: clinic
+      DB_USER: clinic_app
+      DB_PASSWORD: ${CLINIC_APP_PASSWORD:-clinic_app_password}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      IGNORE_STARTUP_PARAMETERS: options,extra_float_digits
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 20
+    depends_on:
+      db:
+        condition: service_healthy
+
+  redis:
+    profiles: [realtime]
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    command: [redis-server, --save, "", --appendonly, "no"]
+
+  web:
+    profiles: [realtime]
+    build:
+      context: .
+      target: web
+    environment: &local-runtime
+      DJANGO_SETTINGS_MODULE: config.settings.base
+      CLINIC_DATA_MODE: synthetic
+      SECRET_KEY: ${SECRET_KEY:-local-synthetic-only-change-before-use}
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      APP_DATABASE_URL: postgresql://clinic_app:${CLINIC_APP_PASSWORD:-clinic_app_password}@pgbouncer:5432/clinic
+      LOCKS_DATABASE_URL: postgresql://clinic_app:${CLINIC_APP_PASSWORD:-clinic_app_password}@db:5432/clinic
+      DATABASE_TRANSACTION_POOLING: "true"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      REALTIME_REDIS_URL: redis://redis:6379/1
+      REALTIME_ENABLED: "true"
+      CLINIC_SECRET_BACKEND: synthetic-file
+      CLINIC_SECRET_DIR: /run/clinic-secrets
+    volumes:
+      - ${CLINIC_LOCAL_SECRET_DIR:-./.omo/local-secrets}:/run/clinic-secrets:ro
+    depends_on: [pgbouncer, redis]
+
+  realtime:
+    profiles: [realtime]
+    build:
+      context: .
+      target: realtime
+    environment:
+      <<: *local-runtime
+      DJANGO_SETTINGS_MODULE: config.settings.realtime
+      CLINIC_REALTIME_MODE: local
+    volumes:
+      - ${CLINIC_LOCAL_SECRET_DIR:-./.omo/local-secrets}:/run/clinic-secrets:ro
+    depends_on: [pgbouncer, redis]
+
+  edge:
+    profiles: [realtime]
+    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    ports:
+      - "127.0.0.1:${CLINIC_LOCAL_HTTP_PORT:-8000}:8080"
+    volumes:
+      - ./ops/container/realtime-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [web, realtime]
+
 volumes:
   clinic_postgres_data:
     name: ${POSTGRES_DATA_VOLUME:-clinic_postgres_data}

@@ -20,6 +20,12 @@ SELECT
         WHERE rolname = current_user
           AND NOT rolsuper
           AND NOT rolbypassrls
+          AND ARRAY(
+              SELECT setting FROM unnest(rolconfig) AS setting ORDER BY setting
+          ) = ARRAY[
+              'idle_in_transaction_session_timeout=15s',
+              'search_path=clinic_app, public'
+          ]::text[]
     )
     AND EXISTS (
         SELECT 1

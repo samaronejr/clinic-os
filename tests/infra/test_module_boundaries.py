@@ -45,6 +45,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.interop.apps.InteropConfig",
         "apps.prescription.apps.PrescriptionConfig",
         "apps.providers.apps.ProvidersConfig",
+        "apps.realtime.apps.RealtimeConfig",
         "apps.retention.apps.RetentionConfig",
         "apps.scheduling.apps.SchedulingConfig",
         "apps.teleconsult.apps.TeleconsultConfig",
