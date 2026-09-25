@@ -24,6 +24,7 @@ import pytest
 from apps.core import fairness
 from apps.identity.clinic_configuration import (
     ConfigurationContent,
+    latest_configuration,
     publish_configuration,
 )
 from apps.identity.current_context import CurrentActorError
@@ -40,6 +41,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
     from typing import Any
+
+    from django.db.backends.utils import CursorWrapper
 
     from conftest import RbacGraph
 
@@ -379,16 +382,23 @@ def test_ordinary_settings_save_never_rewrites_org_quotas(
     )
     with runtime_role():
         assert fairness._organization_quotas(graph.organization_a) == {"ai-batch": 60}
-    # An ordinary clinic-B settings save (no quota field) must not restore
-    # the older 100 quota or otherwise change the organization map.
+    # An ordinary clinic-B settings save (no quota field) by an admin who
+    # can only see clinic B must not restore the older 100 quota. The
+    # carry-forward read must follow the organization-scoped resolver,
+    # not the actor's RLS-filtered view of other clinics' snapshots.
+    clinic_b_only_admin = User.objects.get(pk=graph.clinic_admin)
     _publish(
         graph,
         graph.clinic_b,
-        actor=org_admin,
+        actor=clinic_b_only_admin,
         expected_version=1,
     )
     with runtime_role():
         assert fairness._organization_quotas(graph.organization_a) == {"ai-batch": 60}
+    with runtime_role(), tenant_context(graph.clinic_admin, graph.organization_a):
+        latest_b = latest_configuration(graph.clinic_b)
+    assert latest_b is not None
+    assert latest_b.queue_quotas == {"ai-batch": 60}
 
 
 def test_publish_configuration_stores_and_carries_quotas(
@@ -466,6 +476,81 @@ def test_forged_quota_rejected_by_service_and_database(
                     published_by_id=org_admin.pk,
                 )
         assert not ClinicConfiguration.objects.exists()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"ai-batch": 60.0}',
+        '{"ai-batch": 1.5}',
+        '{"ai-batch": 0}',
+        '{"ai-batch": -1}',
+        '{"ai-batch": 999999}',
+    ],
+)
+def test_database_rejects_integral_float_and_out_of_range_quotas(
+    rbac_graph: RbacGraph, payload: str
+) -> None:
+    """The CHECK must reject what the service and worker reject.
+
+    A service-published map can only carry Python ints, so DB parity is
+    proven with the literal JSON text: ``60.0`` is an integral float the
+    service rejects and the worker would defer as malformed; ``1e2`` is
+    covered separately because jsonb normalizes it to the int 100, which
+    the worker accepts.
+    """
+    graph = rbac_graph
+    org_admin = _org_admin(graph, graph.organization_a)
+    with (
+        runtime_role(),
+        tenant_context(org_admin.pk, graph.organization_a),
+        pytest.raises(DatabaseError),
+        transaction.atomic(),
+        connection.cursor() as cursor,
+    ):
+        _insert_config_row(cursor=cursor, graph=graph, admin=org_admin, payload=payload)
+
+
+def _insert_config_row(
+    *, cursor: CursorWrapper, graph: RbacGraph, admin: User, payload: str
+) -> None:
+    """Insert one configuration row with literal JSON quota text."""
+    cursor.execute(
+        "INSERT INTO clinic_app.identity_clinicconfiguration "
+        "(id, organization_id, clinic_id, version, display_name, "
+        "contact_email, contact_phone, brand_token, reminder_hours, "
+        "queue_quotas, logo_png, published_by_id, created_at) "
+        "VALUES (gen_random_uuid(), %s, %s, 1, 'Safe', '', '', 'navy', 24, "
+        "CAST(%s AS jsonb), %s, %s, now())",
+        [
+            str(graph.organization_a),
+            str(graph.clinic_a),
+            payload,
+            "",
+            str(admin.pk),
+        ],
+    )
+
+
+def test_database_accepts_scientific_notation_integral_json(
+    rbac_graph: RbacGraph,
+) -> None:
+    """jsonb normalizes ``1e2`` to 100; the stored value is a usable int."""
+    graph = rbac_graph
+    org_admin = _org_admin(graph, graph.organization_a)
+    with (
+        runtime_role(),
+        tenant_context(org_admin.pk, graph.organization_a),
+        connection.cursor() as cursor,
+    ):
+        _insert_config_row(
+            cursor=cursor,
+            graph=graph,
+            admin=org_admin,
+            payload='{"ai-batch": 1e2}',
+        )
+    with runtime_role():
+        assert fairness._organization_quotas(graph.organization_a) == {"ai-batch": 100}
 
 
 def test_resolver_returns_latest_org_quotas(rbac_graph: RbacGraph) -> None:

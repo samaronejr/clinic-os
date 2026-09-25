@@ -67,12 +67,17 @@ class Migration(migrations.Migration):
             model_name="clinicconfiguration",
             constraint=models.CheckConstraint(
                 condition=models.expressions.RawSQL(
+                    # The canonical text clause rejects integral floats
+                    # ("60.0") that jsonb keeps lexically; "1e2" is
+                    # normalized by jsonb to 100 and reads back as an int.
                     "jsonb_typeof(queue_quotas) = 'object' "
                     "AND queue_quotas - ARRAY['clinic-integrations','clinical',"
                     "'ai-interactive','ai-batch','messaging','finance','bulk']"
                     " = '{}'::jsonb "
+                    "AND queue_quotas::text ~ "
+                    '\'^\\{("[a-z-]+": [0-9]+(, "[a-z-]+": [0-9]+)*)?\\}$\' '
                     "AND NOT jsonb_path_exists(queue_quotas, "
-                    '\'strict $.* ? (@.type() != "number" || @.floor() != @ '
+                    '\'strict $.* ? (@.type() != "number" '
                     "|| @ < 1 || @ > 100000)')",
                     (),
                     output_field=models.BooleanField(),

@@ -14,7 +14,7 @@ from django.db import connection, transaction
 from PIL import Image, UnidentifiedImageError
 
 from apps.audit.services import record_phase1_event
-from apps.core.fairness import validate_queue_quotas
+from apps.core.fairness import _organization_quotas, validate_queue_quotas
 from apps.ehr.attachment_scanner import AttachmentScanUnavailableError, default_scanner
 from apps.ehr.attachments import AttachmentInput, detect_attachment_type
 from apps.ehr.models import ClinicalAttachment
@@ -184,16 +184,16 @@ def publish_configuration(
             [f"clinic-queue-quotas:{clinic.organization_id}"],
         )
         if quotas is None:
-            # Carry the organization's effective map forward: the latest
-            # published row across the org.
-            org_latest = (
-                ClinicConfiguration.objects.filter(
-                    organization_id=clinic.organization_id
-                )
-                .order_by("-created_at", "-id")
-                .first()
-            )
-            quotas = dict(org_latest.queue_quotas) if org_latest else {}
+            # Carry the organization's effective map forward. This read
+            # MUST go through the SECURITY DEFINER organization resolver,
+            # not an ORM query: configuration_read is clinic-scoped, so a
+            # clinic-only admin cannot see other clinics' newer snapshots
+            # and would resurrect a stale org quota.
+            carried = _organization_quotas(clinic.organization_id)
+            if not isinstance(carried, dict):
+                carried = {}
+            validate_queue_quotas(carried)
+            quotas = dict(carried)
         configuration = ClinicConfiguration.objects.create(
             clinic=clinic,
             organization_id=clinic.organization_id,
