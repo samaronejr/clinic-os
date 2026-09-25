@@ -1,0 +1,417 @@
+[
+  {
+    "path": "apps/billing/pix.py",
+    "function": "prepare_pix_charge",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/billing/services.py",
+    "function": "_clinic",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/consent/services.py",
+    "function": "publish_text",
+    "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/consent/services.py",
+    "function": "staff_receipts",
+    "roles": "STAFF_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "physician",
+      "receptionist",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/consent/services.py",
+    "function": "consent_for_future_use",
+    "roles": "STAFF_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "physician",
+      "receptionist",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/consent/views.py",
+    "function": "staff_consent",
+    "roles": "STAFF_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "physician",
+      "receptionist",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/ehr/attachment_views.py",
+    "function": "_workspace",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/attachments.py",
+    "function": "authorize_attachment_encounter",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/history.py",
+    "function": "authorize_history",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/history.py",
+    "function": "save_history",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/history_views.py",
+    "function": "_workspace",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/services.py",
+    "function": "_assigned",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/services.py",
+    "function": "publish_template",
+    "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/ehr/services.py",
+    "function": "view_version",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/views.py",
+    "function": "_show",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/ehr/views.py",
+    "function": "_resume",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/identity/clinic_configuration.py",
+    "function": "publish_configuration",
+    "roles": "CONFIGURATION_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/identity/clinic_settings_views.py",
+    "function": "clinic_settings",
+    "roles": "CONFIGURATION_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/identity/clinic_settings_views.py",
+    "function": "clinic_logo",
+    "roles": "tuple(UserClinicRole.Role)",
+    "legacy_allowed": [
+      "owner",
+      "physician",
+      "receptionist",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/identity/current_context.py",
+    "function": "list_active_clinic_physicians",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/identity/management/context.py",
+    "function": "assume_runtime_owner",
+    "roles": "(UserClinicRole.Role.OWNER,)",
+    "legacy_allowed": [
+      "owner"
+    ]
+  },
+  {
+    "path": "apps/identity/physician_verification.py",
+    "function": "_assigned_encounter",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/intake/access.py",
+    "function": "authorized_manager_clinic",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/intake/access.py",
+    "function": "authorized_enrollment",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/intake/questionnaires.py",
+    "function": "publish_template",
+    "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/intake/questionnaires.py",
+    "function": "assign_questionnaire",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/intake/questionnaires.py",
+    "function": "published_templates",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/intake/questionnaires.py",
+    "function": "appointment_enrollment",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/intake/questionnaires.py",
+    "function": "clinical_response",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/prescription/services.py",
+    "function": "authorize_encounter",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/prescription/services.py",
+    "function": "_authorize_document_care",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/prescription/verification.py",
+    "function": "_issuer_document",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/prescription/views.py",
+    "function": "_workspace",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/prescription/views.py",
+    "function": "review_view",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/prescription/views.py",
+    "function": "signing_status_view",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/retention/services.py",
+    "function": "_require_manager",
+    "roles": "POLICY_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/retention/services.py",
+    "function": "export_staff_records",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/retention/services.py",
+    "function": "verify_stored_export",
+    "roles": "POLICY_ROLES",
+    "legacy_allowed": [
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/retention/views.py",
+    "function": "retention_workspace",
+    "roles": "STAFF_ROLES",
+    "legacy_allowed": [
+      "physician",
+      "receptionist",
+      "owner",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/scheduling/access.py",
+    "function": "authorized_manager_clinic",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/scheduling/access.py",
+    "function": "authorized_appointment_manager_clinic",
+    "roles": "MANAGER_ROLES",
+    "legacy_allowed": [
+      "clinic_admin",
+      "owner",
+      "receptionist"
+    ]
+  },
+  {
+    "path": "apps/teleconsult/services.py",
+    "function": "_assigned_physician",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/teleconsult/services.py",
+    "function": "_staff_session",
+    "roles": "tuple(UserClinicRole.Role)",
+    "legacy_allowed": [
+      "owner",
+      "physician",
+      "receptionist",
+      "clinic_admin"
+    ]
+  },
+  {
+    "path": "apps/teleconsult/services.py",
+    "function": "create_session",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/teleconsult/services.py",
+    "function": "_enter_as_physician",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/teleconsult/services.py",
+    "function": "staff_sessions",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  },
+  {
+    "path": "apps/teleconsult/services.py",
+    "function": "open_encounters",
+    "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+    "legacy_allowed": [
+      "physician"
+    ]
+  }
+]
