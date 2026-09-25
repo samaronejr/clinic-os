@@ -190,6 +190,42 @@ or deployment runbook; do not improvise destructive database commands. Record
 the timeline, scope, decisions, and follow-up tests in a restricted incident
 record.
 
+## ADR index
+
+The Clinic Ops successor plan records its security-relevant decisions as ADRs
+and its new attack surfaces as STRIDE threat models with Mermaid data-flow
+diagrams. Both describe planned controls. Nothing in them changes the
+synthetic-only boundary above, and none of them clears an item in
+LIVE-DATA-GATE.md. The full ADR list is in
+[ARCHITECTURE.md](ARCHITECTURE.md#adr-index).
+
+Security-relevant decisions:
+
+| ADR | Decision |
+| --- | --- |
+| [ADR-003](adr/ADR-003-authorization-permission-bundles.md) | One permission-bundle model, enforced in services and RLS |
+| [ADR-006](adr/ADR-006-ai-gateway-routing.md) | AI gateway with egress allowlist, budgets, kill switches and no cross-jurisdiction fallback |
+| [ADR-008](adr/ADR-008-workflows-and-approval-binding.md) | Approvals bound to an RFC 8785 + SHA-256 digest, revalidated at execution |
+| [ADR-010](adr/ADR-010-prescription-signature-trust.md) | Exact-bytes approval and independent verification of qualified signatures |
+| [ADR-014](adr/ADR-014-observability-redaction.md) | Allowlist redaction; clinical content never exported |
+| [ADR-015](adr/ADR-015-isolation-encryption-search.md) | FORCE RLS, envelope encryption, blind indexes, no plaintext duplicates |
+| [ADR-016](adr/ADR-016-recovery-with-key-escrow.md) | Restore fails when keys or objects are missing |
+| [ADR-019](adr/ADR-019-service-principals.md) | `clinic_agent` NOBYPASSRLS login; principals never impersonate clinicians |
+
+Threat models (mitigation ids map to todo numbers; todo 73 maps them to
+tests):
+
+| Surface | Threat model |
+| --- | --- |
+| Realtime event channel | [threat-models/realtime.md](threat-models/realtime.md) |
+| Scribe audio capture and media storage | [threat-models/scribe-media.md](threat-models/scribe-media.md) |
+| AI gateway | [threat-models/ai-gateway.md](threat-models/ai-gateway.md) |
+| Agents, proposals and approvals | [threat-models/agents.md](threat-models/agents.md) |
+| Guardian and delegate access | [threat-models/delegates.md](threat-models/delegates.md) |
+| Payments, journal and fiscal documents | [threat-models/payments.md](threat-models/payments.md) |
+| Import, export and external API | [threat-models/import-export.md](threat-models/import-export.md) |
+| Support access, break-glass and enterprise identity | [threat-models/support-access.md](threat-models/support-access.md) |
+
 Source anchors: [database bootstrap](../ops/db/bootstrap.sql),
 [RLS policy builder](../apps/tenancy/rls.py),
 [resolver migration](../apps/tenancy/migrations/0002_rls_and_resolvers.py),
