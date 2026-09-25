@@ -19,6 +19,7 @@ from apps.scheduling.patient_booking import (
     patient_slots,
     reschedule_patient_appointment,
 )
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
@@ -78,6 +79,8 @@ def _submission_result(request: HttpRequest, key: str) -> tuple[UUID | None, str
         return _submit(request, key), ""
     except (ValueError, AppointmentCreateInputError, AppointmentRescheduleInputError):
         return None, "Confira o horário selecionado e tente novamente."
+    except SchedulingRuleError as error:
+        return None, str(error.message)
     except (AppointmentAvailabilityError, AppointmentPractitionerError, SlotConflict):
         return None, "Este horário não está mais disponível. Escolha outro horário."
     except (

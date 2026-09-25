@@ -19,6 +19,7 @@ from apps.scheduling.appointment_values import (
     replay_appointment,
 )
 from apps.scheduling.models import Appointment
+from apps.scheduling.resource_errors import SchedulingRuleError
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -43,6 +44,8 @@ def insert_appointment(
                 end_at=prepared.end_at,
                 idempotency_key=request.idempotency_key,
                 create_fingerprint=prepared.fingerprint,
+                service_type_id=request.service_type_id,
+                resource_ids=sorted(request.resource_ids),
             )
     except IntegrityError as error:
         replay = replay_appointment(
@@ -53,6 +56,7 @@ def insert_appointment(
         if replay is not None:
             return replay, False
         constraint = _constraint_name(error)
+        _resource_constraint(error, constraint)
         if constraint == "scheduling_appointment_org_idempotency_uniq":
             raise AppointmentIdempotencyConflictError from error
         if constraint in {
@@ -63,6 +67,7 @@ def insert_appointment(
         if constraint == "scheduling_appointment_active_availability_check":
             raise AppointmentAvailabilityError from error
         raise
+    appointment.refresh_from_db(fields=("buffer_before", "buffer_after"))
     return appointment, True
 
 
@@ -71,6 +76,19 @@ def _constraint_name(error: IntegrityError) -> str | None:
     if not isinstance(cause, psycopg.Error):
         return None
     return cause.diag.constraint_name
+
+
+def _resource_constraint(error: IntegrityError, constraint: str | None) -> None:
+    codes = {
+        "scheduling_resource_conflict": "resource_conflict",
+        "scheduling_resource_capacity_excl": "resource_conflict",
+        "scheduling_outside_template": "outside_template",
+        "scheduling_holiday": "holiday",
+        "scheduling_buffer_violation": "buffer_violation",
+        "scheduling_z_buffer_practitioner_excl": "buffer_violation",
+    }
+    if constraint in codes:
+        raise SchedulingRuleError(codes[constraint]) from error
 
 
 def update_appointment_range(
@@ -87,6 +105,7 @@ def update_appointment_range(
             appointment.save(update_fields=("start_at", "end_at", "updated_at"))
     except IntegrityError as error:
         constraint = _constraint_name(error)
+        _resource_constraint(error, constraint)
         if constraint in {
             "scheduling_appointment_scheduled_patient_excl",
             "scheduling_appointment_scheduled_practitioner_excl",

@@ -12,6 +12,8 @@ from django.utils import timezone
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import (
     CurrentActorError,
+    PhysicianCatalogEntry,
+    UserId,
     list_active_clinic_physicians,
 )
 from apps.intake.models import PatientClinicEnrollment
@@ -20,6 +22,12 @@ from apps.scheduling.access import (
     authorized_appointment_manager_clinic,
 )
 from apps.scheduling.models import AvailabilityBlock
+from apps.scheduling.resource_booking import (
+    authorized_service_clinic,
+    booking_selection,
+    service_practitioners,
+)
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.timezones import format_local_minute
 
 if TYPE_CHECKING:
@@ -53,18 +61,40 @@ class BookingPreparation:
     enrollment_id: UUID
     patient_display_name: str
     practitioners: tuple[BookingPractitioner, ...]
+    service_type_id: UUID | None = None
+    resource_ids: tuple[UUID, ...] = ()
+    duration_min: int | None = None
+    buffer_before: int = 0
+    buffer_after: int = 0
 
 
 def prepare_booking(
     *,
     clinic_id: UUID,
     enrollment_id: UUID,
+    service_type_id: UUID | None = None,
+    resource_ids: tuple[UUID, ...] = (),
 ) -> BookingPreparation:
     """Return one clinic-scoped booking DTO for the current clinic manager."""
     if type(clinic_id) is not UUID or type(enrollment_id) is not UUID:
         raise AppointmentAccessDeniedError
     with transaction.atomic():
-        clinic = authorized_appointment_manager_clinic(clinic_id)
+        clinic = (
+            authorized_appointment_manager_clinic(clinic_id)
+            if service_type_id is None
+            else authorized_service_clinic(clinic_id)
+        )
+        service, resources = booking_selection(
+            clinic=clinic, service_type_id=service_type_id, resource_ids=resource_ids
+        )
+        if service is not None and (
+            not service.active
+            or any(not row.active for row in resources)
+            or not set(service.required_resource_kinds)
+            <= {row.kind for row in resources}
+        ):
+            msg = "resource_conflict"
+            raise SchedulingRuleError(msg)
         timezone_key = clinic.timezone
         if not isinstance(timezone_key, str):
             raise AppointmentAccessDeniedError
@@ -76,7 +106,12 @@ def prepare_booking(
             )
             catalog = tuple(
                 sorted(
-                    list_active_clinic_physicians(clinic_id),
+                    list_active_clinic_physicians(clinic_id)
+                    if service is None
+                    else tuple(
+                        PhysicianCatalogEntry(UserId(pk), label)
+                        for pk, label in service_practitioners(clinic_id)
+                    ),
                     key=lambda item: (item.display_label.casefold(), item.user_id),
                 )
             )
@@ -95,6 +130,8 @@ def prepare_booking(
             physician_id: [] for physician_id in physician_ids
         }
         for row in rows:
+            if row.practitioner_id is None:
+                continue
             windows_by_practitioner[row.practitioner_id].append(
                 BookingAvailabilityWindow(
                     availability_id=row.pk,
@@ -107,6 +144,11 @@ def prepare_booking(
         result = BookingPreparation(
             enrollment_id=enrollment.pk,
             patient_display_name=enrollment.patient.full_name,
+            service_type_id=service.pk if service else None,
+            resource_ids=tuple(row.pk for row in resources),
+            duration_min=service.duration_min if service else None,
+            buffer_before=service.buffer_before if service else 0,
+            buffer_after=service.buffer_after if service else 0,
             practitioners=tuple(
                 BookingPractitioner(
                     practitioner_id=physician.user_id,

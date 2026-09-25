@@ -55,6 +55,8 @@ def retire_availability(
     with transaction.atomic():
         clinic = authorized_manager_clinic(clinic_id)
         discovered = _target(clinic.organization_id, clinic_id, availability_id)
+        if discovered.practitioner_id is None:
+            raise AvailabilityAccessDeniedError
         lock_keys = (
             clinic_lock_key(clinic_id),
             *user_lock_keys((discovered.practitioner_id,)),

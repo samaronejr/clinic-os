@@ -27,6 +27,7 @@ def transition_write_target(appointment: Appointment) -> AppointmentWriteTarget:
         clinic_id=appointment.clinic_id,
         patient_id=appointment.patient_id,
         practitioner_ids=(appointment.practitioner_id,),
+        resource_ids=tuple(appointment.resource_ids),
     )
 
 

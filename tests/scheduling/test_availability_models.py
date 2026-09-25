@@ -16,6 +16,9 @@ def test_availability_block_is_an_immutable_tenant_scoped_promise() -> None:
     availability = module.AvailabilityBlock
     assert issubclass(availability, TenantScopedModel)
     assert {field.name for field in availability._meta.fields} == {
+        "resource",
+        "template",
+        "generated_date",
         "clinic",
         "create_fingerprint",
         "created_at",
