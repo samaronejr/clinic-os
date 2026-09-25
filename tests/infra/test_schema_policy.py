@@ -98,9 +98,14 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "intake_questionnaireresponse",
         "intake_questionnaireevent",
         # Task-26 immutable patient decisions are checked in test_consent.
+        # The todo-20 taxonomy records are checked in tests/consent.
         "consent_consenttext",
         "consent_consentacceptance",
         "consent_consentrevocation",
+        "consent_noticeversion",
+        "consent_refusalrecord",
+        "consent_participantacknowledgment",
+        "consent_aiusedisclosure",
         "scheduling_patientbookingevent",
         # Task-18 manager/patient policies are checked exactly in test_waitlist.
         "scheduling_waitlistentry",

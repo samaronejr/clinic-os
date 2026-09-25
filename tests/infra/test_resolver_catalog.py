@@ -22,6 +22,8 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("consent_consentacceptance", "SELECT"),
     ("consent_consentrevocation", "SELECT"),
     ("consent_consenttext", "SELECT"),
+    ("consent_noticeversion", "SELECT"),
+    ("consent_refusalrecord", "SELECT"),
     ("ehr_allergy", "SELECT"),
     ("ehr_clinicalattachment", "SELECT"),
     ("ehr_clinicaldocument", "SELECT"),

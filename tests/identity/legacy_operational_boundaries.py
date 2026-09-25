@@ -93,6 +93,9 @@ def seed_operational(w: LegacyWorld) -> OperationalSubjects:
         text = consent.publish_text(
             clinic_id=w.clinic, purpose="teleconsultation", text="Sintetico"
         )
+        ai_text = consent.publish_text(
+            clinic_id=w.clinic, purpose="ai_assistance", text="Sintetico IA"
+        )
         invitation = issue_invitation(clinic_id=w.clinic, enrollment_id=enrollment)
         buffer = io.BytesIO()
         Image.new("RGB", (1, 1)).save(buffer, format="PNG")
@@ -114,6 +117,8 @@ def seed_operational(w: LegacyWorld) -> OperationalSubjects:
     with runtime_role(), patient_session_context(session):
         _, offer = consent.prepare_acceptance(text_id=text.pk)
         consent.record_consent(offer=offer, purpose="teleconsultation", accepted=True)
+        _, refusal_offer = consent.prepare_acceptance(text_id=ai_text.pk)
+        consent.record_refusal(offer=refusal_offer, purpose="ai_assistance")
     with runtime_role(), tenant_context(w.graph.shared_user, w.graph.organization_a):
         invoice = billing.create_invoice(
             clinic_id=w.clinic,
@@ -138,6 +143,12 @@ def seed_operational(w: LegacyWorld) -> OperationalSubjects:
             version_id=w.version.pk,
             expected_revision=w.version.revision,
             request=doctor_request,
+        )
+        consent.record_ai_disclosure(
+            clinic_id=w.clinic,
+            encounter_id=w.version.document.encounter_id,
+            informed=True,
+            refused=False,
         )
         retention.release_version(clinic_id=w.clinic, version_id=finalized.pk)
         response = questionnaires.assign_questionnaire(
@@ -264,6 +275,16 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
             ),
         ),
         Boundary(
+            "apps.consent.services.publish_notice",
+            "operational",
+            ADMINS,
+            lambda w, ok: consent.publish_notice(
+                clinic_id=w.clinic_for(ok),
+                topic="ai_use",
+                text="Sintetico parity aviso",
+            ),
+        ),
+        Boundary(
             "apps.consent.services.staff_receipts",
             "operational",
             LEGACY,
@@ -271,6 +292,45 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
                 clinic_id=w.clinic_for(ok), enrollment_id=subject.enrollment
             ),
             has_rows,
+        ),
+        Boundary(
+            "apps.consent.services.staff_refusals",
+            "operational",
+            LEGACY,
+            lambda w, ok: consent.staff_refusals(
+                clinic_id=w.clinic_for(ok), enrollment_id=subject.enrollment
+            ),
+            has_rows,
+        ),
+        Boundary(
+            "apps.consent.services.record_ai_disclosure",
+            "operational",
+            PHYSICIAN,
+            lambda w, ok: consent.record_ai_disclosure(
+                clinic_id=w.clinic_for(ok),
+                encounter_id=w.encounter_for(ok),
+                informed=True,
+                refused=False,
+            ),
+        ),
+        Boundary(
+            "apps.consent.services.ai_disclosure_status",
+            "operational",
+            LEGACY,
+            lambda w, ok: consent.ai_disclosure_status(
+                clinic_id=w.clinic_for(ok), encounter_id=w.encounter_for(ok)
+            ),
+            has_rows,
+        ),
+        Boundary(
+            "apps.consent.services.acknowledge_participant",
+            "operational",
+            PHYSICIAN,
+            lambda w, ok: consent.acknowledge_participant(
+                clinic_id=w.clinic_for(ok),
+                session_id=w.encounter_for(ok),
+                participant_kind="companion",
+            ),
         ),
         Boundary(
             "apps.consent.services.consent_for_future_use",

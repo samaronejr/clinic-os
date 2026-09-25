@@ -180,6 +180,16 @@
       ]
     },
     {
+      "symbol": "apps.consent.services.publish_notice",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.publish_notice"
+      ]
+    },
+    {
       "symbol": "apps.consent.services.prepare_acceptance",
       "signals": [
         "denial"
@@ -204,7 +214,7 @@
       ]
     },
     {
-      "symbol": "apps.consent.services.record_consent",
+      "symbol": "apps.consent.services._resolve_offer",
       "signals": [
         "denial"
       ],
@@ -238,6 +248,16 @@
       ]
     },
     {
+      "symbol": "apps.consent.services.staff_refusals",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.staff_refusals"
+      ]
+    },
+    {
       "symbol": "apps.consent.services.consent_for_future_use",
       "signals": [
         "role_helper"
@@ -245,6 +265,38 @@
       "kind": "direct",
       "probes": [
         "apps.consent.services.consent_for_future_use"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.record_ai_disclosure",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.record_ai_disclosure"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.ai_disclosure_status",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.ai_disclosure_status"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.acknowledge_participant",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.acknowledge_participant"
       ]
     },
     {
@@ -3183,13 +3235,18 @@
     "apps.billing.views.invoice_status",
     "apps.comms.views.reminders_view",
     "apps.consent.services._patient_audit#observed",
+    "apps.consent.services.acknowledge_participant",
+    "apps.consent.services.ai_disclosure_status",
     "apps.consent.services.consent_for_future_use",
     "apps.consent.services.patient_authority#observed",
     "apps.consent.services.prepare_acceptance#observed",
+    "apps.consent.services.publish_notice",
     "apps.consent.services.publish_text",
+    "apps.consent.services.record_ai_disclosure",
     "apps.consent.services.record_consent#observed",
     "apps.consent.services.revoke_consent#observed",
     "apps.consent.services.staff_receipts",
+    "apps.consent.services.staff_refusals",
     "apps.consent.views.staff_consent",
     "apps.core.api.authentication.StepUpVerified.has_permission",
     "apps.core.api.authentication.StepUpVerified.has_permission#unverified",
@@ -3436,7 +3493,27 @@
     },
     {
       "path": "apps/consent/services.py",
+      "function": "publish_notice",
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin"
+      ]
+    },
+    {
+      "path": "apps/consent/services.py",
       "function": "staff_receipts",
+      "roles": "STAFF_ROLES",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ]
+    },
+    {
+      "path": "apps/consent/services.py",
+      "function": "staff_refusals",
       "roles": "STAFF_ROLES",
       "legacy_allowed": [
         "owner",
@@ -3454,6 +3531,33 @@
         "physician",
         "receptionist",
         "clinic_admin"
+      ]
+    },
+    {
+      "path": "apps/consent/services.py",
+      "function": "record_ai_disclosure",
+      "roles": "CLINICIAN_ROLES",
+      "legacy_allowed": [
+        "physician"
+      ]
+    },
+    {
+      "path": "apps/consent/services.py",
+      "function": "ai_disclosure_status",
+      "roles": "STAFF_ROLES",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ]
+    },
+    {
+      "path": "apps/consent/services.py",
+      "function": "acknowledge_participant",
+      "roles": "CLINICIAN_ROLES",
+      "legacy_allowed": [
+        "physician"
       ]
     },
     {
