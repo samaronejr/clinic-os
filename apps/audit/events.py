@@ -76,6 +76,15 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "consent.revoked": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "consent.revocation", "revoked"
         ),
+        "consent.refused": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.refusal", "refused"
+        ),
+        "consent.notice.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.notice", "published"
+        ),
+        "consent.ai_disclosure.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "consent.ai_use_disclosure", "recorded"
+        ),
         "consent.receipts.viewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "intake.patient_clinic_enrollment", "viewed"
         ),

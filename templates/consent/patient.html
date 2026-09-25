@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load i18n %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-consent.css' %}">{% endblock %}
 {% block title %}Seus consentimentos · Clinic OS{% endblock %}
 {% block content %}
@@ -20,6 +21,11 @@
       <div class="consent-choice">{{ form.accepted }}{{ form.accepted.label_tag }}</div>
       <button class="button" name="action" value="accept" type="submit">Registrar consentimento</button>
     </form>
+    <form method="post" class="field" novalidate>
+      {% csrf_token %}{{ refusal_form.offer }}{{ refusal_form.purpose }}
+      <p>{% trans "Refusing records your decision and never blocks your care." %}</p>
+      <button class="button button--secondary" name="action" value="refuse" type="submit">{% trans "I do not consent to this purpose" %}</button>
+    </form>
   </section>
   {% endif %}
   <section class="panel" aria-labelledby="available-title">
@@ -32,7 +38,29 @@
     </form>
     {% empty %}<p>Nenhum texto disponível para este acesso.</p>{% endfor %}
   </section>
+  <section class="panel" aria-labelledby="notices-title">
+    <h2 id="notices-title">{% trans "Clinic notices" %}</h2>
+    <p>{% trans "Notices inform you about how the clinic works; they are not consent requests." %}</p>
+    {% for notice_row in notices %}
+    <article class="field" data-notice="{{ notice_row.pk }}">
+      <h3>{{ notice_row.get_topic_display }} · {% trans "Version" %} {{ notice_row.version }}</h3>
+      <details class="consent-provenance">
+        <summary>{% trans "Read the notice" %}</summary>
+        <div class="consent-text">{{ notice_row.text }}</div>
+      </details>
+    </article>
+    {% empty %}<p>{% trans "No notices published for this access." %}</p>{% endfor %}
+  </section>
   {% include "consent/receipts.html" with patient=True %}
+  <section class="panel" aria-labelledby="refusals-title">
+    <h2 id="refusals-title">{% trans "Recorded refusals" %}</h2>
+    {% for refusal in refusals %}
+    <article class="field" data-refusal="{{ refusal.pk }}">
+      <h3>{{ refusal.text.get_purpose_display }} · {% trans "Version" %} {{ refusal.text.version }}</h3>
+      <p><strong>{% trans "Refused" %}</strong> {{ refusal.refused_at|date:"d/m/Y H:i:s" }} · {{ refusal.text.language }}</p>
+    </article>
+    {% empty %}<p>{% trans "No refusal recorded for this access." %}</p>{% endfor %}
+  </section>
   <a class="button button--quiet" href="{% url 'intake:patient-home' %}">Voltar ao portal</a>
 </section>
 {% endblock %}

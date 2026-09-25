@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -99,11 +100,90 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
-def publish(page: Page, url: str, text: str) -> None:
+def publish(page: Page, url: str, text: str, purpose: str | None = None) -> None:
     page.goto(url)
+    if purpose is not None:
+        page.locator("#id_purpose").select_option(purpose)
     page.locator("#id_text").fill(text)
     press(page, "publish")
     expect(page.locator('[role="status"]')).to_be_visible()
+
+
+def read_text(page: Page, purpose_label: str) -> None:
+    """Open the displayed text for one purpose from the list of versions."""
+    row = page.locator("form", has_text=purpose_label)
+    with page.expect_navigation():
+        row.locator('button[value="read"]').click()
+
+
+def refuse_current(page: Page, root: Path, width: int) -> None:
+    """Record one refusal for the currently displayed version."""
+    with page.expect_navigation():
+        page.locator('button[value="refuse"]').click()
+    refusal = page.locator("[data-refusal]")
+    expect(refusal).to_be_visible()
+    capture(page, root, "refusal-recorded", width)
+
+
+@dataclass(frozen=True)
+class Flow:
+    """The shared pages and identifiers for the consent surfaces."""
+
+    admin: Page
+    patient: Page
+    staff_url: str
+    base: str
+    enrollment_id: str
+    root: Path
+    width: int
+
+
+def staff_receipt_view(flow: Flow) -> None:
+    """Show the enrollment's receipts and refusal rows on the staff surface."""
+    flow.admin.goto(flow.staff_url)
+    flow.admin.locator("#enrollment-id").fill(flow.enrollment_id)
+    press(flow.admin, "receipts")
+
+
+def taxonomy_flow(flow: Flow) -> None:
+    """Publish recording consent and an AI notice; accept one, refuse one."""
+    publish(
+        flow.admin,
+        flow.staff_url,
+        "Texto sintético de gravação da consulta.",
+        purpose="consultation_recording",
+    )
+    publish(
+        flow.admin,
+        flow.staff_url,
+        "Texto sintético de assistência por IA.",
+        purpose="ai_assistance",
+    )
+    flow.admin.goto(flow.staff_url)
+    flow.admin.locator("#id_notice-topic").select_option("ai_use")
+    flow.admin.locator("#id_notice-text").fill(
+        "Aviso sintético sobre uso de IA no atendimento."
+    )
+    press(flow.admin, "publish_notice")
+    expect(flow.admin.locator('[role="status"]')).to_be_visible()
+    flow.patient.goto(f"{flow.base}/patient/consent/")
+    notice_article = flow.patient.locator("[data-notice]")
+    expect(notice_article).to_be_visible()
+    notice_article.locator("summary").click()
+    expect(notice_article.locator(".consent-text")).to_contain_text("uso de IA")
+    capture(flow.patient, flow.root, "notice-listed", flow.width)
+    read_text(flow.patient, "Gravação da consulta")
+    flow.patient.locator("#id_accepted").check()
+    press(flow.patient, "accept")
+    recording = flow.patient.locator("[data-receipt][data-state='accepted']")
+    expect(recording.first).to_be_visible()
+    capture(flow.patient, flow.root, "recording-accepted", flow.width)
+    read_text(flow.patient, "Assistência por IA")
+    refuse_current(flow.patient, flow.root, flow.width)
+    expect(flow.patient.locator("[data-refusal]")).to_contain_text("Assistência por IA")
+    staff_receipt_view(flow)
+    expect(flow.admin.locator("[data-refusal]")).to_have_count(1)
+    capture(flow.admin, flow.root, "staff-refusal", flow.width)
 
 
 def accept_revoke(patient: Page, root: Path, width: int) -> str:
@@ -229,6 +309,9 @@ def console_report(
                 "stale_text_status": 409,
                 "cross_patient_status": 403,
                 "delete_status": 403,
+                "recording_accepted": True,
+                "ai_assistance_refused": True,
+                "notice_published": True,
             },
             indent=2,
         )
@@ -322,9 +405,16 @@ def test_accept_revoke_receipt_and_replay_denials(
             other_page.goto(f"{base}/patient/consent/")
             replay_denied(other_page, token, root, width)
         receipt_id = accept_revoke(patient, root, width)
-        admin.goto(staff_url)
-        admin.locator("#enrollment-id").fill(data["enrollment"])
-        press(admin, "receipts")
+        flow = Flow(
+            admin=admin,
+            patient=patient,
+            staff_url=staff_url,
+            base=base,
+            enrollment_id=data["enrollment"],
+            root=root,
+            width=width,
+        )
+        staff_receipt_view(flow)
         expect(admin.locator("[data-receipt]")).to_have_attribute(
             "data-state", "revoked"
         )
@@ -334,6 +424,9 @@ def test_accept_revoke_receipt_and_replay_denials(
             == TEXT + "\nNova versão sintética."
         )
         capture(admin, root, "staff-receipt", width)
+        # Purpose taxonomy: recording consent and an AI-use notice, then the
+        # patient accepts recording and refuses AI assistance in the portal.
+        taxonomy_flow(flow)
         # Additional reflow/accessibility scenes share the exact same receipt.
         if width == 375:
             accessibility_scenes(patient, root)

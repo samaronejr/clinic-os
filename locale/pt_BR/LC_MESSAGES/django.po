@@ -2378,3 +2378,114 @@ msgstr "Fechar aviso"
 
 msgid "1 result. Use the arrow keys to choose."
 msgstr "1 resultado. Use as setas para escolher."
+
+msgid "Teleconsultation"
+msgstr "Teleconsulta"
+
+msgid "Consultation recording"
+msgstr "Gravação da consulta"
+
+msgid "AI assistance"
+msgstr "Assistência por IA"
+
+msgid "Transactional messaging"
+msgstr "Mensagens transacionais"
+
+msgid "Marketing"
+msgstr "Marketing"
+
+msgid "Research and model improvement"
+msgstr "Pesquisa e melhoria de modelos"
+
+msgid "Care data processing"
+msgstr "Tratamento de dados assistenciais"
+
+msgid "Use of AI in care"
+msgstr "Uso de IA no atendimento"
+
+msgid "I read this version's text and I consent."
+msgstr "Li o texto desta versão e consinto."
+
+msgid "I do not consent to this purpose"
+msgstr "Não consinto com esta finalidade"
+
+msgid "Refusing records your decision and never blocks your care."
+msgstr "Recusar registra sua decisão e nunca impede seu atendimento."
+
+msgid "Clinic notices"
+msgstr "Avisos da clínica"
+
+msgid "Notices inform you about how the clinic works; they are not consent requests."
+msgstr "Avisos informam sobre como a clínica funciona; não são pedidos de consentimento."
+
+msgid "Read the notice"
+msgstr "Ler o aviso"
+
+msgid "No notices published for this access."
+msgstr "Nenhum aviso publicado para este acesso."
+
+msgid "Recorded refusals"
+msgstr "Recusas registradas"
+
+msgid "Refused"
+msgstr "Recusado"
+
+msgid "No refusal recorded for this access."
+msgstr "Nenhuma recusa registrada para este acesso."
+
+msgid "Topic"
+msgstr "Tema"
+
+msgid "Full notice text (pt-BR)"
+msgstr "Texto integral do aviso (pt-BR)"
+
+msgid "Encounter"
+msgstr "Atendimento"
+
+msgid "I informed the patient that AI may assist in this encounter."
+msgstr "Informei o paciente de que a IA pode auxiliar neste atendimento."
+
+msgid "The patient refused AI assistance."
+msgstr "O paciente recusou a assistência por IA."
+
+msgid "Clinical session"
+msgstr "Sessão clínica"
+
+msgid "Participant"
+msgstr "Participante"
+
+msgid "Caregiver"
+msgstr "Cuidador"
+
+msgid "Companion"
+msgstr "Acompanhante"
+
+msgid "Interpreter"
+msgstr "Intérprete"
+
+msgid "Publish an informational notice"
+msgstr "Publicar aviso informativo"
+
+msgid "Notices inform patients (for example about recording or AI use) and never count as consent."
+msgstr "Avisos informam pacientes (por exemplo sobre gravação ou uso de IA) e nunca contam como consentimento."
+
+msgid "Publish notice"
+msgstr "Publicar aviso"
+
+msgid "Record AI-use disclosure"
+msgstr "Registrar divulgação de uso de IA"
+
+msgid "Once per encounter, the clinician attests the patient was informed and records any refusal. Patient refusal never blocks care."
+msgstr "Uma vez por atendimento, o médico declara que o paciente foi informado e registra eventual recusa. A recusa nunca impede o atendimento."
+
+msgid "Record disclosure"
+msgstr "Registrar divulgação"
+
+msgid "Acknowledge a non-patient participant"
+msgstr "Registrar participante não paciente"
+
+msgid "Record that the recording notice was given to a caregiver, companion or interpreter present in the session."
+msgstr "Registre que o aviso de gravação foi comunicado a um cuidador, acompanhante ou intérprete presente na sessão."
+
+msgid "Record acknowledgment"
+msgstr "Registrar comunicação"

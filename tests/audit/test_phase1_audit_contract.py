@@ -56,6 +56,19 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
     "consent.text.published": ("tenant", "clinic-os-web", "consent.text", "published"),
     "consent.accepted": ("tenant", "clinic-os-web", "consent.acceptance", "accepted"),
     "consent.revoked": ("tenant", "clinic-os-web", "consent.revocation", "revoked"),
+    "consent.refused": ("tenant", "clinic-os-web", "consent.refusal", "refused"),
+    "consent.notice.published": (
+        "tenant",
+        "clinic-os-web",
+        "consent.notice",
+        "published",
+    ),
+    "consent.ai_disclosure.recorded": (
+        "tenant",
+        "clinic-os-web",
+        "consent.ai_use_disclosure",
+        "recorded",
+    ),
     "consent.receipts.viewed": (
         "tenant",
         "clinic-os-web",

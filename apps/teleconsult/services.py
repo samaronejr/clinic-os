@@ -22,7 +22,7 @@ from django.utils import timezone
 from apps.audit.canonical import AuditEventInput
 from apps.audit.services import record_event, record_phase1_event
 from apps.comms.models import IntegrationOperation
-from apps.consent.models import ConsentAcceptance, ConsentText
+from apps.consent.models import ConsentAcceptance, ConsentPurpose, ConsentText
 from apps.consent.services import consent_for_future_use, patient_authority
 from apps.core.integration import OperationRequest, enqueue_operation
 from apps.ehr.models import Encounter
@@ -230,7 +230,7 @@ def _consent_is_active(session: TeleconsultSession) -> bool:
     current = (
         ConsentText.objects.filter(
             clinic_id=session.clinic_id,
-            purpose=ConsentText.Purpose.TELECONSULTATION,
+            purpose=ConsentPurpose.TELECONSULTATION,
         )
         .order_by("-version")
         .first()
@@ -322,7 +322,7 @@ def create_session(*, clinic_id: UUID, encounter_id: UUID) -> TeleconsultSession
         consent = consent_for_future_use(
             clinic_id=clinic_id,
             enrollment_id=enrollment.pk,
-            purpose=ConsentText.Purpose.TELECONSULTATION,
+            purpose=ConsentPurpose.TELECONSULTATION,
         )
         if consent is None:
             raise TeleconsultConflictError(_CONSENT_REQUIRED)
