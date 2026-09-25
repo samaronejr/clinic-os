@@ -1,104 +1,169 @@
-"""Every pre-v2 current-actor guard retains its four-role truth table."""
+"""Legacy parity at actual callable boundaries, with a reviewed broad census."""
 
 from __future__ import annotations
 
-import ast
-import importlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 import pytest
-from apps.identity.current_context import (
-    CurrentActorError,
-    require_current_actor_clinic_roles,
-)
+from apps.identity import stepup
 from apps.identity.models import UserClinicRole
-from apps.identity.permissions import IsClinicAdminForClinic, IsPhysicianForClinic
-from apps.identity.services import ClinicId, UserId, has_clinic_role
+from django.test import override_settings
 
-from identity.permission_support import permission_actor, permission_context
+from auth.stepup_test_support import STEP_UP_NOW
+from identity import legacy_operational_boundaries as operational
+from identity import legacy_prescription_boundaries as prescriptions
+from identity import legacy_sql_boundaries as sql_boundaries
+from identity import legacy_teleconsult_boundaries as teleconsult
+from identity import legacy_view_boundaries as views
+from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
+from identity.legacy_guard_inventory import declared_probes, discover
+from identity.legacy_identity_boundaries import BOUNDARIES as IDENTITY_BOUNDARIES
+from identity.legacy_owner_boundaries import BOUNDARIES as OWNER_BOUNDARIES
+from identity.legacy_parity_support import LEGACY, exercise, target_code, world
+from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDARIES
+from identity.legacy_scope_boundaries import BOUNDARIES as SCOPE_BOUNDARIES
+from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
+from identity.permission_support import owner_context
 
 if TYPE_CHECKING:
-    from apps.identity.current_context import ClinicRoles
-
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
-ROOT = Path(__file__).resolve().parents[2]
-LEGACY = ("owner", "physician", "receptionist", "clinic_admin")
-
-
-class Guard(TypedDict):
-    path: str
-    function: str
-    roles: str
-    legacy_allowed: list[str]
-
-
-GUARDS = cast(
-    "list[Guard]",
-    json.loads(Path(__file__).with_name("legacy_guards.json").read_text()),
+CORE = (
+    *IDENTITY_BOUNDARIES,
+    *CLINICAL_BOUNDARIES,
+    *PREDICATE_BOUNDARIES,
+    *SCOPE_BOUNDARIES,
+    *OWNER_BOUNDARIES,
 )
 
 
-def _roles(guard: Guard) -> ClinicRoles:
-    expression = ast.parse(guard["roles"], mode="eval").body
-    module = importlib.import_module(guard["path"][:-3].replace("/", "."))
-    if isinstance(expression, ast.Name):
-        return cast("ClinicRoles", getattr(module, expression.id))
-    if isinstance(expression, ast.Tuple):
-        assert all(isinstance(item, ast.Attribute) for item in expression.elts)
-        return tuple(
-            UserClinicRole.Role[cast("ast.Attribute", item).attr]
-            for item in expression.elts
-        )
-    assert guard["roles"] == "tuple(UserClinicRole.Role)"
-    return tuple(UserClinicRole.Role)
+class Candidate(TypedDict):
+    symbol: str
+    signals: list[str]
+    kind: str
+    probes: NotRequired[list[str]]
+    enforced_by: NotRequired[list[str]]
+    reason: NotRequired[str]
 
 
-def test_inventory_enumerates_every_current_actor_guard() -> None:
-    observed: list[tuple[str, str, str]] = []
-    for path in sorted((ROOT / "apps").rglob("*.py")):
-        if "migrations" in path.parts:
-            continue
-        for function in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(function, ast.FunctionDef):
-                continue
-            observed.extend(
-                (str(path.relative_to(ROOT)), function.name, ast.unparse(node.args[1]))
-                for node in ast.walk(function)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "require_current_actor_clinic_roles"
+class Inventory(TypedDict):
+    schema_version: int
+    candidates: list[Candidate]
+    probes: list[str]
+    method: list[str]
+
+
+INVENTORY = cast(
+    "Inventory", json.loads(Path(__file__).with_name("legacy_guards.json").read_text())
+)
+
+
+def test_every_authorization_candidate_is_accounted_for() -> None:
+    assert INVENTORY["schema_version"] == 2
+    candidates = INVENTORY["candidates"]
+    assert len({row["symbol"] for row in candidates}) == len(candidates)
+    assert discover() == {row["symbol"]: row["signals"] for row in candidates}
+    declared = declared_probes()
+    assert sorted(declared) == INVENTORY["probes"]
+    bases = {probe.split("#", 1)[0] for probe in declared}
+    for row in candidates:
+        if row["kind"] == "direct":
+            assert "probes" in row
+            assert row["symbol"] in bases
+            assert set(row["probes"]) <= declared
+        elif row["kind"] == "polymorphic":
+            assert "probes" in row
+            assert row["probes"]
+            assert all(
+                target_code(probe) is target_code(row["symbol"])
+                for probe in row["probes"]
             )
-    assert observed == [(g["path"], g["function"], g["roles"]) for g in GUARDS]
-    assert len(observed) == 47
+        elif row["kind"] == "delegated":
+            assert "enforced_by" in row
+            assert row["enforced_by"]
+            assert set(row["enforced_by"]) <= bases
+        else:
+            assert row["kind"] in {
+                "nonstaff",
+                "provider",
+                "infrastructure",
+                "v2",
+                "presentation",
+                "data_operation",
+            }
+            assert "reason" in row
+            assert row["reason"]
+    # All definitions using the canonical role helper are directly exercised;
+    # callers cannot again be replaced with tests of a harvested role tuple.
+    for row in candidates:
+        if "role_helper" in row["signals"]:
+            assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
+
+
+@pytest.fixture(autouse=True)
+def fixed_verification_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(stepup, "_utc_now_seconds", lambda: STEP_UP_NOW)
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)
-def test_all_47_guards_keep_legacy_role_decisions(
-    rbac_graph: RbacGraph, legacy_role: str
+@pytest.mark.parametrize("family", sorted({boundary.family for boundary in CORE}))
+def test_actual_legacy_boundaries(
+    rbac_graph: RbacGraph, legacy_role: str, family: str
 ) -> None:
-    actor, _ = permission_actor(rbac_graph, legacy_role)
-    with permission_context(rbac_graph, actor):
-        for guard in GUARDS:
-            roles = _roles(guard)
-            assert [role for role in roles if role in LEGACY] == guard["legacy_allowed"]
-            if legacy_role in guard["legacy_allowed"]:
-                assert (
-                    require_current_actor_clinic_roles(rbac_graph.clinic_a, roles)
-                    == actor
-                )
-            else:
-                with pytest.raises(CurrentActorError):
-                    require_current_actor_clinic_roles(rbac_graph.clinic_a, roles)
-            with pytest.raises(CurrentActorError):
-                require_current_actor_clinic_roles(rbac_graph.clinic_b, roles)
-        for permission, allowed in (
-            (IsPhysicianForClinic, {"physician"}),
-            (IsClinicAdminForClinic, {"owner", "clinic_admin"}),
-        ):
-            assert has_clinic_role(
-                UserId(actor), ClinicId(rbac_graph.clinic_a), permission.required_roles
-            ) == (legacy_role in allowed)
+    subject = world(rbac_graph, legacy_role)
+    if family == "organization":
+        with owner_context(rbac_graph.organization_a):
+            UserClinicRole.objects.get_or_create(
+                organization_id=rbac_graph.organization_a,
+                clinic_id=rbac_graph.clinic_b,
+                user_id=subject.actor.pk,
+                role=legacy_role,
+            )
+    for boundary in CORE:
+        if boundary.family == family:
+            exercise(boundary, subject)
+
+
+@pytest.mark.parametrize("legacy_role", LEGACY)
+@pytest.mark.parametrize(
+    "family", ["operational", "prescription", "http", "teleconsult", "sql"]
+)
+def test_actual_domain_boundaries(
+    rbac_graph: RbacGraph,
+    legacy_role: str,
+    family: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    subject = world(rbac_graph, legacy_role)
+    with override_settings(
+        BILLING_SYNTHETIC_PIX=True,
+        PRESCRIPTION_SYNTHETIC_SIGNING=True,
+        PHYSICIAN_SYNTHETIC_REGISTRY=True,
+        TELECONSULT_SYNTHETIC_PROVIDER=True,
+    ):
+        op = operational.seed_operational(subject)
+        if family == "operational":
+            selected = operational.boundaries(op)
+        elif family == "sql":
+            selected = sql_boundaries.boundaries(op)
+        elif family == "teleconsult":
+            selected = teleconsult.boundaries(
+                teleconsult.seed_teleconsult(subject, op, monkeypatch)
+            )
+        else:
+            rx = prescriptions.seed_prescription(subject)
+            selected = (
+                prescriptions.boundaries(rx)
+                if family == "prescription"
+                else views.boundaries(op, rx)
+            )
+        for boundary in selected:
+            exercise(boundary, subject)
+
+
+@pytest.mark.parametrize("legacy_role", LEGACY)
+def test_actual_tenant_boundaries(rbac_graph: RbacGraph, legacy_role: str) -> None:
+    exercise_tenant_boundaries(world(rbac_graph, legacy_role))
