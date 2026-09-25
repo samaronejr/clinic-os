@@ -8,6 +8,7 @@
 --cov=apps.ehr
 --cov=apps.prescription
 --cov=apps.providers
+--cov=apps.realtime
 --cov=apps.core
 --cov=apps.identity
 --cov=apps.intake

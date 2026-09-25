@@ -1930,6 +1930,18 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
+      "symbol": "apps.realtime.authorization._verified_staff",
+      "signals": ["authentication", "tenant_boundary"],
+      "kind": "v2",
+      "reason": "New SSE session/OTP and permission-bundle boundary, exercised through real clinic_app checks in tests/realtime/test_authorization.py and test_tickets.py; not a pre-v2 role guard."
+    },
+    {
+      "symbol": "apps.realtime.authorization.authorize_topics_sync",
+      "signals": ["scope_name", "tenant_boundary"],
+      "kind": "v2",
+      "reason": "New SSE short-transaction boundary, including patient-session isolation and fresh revocation checks; tests/realtime/test_stream.py proves backend release and reauthorization."
+    },
+    {
       "symbol": "apps.retention.services._denied",
       "signals": [
         "denial",

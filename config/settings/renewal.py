@@ -9,6 +9,7 @@ resolve to the ``clinic_app`` role on a loopback host.
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from urllib.parse import unquote, urlsplit
 
 import environ
@@ -41,6 +42,10 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
     "-c search_path=clinic_app,public"
 )
+
+DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
+DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+DATABASES["locks"] = deepcopy(DATABASES["default"])
 
 DEBUG = False
 SECURE_SSL_REDIRECT = False

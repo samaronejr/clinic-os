@@ -121,7 +121,9 @@ def test_runtime_database_requires_a_readable_canonical_ca(tmp_path: Path) -> No
         parser(_url(ca, {"root": str(link)}), required_role="clinic_app")
 
 
-def test_production_database_has_one_app_role_alias(tmp_path: Path) -> None:
+def test_production_database_has_runtime_and_session_lock_aliases(
+    tmp_path: Path,
+) -> None:
     ca = _ca(tmp_path)
     database_url = _url(ca)
     environment = os.environ.copy()
@@ -139,7 +141,9 @@ def test_production_database_has_one_app_role_alias(tmp_path: Path) -> None:
     )
     code = (
         "import config.settings.prod as s; "
-        "d=s.DATABASES; assert list(d)==['default']; "
+        "d=s.DATABASES; assert list(d)==['default', 'locks']; "
+        "assert d['locks']['USER']=='clinic_app'; "
+        "assert d['locks']['OPTIONS']['prepare_threshold'] is None; "
         "x=d['default']; assert x['USER']=='clinic_app'; "
         "assert x['OPTIONS']['sslmode']=='verify-full'; "
         "assert x['OPTIONS']['connect_timeout']==2"

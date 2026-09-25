@@ -54,6 +54,7 @@ from ops.testing.isolation_common import (
     utc_now,
     write_no_replace,
 )
+from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
@@ -74,6 +75,7 @@ SUITES: Final = {
     "encounter": ("tests/renewal/browser/test_encounter.py",),
     "end-to-end": ("tests/renewal/browser/test_end_to_end.py",),
     "agenda": ("tests/renewal/browser/test_agenda.py",),
+    "realtime": ("tests/renewal/browser/test_realtime.py",),
     "availability": ("tests/renewal/browser/test_availability.py",),
     "contacts": ("tests/renewal/browser/test_contacts.py",),
     "locale": ("tests/renewal/browser/test_locale.py",),
@@ -94,6 +96,7 @@ SUITES: Final = {
 FIXTURE_SUITES: Final = frozenset(
     {
         "agenda",
+        "realtime",
         "clinic-settings",
         "billing",
         "prescription-draft",
@@ -846,16 +849,17 @@ def _run_browser_suite(
     junit = browser_root / f"junit-{suite}.xml"
     pytest_log = artifact_root / "pytest.log"
     server_log = artifact_root / "server.log"
-    access_log = artifact_root / "access.log"
-    token = secrets.token_hex(8)
     provisioned: ProvisionedDatabase | None = None
     fixture: dict[str, str] = {"password": "", "username": ""}
     database_cm = (
-        contextlib.nullcontext() if override else _provision_database(repository, token)
+        contextlib.nullcontext()
+        if override
+        else _provision_database(repository, secrets.token_hex(8))
     )
     with (
         _synthetic_secret_store(run_root) as secret_environment,
         database_cm as database,
+        contextlib.ExitStack() as extra_processes,
     ):
         if override_dsn is not None:
             app_dsn = override_dsn
@@ -870,21 +874,37 @@ def _run_browser_suite(
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
         port = reserve_port()
-        base_url = f"http://127.0.0.1:{port}"
-        argv = supervised_argv(Path(sys.executable), port, access_log)
         spawned: list[SupervisedMaster] = []
+        server_environment = {
+            **_server_environment(app_dsn),
+            **secret_environment,
+            **_synthetic_adapters(suite),
+        }
+        extra_processes.enter_context(
+            realtime_broker(
+                repository, server_environment, run_root, enabled=suite == "realtime"
+            )
+        )
         try:
             start_master(
-                argv,
-                {
-                    **_server_environment(app_dsn),
-                    **secret_environment,
-                    **_synthetic_adapters(suite),
-                },
+                supervised_argv(
+                    Path(sys.executable), port, artifact_root / "access.log"
+                ),
+                server_environment,
                 server_log,
                 owner=spawned,
             )
             wait_until_ready(port, server_log)
+            port_for_browser = extra_processes.enter_context(
+                browser_endpoint(
+                    repository,
+                    server_environment,
+                    run_root,
+                    port,
+                    enabled=suite == "realtime",
+                )
+            )
+            base_url = f"http://127.0.0.1:{port_for_browser}"
             # Workers spawned by the suite read protected fields too.
             suite_environment = {
                 **_pytest_environment(

@@ -15,6 +15,7 @@ from .database import parse_database_url
 base.export_settings(globals())
 
 SECRET_KEY = validate_runtime_secret(os.environ.get("SECRET_KEY", ""))
+REALTIME_TOPIC_SECRET = validate_runtime_secret(base.REALTIME_TOPIC_SECRET)
 SECRET_KEY_CONFIGURED = True
 ALLOWED_HOSTS = parse_production_hosts(os.environ.get("ALLOWED_HOSTS", ""))
 SECURE_SSL_HOST = validate_secure_ssl_host(
@@ -24,8 +25,17 @@ CLINIC_PROCESS_ROLE = "clinic_app"
 DATABASES = {
     "default": parse_database_url(
         os.environ.get("APP_DATABASE_URL", ""), required_role=CLINIC_PROCESS_ROLE
-    )
+    ),
+    "locks": parse_database_url(
+        os.environ.get("LOCKS_DATABASE_URL", os.environ.get("APP_DATABASE_URL", "")),
+        required_role=CLINIC_PROCESS_ROLE,
+    ),
 }
+if base.env.bool("DATABASE_TRANSACTION_POOLING", default=False) and not os.environ.get(
+    "LOCKS_DATABASE_URL"
+):
+    message = "transaction pooling requires a direct/session LOCKS_DATABASE_URL"
+    raise ImproperlyConfigured(message)
 # Protected fields decrypt only through the managed-secret boundary; a
 # production deployment without a configured backend must fail at startup,
 # not at the first clinical read.

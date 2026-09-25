@@ -13,6 +13,8 @@ from django.http import HttpResponse
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from ops.release.activation import LiveModeHaltedError, require_live_runtime
 
+from apps.realtime.transport import publish_on_commit
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -166,6 +168,7 @@ class LiveModeHaltMiddleware:
         try:
             require_live_runtime(os.environ)
         except LiveModeHaltedError:
+            publish_on_commit("authz:halt", "halted", 1)
             return HttpResponse(status=SERVICE_UNAVAILABLE_STATUS)
         return self.get_response(request)
 

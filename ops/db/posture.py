@@ -20,6 +20,10 @@ SELECT
         WHERE rolname = current_user
           AND NOT rolsuper
           AND NOT rolbypassrls
+          AND rolconfig @> ARRAY[
+              'search_path=clinic_app, public',
+              'idle_in_transaction_session_timeout=15s'
+          ]::text[]
     )
     AND EXISTS (
         SELECT 1

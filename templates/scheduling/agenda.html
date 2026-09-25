@@ -1,9 +1,12 @@
 {% extends "base.html" %}
-{% load i18n clinic_locale %}
+{% load i18n clinic_locale static %}
 {% block title %}{% trans "Clinic agenda · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "Review the clinic-local day or week agenda without exposing patient identifiers in the address bar." %}{% endblock %}
+{% block extra_head %}<script src="{% static 'js/realtime.js' %}" defer></script>{% endblock %}
 {% block content %}
-<section class="agenda-shell" id="agenda-shell" aria-labelledby="agenda-title">
+<section class="agenda-shell" id="agenda-shell" aria-labelledby="agenda-title" data-realtime-topic="clinic:{{ clinic_id }}:agenda" data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}" data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
   <h1 id="agenda-title">{% trans "Clinic agenda" %}</h1>
   {% if can_manage %}<a class="button button--secondary" href="{% url 'scheduling:waitlist' clinic_id %}">Lista de espera</a>
   <a class="button button--secondary" href="{% url 'scheduling:reminders' clinic_id %}">Lembretes de consulta</a>{% endif %}
@@ -41,7 +44,7 @@
       </ul>
     </nav>
   </div>
-  <div id="agenda-results" class="agenda-results">
+  <div id="agenda-results" class="agenda-results" hx-get="{{ request.path }}" hx-trigger="rt:agenda from:body, rt:poll from:body" hx-target="this" hx-select="#agenda-results" hx-swap="outerHTML" hx-sync="this:replace">
     <p class="agenda-status" id="agenda-status" role="status">
       {% if agenda.view == 'day' %}{% blocktrans count total=agenda.total %}{{ total }} appointment on this day.{% plural %}{{ total }} appointments on this day.{% endblocktrans %}{% else %}{% blocktrans count total=agenda.total %}{{ total }} appointment in this week.{% plural %}{{ total }} appointments in this week.{% endblocktrans %}{% endif %}
       {% if agenda.page_count > 1 %}{% blocktrans with page=agenda.page pages=agenda.page_count %}Page {{ page }} of {{ pages }}.{% endblocktrans %}{% endif %}

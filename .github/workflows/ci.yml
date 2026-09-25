@@ -117,7 +117,7 @@ jobs:
           - "clinic-settings,billing,prescription-draft,prescribing,document-verification"
           - "consent,amendments,attachments,clinical-history,clinician-video"
           - "video-recovery,encounter,end-to-end"
-          - "agenda,availability,contacts,locale,patient-access"
+          - "agenda,availability,contacts,locale,patient-access,realtime"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
     steps:
@@ -208,7 +208,7 @@ jobs:
           install -d "$RUNNER_TEMP/worker-integration"
           CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
             --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
-            tests/renewal/test_broker_delivery.py
+            tests/renewal/test_broker_delivery.py tests/realtime/
       - name: Publish broker gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

@@ -57,6 +57,8 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
         f"FROM --platform=linux/amd64 {UV_IMAGE} AS uv",
         f"FROM --platform=linux/amd64 {PYTHON_IMAGE} AS builder",
         f"FROM --platform=linux/amd64 {PYTHON_IMAGE} AS runtime",
+        "FROM runtime AS realtime",
+        "FROM runtime AS web",
     ]
     assert re.search(r"\bapt(?:-get)?\b", dockerfile, re.IGNORECASE) is None
     assert "ARG TARGETARCH" in dockerfile
@@ -70,6 +72,25 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
         if line.startswith("CMD ")
     )
     assert json.loads(command_line) == DEFAULT_COMMAND
+    commands = [
+        json.loads(line.removeprefix("CMD "))
+        for line in dockerfile.splitlines()
+        if line.startswith("CMD ")
+    ]
+    assert commands == [
+        DEFAULT_COMMAND,
+        [
+            "uvicorn",
+            "config.asgi_realtime:application",
+            "--host=0.0.0.0",
+            "--port=8001",
+            "--no-proxy-headers",
+            "--no-access-log",
+            "--lifespan=off",
+            "--timeout-graceful-shutdown=5",
+            "--limit-concurrency=1000",
+        ],
+    ]
     assert 'PYTHONTZPATH=""' in dockerfile
     assert 'clinic.phase1a.python-version="3.13.14"' in dockerfile
     assert 'clinic.phase1a.uv-version="0.10.6"' in dockerfile

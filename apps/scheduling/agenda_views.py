@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from django.conf import settings
 from django.http import Http404, HttpResponseBase
 from django.shortcuts import render
 from django.urls import reverse
@@ -58,6 +59,8 @@ def _context(
     context: dict[str, object] = {
         "agenda": agenda,
         "banner": banner,
+        "realtime_enabled": settings.REALTIME_ENABLED,
+        "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
         "can_manage": screen.can_manage,
         "clinic_id": clinic_id,
         "days": (),

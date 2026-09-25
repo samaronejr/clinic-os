@@ -413,7 +413,7 @@ def _operation_lock(operation_id: UUID) -> Iterator[bool]:
     owns the operation; one that can take it knows the previous claimant
     is gone and the in-progress row is abandoned.
     """
-    lock_connection = connections.create_connection("default")
+    lock_connection = connections.create_connection("locks")
     try:
         with lock_connection.cursor() as cursor:
             cursor.execute(
@@ -620,7 +620,7 @@ def _claim_subject_lock(scope: OperationScope) -> str | None:
         key = (
             f"{_SUBJECT_LOCK_NAMESPACE}{operation.subject_type}:{operation.subject_id}"
         )
-    with connection.cursor() as cursor:
+    with connections["locks"].cursor() as cursor:
         cursor.execute(
             "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended(%s, 0))",
             [key],
@@ -635,7 +635,7 @@ def _release_subject_lock(key: str) -> None:
     error here must never mask the recorded send outcome.
     """
     try:
-        with connection.cursor() as cursor:
+        with connections["locks"].cursor() as cursor:
             cursor.execute(
                 "SELECT pg_catalog.pg_advisory_unlock("
                 "pg_catalog.hashtextextended(%s, 0))",
@@ -692,7 +692,7 @@ def _claim_boundary_lock(scope: OperationScope) -> str | None:
         if lock_key is None:
             return None
         key = f"{_SUBJECT_LOCK_NAMESPACE}{lock_key}"
-    with connection.cursor() as cursor:
+    with connections["locks"].cursor() as cursor:
         cursor.execute(
             "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended(%s, 0))",
             [key],

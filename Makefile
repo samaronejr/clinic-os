@@ -212,6 +212,7 @@ ci-browser-contract:
 		ops/testing/browser_runner.sh probe "$${@}"
 
 ci-image-contracts:
+	$(UV) run --frozen --no-sync --no-env-file pytest -q tests/isolation/test_container_contract.py
 	@sha="$$(git rev-parse HEAD)"; \
 		ops/testing/image_smoke.sh build --sha "$${sha}"
 	@ops/testing/tls_stack.sh smoke

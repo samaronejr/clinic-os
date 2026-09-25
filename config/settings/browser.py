@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from pathlib import Path
 
 from . import base
@@ -40,6 +41,7 @@ DATABASES = {
         database_prefix=f"{_environment['COMPOSE_PROJECT_NAME']}_",
     )
 }
+DATABASES["locks"] = deepcopy(DATABASES["default"])
 DEBUG = False
 SECURE_SSL_HOST = ""
 SECURE_SSL_REDIRECT = False

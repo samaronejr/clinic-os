@@ -33,6 +33,7 @@ BYPASS_PATHS: Final = frozenset(
 )
 BYPASS_PREFIXES: Final = (
     "/static/",
+    "/rt/",  # Ticket endpoint owns a short, independently authenticated txn.
     "/prescription/signing/callback/",
     "/prescription/verify/",
 )

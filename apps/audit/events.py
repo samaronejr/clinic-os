@@ -46,6 +46,9 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "realtime.subscription.authorized": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic", "authorized"
+        ),
         "identity.role_grant.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-ops", "identity.role_grant", "created"
         ),

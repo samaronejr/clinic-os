@@ -2,7 +2,7 @@
 set -eu
 
 case "${CLINIC_PROCESS_PURPOSE:-}" in
-  web|release) ;;
+  web|release|realtime) ;;
   *) exit 64 ;;
 esac
 exec "$@"

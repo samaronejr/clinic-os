@@ -73,6 +73,7 @@ INSTALLED_APPS: list[str] = [
     "apps.retention.apps.RetentionConfig",
     "apps.interop.apps.InteropConfig",
     "apps.providers.apps.ProvidersConfig",
+    "apps.realtime.apps.RealtimeConfig",
 ]
 
 AUTH_USER_MODEL: str = "identity.User"
@@ -128,6 +129,26 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 if "OPTIONS" not in DATABASES["default"]:
     DATABASES["default"]["OPTIONS"] = {}
 DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=clinic_app,public"
+DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
+DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+DATABASES["locks"] = env.db_url_config(
+    env.str(
+        "LOCKS_DATABASE_URL",
+        default=env.str("APP_DATABASE_URL", default=DEFAULT_APP_DATABASE_URL),
+    )
+)
+DATABASES["locks"]["ATOMIC_REQUESTS"] = False
+DATABASES["locks"].setdefault("OPTIONS", {}).update(
+    options="-c search_path=clinic_app,public", prepare_threshold=None
+)
+
+# Optional hints, never the authority for a read/write. Disable to retain polling.
+REALTIME_ENABLED: bool = env.bool("REALTIME_ENABLED", default=False)
+REALTIME_POLLING_FALLBACK: bool = env.bool("REALTIME_POLLING_FALLBACK", default=True)
+REALTIME_REDIS_URL: str = env.str(
+    "REALTIME_REDIS_URL", default="redis://localhost:6379/1"
+)
+REALTIME_TOPIC_SECRET: str = env.str("REALTIME_TOPIC_SECRET", default=SECRET_KEY)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

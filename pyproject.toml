@@ -17,6 +17,7 @@ dependencies = [
   "rfc8785",
   "sentry-sdk[django]",
   "sqlparse>=0.6.0,<0.7",
+  "uvicorn>=0.35,<1",
   "tzdata==2026.3",
   "whitenoise==6.12.0",
 ]
