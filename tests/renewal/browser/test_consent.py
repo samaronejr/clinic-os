@@ -191,7 +191,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
         press(patient, "accept")
     assert missing.value.status == 400
     capture(patient, root, "explicit-choice-required", width)
-    press(patient, "read")
+    read_text(patient, "Teleconsulta")
     patient.locator("#id_accepted").focus()
     patient.keyboard.press("Space")
     expect(patient.locator("#id_accepted")).to_be_checked()
@@ -221,7 +221,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
     )
     press(patient, "revoke")
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
-    patient.locator("summary").click()
+    patient.locator("[data-receipt] summary").click()
     capture(patient, root, "revoked-retained-receipt", width)
     patient.reload()
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
@@ -262,7 +262,7 @@ def verify_stored(staff: dict[str, str], receipt_id: str) -> None:
 
 def accessibility_scenes(patient: Page, root: Path) -> None:
     patient.set_viewport_size({"width": 320, "height": 900})
-    patient.locator("[data-receipt] summary").click()
+    patient.locator("[data-receipt][data-state='revoked'] summary").click()
     capture(patient, root, "reflow", 320)
     patient.emulate_media(forced_colors="active", reduced_motion="reduce")
     capture(patient, root, "forced-colors-reduced-motion", 320)
@@ -320,7 +320,7 @@ def console_report(
 
 
 def replay_denied(page: Page, token: str, root: Path, width: int) -> None:
-    press(page, "read")
+    read_text(page, "Teleconsulta")
     page.locator("#id_offer").evaluate("(e, token) => { e.value = token; }", token)
     page.locator("#id_accepted").check()
     with page.expect_response(lambda r: r.request.method == "POST") as response:
@@ -366,7 +366,9 @@ def test_accept_revoke_receipt_and_replay_denials(
         _redeem(patient, base, staff["clinic_a"], data["code"])
         patient.get_by_role("link", name="Seus consentimentos").click()
         capture(patient, root, "default-empty-receipts", width)
-        press(patient, "read")
+        # Earlier parametrized legs may have published other purposes; the
+        # teleconsultation row is never the first by purpose ordering.
+        read_text(patient, "Teleconsulta")
         expect(patient.locator("#id_accepted")).not_to_be_checked()
         assert patient.locator("#consent-text").text_content() == TEXT
         capture(patient, root, "read-unchecked", width)
@@ -396,7 +398,7 @@ def test_accept_revoke_receipt_and_replay_denials(
             )
             == 403
         )
-        press(patient, "read")
+        read_text(patient, "Teleconsulta")
         token = patient.locator("#id_offer").input_value()
         with browser.new_context(
             java_script_enabled=False, viewport={"width": width, "height": 900}
