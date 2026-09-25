@@ -317,6 +317,50 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
+      "symbol": "apps.core.telemetry._allowed_networks",
+      "signals": [
+        "operations_auth"
+      ],
+      "kind": "nonstaff",
+      "probes": [
+        "metrics_network"
+      ],
+      "reason": "Sessionless operations principal: CLINIC_OPS_METRICS_TOKEN and direct-peer allowed networks, not UserClinicRole. Explicit classification and positive/negative network, token and real HTTP oracles are asserted in test_metrics_guard_parity.py."
+    },
+    {
+      "symbol": "apps.core.telemetry._client_ip_allowed",
+      "signals": [
+        "operations_auth"
+      ],
+      "kind": "nonstaff",
+      "probes": [
+        "metrics_network"
+      ],
+      "reason": "Sessionless operations principal: CLINIC_OPS_METRICS_TOKEN and direct-peer allowed networks, not UserClinicRole. Explicit classification and positive/negative network, token and real HTTP oracles are asserted in test_metrics_guard_parity.py."
+    },
+    {
+      "symbol": "apps.core.telemetry._ops_token_valid",
+      "signals": [
+        "operations_auth"
+      ],
+      "kind": "nonstaff",
+      "probes": [
+        "metrics_token"
+      ],
+      "reason": "Sessionless operations principal: CLINIC_OPS_METRICS_TOKEN and direct-peer allowed networks, not UserClinicRole. Explicit classification and positive/negative network, token and real HTTP oracles are asserted in test_metrics_guard_parity.py."
+    },
+    {
+      "symbol": "apps.core.telemetry.internal_metrics",
+      "signals": [
+        "operations_auth"
+      ],
+      "kind": "nonstaff",
+      "probes": [
+        "metrics_http"
+      ],
+      "reason": "Sessionless operations principal: CLINIC_OPS_METRICS_TOKEN and direct-peer allowed networks, not UserClinicRole. Explicit classification and positive/negative network, token and real HTTP oracles are asserted in test_metrics_guard_parity.py."
+    },
+    {
       "symbol": "apps.core.views.workspace_home",
       "signals": [
         "decorator"
@@ -4048,6 +4092,29 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.comms_operation_state_counts_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/comms/migrations/_metrics_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "operations_aggregate",
+      "probes": [
+        "operation_state_counts",
+        "operation_state_counts_acl"
+      ],
+      "reason": "Sessionless aggregate-only outbox projection for the operations scrape; not a staff-role grant. Runtime EXECUTE is required, PUBLIC is denied, and only status/count/oldest time may be returned. Exact two-tenant results are checked anonymously and under all ten staff roles."
     },
     "clinic_app.comms_operation_terminal_guard_v1": {
       "discovery": {
