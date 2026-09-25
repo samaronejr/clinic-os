@@ -81,7 +81,11 @@ It performs a locked dependency sync, idempotent database bootstrap, owner
 migration, runtime posture check, Ruff lint and formatting checks, strict mypy,
 the complete test/coverage suite, and a local dependency audit. Tests use the
 pre-created database and explicitly exercise `clinic_app` runtime connections;
-test database creation and migration remain owner responsibilities.
+test database creation and migration remain owner responsibilities. Local test
+runs never connect to the workstation's Redis: `config.settings.test` defaults
+`CELERY_BROKER_URL` to the in-memory `memory://` transport unless the variable
+is exported explicitly (the hosted `worker-integration` gate sets its own
+isolated Redis URL).
 
 For a focused recent-verification check after bootstrap/migration:
 
