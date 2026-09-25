@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import secrets
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -292,19 +294,50 @@ def test_supported_window_edges_are_served(
     assert page["items"] == []
 
 
-def test_unexpected_failure_is_a_json_error_without_details(
+@contextmanager
+def _configured_console_output() -> Iterator[io.StringIO]:
+    """Redirect the settings-configured root ``console`` handler to memory.
+
+    The handler, its formatter, filters and logger routing stay exactly as
+    configured; only the destination stream changes, then is restored.
+    """
+    [handler] = [
+        handler
+        for handler in logging.getLogger().handlers
+        if handler.get_name() == "console"
+    ]
+    assert isinstance(handler, logging.StreamHandler)
+    stream = io.StringIO()
+    previous = handler.setStream(stream)
+    try:
+        yield stream
+    finally:
+        handler.setStream(previous)
+
+
+def test_unexpected_failure_is_a_json_error_logged_without_phi(
     rbac_graph: RbacGraph,
     receptionist_api: ApiSession,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     sentinel = "SINTETICO-SENTINELA-500"
+    cause = "SINTETICO-SENTINELA-CAUSA"
+
+    def fail_underneath() -> None:
+        raise ValueError(cause)
 
     def explode(**_scope: object) -> None:
-        raise RuntimeError(sentinel)
+        try:
+            fail_underneath()
+        except ValueError as error:
+            raise RuntimeError(sentinel, {"patient": sentinel}) from error
 
     monkeypatch.setattr("apps.core.api.views.view_agenda", explode)
-    with caplog.at_level(logging.ERROR, logger="django.request"):
+    with (
+        caplog.at_level(logging.INFO),
+        _configured_console_output() as console,
+    ):
         response = receptionist_api.query(rbac_graph.clinic_a)
 
     assert response.status_code == 500
@@ -312,8 +345,15 @@ def test_unexpected_failure_is_a_json_error_without_details(
     assert sentinel.encode() not in response.content
     assert response.headers[CSP_HEADER].startswith("default-src 'self'")
     [record] = [r for r in caplog.records if r.name == "django.request"]
-    assert record.exc_info is not None
-    assert record.exc_info[0] is RuntimeError
+    assert record.levelno == logging.ERROR
+    rendered = console.getvalue()
+    assert rendered, "the 500 must still be logged through the configured handler"
+    for output in (rendered, caplog.text, record.getMessage()):
+        assert "SINTETICO-SENTINELA" not in output
+        assert "route=ui_api:agenda-query" in output
+        assert "exception=builtins.RuntimeError" in output
+        assert "test_ui_api.py:" in output
+    assert record.exc_info is None
 
 
 @pytest.mark.parametrize(

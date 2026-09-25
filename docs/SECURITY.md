@@ -158,9 +158,11 @@ with record identifiers in the body, Django session authentication plus the
 the HTML views. Every refusal is `{code, message_key}`; unknown and foreign
 records share the single `access_denied` body. Out-of-range input (agenda dates
 outside 2000-01-01..2199-12-31, pages above 10000) is `invalid_input`, an
-unexpected exception is a JSON `internal_error` 500 logged through
-`django.request` like any other 500, and any unpublished path under
-`/api/ui/v1/` returns `not_found`.
+unexpected exception is a JSON `internal_error` 500, and any unpublished path
+under `/api/ui/v1/` returns `not_found`. The 500 is logged on `django.request`
+as the exception type, route name and traceback frame locations only: never
+the exception message, its arguments, chained exceptions, locals or request
+data.
 
 ## Audit ledger
 

@@ -7,7 +7,9 @@ share the single ``access_denied`` body.
 
 from __future__ import annotations
 
+import traceback
 from dataclasses import dataclass
+from pathlib import PurePath
 from typing import TYPE_CHECKING, Final
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
@@ -119,11 +121,12 @@ def ui_api_exception_handler(
 ) -> Response:
     """Map every refusal to the contract; anything unexpected is a JSON 500.
 
-    An unexpected exception is logged exactly as Django logs an unhandled
-    500 (``django.request`` with the traceback, the path that Sentry's
-    scrubber already covers), while the response carries only the contract
-    body, so no exception text reaches the client. The tenant middleware
-    rolls the request transaction back on any 5xx.
+    The response carries only the contract body. The unexpected exception is
+    logged on ``django.request`` (where Django logs any 500) as its type, the
+    route name and the traceback frame locations only: never the exception
+    message, its arguments, chained exceptions, locals or request data,
+    because any of those may carry PHI (SC-7). The tenant middleware rolls
+    the request transaction back on any 5xx.
     """
     error = _contract_error(exc)
     if error is not None:
@@ -133,14 +136,25 @@ def ui_api_exception_handler(
     django_request = getattr(request, "_request", request)
     if not isinstance(django_request, HttpRequest):
         raise exc
+    match = django_request.resolver_match
     log_response(
-        "Internal Server Error: %s",
-        django_request.path,
+        "UI API internal error: route=%s exception=%s frames=%s",
+        match.view_name if match is not None else "unresolved",
+        f"{type(exc).__module__}.{type(exc).__qualname__}",
+        _frame_locations(exc),
         response=response,
         request=django_request,
-        exception=exc,
     )
     return response
+
+
+def _frame_locations(exc: Exception) -> str:
+    """Return ``file:line:function`` for each frame; no source text or values."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    return " < ".join(
+        f"{PurePath(frame.filename).name}:{frame.lineno}:{frame.name}"
+        for frame in reversed(frames)
+    )
 
 
 def ui_api_not_found_response() -> JsonResponse:
