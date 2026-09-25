@@ -1602,6 +1602,15 @@ _SENTRY_METADATA_VALIDATORS: Final[dict[str, Callable[[object], object]]] = {
 }
 
 
+# Structured sections rebuilt by their own scrubbers when present.
+_SENTRY_SECTION_SCRUBBERS: Final[dict[str, Callable[[object], dict[str, object]]]] = {
+    "request": _scrub_request,
+    "tags": _scrub_tags,
+    "exception": _scrub_exception,
+    "breadcrumbs": _scrub_breadcrumbs,
+}
+
+
 def scrub_sentry_event(event: SentryEvent, _hint: SentryHint) -> SentryEvent | None:
     """Rebuild one Sentry event from closed vocabularies and validated ids.
 
@@ -1633,14 +1642,9 @@ def scrub_sentry_event(event: SentryEvent, _hint: SentryHint) -> SentryEvent | N
     sdk = _sentry_sdk(source.get("sdk"))
     if sdk:
         scrubbed["sdk"] = sdk
-    if "request" in source:
-        scrubbed["request"] = _scrub_request(source["request"])
-    if "tags" in source:
-        scrubbed["tags"] = _scrub_tags(source["tags"])
-    if "exception" in source:
-        scrubbed["exception"] = _scrub_exception(source["exception"])
-    if "breadcrumbs" in source:
-        scrubbed["breadcrumbs"] = _scrub_breadcrumbs(source["breadcrumbs"])
+    for key, section_scrubber in _SENTRY_SECTION_SCRUBBERS.items():
+        if key in source:
+            scrubbed[key] = section_scrubber(source[key])
     contexts = source.get("contexts")
     if isinstance(contexts, dict):
         trace_context = _scrub_trace_context(contexts.get("trace"))
