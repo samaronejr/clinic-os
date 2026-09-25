@@ -9,9 +9,8 @@ them. This module declares the remaining identity tables.
 from typing import Final
 
 RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
-# Clinic configuration, per-user preferences and physician verification
-# rows carry bespoke policies declared in apps/identity/migrations/0007,
-# 0009 and 0011.
+# Clinic configuration, preferences, physician verification and authorization
+# scope rows carry bespoke policies in migrations 0007, 0009, 0011 and 0013.
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
         "identity_clinicconfiguration",
@@ -37,7 +36,7 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_userpreference": frozenset({"SELECT", "INSERT"}),
 }
 # New authorization tables have no runtime column writes: provisioning remains
-# owner-controlled. Column grants below belong only to legacy physician checks.
+# owner-controlled. Column grants below belong to physician checks and preferences.
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
