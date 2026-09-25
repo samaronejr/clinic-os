@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict, cast
 
 import pytest
 from apps.identity import stepup
@@ -14,11 +14,13 @@ from django.db import DatabaseError, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
+from identity import legacy_guard_inventory
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
 from identity import legacy_teleconsult_boundaries as teleconsult
 from identity import legacy_view_boundaries as views
+from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
 from identity.legacy_guard_inventory import declared_probes, discover
 from identity.legacy_identity_boundaries import BOUNDARIES as IDENTITY_BOUNDARIES
@@ -30,6 +32,7 @@ from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventor
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
 from identity.permission_support import owner_context
 from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
+from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -43,15 +46,6 @@ CORE = (
     *SCOPE_BOUNDARIES,
     *OWNER_BOUNDARIES,
 )
-
-
-class Candidate(TypedDict):
-    symbol: str
-    signals: list[str]
-    kind: str
-    probes: NotRequired[list[str]]
-    enforced_by: NotRequired[list[str]]
-    reason: NotRequired[str]
 
 
 class Inventory(TypedDict):
@@ -74,7 +68,8 @@ def test_every_authorization_candidate_is_accounted_for() -> None:
     assert discover() == {row["symbol"]: row["signals"] for row in candidates}
     declared = declared_probes()
     assert sorted(declared) == INVENTORY["probes"]
-    bases = {probe.split("#", 1)[0] for probe in declared}
+    sql_oracles = {f"clinic_app.{probe.name}" for probe in PROBES.values()}
+    bases = {probe.split("#", 1)[0] for probe in declared} | sql_oracles
     for row in candidates:
         if row["kind"] == "direct":
             assert "probes" in row
@@ -108,6 +103,9 @@ def test_every_authorization_candidate_is_accounted_for() -> None:
         if "role_helper" in row["signals"]:
             assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
     assert_sql_inventory(INVENTORY["sql_guards"])
+    analysis = python_staff_analysis(legacy_guard_inventory.ROOT)
+    add_sql_staff_analysis(analysis)
+    assert_staff_coverage(candidates, analysis, declared | bases | sql_oracles)
 
 
 @pytest.fixture(autouse=True)

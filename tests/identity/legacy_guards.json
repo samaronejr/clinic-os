@@ -548,8 +548,11 @@
       "signals": [
         "denial"
       ],
-      "kind": "data_operation",
-      "reason": "History form/entry selection inside the authorized history workspace."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.ehr.history.authorize_history"
+      ]
     },
     {
       "symbol": "apps.ehr.history_views._workspace",
@@ -850,8 +853,11 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "v2",
-      "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.identity.current_context._active_clinic_physicians",
@@ -1100,24 +1106,33 @@
       "signals": [
         "denial"
       ],
-      "kind": "v2",
-      "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.identity.scope_provisioning.revoke_care_team",
       "signals": [
         "denial"
       ],
-      "kind": "v2",
-      "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.identity.scope_provisioning.revoke_professional",
       "signals": [
         "denial"
       ],
-      "kind": "v2",
-      "reason": "New v2 contract, exercised by permission bundles/scope/provisioning tests rather than a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.identity.services.role_assignments_for_user",
@@ -2124,8 +2139,11 @@
         "denial",
         "resolver"
       ],
-      "kind": "presentation",
-      "reason": "Author label projection after the export authority check; never a permission grant."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.retention_author_label"
+      ]
     },
     {
       "symbol": "apps.retention.services._session_scope",
@@ -2279,8 +2297,11 @@
       "signals": [
         "denial"
       ],
-      "kind": "presentation",
-      "reason": "Catalog/self/UUID display labels after authorized_view_scope; never a permission grant."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.identity.current_context.practitioner_display_label"
+      ]
     },
     {
       "symbol": "apps.scheduling.agenda_queries.view_agenda",
@@ -2460,8 +2481,11 @@
         "denial",
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.patient_booking_practitioner"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_authority.lock_patient_availability",
@@ -2476,8 +2500,11 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.patient_booking_slots"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_booking._slot",
@@ -2649,8 +2676,11 @@
       "signals": [
         "resolver"
       ],
-      "kind": "data_operation",
-      "reason": "Terminal session transition, not a staff-role decision; caller scope is checked by session guards."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.teleconsult_fail"
+      ]
     },
     {
       "symbol": "apps.teleconsult.services.create_session",
@@ -2668,8 +2698,11 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.teleconsult_fail"
+      ]
     },
     {
       "symbol": "apps.teleconsult.services._enter_as_physician",
@@ -4894,9 +4927,11 @@
           "clinic_app.patient_booking_slots"
         ]
       },
-      "kind": "patient_principal",
-      "probes": [],
-      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+      "kind": "staff_guard",
+      "probes": [
+        "patient_booking_practitioner"
+      ],
+      "reason": "Patient-facing but consults clinician staff membership; direct patient-session allow/deny oracles are exercised from each staff-role fixture."
     },
     "clinic_app.patient_booking_receipt": {
       "discovery": {
@@ -4970,9 +5005,11 @@
         "policies": [],
         "resolvers": []
       },
-      "kind": "patient_principal",
-      "probes": [],
-      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+      "kind": "staff_guard",
+      "probes": [
+        "patient_booking_slots"
+      ],
+      "reason": "Patient-facing but consults clinician staff membership; direct patient-session allow/deny oracles are exercised from each staff-role fixture."
     },
     "clinic_app.patient_registry_count": {
       "discovery": {
