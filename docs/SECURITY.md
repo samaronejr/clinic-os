@@ -124,7 +124,10 @@ not implemented in Phase 0 and must not be represented as available.
 ## Content-Security-Policy and the internal UI API
 
 `ContentSecurityPolicyMiddleware` (`apps/core/middleware.py`) sets one strict
-first-party policy on every Django response, refusals included:
+first-party policy on every response produced below WhiteNoise, including
+tenant, CSRF and API refusals. Responses answered above it carry no policy:
+static files served by WhiteNoise, the empty live-halt 503 and
+SecurityMiddleware redirects.
 
 ```text
 default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
@@ -153,7 +156,11 @@ for drift by `tests/infra/test_openapi_drift.py`. Endpoints are POST-only JSON
 with record identifiers in the body, Django session authentication plus the
 `X-CSRFToken` header, and the same TOTP requirement for privileged roles as
 the HTML views. Every refusal is `{code, message_key}`; unknown and foreign
-records share the single `access_denied` body.
+records share the single `access_denied` body. Out-of-range input (agenda dates
+outside 2000-01-01..2199-12-31, pages above 10000) is `invalid_input`, an
+unexpected exception is a JSON `internal_error` 500 logged through
+`django.request` like any other 500, and any unpublished path under
+`/api/ui/v1/` returns `not_found`.
 
 ## Audit ledger
 

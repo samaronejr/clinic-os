@@ -52,7 +52,7 @@ def test_base_policy_is_exactly_the_strict_first_party_policy() -> None:
     assert "unsafe-eval" not in policy
 
 
-def test_csp_middleware_wraps_every_django_response_below_whitenoise() -> None:
+def test_csp_middleware_sits_directly_below_whitenoise() -> None:
     order = list(settings.MIDDLEWARE)
 
     assert order.index(CSP_MIDDLEWARE) == order.index(WHITENOISE_MIDDLEWARE) + 1

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import IsAuthenticated
@@ -23,6 +24,7 @@ from apps.core.api.errors import (
     INVALID_INPUT,
     UiApiError,
     ui_api_exception_handler,
+    ui_api_not_found_response,
 )
 from apps.core.api.serializers import (
     AgendaPageSerializer,
@@ -38,6 +40,7 @@ from apps.scheduling.services import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from django.http import HttpRequest, JsonResponse
     from rest_framework.request import Request
 
     type ExceptionHandler = Callable[[Exception, Mapping[str, object]], Response | None]
@@ -49,6 +52,7 @@ ERROR_RESPONSES: dict[int, type[ErrorSerializer]] = {
     406: ErrorSerializer,
     415: ErrorSerializer,
     429: ErrorSerializer,
+    500: ErrorSerializer,
 }
 
 
@@ -92,3 +96,13 @@ class AgendaQueryView(UiApiView):
         except AgendaInputError as error:
             raise UiApiError(INVALID_INPUT) from error
         return Response(AgendaPageSerializer(page).data)
+
+
+@csrf_exempt
+def not_found(request: HttpRequest) -> JsonResponse:  # noqa: ARG001 - Django view
+    """Answer any unpublished ``/api/ui/v1/`` route with the JSON 404 body.
+
+    CSRF-exempt because it reads nothing and changes nothing; a CSRF refusal
+    here would only swap the contract body for Django's HTML page.
+    """
+    return ui_api_not_found_response()

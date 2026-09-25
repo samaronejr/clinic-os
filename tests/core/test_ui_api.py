@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -52,6 +53,7 @@ class ApiSession:
         *,
         csrf: str | None = "cookie",
         content_type: str = "application/json",
+        path: str = AGENDA_QUERY,
     ) -> _MonkeyPatchedWSGIResponse:
         headers = (
             {}
@@ -59,7 +61,7 @@ class ApiSession:
             else {"X-CSRFToken": self.token if csrf == "cookie" else csrf}
         )
         return self.client.post(
-            AGENDA_QUERY,
+            path,
             data=body,
             content_type=content_type,
             headers=headers,
@@ -76,7 +78,9 @@ class ApiSession:
 
 
 def _signed_in(username: str, password: str) -> ApiSession:
-    client = Client(enforce_csrf_checks=True)
+    # A request exception must surface as the API's JSON body, never as a
+    # re-raised test-client exception, so the contract itself is asserted.
+    client = Client(enforce_csrf_checks=True, raise_request_exception=False)
     assert client.login(username=username, password=password)
     return ApiSession(client)
 
@@ -206,6 +210,22 @@ def test_invalid_body_shapes_are_rejected_without_reflection(
         {"date": "2035-02-30"},
         {"page": 0},
         {"page": True},
+        # Boundary values the service cannot represent (gate review B2).
+        {"date": "9999-12-31"},
+        {"page": 2**63},
+        # Fuzzed extremes around the supported window and page bound.
+        {"date": "0001-01-01"},
+        {"date": "1999-12-31"},
+        {"date": "2200-01-01"},
+        {"view": "week", "date": "9999-12-31"},
+        {"page": 10_001},
+        {"page": 2**31},
+        {"page": -(2**63)},
+        {"page": 10**100},
+        {"page": 1.5},
+        {"page": "1e3"},
+        {"date": "2035-06-02T00:00:00"},
+        {"date": "+2035-06-02"},
     ],
 )
 def test_invalid_query_values_are_rejected(
@@ -248,3 +268,80 @@ def test_privileged_actor_without_totp_needs_step_up(rbac_graph: RbacGraph) -> N
 
     assert response.status_code == 403
     assert _json(response) == _error("step_up_required")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"date": "2000-01-01"},
+        {"date": "2199-12-31"},
+        {"view": "week", "date": "2199-12-31"},
+        {"page": 10_000},
+    ],
+)
+def test_supported_window_edges_are_served(
+    rbac_graph: RbacGraph,
+    receptionist_api: ApiSession,
+    overrides: dict[str, object],
+) -> None:
+    response = receptionist_api.query(rbac_graph.clinic_a, **overrides)
+
+    assert response.status_code == 200
+    page = _json(response)
+    assert isinstance(page, dict)
+    assert page["items"] == []
+
+
+def test_unexpected_failure_is_a_json_error_without_details(
+    rbac_graph: RbacGraph,
+    receptionist_api: ApiSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sentinel = "SINTETICO-SENTINELA-500"
+
+    def explode(**_scope: object) -> None:
+        raise RuntimeError(sentinel)
+
+    monkeypatch.setattr("apps.core.api.views.view_agenda", explode)
+    with caplog.at_level(logging.ERROR, logger="django.request"):
+        response = receptionist_api.query(rbac_graph.clinic_a)
+
+    assert response.status_code == 500
+    assert _json(response) == _error("internal_error")
+    assert sentinel.encode() not in response.content
+    assert response.headers[CSP_HEADER].startswith("default-src 'self'")
+    [record] = [r for r in caplog.records if r.name == "django.request"]
+    assert record.exc_info is not None
+    assert record.exc_info[0] is RuntimeError
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/ui/v1/not-a-route/",
+        "/api/ui/v1/agenda/query",
+        "/api/ui/v1/agenda/query/extra/",
+        "/api/ui/v1/",
+    ],
+)
+def test_unknown_routes_get_the_json_not_found_body(
+    receptionist_api: ApiSession,
+    path: str,
+) -> None:
+    posted = receptionist_api.post(json.dumps({}), path=path)
+    without_csrf = receptionist_api.post(json.dumps({}), path=path, csrf=None)
+    fetched = receptionist_api.client.get(path)
+
+    for response in (posted, without_csrf, fetched):
+        assert response.status_code == 404
+        assert _json(response) == _error("not_found")
+
+
+def test_anonymous_unknown_route_is_still_the_tenant_denial() -> None:
+    response = Client().post(
+        "/api/ui/v1/not-a-route/", data="{}", content_type="application/json"
+    )
+
+    assert response.status_code == 403
+    assert _json(response) == _error("access_denied")

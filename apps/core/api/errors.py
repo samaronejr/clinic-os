@@ -11,7 +11,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpRequest, JsonResponse
+from django.utils.log import log_response
 from rest_framework import exceptions
 from rest_framework.response import Response
 
@@ -47,6 +48,8 @@ METHOD_NOT_ALLOWED: Final = ApiError(405, "method_not_allowed")
 NOT_ACCEPTABLE: Final = ApiError(406, "not_acceptable")
 UNSUPPORTED_MEDIA_TYPE: Final = ApiError(415, "unsupported_media_type")
 THROTTLED: Final = ApiError(429, "throttled")
+NOT_FOUND: Final = ApiError(404, "not_found")
+INTERNAL_ERROR: Final = ApiError(500, "internal_error")
 ERROR_CODES: Final = tuple(
     error.code
     for error in (
@@ -59,6 +62,8 @@ ERROR_CODES: Final = tuple(
         NOT_ACCEPTABLE,
         UNSUPPORTED_MEDIA_TYPE,
         THROTTLED,
+        NOT_FOUND,
+        INTERNAL_ERROR,
     )
 )
 
@@ -110,13 +115,37 @@ def _contract_error(exc: Exception) -> ApiError | None:
 
 def ui_api_exception_handler(
     exc: Exception,
-    context: Mapping[str, object],  # noqa: ARG001 - DRF handler signature
-) -> Response | None:
-    """Map DRF and view refusals to the contract; anything else is a 500."""
+    context: Mapping[str, object],
+) -> Response:
+    """Map every refusal to the contract; anything unexpected is a JSON 500.
+
+    An unexpected exception is logged exactly as Django logs an unhandled
+    500 (``django.request`` with the traceback, the path that Sentry's
+    scrubber already covers), while the response carries only the contract
+    body, so no exception text reaches the client. The tenant middleware
+    rolls the request transaction back on any 5xx.
+    """
     error = _contract_error(exc)
-    if error is None:
-        return None
-    return Response(error.body(), status=error.status)
+    if error is not None:
+        return Response(error.body(), status=error.status)
+    response = Response(INTERNAL_ERROR.body(), status=INTERNAL_ERROR.status)
+    request = context["request"]
+    django_request = getattr(request, "_request", request)
+    if not isinstance(django_request, HttpRequest):
+        raise exc
+    log_response(
+        "Internal Server Error: %s",
+        django_request.path,
+        response=response,
+        request=django_request,
+        exception=exc,
+    )
+    return response
+
+
+def ui_api_not_found_response() -> JsonResponse:
+    """Return the contract body for any route outside the published API."""
+    return JsonResponse(NOT_FOUND.body(), status=NOT_FOUND.status)
 
 
 def ui_api_denial_response() -> JsonResponse:

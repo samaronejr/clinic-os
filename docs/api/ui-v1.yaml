@@ -64,6 +64,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
     AgendaItem:
@@ -158,8 +164,10 @@ components:
         date:
           type: string
           format: date
+          description: Clinic-local civil date from 2000-01-01 to 2199-12-31.
         page:
           type: integer
+          maximum: 10000
           minimum: 1
           default: 1
       required:
@@ -177,6 +185,8 @@ components:
       - not_acceptable
       - unsupported_media_type
       - throttled
+      - not_found
+      - internal_error
       type: string
       description: |-
         * `access_denied` - access_denied
@@ -188,6 +198,8 @@ components:
         * `not_acceptable` - not_acceptable
         * `unsupported_media_type` - unsupported_media_type
         * `throttled` - throttled
+        * `not_found` - not_found
+        * `internal_error` - internal_error
     Error:
       type: object
       description: The ``{code, message_key}`` refusal body shared by every endpoint.
