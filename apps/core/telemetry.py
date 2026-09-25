@@ -183,8 +183,10 @@ FRAMEWORK_LOGGER_NAMES: Final = frozenset(
     }
 )
 # Provider capability keys: the v2 integration record set
-# (docs/integrations/records/2026-09-24-v2). Todo 4 replaces this tuple with
-# its capability lifecycle registry; until then it is the closed vocabulary.
+# (docs/integrations/records/2026-09-24-v2), identical to the seed of the
+# provider capability registry (apps/providers, migration providers.0001). It
+# lives in RLS-scoped rows, so the sessionless scrape uses this frozen copy;
+# a test pins it to the registry seed so the two cannot drift.
 PROVIDER_CAPABILITY_KEYS: Final = (
     "asr",
     "attachment_scanning",

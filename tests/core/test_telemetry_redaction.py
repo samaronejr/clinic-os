@@ -556,6 +556,12 @@ def test_provider_labels_come_from_the_capability_key_registry() -> None:
     _assert_no_phi(rendered)
 
 
+def test_provider_capability_keys_match_the_registry_seed() -> None:
+    from apps.providers.migrations._seed_v2 import CAPABILITY_SEED  # noqa: PLC0415
+
+    assert set(telemetry.PROVIDER_CAPABILITY_KEYS) == set(CAPABILITY_SEED)
+
+
 def test_namespaced_route_names_are_registered_identities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

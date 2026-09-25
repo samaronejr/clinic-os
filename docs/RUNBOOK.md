@@ -286,7 +286,7 @@ must be registered in `LOG_MESSAGE_ALLOWLIST` (args are never interpolated),
 and every emitted value is either a closed-set member or a validated id.
 Route labels are registered URL names, namespaced names included
 (`identity:login`); provider labels are `PROVIDER_CAPABILITY_KEYS` (the v2
-integration record set, to be replaced by the todo 4 registry); AI labels
+integration record set, pinned by test to the `apps/providers` seed); AI labels
 are `AI_INVOCATION_PURPOSES` (to be replaced by todo 38 model purposes).
 Logger names must resolve to an imported module or a framework logger.
 Sentry events are rebuilt from those vocabularies: the SDK timestamp is
