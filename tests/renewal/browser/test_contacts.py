@@ -25,6 +25,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
 
 if TYPE_CHECKING:
@@ -306,7 +307,7 @@ def _open_contacts(page: Page, base_url: str, staff: dict[str, str], name: str) 
     ) as received:
         page.locator("#patient-search-form button[type=submit]").click()
     assert received.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
     with page.expect_navigation():
         row.get_by_role("button", name=re.compile(r"^Contatos")).click()

@@ -45,6 +45,7 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser.test_availability import (
     SETTLED_JS,
     _sign_in_physician,
@@ -555,7 +556,7 @@ def open_patient_row(case: Day, page: Page, button: str) -> None:
     page.locator("#id_q").fill(case.patient_name)
     with page.expect_response(lambda response: response.request.method == "POST"):
         page.locator("#patient-search-form button[type=submit]").click()
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=case.patient_name)
     with page.expect_navigation():
         row.get_by_role("button", name=re.compile(f"^{button}")).click()
@@ -576,7 +577,7 @@ def reception_prepares(case: Day, reception: Page) -> str:
     reception.locator("#id_q").fill(case.patient_name)
     with reception.expect_response(lambda r: r.request.method == "POST"):
         reception.locator("#patient-search-form button[type=submit]").click()
-    reception.wait_for_function(SETTLED_JS)
+    wait_for_js(reception, SETTLED_JS)
     with reception.expect_navigation():
         reception.locator(".intake-empty a.button--secondary").click()
     reception.locator("#id_full_name").fill(case.patient_name)
@@ -625,7 +626,7 @@ def book(case: Day, reception: Page) -> None:
             f"/scheduling/clinics/{case.clinic}/appointments/new/",
             submit.click,
         )
-        reception.wait_for_function(SETTLED_JS)
+        wait_for_js(reception, SETTLED_JS)
         # The dropped reply is announced: an alert names the failure and the
         # recovery, and the submit is usable again for the deliberate retry.
         notice = reception.locator("[data-network-error]")

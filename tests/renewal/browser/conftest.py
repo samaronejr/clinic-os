@@ -11,18 +11,98 @@ from __future__ import annotations
 
 import json
 import os
+from functools import wraps
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Browser, BrowserContext, BrowserType, sync_playwright
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
-    from playwright.sync_api import Page
+    from playwright.sync_api import ConsoleMessage, Page
 
 NAVIGATION_TIMEOUT_MS = 20_000
+# Chromium reports every refused script/style/connection (enforced or
+# "[Report Only]") as a console entry naming the Content Security Policy.
+CSP_CONSOLE_MARKER = "Content Security Policy"
+CSP_CONSOLE_REPORT = "csp-console.json"
+
+
+def _csp_console_watch(
+    violations: list[dict[str, str]],
+) -> Callable[[BrowserContext | Page], None]:
+    # Holding the contexts keeps identity checks exact for the session.
+    watched: list[BrowserContext] = []
+
+    def record(message: ConsoleMessage) -> None:
+        if CSP_CONSOLE_MARKER in message.text:
+            violations.append(
+                {
+                    "type": message.type,
+                    "text": message.text,
+                    "url": message.location.get("url", ""),
+                }
+            )
+
+    def watch(target: BrowserContext | Page) -> None:
+        context = target if isinstance(target, BrowserContext) else target.context
+        if all(context is not known for known in watched):
+            watched.append(context)
+            context.on("console", record)
+
+    return watch
+
+
+def _watching[**P, R](
+    original: Callable[P, R],
+    watch: Callable[[R], None],
+) -> Callable[P, R]:
+    @wraps(original)
+    def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+        created = original(*args, **kwargs)
+        watch(created)
+        return created
+
+    return wrapped
+
+
+@pytest.fixture(scope="session", autouse=True)
+def csp_console_violations() -> Iterator[list[dict[str, str]]]:
+    """Watch every browser context this session opens for CSP refusals.
+
+    Suites launch their own browsers, so the public factories are wrapped
+    once per session; the per-test guard below fails the test that caused a
+    violation, and the runner artifact root receives the full log.
+    """
+    violations: list[dict[str, str]] = []
+    watch = _csp_console_watch(violations)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Browser, "new_context", _watching(Browser.new_context, watch))
+        patch.setattr(Browser, "new_page", _watching(Browser.new_page, watch))
+        patch.setattr(
+            BrowserType,
+            "launch_persistent_context",
+            _watching(BrowserType.launch_persistent_context, watch),
+        )
+        yield violations
+    root = os.environ.get("CLINIC_RENEWAL_ARTIFACT_ROOT", "")
+    if root:
+        destination = Path(root) / CSP_CONSOLE_REPORT
+        destination.write_text(
+            json.dumps({"violations": violations}, sort_keys=True, indent=2) + "\n"
+        )
+        destination.chmod(0o600)
+
+
+@pytest.fixture(autouse=True)
+def csp_console_guard(csp_console_violations: list[dict[str, str]]) -> Iterator[None]:
+    """Fail the test during which any Content-Security-Policy refusal appeared."""
+    start = len(csp_console_violations)
+    yield
+    caused = csp_console_violations[start:]
+    assert not caused, f"Content-Security-Policy violations: {caused}"
 
 
 def _required(name: str) -> str:

@@ -28,6 +28,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext, ngettext
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
 
 if TYPE_CHECKING:
@@ -251,7 +252,7 @@ def _submit(page: Page, selector: str) -> int:
     ) as received:
         page.locator(selector).click()
     assert received.value.status in POST_SET, received.value.status
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     return received.value.status
 
 
@@ -324,7 +325,7 @@ def _search_in_flight(
     ):
         page.locator(SEARCH).click()
     assert received.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     _assert_busy(busy, gettext("Searching…"))
     assert busy["form_border"] == PRIMARY, busy  # .panel[aria-busy="true"]
     expect(page.locator(SEARCH)).to_be_enabled()
@@ -494,7 +495,7 @@ def _find_across_pages(
     ) as second:
         page.keyboard.press("Enter")
     assert second.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     expect(status).to_have_text(_status_text(total, 2, 2))
     assert _focused(page) == "patient-results-status"
     assert len(_row_names(page)) == total - PAGE_SIZE

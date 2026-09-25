@@ -19,6 +19,8 @@ import pytest
 from django.template.loader import render_to_string
 from django.utils.translation import gettext
 
+from renewal.browser._page_wait import wait_for_js
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
@@ -332,14 +334,12 @@ def test_every_loading_state_shows_its_status_message(
     viewport: str,
     showcase: Showcase,
 ) -> None:
-    # htmx injects `.htmx-indicator { visibility: hidden }` into <head> after
-    # the stylesheet; the busy container alone must reveal the message.
+    # Under the strict CSP htmx no longer injects its indicator <style>
+    # (includeIndicatorStyles: false); the stylesheet hides indicators and the
+    # busy container alone must reveal the message.
     context, page = _open_showcase(showcase, VIEWPORTS[viewport])
     try:
-        assert page.evaluate(
-            "Array.from(document.head.querySelectorAll('style'))"
-            ".some((s) => s.textContent.includes('.htmx-indicator{opacity:0'))"
-        )
+        assert page.evaluate("document.querySelectorAll('style').length") == 0
         readings: dict[str, dict[str, Any]] = {}
         for primitive in PRIMITIVES:
             block = page.locator(
@@ -360,8 +360,8 @@ def test_every_loading_state_shows_its_status_message(
         _record(
             showcase.report,
             assertion="every loading block's role=status message is rendered visible"
-            " (visibility, display, opacity, box, text) with htmx's injected"
-            " indicator style present",
+            " (visibility, display, opacity, box, text) with no inline indicator"
+            " style injected by htmx",
             viewport=viewport,
             statuses=readings,
         )
@@ -642,7 +642,8 @@ def test_reduced_motion_removes_transitions_and_the_press_transform(
         assert box is not None
         page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
         page.mouse.down()
-        page.wait_for_function(
+        wait_for_js(
+            page,
             "(s) => getComputedStyle(document.querySelector(s)).transform"
             " === 'matrix(1, 0, 0, 1, 0, 1)'",
             arg=selector,

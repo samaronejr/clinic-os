@@ -8,6 +8,7 @@ from config.runtime import enforce_wheel_timezone
 from .contracts import (
     require_data_mode,
     resolve_attachment_root,
+    resolve_csp_report_only,
     validate_secret_store_env,
 )
 from .database import DEFAULT_APP_DATABASE_URL
@@ -34,6 +35,9 @@ ALLOWED_HOSTS: list[str] = env.list("ALLOWED_HOSTS", default=["localhost", "127.
 # authorized activation record bound to this release, environment, evidence
 # and storage (ops.release.activation). Anything else fails closed.
 CLINIC_DATA_MODE: str = require_data_mode(env("CLINIC_DATA_MODE", default="synthetic"))
+# Strict CSP is enforced by default; report-only is a synthetic-only rollout
+# and rollback lever that live mode refuses (contracts.resolve_csp_report_only).
+CLINIC_CSP_REPORT_ONLY: bool = resolve_csp_report_only(os.environ, CLINIC_DATA_MODE)
 # Managed-secret boundary for key material; no default, no plaintext fallback.
 CLINIC_SECRET_BACKEND: str | None
 CLINIC_SECRET_DIR: str | None
@@ -50,6 +54,7 @@ INSTALLED_APPS: list[str] = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
     "django_otp",
     "django_otp.plugins.otp_static",
     "django_otp.plugins.otp_totp",
@@ -85,6 +90,9 @@ MIDDLEWARE: list[str] = [
     "apps.core.middleware.LiveModeHaltMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # Strict first-party Content-Security-Policy on every Django response,
+    # refusals included; static files served above it need none.
+    "apps.core.middleware.ContentSecurityPolicyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -135,6 +143,22 @@ REST_FRAMEWORK = {
         "anon": "60/min",
         "user": "600/min",
     },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# The committed docs/api/ui-v1.yaml is the internal UI API contract;
+# tests/infra/test_openapi_drift.py regenerates it and fails on any diff.
+SPECTACULAR_SETTINGS: dict[str, object] = {
+    "TITLE": "Clinic Ops internal UI API",
+    "DESCRIPTION": (
+        "RPC-style POST endpoints for first-party UI surfaces. Record "
+        "identifiers travel only in request bodies. Session authentication "
+        "with the X-CSRFToken header; errors are {code, message_key}."
+    ),
+    "VERSION": "1",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api/ui/v1",
+    "PREPROCESSING_HOOKS": ["apps.core.api.schema.ui_api_endpoints_only"],
 }
 
 AUTH_PASSWORD_VALIDATORS = [

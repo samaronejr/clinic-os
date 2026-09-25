@@ -20,6 +20,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_patient_access import _redeem
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
@@ -205,8 +206,8 @@ def _check_devices(patient: Page, case: _Case) -> None:
     expect(patient.locator("[data-device-status]")).to_be_focused()
     expect(patient.locator("[data-preview-video]")).to_be_visible()
     # HAVE_CURRENT_DATA: the synthetic camera has painted its first frame.
-    patient.wait_for_function(
-        "() => document.querySelector('[data-preview-video]').readyState >= 2"
+    wait_for_js(
+        patient, "() => document.querySelector('[data-preview-video]').readyState >= 2"
     )
     _capture(patient, case, "waiting-ready")
     patient.locator("[data-device-stop]").click()
@@ -229,8 +230,8 @@ def _enter_room(patient: Page, case: _Case, session_id: str) -> None:
     )
     assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
     assert patient.evaluate(TRACK_JS, "video") == {"enabled": True, "state": "live"}
-    patient.wait_for_function(
-        "() => document.querySelector('[data-self-video]').readyState >= 2"
+    wait_for_js(
+        patient, "() => document.querySelector('[data-self-video]').readyState >= 2"
     )
     _capture(patient, case, "room-connected")
 
@@ -308,7 +309,7 @@ def _stall_media_retry(patient: Page) -> None:
     patient.evaluate(STALL_MEDIA_JS)
     patient.locator("[data-retry-media]").click()
     expect(panel).to_have_attribute("data-media", "pending")
-    patient.wait_for_function("() => window.__lateMedia.release !== null")
+    wait_for_js(patient, "() => window.__lateMedia.release !== null")
 
 
 def _assert_late_media_dropped(patient: Page, state: str) -> None:
@@ -317,9 +318,10 @@ def _assert_late_media_dropped(patient: Page, state: str) -> None:
     expect(panel).to_have_attribute("data-connection", state)
     expect(panel).to_have_attribute("data-media", "off")
     patient.evaluate("() => window.__lateMedia.release()")
-    patient.wait_for_function(
+    wait_for_js(
+        patient,
         "() => { const s = window.__lateMedia.stream;"
-        " return s !== null && s.getTracks().every((t) => t.readyState === 'ended'); }"
+        " return s !== null && s.getTracks().every((t) => t.readyState === 'ended'); }",
     )
     assert patient.evaluate(LATE_TRACKS_JS) == ["ended", "ended"]
     expect(panel).to_have_attribute("data-media", "off")
