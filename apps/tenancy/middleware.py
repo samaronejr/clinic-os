@@ -29,6 +29,10 @@ BYPASS_PATHS: Final = frozenset(
         "/readyz",
         "/readyz/",
         "/auth/login/",
+        # Sessionless ops scrape endpoint; authenticates with its own bearer
+        # token plus a network allowlist (D-19, apps.core.telemetry).
+        "/internal/metrics",
+        "/internal/metrics/",
     }
 )
 BYPASS_PREFIXES: Final = (

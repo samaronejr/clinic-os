@@ -227,6 +227,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
     ("comms_schedule_reminders_v1", ""),
     ("configuration_guard", ""),
@@ -388,6 +389,10 @@ FUNCTION_RESULTS: Final = {
     ): "TABLE(operation_id uuid, organization_id uuid, clinic_id uuid, actor_id uuid)",
     ("comms_operation_scope", "requested_operation uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
+    ),
+    ("comms_operation_state_counts_v1", ""): (
+        "TABLE(status text, operation_count bigint, "
+        "oldest_created_at timestamp with time zone)"
     ),
     ("comms_recover_pending_v1", ""): "SETOF uuid",
     ("comms_schedule_reminders_v1", ""): "trigger",

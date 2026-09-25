@@ -25,7 +25,15 @@ PRIVATE_VARY_HEADERS: Final = ("Cookie", "HX-Request")
 # product path — reads included — stops serving once the activation is
 # disabled or drifted, so a rollback cannot leave live data flowing.
 LIVE_HALT_BYPASS_PATHS: Final = frozenset(
-    {"/healthz", "/healthz/", "/readyz", "/readyz/"}
+    {
+        "/healthz",
+        "/healthz/",
+        "/readyz",
+        "/readyz/",
+        # Operators must keep scraping SLIs while product paths are halted.
+        "/internal/metrics",
+        "/internal/metrics/",
+    }
 )
 LIVE_HALT_BYPASS_PREFIXES: Final = ("/static/",)
 SERVICE_UNAVAILABLE_STATUS: Final = 503

@@ -1,29 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import sentry_sdk
+from apps.core.telemetry import configure_tracing, scrub_sentry_event
 
-if TYPE_CHECKING:
-    from sentry_sdk.types import Event, Hint
+__all__ = [
+    "REQUEST_CANARY_FIELDS",
+    "configure_sentry",
+    "configure_tracing",
+    "scrub_sentry_event",
+]
 
+# Kept for callers/tests that reference the request-section canary set; the
+# scrubber itself now applies the broader allowlist in apps.core.telemetry.
 REQUEST_CANARY_FIELDS: Final = frozenset({"cookies", "data", "headers", "query_string"})
-
-
-def scrub_sentry_event(
-    event: Event,
-    _hint: Hint,
-) -> Event:
-    scrubbed = event.copy()
-    request = event.get("request")
-    if isinstance(request, dict):
-        clean_request = {
-            key: value
-            for key, value in request.items()
-            if isinstance(key, str) and key not in REQUEST_CANARY_FIELDS
-        }
-        scrubbed["request"] = clean_request
-    return scrubbed
 
 
 def configure_sentry(dsn: str) -> None:
