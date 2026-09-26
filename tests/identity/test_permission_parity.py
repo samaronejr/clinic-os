@@ -6,6 +6,7 @@ import collections
 import copy
 import dataclasses
 import json
+import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,7 +28,8 @@ from django.db import connection, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
-from identity import exemption_probes, probe_states
+from database_urls import database_url_for_name
+from identity import actor_channels, exemption_probes, probe_states
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
@@ -577,6 +579,12 @@ def test_census_refuses_every_reviewer_bypass_shape(shape: str) -> None:
 def _probe_world(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> exemption_probes.ProbeWorld:
+    actor_channels.enable_function_statistics(
+        database_url_for_name(
+            os.environ["TEST_SUPERUSER_DATABASE_URL"],
+            str(connection.settings_dict["NAME"]),
+        )
+    )
     subject = world(rbac_graph, "receptionist")
     op = operational.seed_operational(subject)
     rx = prescriptions.seed_prescription(subject)
@@ -616,10 +624,13 @@ def test_every_exemption_probe_is_staff_independent(
     """Every census exemption runs under every state of the staff-state
     matrix derived from the live permission decision (identity/
     probe_states.py: the role power set, credential levels per bundle
-    class, every registration/care/profile value, inactive, elsewhere,
-    assignment, role-grant removals) and reaches one exactly identical
+    class, every registration/care/profile value, inactive, user flags,
+    elsewhere, open and closed assignment, each single role-permission
+    removal, cumulative role-grant removals) and reaches one exactly identical
     outcome; every call line of its body executes in some state; the
     declared class (success/refusal) holds, as deployed for patient code;
+    the function never observes the actor (identity/actor_channels.py:
+    the primary rule; the matrix is the behavioural cross-check);
     and the rows written realize every declared value of every varied
     input. The original 13 states (10 roles, none, all, the assigned
     physician) are still in the matrix."""
@@ -638,7 +649,9 @@ def test_every_exemption_probe_is_staff_independent(
             "realization": 75,
             "inactive": 2,
             "elsewhere": 2,
-            "assigned": 2,
+            "flags": 2,
+            "assigned": 3,
+            "removal": 101,
             "grant": 11,
             "control": 1,
         }

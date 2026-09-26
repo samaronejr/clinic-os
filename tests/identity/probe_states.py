@@ -1,6 +1,9 @@
 """The staff-state matrix every exemption probe executes under.
 
-An exemption claims that a function's outcome does not depend on staff
+The census's primary rule is that an exempt function never observes the
+actor at all (identity/actor_channels.py): that holds for every staff state,
+enumerated or not. This matrix is the behavioural cross-check (defence in
+depth). An exemption claims that a function's outcome does not depend on staff
 permission state. The states varied here come from the inputs the live
 permission decision reads (identity/permission_inputs.py). Every derived
 input is declared in ``DIMENSIONS``: either varied, with the full value set
@@ -21,8 +24,15 @@ Families (all committed before the first probe runs unless noted):
   otherwise valid credential.
 - ``inactive``, ``elsewhere``: an inactive user (bare and fully
   credentialed), roles only in another clinic or organization.
-- ``assigned``: the physician of the probed encounter; then (phase) the
-  same physician registered, so the open-encounter branch grants.
+- ``flags``: a receptionist with each other boolean user flag set
+  (is_staff, is_superuser; derived from the User model).
+- ``assigned``: the physician of the probed open encounter; a physician
+  whose only encounter was closed through the real finalization path; then
+  (phase) the first physician registered, so the open-encounter branch grants.
+- ``removal``: one state per (role, permission) pair with exactly that pair
+  removed, for an actor holding only that role (credentialed when the role
+  is professional). Removals are clinic-wide, so each is applied inside the
+  state's scopes and rolled back with them: linear, not a power set.
 - ``grant`` (phase, last): ineffective role-grant removals (expired, future,
   other clinic), then current removals of every permission, one role at a
   time and cumulative, for the fully credentialed actor.
@@ -52,11 +62,14 @@ from apps.identity.permissions import BUNDLES_V1, PROFESSIONAL_PERMISSIONS_V1
 from apps.intake.models import Patient, PatientClinicEnrollment
 from django.db import connection
 from django.utils import timezone
+from psycopg import sql
 
 from identity.permission_support import owner_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
+
+    from django.db.backends.utils import CursorWrapper
 
     from rbac_fixtures import RbacGraph
 
@@ -99,6 +112,15 @@ PROFILE_VARIANTS: Final = (
     *(f"status:{status}" for status in STATUSES if status != "regular"),
 )
 LEVELS: Final = ("bare", "registered", "scoped")
+# Boolean identity_user columns other than is_active, which the matrix
+# varies on its own (the loader hands the whole row to Python callers).
+USER_FLAGS: Final = tuple(
+    sorted(
+        field.name
+        for field in User._meta.concrete_fields
+        if field.get_internal_type() == "BooleanField" and field.name != "is_active"
+    )
+)
 
 
 def role_label(roles: Iterable[str]) -> str:
@@ -147,6 +169,7 @@ class ActorSpec:
     credentials: tuple[tuple[str, Credential], ...] = ()
     active: bool = True
     elsewhere: tuple[str, ...] = ("clinic_b:receptionist",)
+    flags: tuple[str, ...] = ()
 
 
 def actor_specs() -> tuple[ActorSpec, ...]:
@@ -198,6 +221,10 @@ def actor_specs() -> tuple[ActorSpec, ...]:
                     *(f"clinic_c:{role}" for role in ROLES),
                 ),
             ),
+            *(
+                ActorSpec(f"flag:{flag}", "flags", ("receptionist",), flags=(flag,))
+                for flag in USER_FLAGS
+            ),
         )
     )
     return tuple(specs)
@@ -240,6 +267,7 @@ class ProbeState:
     family: str
     actor: UUID
     setup: Callable[[], None] | None = None
+    scoped: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,8 +454,13 @@ class Matrix:
     applied: set[str] = field(default_factory=set)
 
 
-def build_states(graph: RbacGraph, assigned: UUID) -> Matrix:
-    """Write every state's rows (committed) and return the ordered states."""
+def build_states(graph: RbacGraph, assigned: UUID, closed: UUID) -> Matrix:
+    """Write every state's rows (committed) and return the ordered states.
+
+    ``assigned`` is the physician of the probed open encounter; ``closed``
+    a physician whose only encounter was closed through the real
+    finalization path (exemption_probes.closed_encounter_physician).
+    """
     now = timezone.now()
     specs = actor_specs()
     users = User.objects.bulk_create(
@@ -479,14 +512,67 @@ def build_states(graph: RbacGraph, assigned: UUID) -> Matrix:
             user.pk for spec, user in zip(specs, users, strict=True) if not spec.active
         ]
     ).update(is_active=False)
+    for flag in USER_FLAGS:
+        User.objects.filter(
+            pk__in=[
+                user.pk
+                for spec, user in zip(specs, users, strict=True)
+                if flag in spec.flags
+            ]
+        ).update(**{flag: True})
     states = [
         ProbeState(spec.label, spec.family, user.pk)
         for spec, user in zip(specs, users, strict=True)
     ]
     by_label = {state.label: state.actor for state in states}
     states.append(ProbeState("assigned", "assigned", assigned))
+    states.append(ProbeState("assigned:closed", "assigned", closed))
+    states.extend(_pair_removals(graph, by_label, now))
     states.extend(_phases(places, by_label, assigned, now))
     return Matrix(tuple(states), places)
+
+
+def _pair_removals(
+    graph: RbacGraph, actors: Mapping[str, UUID], now: datetime
+) -> list[ProbeState]:
+    """One state per (role, permission): exactly that pair removed, for an
+    actor holding only that role (credentialed and care-scoped when the
+    role is professional, so every bundle permission is live).
+
+    Removals are clinic-wide, so each is applied inside the state's scopes
+    and rolled back with them (``ProbeState.scoped``).
+    """
+
+    def remove(role: str, permission: str) -> Callable[[], None]:
+        def apply() -> None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT current_user")
+                row = cursor.fetchone()
+                assert row is not None
+                cursor.execute("SET LOCAL ROLE clinic_owner")
+                RoleGrant.objects.create(
+                    organization_id=graph.organization_a,
+                    clinic_id=graph.clinic_a,
+                    role=role,
+                    permission=permission,
+                    valid_from=now - timedelta(days=1),
+                )
+                cursor.execute(
+                    sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(str(row[0])))
+                )
+
+        return apply
+
+    return [
+        ProbeState(
+            f"removed:{role}:{permission}",
+            "removal",
+            actors[f"{role}@care:open" if role in PROFESSIONAL_ROLES else role],
+            scoped=remove(role, permission),
+        )
+        for role in ROLES
+        for permission in sorted(BUNDLES_V1[role])
+    ]
 
 
 def _phases(
@@ -567,8 +653,10 @@ _ENROLLMENT = (
     "chosen by the probed code, not by staff state"
 )
 _USER_ROW = (
-    "read only through load_current_user(); the Python loader compares pk "
-    "and is_active only (apps/identity/current_context.py _load_current_actor)"
+    "read only through load_current_user(), which hands the whole row to its "
+    "Python callers; an exempt function never reaches it, because loading the "
+    "actor is an actor observation the census refuses (identity/"
+    "actor_channels.py). Boolean flags are also varied as states."
 )
 _WINDOW = frozenset({"open", "current", "expired", "future"})
 _BOUNDED = frozenset({"current", "expired", "future"})
@@ -605,6 +693,13 @@ DIMENSIONS: Final[Mapping[str, tuple[str, frozenset[str] | str]]] = {
         frozenset({"true", "false"}),
     ),
     "column:load_current_user:identity_user.id": ("fixed", _KEY),
+    **{
+        f"column:load_current_user:identity_user.{flag}": (
+            "varied",
+            frozenset({"true", "false"}),
+        )
+        for flag in USER_FLAGS
+    },
     "setting:load_current_user:app.current_user_id": (
         "fixed",
         "each state binds its own actor; that actor's rows are the varied inputs",
@@ -615,8 +710,6 @@ DIMENSIONS: Final[Mapping[str, tuple[str, frozenset[str] | str]]] = {
             "date_joined",
             "email",
             "first_name",
-            "is_staff",
-            "is_superuser",
             "last_login",
             "last_name",
             "password",
@@ -765,10 +858,8 @@ DIMENSIONS: Final[Mapping[str, tuple[str, frozenset[str] | str]]] = {
         frozenset({"actor", "other"}),
     ),
     "column:has_permission:ehr_encounter.state": (
-        "fixed",
-        "the decision compares state only with 'open'; a non-open encounter "
-        "grants nothing, which is the not-assigned value every other state "
-        "realizes (physician_id varied)",
+        "varied",
+        frozenset({"open", "closed"}),
     ),
 }
 
@@ -797,10 +888,9 @@ def realized(matrix: Matrix) -> dict[str, set[str]]:
         for key in keys:
             seen[key].add(value)
 
-    for active in User.objects.filter(pk__in=actors).values_list(
-        "is_active", flat=True
-    ):
-        add("identity_user.is_active", "true" if active else "false")
+    for row in User.objects.filter(pk__in=actors).values("is_active", *USER_FLAGS):
+        for column, value in row.items():
+            add(f"identity_user.{column}", "true" if value else "false")
     held: dict[UUID, set[str]] = {actor: set() for actor in actors}
     for organization in (graph.organization_a, graph.organization_b):
         with owner_context(organization):
@@ -834,9 +924,25 @@ def realized(matrix: Matrix) -> dict[str, set[str]]:
             [graph.clinic_a],
         )
         physicians = {physician for (physician,) in cursor.fetchall()}
+        _realized_encounters(cursor, graph, actors, add)
     for actor in actors:
         add("ehr_encounter.physician_id", "actor" if actor in physicians else "other")
     return seen
+
+
+def _realized_encounters(
+    cursor: CursorWrapper,
+    graph: RbacGraph,
+    actors: set[UUID],
+    add: Callable[[str, str], None],
+) -> None:
+    cursor.execute(
+        "SELECT state FROM clinic_app.ehr_encounter "
+        "WHERE clinic_id = %s AND physician_id = ANY(%s)",
+        [graph.clinic_a, list(actors)],
+    )
+    for (state,) in cursor.fetchall():
+        add("ehr_encounter.state", str(state))
 
 
 def _realized_grants(

@@ -14,8 +14,10 @@ import contextlib
 import dataclasses
 import inspect
 import re
+from datetime import UTC, datetime, timedelta
 from types import FunctionType
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 from apps.ehr import finalization
@@ -26,10 +28,10 @@ from django.db import connection, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
-from identity import exemption_probes, probe_states
+from identity import actor_channels, exemption_probes, probe_states
 from identity import permission_gate_census as census
 from identity.permission_inputs import decision_inputs
-from identity.test_permission_parity import _SYNTHETIC, _probe_world
+from identity.test_permission_parity import _SYNTHETIC, INVENTORY, _probe_world
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -173,7 +175,8 @@ _DENIED = "    if row is None:\n        raise ClinicalAccessDeniedError\n"
 _GATE_IMPORTS = (
     "import functools\n"
     "from apps.identity.current_context import (\n"
-    "    CurrentActorError, current_actor_id, require_permission,\n"
+    "    CurrentActorError, _load_current_actor, current_actor_id,\n"
+    "    require_permission,\n"
     ")\n"
     "from apps.identity.models import ProfessionalRegistration\n"
 )
@@ -235,6 +238,63 @@ _VARIANTS: dict[str, tuple[str, str, str, str]] = {
         "",
         "exact",
     ),
+    # R5-1a: configuration.clinic granted AND appointment.read denied. Every
+    # role holding the first also holds the second, so only a removal of
+    # exactly (role, appointment.read) reaches it.
+    "r5-1a single role-permission removal": (
+        _RETURN,
+        "    try:\n"
+        "        _cfg(clinic_id=_CLINIC)\n"
+        "    except CurrentActorError:\n"
+        "        return int(row[0])\n"
+        "    try:\n"
+        "        _agenda(clinic_id=_CLINIC)\n"
+        "    except CurrentActorError:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        _GATE_IMPORTS
+        + "_cfg = functools.partial(require_permission, 'configuration.clinic')\n"
+        + "_agenda = functools.partial(require_permission, 'appointment.read')\n",
+        "states",
+    ),
+    # R5-1b: a branch on a user flag of the loaded actor.
+    "r5-1b is_superuser": (
+        _RETURN,
+        "    try:\n"
+        "        flagged = _load_current_actor().is_superuser\n"
+        "    except CurrentActorError:\n"
+        "        flagged = False\n"
+        "    if flagged:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        _GATE_IMPORTS,
+        "states",
+    ),
+    # R5-1c: a Python check on the actor's non-open encounters.
+    "r5-1c closed encounter": (
+        _RETURN,
+        "    try:\n"
+        "        actor = current_actor_id()\n"
+        "    except CurrentActorError:\n"
+        "        return int(row[0])\n"
+        "    if Encounter.objects.filter(physician_id=actor).exclude(\n"
+        "        state='open'\n"
+        "    ).exists():\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        _GATE_IMPORTS,
+        "states",
+    ),
+    # A read of a relation whose row policy observes the actor, with no
+    # actor accessor, SQL setting or permission call in sight.
+    "rls touch": (
+        _RETURN,
+        "    if ClinicalDocumentVersion.objects.filter(state='draft').exists():\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
     "gate on a line no probe input reaches": (
         _DENIED,
         "    if row is None:\n"
@@ -249,7 +309,10 @@ _EXPECTED = {
     "states": "outcome differs across states",
     "exact": "outcome differs across states",
     "reach": "call lines never executed in any state",
+    "rule": "observes the actor",
 }
+# Gates the actor rule cannot see: never executed, so never observing.
+_BEYOND_RULE = frozenset({"gate on a line no probe input reaches"})
 
 
 def _mutant(name: str, bindings: dict[str, object]) -> FunctionType:
@@ -280,45 +343,271 @@ def _invoker(
     return lambda pw: function(pw.w.version.document)
 
 
+def _variant_probes(
+    probe_world: exemption_probes.ProbeWorld,
+) -> list[exemption_probes.ExemptionProbe]:
+    registered = exemption_probes.PROBES[_SYMBOL]
+    bindings: dict[str, object] = {
+        "_CLINIC": probe_world.w.clinic,
+        "_ENROLLMENT": probe_world.op.enrollment,
+    }
+    probes = [registered]
+    for name in _VARIANTS:
+        function = _mutant(name, bindings)
+        probes.append(
+            dataclasses.replace(
+                registered,
+                symbol=f"{_SYMBOL}#{name}",
+                invoke=_invoker(function),
+                code=function.__code__,
+            )
+        )
+    return probes
+
+
 def test_exemption_probes_refuse_every_r4_gate_variant(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """R4-1 and its variants, each run by the registered _next_version
-    probe (same context, input and class) against a mutated copy of the
-    function: every one is refused, by the repair it targets, while the
-    unmutated function is still certified in the same run."""
-    registered = exemption_probes.PROBES[_SYMBOL]
+    """R4-1, R5-1 and their variants, each run by the registered
+    _next_version probe (same context, input and class) against a mutated
+    copy of the function. The matrix alone (the actor rule left out of the
+    verdict) refuses every behavioural shape by the repair it targets; the
+    actor rule refuses every shape that executes; the unmutated function is
+    certified by both in the same run."""
     with override_settings(**_SYNTHETIC):
         probe_world = _probe_world(rbac_graph, monkeypatch)
-        bindings: dict[str, object] = {
-            "_CLINIC": probe_world.w.clinic,
-            "_ENROLLMENT": probe_world.op.enrollment,
-        }
-        probes = [registered]
-        for name in _VARIANTS:
-            function = _mutant(name, bindings)
-            probes.append(
-                dataclasses.replace(
-                    registered,
-                    symbol=f"{_SYMBOL}#{name}",
-                    invoke=_invoker(function),
-                    code=function.__code__,
-                )
-            )
+        probes = _variant_probes(probe_world)
         runs = exemption_probes.run_matrix(probes, probe_world)
-    verdicts = {
-        probe.symbol: exemption_probes.problems(probe, runs[probe.symbol])
+    matrix = {
+        probe.symbol: exemption_probes.problems(
+            probe, runs[probe.symbol], observed=False
+        )
         for probe in probes
     }
-    for symbol, found in verdicts.items():
-        print("VERDICT", symbol, found or "certified")  # noqa: T201 - receipt
-    assert verdicts[_SYMBOL] == []
+    rule = {
+        probe.symbol: exemption_probes.actor_problems(runs[probe.symbol])
+        for probe in probes
+    }
+    for probe in probes:
+        print(  # noqa: T201 - receipt
+            "VERDICT",
+            probe.symbol,
+            {"matrix": matrix[probe.symbol] or "certified"},
+            {"rule": rule[probe.symbol] or "certified"},
+        )
+    assert matrix[_SYMBOL] == []
+    assert rule[_SYMBOL] == []
     accepted = [
         name
         for name, (*_, repair) in _VARIANTS.items()
-        if not any(
+        if repair != "rule"
+        and not any(
             problem.startswith(_EXPECTED[repair])
-            for problem in verdicts[f"{_SYMBOL}#{name}"]
+            for problem in matrix[f"{_SYMBOL}#{name}"]
         )
     ]
-    assert not accepted, ("gate variants the census accepted", accepted)
+    assert not accepted, ("gate variants the matrix accepted", accepted)
+    unseen = [
+        name
+        for name in _VARIANTS
+        if name not in _BEYOND_RULE and not rule[f"{_SYMBOL}#{name}"]
+    ]
+    assert not unseen, ("gate variants the actor rule accepted", unseen)
+
+
+_RULE_SHAPES = (
+    "r5-1a single role-permission removal",
+    "r5-1b is_superuser",
+    "r5-1c closed encounter",
+    "rls touch",
+)
+
+
+def test_actor_rule_alone_refuses_every_r5_shape(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the matrix disabled (one state, so nothing to differ), the actor
+    rule alone refuses each R5-1 shape and an RLS-relation touch, and still
+    certifies the unmutated function. Each shape is refused by the channel
+    that sees it (receipt printed per shape)."""
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probes = [
+            probe
+            for probe in _variant_probes(probe_world)
+            if probe.symbol == _SYMBOL or probe.symbol.split("#")[1] in _RULE_SHAPES
+        ]
+        runs = exemption_probes.run_matrix(
+            probes, probe_world, probe_world.matrix.states[:1]
+        )
+    for probe in probes:
+        run = runs[probe.symbol]
+        print("RULE", probe.symbol, run.observed)  # noqa: T201 - receipt
+        assert len(run.outcomes) == 1
+        found = exemption_probes.actor_problems(run)
+        if probe.symbol == _SYMBOL:
+            assert found == []
+        else:
+            assert found, probe.symbol
+    observed = {
+        probe.symbol.split("#")[1]: " ".join(
+            runs[probe.symbol].observed.get("none", [])
+        )
+        for probe in probes[1:]
+    }
+    assert "calls clinic_app.has_permission" in observed[_RULE_SHAPES[0]]
+    assert "calls clinic_app.load_current_user" in observed[_RULE_SHAPES[1]]
+    assert "statement reads an actor setting" in observed[_RULE_SHAPES[2]]
+    assert (
+        "statement touches actor relation ehr_clinicaldocumentversion"
+        in (observed[_RULE_SHAPES[3]])
+    )
+
+
+def test_reclassified_functions_observe_the_actor(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The four former exemptions the actor rule refused keep their probes as
+    evidence: each observes the actor, and the census now classifies each by
+    an executed boundary (direct) or a named one (delegated), never as an
+    exemption."""
+    rows = {row["symbol"]: row for row in INVENTORY["candidates"]}
+    for symbol in exemption_probes.RECLASSIFIED:
+        assert rows[symbol]["kind"] in {"direct", "delegated"}, symbol
+        assert symbol not in exemption_probes.PROBES
+    probes = [
+        exemption_probes.ALL_PROBES[symbol]
+        for symbol in sorted(exemption_probes.RECLASSIFIED)
+    ]
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        runs = exemption_probes.run_matrix(
+            probes, probe_world, probe_world.matrix.states[:1]
+        )
+    for probe in probes:
+        found = exemption_probes.actor_problems(runs[probe.symbol])
+        print("RECLASSIFIED", probe.symbol, found)  # noqa: T201 - receipt
+        assert found, probe.symbol
+
+
+def _field_outcome(name: str, value: object) -> exemption_probes.Outcome:
+    """The canonical outcome of a returned record holding ``name``."""
+    record = dataclasses.make_dataclass("Record", [("state", str), (name, object)])
+    return ("ok", exemption_probes.canonical(record("accepted", value)))
+
+
+@pytest.mark.parametrize(
+    ("symbol", "field", "present"),
+    [
+        ("apps.scheduling.waitlist.respond_to_offer", "appointment_id", uuid4()),
+        (
+            "apps.intake.patient_access.patient_session_overview",
+            "idle_expires_at",
+            datetime(2035, 1, 1, tzinfo=UTC),
+        ),
+    ],
+)
+def test_masks_keep_presence_and_type(symbol: str, field: str, present: object) -> None:
+    """R5-1d: a mask blanks a field's per-call content, never whether it is
+    there: None and a value stay distinct, two present values match."""
+    normalize = exemption_probes.PROBES[symbol].normalize
+    assert normalize is not None
+    absent = normalize(_field_outcome(field, None))
+    assert absent != normalize(_field_outcome(field, present))
+    later = present + timedelta(seconds=1) if isinstance(present, datetime) else uuid4()
+    assert normalize(_field_outcome(field, present)) == normalize(
+        _field_outcome(field, later)
+    )
+    assert normalize(_field_outcome(field, present)) != normalize(
+        _field_outcome(field, str(present))
+    )
+
+
+_INLINABLE = """
+CREATE FUNCTION clinic_app.zz_inline_actor() RETURNS pg_catalog.uuid
+LANGUAGE sql STABLE AS $f$
+  SELECT NULLIF(pg_catalog.current_setting('app.current_user_id', true), '')::uuid
+$f$;
+"""
+_BINDER = """
+CREATE FUNCTION clinic_app.zz_bind_actor(actor pg_catalog.uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $f$
+BEGIN
+  PERFORM pg_catalog.set_config('app.current_user_id', actor::text, true);
+END $f$;
+"""
+_POLICY_TABLE = """
+CREATE TABLE clinic_app.zz_actor_rows (owner_id pg_catalog.uuid);
+ALTER TABLE clinic_app.zz_actor_rows ENABLE ROW LEVEL SECURITY;
+CREATE POLICY zz_own ON clinic_app.zz_actor_rows TO clinic_app USING (
+  owner_id = NULLIF(pg_catalog.current_setting('app.current_user_id', true), '')::uuid
+);
+"""
+
+
+def test_actor_catalog_is_derived_and_fails_closed(rbac_graph: RbacGraph) -> None:
+    """The actor channels come from the live system, and what cannot be
+    observed at run time fails closed (all DDL rolled back): an inlinable
+    actor-reading SQL function and a function that binds an actor setting
+    raise; a new relation whose policy reads the actor joins the set."""
+    with runtime_role():
+        settings = actor_channels.actor_settings(
+            lambda: tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+            rbac_graph.physician,
+        )
+    assert settings == {"app.current_user_id"}
+    with connection.cursor() as cursor:
+        catalog = actor_channels.actor_catalog(cursor, settings)
+        graph = census.build_graph(census.live_decisions(cursor))
+    assert {"has_permission", "load_current_user"} <= set(catalog.functions.values())
+    assert "ehr_encounter" in catalog.relations
+    accessors = actor_channels.python_accessors(graph, catalog)
+    assert {
+        "apps.identity.current_context._actor_uuid_from_guc",
+        "apps.identity.current_context._load_current_actor",
+        "apps.identity.current_context.current_actor_id",
+        "apps.identity.current_context.require_permission",
+    } <= set(accessors)
+    for ddl, message in ((_INLINABLE, "may be inlined"), (_BINDER, "binds an actor")):
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute(ddl)
+                with pytest.raises(census.CensusError, match=message):
+                    actor_channels.actor_catalog(cursor, settings)
+            transaction.set_rollback(True)
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(_POLICY_TABLE)
+            grown = actor_channels.actor_catalog(cursor, settings)
+        transaction.set_rollback(True)
+    assert "zz_actor_rows" in grown.relations
+
+
+def test_an_unlisted_accessor_fails_closed(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Python accessor missing from the derived set still cannot hide: the
+    statement it sends names its frame as an unlisted accessor."""
+    missing = "apps.identity.current_context._actor_uuid_from_guc"
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        observer = probe_world.observer
+        trimmed = dataclasses.replace(
+            observer,
+            accessors={
+                code: symbol
+                for code, symbol in observer.accessors.items()
+                if symbol != missing
+            },
+        )
+        probe_world = dataclasses.replace(probe_world, observer=trimmed)
+        probes = [
+            probe
+            for probe in _variant_probes(probe_world)
+            if probe.symbol.endswith("#r5-1c closed encounter")
+        ]
+        runs = exemption_probes.run_matrix(
+            probes, probe_world, probe_world.matrix.states[:1]
+        )
+    found = " ".join(runs[probes[0].symbol].observed["none"])
+    assert f"unlisted accessor {missing} reaches the actor" in found
