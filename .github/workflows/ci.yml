@@ -120,6 +120,12 @@ jobs:
           - "agenda,availability,contacts,locale,patient-access"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
+          - "smoke@firefox,billing@firefox,clinic-settings@firefox,clinical-history@firefox,clinician-video@firefox,consent@firefox,end-to-end@firefox,patient-video@firefox,video-recovery@firefox,amendments@firefox,document-verification@firefox,prescribing@firefox,prescription-draft@firefox,reminders@firefox,teleconsult@firefox,waitlist@firefox"
+          - "primitives@firefox,workspace@firefox,self-booking@firefox,locale@firefox"
+          - "agenda@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox"
+          - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit,amendments@webkit,document-verification@webkit,prescribing@webkit,prescription-draft@webkit,reminders@webkit,teleconsult@webkit,waitlist@webkit"
+          - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit"
+          - "agenda@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -142,6 +148,11 @@ jobs:
         run: |
           command -v google-chrome || command -v google-chrome-stable || command -v chromium
           google-chrome --version 2>/dev/null || google-chrome-stable --version 2>/dev/null || chromium --version
+      - name: Install Playwright-managed Firefox and WebKit
+        if: contains(matrix.shard, '@')
+        run: |
+          uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file playwright install --with-deps firefox webkit
       - name: Run renewal browser suites
         env:
           RENEWAL_SUITES: ${{ matrix.shard }}
@@ -149,10 +160,16 @@ jobs:
           set -u
           uv sync --locked --all-groups
           status=0
-          for suite in ${RENEWAL_SUITES//,/ }; do
-            if ! uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner \
+          for entry in ${RENEWAL_SUITES//,/ }; do
+            suite="${entry%%@*}"
+            engine=chromium
+            if [ "$entry" != "$suite" ]; then engine="${entry#*@}"; fi
+            label="$suite"
+            if [ "$engine" != chromium ]; then label="$suite@$engine"; fi
+            if ! CLINIC_BROWSER_ENGINE="$engine" uv run --frozen --no-sync --no-env-file \
+                python -m ops.testing.renewal_runner \
                 browser --suite "$suite" \
-                --artifact-root "$RUNNER_TEMP/renewal/$suite"; then
+                --artifact-root "$RUNNER_TEMP/renewal/$label"; then
               status=1
             fi
           done

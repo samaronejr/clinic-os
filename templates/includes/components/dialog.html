@@ -1,0 +1,32 @@
+{% load i18n %}{% comment %}
+Dialog: a decision that needs protected focus (keep or discard, confirm a
+consequence). Never for plain information; use a notice inline instead.
+Behavior: static/js/components/dialog.js (showModal, focus return).
+Native baseline: the page must also offer the decision as a normal form or
+page, because a closed <dialog> cannot open without JavaScript.
+
+Context:
+  id             Element id (required); open it with a button carrying
+                 data-dialog-open="<id>".
+  title          Question the decision answers (required).
+  body           One or two sentences naming the consequence.
+  confirm_label  Submit button text (required).
+  cancel_label   Close button text (default "Cancel").
+  action         Form action URL (default: current URL). POST + CSRF.
+  tone           "danger" for destructive decisions.
+  state          SC-8 state: disabled | loading | error | success | stale |
+                 conflict | permission-denied | offline (optional).
+  message        State note text.
+  specimen       True renders it open and in flow (showcase only).
+{% endcomment %}<dialog class="dialog{% if tone == "danger" %} dialog--danger{% endif %}{% if specimen %} dialog--specimen{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title" aria-describedby="{{ id }}-body"{% if specimen %} open{% endif %} data-dialog{% if state == "loading" %} aria-busy="true"{% endif %}>
+  <form class="dialog-form" method="post"{% if action %} action="{{ action }}"{% endif %}>
+    {% csrf_token %}
+    <h2 class="dialog-title" id="{{ id }}-title">{{ title }}</h2>
+    <p class="dialog-body" id="{{ id }}-body">{{ body }}</p>
+    {% if state and state != "default" and state != "hover" and state != "focus" and state != "active" %}{% include "includes/components/state.html" with state=state message=message id=id|add:"-state" only %}{% endif %}
+    <div class="dialog-actions">
+      <button type="submit" formmethod="dialog" value="cancel" class="button--quiet" data-dialog-close>{{ cancel_label|default:_("Cancel") }}</button>
+      <button type="submit" class="{% if tone == "danger" %}button--danger{% endif %}{% if state == "hover" %} is-hover{% elif state == "focus" %} is-focus{% elif state == "active" %} is-active{% endif %}"{% if state == "disabled" or state == "loading" or state == "permission-denied" or state == "offline" %} disabled{% endif %}>{{ confirm_label }}</button>
+    </div>
+  </form>
+</dialog>

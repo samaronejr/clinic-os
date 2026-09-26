@@ -8,10 +8,11 @@ from config.runtime import enforce_wheel_timezone
 from .contracts import (
     require_data_mode,
     resolve_attachment_root,
+    resolve_csp_report_only,
     validate_secret_store_env,
 )
 from .database import DEFAULT_APP_DATABASE_URL
-from .telemetry import configure_sentry
+from .telemetry import configure_sentry, configure_tracing
 
 enforce_wheel_timezone()
 
@@ -34,6 +35,9 @@ ALLOWED_HOSTS: list[str] = env.list("ALLOWED_HOSTS", default=["localhost", "127.
 # authorized activation record bound to this release, environment, evidence
 # and storage (ops.release.activation). Anything else fails closed.
 CLINIC_DATA_MODE: str = require_data_mode(env("CLINIC_DATA_MODE", default="synthetic"))
+# Strict CSP is enforced by default; report-only is a synthetic-only rollout
+# and rollback lever that live mode refuses (contracts.resolve_csp_report_only).
+CLINIC_CSP_REPORT_ONLY: bool = resolve_csp_report_only(os.environ, CLINIC_DATA_MODE)
 # Managed-secret boundary for key material; no default, no plaintext fallback.
 CLINIC_SECRET_BACKEND: str | None
 CLINIC_SECRET_DIR: str | None
@@ -50,6 +54,7 @@ INSTALLED_APPS: list[str] = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
     "django_otp",
     "django_otp.plugins.otp_static",
     "django_otp.plugins.otp_totp",
@@ -67,6 +72,7 @@ INSTALLED_APPS: list[str] = [
     "apps.comms.apps.CommsConfig",
     "apps.retention.apps.RetentionConfig",
     "apps.interop.apps.InteropConfig",
+    "apps.providers.apps.ProvidersConfig",
 ]
 
 AUTH_USER_MODEL: str = "identity.User"
@@ -79,13 +85,21 @@ OTP_TOTP_ISSUER: str = "Clinic OS"
 STEP_UP_MAX_AGE_SECONDS: int = 300
 
 MIDDLEWARE: list[str] = [
+    # Request id binding, latency SLI and access log; outermost so every
+    # response (including early refusals) is measured and correlatable.
+    "apps.core.telemetry.TelemetryMiddleware",
     "apps.core.middleware.ResponsePrivacyMiddleware",
     # Halts every product request once the live activation is disabled or
     # drifted; a pass-through outside live mode.
     "apps.core.middleware.LiveModeHaltMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    # Strict first-party Content-Security-Policy on every Django response,
+    # refusals included; static files served above it need none.
+    "apps.core.middleware.ContentSecurityPolicyMiddleware",
+    # Django's session middleware, except that a request still carrying a
+    # pre-rotation key never deletes the rotated cookie (apps.identity.sessions).
+    "apps.identity.sessions.RotationSafeSessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -135,6 +149,22 @@ REST_FRAMEWORK = {
         "anon": "60/min",
         "user": "600/min",
     },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# The committed docs/api/ui-v1.yaml is the internal UI API contract;
+# tests/infra/test_openapi_drift.py regenerates it and fails on any diff.
+SPECTACULAR_SETTINGS: dict[str, object] = {
+    "TITLE": "Clinic Ops internal UI API",
+    "DESCRIPTION": (
+        "RPC-style POST endpoints for first-party UI surfaces. Record "
+        "identifiers travel only in request bodies. Session authentication "
+        "with the X-CSRFToken header; errors are {code, message_key}."
+    ),
+    "VERSION": "1",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api/ui/v1",
+    "PREPROCESSING_HOOKS": ["apps.core.api.schema.ui_api_endpoints_only"],
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -186,6 +216,10 @@ X_FRAME_OPTIONS: str = "DENY"
 SENTRY_DSN: str = env("SENTRY_DSN", default="")
 configure_sentry(SENTRY_DSN)
 
+# OpenTelemetry tracing is opt-in (CLINIC_OTEL_ENABLED); exporter failures
+# are contained inside the SDK pipeline and never affect requests.
+configure_tracing(os.environ)
+
 # Synthetic attachment object store; production needs an approved backend.
 # Resolved through the shared contract seam so the startup isolation check
 # evaluates the identical effective root (including $VARIABLE proxies).
@@ -234,20 +268,33 @@ CELERY_TASK_ALWAYS_EAGER: bool = env.bool(
     default=False,
 )
 
+# ADR-014: structured JSON logs through the allowlist filter; non-allowlisted
+# record attributes are dropped before formatting, and the formatter emits the
+# message template only (args are never interpolated) plus exception types.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "allowlist": {"()": "apps.core.telemetry.AllowlistLogFilter"},
+    },
     "formatters": {
         "structured": {
-            "format": "{asctime} {levelname} {name} {message}",
-            "style": "{",
+            "()": "apps.core.telemetry.JsonTelemetryFormatter",
         },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "structured",
+            "filters": ["allowlist"],
         },
     },
     "root": {"handlers": ["console"], "level": "INFO"},
+    # Replace Django's DEFAULT_LOGGING handlers (DEBUG console, mail_admins,
+    # runserver request lines), which format raw paths and messages; these
+    # loggers propagate to the allowlisted root handler instead.
+    "loggers": {
+        "django": {"handlers": [], "level": "INFO", "propagate": True},
+        "django.server": {"handlers": [], "level": "INFO", "propagate": True},
+    },
 }

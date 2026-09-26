@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser.engines import new_context
 from renewal.browser.test_availability import (
     _no_overflow,
     _ring,
@@ -503,7 +504,7 @@ def test_attachment_accessibility_matrix(
         ("stale_tab", {"viewport": {"width": 1280, "height": 900}}),
     ]
     for scene, options in scenes:
-        context = browser.new_context(locale="pt-BR", **options)
+        context = new_context(browser, locale="pt-BR", **options)
         page = context.new_page()
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on(

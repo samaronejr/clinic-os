@@ -32,7 +32,9 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import new_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -295,7 +297,7 @@ def _open_access(page: Page, base_url: str, staff: dict[str, str], name: str) ->
     ) as received:
         page.locator("#patient-search-form button[type=submit]").click()
     assert received.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
     with page.expect_navigation():
         row.locator("button", has_text=gettext("Access")).click()
@@ -846,7 +848,7 @@ def _patient_scene(  # noqa: PLR0913 - the scene needs its full context
     name: str,
 ) -> tuple[Page, list[str], BrowserContext]:
     """Open the patient context for one scene and redeem the issued code."""
-    patient_context = access_browser.new_context(locale="pt-BR", **options)
+    patient_context = new_context(access_browser, locale="pt-BR", **options)
     patient = patient_context.new_page()
     patient.set_default_timeout(20_000)
     patient_errors = _watch_errors(patient)
@@ -912,7 +914,7 @@ def test_reflow_forced_colors_reduced_motion_zoom_and_long_content(
         ),
     ]
     for scene, options in scenes:
-        context = access_browser.new_context(locale="pt-BR", **options)
+        context = new_context(access_browser, locale="pt-BR", **options)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors = _watch_errors(page)

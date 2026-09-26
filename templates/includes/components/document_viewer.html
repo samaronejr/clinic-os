@@ -1,0 +1,43 @@
+{% load i18n %}{% comment %}
+Document viewer frame: a titled frame around a rendered document page with
+page and zoom controls and a list of region anchors (result lines, signed
+blocks) that jump to and outline the region. The page content is
+server-rendered text or an image of the page; the original file is offered
+as a download, never auto-opened. static/js/components/document-viewer.js
+wires page and zoom buttons (data-zoom 100/125/150) and region focus; all
+regions and pages stay readable without JavaScript.
+
+Context:
+  id             Frame id (required); regions are "<id>-<region.id>".
+  title          Document title (required).
+  pages          Page count (default 1).
+  regions        Iterable of {id, label, text}.
+  download_href  Download link for the original file (optional).
+  state          SC-8 state.
+  message        State note text.
+  name_context   Optional id of an element whose text is appended to the
+                 landmark names (unique names when a page repeats it).
+{% endcomment %}<section class="docviewer" id="{{ id }}" aria-labelledby="{{ id }}-title{% if name_context %} {{ name_context }}{% endif %}" data-docviewer data-text-status="{% trans "Page __PAGE__ of __TOTAL__" %}" data-pages="{{ pages|default:1 }}" data-zoom="100"{% if state == "loading" %} aria-busy="true"{% endif %}>
+  <div class="docviewer-toolbar">
+    <h2 class="docviewer-title" id="{{ id }}-title">{% include "includes/components/icon.html" with name="document" only %} {{ title }}</h2>
+    <div class="c-toolbar">
+      <p class="docviewer-status" data-docviewer-status role="status">{% if state == "loading" %}{% trans "Opening document…" %}{% else %}{% blocktrans with total=pages|default:1 %}Page 1 of {{ total }}{% endblocktrans %} · 100%{% endif %}</p>
+      <button type="button" class="button--quiet{% if state == "hover" %} is-hover{% endif %}" data-docviewer-zoom="out"{% if state == "disabled" or state == "loading" or state == "permission-denied" or state == "offline" or state == "empty" %} disabled{% endif %}>{% include "includes/components/icon.html" with name="minus" only %}<span class="visually-hidden">{% trans "Zoom out" %}</span></button>
+      <button type="button" class="button--quiet{% if state == "focus" %} is-focus{% elif state == "active" %} is-active{% endif %}" data-docviewer-zoom="in"{% if state == "disabled" or state == "loading" or state == "permission-denied" or state == "offline" or state == "empty" %} disabled{% endif %}>{% include "includes/components/icon.html" with name="plus" only %}<span class="visually-hidden">{% trans "Zoom in" %}</span></button>
+      {% if download_href and state != "permission-denied" and state != "empty" %}<a class="button button--secondary" href="{{ download_href }}">{% trans "Download PDF" %}</a>{% endif %}
+    </div>
+  </div>
+  <div class="docviewer-layout">
+    <span class="visually-hidden" id="{{ id }}-canvas-label">{% trans "Document page" %}</span><div class="docviewer-canvas" role="region" aria-labelledby="{{ id }}-canvas-label{% if name_context %} {{ name_context }}{% endif %}" tabindex="0">
+      {% if state == "loading" %}<div class="docviewer-page docviewer-page--skeleton"><span class="skeleton"></span><span class="skeleton skeleton--short"></span><span class="skeleton"></span></div>
+      {% elif state == "empty" or state == "error" or state == "permission-denied" or state == "offline" %}{% include "includes/components/state.html" with state=state message=message only %}
+      {% else %}{% if state == "stale" or state == "conflict" or state == "success" or state == "disabled" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+      <article class="docviewer-page" data-docviewer-page="1" aria-label="{% trans "Page 1" %}">
+        <p><strong>{{ title }}</strong></p>
+        {% for region in regions %}<p class="docviewer-region{% if state == "active" and forloop.first %} is-current{% endif %}" id="{{ id }}-{{ region.id }}" tabindex="-1">{{ region.text }}</p>{% endfor %}
+        <p class="meta">{% trans "Synthetic document for review." %}</p>
+      </article>{% endif %}
+    </div>
+    {% if regions and state != "loading" and state != "empty" and state != "permission-denied" %}<span class="visually-hidden" id="{{ id }}-anchors-label">{% trans "Regions in this document" %}</span><nav aria-labelledby="{{ id }}-anchors-label{% if name_context %} {{ name_context }}{% endif %}"><ol class="docviewer-anchors">{% for region in regions %}<li><a href="#{{ id }}-{{ region.id }}" data-docviewer-anchor>{{ region.label }}</a></li>{% endfor %}</ol></nav>{% endif %}
+  </div>
+</section>

@@ -227,6 +227,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
     ("comms_schedule_reminders_v1", ""),
     ("configuration_guard", ""),
@@ -244,6 +245,7 @@ FUNCTION_SIGNATURES: Final = {
     ("ehr_next_version", "requested_document uuid"),
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"),
     ("end_patient_session", "requested_session uuid"),
+    ("identity_queue_quotas", "requested_org uuid"),
     ("list_active_clinic_physicians", "requested_clinic uuid"),
     ("load_current_user", ""),
     ("overlay_plain_text_guard", ""),
@@ -388,6 +390,10 @@ FUNCTION_RESULTS: Final = {
     ("comms_operation_scope", "requested_operation uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
     ),
+    ("comms_operation_state_counts_v1", ""): (
+        "TABLE(status text, operation_count bigint, "
+        "oldest_created_at timestamp with time zone)"
+    ),
     ("comms_recover_pending_v1", ""): "SETOF uuid",
     ("comms_schedule_reminders_v1", ""): "trigger",
     ("configuration_guard", ""): "trigger",
@@ -410,6 +416,7 @@ FUNCTION_RESULTS: Final = {
     ("ehr_next_version", "requested_document uuid"): "integer",
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"): "uuid",
     ("end_patient_session", "requested_session uuid"): "void",
+    ("identity_queue_quotas", "requested_org uuid"): "jsonb",
     ("list_active_clinic_physicians", "requested_clinic uuid"): (
         "TABLE(user_id uuid, display_label text)"
     ),

@@ -201,6 +201,34 @@ WHERE (expected_prev IS NULL
        AND prev_hash <> decode(repeat('00', 32), 'hex'))
    OR (expected_prev IS NOT NULL AND prev_hash <> expected_prev)
 """
+# The provider registry is recreated by the target's own migrations under
+# fresh surrogate keys, so equality is proven on every column except the
+# surrogate ids and timestamps, with foreign keys rewritten to natural keys.
+# New columns join the comparison automatically through to_jsonb.
+TARGET_SEED_SQL: Final = """
+SELECT md5(COALESCE(string_agg(line, E'\\n' ORDER BY line), ''))
+FROM (
+    SELECT 'capability ' || (
+        (to_jsonb(c) - 'id' - 'current_version_id' - 'created_at'
+            - 'updated_at')
+        || jsonb_build_object(
+            'current_version',
+            to_jsonb(v) - 'id' - 'capability_id' - 'created_at' - 'updated_at'
+        )
+    )::text AS line
+    FROM clinic_app.providers_providercapability AS c
+    LEFT JOIN clinic_app.providers_capabilityversion AS v
+      ON v.id = c.current_version_id
+    UNION ALL
+    SELECT 'version ' || (
+        (to_jsonb(v) - 'id' - 'capability_id' - 'created_at' - 'updated_at')
+        || jsonb_build_object('capability', jsonb_build_array(c.key, c.clinic_id))
+    )::text
+    FROM clinic_app.providers_capabilityversion AS v
+    JOIN clinic_app.providers_providercapability AS c
+      ON c.id = v.capability_id
+) AS registry
+"""
 TENANT_KEY_STATUS_SQL: Final = """
 SELECT key_version || '|' || status
 FROM clinic_app.tenancy_tenantdatakey

@@ -12,6 +12,44 @@ ALL_SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = (
     SCHEDULING_RLS_TARGETS | APPOINTMENT_RLS_TARGETS
 )
 
+# Posture registry declarations consumed by apps.tenancy.posture.
+RLS_TARGETS: Final[frozenset[tuple[str, str]]] = ALL_SCHEDULING_RLS_TARGETS
+# Booking events and waitlist tables carry bespoke patient/staff policies
+# declared in apps/scheduling/migrations/_patient_booking_sql.py and
+# _waitlist_sql.py.
+CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
+    {
+        "scheduling_patientbookingevent",
+        "scheduling_waitlistentry",
+        "scheduling_waitlistoffer",
+    }
+)
+NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
+RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    "scheduling_availabilityblock": frozenset({"SELECT", "INSERT"}),
+    "scheduling_appointment": frozenset({"SELECT", "INSERT"}),
+    "scheduling_patientbookingevent": frozenset({"SELECT"}),
+    "scheduling_waitlistentry": frozenset({"SELECT", "INSERT"}),
+    "scheduling_waitlistoffer": frozenset({"SELECT", "INSERT"}),
+}
+# Column-level privileges held by the runtime role (pg_attribute.attacl).
+COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
+    {
+        ("scheduling_appointment", "cancellation_reason", "UPDATE"),
+        ("scheduling_appointment", "cancelled_at", "UPDATE"),
+        ("scheduling_appointment", "end_at", "UPDATE"),
+        ("scheduling_appointment", "start_at", "UPDATE"),
+        ("scheduling_appointment", "status", "UPDATE"),
+        ("scheduling_appointment", "updated_at", "UPDATE"),
+        ("scheduling_availabilityblock", "retired_at", "UPDATE"),
+        ("scheduling_availabilityblock", "updated_at", "UPDATE"),
+        ("scheduling_waitlistentry", "state", "UPDATE"),
+        ("scheduling_waitlistoffer", "appointment_id", "UPDATE"),
+        ("scheduling_waitlistoffer", "responded_at", "UPDATE"),
+        ("scheduling_waitlistoffer", "state", "UPDATE"),
+    }
+)
+
 
 def apply_scheduling_rls(table: str, tenant_column: str) -> str:
     """Build exact FORCE-RLS DDL for one versioned scheduling table."""

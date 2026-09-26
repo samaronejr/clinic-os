@@ -1,0 +1,23 @@
+{% load i18n %}{% comment %}
+Tabs. Two modes share one look:
+  mode="panels"  in-page sections. The markup is a list of anchor links to
+                 the page's <section class="tab-panel" id="<id>-<key>"
+                 data-tab-panel> elements, all visible without JavaScript;
+                 static/js/components/tabs.js upgrades it to the ARIA tabs
+                 pattern (roving tabindex, arrows, Home/End, automatic
+                 activation) and hides the inactive panels.
+  mode="links"   server routes (patient workspace). Plain links; the current
+                 one carries aria-current="page". No JavaScript.
+
+Context:
+  id       Tab set id (required); panels are "<id>-<key>".
+  label    Accessible name of the tab list (required).
+  tabs     Iterable of {key, label, count, href, disabled}.
+  current  Key of the selected tab (default: first).
+  mode     "panels" (default) or "links".
+  forced   hover | focus | active: forced state on the second tab.
+{% endcomment %}{% if mode == "links" %}<nav class="tabs" aria-label="{{ label }}">{% else %}<div class="tabs" data-tabs="{{ id }}">{% endif %}
+  <ul class="tabs-list"{% if mode != "links" %} aria-label="{{ label }}"{% endif %}>
+    {% for tab in tabs %}<li>{% if tab.disabled %}<a class="tab" role="link" aria-disabled="true">{{ tab.label }}</a>{% else %}<a class="tab{% if forloop.counter == 2 and forced == "hover" %} is-hover{% elif forloop.counter == 2 and forced == "focus" %} is-focus{% elif forloop.counter == 2 and forced == "active" %} is-active{% endif %}" id="{{ id }}-tab-{{ tab.key }}" href="{% if mode == "links" %}{{ tab.href }}{% else %}#{{ id }}-{{ tab.key }}{% endif %}"{% if mode == "links" and tab.key == current %} aria-current="page"{% elif mode == "links" and not current and forloop.first %} aria-current="page"{% endif %} data-tab="{{ tab.key }}"{% if tab.key == current or not current and forloop.first %} data-tab-current{% endif %}>{{ tab.label }}{% if tab.count %} <span class="badge">{{ tab.count }}</span>{% endif %}</a>{% endif %}</li>{% endfor %}
+  </ul>
+{% if mode == "links" %}</nav>{% else %}</div>{% endif %}

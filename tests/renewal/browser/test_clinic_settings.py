@@ -11,6 +11,7 @@ import pytest
 from PIL import Image
 from playwright.sync_api import expect
 
+from renewal.browser.engines import zoom_200
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 
@@ -171,19 +172,11 @@ def test_settings_native_publication_isolation_and_rejection(
         page.emulate_media(forced_colors="active", reduced_motion="reduce")
         capture(page, renewal_artifact_root, "forced-colors", 320)
         page.emulate_media(forced_colors="none")
-        cdp = page.context.new_cdp_session(page)
-        cdp.send(
-            "Emulation.setDeviceMetricsOverride",
-            {
-                "width": 640,
-                "height": 450,
-                "deviceScaleFactor": 2,
-                "mobile": False,
-            },
-        )
-        assert page.evaluate("devicePixelRatio === 2 && innerWidth === 640")
-        capture(page, renewal_artifact_root, "zoom-200-layout", 640)
-        cdp.detach()
+        zoom_context, zoomed = zoom_200(page)
+        zoomed.goto(url)
+        assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
+        capture(zoomed, renewal_artifact_root, "zoom-200-layout", 640)
+        zoom_context.close()
     context.close()
     physician_context = browser.new_context(viewport={"width": width, "height": 900})
     physician = physician_context.new_page()

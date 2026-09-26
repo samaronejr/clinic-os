@@ -10,6 +10,7 @@ from django.http import HttpRequest
 from django.http.response import HttpResponseBase
 from django.shortcuts import render
 
+from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     patient_session_context,
@@ -28,6 +29,10 @@ BYPASS_PATHS: Final = frozenset(
         "/readyz",
         "/readyz/",
         "/auth/login/",
+        # Sessionless ops scrape endpoint; authenticates with its own bearer
+        # token plus a network allowlist (D-19, apps.core.telemetry).
+        "/internal/metrics",
+        "/internal/metrics/",
     }
 )
 BYPASS_PREFIXES: Final = (
@@ -46,6 +51,13 @@ class TenantStreamingResponseError(RuntimeError):
     def __init__(self) -> None:
         """Expose the unsupported streaming contract."""
         super().__init__("streaming tenant responses are not supported")
+
+
+def _staff_denial(request: HttpRequest) -> HttpResponseBase:
+    """Refuse one staff request; the UI API keeps its JSON error contract."""
+    if request.path_info.startswith(UI_API_PREFIX):
+        return ui_api_denial_response()
+    return render(request, "403.html", status=403)
 
 
 def _parse_uuid(raw_value: str | None) -> UUID | None:
@@ -86,13 +98,13 @@ class TenantMiddleware:
         raw_org_id = request.session.get("active_org_id")
         if not isinstance(raw_user_id, str) or not isinstance(raw_org_id, str):
             clear_connection_tenant_gucs()
-            return render(request, "403.html", status=403)
+            return _staff_denial(request)
 
         user_id = _parse_uuid(raw_user_id)
         org_id = _parse_uuid(raw_org_id)
         if user_id is None or org_id is None:
             clear_connection_tenant_gucs()
-            return render(request, "403.html", status=403)
+            return _staff_denial(request)
 
         try:
             with tenant_context(user_id, org_id):
@@ -103,7 +115,7 @@ class TenantMiddleware:
                     transaction.set_rollback(True)
                 return response
         except TenantAccessDeniedError:
-            return render(request, "403.html", status=403)
+            return _staff_denial(request)
 
     def _patient(self, request: HttpRequest) -> HttpResponseBase:
         """Run one patient request inside its own session-bound transaction.

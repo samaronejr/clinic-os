@@ -1,8 +1,11 @@
 # Integration capabilities
 
-Record set: **2026-09-12-v1**. Status: **documentation complete; all 16 external
-capabilities unavailable**. No provider, package, sandbox, processing agreement,
-accountable owner or live approval has been supplied. These records authorize
+Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger).
+
+Record set: **2026-09-24-v2**, which supersedes
+[2026-09-12-v1](records/2026-09-12-v1/) (retained unedited). Status:
+**documentation complete; all 24 external capabilities unavailable**. No
+provider, package, sandbox, processing agreement, accountable owner or live approval has been supplied. These records authorize
 no purchases, outbound patient messages, provider activation or live data.
 
 The canonical renewal plan owns task ordering. This is a versioned contract
@@ -15,28 +18,78 @@ and billing adapters remain protocol stubs; see
 
 ## Current records
 
-| Capability | Record | Dependent renewal tasks |
-| --- | --- | --- |
-| `email` | [Email delivery](records/2026-09-12-v1/email.md) | 13, 14, 19, 44 |
-| `sms` | [SMS delivery](records/2026-09-12-v1/sms.md) | 13, 14, 19, 44 |
-| `whatsapp` | [WhatsApp delivery](records/2026-09-12-v1/whatsapp.md) | 13, 14, 19, 41, 44 |
-| `video` | [Video consultation](records/2026-09-12-v1/video.md) | 13, 27, 28, 29, 30, 43, 44 |
-| `physician_registration` | [Physician registration verification](records/2026-09-12-v1/physician_registration.md) | 13, 31, 32, 34, 44 |
-| `pdf_rendering` | [PDF rendering](records/2026-09-12-v1/pdf_rendering.md) | 33, 34, 35, 36, 44 |
-| `qualified_signing` | [Qualified document signing](records/2026-09-12-v1/qualified_signing.md) | 31, 32, 33, 34, 35, 36, 44 |
-| `signature_verification` | [Independent signature verification](records/2026-09-12-v1/signature_verification.md) | 33, 34, 35, 36, 44 |
-| `pix` | [PIX charging and reconciliation](records/2026-09-12-v1/pix.md) | 13, 37, 38, 39, 40, 43, 44 |
-| `attachment_storage` | [Private attachment and document storage](records/2026-09-12-v1/attachment_storage.md) | 23, 25, 33, 35, 43, 44 |
-| `attachment_scanning` | [Attachment malware scanning](records/2026-09-12-v1/attachment_scanning.md) | 23, 25, 43, 44 |
-| `hosted_pitr` | [Hosted encrypted backup and point-in-time recovery](records/2026-09-12-v1/hosted_pitr.md) | 43, 44, 46, 47 |
-| `data_at_rest` | [AES-256 storage encryption](records/2026-09-12-v1/data_at_rest.md) | 43 implementation; 44 evidence; 46/47 live use |
-| `tenant_key_management` | [Tenant-scoped pgcrypto/KMS envelope encryption](records/2026-09-12-v1/tenant_key_management.md) | 43 implementation; 44 evidence; 46/47 live use |
-| `managed_secrets` | [Managed secret loading and rotation](records/2026-09-12-v1/managed_secrets.md) | 13 external effects; 43 implementation; 44 evidence; 46/47 live use |
-| `tls_transport` | [TLS transport policy](records/2026-09-12-v1/tls_transport.md) | 27, 38 external transports; 43 implementation; 44 evidence; 46/47 live use |
+| Capability | Record | Dependent renewal tasks | Successor todos |
+| --- | --- | --- | --- |
+| `email` | [Email delivery](records/2026-09-24-v2/email.md) | 13, 14, 19, 44 | 4, 51 |
+| `sms` | [SMS delivery](records/2026-09-24-v2/sms.md) | 13, 14, 19, 44 | 4, 51 |
+| `whatsapp` | [WhatsApp delivery](records/2026-09-24-v2/whatsapp.md) | 13, 14, 19, 41, 44 | 4, 51, 54 |
+| `video` | [Video consultation](records/2026-09-24-v2/video.md) | 13, 27, 28, 29, 30, 43, 44 | 4, 37 |
+| `physician_registration` | [Physician registration verification](records/2026-09-24-v2/physician_registration.md) | 13, 31, 32, 34, 44 | 4, 15 |
+| `pdf_rendering` | [PDF rendering](records/2026-09-24-v2/pdf_rendering.md) | 33, 34, 35, 36, 44 | 33, 35 |
+| `qualified_signing` | [Qualified document signing](records/2026-09-24-v2/qualified_signing.md) | 31, 32, 33, 34, 35, 36, 44 | 4, 35 |
+| `signature_verification` | [Independent signature verification](records/2026-09-24-v2/signature_verification.md) | 33, 34, 35, 36, 44 | 35 |
+| `pix` | [PIX charging and reconciliation](records/2026-09-24-v2/pix.md) | 13, 37, 38, 39, 40, 43, 44 | 4, 56, 57 |
+| `attachment_storage` | [Private attachment and document storage](records/2026-09-24-v2/attachment_storage.md) | 23, 25, 33, 35, 43, 44 | 40, 72 |
+| `attachment_scanning` | [Attachment malware scanning](records/2026-09-24-v2/attachment_scanning.md) | 23, 25, 43, 44 | 4, 40 |
+| `hosted_pitr` | [Hosted encrypted backup and point-in-time recovery](records/2026-09-24-v2/hosted_pitr.md) | 43, 44, 46, 47 | 72 |
+| `data_at_rest` | [AES-256 storage encryption](records/2026-09-24-v2/data_at_rest.md) | 43 implementation; 44 evidence; 46/47 live use | 72, 73 |
+| `tenant_key_management` | [Tenant-scoped pgcrypto/KMS envelope encryption](records/2026-09-24-v2/tenant_key_management.md) | 43 implementation; 44 evidence; 46/47 live use | 72 |
+| `managed_secrets` | [Managed secret loading and rotation](records/2026-09-24-v2/managed_secrets.md) | 13 external effects; 43 implementation; 44 evidence; 46/47 live use | 73 |
+| `tls_transport` | [TLS transport policy](records/2026-09-24-v2/tls_transport.md) | 27, 38 external transports; 43 implementation; 44 evidence; 46/47 live use | 73 |
+| `asr` | [Speech recognition (pt-BR)](records/2026-09-24-v2/asr.md) | none (new in 2026-09-24-v2) | 4, 38, 41, 48 |
+| `llm_inference` | [LLM inference for drafting and assistance](records/2026-09-24-v2/llm_inference.md) | none (new in 2026-09-24-v2) | 4, 38, 42, 44, 45, 46, 48 |
+| `sncr` | [SNCR controlled-prescription integration](records/2026-09-24-v2/sncr.md) | none (new in 2026-09-24-v2) | 4, 34, 36 |
+| `rnds` | [RNDS national health data exchange](records/2026-09-24-v2/rnds.md) | none (new in 2026-09-24-v2) | 4, 68 |
+| `tiss` | [TISS insurance exchange](records/2026-09-24-v2/tiss.md) | none (new in 2026-09-24-v2) | 4, 59 |
+| `nfse` | [NFS-e fiscal documents](records/2026-09-24-v2/nfse.md) | none (new in 2026-09-24-v2) | 4, 58 |
+| `psp_card` | [Card payments, installments and split](records/2026-09-24-v2/psp_card.md) | none (new in 2026-09-24-v2) | 4, 56, 57 |
+| `object_storage_media` | [Encrypted object storage for media and AI artifacts](records/2026-09-24-v2/object_storage_media.md) | none (new in 2026-09-24-v2) | 4, 40, 43, 72 |
 
 The [protected data inventory](records/protected-data-v1.md) specifies required
 coverage and the search, migration, key rotation and restoration decisions that
 must precede task 43. It is a contract, not evidence of encryption in operation.
+
+## Lifecycle status
+
+The provider capability registry (`apps/providers`) tracks each capability's
+honest lifecycle state. Regenerate this table with
+`uv run python manage.py provider_capability report --markdown` as the
+`clinic_owner` role.
+
+| Capability | Scope | State | Provider | Environment | Region |
+| --- | --- | --- | --- | --- | --- |
+| `asr` | platform | selected_in_plan | AWS Transcribe | production | sa-east-1 |
+| `attachment_scanning` | platform | selected_in_plan | GuardDuty Malware Protection for S3 | production | sa-east-1 |
+| `attachment_storage` | platform | selected_in_plan | Amazon S3 | production | sa-east-1 |
+| `data_at_rest` | platform | selected_in_plan | Amazon RDS storage encryption | production | sa-east-1 |
+| `email` | platform | selected_in_plan | Amazon SES | production | sa-east-1 |
+| `hosted_pitr` | platform | selected_in_plan | Amazon RDS PITR | production | sa-east-1 |
+| `llm_inference` | platform | selected_in_plan | Amazon Bedrock (in-region models only) | production | sa-east-1 |
+| `managed_secrets` | platform | selected_in_plan | AWS Secrets Manager | production | sa-east-1 |
+| `nfse` | platform | selected_in_plan | NFS-e Padrao Nacional API (gov.br) | production | - |
+| `object_storage_media` | platform | selected_in_plan | Amazon S3 with KMS | production | sa-east-1 |
+| `pdf_rendering` | platform | researched | unselected | - | - |
+| `physician_registration` | platform | researched | unselected | - | - |
+| `pix` | platform | selected_in_plan | Asaas | production | - |
+| `psp_card` | platform | selected_in_plan | Asaas | production | - |
+| `qualified_signing` | platform | selected_in_plan | BirdID (Soluti) | production | - |
+| `rnds` | platform | selected_in_plan | DATASUS RNDS credentialing | production | - |
+| `signature_verification` | platform | researched | unselected | - | - |
+| `sms` | platform | selected_in_plan | Amazon SNS | production | sa-east-1 |
+| `sncr` | platform | selected_in_plan | Anvisa SNCR API | production | - |
+| `tenant_key_management` | platform | selected_in_plan | AWS KMS | production | sa-east-1 |
+| `tiss` | platform | selected_in_plan | direct XML webservice per operadora | production | - |
+| `tls_transport` | platform | researched | unselected | - | - |
+| `video` | platform | selected_in_plan | LiveKit Cloud | production | - |
+| `whatsapp` | platform | selected_in_plan | Meta WhatsApp Cloud API | production | - |
+
+`selected_in_plan` records the plan's proposed primary; it is not an
+approval. Only an owner decision through `provider_capability approve`
+moves a version to `approved_to_test`, and only `activated` plus the live
+data mode makes `apps.providers.services.is_live` return True. The
+positive live path is verified only after the managed secret backend is
+approved (task 43 / external gate): until then the unpatched live policy
+rejects every environment and `is_live` fails closed everywhere.
 
 ## Reading and updating a record
 
@@ -55,6 +108,9 @@ examples, not selections. Historical prices, retention/legal interpretations,
 recording requirements and controlled-prescription dates are not copied as
 current commitments. The renewal plan's corrected scope takes precedence;
 controlled prescriptions and automatic recording/transcription remain excluded.
+Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger):
+SD-1, SD-4, SD-6 and SD-12 turn these exclusions into gated successor scope;
+every record above still stays unavailable.
 
 Retain this dated record set. A selection or changed protocol gets a new dated
 version with a supersedes link, exact provider/API/package versions and owner

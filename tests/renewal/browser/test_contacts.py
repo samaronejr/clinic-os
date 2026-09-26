@@ -25,7 +25,9 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import assert_only_refused_document_logged, new_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -306,7 +308,7 @@ def _open_contacts(page: Page, base_url: str, staff: dict[str, str], name: str) 
     ) as received:
         page.locator("#patient-search-form button[type=submit]").click()
     assert received.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
     with page.expect_navigation():
         row.get_by_role("button", name=re.compile(r"^Contatos")).click()
@@ -546,9 +548,9 @@ def test_failures_mask_deny_and_never_cross_patients(
     assert _no_overflow(page)
     _capture(page, root, f"contacts-blank-get-{width}")
 
-    # The only console entry is the refused clinic-B document itself.
-    assert len(errors) == 1, errors
-    assert re.search(r"\b404\b", errors[0])
+    # The only console entry is the refused clinic-B document itself (where
+    # the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404")
     checks = browser_report["checks"]
     assert isinstance(checks, list)
     checks.append(
@@ -904,7 +906,7 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_contacts_usable(
         ),
     ]
     for scene, options in scenes:
-        context = contacts_browser.new_context(locale="pt-BR", **options)
+        context = new_context(contacts_browser, locale="pt-BR", **options)
         page = context.new_page()
         page.set_default_timeout(20_000)
         try:

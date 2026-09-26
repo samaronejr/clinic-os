@@ -19,7 +19,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import secrets
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
@@ -33,7 +32,13 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    assert_only_refused_document_logged,
+    history_reload,
+    new_context,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -207,10 +212,13 @@ def journey(
     request: pytest.FixtureRequest, availability_browser: Browser
 ) -> Iterator[Page]:
     """One pt-BR context per matrix width, in a browser zone far from the clinic."""
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = availability_browser.new_context(
         locale="pt-BR",
         timezone_id=BROWSER_ZONE,
         viewport={"width": int(request.param), "height": 900},
+        service_workers="block",
     )
     page = context.new_page()
     page.set_default_timeout(20_000)
@@ -402,7 +410,7 @@ def _submit_expecting_error(page: Page) -> None:
     ) as received:
         page.locator(SUBMIT).click()
     assert received.value.status == OK, received.value.status
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
 
 
 def _submit_expecting_success(page: Page, list_path: str) -> None:
@@ -965,9 +973,9 @@ def _refused_retirement(
             response.request.method == "POST" and "/retire/" in response.url
         )
     ) as refused:
-        _row_button(page, ledger_a, 0).click()
+        click_when_hittable(_row_button(page, ledger_a, 0))
     assert refused.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     alert = page.locator(RETIRE_ALERT)
     expect(alert).to_have_attribute("role", "alert")
     expect(alert).to_contain_text(
@@ -1051,7 +1059,10 @@ def _physician_view(
             headers={"Referer": f"{base_url}{list_path}"},
         )
         assert created.status == NOT_FOUND
-        page.reload()
+        # This context keeps its service worker; reload the way the document
+        # does (engines.history_reload: Firefox's page.reload() never reports
+        # load once a worker is registered).
+        history_reload(page)
         assert _ranges(page, 0) == ["08:00-09:00", "16:00-17:00"]
     finally:
         context.close()
@@ -1113,9 +1124,9 @@ def test_failures_show_actionable_errors_and_keep_permission_boundaries(
     _refused_retirement(page, list_path, staff, day, root)
     physician_errors = _physician_view(page, renewal_base_url, staff, day, root)
     _foreign_clinic(page, renewal_base_url, staff, root)
-    # The only console entry is the refused clinic-B document itself.
-    assert len(errors) == 1, errors
-    assert re.search(r"\b404\b", errors[0])
+    # The only console entry is the refused clinic-B document itself (where
+    # the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404")
     assert not physician_errors
     checks = browser_report["checks"]
     assert isinstance(checks, list)
@@ -1276,8 +1287,8 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_availability_usable(
     ]
     _clear_clinic(staff)
     for scene, options in scenes:
-        context = availability_browser.new_context(
-            locale="pt-BR", timezone_id=BROWSER_ZONE, **options
+        context = new_context(
+            availability_browser, locale="pt-BR", timezone_id=BROWSER_ZONE, **options
         )
         page = context.new_page()
         page.set_default_timeout(20_000)

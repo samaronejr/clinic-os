@@ -45,6 +45,13 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
+from renewal.browser.engines import (
+    element_box,
+    install_media,
+    launch_selected,
+    watch_page_errors,
+)
 from renewal.browser.test_availability import (
     SETTLED_JS,
     _sign_in_physician,
@@ -71,9 +78,9 @@ from renewal.browser.test_document_verification import (
     _operation_row,
 )
 from renewal.browser.test_document_verification import _worker as delivery_worker
-from renewal.browser.test_encounter import press
+from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import _overflowing, _redeem, _ring
-from renewal.browser.test_patient_video import MEDIA_ARGS, TRACK_JS
+from renewal.browser.test_patient_video import TRACK_JS
 from renewal.browser.test_prescribing import (
     ITEM,
     concurrent_sign,
@@ -146,7 +153,8 @@ ADAPTERS: Final = {
     },
     "media_devices": {
         "label": "mocked",
-        "detail": "Chromium --use-fake-device-for-media-stream",
+        "detail": "engines.install_media: Chromium fake capture devices; "
+        "Firefox/WebKit synthetic canvas/oscillator getUserMedia",
     },
     "physician_registry": {
         "label": "mocked",
@@ -303,8 +311,7 @@ def keyboard_reaches(case: Day, page: Page, target: Locator, scene: str) -> None
             break
     else:
         pytest.fail(f"{scene}: keyboard never reached the control")
-    box = target.bounding_box()
-    assert box is not None
+    box = element_box(target)
     assert box["height"] >= MIN_TARGET_PX, (scene, box)
     case.keyboard[scene] = stops
     capture(case, page, f"keyboard-{scene}")
@@ -314,7 +321,7 @@ def watch(case: Day, persona: str, page: Page) -> Page:
     """Record page errors and console errors for one persona's page."""
     errors = case.errors.setdefault(persona, [])
     page.set_default_timeout(TIMEOUT_MS)
-    page.on("pageerror", lambda error: errors.append(str(error)))
+    watch_page_errors(page, errors)
     page.on(
         "console",
         lambda message: (
@@ -500,7 +507,7 @@ def answer_challenge(page: Page, staff: dict[str, str]) -> None:
 
 def press_stepped(page: Page, staff: dict[str, str], action: str) -> None:
     """Press an action that may demand recent verification, then press again."""
-    press(page, action)
+    press_in_view(page, action)
     if "/auth/step-up/" in page.url or "/auth/verify/" in page.url:
         answer_challenge(page, staff)
         press(page, action)
@@ -540,7 +547,7 @@ def configure_clinic(case: Day, admin: Page, manager: dict[str, str]) -> None:
     questionnaire.locator("#questionnaire_q2_options").fill("Telefone\nMensagem")
     questionnaire.locator("#questionnaire_q3_label").fill("Tem alergia conhecida?")
     questionnaire.locator("#questionnaire_q3_type").select_option("boolean")
-    press(admin, "questionnaire")
+    press_in_view(admin, "questionnaire")
     expect(
         admin.locator(
             '[data-questionnaire-version="1"]', has_text=case.questionnaire_title
@@ -555,7 +562,7 @@ def open_patient_row(case: Day, page: Page, button: str) -> None:
     page.locator("#id_q").fill(case.patient_name)
     with page.expect_response(lambda response: response.request.method == "POST"):
         page.locator("#patient-search-form button[type=submit]").click()
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=case.patient_name)
     with page.expect_navigation():
         row.get_by_role("button", name=re.compile(f"^{button}")).click()
@@ -576,7 +583,7 @@ def reception_prepares(case: Day, reception: Page) -> str:
     reception.locator("#id_q").fill(case.patient_name)
     with reception.expect_response(lambda r: r.request.method == "POST"):
         reception.locator("#patient-search-form button[type=submit]").click()
-    reception.wait_for_function(SETTLED_JS)
+    wait_for_js(reception, SETTLED_JS)
     with reception.expect_navigation():
         reception.locator(".intake-empty a.button--secondary").click()
     reception.locator("#id_full_name").fill(case.patient_name)
@@ -625,7 +632,7 @@ def book(case: Day, reception: Page) -> None:
             f"/scheduling/clinics/{case.clinic}/appointments/new/",
             submit.click,
         )
-        reception.wait_for_function(SETTLED_JS)
+        wait_for_js(reception, SETTLED_JS)
         # The dropped reply is announced: an alert names the failure and the
         # recovery, and the submit is usable again for the deliberate retry.
         notice = reception.locator("[data-network-error]")
@@ -924,7 +931,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     for name, value in ITEM.items():
         physician.locator(f"#id_items-0-{name}").fill(value)
     press(physician, "save")
-    press(physician, "render_document")
+    press_in_view(physician, "render_document")
     expect(physician.locator("[data-step]")).to_have_attribute("data-step", "review")
     document = physician.locator("[data-document]").first.get_attribute("data-document")
     assert document
@@ -996,11 +1003,13 @@ def release_and_deliver(case: Day, physician: Page, document: str) -> None:
     physician.goto(case.url(f"/prescription/clinics/{case.clinic}/draft/"))
     row = physician.locator(f'[data-document="{document}"]')
     with physician.expect_navigation():
-        row.locator('button[value="release_document"]').click()
+        click_when_hittable(row.locator('button[value="release_document"]'))
     with physician.expect_navigation():
-        physician.locator(
-            f'[data-document="{document}"] button[value="deliver_document"]'
-        ).click()
+        click_when_hittable(
+            physician.locator(
+                f'[data-document="{document}"] button[value="deliver_document"]'
+            )
+        )
     delivery = owner_rows(
         case,
         "SELECT id::text FROM clinic_app.comms_integrationoperation "
@@ -1065,7 +1074,7 @@ def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     assert code.startswith(CODE_PREFIX)
     assert qr_renders(reception)
     expect(reception.locator("main")).to_contain_text("não pagável")
-    press(reception, "release")
+    press_in_view(reception, "release")
     capture(case, reception, "reception-charge-pending")
 
     patient.goto(case.url("/patient/"))
@@ -1220,13 +1229,15 @@ def reflow_scenes(case: Day, patient: Page) -> None:
 
 
 def _context(browser: Browser, case: Day, *, media: bool) -> BrowserContext:
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = browser.new_context(
         locale="pt-BR",
         timezone_id="America/Sao_Paulo",
         viewport={"width": case.width, "height": 900},
+        service_workers="block",
     )
-    if media:
-        context.grant_permissions(["camera", "microphone"], origin=case.base)
+    install_media(context, case.base, granted=media)
     return context
 
 
@@ -1256,10 +1267,7 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
     provision_physician_profile(case.staff)
     manager = seed_manager(case.staff)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts: list[BrowserContext] = []
         try:
             pages: dict[str, Page] = {}

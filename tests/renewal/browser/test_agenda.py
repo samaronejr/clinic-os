@@ -39,7 +39,9 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import assert_only_refused_document_logged, new_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -231,10 +233,13 @@ def agenda_browser(renewal_page: Page) -> Browser:
 @pytest.fixture(params=MATRIX_WIDTHS, ids=[f"{width}px" for width in MATRIX_WIDTHS])
 def journey(request: pytest.FixtureRequest, agenda_browser: Browser) -> Iterator[Page]:
     """One pt-BR context per matrix width, in a browser zone far from the clinic."""
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = agenda_browser.new_context(
         locale="pt-BR",
         timezone_id=BROWSER_ZONE,
         viewport={"width": int(request.param), "height": 900},
+        service_workers="block",
     )
     page = context.new_page()
     page.set_default_timeout(20_000)
@@ -470,7 +475,7 @@ def _submit_expecting_error(page: Page, submit: str) -> None:
     ) as received:
         page.locator(submit).click()
     assert received.value.status == OK, received.value.status
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
 
 
 @contextlib.contextmanager
@@ -1057,9 +1062,9 @@ def _paginated(
     assert _no_overflow(page)
     _capture(page, root, f"paginated-{width}", full_page=False)
     with page.expect_navigation():
-        page.locator(".agenda-pagination a").filter(
-            has_text=gettext("Next page")
-        ).click()
+        click_when_hittable(
+            page.locator(".agenda-pagination a").filter(has_text=gettext("Next page"))
+        )
     page.wait_for_url(f"**{_agenda_path(staff, 'day', busy_day, 2)}")
     assert "?" not in page.url
     assert len(_rows(page)) == 1
@@ -1637,9 +1642,9 @@ def test_failures_show_recoverable_conflicts_and_keep_boundaries(
     _replayed_booking_key(page, renewal_base_url, staff, day)
     physician_errors = _physician_view(page, renewal_base_url, staff, day, root)
     _cross_clinic(page, renewal_base_url, staff, day, root)
-    # The only console entry is the refused clinic-C document itself.
-    assert len(errors) == 1, errors
-    assert re.search(r"\b404\b", errors[0])
+    # The only console entry is the refused clinic-C document itself (where
+    # the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404")
     assert not physician_errors
     checks = browser_report["checks"]
     assert isinstance(checks, list)
@@ -1815,8 +1820,8 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_agenda_usable(
     ]
     _seed_for_reflow(staff)
     for scene, options in scenes:
-        context = agenda_browser.new_context(
-            locale="pt-BR", timezone_id=BROWSER_ZONE, **options
+        context = new_context(
+            agenda_browser, locale="pt-BR", timezone_id=BROWSER_ZONE, **options
         )
         page = context.new_page()
         page.set_default_timeout(20_000)

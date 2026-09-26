@@ -1,0 +1,1 @@
+"""Provider capability lifecycle tests."""

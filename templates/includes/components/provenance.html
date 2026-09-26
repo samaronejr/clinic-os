@@ -1,0 +1,10 @@
+{% load i18n %}{% comment %}
+Provenance badge: where a clinical statement came from. Rectangular (not a
+pill) so it never reads as a status badge. AI-drafted is dashed until a
+person confirms it; confirmed is solid success. Text always names the kind.
+
+Context:
+  kind    reported | observed | imported | ai_drafted | confirmed (required).
+  detail  Short source detail ("by the patient", "Lab Sintético 12/03").
+  id      Optional element id.
+{% endcomment %}<span class="provenance provenance--{{ kind }}"{% if id %} id="{{ id }}"{% endif %} data-provenance="{{ kind }}">{% if kind == "reported" %}{% include "includes/components/icon.html" with name="speech" only %}{% trans "Reported" %}{% elif kind == "observed" %}{% include "includes/components/icon.html" with name="eye" only %}{% trans "Observed" %}{% elif kind == "imported" %}{% include "includes/components/icon.html" with name="import" only %}{% trans "Imported" %}{% elif kind == "ai_drafted" %}{% include "includes/components/icon.html" with name="draft" only %}{% trans "AI draft" %}{% elif kind == "confirmed" %}{% include "includes/components/icon.html" with name="check" only %}{% trans "Confirmed" %}{% endif %}{% if detail %} <span class="provenance-detail">{{ detail }}</span>{% endif %}</span>

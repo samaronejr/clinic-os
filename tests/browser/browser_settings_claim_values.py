@@ -16,7 +16,13 @@ PROCESS_PORT = 18443
 PROJECT = "clinic_phase1a_browser_fixture"
 DATABASE = f"{PROJECT}_clinic"
 MATERIALIZER_NETWORK = "clinic_phase1a_materializer_fixture_network"
-GUNICORN_CONFIG = b'forwarded_allow_ips = ""\nsecure_scheme_headers = {}\n'
+GUNICORN_CONFIG = (
+    b'forwarded_allow_ips = ""\n'
+    b"secure_scheme_headers = {}\n"
+    b"# ADR-014: access logs carry method + status + duration only; the request\n"
+    b"# line, query, remote address and headers are never logged (PHI boundary).\n"
+    b'access_log_format = "%(m)s %(s)s %(D)s"\n'
+)
 
 
 def browser_environment(attempt_id: str, socket_path: Path) -> JsonObject:

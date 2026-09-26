@@ -13,7 +13,9 @@ import pytest
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
+from renewal.browser._page_wait import click_when_hittable
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -164,13 +166,13 @@ def _seed(
 def _capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "questionnaires"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 def _press(page: Page, action: str) -> None:
     with page.expect_navigation():
-        page.locator(f'button[value="{action}"]').first.click()
+        click_when_hittable(page.locator(f'button[value="{action}"]').first)
 
 
 def _other_patient_denial(
@@ -431,7 +433,8 @@ def test_long_content_and_stale_editor_matrix(
     data = _seed(staff, questions=LONG_QUESTIONS, title="T" * 160)
     browser = renewal_page.context.browser
     assert browser is not None
-    context = browser.new_context(
+    context = new_context(
+        browser,
         locale="pt-BR",
         viewport={"width": width // zoom, "height": 900 // zoom},
         device_scale_factor=zoom,
