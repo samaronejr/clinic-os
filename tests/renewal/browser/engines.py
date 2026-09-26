@@ -79,6 +79,25 @@ Playwright 1.61.0, so this module owns the one place each differs:
   ``full_page_screenshot`` captures such a page as consecutive full-width
   sections (``<name>-partN.png``) that together cover the whole page, on
   every engine.
+* Screenshot cost. WebKit's capture is CPU-bound: on 4 CPUs at a 100% CPU
+  quota, scrolling a showcase block into view and taking its element
+  screenshot costs 280 ms on WebKit against 101 ms on Chromium, whose capture
+  is paced by frames and does not slow down (reproduction:
+  fix3/webkit-capture-cost-probe.txt). On the hosted runner the component
+  matrix's 273 element screenshots per case took WebKit 73-88 s (46-50 s
+  locally), past the runner's 900 s pytest bound. Capture cost there is
+  mostly per capture: a 1280x8100 document rect costs 574 ms against 206 ms
+  for the 1280x900 viewport, so the matrix crops its blocks from a few tall
+  captures instead.
+* Off-screen capture. A full-page screenshot clip paints a document rect
+  far below the viewport exactly as the viewport would on Chromium (crops
+  match ``block.screenshot()`` pixel for pixel) and WebKit (the same
+  anti-aliasing differences as a viewport crop). In the 320px matrix,
+  Firefox paints some boxes of blocks 49700-72700px down the page 1px off
+  and one block 1px taller, which a crop from the viewport does not show
+  (reproduction: fix3/matrix-capture-equality-probe.txt).
+  ``paints_offscreen_clips_like_the_viewport`` picks the capture: document
+  strips, or on Firefox the viewport scrolled to the block.
 * Element size. Playwright's Firefox backend builds ``bounding_box()`` from
   the float32 corner points of Gecko's privileged ``getBoxQuads()`` and
   subtracts the edges (Juggler ``PageAgent._getNodeBoundingBox``), so a box
@@ -504,6 +523,11 @@ def focus_reveal(context: BrowserContext, *, text_entry: bool) -> str:
 def focuses_dialogs_and_scrollers(context: BrowserContext) -> bool:
     """Whether Tab also stops on <dialog> elements and scroll containers."""
     return _engine_of(context) != "chromium"
+
+
+def paints_offscreen_clips_like_the_viewport(context: BrowserContext) -> bool:
+    """Whether a full-page clip far below the viewport paints as on screen."""
+    return _engine_of(context) != "firefox"
 
 
 def scroll_width_includes_flex_end_padding(context: BrowserContext) -> bool:

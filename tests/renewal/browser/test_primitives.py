@@ -10,7 +10,9 @@ product ships. All content is synthetic; tracing stays off.
 
 from __future__ import annotations
 
+import io
 import json
+import math
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -19,6 +21,7 @@ import pytest
 from apps.core.templatetags.components import COMPONENT_STATES
 from django.template.loader import render_to_string
 from django.utils.translation import gettext
+from PIL import Image
 from playwright.sync_api import expect
 
 from renewal.browser._page_wait import wait_for_js
@@ -26,6 +29,7 @@ from renewal.browser.engines import (
     focus_reveal,
     focuses_dialogs_and_scrollers,
     full_page_screenshot,
+    paints_offscreen_clips_like_the_viewport,
     scroll_width_includes_flex_end_padding,
 )
 
@@ -33,7 +37,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from playwright.sync_api import Browser, BrowserContext, Page, Route
+    from playwright.sync_api import (
+        Browser,
+        BrowserContext,
+        FloatRect,
+        Locator,
+        Page,
+        Route,
+    )
 
 OK_STATUS = 200
 FORBIDDEN_STATUS = 403
@@ -952,6 +963,86 @@ AXE_RUN_JS = """async () => {
 }"""
 
 
+BLOCK_RECT_JS = """(element) => {
+  const rect = element.getBoundingClientRect();
+  return [rect.left + scrollX, rect.top + scrollY, rect.right + scrollX,
+    rect.bottom + scrollY];
+}"""
+PAGE_SIZE_JS = """() => [document.documentElement.scrollWidth,
+  document.documentElement.scrollHeight]"""
+SCROLL_TO_JS = """(top) => {
+  window.scrollTo({top, left: 0, behavior: 'instant'});
+  return [scrollX, scrollY];
+}"""
+# One document strip per capture: about nine 900px screens, far below the
+# engines' 32767 device-pixel limit at device scale factor 1.
+STRIP_PX = 8100
+
+
+class _BlockCapture:
+    """Screenshot each block, cropped from a capture that shows it whole.
+
+    ``block.screenshot()`` scrolls, waits for two stable frames and captures
+    once per block. WebKit's capture is CPU-bound (engines.py, Screenshot
+    cost), so 273 of them per matrix case outran the runner's pytest bound on
+    the hosted runner. Blocks are cropped from full-page strips of
+    ``STRIP_PX``, or on Firefox from the viewport scrolled to the block
+    (engines.paints_offscreen_clips_like_the_viewport). A block that does not
+    fit keeps ``block.screenshot()``.
+    """
+
+    def __init__(self, page: Page) -> None:
+        size = page.viewport_size
+        assert size is not None
+        self._page = page
+        self._strips = paints_offscreen_clips_like_the_viewport(page.context)
+        self._page_width, self._page_height = page.evaluate(PAGE_SIZE_JS)
+        self._span = STRIP_PX if self._strips else size["height"]
+        self._width = self._page_width if self._strips else size["width"]
+        self._shot: Image.Image | None = None
+        self._x = 0.0
+        self._top = 0.0
+        self._bottom = 0.0
+
+    def png(self, block: Locator) -> bytes:
+        left, top, right, bottom = block.evaluate(BLOCK_RECT_JS)
+        first, last = math.floor(top), math.ceil(bottom)
+        if last - first > self._span or left < 0 or right > self._page_width:
+            return block.screenshot()
+        if self._shot is None or not self._top <= first <= last <= self._bottom:
+            self._capture(first)
+        assert self._shot is not None
+        scale = self._shot.width / self._width
+        crop = self._shot.crop(
+            (
+                math.floor((left - self._x) * scale),
+                math.floor((top - self._top) * scale),
+                math.ceil((right - self._x) * scale),
+                math.ceil((bottom - self._top) * scale),
+            )
+        )
+        png = io.BytesIO()
+        crop.save(png, format="PNG")
+        return png.getvalue()
+
+    def _capture(self, first: int) -> None:
+        if self._strips:
+            height = min(self._span, self._page_height - first)
+            clip: FloatRect = {
+                "x": 0,
+                "y": first,
+                "width": self._page_width,
+                "height": height,
+            }
+            raw = self._page.screenshot(full_page=True, clip=clip)
+            self._x, self._top, self._bottom = 0.0, first, first + height
+        else:
+            self._x, self._top = self._page.evaluate(SCROLL_TO_JS, first)
+            raw = self._page.screenshot()
+            self._bottom = self._top + self._span
+        self._shot = Image.open(io.BytesIO(raw))
+
+
 def _write_json(destination: Path, payload: object) -> str:
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n")
@@ -973,13 +1064,13 @@ def test_every_component_state_in_every_theme_density_and_width(
     try:
         assert page.evaluate("document.scrollingElement.scrollWidth") <= size[0]
         folder = showcase.root / "matrix" / f"{theme}-{density}-{viewport}"
+        capture = _BlockCapture(page)
         captures = 0
         worst: dict[str, float] = {}
         for name in (*COMPONENTS, *PRIMITIVES):
             for state in SC8_STATES:
                 block = page.locator(f'[data-primitive="{name}"][data-state="{state}"]')
                 assert block.count() == 1, (name, state)
-                block.scroll_into_view_if_needed()
                 assert block.is_visible(), (name, state)
                 overflow = block.evaluate(OVERFLOW_JS, _flex_end_padding(page))
                 assert overflow == [], (theme, density, viewport, name, state, overflow)
@@ -998,7 +1089,7 @@ def test_every_component_state_in_every_theme_density_and_width(
                 worst[f"{name}-{state}"] = min(row["ratio"] for row in rows)
                 destination = folder / f"{name}-{state}.png"
                 destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                destination.write_bytes(block.screenshot())
+                destination.write_bytes(capture.png(block))
                 destination.chmod(0o600)
                 captures += 1
         assert captures == (len(COMPONENTS) + len(PRIMITIVES)) * len(SC8_STATES)
