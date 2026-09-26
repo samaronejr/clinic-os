@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
     from playwright._impl._console_message import ConsoleMessage as ConsoleMessageImpl
     from playwright._impl._page import Page as PageImpl
-    from playwright.sync_api import JSHandle, Page
+    from playwright.sync_api import JSHandle, Locator, Page
 
 _WATCH_HEAD: Final = """([token, arg, timeout]) => {
   const deadline = timeout > 0 ? performance.now() + timeout : Infinity;
@@ -198,3 +198,82 @@ def wait_for_js(
     if message.text.startswith(failed):
         raise WaitPredicateError(message.text.removeprefix(failed).strip())
     return cast("JSHandle", mapping.from_impl(message.args[1]))
+
+
+# A press is only delivered once the target is where the pointer will land.
+# Playwright's own click scrolls and presses back to back; after a long
+# scroll, Firefox can lose the press (only pointerup/mouseup reached the
+# button in fix-a5's retention diagnostics), so nothing submits. The target is
+# registered under a per-press token so the hit test needs no DOM change.
+_REGISTER_PRESS_JS: Final = """(element, token) => {
+  const targets = window.__clinicPressTargets || new Map();
+  window.__clinicPressTargets = targets;
+  targets.set(token, element);
+}"""
+# The centre of the target hit-tests to the target itself or a descendant.
+_HITTABLE_JS: Final = """(token) => {
+  const element = window.__clinicPressTargets.get(token);
+  const rect = element.getBoundingClientRect();
+  const hit = document.elementFromPoint(
+    rect.x + rect.width / 2, rect.y + rect.height / 2);
+  return hit !== null && element.contains(hit);
+}"""
+_FORGET_PRESS_JS: Final = "(token) => window.__clinicPressTargets.delete(token)"
+# What the centre hit-tests to instead, for the failure message.
+_MISSED_PRESS_JS: Final = """(token) => {
+  const element = window.__clinicPressTargets.get(token);
+  const rect = element.getBoundingClientRect();
+  const hit = document.elementFromPoint(
+    rect.x + rect.width / 2, rect.y + rect.height / 2);
+  const name = (node) => (node ? node.tagName.toLowerCase()
+    + (node.id ? '#' + node.id : '')
+    + (node.className && typeof node.className === 'string'
+      ? '.' + node.className.trim().split(/\\s+/).join('.') : '') : 'nothing');
+  return 'centre (' + Math.round(rect.x + rect.width / 2) + ','
+    + Math.round(rect.y + rect.height / 2) + ') of ' + name(element) + ' hits '
+    + name(hit) + '; viewport ' + innerWidth + 'x' + innerHeight
+    + ', scrollY ' + Math.round(scrollY) + ' of scrollHeight '
+    + document.scrollingElement.scrollHeight + ', overflow '
+    + getComputedStyle(document.documentElement).overflowY + '/'
+    + getComputedStyle(document.body).overflowY + ', ' + document.visibilityState;
+}"""
+
+
+class PressNotHittableError(PlaywrightTimeoutError):
+    """The press target never became the element under its own centre."""
+
+    def __init__(self, missed: str, detail: str) -> None:
+        super().__init__(f"{missed} Press target not hittable: {detail}")
+
+
+def click_when_hittable(locator: Locator, *, timeout: float | None = None) -> None:
+    """Scroll ``locator`` into view, require it still and hittable, then click.
+
+    Order: scroll first; then Playwright's ``stable`` element state (the same
+    bounding box on two consecutive animation frames, observed in its utility
+    world, so it also holds with page JavaScript disabled); then the centre
+    must hit-test to the element (``wait_for_js``). Only then is the click
+    sent, and it no longer needs to scroll. Each wait uses the page's default
+    timeout unless ``timeout`` (milliseconds) is given; if a precondition never
+    holds the wait raises and no click is sent.
+
+    Use it on the context's front page: headless Firefox does not apply a
+    scroll to a second page of the same context, so the precondition fails
+    there (prescription-draft's second tab, fix-a5 round 3) while Playwright's
+    own click would compensate.
+    """
+    locator.scroll_into_view_if_needed(timeout=timeout)
+    handle = locator.element_handle(timeout=timeout)
+    try:
+        handle.wait_for_element_state("stable", timeout=timeout)
+        token = f"clinic-os-press-{secrets.token_hex(8)}"
+        handle.evaluate(_REGISTER_PRESS_JS, token)
+        try:
+            wait_for_js(locator.page, _HITTABLE_JS, arg=token, timeout=timeout)
+        except WaitTimeoutError as missed:
+            detail = locator.page.evaluate(_MISSED_PRESS_JS, token)
+            raise PressNotHittableError(str(missed), detail) from missed
+        locator.page.evaluate(_FORGET_PRESS_JS, token)
+    finally:
+        handle.dispose()
+    locator.click(timeout=timeout)

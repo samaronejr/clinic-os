@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import click_when_hittable
 from renewal.browser.engines import browser_zoom_200, element_box, zoom_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
@@ -34,7 +35,9 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 
 def edit(page: Page, kind: str, action: str) -> None:
     with page.expect_navigation():
-        page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first.click()
+        click_when_hittable(
+            page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first
+        )
 
 
 def save(page: Page, expected_status: int = 302) -> None:

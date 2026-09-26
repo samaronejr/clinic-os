@@ -32,7 +32,7 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
@@ -973,7 +973,7 @@ def _refused_retirement(
             response.request.method == "POST" and "/retire/" in response.url
         )
     ) as refused:
-        _row_button(page, ledger_a, 0).click()
+        click_when_hittable(_row_button(page, ledger_a, 0))
     assert refused.value.status == OK
     wait_for_js(page, SETTLED_JS)
     alert = page.locator(RETIRE_ALERT)

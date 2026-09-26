@@ -12,6 +12,7 @@ import pytest
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import click_when_hittable
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import element_box
 from renewal.browser.test_availability import (
@@ -21,7 +22,7 @@ from renewal.browser.test_availability import (
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_encounter import DAYS, press, seed
+from renewal.browser.test_encounter import DAYS, press, press_in_view, seed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -154,7 +155,7 @@ def fill_and_save(page: Page, content: dict[str, str]) -> None:
 
 def finalize_current(page: Page) -> None:
     """Finalize the visible draft and assert the frozen state marker."""
-    press(page, "finalize")
+    press_in_view(page, "finalize")
     expect(page.locator("[data-version]")).to_have_attribute("data-state", "finalized")
     expect(page.locator("[data-finalization]")).to_have_attribute(
         "data-finalization", "local"
@@ -190,19 +191,21 @@ def open_draft(
 def review_superseded(page: Page, root: Path, width: int, digest: str) -> None:
     """Render the preserved superseded original in the review panel."""
     with page.expect_navigation():
-        page.locator('[data-version-row] button[value="review"]').last.click()
+        click_when_hittable(
+            page.locator('[data-version-row] button[value="review"]').last
+        )
     expect(page.locator("[data-review]")).to_have_attribute("data-state", "superseded")
     expect(page.locator("[data-review]")).to_have_attribute("data-digest", digest)
     assert FIRST["subjective"] in page.content()
     capture(page, root, "review-superseded", width)
-    press(page, "current")
+    press_in_view(page, "current")
 
 
 def close_and_verify(page: Page, url: str, staff: dict[str, str]) -> str:
     """Close the encounter; a repeated POST returns the same closed row."""
     encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
     assert encounter is not None
-    press(page, "close")
+    press_in_view(page, "close")
     expect(page.locator("[data-encounter]")).to_have_attribute(
         "data-encounter-state", "closed"
     )

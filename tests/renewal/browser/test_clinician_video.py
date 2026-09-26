@@ -24,6 +24,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     install_media,
@@ -45,7 +46,7 @@ from renewal.browser.test_availability import (
 )
 from renewal.browser.test_encounter import FIELDS, stored
 from renewal.browser.test_patient_access import _redeem
-from renewal.browser.test_patient_video import TRACK_JS
+from renewal.browser.test_patient_video import PENDING_PROMPT_JS, TRACK_JS
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 from renewal.browser.test_teleconsult import (
     _accept_consent,
@@ -482,7 +483,7 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
         "Relato retificado offline"
     )
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
-    physician.locator('button[value="note-save"]').click()
+    click_when_hittable(physician.locator('button[value="note-save"]'))
     expect(physician.locator("#save-state")).to_contain_text("Sem conexão")
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     expect(physician.locator("#save-state")).to_be_focused()
@@ -683,6 +684,31 @@ def _reflow(physician: Page, case: _Case, session_id: str, name: str) -> None:
     physician.emulate_media(forced_colors="none")
 
 
+def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) -> None:
+    """The clinician room connects and follows the session while the prompt is open."""
+    _sign_in_physician(prompted, case.base, case.staff)
+    prompted.goto(case.staff_url)
+    with prompted.expect_navigation():
+        prompted.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    expect(prompted.locator("[data-teleconsult='clinician']")).to_have_attribute(
+        "data-session", session_id
+    )
+    expect(prompted.locator("h1")).to_have_text(name)
+    panel = prompted.locator("#room-panel")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    expect(panel).to_have_attribute("data-media", "pending")
+    expect(prompted.locator("[data-connection-status]")).to_contain_text(
+        "Aguardando o paciente"
+    )
+    # Answering the prompt later brings the devices into the same room.
+    wait_for_js(prompted, "() => window.__lateMedia.release !== null")
+    prompted.evaluate("() => window.__lateMedia.release()")
+    expect(panel).to_have_attribute("data-media", "ready")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    assert prompted.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
+    _capture(prompted, case, "prompt-answered")
+
+
 def _journey(  # noqa: PLR0913 - the journey needs its full context
     physician: Page,
     patient: Page,
@@ -809,6 +835,16 @@ def test_clinician_video_journey(
                 _accept_consent(third_patient, base)
                 third_session = _provision(physician, case, third)
                 _reflow(physician, case, third_session, third["name"])
+            fourth = _seed_patient(case, 16, "Paciente Sintético Quatro")
+            contexts.append(_context(browser, case, media=False))
+            fourth_patient = _page(contexts[-1], errors, console)
+            _redeem(fourth_patient, base, case.staff["clinic_a"], fourth["code"])
+            _accept_consent(fourth_patient, base)
+            fourth_session = _provision(physician, case, fourth)
+            contexts.append(_context(browser, case, media=True))
+            contexts[-1].add_init_script(PENDING_PROMPT_JS)
+            prompted = _page(contexts[-1], errors, console)
+            _unanswered_prompt(prompted, case, fourth_session, fourth["name"])
             assert not errors, errors
             # The browser logs the two deliberate failures: the rejected save
             # (503; Firefox logs no failed response) and the offline save

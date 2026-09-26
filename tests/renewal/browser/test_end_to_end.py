@@ -45,7 +45,7 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser.engines import (
     element_box,
     install_media,
@@ -78,7 +78,7 @@ from renewal.browser.test_document_verification import (
     _operation_row,
 )
 from renewal.browser.test_document_verification import _worker as delivery_worker
-from renewal.browser.test_encounter import press
+from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import _overflowing, _redeem, _ring
 from renewal.browser.test_patient_video import TRACK_JS
 from renewal.browser.test_prescribing import (
@@ -507,7 +507,7 @@ def answer_challenge(page: Page, staff: dict[str, str]) -> None:
 
 def press_stepped(page: Page, staff: dict[str, str], action: str) -> None:
     """Press an action that may demand recent verification, then press again."""
-    press(page, action)
+    press_in_view(page, action)
     if "/auth/step-up/" in page.url or "/auth/verify/" in page.url:
         answer_challenge(page, staff)
         press(page, action)
@@ -547,7 +547,7 @@ def configure_clinic(case: Day, admin: Page, manager: dict[str, str]) -> None:
     questionnaire.locator("#questionnaire_q2_options").fill("Telefone\nMensagem")
     questionnaire.locator("#questionnaire_q3_label").fill("Tem alergia conhecida?")
     questionnaire.locator("#questionnaire_q3_type").select_option("boolean")
-    press(admin, "questionnaire")
+    press_in_view(admin, "questionnaire")
     expect(
         admin.locator(
             '[data-questionnaire-version="1"]', has_text=case.questionnaire_title
@@ -931,7 +931,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     for name, value in ITEM.items():
         physician.locator(f"#id_items-0-{name}").fill(value)
     press(physician, "save")
-    press(physician, "render_document")
+    press_in_view(physician, "render_document")
     expect(physician.locator("[data-step]")).to_have_attribute("data-step", "review")
     document = physician.locator("[data-document]").first.get_attribute("data-document")
     assert document
@@ -1003,11 +1003,13 @@ def release_and_deliver(case: Day, physician: Page, document: str) -> None:
     physician.goto(case.url(f"/prescription/clinics/{case.clinic}/draft/"))
     row = physician.locator(f'[data-document="{document}"]')
     with physician.expect_navigation():
-        row.locator('button[value="release_document"]').click()
+        click_when_hittable(row.locator('button[value="release_document"]'))
     with physician.expect_navigation():
-        physician.locator(
-            f'[data-document="{document}"] button[value="deliver_document"]'
-        ).click()
+        click_when_hittable(
+            physician.locator(
+                f'[data-document="{document}"] button[value="deliver_document"]'
+            )
+        )
     delivery = owner_rows(
         case,
         "SELECT id::text FROM clinic_app.comms_integrationoperation "
@@ -1072,7 +1074,7 @@ def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     assert code.startswith(CODE_PREFIX)
     assert qr_renders(reception)
     expect(reception.locator("main")).to_contain_text("não pagável")
-    press(reception, "release")
+    press_in_view(reception, "release")
     capture(case, reception, "reception-charge-pending")
 
     patient.goto(case.url("/patient/"))

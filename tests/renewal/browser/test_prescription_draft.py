@@ -15,7 +15,7 @@ from renewal.browser.test_availability import (
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_encounter import DAYS, press, seed
+from renewal.browser.test_encounter import DAYS, press, press_in_view, seed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -123,7 +123,7 @@ def native_reflow(page: Page, root: Path) -> None:
     try:
         fallback = native.new_page()
         fallback.goto(page.url)
-        press(fallback, "save")
+        press_in_view(fallback, "save")
         expect(fallback.locator("[data-draft]")).to_have_attribute("data-version", "3")
         capture(fallback, root, "native-200-percent", 640)
     finally:

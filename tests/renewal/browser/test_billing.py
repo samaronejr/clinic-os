@@ -28,6 +28,7 @@ import psycopg
 import pytest
 from playwright.sync_api import ViewportSize, expect
 
+from renewal.browser._page_wait import click_when_hittable
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     grant_clipboard,
@@ -38,7 +39,7 @@ from renewal.browser.engines import (
     zoom_200,
 )
 from renewal.browser.test_availability import availability_staff
-from renewal.browser.test_encounter import press
+from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import (
     MIN_TARGET_PX,
     _no_overflow,
@@ -236,9 +237,9 @@ def repeat_charge(page: Page, charge_url: str, amount: str) -> str:
     """Open the deliberate second charge offered by one charge's own screen."""
     page.goto(charge_url)
     with page.expect_navigation():
-        page.locator("[data-repeat-charge]").click()
+        click_when_hittable(page.locator("[data-repeat-charge]"))
     expect(page.locator("#id_amount")).to_have_value(amount)
-    press(page, "create")
+    press_in_view(page, "create")
     expect(page.locator("[data-payment-state]")).to_have_attribute(
         "data-payment-state", "draft"
     )
@@ -480,7 +481,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         # A cancelled charge stops offering the code nobody should pay.
         admin.goto(expired_url)
-        press(admin, "cancel")
+        press_in_view(admin, "cancel")
         expect_state(admin, "cancelled")
         expect(admin.locator("[data-code]")).to_have_count(0)
         expect(admin.locator("[data-qr]")).to_have_count(0)

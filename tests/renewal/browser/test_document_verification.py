@@ -25,7 +25,7 @@ from renewal.browser.test_availability import (
     _sign_in_physician,
     availability_staff,
 )
-from renewal.browser.test_encounter import press, seed
+from renewal.browser.test_encounter import press, press_in_view, seed
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
@@ -339,7 +339,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         for field, value in ITEM.items():
             page.locator(f"#id_items-0-{field}").fill(value)
         press(page, "save")
-        press(page, "render_document")
+        press_in_view(page, "render_document")
         _capture(page, root, "rendered")
         document = page.locator("[data-document]").first.get_attribute("data-document")
         assert document
@@ -367,7 +367,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         _capture(anon, root, "public-verified")
 
         # Release + patient download through a real redeemed session.
-        press(page, "release_document")
+        press_in_view(page, "release_document")
         code = _seed_patient_access(staff, patient_id)
         patient = browser.new_context().new_page()
         _redeem(patient, base, staff["clinic_a"], code)
@@ -412,7 +412,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         _capture(other, root, "other-patient-denied")
 
         # Approved delivery goes through the shared outbox, link-only.
-        press(page, "deliver_document")
+        press_in_view(page, "deliver_document")
         operation_id = _delivery_operation(staff, document)
         receipt = _worker(operation_id, root)
         assert receipt["outcomes"] == ["succeeded"]
@@ -424,7 +424,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
                 value if field != "dose" else "Dose substituída"
             )
         press(page, "save")
-        press(page, "render_document")
+        press_in_view(page, "render_document")
         newer = page.locator("[data-document]").last.get_attribute("data-document")
         assert newer is not None
         assert newer != document
@@ -448,7 +448,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         )
 
         # Revocation publishes immediately; the patient download closes.
-        press(page, "revoke_document")
+        press_in_view(page, "revoke_document")
         revoked = anon.goto(verify_url)
         assert revoked is not None
         assert revoked.status == 200

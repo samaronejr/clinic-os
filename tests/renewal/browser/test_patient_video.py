@@ -79,6 +79,9 @@ STALL_MEDIA_JS = """() => {
     });
   };
 }"""
+# The same hold from document start: every getUserMedia stays open, as while
+# the patient has not answered the browser's camera/microphone prompt yet.
+PENDING_PROMPT_JS = f"({STALL_MEDIA_JS})()"
 PLAYING_CAMERA_JS = """(selector) => {
   const video = document.querySelector(selector);
   const stream = video && video.srcObject;
@@ -511,6 +514,29 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     )
 
 
+def _unanswered_prompt(patient: Page, case: _Case, session_id: str) -> None:
+    """The room connects and follows the session while the prompt is open."""
+    patient.goto(case.patient_url)
+    with patient.expect_navigation():
+        patient.locator(
+            f'form:has(input[name="session_id"][value="{session_id}"]) '
+            'button[value="join"]'
+        ).click()
+    panel = patient.locator("#room-panel")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    expect(panel).to_have_attribute("data-media", "pending")
+    expect(patient.locator("[data-connection-status]")).to_contain_text(
+        "Aguardando o médico"
+    )
+    # Answering the prompt later brings the devices into the same room.
+    wait_for_js(patient, "() => window.__lateMedia.release !== null")
+    patient.evaluate("() => window.__lateMedia.release()")
+    expect(panel).to_have_attribute("data-media", "ready")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
+    _capture(patient, case, "room-prompt-answered")
+
+
 def _assert_served_script_is_local_only(patient: Page, case: _Case) -> None:
     """The room script records nothing and loads no provider SDK."""
     response = patient.request.get(f"{case.base}/static/js/teleconsult-patient.js")
@@ -545,6 +571,7 @@ def test_patient_video_journey(
     console: list[str] = []
     data = _seed(case.staff, case.day, 9)
     second = _seed(case.staff, case.day, 11)
+    third = _seed(case.staff, case.day, 13)
     with sync_playwright() as driver:
         browser = launch_selected(driver, media=True)
         contexts = [
@@ -552,8 +579,10 @@ def test_patient_video_journey(
             _context(browser, case, media=False),
             _context(browser, case, media=True),
             _context(browser, case, media=False),
+            _context(browser, case, media=True),
         ]
-        physician, admin, patient, denied = [
+        contexts[4].add_init_script(PENDING_PROMPT_JS)
+        physician, admin, patient, denied, prompted = [
             _page(context, errors, console) for context in contexts
         ]
         try:
@@ -569,6 +598,9 @@ def test_patient_video_journey(
             _accept_consent(denied, base)
             second_session = _provision(physician, case, second)
             _denied_path(denied, case, second_session, second["patient"])
+            _redeem(prompted, base, case.staff["clinic_a"], third["code"])
+            _accept_consent(prompted, base)
+            _unanswered_prompt(prompted, case, _provision(physician, case, third))
             if width == 375:
                 patient.set_viewport_size({"width": 320, "height": 900})
                 patient.emulate_media(forced_colors="active", reduced_motion="reduce")
