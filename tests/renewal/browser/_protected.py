@@ -77,12 +77,19 @@ def rename_patient(  # noqa: PLR0913 - one registry correction needs its binding
         [organization, patient],
     ).fetchone()
     previous, version = (row[0], int(row[1]) + 1) if row is not None else (None, 1)
+    stored = conn.execute(
+        "SELECT birth_date FROM clinic_app.intake_patient WHERE id = %s", [patient]
+    ).fetchone()
+    assert stored is not None
+    # The version records the exact registry envelopes it mirrors; the
+    # database refuses a registry row that differs from them.
+    registry_name = encrypt(conn, "intake.patient.full_name", name.encode())
     produced = conn.execute(
         "INSERT INTO clinic_app.intake_patientdemographics "
         "(id, organization_id, patient_id, clinic_id, enrollment_id, version, "
-        "legal_name, source, created_at) "
-        "VALUES (gen_random_uuid(), %s, %s, %s, %s, %s, %s, 'staff_recorded', now()) "
-        "RETURNING id",
+        "legal_name, registry_full_name, registry_birth_date, source, created_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, %s, %s, %s, %s, "
+        "'staff_recorded', now()) RETURNING id",
         [
             organization,
             patient,
@@ -90,6 +97,8 @@ def rename_patient(  # noqa: PLR0913 - one registry correction needs its binding
             enrollment,
             version,
             encrypt(conn, "intake.patientdemographics.legal_name", name.encode()),
+            registry_name,
+            stored[0],
         ],
     ).fetchone()
     assert produced is not None
@@ -103,5 +112,5 @@ def rename_patient(  # noqa: PLR0913 - one registry correction needs its binding
     )
     conn.execute(
         "UPDATE clinic_app.intake_patient SET full_name = %s WHERE id = %s",
-        [encrypt(conn, "intake.patient.full_name", name.encode()), patient],
+        [registry_name, patient],
     )

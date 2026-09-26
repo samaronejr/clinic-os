@@ -40,7 +40,7 @@ from datetime import date
 from typing import Final, cast
 from uuid import UUID
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
@@ -78,13 +78,14 @@ from apps.intake.models import (
 )
 from apps.intake.patient_creation import (
     PatientBirthDateError,
+    PatientIdempotencyConflictError,
     PatientRegistration,
     create_patient,
     validate_birth_date,
 )
 from apps.intake.patient_search import PatientSearchItem, PatientSearchPage
 from apps.scheduling.locks import acquire_advisory_locks, patient_lock_key
-from apps.tenancy.envelope import blind_indexes
+from apps.tenancy.envelope import blind_indexes, protect
 
 DEMOGRAPHICS_FIELD_VALUES: Final = (
     "legal_name",
@@ -566,6 +567,45 @@ def _validate_changes(changes: object, unknown: object) -> None:
         raise DemographicsInputError
 
 
+def _registry_mirror(
+    patient: Patient, registry_name: str, birth_date: date | None
+) -> tuple[bytes, bytes | None] | None:
+    """Return the registry envelopes to mirror, or ``None`` when unchanged.
+
+    A changed column is encrypted once; an unchanged one keeps its stored
+    envelope, so the version and the registry row carry identical bytes.
+    """
+    if registry_name == patient.full_name and birth_date == patient.birth_date:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT full_name, birth_date FROM clinic_app.intake_patient WHERE id = %s",
+            [patient.pk],
+        )
+        stored = cursor.fetchone()
+    if stored is None:
+        raise DemographicsStaleError
+    name = (
+        bytes(stored[0])
+        if registry_name == patient.full_name
+        else protect(
+            purpose="intake.patient.full_name", plaintext=registry_name.encode()
+        )
+    )
+    if birth_date == patient.birth_date:
+        birth = None if stored[1] is None else bytes(stored[1])
+    else:
+        birth = (
+            None
+            if birth_date is None
+            else protect(
+                purpose="intake.patient.birth_date",
+                plaintext=birth_date.isoformat().encode("ascii"),
+            )
+        )
+    return name, birth
+
+
 def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
     *,
     clinic: Clinic,
@@ -599,6 +639,12 @@ def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
         raise DemographicsRequiredError
     previous_values = _version_values(current, patient)
     previous_statuses = _version_unknown(current)
+    birth_date = values["birth_date"]
+    mirror = _registry_mirror(
+        patient,
+        registry_name,
+        birth_date if isinstance(birth_date, date) else None,
+    )
     try:
         with transaction.atomic():
             row = PatientDemographics.objects.create(
@@ -609,22 +655,23 @@ def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
                 version=current_version + 1,
                 source=source,
                 unknown_fields=statuses or None,
+                registry_full_name=mirror[0] if mirror else None,
+                registry_birth_date=mirror[1] if mirror else None,
                 **values,
             )
     except IntegrityError as error:
         raise DemographicsStaleError from error
-    # The registry row mirrors the latest version inside this transaction;
-    # the database admits the change only alongside the new version.
-    birth_date = values["birth_date"]
-    mirrored = []
-    if registry_name != patient.full_name:
+    if mirror:
+        # The registry row takes the exact envelopes this version recorded;
+        # the database admits the change only when they are byte-identical.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE clinic_app.intake_patient "
+                "SET full_name = %s, birth_date = %s WHERE id = %s",
+                [mirror[0], mirror[1], patient.pk],
+            )
         patient.full_name = registry_name
-        mirrored.append("full_name")
-    if birth_date != patient.birth_date:
         patient.birth_date = birth_date if isinstance(birth_date, date) else None
-        mirrored.append("birth_date")
-    if mirrored:
-        patient.save(update_fields=mirrored)
     DemographicsCorrection.objects.create(
         organization_id=clinic.organization_id,
         clinic_id=clinic.pk,
@@ -747,10 +794,20 @@ def register_patient(  # noqa: PLR0913 - one registration carries every input
             birth_date=birth_date,
             idempotency_key=idempotency_key,
         )
-        if PatientDemographics.objects.filter(
-            organization_id=registration.patient.organization_id,
-            patient_id=registration.patient.pk,
-        ).exists():
+        first = (
+            PatientDemographics.objects.filter(
+                organization_id=registration.patient.organization_id,
+                patient_id=registration.patient.pk,
+            )
+            .order_by("version")
+            .first()
+        )
+        if first is not None:
+            # create_patient's fingerprint binds only the registry name, so
+            # a replay that swaps legal and social names would match it; the
+            # first version records both and must match too.
+            if (first.legal_name or None, first.social_name or None) != (legal, social):
+                raise PatientIdempotencyConflictError
             return RegistrationOutcome(
                 registration=registration, matching_enrollment_id=None
             )
@@ -789,18 +846,72 @@ def register_patient(  # noqa: PLR0913 - one registration carries every input
         )
 
 
+def _explicit_answer(key: object, value: object) -> tuple[str, str] | None:
+    """Return ``(field, text)`` for an explicit answer to a demographic field."""
+    if type(key) is not str or not key.startswith("q_"):
+        return None
+    field = key[2:]
+    if field not in DEMOGRAPHICS_FIELD_VALUES or type(value) is not str:
+        return None
+    text = value.strip()
+    return (field, text) if text else None
+
+
+def _carried_answers(
+    answers: Mapping[object, object],
+    current: PatientDemographics | None,
+    patient: Patient,
+    clinic: Clinic,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Map questionnaire answers to explicit changes and non-answers.
+
+    Only an explicit patient answer carries. A blank, whitespace-only,
+    missing or non-text answer means "no information supplied" and never
+    touches the record. An answer that is exactly ``not_informed`` or
+    ``declined`` (a template's deliberate non-answer option) is recorded
+    only where no value is on record: a patient's non-answer never clears
+    or downgrades a value staff recorded. An answer equal to the recorded
+    value carries nothing, so a no-op never relabels the record as patient
+    reported.
+    """
+    recorded = _version_values(current, patient)
+    statuses = _version_unknown(current)
+    changes: dict[str, object] = {}
+    unknown: dict[str, object] = {}
+    for key, value in answers.items():
+        answer = _explicit_answer(key, value)
+        if answer is None:
+            continue
+        field, text = answer
+        on_record = recorded[field] not in (None, *UNKNOWN_DEMOGRAPHIC_VALUES)
+        if text in UNKNOWN_DEMOGRAPHIC_VALUES:
+            if on_record:
+                continue
+            if field in CODED_FIELDS:
+                if recorded[field] != text:
+                    changes[field] = text
+            elif statuses.get(field) != text:
+                unknown[field] = text
+            continue
+        if _clean_field(field, text, clinic) != recorded[field]:
+            changes[field] = text
+    return changes, unknown
+
+
 def carry_forward_demographics(
     *,
     clinic_id: UUID,
     enrollment_id: UUID,
     reason: str,
 ) -> PatientDemographics | None:
-    """Carry the latest questionnaire answers into demographics unverified.
+    """Carry explicit questionnaire answers into demographics, unverified.
 
-    Only answers whose keys name demographic fields are carried, and the
-    new version is recorded with ``source='patient_reported'`` so staff
-    surfaces present it as reported by the patient and unverified. A
-    response without mappable answers changes nothing.
+    Answers whose keys name demographic fields (``q_<field>``) carry into a
+    new version recorded with ``source='patient_reported'``, so staff
+    surfaces present it as reported by the patient and unverified. Blank or
+    missing answers supply no information and never erase what staff
+    recorded (see ``_carried_answers``). A response that supplies nothing
+    new changes nothing.
     """
     with transaction.atomic():
         actor_id, clinic, enrollment = authorized_enrollment_for(
@@ -816,24 +927,14 @@ def carry_forward_demographics(
             .order_by("-revision")
             .first()
         )
-        if response is None:
-            return None
-        answers = response.answers
-        if not isinstance(answers, dict):
-            return None
-        # Questionnaire ids are constrained to the q_* prefix; an intake
-        # template names a demographic field as q_<field>.
-        changes = {
-            key[2:]: value
-            for key, value in answers.items()
-            if type(key) is str
-            and key.startswith("q_")
-            and key[2:] in DEMOGRAPHICS_FIELD_VALUES
-            and (value is None or type(value) is str)
-        }
-        if not changes:
+        if response is None or not isinstance(response.answers, dict):
             return None
         current = _latest_demographics(clinic.organization_id, enrollment.patient_id)
+        changes, unknown = _carried_answers(
+            response.answers, current, enrollment.patient, clinic
+        )
+        if not changes and not unknown:
+            return None
         return _apply_demographics(
             clinic=clinic,
             enrollment=enrollment,
@@ -841,7 +942,7 @@ def carry_forward_demographics(
             actor_label=_actor_label(),
             expected_version=current.version if current is not None else 0,
             changes=changes,
-            unknown={},
+            unknown=unknown,
             reason=" ".join(reason.split()),
             source="patient_reported",
         )
