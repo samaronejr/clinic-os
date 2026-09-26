@@ -79,6 +79,16 @@ Playwright 1.61.0, so this module owns the one place each differs:
   ``full_page_screenshot`` captures such a page as consecutive full-width
   sections (``<name>-partN.png``) that together cover the whole page, on
   every engine.
+* Element size. Playwright's Firefox backend builds ``bounding_box()`` from
+  the float32 corner points of Gecko's privileged ``getBoxQuads()`` and
+  subtracts the edges (Juggler ``PageAgent._getNodeBoundingBox``), so a box
+  that straddles a power-of-two coordinate (512, 1024, 2048px) measures up
+  to 2^-13 px off: a 44px button at y~1024 measured 43.9998779296875 on the
+  hosted runner. ``getBoundingClientRect()`` is exact on Firefox, and so is
+  ``bounding_box()`` on Chromium and WebKit, at device scale factor 1 and 2
+  and with JavaScript disabled (reproduction:
+  fix3/firefox-bounding-box-float32-probe.txt). ``element_box`` takes a
+  Firefox box's width and height from ``getBoundingClientRect()``.
 * Keyboard focus reveal. On Tab, only Chromium always scrolls the focused
   control's whole box into view. WebKit scrolls a text field only as far as
   its caret line, sometimes leaving only a few pixels of the field on
@@ -160,6 +170,7 @@ if TYPE_CHECKING:
         BrowserContext,
         Error,
         FloatRect,
+        Locator,
         Page,
         Playwright,
     )
@@ -590,6 +601,26 @@ def full_page_screenshot(page: Page, destination: Path) -> list[Path]:
     for path in written:
         path.chmod(0o600)
     return written
+
+
+ELEMENT_SIZE_JS: Final = """(element) => {
+  const rect = element.getBoundingClientRect();
+  return [rect.width, rect.height];
+}"""
+
+
+def element_box(locator: Locator) -> FloatRect:
+    """``locator.bounding_box()`` with the laid-out size on every engine.
+
+    On Firefox the width and height come from ``getBoundingClientRect()``
+    (see Element size); elsewhere the box is returned unchanged.
+    """
+    box = locator.bounding_box()
+    assert box is not None, locator
+    if _engine_of(locator.page.context) == "firefox":
+        width, height = locator.evaluate(ELEMENT_SIZE_JS)
+        box = {"x": box["x"], "y": box["y"], "width": width, "height": height}
+    return box
 
 
 def grant_clipboard(context: BrowserContext) -> None:

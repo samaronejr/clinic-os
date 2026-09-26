@@ -46,7 +46,12 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._page_wait import wait_for_js
-from renewal.browser.engines import install_media, launch_selected, watch_page_errors
+from renewal.browser.engines import (
+    element_box,
+    install_media,
+    launch_selected,
+    watch_page_errors,
+)
 from renewal.browser.test_availability import (
     SETTLED_JS,
     _sign_in_physician,
@@ -306,8 +311,7 @@ def keyboard_reaches(case: Day, page: Page, target: Locator, scene: str) -> None
             break
     else:
         pytest.fail(f"{scene}: keyboard never reached the control")
-    box = target.bounding_box()
-    assert box is not None
+    box = element_box(target)
     assert box["height"] >= MIN_TARGET_PX, (scene, box)
     case.keyboard[scene] = stops
     capture(case, page, f"keyboard-{scene}")

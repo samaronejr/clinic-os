@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser.engines import browser_zoom_200, zoom_screenshot
+from renewal.browser.engines import browser_zoom_200, element_box, zoom_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -165,8 +165,7 @@ def reflow(page: Page, root: Path) -> None:
         save(native)
         expect(native.locator('[data-kind="problem"] [data-entry]')).to_have_count(2)
         capture(native, root, "native-long-no-javascript", 640)
-        bounds = native.locator('button[value="new"]').first.bounding_box()
-        assert bounds is not None
+        bounds = element_box(native.locator('button[value="new"]').first)
         assert bounds["height"] >= 44
     finally:
         context.close()
@@ -190,12 +189,9 @@ def accessibility_checks(page: Page) -> dict[str, object]:
     buttons = page.locator("main button")
     for button in buttons.all():
         expect(button).to_have_accessible_name(re.compile(r"\S"))
-        bounds = button.bounding_box()
-        assert bounds is not None
-        # Firefox reports boxes through float32 at devicePixelRatio 2 (a 44px
-        # button measures 43.99997); rounding to 1/1000 px absorbs only that.
-        assert round(bounds["height"], 3) >= 44
-        assert round(bounds["width"], 3) >= 44
+        bounds = element_box(button)
+        assert bounds["height"] >= 44
+        assert bounds["width"] >= 44
     page.locator("#id_description").focus()
     page.keyboard.press("Tab")
     expect(page.locator("#id_status")).to_be_focused()

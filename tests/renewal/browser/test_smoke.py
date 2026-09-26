@@ -21,7 +21,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import MOBILE_PROFILES, mobile_context
+from renewal.browser.engines import MOBILE_PROFILES, element_box, mobile_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -343,3 +343,25 @@ def test_csp_console_hook_tolerates_only_playwright_screenshot_style(
         csp_page.evaluate(INJECT_INLINE_STYLE_JS)
     assert [v["text"] for v in csp_console_violations[before:]] == [refused.value.text]
     del csp_console_violations[before:]
+
+
+# Self-test of engines.element_box (Element size). The button's top sits one
+# Gecko app unit (1/60 px) past 1000px, so its box crosses y=1024; there
+# Playwright's own Firefox bounding_box() measures it 43.99994px tall.
+STRADDLING_BUTTON_JS = """() => {
+  const button = document.createElement('button');
+  button.id = 'element-box-probe';
+  button.textContent = 'x';
+  Object.assign(button.style, {
+    position: 'absolute', left: '0px', top: (60001 / 60) + 'px',
+    width: '44px', height: '44px', margin: '0px', padding: '0px',
+    border: '0px', boxSizing: 'border-box',
+  });
+  document.body.append(button);
+}"""
+
+
+def test_element_box_measures_a_straddling_target_exactly(csp_page: Page) -> None:
+    csp_page.evaluate(STRADDLING_BUTTON_JS)
+    box = element_box(csp_page.locator("#element-box-probe"))
+    assert (box["width"], box["height"]) == (44, 44), box

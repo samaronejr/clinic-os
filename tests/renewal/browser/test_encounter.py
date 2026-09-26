@@ -13,7 +13,7 @@ from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
 from renewal.browser._protected import decrypt
-from renewal.browser.engines import new_context
+from renewal.browser.engines import element_box, new_context
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -240,8 +240,7 @@ def check_reflow(page: Page, root: Path) -> None:
             "data-revision", "3"
         )
         capture(fallback, root, "native-long-zoom-200", 640)
-        target = fallback.locator('button[value="save"]').bounding_box()
-        assert target is not None
+        target = element_box(fallback.locator('button[value="save"]'))
         assert target["height"] >= 44
     finally:
         native.close()
