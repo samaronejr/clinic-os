@@ -1,25 +1,32 @@
-"""Executed differential probes that back every census exemption.
+"""Executed probes that back every census exemption.
 
 A census row labelled nonstaff, provider, infrastructure, presentation or
 data_operation claims "no staff permission gate here". Static analysis cannot
-prove that claim, so each such row must carry a probe here. The probe calls
-the real function on real PostgreSQL as ``clinic_app`` once per state of the
+prove that claim, so each such row must carry a probe here, run on real
+PostgreSQL as ``clinic_app``.
+
+Primary rule, sound by construction: an exempt function never observes the
+actor. The actor observer (identity/actor_channels.py) watches every channel
+through which code can see the staff actor (actor settings, actor-reading
+SQL functions by exact call counts, relations whose row policies read the
+actor, Python accessors, a staff request's user) while the function runs in
+its deployed context. Code that never observes the actor cannot decide
+anything about it, however many role, grant, flag or assignment states
+exist. A function that does observe it is not exempt: the census classifies
+it by an executed or named boundary instead (``RECLASSIFIED``).
+
+Cross-check, defence in depth: the probe also runs once per state of the
 staff-state matrix (identity/probe_states.py), whose dimensions are derived
-from the inputs the live permission decision reads: the role power set,
-professional registration and care-team values, legacy profiles, encounter
-assignment, inactive users, memberships elsewhere and role-grant removals.
-A probe certifies the exemption only when, across every state:
+from the inputs the live permission decision reads, and certifies only when,
+across every state:
 - the outcome is exactly identical: the full canonical result or the raised
-  type and message (``canonical``), with any per-call noise normalized by
-  an explicit, justified ``normalize`` on that probe;
+  type and message (``canonical``); a per-call value may be masked by an
+  explicit, justified ``normalize``, never its presence or type;
 - every line of the body holding a call executed in at least one state
   (``gate_lines``, observed through ``sys.monitoring`` LINE events), so a
   gate behind an input the probe never supplies cannot pass as absent;
 - the body started in every state, and the primary input reaches the
   declared class (success or refusal).
-A gate in any form (partial, table, instance ``__call__``, trigger,
-unqualified SQL call, a value change without a branch) changes the executed
-outcome for some state, so no spelling or indirection can hide it.
 
 Contexts:
 - ``staff``: inside ``tenant_context(actor, organization)``.
@@ -29,7 +36,8 @@ Contexts:
   which ``baseline`` asserts); that run must reach the declared outcome
   class, and the lines it executes count towards ``gate_lines``.
 - ``entry``: sessionless callers (redemption, provider callbacks, commands)
-  with the actor's GUCs set at session level.
+  with the actor's GUCs set at session level; also run once as deployed
+  (no actor bound) under the actor observer.
 - ``entry_bare``: like ``entry`` but outside any savepoint, for context
   managers that refuse to nest in an atomic block.
 Every call runs in a savepoint that is rolled back, except ``entry_bare``.
@@ -46,7 +54,7 @@ import os
 import re
 import sys
 from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
@@ -79,9 +87,15 @@ from apps.ehr.management.commands.encrypt_attachment_objects import (
     Command as EncryptAttachmentObjects,
 )
 from apps.ehr.models import ClinicalDocumentVersion, Encounter
+from apps.ehr.services import (
+    SOAP_FIELDS,
+    create_draft,
+    open_encounter,
+    record_clinical_note,
+)
 from apps.identity.management.base import owner_tty
 from apps.identity.management.bootstrap import BootstrapRequest, bootstrap_clinic
-from apps.identity.models import Clinic
+from apps.identity.models import Clinic, User, UserClinicRole
 from apps.identity.phase1a_identity_acl_migration import remove_runtime_identity_acl
 from apps.intake import patient_access, questionnaire_views, questionnaires
 from apps.intake.patient_access import PATIENT_SESSION_KEY
@@ -96,7 +110,12 @@ from apps.scheduling import (
     waitlist_views,
 )
 from apps.scheduling.models import WaitlistEntry, WaitlistOffer
-from apps.scheduling.services import SlotConflict
+from apps.scheduling.services import (
+    AppointmentLocalRange,
+    SlotConflict,
+    create_appointment,
+    create_availability,
+)
 from apps.teleconsult import services as teleconsult
 from apps.teleconsult import views as teleconsult_views
 from apps.teleconsult.models import TeleconsultCredential, TeleconsultSession
@@ -114,8 +133,10 @@ from django.test import RequestFactory
 from PIL import Image
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
-from identity import probe_states
+from identity import actor_channels, probe_states
+from identity import permission_gate_census as census
 from identity.legacy_parity_support import target_code
+from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
 
@@ -158,6 +179,7 @@ class ProbeWorld:
     fresh_request: HttpRequest
     charge_row: tuple[object, ...]
     offer_id: UUID
+    observer: actor_channels.ActorObserver
 
     @property
     def organization(self) -> UUID:
@@ -227,12 +249,15 @@ def build_world(
         credential = TeleconsultCredential.objects.select_related("session").get(
             token_digest=hashlib.sha256(join.token.encode()).hexdigest()
         )
+    actor_channels.observe_request_user(w.request)
     return ProbeWorld(
         w=w,
         op=op,
         rx=rx,
         tc=tc,
-        matrix=probe_states.build_states(w.graph, w.graph.physician),
+        matrix=probe_states.build_states(
+            w.graph, w.graph.physician, closed_encounter_physician(w, op)
+        ),
         authority=authority,
         offer=offer,
         slot_token=slots[0].token if slots else "no-slot",
@@ -245,10 +270,86 @@ def build_world(
         encounter=encounter,
         envelope=protected,
         sealed=sealed,
-        fresh_request=_fresh_request(w),
+        fresh_request=actor_channels.observe_request_user(_fresh_request(w)),
         charge_row=charge_row,
         offer_id=offer_id,
+        observer=actor_observer(w),
     )
+
+
+def actor_observer(w: LegacyWorld) -> actor_channels.ActorObserver:
+    """The actor channels of the live system (identity/actor_channels.py)."""
+    with runtime_role():
+        settings = actor_channels.actor_settings(
+            lambda: tenant_context(w.graph.physician, w.graph.organization_a),
+            w.graph.physician,
+        )
+    with connection.cursor() as cursor:
+        catalog = actor_channels.actor_catalog(cursor, settings)
+        graph = census.build_graph(census.live_decisions(cursor))
+    accessors = actor_channels.python_accessors(graph, catalog)
+    codes: dict[CodeType, str] = {}
+    for symbol in accessors:
+        code = target_code(symbol)
+        assert code is not None, symbol
+        codes[code] = symbol
+    return actor_channels.ActorObserver(catalog, codes)
+
+
+def closed_encounter_physician(w: LegacyWorld, op: OperationalSubjects) -> UUID:
+    """A physician whose only encounter is closed through the real path.
+
+    Booked by reception, opened, documented and finalized (with step-up) by
+    the physician, then closed by close_encounter, which refuses while a
+    draft is in progress.
+    """
+    physician = User.objects.create(username=f"probe-closed-{uuid4().hex}")
+    with owner_context(w.graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=w.graph.organization_a,
+            clinic_id=w.clinic,
+            user_id=physician.pk,
+            role=UserClinicRole.Role.PHYSICIAN,
+        )
+    with runtime_role(), tenant_context(w.graph.shared_user, w.graph.organization_a):
+        create_availability(
+            clinic_id=w.clinic,
+            practitioner_id=physician.pk,
+            start_local="2035-06-04T10:00",
+            end_local="2035-06-04T11:00",
+            idempotency_key=uuid4(),
+        )
+        appointment = create_appointment(
+            clinic_id=w.clinic,
+            enrollment_id=op.enrollment,
+            practitioner_id=physician.pk,
+            local_range=AppointmentLocalRange("2035-06-04T10:00", "2035-06-04T10:30"),
+            idempotency_key=uuid4(),
+        )
+    request = verified_request(physician.pk, verified_at=STEP_UP_NOW)
+    with runtime_role(), tenant_context(physician.pk, w.graph.organization_a):
+        assert request.user.is_verified()  # type: ignore[union-attr]
+        encounter = open_encounter(clinic_id=w.clinic, appointment_id=appointment.pk)
+        version = create_draft(
+            clinic_id=w.clinic, encounter_id=encounter.pk, template_id=w.template.pk
+        )
+        version = record_clinical_note(
+            clinic_id=w.clinic,
+            version_id=version.pk,
+            expected_revision=version.revision,
+            content=dict.fromkeys(SOAP_FIELDS, "Sintetico encerrado"),
+        )
+        finalization.finalize_version(
+            clinic_id=w.clinic,
+            version_id=version.pk,
+            expected_revision=version.revision,
+            request=request,
+        )
+        closed = finalization.close_encounter(
+            clinic_id=w.clinic, encounter_id=encounter.pk
+        )
+    assert closed.state == Encounter.State.CLOSED
+    return physician.pk
 
 
 def _fresh_request(w: LegacyWorld) -> HttpRequest:
@@ -314,7 +415,7 @@ def _request(pw: ProbeWorld, method: str = "GET", data: object = None) -> HttpRe
     request.session[PATIENT_SESSION_KEY] = str(pw.op.patient_session)
     request.user = AnonymousUser()
     MessageMiddleware(lambda _request: HttpResponse()).process_request(request)
-    return request
+    return actor_channels.observe_request_user(request)
 
 
 def _charge_state(pw: ProbeWorld) -> reconciliation._ChargeState:
@@ -791,8 +892,7 @@ def _questionnaires(pw: ProbeWorld) -> object:
     return _each(
         lambda: questionnaire_views.patient_questionnaires(_request(pw)),
         post(response_id=response, action="open"),
-        post(response_id=response, action="save", revision=revision, q_synthetic="a"),
-        post(response_id=response, action="submit", revision=revision),
+        post(response_id=response, action="submit", revision=revision, q_synthetic="a"),
         post(response_id=response, action="save", revision="99"),
         post(response_id=response, action="other"),
         post(response_id="not-a-uuid", action="open"),
@@ -874,7 +974,12 @@ def _rewrite(node: object, change: Callable[[object], object]) -> object:
 
 
 def _fields(*names: str, why: str) -> tuple[_Normalizer, str]:
-    """Blank the named fields wherever they occur in the outcome."""
+    """Blank the value of the named fields, never their presence or type.
+
+    A field's canonical value is ``(type name, value)``; the type name
+    stays, so ``None`` and a value, or two different types, still compare
+    unequal. Only the content of a present value is masked.
+    """
 
     def change(node: object) -> object:
         if (
@@ -882,8 +987,11 @@ def _fields(*names: str, why: str) -> tuple[_Normalizer, str]:
             and len(node) == 2
             and node[0] in names
             and isinstance(node[1], tuple)
+            and node[1]
+            and isinstance(node[1][0], str)
+            and node[1][0] != "NoneType"
         ):
-            return (node[0], ("volatile",))
+            return (node[0], (node[1][0], "<volatile>"))
         return node
 
     return (lambda outcome: _rewrite(outcome, change), why)  # type: ignore[return-value]
@@ -1388,7 +1496,24 @@ def _probes() -> tuple[ExemptionProbe, ...]:
     )
 
 
-PROBES: Final[Mapping[str, ExemptionProbe]] = {item.symbol: item for item in _probes()}
+# Exemptions the actor observer refused in fix round 5: each observes the
+# actor, so the census classifies it by its executed boundary instead. The
+# probes stay, as the executed evidence (test_reclassified_functions_observe
+# _the_actor).
+RECLASSIFIED: Final = frozenset(
+    {
+        "apps.audit.services._record_system_event",
+        "apps.audit.services.record_event",
+        "apps.prescription.views._identity_state",
+        "apps.teleconsult.services._fail",
+    }
+)
+ALL_PROBES: Final[Mapping[str, ExemptionProbe]] = {
+    item.symbol: item for item in _probes()
+}
+PROBES: Final[Mapping[str, ExemptionProbe]] = {
+    symbol: item for symbol, item in ALL_PROBES.items() if symbol not in RECLASSIFIED
+}
 
 
 _SCALARS: Final = (
@@ -1509,7 +1634,14 @@ def _inject_actor(pw: ProbeWorld, actor: UUID, *, local: bool) -> Iterator[None]
     yield
 
 
-def _outcome(invoke: Callable[[], object], *, savepoint: bool) -> Outcome:
+type Watch = tuple[actor_channels.ActorObserver, bool, list[str]]
+
+
+def _outcome(
+    invoke: Callable[[], object], *, savepoint: bool, watch: Watch | None = None
+) -> Outcome:
+    if watch is not None:
+        return _watched(invoke, savepoint=savepoint, watch=watch)
     try:
         if savepoint:
             with transaction.atomic():
@@ -1520,6 +1652,29 @@ def _outcome(invoke: Callable[[], object], *, savepoint: bool) -> Outcome:
     except Exception as error:  # noqa: BLE001 - the refusal is the outcome
         return ("raise", type(error).__qualname__, str(error))
     return ("ok", result)
+
+
+def _watched(invoke: Callable[[], object], *, savepoint: bool, watch: Watch) -> Outcome:
+    """Execute once while the actor observer records every channel.
+
+    The statistics snapshots must share the execution's transaction, so the
+    input runs in a savepoint inside one more rolled-back block; without a
+    savepoint (a deployed context that must be outermost) only the unbound
+    checks apply.
+    """
+    observer, bound, sink = watch
+    if not savepoint:
+        assert not bound, "a bound actor needs the statistics transaction"
+        observer.begin(bound=False)
+        outcome = _outcome(invoke, savepoint=False)
+        sink.extend(observer.end())
+        return outcome
+    with transaction.atomic():
+        observer.begin(bound=bound)
+        outcome = _outcome(invoke, savepoint=True)
+        sink.extend(observer.end())
+        transaction.set_rollback(True)
+    return outcome
 
 
 @contextmanager
@@ -1561,7 +1716,9 @@ def execute(probe: ExemptionProbe, pw: ProbeWorld, actor: UUID) -> Outcome:
         return _outcome(call, savepoint=True)
 
 
-def baseline(probe: ExemptionProbe, pw: ProbeWorld) -> Outcome:
+def baseline(
+    probe: ExemptionProbe, pw: ProbeWorld, watch: Watch | None = None
+) -> Outcome:
     """Run a patient probe as deployed: in the session, no staff GUC."""
     call = lambda: probe.invoke(pw)  # noqa: E731 - bound once
     with runtime_role(), patient_access.patient_session_context(pw.op.patient_session):
@@ -1574,7 +1731,18 @@ def baseline(probe: ExemptionProbe, pw: ProbeWorld) -> Outcome:
             "staff actor bound in patient context",
             bound,
         )
-        return _outcome(call, savepoint=True)
+        return _outcome(call, savepoint=True, watch=watch)
+
+
+def deployed_entry(probe: ExemptionProbe, pw: ProbeWorld, watch: Watch) -> Outcome:
+    """Run a sessionless probe as deployed: runtime role, no actor bound."""
+    call = lambda: probe.invoke(pw)  # noqa: E731 - bound once
+    try:
+        with runtime_role():
+            clear_connection_tenant_gucs()
+            return _outcome(call, savepoint=probe.context == "entry", watch=watch)
+    finally:
+        clear_connection_tenant_gucs()
 
 
 def probe_code(probe: ExemptionProbe) -> CodeType:
@@ -1614,7 +1782,13 @@ def gate_lines(code: CodeType) -> frozenset[int]:
 class _Monitor:
     """``sys.monitoring`` LINE and PY_START events on the probed code only."""
 
-    def __init__(self, codes: Mapping[str, CodeType]) -> None:
+    def __init__(
+        self,
+        codes: Mapping[str, CodeType],
+        observer: actor_channels.ActorObserver | None = None,
+    ) -> None:
+        self.observer = observer
+        self.accessors = {} if observer is None else dict(observer.accessors)
         self.entry = {code: symbol for symbol, code in codes.items()}
         self.owner = {
             nested: symbol for symbol, code in codes.items() for nested in _nested(code)
@@ -1630,16 +1804,18 @@ class _Monitor:
         monitoring.use_tool_id(self.tool, "exemption-probes")
         monitoring.register_callback(self.tool, monitoring.events.PY_START, self._start)
         monitoring.register_callback(self.tool, monitoring.events.LINE, self._line)
-        for code in self.owner:
-            events = monitoring.events.LINE
-            if code in self.entry:
+        for code in {*self.owner, *self.accessors}:
+            events = 0
+            if code in self.owner:
+                events |= monitoring.events.LINE
+            if code in self.entry or code in self.accessors:
                 events |= monitoring.events.PY_START
             monitoring.set_local_events(self.tool, code, events)
         return self
 
     def __exit__(self, *_exc: object) -> None:
         monitoring = sys.monitoring
-        for code in self.owner:
+        for code in {*self.owner, *self.accessors}:
             monitoring.set_local_events(self.tool, code, 0)
         monitoring.register_callback(self.tool, monitoring.events.PY_START, None)
         monitoring.register_callback(self.tool, monitoring.events.LINE, None)
@@ -1648,6 +1824,8 @@ class _Monitor:
     def _start(self, code: CodeType, _offset: int) -> None:
         if self.current is not None and self.entry.get(code) == self.current:
             self.entered = True
+        if self.observer is not None and code in self.accessors:
+            self.observer.on_start(code)
 
     def _line(self, code: CodeType, line: int) -> None:
         if self.current is not None and self.owner.get(code) == self.current:
@@ -1673,12 +1851,15 @@ class ProbeRun:
     not_entered: list[str]
     baseline: Outcome | None = None
     seconds: float = 0.0
+    observed: dict[str, list[str]] = field(default_factory=dict)
 
 
 def run_matrix(
     probes: Sequence[ExemptionProbe],
     pw: ProbeWorld,
     states: Sequence[probe_states.ProbeState] | None = None,
+    *,
+    observe: bool = True,
 ) -> dict[str, ProbeRun]:
     """Execute every probe under every state, in state order.
 
@@ -1687,7 +1868,13 @@ def run_matrix(
     as deployed (patient session, no staff actor bound), before the
     states; the lines that run reaches count too, because there no staff
     actor exists for a permission decision to vary with (``baseline``
-    asserts it).
+    asserts it). Sessionless (entry) probes also run once as deployed.
+
+    With ``observe`` the actor observer (identity/actor_channels.py) watches
+    every deployed run and, for staff probes, the first state and every
+    state that changes shared rows (``observed_state``). Until code first
+    observes the actor it cannot tell two states over the same rows apart,
+    so whether it observes the actor is the same in all of them.
     """
     assert not pw.matrix.applied, "a probe world runs its matrix once"
     pw.matrix.applied.add("run")
@@ -1700,34 +1887,78 @@ def run_matrix(
     for probe in probes:
         grouped.setdefault(probe.context, []).append(probe)
     chosen = list(pw.matrix.states if states is None else states)
-    with _Monitor(codes) as monitor:
-        # Baselines first: they use world tokens with a lifetime (a consent
-        # offer lasts 30 minutes), so they never depend on the matrix's
-        # wall time.
-        for probe in grouped.get("patient", ()):
-            run = runs[probe.symbol]
-            run.baseline = _observed(
-                monitor, probe, "baseline", run, _deployed(probe, pw)
-            )
-        for index, state in enumerate(chosen):
-            # Every state after the first repeats code coverage.py already
-            # traced; pausing its tracer keeps the matrix affordable under
-            # --cov (the reach check uses its own sys.monitoring tool).
-            with nullcontext() if index == 0 else _untraced():
-                _run_state(state, grouped, runs, monitor, pw)
+    observer = pw.observer if observe else None
+    capture: AbstractContextManager[None] = (
+        nullcontext()
+        if observer is None
+        else actor_channels.statements_captured(observer)
+    )
+    with _Monitor(codes, observer) as monitor, capture:
+        # Deployed runs first: they use world tokens with a lifetime (a
+        # consent offer lasts 30 minutes), so they never depend on the
+        # matrix's wall time.
+        for probe in probes:
+            if probe.context != "staff":
+                _run_deployed(probe, runs[probe.symbol], monitor, pw, observer)
+        # Every state after the first repeats code coverage.py already
+        # traced; pausing its tracer once for all of them keeps the matrix
+        # affordable under --cov (the reach check and the actor observer use
+        # their own sys.monitoring tool and statistics).
+        for index, state in enumerate(chosen[:1]):
+            watching = observer if observed_state(index, state) else None
+            _run_state(state, grouped, runs, monitor, pw, watching)
+        with _untraced():
+            for index, state in enumerate(chosen[1:], start=1):
+                watching = observer if observed_state(index, state) else None
+                _run_state(state, grouped, runs, monitor, pw, watching)
         for symbol, lines in monitor.lines.items():
             runs[symbol].reached = lines
     return runs
 
 
-def _run_state(
+def _run_deployed(
+    probe: ExemptionProbe,
+    run: ProbeRun,
+    monitor: _Monitor,
+    pw: ProbeWorld,
+    observer: actor_channels.ActorObserver | None,
+) -> None:
+    """A patient or sessionless probe once as deployed (no actor bound)."""
+    watch: Watch | None = None
+    if observer is not None:
+        watch = (observer, False, run.observed.setdefault("deployed", []))
+    if probe.context == "patient":
+        run.baseline = _observed(
+            monitor, probe, "baseline", run, _deployed(probe, pw, watch)
+        )
+    elif watch is not None:
+        _observed(monitor, probe, "deployed", run, _deployed_entry(probe, pw, watch))
+
+
+def _deployed_entry(
+    probe: ExemptionProbe, pw: ProbeWorld, watch: Watch
+) -> Callable[[], Outcome]:
+    return lambda: deployed_entry(probe, pw, watch)
+
+
+def observed_state(index: int, state: probe_states.ProbeState) -> bool:
+    """The first state, and every state whose shared rows differ."""
+    return index == 0 or state.setup is not None or state.scoped is not None
+
+
+def _run_state(  # noqa: PLR0913 - one state needs the whole run context
     state: probe_states.ProbeState,
     grouped: Mapping[Context, list[ExemptionProbe]],
     runs: Mapping[str, ProbeRun],
     monitor: _Monitor,
     pw: ProbeWorld,
+    observer: actor_channels.ActorObserver | None,
 ) -> None:
-    """One state: one bound scope per context, one savepoint per probe."""
+    """One state: one bound scope per context, one savepoint per probe.
+
+    A scoped state change (a removal that must not outlive its state) is
+    applied inside each scope and rolled back with it.
+    """
     if state.setup is not None:
         state.setup()
     for context, group in grouped.items():
@@ -1735,26 +1966,54 @@ def _run_state(
             scope: AbstractContextManager[None] = nullcontext()
         else:
             scope = _state_scope(context, pw, state.actor)
-        with scope:
+        with scope, _scoped(state, context):
             for probe in group:
                 run = runs[probe.symbol]
+                watch: Watch | None = None
+                if observer is not None and context == "staff":
+                    watch = (observer, True, run.observed.setdefault(state.label, []))
                 started = perf_counter()
                 outcome = _observed(
-                    monitor, probe, state.label, run, _thunk(probe, pw, state.actor)
+                    monitor,
+                    probe,
+                    state.label,
+                    run,
+                    _thunk(probe, pw, state.actor, watch),
                 )
                 run.seconds += perf_counter() - started
                 run.outcomes[state.label] = outcome
 
 
-def _deployed(probe: ExemptionProbe, pw: ProbeWorld) -> Callable[[], Outcome]:
-    return lambda: baseline(probe, pw)
+@contextmanager
+def _scoped(state: probe_states.ProbeState, context: Context) -> Iterator[None]:
+    """Apply a state's scoped change inside one context scope, then undo it.
+
+    Sessionless-bare probes run outside any transaction a scoped change
+    could live in; they see the state without it (their deployed context
+    binds no actor at all).
+    """
+    if state.scoped is None or context == "entry_bare":
+        yield
+        return
+    with transaction.atomic():
+        state.scoped()
+        yield
+        transaction.set_rollback(True)
 
 
-def _thunk(probe: ExemptionProbe, pw: ProbeWorld, actor: UUID) -> Callable[[], Outcome]:
+def _deployed(
+    probe: ExemptionProbe, pw: ProbeWorld, watch: Watch | None
+) -> Callable[[], Outcome]:
+    return lambda: baseline(probe, pw, watch)
+
+
+def _thunk(
+    probe: ExemptionProbe, pw: ProbeWorld, actor: UUID, watch: Watch | None = None
+) -> Callable[[], Outcome]:
     """One input inside an already bound state scope (``entry_bare``: alone)."""
     if probe.context == "entry_bare":
         return lambda: execute(probe, pw, actor)
-    return lambda: _outcome(lambda: probe.invoke(pw), savepoint=True)
+    return lambda: _outcome(lambda: probe.invoke(pw), savepoint=True, watch=watch)
 
 
 def _observed(
@@ -1798,9 +2057,22 @@ def staff_independent(outcomes: Mapping[str, Outcome]) -> bool:
     return len(set(outcomes.values())) == 1
 
 
-def problems(probe: ExemptionProbe, run: ProbeRun) -> list[str]:
+def actor_problems(run: ProbeRun) -> list[str]:
+    """The primary rule: an exempt function never observes the actor."""
+    return [
+        f"observes the actor ({label}): {findings}"
+        for label, findings in sorted(run.observed.items())
+        if findings
+    ]
+
+
+def problems(
+    probe: ExemptionProbe, run: ProbeRun, *, observed: bool = True
+) -> list[str]:
     """Why ``run`` cannot certify ``probe`` (empty when it can)."""
-    found: list[str] = []
+    found: list[str] = actor_problems(run) if observed else []
+    if observed and not run.observed:
+        found.append("the actor observer never ran")
     if run.not_entered:
         found.append(f"body never ran in {len(run.not_entered)} states")
     unreached = sorted(run.required - run.reached)

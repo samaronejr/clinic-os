@@ -10,6 +10,7 @@ from uuid import uuid4
 from apps.comms.adapters import OperationScope
 from apps.comms.models import IntegrationOperation
 from apps.comms.tasks import execute_operation
+from apps.consent.models import ConsentText
 from apps.core import integration
 from apps.ehr.services import open_encounter
 from apps.scheduling.services import AppointmentLocalRange, create_appointment
@@ -21,6 +22,7 @@ from apps.teleconsult.models import (
     TeleconsultSession,
 )
 from apps.tenancy.db import tenant_context
+from django.db import connection
 
 from identity.legacy_parity_support import LEGACY, PHYSICIAN, Boundary, has_rows
 from patient_service_support import runtime_role
@@ -102,6 +104,52 @@ def _enter(w: LegacyWorld, ok: bool, data: TeleconsultSubjects) -> object:
         data.credential.participant_id = original
 
 
+def _terminal(w: LegacyWorld, ok: bool, data: TeleconsultSubjects) -> object:
+    """Whether ``_fail`` really ended the session.
+
+    A newer consent text is a stored ``consent_revoked`` failure; the
+    transition then succeeds only for the session's own physician. The
+    invalid call claims ``encounter_closed`` while the encounter is open.
+    """
+    _publish_newer_text(w)
+    services._fail(data.session.pk, "consent_revoked" if ok else "encounter_closed")
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE clinic_owner")
+        cursor.execute(
+            "SELECT state FROM clinic_app.teleconsult_teleconsultsession WHERE id = %s",
+            [data.session.pk],
+        )
+        row = cursor.fetchone()
+        cursor.execute("SET LOCAL ROLE clinic_app")
+    return row == ("failed",)
+
+
+def _publish_newer_text(w: LegacyWorld) -> None:
+    """Publish a newer text as its publisher, then restore the actor."""
+    with connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE clinic_owner")
+        text = ConsentText.objects.filter(clinic_id=w.clinic).latest("version")
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+            [str(text.published_by_id)],
+        )
+        ConsentText.objects.create(
+            organization_id=text.organization_id,
+            clinic_id=text.clinic_id,
+            purpose=text.purpose,
+            version=text.version + 1,
+            text="Sintetico nova",
+            language=text.language,
+            digest=hashlib.sha256(b"Sintetico nova").hexdigest(),
+            published_by_id=text.published_by_id,
+        )
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+            [str(w.actor.pk)],
+        )
+        cursor.execute("SET LOCAL ROLE clinic_app")
+
+
 def boundaries(data: TeleconsultSubjects) -> tuple[Boundary, ...]:
     return (
         Boundary(
@@ -109,6 +157,13 @@ def boundaries(data: TeleconsultSubjects) -> tuple[Boundary, ...]:
             "teleconsult",
             PHYSICIAN,
             lambda w, ok: _assigned(w, ok, data),
+        ),
+        Boundary(
+            "apps.teleconsult.services._fail",
+            "teleconsult",
+            PHYSICIAN,
+            lambda w, ok: _terminal(w, ok, data),
+            decision=lambda result: result is True,
         ),
         Boundary(
             "apps.teleconsult.services._staff_session",

@@ -5,16 +5,20 @@
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services._record_system_event"
+      ]
     },
     {
       "symbol": "apps.audit.services.record_event",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services.record_event"
+      ]
     },
     {
       "symbol": "apps.billing.adapters.require_synthetic_pix",
@@ -1758,8 +1762,11 @@
       "signals": [
         "authentication"
       ],
-      "kind": "presentation",
-      "reason": "Signing readiness presentation; enforcement is verify_physician_for_signing and _prepare_signature."
+      "kind": "delegated",
+      "reason": "Reads the step-up state of the request's own user (the actor) through assert_step_up, the executed step-up boundary; the actor observer refuses it as an exemption (fix round 5).",
+      "enforced_by": [
+        "apps.identity.stepup.assert_step_up"
+      ]
     },
     {
       "symbol": "apps.prescription.views._issuer_document",
@@ -2653,8 +2660,10 @@
       "signals": [
         "resolver"
       ],
-      "kind": "data_operation",
-      "reason": "Terminal session transition, not a staff-role decision; caller scope is checked by session guards."
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._fail"
+      ]
     },
     {
       "symbol": "apps.teleconsult.services._room_state",
@@ -2893,6 +2902,8 @@
     }
   ],
   "probes": [
+    "apps.audit.services._record_system_event",
+    "apps.audit.services.record_event",
     "apps.billing.pix.prepare_pix_charge",
     "apps.billing.services._clinic",
     "apps.billing.services._invoice",
@@ -3055,6 +3066,7 @@
     "apps.teleconsult.services._assigned_physician",
     "apps.teleconsult.services._denied",
     "apps.teleconsult.services._enter_as_physician",
+    "apps.teleconsult.services._fail",
     "apps.teleconsult.services._room_state",
     "apps.teleconsult.services._session_scope",
     "apps.teleconsult.services._staff_session",

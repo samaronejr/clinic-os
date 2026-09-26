@@ -5,6 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from apps.audit.events import build_phase1_audit_event
+from apps.audit.services import (
+    AuditContextRejectedError,
+    SystemAuditAccessRejectedError,
+    _record_system_event,
+    record_event,
+)
 from apps.identity.management.base import assert_owner_database_role
 from apps.identity.management.context import LifecycleContext
 from apps.identity.management.provisioning import ProvisionStaffRequest, provision_staff
@@ -63,6 +70,39 @@ def _database_role(_w: LegacyWorld, valid: bool) -> object:
     return None
 
 
+def _event(w: LegacyWorld) -> object:
+    return build_phase1_audit_event(
+        "intake.patient.searched", clinic_id=w.clinic, affected_record_id=w.clinic
+    )
+
+
+def _append(w: LegacyWorld, valid: bool) -> object:
+    """Every bound actor appends; with no bound actor nothing is appended."""
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.set_config('app.current_user_id', '', true)"
+            )
+    event = _event(w)
+    try:
+        return record_event(event.event, payload=event.payload)  # type: ignore[attr-defined]
+    except AuditContextRejectedError:
+        return False
+
+
+def _system_append(w: LegacyWorld, valid: bool) -> object:
+    """Only the owner database role appends to the system chain."""
+    event = _event(w)
+
+    def append() -> object:
+        try:
+            return _record_system_event(event.event, payload=event.payload)  # type: ignore[attr-defined]
+        except SystemAuditAccessRejectedError:
+            return False
+
+    return _owner_call(append) if valid else append()
+
+
 BOUNDARIES = (
     Boundary(
         "apps.identity.management.provisioning.provision_staff",
@@ -81,5 +121,9 @@ BOUNDARIES = (
         "database_role",
         LEGACY,
         _database_role,
+    ),
+    Boundary("apps.audit.services.record_event", "audit", LEGACY, _append),
+    Boundary(
+        "apps.audit.services._record_system_event", "audit", LEGACY, _system_append
     ),
 )
