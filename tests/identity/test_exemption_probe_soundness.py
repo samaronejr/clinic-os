@@ -13,12 +13,15 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import inspect
+import os
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from types import FunctionType
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.ehr import finalization
 from apps.identity import stepup
@@ -28,6 +31,7 @@ from django.db import connection, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
+from database_urls import database_url_for_name
 from identity import actor_channels, exemption_probes, probe_states
 from identity import permission_gate_census as census
 from identity.permission_inputs import decision_inputs
@@ -35,7 +39,7 @@ from identity.test_permission_parity import _SYNTHETIC, INVENTORY, _probe_world
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from rbac_fixtures import RbacGraph
 
@@ -369,6 +373,23 @@ _VARIANTS: dict[str, tuple[str, str, str, str]] = {
         "_KEY = 'app.current_' + 'user_id'\n",
         "rule",
     ),
+    # Server-side binding (a psycopg cursor, not Django's client-side one):
+    # the name travels as protocol parameter $1 and is resolved from the
+    # bound bytes; the result is a boolean, so no actor id comes back.
+    "server-side binding": (
+        _RETURN,
+        "    with psycopg.Cursor(connection.connection) as bound:\n"
+        "        bound.execute(\n"
+        "            'SELECT pg_catalog.current_setting(%s, true) = %s',\n"
+        "            [_KEY, _ALLOW],\n"
+        "        )\n"
+        "        (allowed,) = bound.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "import psycopg\n_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
     "gate on a line no probe input reaches": (
         _DENIED,
         "    if row is None:\n"
@@ -389,9 +410,13 @@ _EXPECTED = {
 _BEYOND_RULE = frozenset({"gate on a line no probe input reaches"})
 
 
-def _mutant(name: str, bindings: dict[str, object]) -> FunctionType:
+def _mutant(
+    name: str,
+    bindings: dict[str, object],
+    variants: dict[str, tuple[str, str, str, str]] | None = None,
+) -> FunctionType:
     """Compile a mutated copy of _next_version at its own file lines."""
-    old, new, appendix, _ = _VARIANTS[name]
+    old, new, appendix, _ = (variants or _VARIANTS)[name]
     original = finalization._next_version
     source = inspect.getsource(original)
     assert source.count(old) == 1, name
@@ -419,6 +444,7 @@ def _invoker(
 
 def _variant_probes(
     probe_world: exemption_probes.ProbeWorld,
+    variants: dict[str, tuple[str, str, str, str]] | None = None,
 ) -> list[exemption_probes.ExemptionProbe]:
     registered = exemption_probes.PROBES[_SYMBOL]
     # The allowlisted user is the world's receptionist: never a matrix actor.
@@ -428,8 +454,8 @@ def _variant_probes(
         "_ALLOW": str(probe_world.w.actor.pk),
     }
     probes = [registered]
-    for name in _VARIANTS:
-        function = _mutant(name, bindings)
+    for name in variants or _VARIANTS:
+        function = _mutant(name, bindings, variants)
         probes.append(
             dataclasses.replace(
                 registered,
@@ -500,6 +526,7 @@ _RULE_SHAPES = (
     "pg_settings lookup",
     "name computed in SQL, compared in SQL",
     "raw driver connection",
+    "server-side binding",
 )
 
 
@@ -550,6 +577,9 @@ def test_actor_rule_alone_refuses_every_r5_shape(
     assert "via pg_settings" in observed[_RULE_SHAPES[5]]
     assert "unresolvable setting via current_setting" in observed[_RULE_SHAPES[6]]
     assert "statement receives the actor id" in observed[_RULE_SHAPES[7]]
+    server_bound = observed[_RULE_SHAPES[8]]
+    assert "unresolvable setting via current_setting" in server_bound
+    assert "outside the recorded driver calls" not in server_bound
 
 
 def test_reclassified_functions_observe_the_actor(
@@ -669,6 +699,29 @@ def test_actor_catalog_is_derived_and_fails_closed(rbac_graph: RbacGraph) -> Non
             grown = actor_channels.actor_catalog(cursor, settings)
         transaction.set_rollback(True)
     assert "zz_actor_rows" in grown.relations
+    # The catalog views over the setting builtins are derived by oid from
+    # their rule trees, not listed.
+    assert {"pg_settings", "pg_file_settings"} <= catalog.readers.enumerators
+
+
+def test_expression_columns_are_the_live_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every expression column of pg_catalog (type pg_node_tree) is mapped to
+    the objects whose use evaluates it. A PostgreSQL upgrade or a new catalog
+    column fails here, and fails every catalog build, instead of going
+    unscanned (mutation-checked in place: one mapping removed)."""
+    with connection.cursor() as cursor:
+        live = actor_channels.node_tree_columns(cursor)
+    assert live == frozenset(actor_channels.EXPRESSION_COLUMNS)
+    trimmed = dict(actor_channels.EXPRESSION_COLUMNS)
+    trimmed.pop(("pg_type", "typdefaultbin"))
+    monkeypatch.setattr(actor_channels, "EXPRESSION_COLUMNS", trimmed)
+    with (
+        connection.cursor() as cursor,
+        pytest.raises(census.CensusError, match="unmapped"),
+    ):
+        actor_channels.actor_catalog(cursor, frozenset({"app.current_user_id"}))
 
 
 def test_an_unlisted_accessor_fails_closed(
@@ -699,3 +752,336 @@ def test_an_unlisted_accessor_fails_closed(
         )
     found = " ".join(runs[probes[0].symbol].observed["none"])
     assert f"unlisted accessor {missing} reaches the actor" in found
+
+
+# R7-1: actor reads through stored expressions (a column DEFAULT, a CHECK
+# constraint, a view outside clinic_app) and driver paths outside the cursor
+# (a server-side cursor, libpq directly). Two shapes of our own that no list
+# names: a domain DEFAULT (pg_type.typdefaultbin; the table has no column
+# default) and a SQL-standard function body (pg_proc.prosqlbody; its prosrc
+# is empty). The schema objects are created by the superuser once the world
+# exists (the CHECK and the body compare with the allowlisted id) and dropped
+# afterwards; the observer is then derived again, so its catalog sees them.
+_R7_DDL = """
+CREATE TABLE clinic_app.zz_r7_default (
+  id integer,
+  actor text DEFAULT pg_catalog.current_setting('app.current_user_id', true)
+);
+CREATE TABLE clinic_app.zz_r7_check (
+  id integer,
+  CONSTRAINT zz_r7_not_allowed CHECK (
+    pg_catalog.current_setting('app.current_user_id', true)
+      IS DISTINCT FROM '{allow}'
+  )
+);
+CREATE SCHEMA zz_r7;
+CREATE VIEW zz_r7.actor_view AS
+  SELECT pg_catalog.current_setting('app.current_user_id', true) AS actor;
+CREATE DOMAIN clinic_app.zz_r7_actor_text AS text
+  DEFAULT pg_catalog.current_setting('app.current_user_id', true);
+CREATE TABLE clinic_app.zz_r7_domain (
+  id integer, actor clinic_app.zz_r7_actor_text
+);
+CREATE FUNCTION clinic_app.zz_r7_body() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog
+BEGIN ATOMIC
+  SELECT pg_catalog.current_setting('app.current_user_id', true) = '{allow}';
+END;
+GRANT USAGE ON SCHEMA zz_r7 TO clinic_app;
+GRANT SELECT ON zz_r7.actor_view TO clinic_app;
+GRANT SELECT, INSERT ON clinic_app.zz_r7_default, clinic_app.zz_r7_check,
+  clinic_app.zz_r7_domain TO clinic_app;
+GRANT EXECUTE ON FUNCTION clinic_app.zz_r7_body() TO clinic_app;
+"""
+_R7_DROP = """
+DROP SCHEMA IF EXISTS zz_r7 CASCADE;
+DROP TABLE IF EXISTS clinic_app.zz_r7_default, clinic_app.zz_r7_check,
+  clinic_app.zz_r7_domain;
+DROP DOMAIN IF EXISTS clinic_app.zz_r7_actor_text;
+DROP FUNCTION IF EXISTS clinic_app.zz_r7_body();
+"""
+_R7_VARIANTS: dict[str, tuple[str, str, str, str]] = {
+    "r7-1a column default": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'INSERT INTO clinic_app.zz_r7_default DEFAULT VALUES '\n"
+        "            'RETURNING actor = %s', [_ALLOW]\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "r7-1b check constraint": (
+        _RETURN,
+        "    try:\n"
+        "        with transaction.atomic(), connection.cursor() as probe_cursor:\n"
+        "            probe_cursor.execute(\n"
+        "                'INSERT INTO clinic_app.zz_r7_check (id) VALUES (1)'\n"
+        "            )\n"
+        "    except IntegrityError:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "from django.db import IntegrityError, transaction\n",
+        "rule",
+    ),
+    "r7-1c view outside clinic_app": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'SELECT actor = %s FROM zz_r7.actor_view', [_ALLOW]\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "r7-1d server-side cursor": (
+        _RETURN,
+        "    with connection.connection.cursor(name='zz_r7_named') as named:\n"
+        "        named.execute(\n"
+        '            "SELECT pg_catalog.current_setting("\n'
+        "            \"'app.current_user_id', true) = %s\", [_ALLOW]\n"
+        "        )\n"
+        "        (allowed,) = named.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "r7-1e libpq exec_": (
+        _RETURN,
+        "    result = connection.connection.pgconn.exec_(\n"
+        '        b"SELECT pg_catalog.current_setting("\n'
+        "        b\"'app.current_user_id', true) = '\" + _ALLOW.encode() + b\"'\"\n"
+        "    )\n"
+        "    allowed = result.get_value(0, 0) == b't'\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "own: domain default": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'INSERT INTO clinic_app.zz_r7_domain (id) VALUES (1) '\n"
+        "            'RETURNING actor = %s', [_ALLOW]\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "own: SQL-standard function body": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute('SELECT clinic_app.zz_r7_body()')\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+}
+# The channel that must refuse each shape.
+_R7_CHANNELS = {
+    "r7-1a column default": "statement touches actor relation zz_r7_default",
+    "r7-1b check constraint": "statement touches actor relation zz_r7_check",
+    "r7-1c view outside clinic_app": "statement touches actor relation actor_view",
+    "r7-1d server-side cursor": (
+        "statement reads an actor or unresolvable setting via current_setting"
+    ),
+    "r7-1e libpq exec_": "a path outside the recorded driver calls reached it",
+    "own: domain default": "statement touches actor relation zz_r7_domain",
+    "own: SQL-standard function body": "calls clinic_app.zz_r7_body",
+}
+
+
+@contextlib.contextmanager
+def _r7_schema(allow: str) -> Iterator[None]:
+    url = database_url_for_name(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"],
+        str(connection.settings_dict["NAME"]),
+    )
+    with psycopg.connect(url, autocommit=True) as superuser:
+        superuser.execute(_R7_DROP)
+        superuser.execute(_R7_DDL.replace("{allow}", str(uuid.UUID(allow))))
+    try:
+        yield
+    finally:
+        with psycopg.connect(url, autocommit=True) as superuser:
+            superuser.execute(_R7_DROP)
+
+
+def test_actor_rule_refuses_every_r7_shape(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R7-1: each shape flips the allowlisted user's outcome (never a matrix
+    actor's), so the matrix alone cannot see it; the actor rule refuses each
+    by the derived channel that sees it, and still certifies the unmutated
+    function in the same run. The server-side cursor is seen as a recorded
+    statement, never as a path outside the recording."""
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        with _r7_schema(str(probe_world.w.actor.pk)):
+            probe_world = dataclasses.replace(
+                probe_world, observer=exemption_probes.actor_observer(probe_world.w)
+            )
+            probes = _variant_probes(probe_world, _R7_VARIANTS)
+            runs = exemption_probes.run_matrix(
+                probes, probe_world, probe_world.matrix.states[:1]
+            )
+    for probe in probes:
+        print("R7", probe.symbol, runs[probe.symbol].observed)  # noqa: T201 - receipt
+    assert exemption_probes.actor_problems(runs[_SYMBOL]) == []
+    observed = {
+        probe.symbol.split("#")[1]: " ".join(
+            runs[probe.symbol].observed.get("none", [])
+        )
+        for probe in probes[1:]
+    }
+    accepted = [
+        name
+        for name in _R7_VARIANTS
+        if not exemption_probes.actor_problems(runs[f"{_SYMBOL}#{name}"])
+    ]
+    assert not accepted, ("R7 shapes the actor rule accepted", accepted)
+    unseen = [
+        name for name, channel in _R7_CHANNELS.items() if channel not in observed[name]
+    ]
+    assert not unseen, ("R7 shapes refused by another channel", unseen)
+    assert (
+        "outside the recorded driver calls" not in observed["r7-1d server-side cursor"]
+    )
+
+
+type _Driver = psycopg.Connection[tuple[object, ...]]
+
+
+def _wire_django(_driver: _Driver) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT %s", [1])
+
+
+def _wire_executemany(_driver: _Driver) -> None:
+    with connection.cursor() as cursor:
+        cursor.executemany("INSERT INTO zz_wire VALUES (%s)", [(1,), (2,), (3,)])
+
+
+def _wire_server_binding(driver: _Driver) -> None:
+    psycopg.Cursor(driver).execute("SELECT %s::int", [1])
+
+
+def _wire_pipeline(driver: _Driver) -> None:
+    with driver.pipeline(), psycopg.Cursor(driver) as cursor:
+        cursor.execute("SELECT 1")
+        cursor.execute("SELECT %s::int", [2])
+
+
+def _wire_explicit_prepare(driver: _Driver) -> None:
+    psycopg.Cursor(driver).execute("SELECT %s::int", [3], prepare=True)
+
+
+def _wire_automatic_prepare(driver: _Driver) -> None:
+    with psycopg.Cursor(driver) as cursor:
+        for value in range(8):
+            cursor.execute("SELECT %s::int", [value])
+
+
+def _wire_server_side_cursor(driver: _Driver) -> None:
+    with driver.cursor(name="zz_wire_named") as cursor:
+        cursor.execute("SELECT generate_series(1, 3)")
+        cursor.fetchall()
+
+
+def _wire_psycopg_savepoint(driver: _Driver) -> None:
+    with driver.transaction():
+        driver.execute("SELECT 1")
+
+
+def _wire_stream(driver: _Driver) -> None:
+    for _ in psycopg.Cursor(driver).stream("SELECT generate_series(1, 3)"):
+        pass
+
+
+def _wire_copy(driver: _Driver) -> None:
+    with psycopg.Cursor(driver).copy("COPY (SELECT 1) TO STDOUT") as rows:
+        for _ in rows:
+            pass
+
+
+def _wire_exec(driver: _Driver) -> None:
+    driver.pgconn.exec_(b"SELECT 1")
+
+
+def _wire_send_query(driver: _Driver) -> None:
+    driver.pgconn.send_query(b"SELECT 1")
+    while driver.pgconn.get_result() is not None:
+        pass
+
+
+# Every way the probed connection can reach the server from Python.
+_WIRE_PATHS: dict[str, Callable[[_Driver], None]] = {
+    "django cursor": _wire_django,
+    "django executemany": _wire_executemany,
+    "server-binding cursor": _wire_server_binding,
+    "pipeline": _wire_pipeline,
+    "explicit prepare": _wire_explicit_prepare,
+    "automatic prepare": _wire_automatic_prepare,
+    "server-side cursor": _wire_server_side_cursor,
+    "psycopg savepoint": _wire_psycopg_savepoint,
+    "stream": _wire_stream,
+    "copy": _wire_copy,
+    "libpq exec_": _wire_exec,
+    "libpq send_query": _wire_send_query,
+}
+
+
+def test_the_wire_check_follows_every_driver_path() -> None:
+    """Every psycopg path to the server (Django's cursor and executemany, a
+    server-binding cursor, a pipeline, explicit and automatic prepared
+    statements, a server-side cursor, a psycopg savepoint, a stream, COPY)
+    is recorded send for send against libpq's trace of the connection, so the
+    completeness check raises nothing there; libpq used directly is refused.
+    COPY is also refused as unobservable."""
+    catalog = actor_channels.ActorCatalog(
+        settings=frozenset({"app.current_user_id"}),
+        functions={},
+        relations=frozenset(),
+        reads={},
+        names={},
+        relation_names=frozenset(),
+        readers=actor_channels.SettingReaders(frozenset(), frozenset()),
+        relation_oids=(),
+        watched=(),
+    )
+    observer = actor_channels.ActorObserver(catalog, {})
+    outside = "a path outside the recorded driver calls reached it"
+    found: dict[str, str] = {}
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE TEMPORARY TABLE zz_wire (value integer)")
+        driver = connection.connection
+        with actor_channels.statements_captured(observer):
+            for name, path in _WIRE_PATHS.items():
+                observer.begin(mode="injected", actor=str(uuid4()))
+                path(driver)
+                found[name] = " ".join(observer.end())
+        transaction.set_rollback(True)
+    print("WIRE", found)  # noqa: T201 - receipt
+    direct = {"libpq exec_", "libpq send_query"}
+    assert not [name for name in found if name not in direct and outside in found[name]]
+    assert all(outside in found[name] for name in direct)
+    assert "uses COPY, which the observer cannot inspect" in found["copy"]
+    assert not [name for name in found if name not in {*direct, "copy"} and found[name]]
