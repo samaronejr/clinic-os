@@ -34,6 +34,7 @@ from playwright.sync_api import expect
 
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import new_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -847,7 +848,7 @@ def _patient_scene(  # noqa: PLR0913 - the scene needs its full context
     name: str,
 ) -> tuple[Page, list[str], BrowserContext]:
     """Open the patient context for one scene and redeem the issued code."""
-    patient_context = access_browser.new_context(locale="pt-BR", **options)
+    patient_context = new_context(access_browser, locale="pt-BR", **options)
     patient = patient_context.new_page()
     patient.set_default_timeout(20_000)
     patient_errors = _watch_errors(patient)
@@ -913,7 +914,7 @@ def test_reflow_forced_colors_reduced_motion_zoom_and_long_content(
         ),
     ]
     for scene, options in scenes:
-        context = access_browser.new_context(locale="pt-BR", **options)
+        context = new_context(access_browser, locale="pt-BR", **options)
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors = _watch_errors(page)

@@ -5,8 +5,11 @@ through the task-3 snapshot contract, provisions a unique claimed PostgreSQL
 container, migrates and seeds it through the owner role, serves the product
 through a supervised Gunicorn master bound to loopback as ``clinic_app`` with
 the real middleware/CSRF/RLS stack, and drives the registered pytest browser
-suite through a real Chromium executable. ``ci`` runs the static, migration,
-coverage, dependency, current-source image/TLS, and browser gates in order.
+suite through a real browser engine: Chromium by default (CI parity), or the
+Playwright-managed Firefox/WebKit selected by ``--engine`` or
+``CLINIC_BROWSER_ENGINE``. An unavailable engine fails the run; it never falls
+back to another engine. ``ci`` runs the static, migration, coverage,
+dependency, current-source image/TLS, and browser gates in order.
 
 Only resources created by this runner are removed; the artifact root is
 retained as evidence.
@@ -32,6 +35,8 @@ from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
 import psycopg
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import sync_playwright
 
 from ops.testing.browser_server_controller import reserve_port, wait_until_ready
 from ops.testing.browser_server_supervisor import (
@@ -138,6 +143,9 @@ SIGNING_SUITES: Final = frozenset(
 )
 # Suites that exercise the synthetic, explicitly non-payable PIX rehearsal.
 PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end"})
+# Browser engines a suite can run on; chromium keeps CI parity as the default.
+ENGINES: Final = ("chromium", "firefox", "webkit")
+DEFAULT_ENGINE: Final = "chromium"
 CI_GATES: Final = (
     "static",
     "migration",
@@ -210,7 +218,7 @@ BUILD_TIMEOUT_SECONDS: Final = 3600
 MAX_LOG_TAIL_BYTES: Final = 4000
 KEK_SECRET_FILE: Final = "tenant-kek.secret"  # noqa: S105 - a file name
 _BROWSER_OPTIONS: Final = frozenset(
-    {"--artifact-root", "--record", "--run-root", "--suite"}
+    {"--artifact-root", "--engine", "--record", "--run-root", "--suite"}
 )
 _CI_OPTIONS: Final = frozenset({"--artifact-root", "--run-root"})
 
@@ -321,9 +329,45 @@ def _run_root(raw: str | None, artifact_root: Path) -> Path:
     return root
 
 
-def _resolve_browser() -> str:
-    """Return the real Chromium executable or reject the run."""
+def _resolve_engine(option: str | None) -> str:
+    """Return the engine chosen by ``--engine``/``CLINIC_BROWSER_ENGINE``."""
+    environment = os.environ.get("CLINIC_BROWSER_ENGINE", "")
+    if option is not None and environment and option != environment:
+        _fail("--engine and CLINIC_BROWSER_ENGINE name different engines")
+    engine = option if option is not None else environment or DEFAULT_ENGINE
+    if engine not in ENGINES:
+        _fail(f"renewal browser engine is not supported: {engine}")
+    return engine
+
+
+def _managed_executable(engine: str) -> str:
+    """Return the Playwright-managed executable path for ``engine``."""
+    try:
+        with sync_playwright() as driver:
+            browser_type = {"firefox": driver.firefox, "webkit": driver.webkit}[engine]
+            return browser_type.executable_path
+    except PlaywrightError as error:
+        message = f"renewal browser engine {engine} is unavailable"
+        raise RenewalRunnerError(message) from error
+
+
+def _resolve_browser(engine: str = DEFAULT_ENGINE) -> str:
+    """Return the real executable for ``engine`` or reject the run."""
     override = os.environ.get("CLINIC_RENEWAL_BROWSER_EXECUTABLE", "")
+    if engine != DEFAULT_ENGINE:
+        if override:
+            _fail("renewal browser executable override is Chromium-only")
+        candidate = Path(_managed_executable(engine))
+        if (
+            candidate.is_absolute()
+            and candidate.is_file()
+            and os.access(candidate, os.X_OK)
+        ):
+            return str(candidate)
+        _fail(
+            f"renewal browser engine {engine} is unavailable;"
+            f" run `uv run playwright install {engine}`"
+        )
     if override:
         candidate = Path(override)
         if (
@@ -735,11 +779,12 @@ def _server_environment(app_dsn: str) -> dict[str, str]:
     )
 
 
-def _pytest_environment(
+def _pytest_environment(  # noqa: PLR0913 - closed fixture inputs.
     *,
     base_url: str,
     artifact_root: Path,
     browser: str,
+    engine: str,
     username: str,
     password: str,
 ) -> dict[str, str]:
@@ -748,6 +793,7 @@ def _pytest_environment(
         {
             # Suite fixtures and worker subprocesses never reach a host Redis.
             "CELERY_BROKER_URL": "memory://",
+            "CLINIC_BROWSER_ENGINE": engine,
             "CLINIC_RENEWAL_ARTIFACT_ROOT": str(artifact_root),
             "CLINIC_RENEWAL_BASE_URL": base_url,
             "CLINIC_RENEWAL_BROWSER_EXECUTABLE": browser,
@@ -829,15 +875,16 @@ def _authorized_untracked(repository: Path) -> tuple[str, ...]:
     return tuple(sorted(path for path in paths if path and not _excluded(path)))
 
 
-def _run_browser_suite(
+def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
     repository: Path,
     suite: str,
     artifact_root: Path,
     run_root: Path,
     record: Path | None,
+    engine: str = DEFAULT_ENGINE,
 ) -> JsonObject:
     """Execute one registered suite against the real supervised runtime."""
-    browser = _resolve_browser()
+    browser = _resolve_browser(engine)
     override = os.environ.get("CLINIC_RENEWAL_APP_DATABASE_URL", "")
     override_dsn = _validate_serving_dsn(override) if override else None
     manifest, digest = _capture_source(repository, run_root, record)
@@ -891,6 +938,7 @@ def _run_browser_suite(
                     base_url=base_url,
                     artifact_root=browser_root,
                     browser=browser,
+                    engine=engine,
                     username=fixture["username"],
                     password=fixture["password"],
                 ),
@@ -946,6 +994,7 @@ def _run_browser_suite(
         "artifact_root": str(artifact_root),
         "base_url": base_url,
         "browser": browser,
+        "engine": engine,
         "pytest_exit": pytest_code,
         "revision_sha": manifest.get("base_revision_sha"),
         "runtime_role": APP_ROLE,
@@ -1259,7 +1308,9 @@ def _gate_browser(
         suite_root = artifact_root / f"ci-{suite}"
         ensure_private_directory(suite_root)
         try:
-            report = _run_browser_suite(repository, suite, suite_root, run_root, None)
+            report = _run_browser_suite(
+                repository, suite, suite_root, run_root, None, DEFAULT_ENGINE
+            )
             code = 0
         except RenewalInterruptError:
             raise
@@ -1354,6 +1405,7 @@ def _browser(arguments: list[str]) -> int:
     suite = options.get("--suite", "")
     if suite not in SUITES:
         _fail(f"renewal browser suite is not registered: {suite or '(missing)'}")
+    engine = _resolve_engine(options.get("--engine"))
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
     run_root = _run_root(options.get("--run-root"), artifact_root)
@@ -1364,6 +1416,7 @@ def _browser(arguments: list[str]) -> int:
         artifact_root,
         run_root,
         Path(record) if record else None,
+        engine,
     )
     write_no_replace(
         artifact_root / "report.json",

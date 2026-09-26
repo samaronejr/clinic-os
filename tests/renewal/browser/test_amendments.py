@@ -13,6 +13,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._protected import decrypt
+from renewal.browser.engines import element_box
 from renewal.browser.test_availability import (
     _no_overflow,
     _ring,
@@ -454,8 +455,7 @@ def _native_scene(page: Page, ctx: dict[str, Any], root: Path) -> dict[str, obje
     open_draft(page, ctx["staff"], ctx["base"], ctx["day"], ctx["specialty"])
     finalize_current(page)
     amend_current(page, "Retificação nativa")
-    target = page.locator('button[value="save"]').bounding_box()
-    assert target is not None
+    target = element_box(page.locator('button[value="save"]'))
     assert target["height"] >= MIN_TARGET_PX
     capture(page, root, "native-zoom-200", 640)
     return {

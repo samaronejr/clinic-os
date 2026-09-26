@@ -17,7 +17,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import secrets
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -30,6 +29,7 @@ from playwright.sync_api import expect
 
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import assert_only_refused_document_logged, new_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -210,8 +210,12 @@ def intake_browser(renewal_page: Page) -> Browser:
 @pytest.fixture(params=MATRIX_WIDTHS, ids=[f"{width}px" for width in MATRIX_WIDTHS])
 def journey(request: pytest.FixtureRequest, intake_browser: Browser) -> Iterator[Page]:
     """One pt-BR context per matrix width; tests read the width back from the page."""
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = intake_browser.new_context(
-        locale="pt-BR", viewport={"width": int(request.param), "height": 900}
+        locale="pt-BR",
+        viewport={"width": int(request.param), "height": 900},
+        service_workers="block",
     )
     page = context.new_page()
     page.set_default_timeout(20_000)
@@ -784,9 +788,9 @@ def test_failures_preserve_input_and_never_cross_the_clinic_scope(
     _invalid_registration(page, renewal_base_url, patients_a, root)
     _duplicate_registration(page, renewal_base_url, patients_a, root)
     _foreign_clinic(page, renewal_base_url, intake_staff["clinic_b"], patients_a, root)
-    # The only console entry is the refused clinic-B document itself.
-    assert len(errors) == 1, errors
-    assert re.search(r"\b404\b", errors[0])
+    # The only console entry is the refused clinic-B document itself (where
+    # the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404")
     checks = browser_report["checks"]
     assert isinstance(checks, list)
     checks.append(
@@ -957,7 +961,7 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_registry_usable(
         ),
     ]
     for scene, options in scenes:
-        context = intake_browser.new_context(locale="pt-BR", **options)
+        context = new_context(intake_browser, locale="pt-BR", **options)
         page = context.new_page()
         page.set_default_timeout(20_000)
         try:

@@ -21,6 +21,13 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
+from renewal.browser.engines import (
+    assert_only_refused_document_logged,
+    navigations_are_worker_controlled,
+    offline_navigation_error,
+    worker_answers_offline,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
@@ -208,6 +215,15 @@ def _await_worker(page: Page) -> None:
     )
 
 
+CACHED_FOR_ANONYMOUS_JS = """async (path) => {
+  const request = new Request(path, {credentials: 'omit'});
+  for (const name of await caches.keys()) {
+    if (await (await caches.open(name)).match(request)) return true;
+  }
+  return false;
+}"""
+
+
 def _cached_urls(page: Page) -> list[str]:
     urls = page.evaluate(
         """async () => {
@@ -376,8 +392,13 @@ def test_installation_metadata_and_static_only_worker_resolve(
     assert page.locator('link[rel="manifest"]').count() == 1
 
     # The worker controls the root scope and holds versioned static bytes only.
+    if not navigations_are_worker_controlled(page.context):
+        # Firefox under Playwright controls only the page the worker claimed
+        # (engines.navigations_are_worker_controlled): the signed-in landing.
+        _await_worker(page)
     page.goto(f"{renewal_base_url}{agenda_a}")
-    _await_worker(page)
+    if navigations_are_worker_controlled(page.context):
+        _await_worker(page)
     scope = page.evaluate("navigator.serviceWorker.ready.then(r => r.scope)")
     assert scope == f"{renewal_base_url}/"
     cached = _cached_urls(page)
@@ -575,9 +596,9 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     page.set_viewport_size({"width": 375, "height": 900})
     assert _no_overflow(page)
     _capture(page, renewal_artifact_root, "physician-foreign-clinic-denied-375")
-    # The only console entries are the two refused documents themselves.
-    assert len(errors) == 2
-    assert all("404" in error for error in errors)
+    # The only console entries are the two refused documents themselves
+    # (where the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404", documents=2)
 
 
 def test_stale_clinic_context_is_dropped_after_revocation(
@@ -668,11 +689,17 @@ def test_offline_reload_reveals_no_patient_content(
             "patients": page.evaluate(fetch_status, patients_a),
             "worker": page.evaluate(fetch_status, "/sw.js"),
         }
-        assert offline["stylesheet"] == OK
+        if worker_answers_offline(context):
+            assert offline["stylesheet"] == OK
+        else:
+            # The engine cannot let the worker answer offline
+            # (engines.worker_answers_offline); its cache must still hold the
+            # stylesheet for exactly the anonymous request it would answer.
+            assert page.evaluate(CACHED_FOR_ANONYMOUS_JS, "/static/css/clinic-os.css")
         assert str(offline["credentialed_stylesheet"]).startswith("rejected")
         assert str(offline["patients"]).startswith("rejected")
         assert str(offline["worker"]).startswith("rejected")
-        with pytest.raises(PlaywrightError, match="ERR_INTERNET_DISCONNECTED"):
+        with pytest.raises(PlaywrightError, match=offline_navigation_error(context)):
             page.goto(f"{renewal_base_url}{patients_a}")
         context.set_offline(offline=False)
 
@@ -701,7 +728,7 @@ def test_offline_reload_reveals_no_patient_content(
                     "cached_paths_before": sorted(set(cached_before)),
                     "cached_paths_after": sorted(set(cached_after)),
                     "offline_fetch": offline,
-                    "offline_navigation": "net::ERR_INTERNET_DISCONNECTED",
+                    "offline_navigation": offline_navigation_error(context),
                     "patient_in_any_cached_body": False,
                 },
                 indent=2,

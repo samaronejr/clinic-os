@@ -14,6 +14,9 @@ import pytest
 from ops.testing import renewal_runner as runner
 from ops.testing.browser_server_supervisor import SupervisedMaster
 from ops.testing.isolation_common import IsolationError, JsonObject
+from playwright.sync_api import sync_playwright
+
+from renewal.browser import a11y_support, engines
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -202,6 +205,251 @@ def test_browser_resolution_honors_the_private_override(
         runner._resolve_browser()
 
 
+def test_engine_selection_defaults_to_chromium_and_rejects_the_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    assert runner.ENGINES == ("chromium", "firefox", "webkit")
+    assert runner._resolve_engine(None) == "chromium"
+    assert runner._resolve_engine("webkit") == "webkit"
+    monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "firefox")
+    assert runner._resolve_engine(None) == "firefox"
+    assert runner._resolve_engine("firefox") == "firefox"
+    with pytest.raises(IsolationError, match="different engines"):
+        runner._resolve_engine("webkit")
+    monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "netscape")
+    with pytest.raises(IsolationError, match="not supported: netscape"):
+        runner._resolve_engine(None)
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE")
+    with pytest.raises(IsolationError, match="not supported: Firefox"):
+        runner._resolve_engine("Firefox")
+
+
+# Engine-specific Playwright/browser APIs live only in engines.py; a suite
+# that uses one directly would crash or silently fall back to Chromium.
+ENGINE_SPECIFIC_APIS = (
+    "driver.chromium",
+    ".chromium.launch",
+    "new_cdp_session",
+    "chrome://",
+    "--use-fake-device",
+    "grant_permissions(",
+    "clipboard.readText",
+    "CLINIC_RENEWAL_BROWSER_EXECUTABLE",
+    "wait_for_function(",
+)
+
+
+def test_browser_suites_leave_engine_specific_apis_to_the_engines_module() -> None:
+    offenders = [
+        (relpath, api)
+        for paths in runner.SUITES.values()
+        for relpath in paths
+        for api in ENGINE_SPECIFIC_APIS
+        if api in (REPOSITORY / relpath).read_text(encoding="utf-8")
+    ]
+    assert offenders == []
+
+
+@pytest.mark.parametrize("engine", ["firefox", "webkit"])
+@pytest.mark.parametrize("suite", sorted(runner.SUITES))
+def test_every_suite_runs_on_every_engine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suite: str,
+    engine: str,
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    started: list[tuple[str, str]] = []
+
+    def fake_suite(*args: object) -> JsonObject:
+        started.append((str(args[1]), str(args[5])))
+        return {"suite": str(args[1]), "engine": str(args[5])}
+
+    monkeypatch.setattr(runner, "_run_browser_suite", fake_suite)
+    artifacts = _private(tmp_path / "artifacts")
+    arguments = ["browser", "--suite", suite, "--engine", engine]
+    assert runner.main([*arguments, "--artifact-root", str(artifacts)]) == 0
+    assert started == [(suite, engine)]
+
+
+@pytest.mark.parametrize(
+    ("arguments", "environment"),
+    [
+        (["--engine", "netscape"], None),
+        ([], "netscape"),
+        (["--engine", "firefox"], "webkit"),
+        (["--engine", ""], None),
+    ],
+)
+def test_main_rejects_bad_engines_before_any_provisioning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    arguments: list[str],
+    environment: str | None,
+) -> None:
+    if environment is None:
+        monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    else:
+        monkeypatch.setenv("CLINIC_BROWSER_ENGINE", environment)
+
+    def _explode(*args: object, **kwargs: object) -> None:
+        message = "a rejected engine must never provision or capture"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(runner, "_docker", _explode)
+    monkeypatch.setattr(runner, "_capture_source", _explode)
+    assert (
+        runner.main(
+            [
+                "browser",
+                "--suite",
+                "smoke",
+                *arguments,
+                "--artifact-root",
+                str(tmp_path / "artifacts"),
+            ]
+        )
+        == 2
+    )
+
+
+def test_unavailable_engine_fails_the_suite_before_provisioning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    monkeypatch.delenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", raising=False)
+    monkeypatch.setattr(
+        runner, "_managed_executable", lambda _engine: str(tmp_path / "absent")
+    )
+
+    def _explode(*args: object, **kwargs: object) -> None:
+        message = "an unavailable engine must never provision"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(runner, "_docker", _explode)
+    monkeypatch.setattr(runner, "_capture_source", _explode)
+    artifacts = tmp_path / "artifacts"
+    assert (
+        runner.main(
+            [
+                "browser",
+                "--suite",
+                "smoke",
+                "--engine",
+                "webkit",
+                "--artifact-root",
+                str(artifacts),
+            ]
+        )
+        == 2
+    )
+    assert not (artifacts / "report.json").exists()
+
+
+def test_managed_engine_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "firefox"
+    executable.write_text("#!/bin/sh\n")
+    executable.chmod(0o755)
+    requested: list[str] = []
+
+    def managed(engine: str) -> str:
+        requested.append(engine)
+        return str(executable)
+
+    monkeypatch.delenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", raising=False)
+    monkeypatch.setattr(runner, "_managed_executable", managed)
+    assert runner._resolve_browser("firefox") == str(executable)
+    assert requested == ["firefox"]
+    executable.chmod(0o644)
+    with pytest.raises(IsolationError, match="playwright install firefox"):
+        runner._resolve_browser("firefox")
+    executable.chmod(0o755)
+    # The Chromium override never stands in for another engine.
+    monkeypatch.setenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", str(executable))
+    with pytest.raises(IsolationError, match="Chromium-only"):
+        runner._resolve_browser("webkit")
+    assert requested == ["firefox", "firefox"]
+
+
+@pytest.mark.parametrize("engine", ["firefox", "webkit"])
+def test_managed_executable_names_the_playwright_engine_build(engine: str) -> None:
+    path = Path(runner._managed_executable(engine))
+    assert path.is_absolute()
+    assert f"{engine}-" in str(path)
+
+
+def test_ci_browser_gate_always_runs_chromium(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "firefox")
+    engines: dict[str, object] = {}
+
+    def fake_suite(*args: object) -> JsonObject:
+        engines[str(args[1])] = args[5]
+        return {"suite": str(args[1])}
+
+    monkeypatch.setattr(runner, "_run_browser_suite", fake_suite)
+    results = runner._gate_browser(REPOSITORY, tmp_path, tmp_path / "run")
+    assert {result["exit"] for result in results} == {0}
+    assert engines == dict.fromkeys(runner.SUITES, "chromium")
+
+
+def test_axe_support_blocks_only_serious_and_critical_impacts() -> None:
+    violations: list[dict[str, object]] = [
+        {"id": "image-alt", "impact": "critical"},
+        {"id": "color-contrast", "impact": "serious"},
+        {"id": "region", "impact": "moderate"},
+        {"id": "heading-order", "impact": "minor"},
+    ]
+    assert [v["id"] for v in a11y_support.blocking(violations)] == [
+        "image-alt",
+        "color-contrast",
+    ]
+    assert a11y_support.AXE_URL == "/static/vendor/axe/axe.min.js"
+    assert (
+        REPOSITORY / "static" / a11y_support.AXE_URL.removeprefix("/static/")
+    ).is_file()
+
+
+def test_suite_side_engine_selection_fails_instead_of_skipping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLINIC_BROWSER_ENGINE", raising=False)
+    assert engines.selected_engine() == "chromium"
+    monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "webkit")
+    assert engines.selected_engine() == "webkit"
+    monkeypatch.setenv("CLINIC_BROWSER_ENGINE", "netscape")
+    with pytest.raises(pytest.fail.Exception, match="netscape"):
+        engines.selected_engine()
+
+
+def test_mobile_profiles_are_the_touch_phones_of_the_device_matrix() -> None:
+    assert {p.label for p in engines.MOBILE_PROFILES.values()} == {
+        "iPhone 15",
+        "Pixel 8",
+    }
+    assert engines.ENGINES == runner.ENGINES
+    assert engines.DEFAULT_ENGINE == runner.DEFAULT_ENGINE
+    # The static profiles mirror the pinned Playwright device descriptors.
+    with sync_playwright() as driver:
+        for profile in engines.MOBILE_PROFILES.values():
+            descriptor = driver.devices[profile.label]
+            assert descriptor["viewport"] == {
+                "width": profile.width,
+                "height": profile.height,
+            }
+            assert descriptor["device_scale_factor"] == profile.device_scale_factor
+            assert descriptor["user_agent"] == profile.user_agent
+            assert descriptor["is_mobile"] is True
+            assert descriptor["has_touch"] is True
+
+
 def test_artifact_root_must_be_excluded_or_external(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -278,9 +526,11 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
         base_url="http://127.0.0.1:48000",
         artifact_root=tmp_path,
         browser="/usr/bin/google-chrome",
+        engine="webkit",
         username="renewal-owner-x",
         password="secret-password",  # noqa: S106 - synthetic fixture value.
     )
+    assert environment["CLINIC_BROWSER_ENGINE"] == "webkit"
     assert environment["CLINIC_RENEWAL_BASE_URL"] == "http://127.0.0.1:48000"
     assert environment["CLINIC_RENEWAL_ARTIFACT_ROOT"] == str(tmp_path)
     assert environment["CLINIC_RENEWAL_BROWSER_EXECUTABLE"] == "/usr/bin/google-chrome"

@@ -29,12 +29,18 @@ import pytest
 from playwright.sync_api import ViewportSize, expect
 
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    grant_clipboard,
+    history_back,
+    history_reload,
+    pasted_clipboard,
+    restores_forms_on_back,
+    zoom_200,
+)
 from renewal.browser.test_availability import availability_staff
 from renewal.browser.test_encounter import press
 from renewal.browser.test_patient_access import (
     MIN_TARGET_PX,
-    ZOOM_FACTOR,
-    ZOOM_WINDOW,
     _no_overflow,
     _overflowing,
     _redeem,
@@ -340,7 +346,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         browser.new_context(viewport=viewport, locale="pt-BR") as payer_context,
         browser.new_context(viewport=viewport, locale="pt-BR") as stranger_context,
     ):
-        staff_context.grant_permissions(["clipboard-read", "clipboard-write"])
+        grant_clipboard(staff_context)
         admin = staff_context.new_page()
         patient = payer_context.new_page()
         other = stranger_context.new_page()
@@ -376,7 +382,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         admin.bring_to_front()
         copy_button.click()
         expect(admin.locator("[data-copy-status]")).to_have_text("Código copiado.")
-        assert admin.evaluate("navigator.clipboard.readText()") == code
+        assert pasted_clipboard(admin) == code
 
         # A bounded refresh re-reads stored state and never invents success.
         assert await_refresh(admin) == OK
@@ -417,7 +423,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         # A lost connection stops the chain and says the screen may be stale.
         patient.route(STATUS_PATTERN, lambda route: route.abort())
-        patient.reload()
+        history_reload(patient)
         expect(patient.locator("[data-offline]")).to_be_visible()
         expect_state(patient, "pending")
         capture(patient, root, "patient-offline", width)
@@ -517,13 +523,34 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         )
 
 
+def _resubmit_restored_form(
+    page: Page, root: Path, patient_id: str, charge_url: str
+) -> None:
+    """Submitting a Back-restored form opens nothing: it is the same charge.
+
+    The screen says so instead of claiming a second creation.
+    """
+    expect(page.locator("#id_patient_id")).to_have_value(patient_id)
+    expect(page.locator("#id_amount")).to_have_value(AMOUNT)
+    capture(page, root, "back-restored", 1280)
+    press(page, "create")
+    assert page.url == charge_url
+    expect_state(page, "draft")
+    expect(page.locator("p.feedback[role=status]")).to_have_count(1)
+    capture(page, root, "back-resubmitted", 1280)
+
+
 def test_browser_back_and_resubmit_never_opens_a_second_charge(
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     availability_staff: dict[str, str],
 ) -> None:
-    """Chrome's own Back restores the create form; resubmitting it opens no charge.
+    """Back restores the create form; resubmitting it opens no charge.
+
+    Firefox does not restore form controls on Back under Playwright
+    (engines.restores_forms_on_back); there Back shows a fresh form, and the
+    rest of the journey is the same on every engine.
 
     The browser, not a captured POST dictionary, decides what a restored form
     carries: it puts back the selected patient and the typed value while the
@@ -548,22 +575,17 @@ def test_browser_back_and_resubmit_never_opens_a_second_charge(
         rows = page.locator("[data-charge]").filter(has_text=name)
         charge_url = create_charge(page, ledger, payer["patient"], AMOUNT)
 
-        # Refresh the charge that was created, then press the browser's Back.
-        page.reload()
+        # Refresh the charge that was created, then press Back (engines.py,
+        # Session history: the document's own Reload/Back on every engine).
+        history_reload(page)
         assert page.url == charge_url
-        page.go_back()
-        page.wait_for_url(ledger)
-        expect(page.locator("#id_patient_id")).to_have_value(payer["patient"])
-        expect(page.locator("#id_amount")).to_have_value(AMOUNT)
-        capture(page, root, "back-restored", 1280)
-
-        # Submitting that restored form opens nothing: it is the same charge,
-        # and the screen says so instead of claiming a second creation.
-        press(page, "create")
-        assert page.url == charge_url
-        expect_state(page, "draft")
-        expect(page.locator("p.feedback[role=status]")).to_have_count(1)
-        capture(page, root, "back-resubmitted", 1280)
+        history_back(page, ledger)
+        if restores_forms_on_back(context):
+            _resubmit_restored_form(page, root, payer["patient"], charge_url)
+        else:
+            # Back renders a fresh form here: nothing restored to resubmit.
+            expect(page.locator("#id_amount")).to_have_value("")
+            capture(page, root, "back-fresh-form", 1280)
         page.goto(ledger)
         expect(rows).to_have_count(1)
 
@@ -581,8 +603,7 @@ def test_browser_back_and_resubmit_never_opens_a_second_charge(
         second_url = page.url
         assert second_url != charge_url
         expect_state(page, "draft")
-        page.go_back()
-        page.wait_for_url(repeat_form)
+        history_back(page, repeat_form)
         press(page, "create")
         assert page.url == second_url
         page.goto(ledger)
@@ -607,7 +628,7 @@ def test_preferences_keyboard_and_reflow_hold_on_the_payment_screen(
     with browser.new_context(
         viewport={"width": 375, "height": 900}, locale="pt-BR"
     ) as context:
-        context.grant_permissions(["clipboard-read", "clipboard-write"])
+        grant_clipboard(context)
         page = context.new_page()
         errors = _watch_errors(page)
         sign_in_manager(page, base, staff, manager)
@@ -637,20 +658,15 @@ def test_preferences_keyboard_and_reflow_hold_on_the_payment_screen(
         capture(page, root, "forced-colors-reduced-motion", 320)
         page.emulate_media(forced_colors="none", reduced_motion="no-preference")
 
-        cdp = context.new_cdp_session(page)
-        cdp.send(
-            "Emulation.setDeviceMetricsOverride",
-            {
-                "width": ZOOM_WINDOW // ZOOM_FACTOR,
-                "height": 450,
-                "deviceScaleFactor": ZOOM_FACTOR,
-                "mobile": False,
-            },
-        )
-        page.goto(charge_url)
-        assert page.evaluate("devicePixelRatio === 2 && innerWidth === 640")
-        capture(page, root, "zoom-200-layout", 640)
-        cdp.detach()
+        zoom_context, zoomed = zoom_200(page)
+        try:
+            zoom_errors = _watch_errors(zoomed)
+            zoomed.goto(charge_url)
+            assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
+            capture(zoomed, root, "zoom-200-layout", 640)
+            assert not zoom_errors
+        finally:
+            zoom_context.close()
     assert not errors
 
 

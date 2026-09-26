@@ -46,6 +46,12 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._page_wait import wait_for_js
+from renewal.browser.engines import (
+    element_box,
+    install_media,
+    launch_selected,
+    watch_page_errors,
+)
 from renewal.browser.test_availability import (
     SETTLED_JS,
     _sign_in_physician,
@@ -74,7 +80,7 @@ from renewal.browser.test_document_verification import (
 from renewal.browser.test_document_verification import _worker as delivery_worker
 from renewal.browser.test_encounter import press
 from renewal.browser.test_patient_access import _overflowing, _redeem, _ring
-from renewal.browser.test_patient_video import MEDIA_ARGS, TRACK_JS
+from renewal.browser.test_patient_video import TRACK_JS
 from renewal.browser.test_prescribing import (
     ITEM,
     concurrent_sign,
@@ -147,7 +153,8 @@ ADAPTERS: Final = {
     },
     "media_devices": {
         "label": "mocked",
-        "detail": "Chromium --use-fake-device-for-media-stream",
+        "detail": "engines.install_media: Chromium fake capture devices; "
+        "Firefox/WebKit synthetic canvas/oscillator getUserMedia",
     },
     "physician_registry": {
         "label": "mocked",
@@ -304,8 +311,7 @@ def keyboard_reaches(case: Day, page: Page, target: Locator, scene: str) -> None
             break
     else:
         pytest.fail(f"{scene}: keyboard never reached the control")
-    box = target.bounding_box()
-    assert box is not None
+    box = element_box(target)
     assert box["height"] >= MIN_TARGET_PX, (scene, box)
     case.keyboard[scene] = stops
     capture(case, page, f"keyboard-{scene}")
@@ -315,7 +321,7 @@ def watch(case: Day, persona: str, page: Page) -> Page:
     """Record page errors and console errors for one persona's page."""
     errors = case.errors.setdefault(persona, [])
     page.set_default_timeout(TIMEOUT_MS)
-    page.on("pageerror", lambda error: errors.append(str(error)))
+    watch_page_errors(page, errors)
     page.on(
         "console",
         lambda message: (
@@ -1221,13 +1227,15 @@ def reflow_scenes(case: Day, patient: Page) -> None:
 
 
 def _context(browser: Browser, case: Day, *, media: bool) -> BrowserContext:
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = browser.new_context(
         locale="pt-BR",
         timezone_id="America/Sao_Paulo",
         viewport={"width": case.width, "height": 900},
+        service_workers="block",
     )
-    if media:
-        context.grant_permissions(["camera", "microphone"], origin=case.base)
+    install_media(context, case.base, granted=media)
     return context
 
 
@@ -1257,10 +1265,7 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
     provision_physician_profile(case.staff)
     manager = seed_manager(case.staff)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts: list[BrowserContext] = []
         try:
             pages: dict[str, Page] = {}

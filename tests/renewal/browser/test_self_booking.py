@@ -276,11 +276,13 @@ def test_staff_patient_race(
     data = _seed(staff, "2035-06-05")
     browser = renewal_page.context.browser
     assert browser is not None
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     patient_context = browser.new_context(
-        locale="pt-BR", viewport={"width": 1280, "height": 900}
+        locale="pt-BR", viewport={"width": 1280, "height": 900}, service_workers="block"
     )
     staff_context = browser.new_context(
-        locale="pt-BR", viewport={"width": 1280, "height": 900}
+        locale="pt-BR", viewport={"width": 1280, "height": 900}, service_workers="block"
     )
     patient = patient_context.new_page()
     manager = staff_context.new_page()

@@ -8,13 +8,19 @@ no sleeps, provider credentials, recording or clinical-data traces are used.
 from __future__ import annotations
 
 import json
-import os
 from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser.engines import (
+    grant_media,
+    install_media,
+    launch_selected,
+    media_source,
+    watch_page_errors,
+)
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_clinician_video import (
     FIRST,
@@ -28,7 +34,7 @@ from renewal.browser.test_clinician_video import (
 )
 from renewal.browser.test_encounter import stored
 from renewal.browser.test_patient_access import _redeem
-from renewal.browser.test_patient_video import MEDIA_ARGS, TRACK_JS
+from renewal.browser.test_patient_video import TRACK_JS
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 from renewal.browser.test_teleconsult import (
     _accept_consent,
@@ -247,7 +253,7 @@ def device_recovery(patient: Page, case: _Case) -> None:
     )
     expect(patient.locator("[data-device-error]")).to_be_focused()
     capture(patient, case, "permission-denied")
-    patient.context.grant_permissions(["camera", "microphone"], origin=case.base)
+    grant_media(patient.context, case.base)
     patient.locator("[data-device-test]").click()
     expect(patient.locator("[data-device-check]")).to_have_attribute(
         "data-device-state", "ready"
@@ -442,20 +448,25 @@ def test_video_recovery_journey(
     errors: list[str] = []
     console: list[str] = []
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts = [
+            # Routed requests: WebKit's route() misses service-worker-controlled
+            # pages (engines.py, Request interception).
             browser.new_context(
-                locale="pt-BR", viewport={"width": width, "height": 900}
+                locale="pt-BR",
+                viewport={"width": width, "height": 900},
+                service_workers="block",
             )
             for _ in range(3)
         ]
+        # Only the physician starts with devices; the patient is denied until
+        # device_recovery grants them.
+        for index, context in enumerate(contexts):
+            install_media(context, base, granted=index == 0)
         physician, patient, manager = [context.new_page() for context in contexts]
         for page in (physician, patient, manager):
             page.set_default_timeout(20_000)
-            page.on("pageerror", lambda error: errors.append(str(error)))
+            watch_page_errors(page, errors)
             page.on(
                 "console",
                 lambda message: (
@@ -463,7 +474,6 @@ def test_video_recovery_journey(
                 ),
             )
         try:
-            physician.context.grant_permissions(["camera", "microphone"], origin=base)
             _sign_in_physician(physician, base, staff)
             sign_in_manager(manager, base, staff, seed_manager(staff))
             _publish_consent(manager, f"{base}/clinics/{staff['clinic_a']}/consent/")
@@ -484,10 +494,10 @@ def test_video_recovery_journey(
                         "mode": "synthetic",
                         "provider_backed": False,
                         "remote_peer_media": False,
-                        "browser": "Chromium",
+                        "browser": browser.browser_type.name,
                         "version": browser.version,
                         "width": width,
-                        "devices": "real browser fake camera/microphone; "
+                        "devices": f"{media_source(patient.context)}; "
                         "permission denial then grant",
                         "transport": [
                             "offline/reconnect both personas",
