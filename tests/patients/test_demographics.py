@@ -737,7 +737,7 @@ def test_carry_forward_marks_patient_reported_unverified(
                 clinic_id=rbac_graph.clinic_a,
                 enrollment_id=registration.enrollment.pk,
                 reason="carried from submitted questionnaire",
-            )
+            ).version
             is None
         )
     with (
@@ -748,7 +748,7 @@ def test_carry_forward_marks_patient_reported_unverified(
             clinic_id=rbac_graph.clinic_a,
             enrollment_id=registration.enrollment.pk,
             reason="carried from submitted questionnaire",
-        )
+        ).version
         assert carried is not None
         assert carried.source == "patient_reported"
         assert carried.social_name == "Nome Social"
@@ -1498,7 +1498,7 @@ def _carry(
 ) -> tuple[Any, UUID, Any]:
     """Record staff values, submit ``answers`` as the patient, carry forward.
 
-    Returns (carried version or None, enrollment id, services module).
+    Returns (carry-forward outcome, enrollment id, services module).
     """
     services = _services()
     admin = _role_user(graph, UserClinicRole.Role.CLINIC_ADMIN)
@@ -1593,8 +1593,9 @@ def test_carry_forward_never_erases_staff_recorded_values(
     answers = (
         {} if answer is None else {f"q_{field}": answer for field in _STAFF_RECORDED}
     )
-    carried, enrollment, services = _carry(rbac_graph, answers)
-    assert carried is None, case
+    outcome, enrollment, services = _carry(rbac_graph, answers)
+    assert outcome.version is None, case
+    assert outcome.not_carried == (), case
     record = _record(rbac_graph, services, enrollment)
     assert record.version == 1, case
     assert record.source == "staff_recorded", case
@@ -1611,10 +1612,10 @@ def test_carry_forward_carries_every_explicit_answer_as_patient_reported(
     rbac_graph: RbacGraph,
 ) -> None:
     """Every carried field takes the explicit answer, marked unverified."""
-    carried, enrollment, services = _carry(
+    outcome, enrollment, services = _carry(
         rbac_graph, {f"q_{field}": value for field, value in _PATIENT_ANSWER.items()}
     )
-    assert carried is not None
+    assert outcome.version is not None
     record = _record(rbac_graph, services, enrollment)
     assert (record.version, record.source) == (2, "patient_reported")
     for field, value in _PATIENT_ANSWER.items():
@@ -1631,11 +1632,11 @@ def test_carry_forward_mixed_answers_touch_only_answered_fields(
     rbac_graph: RbacGraph,
 ) -> None:
     """The reviewer's repro: blank optional answers leave the record intact."""
-    carried, enrollment, services = _carry(
+    outcome, enrollment, services = _carry(
         rbac_graph,
         {"q_social_name": "Nome Social", "q_birth_date": "", "q_occupation": ""},
     )
-    assert carried is not None
+    assert outcome.version is not None
     record = _record(rbac_graph, services, enrollment)
     assert record.corrections[0].changed_fields == ("social_name",)
     assert record.values["social_name"] == "Nome Social"
@@ -1652,7 +1653,7 @@ def test_carry_forward_non_answer_fills_only_unrecorded_fields(
     rbac_graph: RbacGraph,
 ) -> None:
     """An explicit non-answer is recorded where nothing was on record."""
-    carried, enrollment, services = _carry(
+    outcome, enrollment, services = _carry(
         rbac_graph,
         {
             "q_occupation": "declined",
@@ -1661,7 +1662,7 @@ def test_carry_forward_non_answer_fills_only_unrecorded_fields(
         },
         staff_values=False,
     )
-    assert carried is not None
+    assert outcome.version is not None
     record = _record(rbac_graph, services, enrollment)
     assert record.source == "patient_reported"
     assert record.unknown == {"occupation": "declined"}
@@ -1789,3 +1790,134 @@ def test_registration_replay_distinguishes_swapped_names(
                 social_name="",
                 birth_date=None,
             )
+
+
+def _staff_non_answers(graph: RbacGraph, services: Any, enrollment: UUID) -> None:  # noqa: ANN401 - service module
+    """Record staff non-answers: declined (coded + text) and not_informed."""
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        services.update_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            expected_version=1,
+            changes={"sex_at_birth": "declined", "language": "", "occupation": ""},
+            unknown={"language": "declined", "occupation": "not_informed"},
+            reason="paciente preferiu não informar",
+        )
+
+
+def test_carry_forward_never_downgrades_a_recorded_decline(
+    rbac_graph: RbacGraph,
+) -> None:
+    """R3-N1: a patient "not informed" (or blank) never replaces a decline;
+    a patient decline still says more than a recorded "not informed"."""
+    services = _services()
+    admin = _role_user(rbac_graph, UserClinicRole.Role.CLINIC_ADMIN)
+    with runtime_role(), tenant_context(admin, rbac_graph.organization_a):
+        template = services.publish_template(
+            clinic_id=rbac_graph.clinic_a,
+            key=f"intake-{uuid4().hex[:8]}",
+            title="Intake",
+            questions=[
+                {
+                    "id": f"q_{field}",
+                    "label": field,
+                    "type": "text",
+                    "required": False,
+                    "max_length": 160,
+                    "options": [],
+                }
+                for field in ("sex_at_birth", "language", "occupation")
+            ],
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        enrollment = registration.enrollment.pk
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            expected_version=0,
+            changes={"social_name": "Social"},
+            reason="",
+        )
+        invitation = services.issue_invitation(
+            clinic_id=rbac_graph.clinic_a, enrollment_id=enrollment
+        )
+    _staff_non_answers(rbac_graph, services, enrollment)
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        response = services.assign_questionnaire(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            template_id=template.pk,
+        )
+    with runtime_role():
+        session = redeem_invitation(rbac_graph.clinic_a, invitation.secret)
+    assert session is not None
+    with runtime_role(), patient_session_context(session):
+        services.submit_intake(
+            response_id=response.pk,
+            answers={
+                "q_sex_at_birth": "not_informed",
+                "q_language": "not_informed",
+                "q_occupation": "declined",
+            },
+            expected_revision=1,
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        outcome = services.carry_forward_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            reason="questionário",
+        )
+    record = _record(rbac_graph, services, enrollment)
+    assert outcome.version is not None
+    # The declines stay; only occupation moves up from not_informed.
+    assert record.values["sex_at_birth"] == "declined"
+    assert record.unknown == {"language": "declined", "occupation": "declined"}
+    assert record.corrections[0].changed_fields == ("occupation",)
+
+
+def test_carry_forward_carries_each_answer_independently(
+    rbac_graph: RbacGraph,
+) -> None:
+    """R3-N2: a pt-BR date carries; a malformed answer is skipped on its own
+    and reported, while every other valid answer still carries."""
+    outcome, enrollment, services = _carry(
+        rbac_graph,
+        {
+            "q_birth_date": "17/05/1991",
+            "q_occupation": "Engenheira",
+            "q_sex_at_birth": "not-a-code",
+            "q_language": "Libras\x07",  # control character: malformed
+        },
+    )
+    assert outcome.version is not None
+    assert {(item.field, item.reason) for item in outcome.not_carried} == {
+        ("sex_at_birth", "invalid_value"),
+        ("language", "invalid_value"),
+    }
+    record = _record(rbac_graph, services, enrollment)
+    assert record.values["birth_date"] == "1991-05-17"
+    assert record.values["occupation"] == "Engenheira"
+    assert record.values["sex_at_birth"] == "female"
+    assert record.values["language"] == "Português"
+    assert record.corrections[0].changed_fields == ("birth_date", "occupation")
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Registro Civil",
+        date(1991, 5, 17),
+    )
+    # A response whose only answer is malformed carries nothing, loudly.
+    lone, lone_enrollment, _ = _carry(rbac_graph, {"q_birth_date": "31/02/1990"})
+    assert lone.version is None
+    assert [(item.field, item.reason) for item in lone.not_carried] == [
+        ("birth_date", "invalid_value")
+    ]
+    assert _registry(rbac_graph, lone_enrollment)[1] == date(1990, 5, 17)
