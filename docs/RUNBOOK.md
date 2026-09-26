@@ -437,6 +437,21 @@ against the restored object store. It deletes and proves absence of the dump
 and hash. Restored verification is read-only except for advancing each
 restored sequence once; it runs no restored provisioning or browser command.
 
+Every relation in `clinic_app` has exactly one recovery classification in
+`ops/testing/restore_contract.py`: restored data (`DOMAIN_RELATIONS`, which
+includes per-user display preferences), a restored sequence
+(`SEQUENCE_TARGETS`), required-empty source relations (`REQUIRED_EMPTY`), or a
+target-owned exclusion with a written reason (`TARGET_OWNED_RELATIONS`). The
+provider capability registry is platform data seeded by the target's own
+migrations, so it is excluded. Before any target mutation, the rehearsal
+requires the source registry to equal the target's seed, ignoring only
+surrogate keys and timestamps. Owner-recorded provider approvals, activation
+records and health events must be empty on the source: the rehearsal refuses
+such a source rather than drop those records. `tests/infra/test_recovery_manifest.py`
+derives every table, partition, sequence and view from the migrated catalog
+and fails on any relation left unclassified, so a migration that adds a
+relation must classify it in the same change.
+
 Post-restore application proof runs as `clinic_app`, never `clinic_super`:
 SQL probes assert tenant-scoped reads, cross-tenant RLS denial and the
 closed ledger/DEK-unwrap ACLs, and the `ops.testing.restore_fixture verify`
