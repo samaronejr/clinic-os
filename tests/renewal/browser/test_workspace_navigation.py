@@ -70,10 +70,12 @@ AXE_RUN_JS: Final = """async (include) => {
     nodes: v.nodes.slice(0, 5).map((n) => n.target.join(' ')),
   }));
 }"""
-# The shell surfaces this todo owns: header, section row, banner, palette.
+# The shell chrome this todo owns, page-wide: skip link, header, section row,
+# banner, palette and footer.
 TARGETS_JS: Final = """(minimum) => {
-  const selector = ['.site-header a[href]', '.site-header summary',
+  const selector = ['.skip-link', '.site-header a[href]', '.site-header summary',
     '.site-header button', '[data-patient-banner] button',
+    '[data-patient-banner] a[href]', '.site-footer a[href]',
     'dialog[open] button', 'dialog[open] input:not([type=hidden])',
     'dialog[open] .combobox-option'].join(',');
   const small = [];
@@ -447,6 +449,8 @@ def test_reception_pins_a_patient_from_the_palette_at_every_width(
             ):
                 assert secret not in kept
             assert _no_overflow(page), width
+            # The footer link is part of the checked chrome at every width.
+            expect(page.locator(".site-footer a[href]")).to_have_count(1)
             targets = _targets(page)
             assert targets["small"] == [], (width, targets)
             assert _axe(page, renewal_base_url) == [], width

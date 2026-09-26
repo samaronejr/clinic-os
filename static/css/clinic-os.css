@@ -384,6 +384,14 @@ ul {
   margin: 0;
 }
 
+/* Footer links keep the 44px target floor like every shell item. */
+.site-footer a {
+  min-width: var(--control-height);
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+}
+
 .brand {
   color: var(--color-primary-strong);
   font-size: var(--text-lede);
