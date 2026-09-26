@@ -50,3 +50,58 @@ def decrypt(
     ).fetchone()
     assert row is not None
     return bytes(row[0])
+
+
+def rename_patient(  # noqa: PLR0913 - one registry correction needs its bindings
+    conn: psycopg.Connection[Any],
+    *,
+    organization: str,
+    clinic: str,
+    patient: str,
+    enrollment: str,
+    actor: str,
+    name: str,
+) -> None:
+    """Rename one seeded patient the way the registry contract requires.
+
+    The registry name mirrors the latest demographics version, and the
+    database admits the change only alongside that version and its
+    correction receipt in the same transaction (todo 17), so a fixture
+    rename appends both before it updates the registry row. The caller's
+    connection transaction commits all three together.
+    """
+    row = conn.execute(
+        "SELECT id, version FROM clinic_app.intake_patientdemographics "
+        "WHERE organization_id = %s AND patient_id = %s "
+        "ORDER BY version DESC LIMIT 1",
+        [organization, patient],
+    ).fetchone()
+    previous, version = (row[0], int(row[1]) + 1) if row is not None else (None, 1)
+    produced = conn.execute(
+        "INSERT INTO clinic_app.intake_patientdemographics "
+        "(id, organization_id, patient_id, clinic_id, enrollment_id, version, "
+        "legal_name, source, created_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, %s, %s, 'staff_recorded', now()) "
+        "RETURNING id",
+        [
+            organization,
+            patient,
+            clinic,
+            enrollment,
+            version,
+            encrypt(conn, "intake.patientdemographics.legal_name", name.encode()),
+        ],
+    ).fetchone()
+    assert produced is not None
+    conn.execute(
+        "INSERT INTO clinic_app.intake_demographicscorrection "
+        "(id, organization_id, clinic_id, patient_id, demographics_id, "
+        "previous_id, actor_id, actor_label, changed_fields, created_at) "
+        "VALUES (gen_random_uuid(), %s, %s, %s, %s, %s, %s, 'fixture', "
+        "'[\"legal_name\"]'::jsonb, now())",
+        [organization, clinic, patient, produced[0], previous, actor],
+    )
+    conn.execute(
+        "UPDATE clinic_app.intake_patient SET full_name = %s WHERE id = %s",
+        [encrypt(conn, "intake.patient.full_name", name.encode()), patient],
+    )
