@@ -12,12 +12,15 @@ import psycopg
 import pytest
 from apps.audit.services import record_phase1_event
 from apps.intake.models import Patient
+from apps.providers.models import CapabilityVersion, ProviderCapability
 from apps.tenancy.db import tenant_context
 from django.db import connection
 from ops.testing import restore_rehearsal, restore_verification
 from ops.testing.restore_contract import RestoreContractError
+from ops.testing.restore_queries import TARGET_SEED_SQL
 
 from otp_test_support import runtime_role
+from provider_gate_support import seed_capabilities
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -304,6 +307,47 @@ def test_tenant_key_status_must_match_source() -> None:
     drifted = StubClient({"tenantdatakey": "1|active\n"})
     with pytest.raises(RestoreContractError, match="key status"):
         restore_verification.require_equal_tenant_key_status(source, drifted)
+
+
+def _reseed_provider_registry(superuser_database_url: str) -> None:
+    """Rebuild the migration seed under fresh surrogate keys and timestamps."""
+    with psycopg.connect(superuser_database_url, autocommit=True) as raw:
+        raw.execute(
+            "TRUNCATE clinic_app.providers_healthevent, "
+            "clinic_app.providers_activationrecord, "
+            "clinic_app.providers_capabilityversion, "
+            "clinic_app.providers_capabilityapproval, "
+            "clinic_app.providers_providercapability"
+        )
+    seed_capabilities()
+
+
+def test_target_seed_guard_ignores_surrogates_but_not_drift(
+    superuser_database_url: str,
+) -> None:
+    """The excluded provider registry must equal the target's migration seed."""
+    # Given: one seeded registry fingerprint and its surrogate keys
+    client = SuperuserClient(superuser_database_url)
+    _reseed_provider_registry(superuser_database_url)
+    seeded = client.sql(TARGET_SEED_SQL).strip()
+    first_ids = set(ProviderCapability.objects.values_list("id", flat=True))
+    assert len(first_ids) == 24
+
+    # When: the same seed is rebuilt the way a target migration builds it
+    _reseed_provider_registry(superuser_database_url)
+
+    # Then: fresh surrogate keys do not matter, but any content drift does
+    assert first_ids.isdisjoint(ProviderCapability.objects.values_list("id", flat=True))
+    target = StubClient({"providers_": seeded + "\n"})
+    restore_verification.require_equal_target_seed(client, target)
+    drifted = CapabilityVersion.objects.filter(
+        capability__key="pdf_rendering", provider="unselected"
+    ).update(state=CapabilityVersion.State.SELECTED_IN_PLAN)
+    assert drifted == 1
+    with pytest.raises(RestoreContractError, match="migration seed"):
+        restore_verification.require_equal_target_seed(client, target)
+    with pytest.raises(RestoreContractError, match="fingerprint is invalid"):
+        restore_verification.require_equal_target_seed(StubClient(), target)
 
 
 def test_key_probe_binds_envelope_and_digest() -> None:

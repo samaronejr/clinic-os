@@ -33,6 +33,8 @@ MAX_PASSWORD_BYTES: Final = 1024
 PROBE_PLAINTEXT: Final = b"synthetic restore rehearsal probe payload"
 PROBE_PURPOSE: Final = "restore-probe"
 PDF_BYTES: Final = b"%PDF-1.4\n%synthetic clinical attachment\n%%EOF\n"
+# Non-default on purpose: a restore that dropped the row reads the defaults.
+RESTORED_PREFERENCES: Final = ("dark", "compact")
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -233,6 +235,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         publish_configuration,
     )
     from apps.identity.models import PhysicianProfile, User, UserClinicRole
+    from apps.identity.preferences import save_ui_preferences
     from apps.intake.contacts import (
         save_contact_destination,
         set_purpose_channel,
@@ -416,6 +419,9 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         )
 
     with _runtime_role(), tenant_context(PHYSICIAN_ID, ORGANIZATION_ID):
+        save_ui_preferences(
+            theme=RESTORED_PREFERENCES[0], density=RESTORED_PREFERENCES[1]
+        )
         response = assign_questionnaire(
             clinic_id=CLINIC_ID,
             enrollment_id=enrollment_id,
@@ -711,6 +717,7 @@ def verify(probe_path: Path) -> None:
     from apps.billing.presentation import patient_charge
     from apps.ehr.attachments import download_attachment
     from apps.ehr.services import view_version
+    from apps.identity.preferences import load_ui_preferences
     from apps.intake.patient_access import (
         patient_session_context,
         patient_session_overview,
@@ -743,6 +750,9 @@ def verify(probe_path: Path) -> None:
         )
         if download.data != PDF_BYTES:
             _fail("restored attachment bytes did not decrypt")
+        preferences = load_ui_preferences()
+        if (preferences.theme, preferences.density) != RESTORED_PREFERENCES:
+            _fail("restored display preferences did not load")
     session_id = UUID(probe["patient_session_id"])
     with _runtime_role(), patient_session_context(session_id):
         overview = patient_session_overview()
