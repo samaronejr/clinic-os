@@ -14,8 +14,9 @@ from psycopg import sql
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# Detect every PostgreSQL spelling, even ones not currently used. Exact source
-# and live-catalog assertions require review when another time read is added.
+# Preserve the shipped 10/9/6 audit and fixture replacements. This vocabulary
+# is only a cross-check, not the live reader detector: clock_catalog derives its
+# readers and expression surfaces from PostgreSQL and follows helper calls.
 SQL_TIME: Final = re.compile(
     r"\b(?:pg_catalog\.)?(?:"
     r"(?:statement_timestamp|clock_timestamp|now)\s*\(\s*\)|"
