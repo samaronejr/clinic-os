@@ -11,6 +11,7 @@ from apps.intake.models import Patient, PatientClinicEnrollment
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from psycopg.errors import (
+    CheckViolation,
     InsufficientPrivilege,
     InvalidTextRepresentation,
 )
@@ -283,16 +284,20 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(  # noqa: PLR0915
             )
             app_connection.rollback()
             _set_local(app_connection, str(ORG_A))
-            # Legal-name corrections mirror back onto the registry row: the
-            # runtime role may UPDATE only the full_name column.
-            app_connection.execute(
-                "UPDATE clinic_app.intake_patient SET full_name = full_name"
-            )
-            app_connection.rollback()
-            _set_local(app_connection, str(ORG_A))
+            # The registry row mirrors the latest demographics version: the
+            # runtime role holds UPDATE on exactly full_name and birth_date,
+            # and the mirror guard refuses both without a new version in the
+            # same transaction. Every other column stays ungranted.
+            for column in ("full_name", "birth_date"):
+                with pytest.raises(CheckViolation):
+                    app_connection.execute(
+                        f"UPDATE clinic_app.intake_patient SET {column} = {column}"  # noqa: S608 - fixed column list
+                    )
+                app_connection.rollback()
+                _set_local(app_connection, str(ORG_A))
             with pytest.raises(InsufficientPrivilege):
                 app_connection.execute(
-                    "UPDATE clinic_app.intake_patient SET birth_date = birth_date"
+                    "UPDATE clinic_app.intake_patient SET created_at = created_at"
                 )
             app_connection.rollback()
             _set_local(app_connection, str(ORG_A))

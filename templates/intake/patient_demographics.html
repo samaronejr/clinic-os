@@ -12,7 +12,7 @@
     <input type="hidden" name="action" value="manage">
     <div class="field">
       <label for="id_enrollment_id">{% trans "Enrollment" %}</label>
-      <input type="text" name="enrollment_id" id="id_enrollment_id" required>
+      <input type="text" name="enrollment_id" id="id_enrollment_id" required aria-describedby="demographics-enrollment-help">
       <p class="hint" id="demographics-enrollment-help">{% trans "Paste the enrollment identifier from the patient search actions." %}</p>
     </div>
     <div class="actions">
@@ -21,6 +21,7 @@
     </div>
   </form>
   {% else %}
+  {% trans "Required by this clinic" as required_hint %}
   <div class="panel" id="patient-demographics-panel">
     <h2>{{ overview.display_name }}</h2>
     {% if overview.source == "patient_reported" %}
@@ -35,29 +36,31 @@
     {% if error %}
       <div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus><p>{{ error }}</p></div>
     {% endif %}
-    {% if form.errors %}
-      <div class="feedback feedback--error" role="alert"><p>{% trans "Check the highlighted fields and try again." %}</p></div>
-    {% endif %}
-    <dl>
+    <dl class="intake-summary">
       <dt>{% trans "Legal name" %}</dt>
-      <dd>{{ overview.values.legal_name|default:"—" }}</dd>
+      <dd>{% if overview.values.legal_name %}{{ overview.values.legal_name }}{% elif legal_name_status %}{{ legal_name_status }}{% else %}—{% endif %}</dd>
+      <dt>{% trans "Birth date" %}</dt>
+      <dd>{% if overview.birth_date %}{{ overview.birth_date|date:"SHORT_DATE_FORMAT" }}{% else %}—{% endif %}</dd>
       <dt>{% trans "Record version" %}</dt>
       <dd>{{ overview.version }}</dd>
     </dl>
-    <form method="post" action="{{ demographics_url }}" data-auth-form>
+    <form method="post" action="{{ demographics_url }}" data-auth-form id="demographics-form">
       {% csrf_token %}
       <input type="hidden" name="action" value="save">
       {{ form.enrollment_id }}
       {{ form.expected_version }}
       <fieldset>
         <legend>{% trans "Names and identity" %}</legend>
-        {% for field in form.visible_fields %}
-          <div class="field{% if field.errors %} field--error{% endif %}">
-            {{ field.label_tag }}
-            {{ field }}
-            {% if field.errors %}<div class="field-errors" id="{{ field.auto_id }}_error">{% for field_error in field.errors %}<p class="field-error">{{ field_error }}</p>{% endfor %}</div>{% endif %}
-          </div>
+        <p class="hint">{% trans "Leave a field empty when the patient did not inform it, and choose why. Nothing needs to be invented." %}</p>
+        {% for value_field, status_field in form.field_groups %}
+          {% if value_field.name in required_fields %}
+            {% include "includes/field.html" with field=value_field hint=required_hint %}
+          {% else %}
+            {% include "includes/field.html" with field=value_field %}
+          {% endif %}
+          {% if status_field %}{% include "includes/field.html" with field=status_field %}{% endif %}
         {% endfor %}
+        {% include "includes/field.html" with field=form.reason %}
       </fieldset>
       <div class="actions">
         <button type="submit">{% trans "Save demographics" %}</button>
@@ -66,12 +69,12 @@
     </form>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="patient-documents">
     <h2>{% trans "Documents" %}</h2>
-    {% if overview.identifiers %}
-    <div class="table-scroll" role="region">
+    {% if identifier_rows %}
+    <div class="table-scroll" role="region" aria-labelledby="documents-caption" tabindex="0">
       <table class="table">
-        <caption>{% trans "Recorded documents" %}</caption>
+        <caption id="documents-caption">{% trans "Recorded documents" %}</caption>
         <thead>
           <tr>
             <th scope="col">{% trans "Type" %}</th>
@@ -82,21 +85,21 @@
           </tr>
         </thead>
         <tbody>
-          {% for identifier in overview.identifiers %}
+          {% for row in identifier_rows %}
           <tr>
-            <th scope="row">{{ identifier.kind|upper }}</th>
-            <td>{{ identifier.masked_value }}</td>
-            <td>{{ identifier.issuer|default:"—" }}</td>
-            <td>{% if identifier.retired %}{% trans "Removed" %}{% else %}{% trans "Active" %}{% endif %}</td>
+            <th scope="row">{{ row.label }}</th>
+            <td>{{ row.view.masked_value }}</td>
+            <td>{{ row.view.issuer|default:"—" }}</td>
+            <td>{% if row.view.retired %}{% trans "Removed" %}{% else %}{% trans "Active" %}{% endif %}</td>
             <td>
-              {% if not identifier.retired %}
+              {% if not row.view.retired %}
               <form method="post" action="{{ demographics_url }}" data-auth-form>
                 {% csrf_token %}
                 <input type="hidden" name="action" value="retire_identifier">
                 <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
-                <input type="hidden" name="kind" value="{{ identifier.kind }}">
-                <input type="hidden" name="expected_version" value="{{ identifier.version }}">
-                <button class="button button--quiet" type="submit">{% trans "Remove" %}<span class="visually-hidden"> {{ identifier.kind|upper }}</span></button>
+                <input type="hidden" name="kind" value="{{ row.view.kind }}">
+                <input type="hidden" name="expected_version" value="{{ row.view.version }}">
+                <button class="button button--quiet" type="submit">{% trans "Remove" %}<span class="visually-hidden"> {{ row.label }}</span></button>
               </form>
               {% endif %}
             </td>
@@ -111,28 +114,13 @@
     <form method="post" action="{{ demographics_url }}" data-auth-form>
       {% csrf_token %}
       <input type="hidden" name="action" value="add_identifier">
-      <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+      {{ identifier_form.enrollment_id }}
       <fieldset>
         <legend>{% trans "Add a document" %}</legend>
         <div class="intake-search-fields">
-          <div class="field">
-            <label for="id_add_kind">{% trans "Document type" %}</label>
-            <select name="kind" id="id_add_kind" required>
-              <option value="cpf">CPF</option>
-              <option value="cns">CNS</option>
-              <option value="rg">RG</option>
-              <option value="passport">{% trans "Passport" %}</option>
-              <option value="other">{% trans "Other" %}</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="id_add_value">{% trans "Document number" %}</label>
-            <input type="text" name="value" id="id_add_value" maxlength="64" required autocomplete="off">
-          </div>
-          <div class="field">
-            <label for="id_add_issuer">{% trans "Issuing body (optional)" %}</label>
-            <input type="text" name="issuer" id="id_add_issuer" maxlength="255" autocomplete="off">
-          </div>
+          {% include "includes/field.html" with field=identifier_form.kind %}
+          {% include "includes/field.html" with field=identifier_form.value %}
+          {% include "includes/field.html" with field=identifier_form.issuer %}
         </div>
         <div class="actions">
           <button class="button button--secondary" type="submit">{% trans "Add document" %}</button>
@@ -141,12 +129,156 @@
     </form>
   </div>
 
-  {% if overview.corrections %}
-  <div class="panel">
+  <div class="panel" id="patient-addresses">
+    <h2>{% trans "Addresses" %}</h2>
+    {% if not address_rows %}<p>{% trans "No address recorded." %}</p>{% endif %}
+    {% for row in address_rows %}
+      <form method="post" action="{{ demographics_url }}" data-auth-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_address">
+        {% for hidden in row.form.hidden_fields %}{{ hidden }}{% endfor %}
+        <fieldset>
+          <legend>{{ row.label }}</legend>
+          <div class="intake-section-fields">
+            {% for field in row.form.visible_fields %}{% include "includes/field.html" with field=field %}{% endfor %}
+          </div>
+          <div class="actions">
+            <button class="button button--secondary" type="submit">{% trans "Save address" %}<span class="visually-hidden"> {{ row.label }}</span></button>
+          </div>
+        </fieldset>
+      </form>
+      <form method="post" action="{{ demographics_url }}" data-auth-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="retire_address">
+        <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+        <input type="hidden" name="kind" value="{{ row.key }}">
+        <input type="hidden" name="expected_version" value="{{ row.version }}">
+        <div class="actions">
+          <button class="button button--quiet" type="submit">{% trans "Remove address" %}<span class="visually-hidden"> {{ row.label }}</span></button>
+        </div>
+      </form>
+    {% endfor %}
+    {% if new_address %}
+    <form method="post" action="{{ demographics_url }}" data-auth-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_address">
+      <input type="hidden" name="slot" value="new">
+      {% for hidden in new_address.hidden_fields %}{{ hidden }}{% endfor %}
+      <fieldset>
+        <legend>{% trans "Add an address" %}</legend>
+        <div class="intake-section-fields">
+          {% for field in new_address.visible_fields %}{% include "includes/field.html" with field=field %}{% endfor %}
+        </div>
+        <div class="actions">
+          <button class="button button--secondary" type="submit">{% trans "Add address" %}</button>
+        </div>
+      </fieldset>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel" id="patient-emergency-contacts">
+    <h2>{% trans "Emergency contacts" %}</h2>
+    {% if not contact_rows %}<p>{% trans "No emergency contact recorded." %}</p>{% endif %}
+    {% for row in contact_rows %}
+      <form method="post" action="{{ demographics_url }}" data-auth-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_contact">
+        {% for hidden in row.form.hidden_fields %}{{ hidden }}{% endfor %}
+        <fieldset>
+          <legend>{% blocktrans with number=row.key %}Emergency contact {{ number }}{% endblocktrans %}</legend>
+          <div class="intake-section-fields">
+            {% for field in row.form.visible_fields %}{% include "includes/field.html" with field=field %}{% endfor %}
+          </div>
+          <div class="actions">
+            <button class="button button--secondary" type="submit">{% trans "Save contact" %}<span class="visually-hidden"> {{ row.key }}</span></button>
+          </div>
+        </fieldset>
+      </form>
+      <form method="post" action="{{ demographics_url }}" data-auth-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="retire_contact">
+        <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+        <input type="hidden" name="sequence" value="{{ row.key }}">
+        <input type="hidden" name="expected_version" value="{{ row.version }}">
+        <div class="actions">
+          <button class="button button--quiet" type="submit">{% trans "Remove contact" %}<span class="visually-hidden"> {{ row.key }}</span></button>
+        </div>
+      </form>
+    {% endfor %}
+    {% if new_contact %}
+    <form method="post" action="{{ demographics_url }}" data-auth-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_contact">
+      <input type="hidden" name="slot" value="new">
+      {% for hidden in new_contact.hidden_fields %}{{ hidden }}{% endfor %}
+      <fieldset>
+        <legend>{% trans "Add an emergency contact" %}</legend>
+        <div class="intake-section-fields">
+          {% for field in new_contact.visible_fields %}{% include "includes/field.html" with field=field %}{% endfor %}
+        </div>
+        <div class="actions">
+          <button class="button button--secondary" type="submit">{% trans "Add contact" %}</button>
+        </div>
+      </fieldset>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel" id="patient-memberships">
+    <h2>{% trans "Health plans" %}</h2>
+    {% if not membership_rows %}<p>{% trans "No health plan recorded." %}</p>{% endif %}
+    {% for row in membership_rows %}
+      <form method="post" action="{{ demographics_url }}" data-auth-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_membership">
+        {% for hidden in row.form.hidden_fields %}{{ hidden }}{% endfor %}
+        <fieldset>
+          <legend>{% blocktrans with number=row.key %}Health plan {{ number }}{% endblocktrans %}</legend>
+          <div class="intake-section-fields">
+            {% for field in row.form.visible_fields %}{% include "includes/field.html" with field=field %}{% endfor %}
+          </div>
+          <div class="actions">
+            <button class="button button--secondary" type="submit">{% trans "Save health plan" %}<span class="visually-hidden"> {{ row.key }}</span></button>
+          </div>
+        </fieldset>
+      </form>
+      <form method="post" action="{{ demographics_url }}" data-auth-form>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="retire_membership">
+        <input type="hidden" name="enrollment_id" value="{{ overview.enrollment_id }}">
+        <input type="hidden" name="sequence" value="{{ row.key }}">
+        <input type="hidden" name="expected_version" value="{{ row.version }}">
+        <div class="actions">
+          <button class="button button--quiet" type="submit">{% trans "Remove health plan" %}<span class="visually-hidden"> {{ row.key }}</span></button>
+        </div>
+      </form>
+    {% endfor %}
+    {% if new_membership %}
+    <form method="post" action="{{ demographics_url }}" data-auth-form>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save_membership">
+      <input type="hidden" name="slot" value="new">
+      {% for hidden in new_membership.hidden_fields %}{{ hidden }}{% endfor %}
+      <fieldset>
+        <legend>{% trans "Add a health plan" %}</legend>
+        <div class="intake-section-fields">
+          {% for field in new_membership.visible_fields %}{% include "includes/field.html" with field=field %}{% endfor %}
+        </div>
+        <div class="actions">
+          <button class="button button--secondary" type="submit">{% trans "Add health plan" %}</button>
+        </div>
+      </fieldset>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if correction_rows %}
+  <div class="panel" id="patient-correction-history">
     <h2>{% trans "Correction history" %}</h2>
-    <div class="table-scroll" role="region">
+    <div class="table-scroll" role="region" aria-labelledby="corrections-caption" tabindex="0">
       <table class="table">
-        <caption>{% trans "Recorded corrections" %}</caption>
+        <caption id="corrections-caption">{% trans "Recorded corrections" %}</caption>
         <thead>
           <tr>
             <th scope="col">{% trans "Version" %}</th>
@@ -158,10 +290,10 @@
           </tr>
         </thead>
         <tbody>
-          {% for correction in overview.corrections %}
+          {% for correction in correction_rows %}
           <tr>
             <td>{{ correction.version }}</td>
-            <td>{{ correction.changed_fields|join:", " }}</td>
+            <td>{{ correction.fields|default:"—" }}</td>
             <td>{{ correction.actor_label }}</td>
             <td>{% if correction.source == "patient_reported" %}{% trans "Reported by patient" %}{% else %}{% trans "Recorded by staff" %}{% endif %}</td>
             <td>{{ correction.created_at|date:"SHORT_DATETIME_FORMAT" }}</td>

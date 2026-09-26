@@ -242,7 +242,7 @@ class Subject:
     """The fixed subject every screen shows; derived from stored records only."""
 
     patient_name: str
-    patient_birth: date
+    patient_birth: date | None
     issuer_name: str
     issuer_registration: str
     issuer_synthetic: bool

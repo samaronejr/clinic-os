@@ -1,20 +1,33 @@
 """Versioned patient demographics, identifiers and correction history.
 
-Demographics versions are append-only rows: ``update_demographics`` writes
-the next version under a per-patient advisory lock after a strict
-``expected_version`` compare (``demographics_stale`` on mismatch) and always
-records a ``DemographicsCorrection`` receipt binding actor, reason and the
-previous version. Identifier exact search never feeds ciphertext or
-plaintext to SQL: the normalized value is indexed by the tenant-keyed HMAC
-returned by ``clinic_app.protected_blind_index``, one digest per DEK
-version, so lookups keep working across key rotation. A second patient with
-the same active identifier is a ``possible_duplicate`` review hint naming
-the matching enrollment, never a silent block or a silent link.
+Every identity record is append-only history. ``update_demographics`` writes
+the next demographics version under a per-patient advisory lock after a
+strict ``expected_version`` compare (``demographics_stale`` on mismatch) and
+always records a ``DemographicsCorrection`` receipt binding actor, reason
+and the previous version. Identifiers, addresses, emergency contacts and
+insurance memberships are versioned the same way: a save or retirement
+appends the next version of its kind/slot, so replaced values stay on
+record; the database refuses UPDATE/DELETE and out-of-order versions.
 
-Authorization is permission-based: ``demographics.read`` to view or search,
-``demographics.write`` to record or retire, and ``staff.clinic`` for the
-clinic intake policy. Legal-name corrections mirror onto the registry row
-so the encrypted name search keeps matching the corrected identity.
+Nothing is invented. Every field is optional unless the clinic intake
+policy requires it, and a field left empty on purpose records an explicit
+``not_informed``/``declined`` answer (the coded fields carry these in their
+vocabulary). The one structural rule is that a patient keeps a legal or a
+social name so staff can address and find them; the registry row mirrors
+that name and the (possibly unknown) birth date of the latest version.
+
+Identifier exact search never feeds ciphertext or plaintext to SQL: the
+normalized value is indexed by the tenant-keyed HMAC returned by
+``clinic_app.protected_blind_index``, one digest per DEK version, so lookups
+keep working across key rotation. A second patient with the same active
+identifier is a ``possible_duplicate`` review hint naming the matching
+enrollment, never a silent block or a silent link.
+
+Authorization: registration writes its first version under the same
+manager authority as ``create_patient``; afterwards ``demographics.read``
+views or searches and ``demographics.write`` corrects or retires. The
+clinic intake policy is clinic configuration: ``configuration.clinic`` or
+``configuration.organization``.
 """
 
 from __future__ import annotations
@@ -28,6 +41,7 @@ from typing import Final, cast
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
+from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
@@ -40,7 +54,9 @@ from apps.identity.current_context import (
 from apps.identity.models import Clinic
 from apps.intake.access import (
     PatientAccessDeniedError,
+    authorized_enrollment,
     authorized_enrollment_for,
+    authorized_manager_clinic,
 )
 from apps.intake.models import (
     ADDRESS_KIND_VALUES,
@@ -48,6 +64,7 @@ from apps.intake.models import (
     GENDER_IDENTITY_VALUES,
     IDENTIFIER_KIND_VALUES,
     SEX_AT_BIRTH_VALUES,
+    UNKNOWN_DEMOGRAPHIC_VALUES,
     ClinicIntakePolicy,
     DemographicsCorrection,
     EmergencyContact,
@@ -59,6 +76,12 @@ from apps.intake.models import (
     PatientIdentifier,
     QuestionnaireResponse,
 )
+from apps.intake.patient_creation import (
+    PatientBirthDateError,
+    PatientRegistration,
+    create_patient,
+    validate_birth_date,
+)
 from apps.intake.patient_search import PatientSearchItem, PatientSearchPage
 from apps.scheduling.locks import acquire_advisory_locks, patient_lock_key
 from apps.tenancy.envelope import blind_indexes
@@ -67,6 +90,7 @@ DEMOGRAPHICS_FIELD_VALUES: Final = (
     "legal_name",
     "social_name",
     "preferred_name",
+    "birth_date",
     "sex_at_birth",
     "gender_identity",
     "pronouns",
@@ -74,6 +98,18 @@ DEMOGRAPHICS_FIELD_VALUES: Final = (
     "accessibility_needs",
     "occupation",
 )
+NAME_FIELDS: Final = ("legal_name", "social_name", "preferred_name")
+CODED_FIELDS: Final[Mapping[str, Sequence[str]]] = {
+    "sex_at_birth": SEX_AT_BIRTH_VALUES,
+    "gender_identity": GENDER_IDENTITY_VALUES,
+}
+# Fields whose deliberate non-answer lives in the version's unknown map; the
+# coded fields carry not_informed/declined in their own vocabulary.
+STATUS_FIELDS: Final = tuple(
+    field for field in DEMOGRAPHICS_FIELD_VALUES if field not in CODED_FIELDS
+)
+# Registration takes these as explicit inputs; the rest arrive as changes.
+_REGISTRATION_FIELDS: Final = frozenset({"legal_name", "social_name", "birth_date"})
 _ADDRESS_FIELDS: Final = (
     "postal_code",
     "street",
@@ -107,6 +143,7 @@ _ASCII_MAX: Final = 128
 _CPF_REMAINDER_MIN: Final = 2
 HISTORY_LIMIT: Final = 20
 MAX_SECTION_ROWS: Final = 3
+SECTION_SLOTS: Final = tuple(range(1, MAX_SECTION_ROWS + 1))
 _UF_VALUES: Final = frozenset(
     {
         "AC",
@@ -142,6 +179,8 @@ _CPF_ALL_SAME: Final = re.compile(r"^(\d)\1{10}$")
 _PHONE_PATTERN: Final = re.compile(r"^\+?\d{8,15}$")
 _CORRECTION_HISTORY_LIMIT: Final = 20
 
+type FieldValue = str | date | None
+
 
 class DemographicsInputError(ValueError):
     """Reject malformed demographics input without reflecting it."""
@@ -160,11 +199,19 @@ class DemographicsStaleError(Exception):
 
 
 class DemographicsRequiredError(ValueError):
-    """Reject a version that empties a field the clinic policy requires."""
+    """Reject a version that leaves a policy-required field unanswered."""
 
     def __init__(self) -> None:
         """Expose one stable message that names no field values."""
         super().__init__("required demographic fields are missing")
+
+
+class DemographicsNameRequiredError(ValueError):
+    """Reject a version that would leave the patient with no name at all."""
+
+    def __init__(self) -> None:
+        """Expose one stable message that names no field values."""
+        super().__init__("a legal or social name is required")
 
 
 class IdentifierConflictError(Exception):
@@ -184,6 +231,14 @@ class IdentifierOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class RegistrationOutcome:
+    """One registration and the enrollment a document duplicate points to."""
+
+    registration: PatientRegistration
+    matching_enrollment_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
 class CorrectionView:
     """One correction receipt: who, when, reason and changed fields."""
 
@@ -197,7 +252,7 @@ class CorrectionView:
 
 @dataclass(frozen=True, slots=True)
 class IdentifierView:
-    """One identifier row with the value masked for staff display."""
+    """The current version of one identifier kind, value masked."""
 
     kind: str
     masked_value: str
@@ -208,7 +263,7 @@ class IdentifierView:
 
 @dataclass(frozen=True, slots=True)
 class AddressView:
-    """One address row for the staff profile."""
+    """The current address of one kind for the staff profile."""
 
     kind: str
     postal_code: str
@@ -223,7 +278,7 @@ class AddressView:
 
 @dataclass(frozen=True, slots=True)
 class EmergencyContactView:
-    """One emergency contact slot for the staff profile."""
+    """The current emergency contact of one slot for the staff profile."""
 
     sequence: int
     name: str
@@ -234,7 +289,7 @@ class EmergencyContactView:
 
 @dataclass(frozen=True, slots=True)
 class MembershipView:
-    """One insurance membership slot for the staff profile."""
+    """The current insurance membership of one slot for the staff profile."""
 
     sequence: int
     payer_name: str
@@ -247,19 +302,29 @@ class MembershipView:
 
 @dataclass(frozen=True, slots=True)
 class DemographicsProfile:
-    """Everything the staff profile screen renders for one enrollment."""
+    """Everything the staff profile screen renders for one enrollment.
+
+    ``values`` holds form-ready strings (ISO date for ``birth_date``);
+    ``unknown`` maps a deliberately unanswered field to its status code.
+    The ``free_*`` tuples list the kinds/slots with no current row.
+    """
 
     enrollment_id: UUID
     patient_id: UUID
     display_name: str
     version: int
     values: dict[str, str]
+    unknown: dict[str, str]
+    birth_date: date | None
     source: str
     required_fields: tuple[str, ...]
     identifiers: tuple[IdentifierView, ...]
     addresses: tuple[AddressView, ...]
     emergency_contacts: tuple[EmergencyContactView, ...]
     memberships: tuple[MembershipView, ...]
+    free_address_kinds: tuple[str, ...]
+    free_contact_slots: tuple[int, ...]
+    free_membership_slots: tuple[int, ...]
     corrections: tuple[CorrectionView, ...]
 
 
@@ -300,13 +365,41 @@ def _clean_name(value: object) -> str | None:
 
 
 def _clean_choice(value: object, allowed: Sequence[str]) -> str | None:
-    """Validate one closed-vocabulary or explicit-sentinel field."""
+    """Validate one closed-vocabulary field, sentinels included."""
     text = _clean_text(value)
     if text is None:
         return None
     if text not in allowed:
         raise DemographicsInputError
     return text
+
+
+def _clean_birth_date(value: object, clinic: Clinic) -> date | None:
+    """Validate one optional birth date; never after the clinic's today."""
+    if value is None or value == "":
+        return None
+    if type(value) is str:
+        try:
+            value = date.fromisoformat(value)
+        except ValueError as error:
+            raise DemographicsInputError from error
+    if type(value) is not date:
+        raise DemographicsInputError
+    try:
+        validate_birth_date(value, clinic)
+    except PatientBirthDateError as error:
+        raise DemographicsInputError from error
+    return value
+
+
+def _clean_field(field: str, value: object, clinic: Clinic) -> FieldValue:
+    if field in NAME_FIELDS:
+        return _clean_name(value)
+    if field == "birth_date":
+        return _clean_birth_date(value, clinic)
+    if field in CODED_FIELDS:
+        return _clean_choice(value, CODED_FIELDS[field])
+    return _clean_text(value)
 
 
 def _cpf_digits(value: str) -> str | None:
@@ -400,27 +493,77 @@ def _required_fields(clinic_id: UUID) -> tuple[str, ...]:
     )
 
 
-def _merged_values(
+def _version_values(
+    current: PatientDemographics | None, patient: Patient
+) -> dict[str, FieldValue]:
+    """Return one version's field values with empty text as ``None``.
+
+    Before the first version the registry row is the recorded identity, so
+    its name and birth date seed the values instead of reading as empty.
+    """
+    if current is None:
+        values: dict[str, FieldValue] = dict.fromkeys(DEMOGRAPHICS_FIELD_VALUES)
+        values["legal_name"] = patient.full_name or None
+        values["birth_date"] = patient.birth_date
+        return values
+    return {
+        field: getattr(current, field, None) or None
+        for field in DEMOGRAPHICS_FIELD_VALUES
+    }
+
+
+def _version_unknown(current: PatientDemographics | None) -> dict[str, str]:
+    """Return one version's deliberate non-answers, dropping malformed keys."""
+    stored = current.unknown_fields if current is not None else None
+    if not isinstance(stored, dict):
+        return {}
+    return {
+        str(field): str(status)
+        for field, status in stored.items()
+        if field in STATUS_FIELDS and status in UNKNOWN_DEMOGRAPHIC_VALUES
+    }
+
+
+def _merged_version(
     current: PatientDemographics | None,
+    patient: Patient,
     changes: Mapping[str, object],
-) -> dict[str, str | None]:
-    merged: dict[str, str | None] = {}
-    for field in DEMOGRAPHICS_FIELD_VALUES:
-        existing = getattr(current, field, None) if current is not None else None
-        merged[field] = existing or None
+    unknown: Mapping[str, object],
+    clinic: Clinic,
+) -> tuple[dict[str, FieldValue], dict[str, str]]:
+    """Apply changed values, then deliberate non-answers, to the current one.
+
+    Recording a value clears that field's non-answer; marking a field
+    ``not_informed``/``declined`` requires its value to be empty, so a
+    version never holds both. An empty status clears a non-answer.
+    """
+    values = _version_values(current, patient)
+    statuses = _version_unknown(current)
     for field, value in changes.items():
-        if field in ("legal_name", "social_name", "preferred_name"):
-            merged[field] = _clean_name(value)
-        elif field in ("sex_at_birth", "gender_identity"):
-            merged[field] = _clean_choice(
-                value,
-                SEX_AT_BIRTH_VALUES
-                if field == "sex_at_birth"
-                else GENDER_IDENTITY_VALUES,
-            )
-        else:
-            merged[field] = _clean_text(value)
-    return merged
+        values[field] = _clean_field(field, value, clinic)
+        if values[field] is not None:
+            statuses.pop(field, None)
+    for field, status in unknown.items():
+        if field not in STATUS_FIELDS:
+            raise DemographicsInputError
+        if status in (None, ""):
+            statuses.pop(field, None)
+            continue
+        if status not in UNKNOWN_DEMOGRAPHIC_VALUES or values[field] is not None:
+            raise DemographicsInputError
+        statuses[field] = str(status)
+    return values, statuses
+
+
+def _validate_changes(changes: object, unknown: object) -> None:
+    if not isinstance(changes, Mapping) or any(
+        field not in DEMOGRAPHICS_FIELD_VALUES for field in changes
+    ):
+        raise DemographicsInputError
+    if not isinstance(unknown, Mapping):
+        raise DemographicsInputError
+    if not changes and not unknown:
+        raise DemographicsInputError
 
 
 def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
@@ -431,6 +574,7 @@ def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
     actor_label: str,
     expected_version: int,
     changes: Mapping[str, object],
+    unknown: Mapping[str, object],
     reason: str,
     source: str,
 ) -> PatientDemographics:
@@ -440,18 +584,21 @@ def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
     current_version = current.version if current is not None else 0
     if expected_version != current_version:
         raise DemographicsStaleError
-    merged = _merged_values(current, changes)
-    # legal_name is never empty on a version row: a first record inherits
-    # the registry name, and clearing a recorded name keeps the recorded
-    # one rather than inventing a blank identity.
-    if merged["legal_name"] is None:
-        merged["legal_name"] = (
-            (current.legal_name or None) if current is not None else None
-        ) or patient.full_name
-    missing = [field for field in _required_fields(clinic.pk) if not merged[field]]
+    values, statuses = _merged_version(current, patient, changes, unknown, clinic)
+    # The patient must stay addressable: a legal or a social name, never an
+    # invented placeholder and never a silent carry-over of a cleared name.
+    registry_name = values["legal_name"] or values["social_name"]
+    if not isinstance(registry_name, str):
+        raise DemographicsNameRequiredError
+    missing = [
+        field
+        for field in _required_fields(clinic.pk)
+        if values[field] is None and field not in statuses
+    ]
     if missing:
         raise DemographicsRequiredError
-    new_version = current_version + 1
+    previous_values = _version_values(current, patient)
+    previous_statuses = _version_unknown(current)
     try:
         with transaction.atomic():
             row = PatientDemographics.objects.create(
@@ -459,15 +606,25 @@ def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
                 patient_id=patient.pk,
                 clinic_id=clinic.pk,
                 enrollment_id=enrollment.pk,
-                version=new_version,
+                version=current_version + 1,
                 source=source,
-                **merged,
+                unknown_fields=statuses or None,
+                **values,
             )
     except IntegrityError as error:
         raise DemographicsStaleError from error
-    if merged["legal_name"] and merged["legal_name"] != patient.full_name:
-        patient.full_name = merged["legal_name"]
-        patient.save(update_fields=("full_name",))
+    # The registry row mirrors the latest version inside this transaction;
+    # the database admits the change only alongside the new version.
+    birth_date = values["birth_date"]
+    mirrored = []
+    if registry_name != patient.full_name:
+        patient.full_name = registry_name
+        mirrored.append("full_name")
+    if birth_date != patient.birth_date:
+        patient.birth_date = birth_date if isinstance(birth_date, date) else None
+        mirrored.append("birth_date")
+    if mirrored:
+        patient.save(update_fields=mirrored)
     DemographicsCorrection.objects.create(
         organization_id=clinic.organization_id,
         clinic_id=clinic.pk,
@@ -477,14 +634,12 @@ def _apply_demographics(  # noqa: PLR0913 - one write needs its full context
         actor_id=actor_id,
         actor_label=actor_label,
         reason=reason or None,
-        changed_fields=sorted(
+        changed_fields=[
             field
             for field in DEMOGRAPHICS_FIELD_VALUES
-            if merged[field]
-            != (
-                (getattr(current, field, None) or None) if current is not None else None
-            )
-        ),
+            if values[field] != previous_values[field]
+            or statuses.get(field) != previous_statuses.get(field)
+        ],
     )
     record_phase1_event(
         "intake.demographics.saved",
@@ -502,23 +657,23 @@ def update_demographics(  # noqa: PLR0913 - the plan's contract fixes these
     changes: Mapping[str, object],
     reason: str,
     source: str = "staff_recorded",
+    unknown: Mapping[str, object] | None = None,
 ) -> PatientDemographics:
     """Record one corrected demographics version with its receipt.
 
     ``expected_version`` is the version the actor reviewed (0 when the
     patient has no demographics yet); a mismatch answers
-    ``demographics_stale``. ``changes`` maps demographic field names to
-    strings (empty clears); ``sex_at_birth`` and ``gender_identity`` accept
-    only the closed vocabulary including ``not_informed``/``declined``.
+    ``demographics_stale``. ``changes`` maps demographic field names to new
+    values (strings; a ``date`` or ISO string for ``birth_date``; empty
+    clears); ``sex_at_birth`` and ``gender_identity`` accept their closed
+    vocabulary including ``not_informed``/``declined``. ``unknown`` marks
+    other fields as deliberately ``not_informed``/``declined`` (empty
+    clears the mark).
     """
+    unknown = {} if unknown is None else unknown
     if type(expected_version) is not int or expected_version < 0:
         raise DemographicsInputError
-    if (
-        not isinstance(changes, Mapping)
-        or not changes
-        or any(field not in DEMOGRAPHICS_FIELD_VALUES for field in changes)
-    ):
-        raise DemographicsInputError
+    _validate_changes(changes, unknown)
     if type(reason) is not str or len(reason) > MAX_REASON_LENGTH:
         raise DemographicsInputError
     if source not in DEMOGRAPHICS_SOURCE_VALUES:
@@ -535,8 +690,102 @@ def update_demographics(  # noqa: PLR0913 - the plan's contract fixes these
             actor_label=actor_label,
             expected_version=expected_version,
             changes=changes,
+            unknown=unknown,
             reason=" ".join(reason.split()),
             source=source,
+        )
+
+
+def registration_required_fields(*, clinic_id: UUID) -> tuple[str, ...]:
+    """Return the fields the clinic policy requires at registration."""
+    with transaction.atomic():
+        clinic = authorized_manager_clinic(clinic_id)
+        return _required_fields(clinic.pk)
+
+
+def register_patient(  # noqa: PLR0913 - one registration carries every input
+    *,
+    clinic_id: UUID,
+    idempotency_key: UUID,
+    legal_name: str,
+    social_name: str,
+    birth_date: date | None,
+    changes: Mapping[str, object] | None = None,
+    unknown: Mapping[str, object] | None = None,
+    identifier_kind: str = "",
+    identifier_value: str = "",
+) -> RegistrationOutcome:
+    """Register one patient with their first demographics version.
+
+    Nothing is required beyond a legal or a social name, unless the clinic
+    policy says so; ``unknown`` records deliberate non-answers (e.g. a
+    ``declined`` birth date). The registry name is the legal name, or the
+    social name when no legal name was given. The first version and any
+    document are part of the registration act, so they are written under
+    the same manager authority as ``create_patient``. An equal replay of
+    ``idempotency_key`` returns the first registration unchanged.
+    """
+    changes = {} if changes is None else changes
+    unknown = {} if unknown is None else unknown
+    _validate_changes({**changes, "legal_name": legal_name}, unknown)
+    if _REGISTRATION_FIELDS & set(changes):
+        raise DemographicsInputError
+    legal = _clean_name(legal_name)
+    social = _clean_name(social_name)
+    registry_name = legal or social
+    if registry_name is None:
+        raise DemographicsNameRequiredError
+    normalized = (
+        normalize_identifier(identifier_kind, identifier_value)
+        if identifier_value
+        else None
+    )
+    with transaction.atomic():
+        registration = create_patient(
+            clinic_id=clinic_id,
+            full_name=registry_name,
+            birth_date=birth_date,
+            idempotency_key=idempotency_key,
+        )
+        if PatientDemographics.objects.filter(
+            organization_id=registration.patient.organization_id,
+            patient_id=registration.patient.pk,
+        ).exists():
+            return RegistrationOutcome(
+                registration=registration, matching_enrollment_id=None
+            )
+        actor_id, clinic, enrollment = authorized_enrollment(
+            clinic_id, registration.enrollment.pk
+        )
+        _apply_demographics(
+            clinic=clinic,
+            enrollment=enrollment,
+            actor_id=actor_id,
+            actor_label=_actor_label(),
+            expected_version=0,
+            changes={
+                **changes,
+                "legal_name": legal or "",
+                "social_name": social or "",
+                "birth_date": birth_date,
+            },
+            unknown=unknown,
+            reason="",
+            source="staff_recorded",
+        )
+        matching_enrollment_id = None
+        if normalized is not None:
+            outcome = _append_identifier(
+                clinic=clinic,
+                patient_id=enrollment.patient_id,
+                kind=identifier_kind,
+                normalized=normalized,
+                issuer=None,
+            )
+            matching_enrollment_id = outcome.matching_enrollment_id
+        return RegistrationOutcome(
+            registration=registration,
+            matching_enrollment_id=matching_enrollment_id,
         )
 
 
@@ -584,25 +833,98 @@ def carry_forward_demographics(
         }
         if not changes:
             return None
+        current = _latest_demographics(clinic.organization_id, enrollment.patient_id)
         return _apply_demographics(
             clinic=clinic,
             enrollment=enrollment,
             actor_id=actor_id,
             actor_label=_actor_label(),
-            expected_version=(
-                current.version
-                if (
-                    current := _latest_demographics(
-                        clinic.organization_id, enrollment.patient_id
-                    )
-                )
-                is not None
-                else 0
-            ),
+            expected_version=current.version if current is not None else 0,
             changes=changes,
+            unknown={},
             reason=" ".join(reason.split()),
             source="patient_reported",
         )
+
+
+def _current_identifiers(organization_id: UUID) -> QuerySet[PatientIdentifier]:
+    """Active identifiers that are the latest version of their kind."""
+    newer = PatientIdentifier.objects.filter(
+        organization_id=OuterRef("organization_id"),
+        patient_id=OuterRef("patient_id"),
+        kind=OuterRef("kind"),
+        version__gt=OuterRef("version"),
+    )
+    return PatientIdentifier.objects.filter(
+        organization_id=organization_id,
+        retired_at__isnull=True,
+    ).filter(~Exists(newer))
+
+
+def _latest_identifier(
+    organization_id: UUID, patient_id: UUID, kind: str
+) -> PatientIdentifier | None:
+    return (
+        PatientIdentifier.objects.filter(
+            organization_id=organization_id, patient_id=patient_id, kind=kind
+        )
+        .order_by("-version")
+        .first()
+    )
+
+
+def _append_identifier(
+    *,
+    clinic: Clinic,
+    patient_id: UUID,
+    kind: str,
+    normalized: str,
+    issuer: str | None,
+) -> IdentifierOutcome:
+    acquire_advisory_locks((patient_lock_key(clinic.organization_id, patient_id),))
+    digests = _identifier_digests(kind, normalized)
+    digest, key_version = digests[-1]
+    latest = _latest_identifier(clinic.organization_id, patient_id, kind)
+    if latest is not None and latest.retired_at is None:
+        raise IdentifierConflictError
+    duplicate = (
+        _current_identifiers(clinic.organization_id)
+        .filter(kind=kind, blind_index__in=[candidate for candidate, _ in digests])
+        .exclude(patient_id=patient_id)
+        .order_by("created_at", "id")
+        .first()
+    )
+    matching_enrollment_id = None
+    if duplicate is not None:
+        match = (
+            PatientClinicEnrollment.objects.filter(
+                organization_id=clinic.organization_id,
+                patient_id=duplicate.patient_id,
+            )
+            .order_by("created_at", "id")
+            .first()
+        )
+        matching_enrollment_id = match.pk if match is not None else None
+    identifier = PatientIdentifier.objects.create(
+        organization_id=clinic.organization_id,
+        patient_id=patient_id,
+        clinic_id=clinic.pk,
+        kind=kind,
+        value=normalized,
+        blind_index=digest,
+        index_key_version=key_version,
+        issuer=issuer,
+        version=(latest.version + 1) if latest is not None else 1,
+    )
+    record_phase1_event(
+        "intake.identifier.saved",
+        clinic_id=clinic.pk,
+        affected_record_id=identifier.pk,
+    )
+    return IdentifierOutcome(
+        identifier_id=identifier.pk,
+        matching_enrollment_id=matching_enrollment_id,
+    )
 
 
 def add_identifier(
@@ -616,10 +938,11 @@ def add_identifier(
     """Record one identifier; surface same-org duplicates for review.
 
     The normalized value is stored as an envelope and indexed by the
-    tenant-keyed blind index per kind. When another patient in the same
-    organization already holds the same active identifier the record is
-    still written and the outcome names the earliest enrollment of the
-    matching patient so review can adjudicate (todo 18).
+    tenant-keyed blind index per kind, as the next version of that kind.
+    When another patient in the same organization already holds the same
+    active identifier the record is still written and the outcome names the
+    earliest enrollment of the matching patient so review can adjudicate
+    (todo 18).
     """
     normalized = normalize_identifier(kind, value)
     issuer_text = _clean_text(issuer)
@@ -627,82 +950,12 @@ def add_identifier(
         _, clinic, enrollment = authorized_enrollment_for(
             clinic_id, enrollment_id, "demographics.write"
         )
-        acquire_advisory_locks(
-            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
-        )
-        digests = _identifier_digests(kind, normalized)
-        digest, key_version = digests[-1]
-        existing = (
-            PatientIdentifier.objects.filter(
-                organization_id=clinic.organization_id,
-                patient_id=enrollment.patient_id,
-                kind=kind,
-            )
-            .order_by("created_at", "id")
-            .first()
-        )
-        if existing is not None and existing.retired_at is None:
-            raise IdentifierConflictError
-        duplicate = (
-            PatientIdentifier.objects.filter(
-                organization_id=clinic.organization_id,
-                kind=kind,
-                blind_index__in=[candidate for candidate, _ in digests],
-                retired_at__isnull=True,
-            )
-            .exclude(patient_id=enrollment.patient_id)
-            .order_by("created_at", "id")
-            .first()
-        )
-        matching_enrollment_id = None
-        if duplicate is not None:
-            match = (
-                PatientClinicEnrollment.objects.filter(
-                    organization_id=clinic.organization_id,
-                    patient_id=duplicate.patient_id,
-                )
-                .order_by("created_at", "id")
-                .first()
-            )
-            matching_enrollment_id = match.pk if match is not None else None
-        if existing is None:
-            identifier = PatientIdentifier.objects.create(
-                organization_id=clinic.organization_id,
-                patient_id=enrollment.patient_id,
-                clinic_id=clinic.pk,
-                kind=kind,
-                value=normalized,
-                blind_index=digest,
-                index_key_version=key_version,
-                issuer=issuer_text,
-            )
-        else:
-            identifier = existing
-            identifier.value = normalized
-            identifier.blind_index = digest
-            identifier.index_key_version = key_version
-            identifier.issuer = issuer_text
-            identifier.version += 1
-            identifier.retired_at = None
-            identifier.save(
-                update_fields=(
-                    "value",
-                    "blind_index",
-                    "index_key_version",
-                    "issuer",
-                    "version",
-                    "retired_at",
-                    "updated_at",
-                )
-            )
-        record_phase1_event(
-            "intake.identifier.saved",
-            clinic_id=clinic.pk,
-            affected_record_id=identifier.pk,
-        )
-        return IdentifierOutcome(
-            identifier_id=identifier.pk,
-            matching_enrollment_id=matching_enrollment_id,
+        return _append_identifier(
+            clinic=clinic,
+            patient_id=enrollment.patient_id,
+            kind=kind,
+            normalized=normalized,
+            issuer=issuer_text,
         )
 
 
@@ -713,7 +966,7 @@ def retire_identifier(
     kind: str,
     expected_version: int,
 ) -> PatientIdentifier:
-    """Retire one active identifier without deleting its history."""
+    """Retire one active identifier by appending a retirement version."""
     if kind not in IDENTIFIER_KIND_VALUES:
         raise DemographicsInputError
     if type(expected_version) is not int or expected_version < 1:
@@ -725,29 +978,29 @@ def retire_identifier(
         acquire_advisory_locks(
             (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
         )
-        identifier = (
-            PatientIdentifier.objects.filter(
-                organization_id=clinic.organization_id,
-                patient_id=enrollment.patient_id,
-                kind=kind,
-                retired_at__isnull=True,
-            )
-            .order_by("created_at", "id")
-            .first()
-        )
-        if identifier is None:
+        latest = _latest_identifier(clinic.organization_id, enrollment.patient_id, kind)
+        if latest is None or latest.retired_at is not None:
             raise DemographicsInputError
-        if identifier.version != expected_version:
+        if latest.version != expected_version:
             raise DemographicsStaleError
-        identifier.retired_at = timezone.now()
-        identifier.version += 1
-        identifier.save(update_fields=("retired_at", "version", "updated_at"))
+        retired = PatientIdentifier.objects.create(
+            organization_id=clinic.organization_id,
+            patient_id=enrollment.patient_id,
+            clinic_id=clinic.pk,
+            kind=kind,
+            value=latest.value,
+            blind_index=latest.blind_index,
+            index_key_version=latest.index_key_version,
+            issuer=latest.issuer or None,
+            version=latest.version + 1,
+            retired_at=timezone.now(),
+        )
         record_phase1_event(
             "intake.identifier.retired",
             clinic_id=clinic.pk,
-            affected_record_id=identifier.pk,
+            affected_record_id=retired.pk,
         )
-        return identifier
+        return retired
 
 
 def _identifier_matches(
@@ -757,12 +1010,9 @@ def _identifier_matches(
 ) -> list[UUID]:
     digests = _identifier_digests(kind, normalized)
     return list(
-        PatientIdentifier.objects.filter(
-            organization_id=organization_id,
-            kind=kind,
-            blind_index__in=[digest for digest, _ in digests],
-            retired_at__isnull=True,
-        ).values_list("patient_id", flat=True)
+        _current_identifiers(organization_id)
+        .filter(kind=kind, blind_index__in=[digest for digest, _ in digests])
+        .values_list("patient_id", flat=True)
     )
 
 
@@ -776,7 +1026,8 @@ def search_patient_identifiers(
 
     The lookup binds organization, kind and tenant-keyed blind index; a
     cross-tenant probe matches nothing because its digest derives from a
-    different DEK. Result shape reuses the registry page contract.
+    different DEK. Result shape reuses the registry page contract, and each
+    row shows the patient's current (latest-version) name.
     """
     normalized = normalize_identifier(kind, value)
     with transaction.atomic():
@@ -786,7 +1037,7 @@ def search_patient_identifiers(
         except (CurrentActorError, Clinic.DoesNotExist) as error:
             raise PatientAccessDeniedError from error
         patient_ids = _identifier_matches(clinic.organization_id, kind, normalized)
-        enrollments = (
+        enrollments = list(
             PatientClinicEnrollment.objects.select_related("patient")
             .filter(
                 organization_id=clinic.organization_id,
@@ -795,20 +1046,20 @@ def search_patient_identifiers(
             )
             .order_by("created_at", "id")[:100]
         )
-        demographics = {
-            row.patient_id: row
-            for row in PatientDemographics.objects.filter(
-                organization_id=clinic.organization_id,
-                patient_id__in=[e.patient_id for e in enrollments],
-            ).order_by("-version")
-        }
+        # Ascending versions: the latest version of each patient wins.
+        latest: dict[UUID, PatientDemographics] = {}
+        for row in PatientDemographics.objects.filter(
+            organization_id=clinic.organization_id,
+            patient_id__in=[enrollment.patient_id for enrollment in enrollments],
+        ).order_by("version"):
+            latest[row.patient_id] = row
         items = tuple(
             PatientSearchItem(
                 enrollment_id=enrollment.pk,
                 full_name=enrollment.patient.full_name,
                 birth_date=enrollment.patient.birth_date,
                 display_name=_display_name(
-                    enrollment.patient, demographics.get(enrollment.patient_id)
+                    enrollment.patient, latest.get(enrollment.patient_id)
                 ),
             )
             for enrollment in enrollments
@@ -835,6 +1086,66 @@ def _display_name(patient: Patient, row: PatientDemographics | None) -> str:
     return str(patient.full_name)
 
 
+def _latest_by_key[
+    RowT: (
+        PatientIdentifier,
+        PatientAddress,
+        EmergencyContact,
+        InsuranceMembership,
+    )
+](rows: QuerySet[RowT], key_field: str) -> dict[object, RowT]:
+    """Keep the highest version per kind/slot (rows ordered by -version)."""
+    latest: dict[object, RowT] = {}
+    for row in rows.order_by("-version"):
+        latest.setdefault(getattr(row, key_field), row)
+    return latest
+
+
+def _identifier_views(
+    organization_id: UUID, patient_id: UUID
+) -> tuple[IdentifierView, ...]:
+    latest = _latest_by_key(
+        PatientIdentifier.objects.filter(
+            organization_id=organization_id, patient_id=patient_id
+        ),
+        "kind",
+    )
+    return tuple(
+        IdentifierView(
+            kind=row.kind,
+            masked_value=_mask_identifier(row.kind, row.value),
+            issuer=row.issuer or "",
+            version=row.version,
+            retired=row.retired_at is not None,
+        )
+        for _, row in sorted(latest.items(), key=lambda item: str(item[0]))
+    )
+
+
+def _membership_views(
+    organization_id: UUID, patient_id: UUID
+) -> tuple[MembershipView, ...]:
+    latest = _latest_by_key(
+        InsuranceMembership.objects.filter(
+            organization_id=organization_id, patient_id=patient_id
+        ),
+        "sequence",
+    )
+    return tuple(
+        MembershipView(
+            sequence=row.sequence,
+            payer_name=row.payer_name or "",
+            ans_number=row.ans_number or "",
+            membership_number=row.membership_number or "",
+            plan_name=row.plan_name or "",
+            valid_until=row.valid_until,
+            version=row.version,
+        )
+        for _, row in sorted(latest.items(), key=lambda item: cast("int", item[0]))
+        if row.retired_at is None
+    )
+
+
 def demographics_profile(
     *,
     clinic_id: UUID,
@@ -848,66 +1159,19 @@ def demographics_profile(
         organization_id = clinic.organization_id
         patient_id = enrollment.patient_id
         current = _latest_demographics(organization_id, patient_id)
-        identifiers = tuple(
-            IdentifierView(
-                kind=row.kind,
-                masked_value=_mask_identifier(row.kind, row.value),
-                issuer=row.issuer or "",
-                version=row.version,
-                retired=row.retired_at is not None,
-            )
-            for row in PatientIdentifier.objects.filter(
+        addresses = _latest_by_key(
+            PatientAddress.objects.filter(
                 organization_id=organization_id, patient_id=patient_id
-            ).order_by("kind")
+            ),
+            "kind",
         )
-        addresses = tuple(
-            AddressView(
-                kind=row.kind,
-                postal_code=row.postal_code or "",
-                street=row.street or "",
-                street_number=row.street_number or "",
-                complement=row.complement or "",
-                district=row.district or "",
-                city=row.city or "",
-                state_code=row.state_code or "",
-                version=row.version,
-            )
-            for row in PatientAddress.objects.filter(
-                organization_id=organization_id,
-                patient_id=patient_id,
-                retired_at__isnull=True,
-            ).order_by("kind")
+        contacts = _latest_by_key(
+            EmergencyContact.objects.filter(
+                organization_id=organization_id, patient_id=patient_id
+            ),
+            "sequence",
         )
-        contacts = tuple(
-            EmergencyContactView(
-                sequence=row.sequence,
-                name=row.name or "",
-                relationship=row.relationship or "",
-                phone=row.phone or "",
-                version=row.version,
-            )
-            for row in EmergencyContact.objects.filter(
-                organization_id=organization_id,
-                patient_id=patient_id,
-                retired_at__isnull=True,
-            ).order_by("sequence")
-        )
-        memberships = tuple(
-            MembershipView(
-                sequence=row.sequence,
-                payer_name=row.payer_name or "",
-                ans_number=row.ans_number or "",
-                membership_number=row.membership_number or "",
-                plan_name=row.plan_name or "",
-                valid_until=row.valid_until,
-                version=row.version,
-            )
-            for row in InsuranceMembership.objects.filter(
-                organization_id=organization_id,
-                patient_id=patient_id,
-                retired_at__isnull=True,
-            ).order_by("sequence")
-        )
+        memberships = _membership_views(organization_id, patient_id)
         corrections = tuple(
             CorrectionView(
                 version=correction.demographics.version,
@@ -921,28 +1185,69 @@ def demographics_profile(
                 "demographics"
             )
             .filter(organization_id=organization_id, patient_id=patient_id)
-            .order_by("-created_at")[:_CORRECTION_HISTORY_LIMIT]
+            .order_by("-demographics__version")[:_CORRECTION_HISTORY_LIMIT]
         )
         record_phase1_event(
             "intake.demographics.viewed",
             clinic_id=clinic_id,
             affected_record_id=enrollment.pk,
         )
+        values = _version_values(current, enrollment.patient)
+        active_addresses = {
+            kind: row for kind, row in addresses.items() if row.retired_at is None
+        }
+        active_contacts = {
+            slot: row for slot, row in contacts.items() if row.retired_at is None
+        }
+        membership_slots = {view.sequence for view in memberships}
         return DemographicsProfile(
             enrollment_id=enrollment.pk,
             patient_id=patient_id,
             display_name=_display_name(enrollment.patient, current),
             version=current.version if current is not None else 0,
             values={
-                field: getattr(current, field, None) or ""
-                for field in DEMOGRAPHICS_FIELD_VALUES
+                field: value.isoformat() if isinstance(value, date) else value or ""
+                for field, value in values.items()
             },
+            unknown=_version_unknown(current),
+            birth_date=cast("date | None", values["birth_date"]),
             source=current.source if current is not None else "",
             required_fields=_required_fields(clinic.pk),
-            identifiers=identifiers,
-            addresses=addresses,
-            emergency_contacts=contacts,
+            identifiers=_identifier_views(organization_id, patient_id),
+            addresses=tuple(
+                AddressView(
+                    kind=row.kind,
+                    postal_code=row.postal_code or "",
+                    street=row.street or "",
+                    street_number=row.street_number or "",
+                    complement=row.complement or "",
+                    district=row.district or "",
+                    city=row.city or "",
+                    state_code=row.state_code or "",
+                    version=row.version,
+                )
+                for kind, row in sorted(active_addresses.items())
+            ),
+            emergency_contacts=tuple(
+                EmergencyContactView(
+                    sequence=row.sequence,
+                    name=row.name or "",
+                    relationship=row.relationship or "",
+                    phone=row.phone or "",
+                    version=row.version,
+                )
+                for _, row in sorted(active_contacts.items())
+            ),
             memberships=memberships,
+            free_address_kinds=tuple(
+                kind for kind in ADDRESS_KIND_VALUES if kind not in active_addresses
+            ),
+            free_contact_slots=tuple(
+                slot for slot in SECTION_SLOTS if slot not in active_contacts
+            ),
+            free_membership_slots=tuple(
+                slot for slot in SECTION_SLOTS if slot not in membership_slots
+            ),
             corrections=corrections,
         )
 
@@ -954,7 +1259,7 @@ class BillingDemographics:
     enrollment_id: UUID
     patient_id: UUID
     display_name: str
-    birth_date: date
+    birth_date: date | None
     identifiers: tuple[IdentifierView, ...]
     memberships: tuple[MembershipView, ...]
 
@@ -967,9 +1272,9 @@ def billing_demographics(
     """Return the narrow read a finance role needs for billing identity.
 
     Binds ``demographics.billing_read`` (finance and no wider staff role):
-    the enrolled patient's display name, birth date, identifiers and payer
-    memberships; the rest of the demographics record stays outside this
-    surface.
+    the enrolled patient's display name, birth date, current identifiers
+    and payer memberships; the rest of the demographics record stays
+    outside this surface.
     """
     with transaction.atomic():
         _, clinic, enrollment = authorized_enrollment_for(
@@ -978,34 +1283,6 @@ def billing_demographics(
         organization_id = clinic.organization_id
         patient_id = enrollment.patient_id
         current = _latest_demographics(organization_id, patient_id)
-        identifiers = tuple(
-            IdentifierView(
-                kind=row.kind,
-                masked_value=_mask_identifier(row.kind, row.value),
-                issuer=row.issuer or "",
-                version=row.version,
-                retired=row.retired_at is not None,
-            )
-            for row in PatientIdentifier.objects.filter(
-                organization_id=organization_id, patient_id=patient_id
-            ).order_by("kind")
-        )
-        memberships = tuple(
-            MembershipView(
-                sequence=row.sequence,
-                payer_name=row.payer_name or "",
-                ans_number=row.ans_number or "",
-                membership_number=row.membership_number or "",
-                plan_name=row.plan_name or "",
-                valid_until=row.valid_until,
-                version=row.version,
-            )
-            for row in InsuranceMembership.objects.filter(
-                organization_id=organization_id,
-                patient_id=patient_id,
-                retired_at__isnull=True,
-            ).order_by("sequence")
-        )
         record_phase1_event(
             "intake.demographics.billing_viewed",
             clinic_id=clinic_id,
@@ -1016,8 +1293,12 @@ def billing_demographics(
             patient_id=patient_id,
             display_name=_display_name(enrollment.patient, current),
             birth_date=enrollment.patient.birth_date,
-            identifiers=identifiers,
-            memberships=memberships,
+            identifiers=tuple(
+                view
+                for view in _identifier_views(organization_id, patient_id)
+                if not view.retired
+            ),
+            memberships=_membership_views(organization_id, patient_id),
         )
 
 
@@ -1035,56 +1316,89 @@ _SECTION_MODELS = PatientAddress | EmergencyContact | InsuranceMembership
 def _save_section(  # noqa: PLR0913 - one section write needs its context
     *,
     model: type[_SECTION_MODELS],
-    lookup: dict[str, object],
-    defaults: dict[str, object] | None,
+    key: tuple[str, object],
+    values: dict[str, object] | None,
     clinic: Clinic,
     patient_id: UUID,
     expected_version: int,
     audit_type: str,
 ) -> _SECTION_MODELS:
-    """Create or CAS-update one per-kind/sequence row; ``None`` retires it."""
-    row = (
+    """Append the next version of one kind/slot; ``None`` retires it.
+
+    ``expected_version`` is the rendered current version; 0 creates into a
+    kind/slot that holds no current row (never used, or retired).
+    """
+    key_field, key_value = key
+    latest = (
         model.objects.filter(
             organization_id=clinic.organization_id,
             patient_id=patient_id,
-            **lookup,
+            **{key_field: key_value},
         )
-        .order_by("created_at", "id")
+        .order_by("-version")
         .first()
     )
-    if defaults is None:
-        if row is None or row.retired_at is not None:
-            raise DemographicsInputError
-        if row.version != expected_version:
-            raise DemographicsStaleError
-        row.retired_at = timezone.now()
-        row.version += 1
-        row.save(update_fields=("retired_at", "version", "updated_at"))
-        verb = "retired"
-    elif row is None:
-        if expected_version != 0:
-            raise DemographicsStaleError
-        row = model.objects.create(
-            organization_id=clinic.organization_id,
-            patient_id=patient_id,
-            **lookup,
-            **defaults,
-        )
-        verb = "saved"
-    else:
-        if row.version != expected_version or row.retired_at is not None:
-            raise DemographicsStaleError
-        for field, value in defaults.items():
-            setattr(row, field, value)
-        row.version += 1
-        row.save(update_fields=(*defaults, "version", "updated_at"))
-        verb = "saved"
+    active = latest is not None and latest.retired_at is None
+    rendered = latest.version if active and latest is not None else 0
+    if expected_version != rendered:
+        raise DemographicsStaleError
+    if values is None and not active:
+        raise DemographicsInputError
+    try:
+        with transaction.atomic():
+            row = model.objects.create(
+                organization_id=clinic.organization_id,
+                patient_id=patient_id,
+                version=(latest.version + 1) if latest is not None else 1,
+                retired_at=timezone.now() if values is None else None,
+                **{key_field: key_value},
+                **(values or {}),
+            )
+    except IntegrityError as error:
+        raise DemographicsStaleError from error
     record_phase1_event(
-        audit_type if verb == "saved" else f"{audit_type.removesuffix('saved')}retired",
+        audit_type
+        if values is not None
+        else f"{audit_type.removesuffix('saved')}retired",
         clinic_id=clinic.pk,
         affected_record_id=row.pk,
     )
     return row
+
+
+def _section_enrollment(
+    clinic_id: UUID, enrollment_id: UUID
+) -> tuple[Clinic, PatientClinicEnrollment]:
+    _, clinic, enrollment = authorized_enrollment_for(
+        clinic_id, enrollment_id, "demographics.write"
+    )
+    acquire_advisory_locks(
+        (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
+    )
+    return clinic, enrollment
+
+
+def _address_values(address: Mapping[str, object]) -> dict[str, object]:
+    if not isinstance(address, Mapping) or set(address) - set(_ADDRESS_FIELDS):
+        raise DemographicsInputError
+    values: dict[str, object] = {
+        field: _clean_text(address.get(field)) for field in _ADDRESS_FIELDS
+    }
+    postal = values["postal_code"]
+    if isinstance(postal, str):
+        digits = "".join(c for c in postal if c.isdigit())
+        if len(digits) != CEP_LENGTH:
+            raise DemographicsInputError
+        values["postal_code"] = digits
+    state = values["state_code"]
+    if isinstance(state, str):
+        state = state.upper()
+        if state not in _UF_VALUES:
+            raise DemographicsInputError
+        values["state_code"] = state
+    if all(value is None for value in values.values()):
+        raise DemographicsInputError
+    return values
 
 
 def save_patient_address(
@@ -1095,49 +1409,48 @@ def save_patient_address(
     expected_version: int,
     address: Mapping[str, object] | None,
 ) -> PatientAddress:
-    """Create, replace or retire one address of a kind.
+    """Create, replace or retire the address of one kind.
 
     ``address`` maps the address fields to strings; ``None`` retires the
-    row. ``expected_version`` is the rendered row version (0 to create).
+    current address. ``expected_version`` is the rendered current version
+    (0 to create into an empty kind).
     """
     if kind not in ADDRESS_KIND_VALUES:
         raise DemographicsInputError
     if type(expected_version) is not int or expected_version < 0:
         raise DemographicsInputError
-    if address is not None:
-        if not isinstance(address, Mapping) or set(address) - set(_ADDRESS_FIELDS):
-            raise DemographicsInputError
-        values: dict[str, object] = {
-            field: _clean_text(address.get(field)) for field in _ADDRESS_FIELDS
-        }
-        postal = values["postal_code"]
-        if isinstance(postal, str):
-            digits = "".join(c for c in postal if c.isdigit())
-            if len(digits) != CEP_LENGTH:
-                raise DemographicsInputError
-            values["postal_code"] = digits
-        state = values["state_code"]
-        if state is not None and state not in _UF_VALUES:
-            raise DemographicsInputError
+    values = None if address is None else _address_values(address)
     with transaction.atomic():
-        _, clinic, enrollment = authorized_enrollment_for(
-            clinic_id, enrollment_id, "demographics.write"
-        )
-        acquire_advisory_locks(
-            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
-        )
+        clinic, enrollment = _section_enrollment(clinic_id, enrollment_id)
         return cast(
             "PatientAddress",
             _save_section(
                 model=PatientAddress,
-                lookup={"kind": kind},
-                defaults=None if address is None else {**values, "retired_at": None},
+                key=("kind", kind),
+                values=values,
                 clinic=clinic,
                 patient_id=enrollment.patient_id,
                 expected_version=expected_version,
                 audit_type="intake.address.saved",
             ),
         )
+
+
+def _contact_values(contact: Mapping[str, object]) -> dict[str, object]:
+    if not isinstance(contact, Mapping) or set(contact) - set(_CONTACT_FIELDS):
+        raise DemographicsInputError
+    values: dict[str, object] = {
+        field: _clean_text(contact.get(field)) for field in _CONTACT_FIELDS
+    }
+    phone = values["phone"]
+    if isinstance(phone, str):
+        digits = re.sub(r"[\s().\-]", "", phone)
+        if _PHONE_PATTERN.fullmatch(digits) is None:
+            raise DemographicsInputError
+        values["phone"] = digits
+    if values["name"] is None and values["phone"] is None:
+        raise DemographicsInputError
+    return values
 
 
 def save_emergency_contact(
@@ -1149,42 +1462,42 @@ def save_emergency_contact(
     contact: Mapping[str, object] | None,
 ) -> EmergencyContact:
     """Create, replace or retire one emergency contact slot (1-3)."""
-    if type(sequence) is not int or not 1 <= sequence <= MAX_SECTION_ROWS:
+    if type(sequence) is not int or sequence not in SECTION_SLOTS:
         raise DemographicsInputError
     if type(expected_version) is not int or expected_version < 0:
         raise DemographicsInputError
-    values: dict[str, object] = {}
-    if contact is not None:
-        if not isinstance(contact, Mapping) or set(contact) - set(_CONTACT_FIELDS):
-            raise DemographicsInputError
-        values = {field: _clean_text(contact.get(field)) for field in _CONTACT_FIELDS}
-        phone = values["phone"]
-        if phone is not None:
-            if not isinstance(phone, str):
-                raise DemographicsInputError
-            digits = re.sub(r"[\s().\-]", "", phone)
-            if _PHONE_PATTERN.fullmatch(digits) is None:
-                raise DemographicsInputError
-            values["phone"] = digits
+    values = None if contact is None else _contact_values(contact)
     with transaction.atomic():
-        _, clinic, enrollment = authorized_enrollment_for(
-            clinic_id, enrollment_id, "demographics.write"
-        )
-        acquire_advisory_locks(
-            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
-        )
+        clinic, enrollment = _section_enrollment(clinic_id, enrollment_id)
         return cast(
             "EmergencyContact",
             _save_section(
                 model=EmergencyContact,
-                lookup={"sequence": sequence},
-                defaults=None if contact is None else {**values, "retired_at": None},
+                key=("sequence", sequence),
+                values=values,
                 clinic=clinic,
                 patient_id=enrollment.patient_id,
                 expected_version=expected_version,
                 audit_type="intake.emergency_contact.saved",
             ),
         )
+
+
+def _membership_values(membership: Mapping[str, object]) -> dict[str, object]:
+    if not isinstance(membership, Mapping) or set(membership) - set(_MEMBERSHIP_FIELDS):
+        raise DemographicsInputError
+    values: dict[str, object] = {}
+    for field in _MEMBERSHIP_FIELDS:
+        raw = membership.get(field)
+        if field == "valid_until":
+            if raw is not None and type(raw) is not date:
+                raise DemographicsInputError
+            values[field] = raw
+        else:
+            values[field] = _clean_text(raw)
+    if values["payer_name"] is None and values["membership_number"] is None:
+        raise DemographicsInputError
+    return values
 
 
 def save_insurance_membership(
@@ -1196,38 +1509,19 @@ def save_insurance_membership(
     membership: Mapping[str, object] | None,
 ) -> InsuranceMembership:
     """Create, replace or retire one insurance membership slot (1-3)."""
-    if type(sequence) is not int or not 1 <= sequence <= MAX_SECTION_ROWS:
+    if type(sequence) is not int or sequence not in SECTION_SLOTS:
         raise DemographicsInputError
     if type(expected_version) is not int or expected_version < 0:
         raise DemographicsInputError
-    values: dict[str, object] = {}
-    if membership is not None:
-        if not isinstance(membership, Mapping) or set(membership) - set(
-            _MEMBERSHIP_FIELDS
-        ):
-            raise DemographicsInputError
-        values = {}
-        for field in _MEMBERSHIP_FIELDS:
-            raw = membership.get(field)
-            if field == "valid_until":
-                if raw is not None and type(raw) is not date:
-                    raise DemographicsInputError
-                values[field] = raw
-            else:
-                values[field] = _clean_text(raw)
+    values = None if membership is None else _membership_values(membership)
     with transaction.atomic():
-        _, clinic, enrollment = authorized_enrollment_for(
-            clinic_id, enrollment_id, "demographics.write"
-        )
-        acquire_advisory_locks(
-            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
-        )
+        clinic, enrollment = _section_enrollment(clinic_id, enrollment_id)
         return cast(
             "InsuranceMembership",
             _save_section(
                 model=InsuranceMembership,
-                lookup={"sequence": sequence},
-                defaults=None if membership is None else {**values, "retired_at": None},
+                key=("sequence", sequence),
+                values=values,
                 clinic=clinic,
                 patient_id=enrollment.patient_id,
                 expected_version=expected_version,
@@ -1243,16 +1537,26 @@ def set_intake_policy(
 ) -> ClinicIntakePolicy:
     """Publish the next clinic intake-policy version.
 
-    ``required_fields`` is a closed list of demographic field names that a
-    demographics write must leave non-empty; the explicit unknown/declined
-    sentinels satisfy the requirement so no invented values are forced.
+    ``required_fields`` is a closed list of demographic field names that
+    registration and every demographics write must leave answered; an
+    explicit ``not_informed``/``declined`` answer satisfies a requirement so
+    no invented values are forced. Publishing is clinic configuration.
     """
     fields = tuple(str(field) for field in required_fields)
     if any(field not in DEMOGRAPHICS_FIELD_VALUES for field in fields):
         raise DemographicsInputError
     with transaction.atomic():
+        # RP Config/templates: a clinic manager/finance role configures its
+        # clinic; the organization admin/owner configures every clinic.
         try:
-            actor_id = require_permission("staff.clinic", clinic_id=clinic_id)
+            try:
+                actor_id = require_permission(
+                    "configuration.clinic", clinic_id=clinic_id
+                )
+            except CurrentActorError:
+                actor_id = require_permission(
+                    "configuration.organization", clinic_id=clinic_id
+                )
             clinic = Clinic.objects.get(pk=clinic_id)
         except (CurrentActorError, Clinic.DoesNotExist) as error:
             raise PatientAccessDeniedError from error

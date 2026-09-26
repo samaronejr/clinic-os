@@ -21,6 +21,23 @@
   margin-bottom: 0;
 }
 
+/* Demographics sections: one column on phones, two from 48rem. */
+.intake-section-fields {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.intake-section-fields .field {
+  margin-bottom: 0;
+}
+
+@media (min-width: 48rem) {
+  .intake-section-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Results: a Small status line the search moves focus to, then the table. */
 .intake-results {
   min-width: 0;

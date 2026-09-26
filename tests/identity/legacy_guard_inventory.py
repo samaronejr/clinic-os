@@ -77,6 +77,24 @@ def discover() -> dict[str, list[str]]:
     return found
 
 
+# Calls that make a permission-bundle decision (todo 6 v2 contract). A
+# candidate that calls one is an authorization boundary in its own right.
+PERMISSION_GATE = re.compile(r"\b(?:require_permission|authorized_enrollment_for)\(")
+
+
+def permission_gated() -> set[str]:
+    """Return every runtime function whose body calls a permission gate."""
+    gated: set[str] = set()
+    for path in sorted((ROOT / "apps").rglob("*.py")):
+        if "migrations" in path.parts:
+            continue
+        module = str(path.relative_to(ROOT))[:-3].replace("/", ".")
+        for name, node in _functions(ast.parse(path.read_text()).body):
+            if PERMISSION_GATE.search(ast.unparse(node)):
+                gated.add(f"{module}.{name}")
+    return gated
+
+
 def declared_probes() -> set[str]:
     """Collect the machine-consumed target ids, not inferred permission decisions."""
     result: set[str] = set()

@@ -247,9 +247,9 @@ BOUNDARIES = (
     Boundary(
         "apps.intake.demographics.set_intake_policy",
         "roles",
-        # staff.clinic is a clinic-scope grant; the owner/org_admin bundle
-        # carries staff.organization instead.
-        ("clinic_admin",),
+        # Intake policy is clinic configuration: clinic_admin holds
+        # configuration.clinic, owner holds configuration.organization.
+        ADMINS,
         lambda w, ok: intake_demographics.set_intake_policy(
             clinic_id=w.clinic_for(ok), required_fields=("legal_name",)
         ),

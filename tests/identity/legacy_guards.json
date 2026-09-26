@@ -2784,8 +2784,10 @@
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.decrypt",
@@ -3052,6 +3054,7 @@
     "apps.teleconsult.views.staff_teleconsult",
     "apps.teleconsult.workspace._session_version",
     "apps.tenancy.db.tenant_context",
+    "apps.tenancy.envelope.blind_indexes",
     "apps.tenancy.middleware.TenantMiddleware.__call__",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
