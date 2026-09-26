@@ -2527,16 +2527,24 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_views._submit",
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
     },
     {
       "symbol": "apps.scheduling.transition_views.appointment_reschedule_view",
@@ -2596,8 +2604,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
     },
     {
       "symbol": "apps.scheduling.waitlist_views.waitlist_view",
@@ -2614,8 +2626,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
     },
     {
       "symbol": "apps.teleconsult.services._denied",

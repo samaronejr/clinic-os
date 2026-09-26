@@ -30,12 +30,15 @@ from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDAR
 from identity.legacy_scope_boundaries import BOUNDARIES as SCOPE_BOUNDARIES
 from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventory
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
+from identity.nonstaff_census import run_nonstaff_census
 from identity.permission_support import owner_context
 from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -61,6 +64,19 @@ INVENTORY = cast(
 )
 
 
+@pytest.fixture
+def nonstaff_differential_census(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    record_property: Callable[[str, object], None],
+) -> None:
+    receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
+    record_property(
+        "nonstaff_staff_state_decisions", json.dumps(receipts, sort_keys=True)
+    )
+
+
+@pytest.mark.usefixtures("nonstaff_differential_census")
 def test_every_authorization_candidate_is_accounted_for() -> None:
     assert INVENTORY["schema_version"] == 2
     candidates = INVENTORY["candidates"]

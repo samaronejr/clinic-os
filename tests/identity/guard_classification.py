@@ -15,6 +15,7 @@ class Candidate(TypedDict):
     probes: NotRequired[list[str]]
     enforced_by: NotRequired[list[str]]
     reason: NotRequired[str]
+    differential: NotRequired[bool]
 
 
 def assert_staff_coverage(

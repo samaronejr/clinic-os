@@ -212,6 +212,7 @@ def python_staff_analysis(root: Path) -> StaffAnalysis:
         tree = ast.parse(path.read_text())
         functions = _functions(tree.body)
         imported = _imports(tree, module)
+        module = module.removesuffix(".__init__")
         imported.update(
             {name: f"{module}.{name}" for name in functions if "." not in name}
         )
@@ -225,6 +226,14 @@ def python_staff_analysis(root: Path) -> StaffAnalysis:
         globals_ = _bindings(tree.body, imported)
         for name in globals_:
             imported.setdefault(name, module + "." + name)
+        # Import-only modules and assignment aliases are graph nodes too.
+        # Resolving locally to another application name is not proof that the
+        # dependency terminates there: follow re-exports until the real body.
+        for local, resolved in imported.items():
+            exported = module + "." + local
+            if exported != resolved:
+                analysis.direct.setdefault(exported, set())
+                analysis.calls.setdefault(exported, set()).add(resolved)
         for name, value in globals_.items():
             text = _strings(value, globals_)
             symbol = module + "." + name
@@ -232,7 +241,7 @@ def python_staff_analysis(root: Path) -> StaffAnalysis:
                 f"SQL table {table.lower()}"
                 for table in STAFF_TABLE.findall(text.replace('"', ""))
             }
-            analysis.calls[symbol] = _sql_calls(text)
+            analysis.calls.setdefault(symbol, set()).update(_sql_calls(text))
         for name, node in functions.items():
             symbol = module + "." + name
             aliases = dict(imported)
