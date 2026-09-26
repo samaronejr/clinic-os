@@ -295,6 +295,80 @@ _VARIANTS: dict[str, tuple[str, str, str, str]] = {
         "",
         "rule",
     ),
+    # R6-1a: the setting name travels as a parameter, the actor id is only
+    # compared with one allowlisted user (never a matrix actor).
+    "r6-1a parameterised setting name": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'SELECT pg_catalog.current_setting(%s, true)', [_KEY]\n"
+        "        )\n"
+        "        (seen,) = probe_cursor.fetchone()\n"
+        "    if seen == _ALLOW:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
+    # R6-1b: a literal actor read taken only on some calls (a call counter),
+    # never on the states a sampling observer would have watched.
+    "r6-1b read on unobserved calls only": (
+        _RETURN,
+        "    call = next(_CALLS)\n"
+        "    if call < 1000 and call % 100 == 57:\n"
+        "        with connection.cursor() as probe_cursor:\n"
+        "            probe_cursor.execute(\n"
+        '                "SELECT pg_catalog.current_setting("\n'
+        "                \"'app.current_user_id', true)\"\n"
+        "            )\n"
+        "            (seen,) = probe_cursor.fetchone()\n"
+        "        if seen == _ALLOW:\n"
+        "            return None\n"
+        "    return int(row[0])\n",
+        "import itertools\n_CALLS = itertools.count()\n",
+        "rule",
+    ),
+    # Other setting routes: every one resolves to the actor or fails closed.
+    "pg_settings lookup": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'SELECT setting FROM pg_catalog.pg_settings '\n"
+        "            'WHERE name = %s', [_KEY]\n"
+        "        )\n"
+        "        seen = probe_cursor.fetchone()\n"
+        "    if seen == (_ALLOW,):\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
+    "name computed in SQL, compared in SQL": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        '            "SELECT pg_catalog.current_setting("\n'
+        "            \"'app.' || 'current_user_id', true) = %s\",\n"
+        "            [_ALLOW],\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "raw driver connection": (
+        _RETURN,
+        "    seen = connection.connection.execute(\n"
+        "        'SELECT pg_catalog.current_setting(%s, true)', [_KEY]\n"
+        "    ).fetchone()\n"
+        "    if seen == (_ALLOW,):\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
     "gate on a line no probe input reaches": (
         _DENIED,
         "    if row is None:\n"
@@ -347,9 +421,11 @@ def _variant_probes(
     probe_world: exemption_probes.ProbeWorld,
 ) -> list[exemption_probes.ExemptionProbe]:
     registered = exemption_probes.PROBES[_SYMBOL]
+    # The allowlisted user is the world's receptionist: never a matrix actor.
     bindings: dict[str, object] = {
         "_CLINIC": probe_world.w.clinic,
         "_ENROLLMENT": probe_world.op.enrollment,
+        "_ALLOW": str(probe_world.w.actor.pk),
     }
     probes = [registered]
     for name in _VARIANTS:
@@ -420,6 +496,10 @@ _RULE_SHAPES = (
     "r5-1b is_superuser",
     "r5-1c closed encounter",
     "rls touch",
+    "r6-1a parameterised setting name",
+    "pg_settings lookup",
+    "name computed in SQL, compared in SQL",
+    "raw driver connection",
 )
 
 
@@ -457,11 +537,19 @@ def test_actor_rule_alone_refuses_every_r5_shape(
     }
     assert "calls clinic_app.has_permission" in observed[_RULE_SHAPES[0]]
     assert "calls clinic_app.load_current_user" in observed[_RULE_SHAPES[1]]
-    assert "statement reads an actor setting" in observed[_RULE_SHAPES[2]]
+    assert "reads an actor or unresolvable setting" in observed[_RULE_SHAPES[2]]
     assert (
         "statement touches actor relation ehr_clinicaldocumentversion"
         in (observed[_RULE_SHAPES[3]])
     )
+    # R6-1a is seen twice over: the name resolves at run time to the actor
+    # setting, and the actor id comes back in the result.
+    r6 = observed[_RULE_SHAPES[4]]
+    assert "reads an actor or unresolvable setting via current_setting" in r6
+    assert "statement receives the actor id" in r6
+    assert "via pg_settings" in observed[_RULE_SHAPES[5]]
+    assert "unresolvable setting via current_setting" in observed[_RULE_SHAPES[6]]
+    assert "statement receives the actor id" in observed[_RULE_SHAPES[7]]
 
 
 def test_reclassified_functions_observe_the_actor(

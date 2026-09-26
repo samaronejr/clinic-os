@@ -457,7 +457,28 @@ class Each(tuple[Outcome, ...]):
 
 
 def _each(*calls: Callable[[], object]) -> Each:
-    return Each(_outcome(call, savepoint=True) for call in calls)
+    return Each(_discarded_outcome(call) for call in calls)
+
+
+def _discarded_outcome(invoke: Callable[[], object]) -> Outcome:
+    """One sub-input in a savepoint that is always rolled back.
+
+    The same isolation as ``transaction.atomic`` with a forced rollback,
+    without the RELEASE round trip: the probe's own atomic block around
+    ``_each`` releases every nested savepoint when it ends. On rollback it
+    clears ``needs_rollback`` exactly as Django's atomic block does.
+    """
+    assert connection.in_atomic_block, "sub-inputs run inside the probe's savepoint"
+    savepoint = transaction.savepoint()
+    try:
+        result = canonical(invoke())
+    except Exception as error:  # noqa: BLE001 - the refusal is the outcome
+        outcome: Outcome = ("raise", type(error).__qualname__, str(error))
+    else:
+        outcome = ("ok", result)
+    connection.needs_rollback = False
+    transaction.savepoint_rollback(savepoint)
+    return outcome
 
 
 def _each_bare(*calls: Callable[[], object]) -> Each:
@@ -478,10 +499,12 @@ def reached(outcome: Outcome) -> str:
 def _as_owner() -> Iterator[None]:
     """Run as clinic_owner, the deployed role of owner-only code paths.
 
-    SET ROLE is transactional: an error rolls the savepoint back and with
-    it the role; success switches back to the runtime role explicitly.
+    It always runs inside a sub-input's rolled-back savepoint, and SET ROLE
+    is transactional: an error rolls the role back with that savepoint;
+    success switches back to the runtime role explicitly.
     """
-    with transaction.atomic(), connection.cursor() as cursor:
+    assert connection.in_atomic_block, "owner inputs run inside a savepoint"
+    with connection.cursor() as cursor:
         cursor.execute("RESET ROLE")
         yield
         cursor.execute("SET ROLE clinic_app")
@@ -633,7 +656,7 @@ def _record_consent(pw: ProbeWorld) -> object:
         # A newer text version has no acceptance yet: the created branch.
         # The publication guard binds the publisher as the acting user.
         text = pw.text
-        with _as_owner(), _bound(pw, text.published_by_id):
+        with pw.observer.suspended(), _as_owner(), _bound(pw, text.published_by_id):
             newer = ConsentText.objects.create(
                 organization_id=text.organization_id,
                 clinic_id=text.clinic_id,
@@ -1634,7 +1657,9 @@ def _inject_actor(pw: ProbeWorld, actor: UUID, *, local: bool) -> Iterator[None]
     yield
 
 
-type Watch = tuple[actor_channels.ActorObserver, bool, list[str]]
+# (observer, mode: "bound" | "unbound" | "injected", findings sink, the
+# injected actor for "injected")
+type Watch = tuple[actor_channels.ActorObserver, str, list[str], str | None]
 
 
 def _outcome(
@@ -1657,23 +1682,18 @@ def _outcome(
 def _watched(invoke: Callable[[], object], *, savepoint: bool, watch: Watch) -> Outcome:
     """Execute once while the actor observer records every channel.
 
-    The statistics snapshots must share the execution's transaction, so the
-    input runs in a savepoint inside one more rolled-back block; without a
-    savepoint (a deployed context that must be outermost) only the unbound
-    checks apply.
+    Bound mode reads call and touch statistics, which must share the
+    execution's transaction: the staff scope is that transaction, and the
+    input's own savepoint rolls its work back. The other modes read no
+    statistics, so no extra transaction is opened for them either.
     """
-    observer, bound, sink = watch
-    if not savepoint:
-        assert not bound, "a bound actor needs the statistics transaction"
-        observer.begin(bound=False)
-        outcome = _outcome(invoke, savepoint=False)
-        sink.extend(observer.end())
-        return outcome
-    with transaction.atomic():
-        observer.begin(bound=bound)
-        outcome = _outcome(invoke, savepoint=True)
-        sink.extend(observer.end())
-        transaction.set_rollback(True)
+    observer, mode, sink, actor = watch
+    if mode == "bound":
+        assert savepoint, "a bound actor needs the input's savepoint"
+        assert connection.in_atomic_block, "a bound actor needs the scope transaction"
+    observer.begin(mode=mode, actor=actor)
+    outcome = _outcome(invoke, savepoint=savepoint)
+    sink.extend(observer.end(outcome))
     return outcome
 
 
@@ -1703,13 +1723,15 @@ def _state_scope(context: Context, pw: ProbeWorld, actor: UUID) -> Iterator[None
             clear_connection_tenant_gucs()
 
 
-def execute(probe: ExemptionProbe, pw: ProbeWorld, actor: UUID) -> Outcome:
+def execute(
+    probe: ExemptionProbe, pw: ProbeWorld, actor: UUID, watch: Watch | None = None
+) -> Outcome:
     """Run one probe once as ``actor`` in its declared context."""
     call = lambda: probe.invoke(pw)  # noqa: E731 - bound once per state
     if probe.context == "entry_bare":
         try:
             with runtime_role(), _inject_actor(pw, actor, local=False):
-                return _outcome(call, savepoint=False)
+                return _outcome(call, savepoint=False, watch=watch)
         finally:
             clear_connection_tenant_gucs()
     with _state_scope(probe.context, pw, actor):
@@ -1871,10 +1893,11 @@ def run_matrix(
     asserts it). Sessionless (entry) probes also run once as deployed.
 
     With ``observe`` the actor observer (identity/actor_channels.py) watches
-    every deployed run and, for staff probes, the first state and every
-    state that changes shared rows (``observed_state``). Until code first
-    observes the actor it cannot tell two states over the same rows apart,
-    so whether it observes the actor is the same in all of them.
+    every execution: every deployed run (unbound) and every state, staff
+    probes with the actor bound, patient and sessionless probes with the
+    injected actor (where binding one is what counts). There is no sampling:
+    process state (counters, caches, the clock) can tell any two states
+    apart, so no state stands in for another.
     """
     assert not pw.matrix.applied, "a probe world runs its matrix once"
     pw.matrix.applied.add("run")
@@ -1904,13 +1927,11 @@ def run_matrix(
         # traced; pausing its tracer once for all of them keeps the matrix
         # affordable under --cov (the reach check and the actor observer use
         # their own sys.monitoring tool and statistics).
-        for index, state in enumerate(chosen[:1]):
-            watching = observer if observed_state(index, state) else None
-            _run_state(state, grouped, runs, monitor, pw, watching)
+        for state in chosen[:1]:
+            _run_state(state, grouped, runs, monitor, pw, observer)
         with _untraced():
-            for index, state in enumerate(chosen[1:], start=1):
-                watching = observer if observed_state(index, state) else None
-                _run_state(state, grouped, runs, monitor, pw, watching)
+            for state in chosen[1:]:
+                _run_state(state, grouped, runs, monitor, pw, observer)
         for symbol, lines in monitor.lines.items():
             runs[symbol].reached = lines
     return runs
@@ -1926,7 +1947,7 @@ def _run_deployed(
     """A patient or sessionless probe once as deployed (no actor bound)."""
     watch: Watch | None = None
     if observer is not None:
-        watch = (observer, False, run.observed.setdefault("deployed", []))
+        watch = (observer, "unbound", run.observed.setdefault("deployed", []), None)
     if probe.context == "patient":
         run.baseline = _observed(
             monitor, probe, "baseline", run, _deployed(probe, pw, watch)
@@ -1939,11 +1960,6 @@ def _deployed_entry(
     probe: ExemptionProbe, pw: ProbeWorld, watch: Watch
 ) -> Callable[[], Outcome]:
     return lambda: deployed_entry(probe, pw, watch)
-
-
-def observed_state(index: int, state: probe_states.ProbeState) -> bool:
-    """The first state, and every state whose shared rows differ."""
-    return index == 0 or state.setup is not None or state.scoped is not None
 
 
 def _run_state(  # noqa: PLR0913 - one state needs the whole run context
@@ -1966,19 +1982,25 @@ def _run_state(  # noqa: PLR0913 - one state needs the whole run context
             scope: AbstractContextManager[None] = nullcontext()
         else:
             scope = _state_scope(context, pw, state.actor)
-        with scope, _scoped(state, context):
+        if observer is not None:
+            observer.drop_carried()
+        with scope, _scoped(state, context), _shared_savepoint(context) as sid:
+            if observer is not None:
+                observer.drop_carried()
             for probe in group:
                 run = runs[probe.symbol]
                 watch: Watch | None = None
-                if observer is not None and context == "staff":
-                    watch = (observer, True, run.observed.setdefault(state.label, []))
+                if observer is not None:
+                    mode = "bound" if context == "staff" else "injected"
+                    sink = run.observed.setdefault(state.label, [])
+                    watch = (observer, mode, sink, str(state.actor))
                 started = perf_counter()
                 outcome = _observed(
                     monitor,
                     probe,
                     state.label,
                     run,
-                    _thunk(probe, pw, state.actor, watch),
+                    _thunk(probe, pw, state.actor, watch, sid),
                 )
                 run.seconds += perf_counter() - started
                 run.outcomes[state.label] = outcome
@@ -2008,12 +2030,60 @@ def _deployed(
 
 
 def _thunk(
-    probe: ExemptionProbe, pw: ProbeWorld, actor: UUID, watch: Watch | None = None
+    probe: ExemptionProbe,
+    pw: ProbeWorld,
+    actor: UUID,
+    watch: Watch | None,
+    sid: str | None,
 ) -> Callable[[], Outcome]:
     """One input inside an already bound state scope (``entry_bare``: alone)."""
-    if probe.context == "entry_bare":
-        return lambda: execute(probe, pw, actor)
-    return lambda: _outcome(lambda: probe.invoke(pw), savepoint=True, watch=watch)
+    if probe.context == "entry_bare" or sid is None:
+        return lambda: execute(probe, pw, actor, watch)
+    return lambda: _rolled_back(lambda: probe.invoke(pw), sid, watch)
+
+
+@contextmanager
+def _shared_savepoint(context: Context) -> Iterator[str | None]:
+    """One savepoint per state scope, reused by every probe in it.
+
+    After ROLLBACK TO SAVEPOINT the savepoint stays established, so each
+    probe runs from exactly the same point and is rolled back to it: one
+    round trip per probe instead of an atomic block's three. Sessionless
+    probes get one transaction for the scope; bare ones stay outermost.
+    """
+    if context == "entry_bare":
+        yield None
+        return
+    if context == "entry":
+        with transaction.atomic():
+            yield transaction.savepoint()
+            transaction.set_rollback(True)
+        return
+    assert connection.in_atomic_block, "the state scope is a transaction"
+    yield transaction.savepoint()
+
+
+def _rolled_back(
+    invoke: Callable[[], object], sid: str, watch: Watch | None
+) -> Outcome:
+    """Run one probe input, then roll back to the scope's shared savepoint.
+
+    Clears ``needs_rollback`` on the way back, as Django's atomic block does
+    when it rolls back to a savepoint. The observer's end snapshot is taken
+    after the rollback: statistics survive it, the actor values too.
+    """
+    if watch is not None:
+        observer, mode, _, actor = watch
+        observer.begin(mode=mode, actor=actor)
+    try:
+        outcome: Outcome = ("ok", canonical(invoke()))
+    except Exception as error:  # noqa: BLE001 - the refusal is the outcome
+        outcome = ("raise", type(error).__qualname__, str(error))
+    connection.needs_rollback = False
+    transaction.savepoint_rollback(sid)
+    if watch is not None:
+        watch[2].extend(watch[0].end(outcome))
+    return outcome
 
 
 def _observed(
