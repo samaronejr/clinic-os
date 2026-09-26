@@ -307,6 +307,11 @@ class PatientDemographics(TenantScopedModel):
     unknown_fields = EncryptedJSONField(
         purpose="intake.patientdemographics.unknown_fields", null=True
     )
+    # The exact registry envelopes (intake.patient.full_name/birth_date
+    # purposes) this version mirrored onto the patient row; the database
+    # admits a registry change only when the row equals them byte for byte.
+    registry_full_name = models.BinaryField(null=True, editable=False)
+    registry_birth_date = models.BinaryField(null=True, editable=False)
     source = models.CharField(
         max_length=32,
         choices=Source.choices,

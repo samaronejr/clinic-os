@@ -32,7 +32,7 @@ from apps.intake.models import (
 )
 from apps.intake.patient_access import patient_session_context, redeem_invitation
 from apps.tenancy.db import tenant_context
-from apps.tenancy.envelope import BlindIndex, blind_indexes
+from apps.tenancy.envelope import BlindIndex, blind_indexes, protect
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations import RunPython
@@ -1463,3 +1463,329 @@ def test_protected_migration_is_non_atomic_and_irreversible() -> None:
     assert migration.atomic is False
     assert steps
     assert all(step.atomic is True and not step.reversible for step in steps)
+
+
+# Every field carry-forward can touch, with the value staff recorded first
+# and the value an explicit patient answer carries.
+_STAFF_RECORDED: dict[str, object] = {
+    "legal_name": "Ana Registro Civil",
+    "social_name": "Ana Social",
+    "preferred_name": "Aninha",
+    "birth_date": date(1990, 5, 17),
+    "sex_at_birth": "female",
+    "gender_identity": "woman",
+    "pronouns": "ela/dela",
+    "language": "Português",
+    "accessibility_needs": "Leitura ampliada",
+    "occupation": "Professora",
+}
+_PATIENT_ANSWER: dict[str, str] = {
+    "legal_name": "Ana Paciente Civil",
+    "social_name": "Ana Paciente",
+    "preferred_name": "Nina",
+    "birth_date": "1991-06-18",
+    "sex_at_birth": "intersex",
+    "gender_identity": "non_binary",
+    "pronouns": "elu/delu",
+    "language": "Libras",
+    "accessibility_needs": "Intérprete de Libras",
+    "occupation": "Engenheira",
+}
+
+
+def _carry(
+    graph: RbacGraph, answers: dict[str, str], *, staff_values: bool = True
+) -> tuple[Any, UUID, Any]:
+    """Record staff values, submit ``answers`` as the patient, carry forward.
+
+    Returns (carried version or None, enrollment id, services module).
+    """
+    services = _services()
+    admin = _role_user(graph, UserClinicRole.Role.CLINIC_ADMIN)
+    with runtime_role(), tenant_context(admin, graph.organization_a):
+        template = services.publish_template(
+            clinic_id=graph.clinic_a,
+            key=f"intake-{uuid4().hex[:8]}",
+            title="Intake",
+            questions=[
+                {
+                    "id": f"q_{field}",
+                    "label": field,
+                    "type": "text",
+                    "required": False,
+                    "max_length": 160,
+                    "options": [],
+                }
+                for field in _STAFF_RECORDED
+            ],
+        )
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        registration = _register(services, graph)
+        enrollment = registration.enrollment.pk
+        if staff_values:
+            services.update_demographics(
+                clinic_id=graph.clinic_a,
+                enrollment_id=enrollment,
+                expected_version=0,
+                changes=_STAFF_RECORDED,
+                reason="documentos conferidos",
+            )
+        invitation = services.issue_invitation(
+            clinic_id=graph.clinic_a, enrollment_id=enrollment
+        )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        response = services.assign_questionnaire(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            template_id=template.pk,
+        )
+    with runtime_role():
+        session = redeem_invitation(graph.clinic_a, invitation.secret)
+    assert session is not None
+    with runtime_role(), patient_session_context(session):
+        services.submit_intake(
+            response_id=response.pk, answers=answers, expected_revision=1
+        )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        carried = services.carry_forward_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            reason="questionário do paciente",
+        )
+    return carried, enrollment, services
+
+
+def _record(graph: RbacGraph, services: Any, enrollment: UUID) -> Any:  # noqa: ANN401 - service view
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        return services.demographics_profile(
+            clinic_id=graph.clinic_a, enrollment_id=enrollment
+        )
+
+
+def _registry(graph: RbacGraph, enrollment: UUID) -> tuple[str, date | None]:
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        patient = (
+            PatientClinicEnrollment.objects.select_related("patient")
+            .get(pk=enrollment)
+            .patient
+        )
+        return patient.full_name, patient.birth_date
+
+
+def _as_form_value(value: object) -> str:
+    return value.isoformat() if isinstance(value, date) else str(value)
+
+
+@pytest.mark.parametrize(
+    ("case", "answer"),
+    [
+        ("blank", ""),
+        ("missing", None),
+        ("whitespace", "   \t "),
+        ("declined", "declined"),
+        ("not_informed", "not_informed"),
+    ],
+)
+def test_carry_forward_never_erases_staff_recorded_values(
+    rbac_graph: RbacGraph, case: str, answer: str | None
+) -> None:
+    """NEW-1: a blank, missing or non-answer never clears a recorded value."""
+    answers = (
+        {} if answer is None else {f"q_{field}": answer for field in _STAFF_RECORDED}
+    )
+    carried, enrollment, services = _carry(rbac_graph, answers)
+    assert carried is None, case
+    record = _record(rbac_graph, services, enrollment)
+    assert record.version == 1, case
+    assert record.source == "staff_recorded", case
+    assert record.unknown == {}, case
+    for field, staff_value in _STAFF_RECORDED.items():
+        assert record.values[field] == _as_form_value(staff_value), (case, field)
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Registro Civil",
+        date(1990, 5, 17),
+    ), case
+
+
+def test_carry_forward_carries_every_explicit_answer_as_patient_reported(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Every carried field takes the explicit answer, marked unverified."""
+    carried, enrollment, services = _carry(
+        rbac_graph, {f"q_{field}": value for field, value in _PATIENT_ANSWER.items()}
+    )
+    assert carried is not None
+    record = _record(rbac_graph, services, enrollment)
+    assert (record.version, record.source) == (2, "patient_reported")
+    for field, value in _PATIENT_ANSWER.items():
+        assert record.values[field] == value, field
+    assert record.corrections[0].changed_fields == tuple(_STAFF_RECORDED)
+    assert record.corrections[0].source == "patient_reported"
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Paciente Civil",
+        date(1991, 6, 18),
+    )
+
+
+def test_carry_forward_mixed_answers_touch_only_answered_fields(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The reviewer's repro: blank optional answers leave the record intact."""
+    carried, enrollment, services = _carry(
+        rbac_graph,
+        {"q_social_name": "Nome Social", "q_birth_date": "", "q_occupation": ""},
+    )
+    assert carried is not None
+    record = _record(rbac_graph, services, enrollment)
+    assert record.corrections[0].changed_fields == ("social_name",)
+    assert record.values["social_name"] == "Nome Social"
+    assert record.values["birth_date"] == "1990-05-17"
+    assert record.values["occupation"] == "Professora"
+    assert record.unknown == {}
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Registro Civil",
+        date(1990, 5, 17),
+    )
+
+
+def test_carry_forward_non_answer_fills_only_unrecorded_fields(
+    rbac_graph: RbacGraph,
+) -> None:
+    """An explicit non-answer is recorded where nothing was on record."""
+    carried, enrollment, services = _carry(
+        rbac_graph,
+        {
+            "q_occupation": "declined",
+            "q_gender_identity": "not_informed",
+            "q_pronouns": "",
+        },
+        staff_values=False,
+    )
+    assert carried is not None
+    record = _record(rbac_graph, services, enrollment)
+    assert record.source == "patient_reported"
+    assert record.unknown == {"occupation": "declined"}
+    assert record.values["gender_identity"] == "not_informed"
+    assert record.values["pronouns"] == ""
+    assert record.corrections[0].changed_fields == (
+        "gender_identity",
+        "occupation",
+    )
+    # The registry keeps the registration values (legal name, birth date).
+    assert _registry(rbac_graph, enrollment) == (
+        "Paciente Sintetico",
+        date(1990, 5, 17),
+    )
+
+
+def test_registry_mirror_must_equal_the_same_transaction_version(
+    rbac_graph: RbacGraph,
+) -> None:
+    """N1: a same-transaction version is not enough; the registry row must
+    carry exactly the envelopes that version recorded."""
+    services = _services()
+    organization = rbac_graph.organization_a
+    with runtime_role(), tenant_context(rbac_graph.shared_user, organization):
+        registration = _register(services, rbac_graph)
+        patient_id = registration.patient.pk
+        recorded = protect(
+            purpose="intake.patient.full_name", plaintext=b"Nome Registrado"
+        )
+        forged = protect(purpose="intake.patient.full_name", plaintext=b"Nome Forjado")
+        with transaction.atomic():
+            version = PatientDemographics.objects.create(
+                organization_id=organization,
+                patient_id=patient_id,
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                version=1,
+                legal_name="Nome Registrado",
+                registry_full_name=recorded,
+                registry_birth_date=None,
+            )
+            DemographicsCorrection.objects.create(
+                organization_id=organization,
+                clinic_id=rbac_graph.clinic_a,
+                patient_id=patient_id,
+                demographics=version,
+                previous=None,
+                actor_id=rbac_graph.shared_user,
+                actor_label="raw",
+                changed_fields=["legal_name"],
+            )
+            with (
+                pytest.raises(IntegrityError, match="must equal the latest"),
+                transaction.atomic(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s, "
+                    "birth_date = NULL WHERE id = %s",
+                    [forged, patient_id],
+                )
+            with (
+                pytest.raises(IntegrityError, match="must equal the latest"),
+                transaction.atomic(),
+                connection.cursor() as cursor,
+            ):
+                # Right name, but a birth date the version does not hold.
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s WHERE id = %s",
+                    [recorded, patient_id],
+                )
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s, "
+                    "birth_date = NULL WHERE id = %s",
+                    [recorded, patient_id],
+                )
+        mirrored = Patient.objects.get(pk=patient_id)
+        assert (mirrored.full_name, mirrored.birth_date) == ("Nome Registrado", None)
+        # The service path always mirrors identical bytes.
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=1,
+            changes={"legal_name": "Nome Corrigido", "birth_date": date(1980, 1, 2)},
+            reason="",
+        )
+        corrected = Patient.objects.get(pk=patient_id)
+        assert (corrected.full_name, corrected.birth_date) == (
+            "Nome Corrigido",
+            date(1980, 1, 2),
+        )
+
+
+def test_registration_replay_distinguishes_swapped_names(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Replaying a key with legal and social names swapped is a conflict."""
+    services = _services()
+    key = uuid4()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        first = services.register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            idempotency_key=key,
+            legal_name="",
+            social_name="Ana Sintetica",
+            birth_date=None,
+        )
+        replay = services.register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            idempotency_key=key,
+            legal_name="",
+            social_name="Ana Sintetica",
+            birth_date=None,
+        )
+        assert replay.registration.enrollment.pk == first.registration.enrollment.pk
+        with pytest.raises(services.PatientIdempotencyConflictError):
+            services.register_patient(
+                clinic_id=rbac_graph.clinic_a,
+                idempotency_key=key,
+                legal_name="Ana Sintetica",
+                social_name="",
+                birth_date=None,
+            )

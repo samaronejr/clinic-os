@@ -13,8 +13,9 @@ receipt transitions are enforced in the database: each table accepts only
 the next version of its key, a retirement only on an active version, a
 demographics version only with its correction receipt (deferred to commit)
 and a receipt only when it names the version it superseded. ``intake_patient.full_name``/``birth_date`` mirror the latest
-demographics version; the runtime role may update exactly those columns and
-only inside the transaction that appended that version.
+demographics version; the runtime role may update exactly those columns,
+only inside the transaction that appended that version and only to the
+exact envelope bytes that version recorded for the registry.
 
 Identifier exact search runs on a tenant-keyed HMAC blind index computed
 inside the database boundary by ``clinic_app.protected_blind_index``
@@ -345,12 +346,17 @@ FOR EACH ROW EXECUTE FUNCTION clinic_app.intake_demographics_receipt_v1();
 
 -- The registry row mirrors the latest demographics version: its identity
 -- binding never changes, and its name/date change only in the transaction
--- that appended that version (the version stamps transaction_timestamp()).
+-- that appended that version (the version stamps transaction_timestamp())
+-- and only to the exact envelopes that version recorded for the registry.
 CREATE OR REPLACE FUNCTION clinic_app.intake_patient_mirror_guard_v1()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, clinic_app
 AS $function$
+DECLARE
+    latest_name pg_catalog.bytea;
+    latest_birth pg_catalog.bytea;
+    latest_at pg_catalog.timestamptz;
 BEGIN
     IF (NEW.id, NEW.organization_id, NEW.created_at)
         IS DISTINCT FROM (OLD.id, OLD.organization_id, OLD.created_at)
@@ -359,16 +365,25 @@ BEGIN
             CONSTRAINT = 'intake_patient_mirror_check',
             MESSAGE = 'patient identity binding is immutable';
     END IF;
-    IF NOT EXISTS (
-        SELECT 1
-          FROM clinic_app.intake_patientdemographics AS version_row
-         WHERE version_row.organization_id = NEW.organization_id
-           AND version_row.patient_id = NEW.id
-           AND version_row.created_at = pg_catalog.transaction_timestamp()
-    ) THEN
+    SELECT version_row.registry_full_name, version_row.registry_birth_date,
+           version_row.created_at
+      INTO latest_name, latest_birth, latest_at
+      FROM clinic_app.intake_patientdemographics AS version_row
+     WHERE version_row.organization_id = NEW.organization_id
+       AND version_row.patient_id = NEW.id
+     ORDER BY version_row.version DESC
+     LIMIT 1;
+    IF latest_at IS DISTINCT FROM pg_catalog.transaction_timestamp() THEN
         RAISE EXCEPTION USING ERRCODE = '23514',
             CONSTRAINT = 'intake_patient_mirror_check',
             MESSAGE = 'patient registry identity changes only with a demographics version';
+    END IF;
+    IF NEW.full_name IS DISTINCT FROM latest_name
+        OR NEW.birth_date IS DISTINCT FROM latest_birth
+    THEN
+        RAISE EXCEPTION USING ERRCODE = '23514',
+            CONSTRAINT = 'intake_patient_mirror_check',
+            MESSAGE = 'patient registry identity must equal the latest demographics version';
     END IF;
     RETURN NEW;
 END;
@@ -896,6 +911,14 @@ class Migration(migrations.Migration):
                     apps.tenancy.fields.EncryptedJSONField(
                         null=True, purpose="intake.patientdemographics.unknown_fields"
                     ),
+                ),
+                (
+                    "registry_full_name",
+                    models.BinaryField(editable=False, null=True),
+                ),
+                (
+                    "registry_birth_date",
+                    models.BinaryField(editable=False, null=True),
                 ),
                 (
                     "source",
