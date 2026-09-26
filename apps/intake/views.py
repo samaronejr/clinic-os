@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
+from django import forms
 from django.contrib import messages
-from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -19,20 +19,29 @@ from django.views.decorators.http import require_http_methods
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import authorized_manager_clinic
 from apps.intake.forms import (
+    ADDRESS_KIND_LABELS,
     CONFLICTING_KEY_MESSAGE,
+    DEMOGRAPHIC_FIELD_LABELS,
+    IDENTIFIER_KIND_LABELS,
     INVALID_CREATE_MESSAGE,
+    NAME_REQUIRED_MESSAGE,
+    UNKNOWN_STATUS_LABELS,
     AccessRevokeForm,
+    AddressForm,
     ContactChannelForm,
     ContactDestinationForm,
     ContactPreferenceForm,
     ContactVerifyForm,
     DemographicsForm,
+    EmergencyContactForm,
     EnrollmentForm,
     IdentifierAddForm,
     IdentifierRetireForm,
+    MembershipForm,
     PatientAccessForm,
     PatientCreateForm,
     PatientSearchForm,
+    SectionForm,
 )
 from apps.intake.models import (
     CONTACT_CHANNEL_VALUES,
@@ -40,7 +49,6 @@ from apps.intake.models import (
     PatientChannelPreference,
     PatientContact,
     PatientContactEvent,
-    PatientDemographics,
 )
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
@@ -52,6 +60,7 @@ from apps.intake.services import (
     ContactConflictError,
     ContactInputError,
     DemographicsInputError,
+    DemographicsNameRequiredError,
     DemographicsRequiredError,
     DemographicsStaleError,
     IdentifierConflictError,
@@ -64,12 +73,16 @@ from apps.intake.services import (
     add_identifier,
     contact_for_edit,
     contact_overview,
-    create_patient,
     demographics_profile,
     issue_invitation,
+    register_patient,
+    registration_required_fields,
     retire_identifier,
     revoke_patient_access,
     save_contact_destination,
+    save_emergency_contact,
+    save_insurance_membership,
+    save_patient_address,
     search_patient_identifiers,
     search_patients,
     set_purpose_channel,
@@ -86,6 +99,7 @@ if TYPE_CHECKING:
         AccessOverview,
         ContactEditTarget,
         ContactOverview,
+        DemographicsProfile,
         PatientSearchPage,
     )
 
@@ -298,6 +312,9 @@ def _create_context(
         "form": form,
         "idempotency_key": idempotency_key,
         "list_url": patient_list_continuation(clinic_id),
+        "required_labels": [
+            DEMOGRAPHIC_FIELD_LABELS[field] for field in form.required_fields
+        ],
     }
 
 
@@ -323,38 +340,29 @@ def _created_response(
 @privileged_totp_required(patient_create_continuation)
 @require_http_methods(["GET", "POST"])
 def patient_create_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
-    """Issue one registration key on GET and register one patient on POST."""
+    """Issue one registration key on GET and register one patient on POST.
+
+    The clinic intake policy decides which fields registration must answer;
+    the form renders those fields and accepts an explicit non-answer.
+    """
+    try:
+        required = registration_required_fields(clinic_id=clinic_id)
+    except PatientAccessDeniedError as error:
+        raise Http404 from error
     if request.method != "POST":
-        _require_clinic(clinic_id)
-        blank = PatientCreateForm()
+        blank = PatientCreateForm(required_fields=required)
         return render(
             request,
             "intake/patient_create.html",
             _create_context(clinic_id, blank, str(uuid4())),
         )
     submitted_key = request.POST.get("idempotency_key", "")
-    form = PatientCreateForm(data=request.POST)
-    if form.is_valid():
-        try:
-            _register_patient(request, clinic_id, form)
-        except PatientAccessDeniedError as error:
-            raise Http404 from error
-        except (PatientIdempotencyConflictError, IdentifierConflictError):
-            form.add_error(None, CONFLICTING_KEY_MESSAGE)
-        except DemographicsStaleError:
-            form.add_error(None, CONFLICTING_KEY_MESSAGE)
-        except (
-            PatientBirthDateError,
-            PatientCreateInputError,
-            DemographicsInputError,
-            DemographicsRequiredError,
-        ):
-            form.add_error(None, INVALID_CREATE_MESSAGE)
-        else:
-            response = _created_response(request, clinic_id)
-            if response.status_code != NO_CONTENT:
-                response.status_code = SEE_OTHER
-            return response
+    form = PatientCreateForm(data=request.POST, required_fields=required)
+    if form.is_valid() and _register_patient(request, clinic_id, form):
+        response = _created_response(request, clinic_id)
+        if response.status_code != NO_CONTENT:
+            response.status_code = SEE_OTHER
+        return response
     return render(
         request,
         "intake/patient_create.html",
@@ -364,58 +372,51 @@ def patient_create_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBa
 
 def _register_patient(
     request: HttpRequest, clinic_id: UUID, form: PatientCreateForm
-) -> None:
-    """Create one patient, their first demographics row and any document.
+) -> bool:
+    """Register one patient; attach a service refusal to the form.
 
-    One savepoint keeps registration atomic: a rejected demographic or
-    identifier value rolls the patient back so the idempotency key stays
-    reusable and no half-registered patient is reported as a failure.
+    ``register_patient`` keeps the patient, its first demographics version
+    and any document in one transaction, so a refused value leaves nothing
+    half-registered and the idempotency key stays reusable.
     """
-    with transaction.atomic():
-        registration = create_patient(
+    inputs = form.registration_inputs()
+    try:
+        outcome = register_patient(
             clinic_id=clinic_id,
-            full_name=form.cleaned_data["full_name"],
-            birth_date=form.cleaned_data["birth_date"],
-            idempotency_key=form.cleaned_data["idempotency_key"],
+            idempotency_key=inputs.idempotency_key,
+            legal_name=inputs.legal_name,
+            social_name=inputs.social_name,
+            birth_date=inputs.birth_date,
+            changes=inputs.changes,
+            unknown=inputs.unknown,
+            identifier_kind=inputs.identifier_kind,
+            identifier_value=inputs.identifier_value,
         )
-        # A replayed key returns the first registration unchanged; the
-        # demographics row written by that submission is the marker, so an
-        # equal replay skips the follow-up writes instead of conflicting.
-        already_registered = PatientDemographics.objects.filter(
-            organization_id=registration.patient.organization_id,
-            patient_id=registration.patient.pk,
-        ).exists()
-        if already_registered:
-            return
-        demographics_changes: dict[str, str] = {
-            "legal_name": form.cleaned_data["full_name"]
-        }
-        if form.cleaned_data.get("social_name"):
-            demographics_changes["social_name"] = form.cleaned_data["social_name"]
-        update_demographics(
-            clinic_id=clinic_id,
-            enrollment_id=registration.enrollment.pk,
-            expected_version=0,
-            changes=demographics_changes,
-            reason="",
+    except PatientAccessDeniedError as error:
+        raise Http404 from error
+    except (
+        PatientIdempotencyConflictError,
+        IdentifierConflictError,
+        DemographicsStaleError,
+    ):
+        form.add_error(None, CONFLICTING_KEY_MESSAGE)
+        return False
+    except DemographicsNameRequiredError:
+        form.add_error("full_name", NAME_REQUIRED_MESSAGE)
+        return False
+    except DemographicsRequiredError:
+        form.add_error(None, REQUIRED_FIELDS_MESSAGE)
+        return False
+    except (PatientBirthDateError, PatientCreateInputError, DemographicsInputError):
+        form.add_error(None, INVALID_CREATE_MESSAGE)
+        return False
+    if outcome.matching_enrollment_id is not None:
+        messages.warning(
+            request,
+            DUPLICATE_WARNING_MESSAGE,
+            extra_tags="intake.patient.possible_duplicate",
         )
-        if form.cleaned_data.get("identifier_value"):
-            outcome = add_identifier(
-                clinic_id=clinic_id,
-                enrollment_id=registration.enrollment.pk,
-                kind=str(form.cleaned_data["identifier_kind"]),
-                value=form.cleaned_data["identifier_value"],
-            )
-            if outcome.matching_enrollment_id is not None:
-                messages.warning(
-                    request,
-                    _(
-                        "Another registration already uses this document. "
-                        "A reviewer will confirm whether they are the same "
-                        "patient."
-                    ),
-                    extra_tags="intake.patient.possible_duplicate",
-                )
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -934,12 +935,24 @@ DEMOGRAPHICS_STALE_MESSAGE: Final = _(
     "This record changed since you opened it. Review the current values and save again."
 )
 DEMOGRAPHICS_INVALID_MESSAGE: Final = _("Check the highlighted fields and try again.")
+REQUIRED_FIELDS_MESSAGE: Final = _(
+    "This clinic requires some fields. Answer them, or record why they were "
+    "not informed."
+)
 IDENTIFIER_SAVED_MESSAGE: Final = _("Document recorded.")
 IDENTIFIER_RETIRED_MESSAGE: Final = _("Document removed from the record.")
+SECTION_SAVED_MESSAGE: Final = _("Record saved.")
+SECTION_RETIRED_MESSAGE: Final = _("Record removed. Earlier versions stay in history.")
 DUPLICATE_WARNING_MESSAGE: Final = _(
     "Another registration already uses this document. A reviewer will "
     "confirm whether they are the same patient."
 )
+SECTION_FORMS: Final[dict[str, type[SectionForm]]] = {
+    "address": AddressForm,
+    "contact": EmergencyContactForm,
+    "membership": MembershipForm,
+}
+type SectionOverride = tuple[str, str, SectionForm]
 
 
 def patient_demographics_continuation(clinic_id: UUID) -> str:
@@ -964,6 +977,124 @@ def _demographics_context(
     }
 
 
+def _section_form(
+    section: str,
+    key: str,
+    initial: dict[str, object],
+    override: SectionOverride | None,
+) -> SectionForm:
+    """Build one section form with page-unique ids, or the rejected one."""
+    if override is not None and override[:2] == (section, key):
+        return override[2]
+    return SECTION_FORMS[section](initial=initial, auto_id=f"{section}-{key}-%s")
+
+
+def _address_forms(
+    overview: DemographicsProfile, override: SectionOverride | None
+) -> tuple[list[dict[str, object]], SectionForm | None]:
+    rows: list[dict[str, object]] = []
+    for address in overview.addresses:
+        form = _section_form(
+            "address",
+            address.kind,
+            {
+                "enrollment_id": overview.enrollment_id,
+                "expected_version": address.version,
+                "kind": address.kind,
+                **{
+                    field: getattr(address, field)
+                    for field in AddressForm.section_fields
+                },
+            },
+            override,
+        )
+        form.fields["kind"].widget = forms.HiddenInput()
+        rows.append(
+            {
+                "label": ADDRESS_KIND_LABELS[address.kind],
+                "form": form,
+                "key": address.kind,
+                "version": address.version,
+            }
+        )
+    if not overview.free_address_kinds:
+        return rows, None
+    new = _section_form(
+        "address",
+        "new",
+        {"enrollment_id": overview.enrollment_id, "expected_version": 0},
+        override,
+    )
+    kind_field = new.fields["kind"]
+    if isinstance(kind_field, forms.ChoiceField):
+        kind_field.choices = [
+            (kind, ADDRESS_KIND_LABELS[kind]) for kind in overview.free_address_kinds
+        ]
+    return rows, new
+
+
+def _slot_forms(
+    section: str,
+    overview: DemographicsProfile,
+    override: SectionOverride | None,
+) -> tuple[list[dict[str, object]], SectionForm | None]:
+    views: tuple[object, ...] = (
+        overview.emergency_contacts if section == "contact" else overview.memberships
+    )
+    free = (
+        overview.free_contact_slots
+        if section == "contact"
+        else overview.free_membership_slots
+    )
+    form_class = SECTION_FORMS[section]
+    rows: list[dict[str, object]] = []
+    for view in views:
+        sequence = getattr(view, "sequence")  # noqa: B009 - two view types
+        version = getattr(view, "version")  # noqa: B009 - two view types
+        form = _section_form(
+            section,
+            str(sequence),
+            {
+                "enrollment_id": overview.enrollment_id,
+                "expected_version": version,
+                "sequence": sequence,
+                **{field: getattr(view, field) for field in form_class.section_fields},
+            },
+            override,
+        )
+        rows.append({"form": form, "key": sequence, "version": version})
+    if not free:
+        return rows, None
+    new = _section_form(
+        section,
+        "new",
+        {
+            "enrollment_id": overview.enrollment_id,
+            "expected_version": 0,
+            "sequence": free[0],
+        },
+        override,
+    )
+    return rows, new
+
+
+def _correction_rows(overview: DemographicsProfile) -> list[dict[str, object]]:
+    return [
+        {
+            "version": correction.version,
+            "fields": ", ".join(
+                str(DEMOGRAPHIC_FIELD_LABELS.get(field, field))
+                for field in correction.changed_fields
+            ),
+            "actor_label": correction.actor_label,
+            "source": correction.source,
+            "created_at": correction.created_at,
+            "reason": correction.reason,
+        }
+        for correction in overview.corrections
+    ]
+
+
 def _render_demographics(  # noqa: PLR0913 - one profile render needs all
     request: HttpRequest,
     clinic_id: UUID,
@@ -972,6 +1103,7 @@ def _render_demographics(  # noqa: PLR0913 - one profile render needs all
     error: str = "",
     warning: str = "",
     form: DemographicsForm | None = None,
+    section_override: SectionOverride | None = None,
 ) -> HttpResponseBase:
     overview = demographics_profile(clinic_id=clinic_id, enrollment_id=enrollment_id)
     if form is None:
@@ -980,12 +1112,54 @@ def _render_demographics(  # noqa: PLR0913 - one profile render needs all
                 "enrollment_id": str(enrollment_id),
                 "expected_version": str(overview.version),
                 **overview.values,
+                **{
+                    f"{field}_status": status
+                    for field, status in overview.unknown.items()
+                },
             }
         )
         form.is_valid()
+    address_rows, new_address = _address_forms(overview, section_override)
+    contact_rows, new_contact = _slot_forms("contact", overview, section_override)
+    membership_rows, new_membership = _slot_forms(
+        "membership", overview, section_override
+    )
     context = _demographics_context(clinic_id, overview, error=error, warning=warning)
-    context["form"] = form
+    context.update(
+        {
+            "form": form,
+            "required_fields": set(overview.required_fields),
+            "legal_name_status": UNKNOWN_STATUS_LABELS.get(
+                overview.unknown.get("legal_name", ""), ""
+            ),
+            "identifier_rows": [
+                {"view": view, "label": IDENTIFIER_KIND_LABELS[view.kind]}
+                for view in overview.identifiers
+            ],
+            "identifier_form": IdentifierAddForm(
+                initial={"enrollment_id": overview.enrollment_id},
+                auto_id="identifier-new-%s",
+            ),
+            "address_rows": address_rows,
+            "new_address": new_address,
+            "contact_rows": contact_rows,
+            "new_contact": new_contact,
+            "membership_rows": membership_rows,
+            "new_membership": new_membership,
+            "correction_rows": _correction_rows(overview),
+        }
+    )
     return render(request, DEMOGRAPHICS_TEMPLATE, context)
+
+
+_SECTION_ACTIONS: Final = {
+    "save_address": ("address", False),
+    "retire_address": ("address", True),
+    "save_contact": ("contact", False),
+    "retire_contact": ("contact", True),
+    "save_membership": ("membership", False),
+    "retire_membership": ("membership", True),
+}
 
 
 @privileged_totp_required(patient_demographics_continuation)
@@ -994,7 +1168,7 @@ def patient_demographics_view(
     request: HttpRequest,
     clinic_id: UUID,
 ) -> HttpResponseBase:
-    """Manage one enrolled patient's demographics, documents and history.
+    """Manage one enrolled patient's identity, documents, sections and history.
 
     GET renders only the blank entry state; the enrollment travels in the
     POST body so patient identity never reaches a URL. Identifier values
@@ -1018,6 +1192,9 @@ def patient_demographics_view(
             return _demographics_add_identifier(request, clinic_id)
         if action == "retire_identifier":
             return _demographics_retire_identifier(request, clinic_id)
+        if action in _SECTION_ACTIONS:
+            section, retire = _SECTION_ACTIONS[action]
+            return _demographics_section(request, clinic_id, section, retire=retire)
         raise Http404
     except PatientAccessDeniedError as error:
         raise Http404 from error
@@ -1028,16 +1205,24 @@ def _demographics_save(
     clinic_id: UUID,
 ) -> HttpResponseBase:
     """Persist one versioned demographics correction from the POST body."""
+    enrollment_id = _enrollment_from(EnrollmentForm(data=request.POST))
     form = DemographicsForm(data=request.POST)
     if not form.is_valid():
-        raise Http404
-    enrollment_id = form.selected_enrollment()
+        return _render_demographics(
+            request,
+            clinic_id,
+            enrollment_id,
+            form=form,
+            error=DEMOGRAPHICS_INVALID_MESSAGE,
+        )
+    failure = ""
     try:
         update_demographics(
             clinic_id=clinic_id,
             enrollment_id=enrollment_id,
             expected_version=form.selected_version(),
             changes=form.cleaned_changes(),
+            unknown=form.cleaned_unknown(),
             reason=str(form.cleaned_data.get("reason") or ""),
         )
     except DemographicsStaleError:
@@ -1047,15 +1232,89 @@ def _demographics_save(
             enrollment_id,
             error=DEMOGRAPHICS_STALE_MESSAGE,
         )
-    except (DemographicsInputError, DemographicsRequiredError):
+    except DemographicsNameRequiredError:
+        form.add_error("legal_name", NAME_REQUIRED_MESSAGE)
+        failure = DEMOGRAPHICS_INVALID_MESSAGE
+    except DemographicsRequiredError:
+        failure = REQUIRED_FIELDS_MESSAGE
+    except DemographicsInputError:
+        failure = DEMOGRAPHICS_INVALID_MESSAGE
+    if failure:
+        return _render_demographics(
+            request, clinic_id, enrollment_id, form=form, error=failure
+        )
+    messages.success(request, str(DEMOGRAPHICS_SAVED_MESSAGE))
+    return _render_demographics(request, clinic_id, enrollment_id)
+
+
+def _demographics_section(
+    request: HttpRequest,
+    clinic_id: UUID,
+    section: str,
+    *,
+    retire: bool,
+) -> HttpResponseBase:
+    """Save or retire one address, emergency contact or membership."""
+    enrollment_id = _enrollment_from(EnrollmentForm(data=request.POST))
+    form = SECTION_FORMS[section](data=request.POST)
+    key_name = "kind" if section == "address" else "sequence"
+    raw_key = str(request.POST.get(key_name, ""))
+    override_key = raw_key if request.POST.get("slot") != "new" else "new"
+    form.auto_id = f"{section}-{override_key}-%s"
+    if not form.is_valid():
+        if retire:
+            raise Http404
         return _render_demographics(
             request,
             clinic_id,
             enrollment_id,
-            form=form,
             error=DEMOGRAPHICS_INVALID_MESSAGE,
+            section_override=(section, override_key, form),
         )
-    messages.success(request, str(DEMOGRAPHICS_SAVED_MESSAGE))
+    values = None if retire else form.section_values()
+    try:
+        if isinstance(form, AddressForm):
+            save_patient_address(
+                clinic_id=clinic_id,
+                enrollment_id=enrollment_id,
+                kind=form.selected_kind(),
+                expected_version=form.selected_version(),
+                address=values,
+            )
+        elif isinstance(form, EmergencyContactForm):
+            save_emergency_contact(
+                clinic_id=clinic_id,
+                enrollment_id=enrollment_id,
+                sequence=form.selected_sequence(),
+                expected_version=form.selected_version(),
+                contact=values,
+            )
+        elif isinstance(form, MembershipForm):
+            save_insurance_membership(
+                clinic_id=clinic_id,
+                enrollment_id=enrollment_id,
+                sequence=form.selected_sequence(),
+                expected_version=form.selected_version(),
+                membership=values,
+            )
+    except DemographicsStaleError:
+        return _render_demographics(
+            request, clinic_id, enrollment_id, error=DEMOGRAPHICS_STALE_MESSAGE
+        )
+    except DemographicsInputError:
+        if retire:
+            raise Http404 from None
+        return _render_demographics(
+            request,
+            clinic_id,
+            enrollment_id,
+            error=DEMOGRAPHICS_INVALID_MESSAGE,
+            section_override=(section, override_key, form),
+        )
+    messages.success(
+        request,
+        str(SECTION_RETIRED_MESSAGE if retire else SECTION_SAVED_MESSAGE),
+    )
     return _render_demographics(request, clinic_id, enrollment_id)
 
 

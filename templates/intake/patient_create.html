@@ -5,7 +5,7 @@
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="intake-title">
   <h1 id="intake-title">{% trans "Register a patient" %}</h1>
-  <p class="lede" id="intake-lede">{% trans "Check the name and the birth date before saving. Afterwards you return to the search to book the appointment." %}</p>
+  <p class="lede" id="intake-lede">{% trans "Record what the patient informs. A legal or a social name is enough; leave anything unknown empty and record why. Afterwards you return to the search to book the appointment." %}</p>
   <div class="panel" id="patient-create-panel">
     {% if form.errors %}
       <div class="feedback feedback--error" id="intake-errors" role="alert" tabindex="-1" data-focus-error autofocus>
@@ -17,42 +17,65 @@
         {% endif %}
       </div>
     {% endif %}
+    {% if required_labels %}
+      <p class="feedback feedback--info" id="patient-create-policy" role="note">{% trans "This clinic requires:" %} {{ required_labels|join:", " }}. {% trans "An explicit reason also answers a required field." %}</p>
+    {% endif %}
     <form method="post" action="{{ create_url }}"
           hx-post="{{ create_url }}" hx-target="#patient-create-panel"
           hx-select="#patient-create-panel" hx-swap="outerHTML"
           hx-indicator="#intake-progress" data-auth-form>
       {% csrf_token %}
-      <div class="field{% if form.full_name.errors %} field--error{% endif %}">
-        {{ form.full_name.label_tag }}
-        {{ form.full_name }}
-        <p class="hint" id="patient-create-name-help">{% trans "Use the patient's registered legal name." %}</p>
-        {% if form.full_name.errors %}<div class="field-errors" id="{{ form.full_name.auto_id }}_error">{% for error in form.full_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
-      </div>
-      <div class="field{% if form.birth_date.errors %} field--error{% endif %}">
-        {{ form.birth_date.label_tag }}
-        {{ form.birth_date }}
-        <p class="hint" id="patient-create-birth-date-help">{% trans "The birth date cannot be later than today in this clinic." %}</p>
-        {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
-      </div>
-      <div class="field{% if form.social_name.errors %} field--error{% endif %}">
-        {{ form.social_name.label_tag }}
-        {{ form.social_name }}
-        <p class="hint" id="patient-create-social-name-help">{% trans "The name the patient uses socially, when different from the legal name." %}</p>
-        {% if form.social_name.errors %}<div class="field-errors" id="{{ form.social_name.auto_id }}_error">{% for error in form.social_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
-      </div>
-      <div class="intake-search-fields">
-        <div class="field{% if form.identifier_kind.errors %} field--error{% endif %}">
-          {{ form.identifier_kind.label_tag }}
-          {{ form.identifier_kind }}
-          {% if form.identifier_kind.errors %}<div class="field-errors" id="{{ form.identifier_kind.auto_id }}_error">{% for error in form.identifier_kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      <fieldset>
+        <legend>{% trans "Names" %}</legend>
+        <div class="field{% if form.full_name.errors %} field--error{% endif %}">
+          {{ form.full_name.label_tag }}
+          {{ form.full_name }}
+          <p class="hint" id="patient-create-name-help">{% trans "As on the patient's documents. Leave empty when the patient did not inform it and record why below." %}</p>
+          {% if form.full_name.errors %}<div class="field-errors" id="{{ form.full_name.auto_id }}_error">{% for error in form.full_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
         </div>
-        <div class="field{% if form.identifier_value.errors %} field--error{% endif %}">
-          {{ form.identifier_value.label_tag }}
-          {{ form.identifier_value }}
-          <p class="hint" id="patient-create-identifier-help">{% trans "Optional. CPF or another identification document, exactly as printed." %}</p>
-          {% if form.identifier_value.errors %}<div class="field-errors" id="{{ form.identifier_value.auto_id }}_error">{% for error in form.identifier_value.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        {% include "includes/field.html" with field=form.full_name_status %}
+        <div class="field{% if form.social_name.errors %} field--error{% endif %}">
+          {{ form.social_name.label_tag }}
+          {{ form.social_name }}
+          <p class="hint" id="patient-create-social-name-help">{% trans "The name the patient uses socially. Staff screens show it first." %}</p>
+          {% if form.social_name.errors %}<div class="field-errors" id="{{ form.social_name.auto_id }}_error">{% for error in form.social_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
         </div>
-      </div>
+      </fieldset>
+      <fieldset>
+        <legend>{% trans "Birth date" %}</legend>
+        <div class="field{% if form.birth_date.errors %} field--error{% endif %}">
+          {{ form.birth_date.label_tag }}
+          {{ form.birth_date }}
+          <p class="hint" id="patient-create-birth-date-help">{% trans "Optional unless this clinic requires it. It cannot be later than today in this clinic." %}</p>
+          {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        </div>
+        {% include "includes/field.html" with field=form.birth_date_status %}
+      </fieldset>
+      {% if form.demographic_fields %}
+      <fieldset>
+        <legend>{% trans "Fields this clinic requires" %}</legend>
+        {% for value_field, status_field in form.field_groups %}
+          {% include "includes/field.html" with field=value_field %}
+          {% if status_field %}{% include "includes/field.html" with field=status_field %}{% endif %}
+        {% endfor %}
+      </fieldset>
+      {% endif %}
+      <fieldset>
+        <legend>{% trans "Identification document" %}</legend>
+        <div class="intake-search-fields">
+          <div class="field{% if form.identifier_kind.errors %} field--error{% endif %}">
+            {{ form.identifier_kind.label_tag }}
+            {{ form.identifier_kind }}
+            {% if form.identifier_kind.errors %}<div class="field-errors" id="{{ form.identifier_kind.auto_id }}_error">{% for error in form.identifier_kind.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+          </div>
+          <div class="field{% if form.identifier_value.errors %} field--error{% endif %}">
+            {{ form.identifier_value.label_tag }}
+            {{ form.identifier_value }}
+            <p class="hint" id="patient-create-identifier-help">{% trans "Optional. CPF or another identification document, exactly as printed." %}</p>
+            {% if form.identifier_value.errors %}<div class="field-errors" id="{{ form.identifier_value.auto_id }}_error">{% for error in form.identifier_value.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+          </div>
+        </div>
+      </fieldset>
       <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
       <div class="actions">
         <button type="submit">{% trans "Register patient" %}</button>

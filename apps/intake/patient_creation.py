@@ -85,7 +85,12 @@ def _normalized_name(full_name: str) -> str:
         raise PatientCreateInputError from error
 
 
-def _validate_birth_date(birth_date: date, clinic: Clinic) -> None:
+def validate_birth_date(birth_date: date | None, clinic: Clinic) -> None:
+    """Refuse a birth date after the clinic's local today; ``None`` passes."""
+    if birth_date is None:
+        return
+    if type(birth_date) is not date:
+        raise PatientBirthDateError
     utc_minute = timezone.now().astimezone(UTC).replace(second=0, microsecond=0)
     timezone_key = clinic.timezone
     if not isinstance(timezone_key, str):
@@ -101,17 +106,22 @@ def create_patient(
     *,
     clinic_id: UUID,
     full_name: str,
-    birth_date: date,
+    birth_date: date | None,
     idempotency_key: UUID,
 ) -> PatientRegistration:
-    """Create one normalized organization patient and clinic enrollment."""
+    """Create one normalized organization patient and clinic enrollment.
+
+    ``birth_date`` may be ``None`` when it was not informed: registration
+    never invents a date, and the clinic intake policy decides when one is
+    required.
+    """
     with transaction.atomic():
         clinic = authorized_manager_clinic(clinic_id)
         normalized_name = _normalized_name(full_name)
         fingerprint = create_fingerprint(
             "patient",
             {
-                "birth_date": birth_date.isoformat(),
+                "birth_date": "" if birth_date is None else birth_date.isoformat(),
                 "clinic_id": str(clinic_id),
                 "full_name": normalized_name,
             },
@@ -132,7 +142,7 @@ def create_patient(
         )
         if replay is not None:
             return replay
-        _validate_birth_date(birth_date, clinic)
+        validate_birth_date(birth_date, clinic)
         try:
             with transaction.atomic():
                 patient = Patient.objects.create(

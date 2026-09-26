@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
@@ -18,7 +19,11 @@ from identity import legacy_sql_boundaries as sql_boundaries
 from identity import legacy_teleconsult_boundaries as teleconsult
 from identity import legacy_view_boundaries as views
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
-from identity.legacy_guard_inventory import declared_probes, discover
+from identity.legacy_guard_inventory import (
+    declared_probes,
+    discover,
+    permission_gated,
+)
 from identity.legacy_identity_boundaries import BOUNDARIES as IDENTITY_BOUNDARIES
 from identity.legacy_owner_boundaries import BOUNDARIES as OWNER_BOUNDARIES
 from identity.legacy_parity_support import LEGACY, exercise, target_code, world
@@ -61,13 +66,25 @@ INVENTORY = cast(
 )
 
 
-def test_every_authorization_candidate_is_accounted_for() -> None:
-    assert INVENTORY["schema_version"] == 2
-    candidates = INVENTORY["candidates"]
+EXEMPT_KINDS = frozenset(
+    {"nonstaff", "provider", "infrastructure", "v2", "presentation", "data_operation"}
+)
+
+
+def check_inventory(  # noqa: C901 - one census contract
+    inventory: Inventory, declared: set[str] | None = None
+) -> None:
+    """Assert the reviewed census matches the tree and its own rules.
+
+    ``declared`` defaults to the probes the boundary modules declare; the
+    rule tests pass a reduced set to model a withdrawn probe.
+    """
+    assert inventory["schema_version"] == 2
+    candidates = inventory["candidates"]
     assert len({row["symbol"] for row in candidates}) == len(candidates)
     assert discover() == {row["symbol"]: row["signals"] for row in candidates}
-    declared = declared_probes()
-    assert sorted(declared) == INVENTORY["probes"]
+    declared = declared_probes() if declared is None else declared
+    assert sorted(declared) == inventory["probes"]
     bases = {probe.split("#", 1)[0] for probe in declared}
     for row in candidates:
         if row["kind"] == "direct":
@@ -86,14 +103,7 @@ def test_every_authorization_candidate_is_accounted_for() -> None:
             assert row["enforced_by"]
             assert set(row["enforced_by"]) <= bases
         else:
-            assert row["kind"] in {
-                "nonstaff",
-                "provider",
-                "infrastructure",
-                "v2",
-                "presentation",
-                "data_operation",
-            }
+            assert row["kind"] in EXEMPT_KINDS
             assert "reason" in row
             assert row["reason"]
     # All definitions using the canonical role helper are directly exercised;
@@ -101,6 +111,56 @@ def test_every_authorization_candidate_is_accounted_for() -> None:
     for row in candidates:
         if "role_helper" in row["signals"]:
             assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
+    # A permission-bundle gate is an authorization decision: its callers need
+    # a probe or a named delegation, never an exemption label. Only the
+    # identity permission subsystem itself is the v2 contract.
+    gated = permission_gated()
+    for row in candidates:
+        if row["symbol"] in gated and row["kind"] in EXEMPT_KINDS:
+            assert row["kind"] == "v2", row["symbol"]
+            assert row["symbol"].startswith("apps.identity."), row["symbol"]
+    # A symbol with an executed probe is classified as what the probe
+    # proves; an exemption cannot sit on top of an executable oracle.
+    for row in candidates:
+        if row["symbol"] in bases:
+            assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
+
+
+def test_every_authorization_candidate_is_accounted_for() -> None:
+    check_inventory(INVENTORY)
+
+
+def _exempted(symbol: str) -> Inventory:
+    mutated = copy.deepcopy(INVENTORY)
+    row = next(row for row in mutated["candidates"] if row["symbol"] == symbol)
+    row["kind"] = "infrastructure"
+    row.pop("probes", None)
+    row["reason"] = "Owner/bootstrap, audit, crypto, migration or OS-tty boundary."
+    return mutated
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "apps.intake.demographics.set_intake_policy",
+        "apps.intake.demographics.search_patient_identifiers",
+        "apps.intake.access.authorized_enrollment_for",
+    ],
+)
+def test_census_rejects_exempting_a_permission_gate(symbol: str) -> None:
+    """Even with its probe withdrawn, a permission gate is never exempt."""
+    mutated = _exempted(symbol)
+    declared = declared_probes() - {symbol}
+    mutated["probes"] = sorted(declared)
+    with pytest.raises(AssertionError, match=symbol.replace(".", r"\.")):
+        check_inventory(mutated, declared)
+
+
+def test_census_rejects_exempting_a_probed_boundary() -> None:
+    """A tenant-bound primitive with an executed oracle stays classified by it."""
+    symbol = "apps.tenancy.envelope.blind_indexes"
+    with pytest.raises(AssertionError, match=symbol.replace(".", r"\.")):
+        check_inventory(_exempted(symbol))
 
 
 @pytest.fixture(autouse=True)

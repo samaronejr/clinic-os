@@ -27,12 +27,17 @@ class Patient(TenantScopedModel):
 
     ``full_name`` and ``birth_date`` persist only as tenant envelopes; the
     approved registry search runs inside ``clinic_app.patient_registry_*``
-    so ciphertext never feeds SQL predicates or ordering.
+    so ciphertext never feeds SQL predicates or ordering. ``full_name`` is
+    the registry name staff address the patient by (the legal name, or the
+    social name when no legal name was given); ``birth_date`` stays empty
+    when it was not informed instead of carrying an invented date. Both
+    mirror the latest demographics version and change only in the same
+    transaction that appends that version.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = EncryptedPatientNameField(purpose="intake.patient.full_name")
-    birth_date = EncryptedDateField(purpose="intake.patient.birth_date")
+    birth_date = EncryptedDateField(purpose="intake.patient.birth_date", null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -216,12 +221,14 @@ DEMOGRAPHICS_SOURCE_VALUES: Final = [
     "patient_reported",
 ]
 SEX_AT_BIRTH_VALUES: Final = [
+    "declined",
     "female",
     "intersex",
     "male",
     "not_informed",
 ]
 GENDER_IDENTITY_VALUES: Final = [
+    "declined",
     "man",
     "non_binary",
     "not_informed",
@@ -236,9 +243,10 @@ IDENTIFIER_KIND_VALUES: Final = [
     "other",
 ]
 ADDRESS_KIND_VALUES: Final = ["home", "other", "work"]
-# Deliberate non-answers are stored verbatim: a field the patient chose not to
-# give is a real value, never an invented placeholder.
-UNKNOWN_DEMOGRAPHIC_VALUES: Final = frozenset({"not_informed", "declined"})
+# Deliberate non-answers are recorded, never invented: the coded fields carry
+# them in their vocabulary, and every other field records them in the
+# version's ``unknown_fields`` map (field name -> one of these codes).
+UNKNOWN_DEMOGRAPHIC_VALUES: Final = ("not_informed", "declined")
 
 
 class PatientDemographics(TenantScopedModel):
@@ -249,6 +257,9 @@ class PatientDemographics(TenantScopedModel):
     update surface needs no UPDATE grant and history is never rewritten.
     ``source`` records who supplied the version; questionnaire carry-forward
     writes ``patient_reported`` versions that staff review as unverified.
+    ``unknown_fields`` maps a field left empty on purpose to
+    ``not_informed``/``declined`` so a deliberate non-answer is recorded
+    instead of forcing an invented value.
     """
 
     class Source(models.TextChoices):
@@ -262,7 +273,8 @@ class PatientDemographics(TenantScopedModel):
     clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
     enrollment = models.ForeignKey(PatientClinicEnrollment, on_delete=models.PROTECT)
     version = models.PositiveIntegerField()
-    legal_name = EncryptedPatientNameField(
+    # Normalized by the service; empty when the legal name was not informed.
+    legal_name = EncryptedTextField(
         purpose="intake.patientdemographics.legal_name", null=True
     )
     social_name = EncryptedTextField(
@@ -288,6 +300,12 @@ class PatientDemographics(TenantScopedModel):
     )
     occupation = EncryptedTextField(
         purpose="intake.patientdemographics.occupation", null=True
+    )
+    birth_date = EncryptedDateField(
+        purpose="intake.patientdemographics.birth_date", null=True
+    )
+    unknown_fields = EncryptedJSONField(
+        purpose="intake.patientdemographics.unknown_fields", null=True
     )
     source = models.CharField(
         max_length=32,
@@ -373,14 +391,15 @@ class DemographicsCorrection(TenantScopedModel):
 
 
 class PatientIdentifier(TenantScopedModel):
-    """One current identifier of a kind for an organization patient.
+    """One immutable identifier version of a kind for an organization patient.
 
     ``value`` is a tenant envelope; ``blind_index`` is a tenant-keyed HMAC of
     the normalized value that powers exact-match lookup without feeding
     ciphertext or plaintext into SQL predicates. Two patients may hold the
     same identifier: services surface a ``possible_duplicate`` review hint
-    instead of silently blocking registration. ``retired_at`` replaces hard
-    deletion so the audit trail and history stay reconstructable.
+    instead of silently blocking registration. Rows are append-only: the
+    current identifier of a kind is its highest ``version``; a version with
+    ``retired_at`` set retires it, so every replaced value stays on record.
     """
 
     class Kind(models.TextChoices):
@@ -403,10 +422,9 @@ class PatientIdentifier(TenantScopedModel):
     version = models.PositiveIntegerField(default=1)
     retired_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Keep one current identifier per patient and kind."""
+        """Keep identifier versions dense per patient and kind."""
 
         constraints: ClassVar[list[BaseConstraint]] = [
             models.UniqueConstraint(
@@ -414,8 +432,8 @@ class PatientIdentifier(TenantScopedModel):
                 name="intake_identifier_org_id_uniq",
             ),
             models.UniqueConstraint(
-                fields=("organization", "patient", "kind"),
-                name="intake_identifier_org_patient_kind_uniq",
+                fields=("organization", "patient", "kind", "version"),
+                name="intake_identifier_org_patient_kind_version_uniq",
             ),
             models.CheckConstraint(
                 condition=models.Q(kind__in=IDENTIFIER_KIND_VALUES),
@@ -437,7 +455,11 @@ class PatientIdentifier(TenantScopedModel):
 
 
 class PatientAddress(TenantScopedModel):
-    """One current address per kind for an organization patient."""
+    """One immutable address version per kind for an organization patient.
+
+    The current address of a kind is its highest ``version``; a version with
+    ``retired_at`` set removes it while earlier versions stay on record.
+    """
 
     class Kind(models.TextChoices):
         """Address kinds a clinic may record."""
@@ -467,10 +489,9 @@ class PatientAddress(TenantScopedModel):
     version = models.PositiveIntegerField(default=1)
     retired_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Keep one current address per patient and kind."""
+        """Keep address versions dense per patient and kind."""
 
         constraints: ClassVar[list[BaseConstraint]] = [
             models.UniqueConstraint(
@@ -478,8 +499,8 @@ class PatientAddress(TenantScopedModel):
                 name="intake_address_org_id_uniq",
             ),
             models.UniqueConstraint(
-                fields=("organization", "patient", "kind"),
-                name="intake_address_org_patient_kind_uniq",
+                fields=("organization", "patient", "kind", "version"),
+                name="intake_address_org_patient_kind_version_uniq",
             ),
             models.CheckConstraint(
                 condition=models.Q(kind__in=ADDRESS_KIND_VALUES),
@@ -493,7 +514,11 @@ class PatientAddress(TenantScopedModel):
 
 
 class EmergencyContact(TenantScopedModel):
-    """One current emergency contact slot for an organization patient."""
+    """One immutable emergency contact slot version for a patient.
+
+    The current contact of a slot is its highest ``version``; a version with
+    ``retired_at`` set empties the slot while earlier versions stay on record.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
@@ -506,10 +531,9 @@ class EmergencyContact(TenantScopedModel):
     version = models.PositiveIntegerField(default=1)
     retired_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Keep contact slots bounded and unique per patient."""
+        """Keep contact slots bounded and their versions dense."""
 
         constraints: ClassVar[list[BaseConstraint]] = [
             models.UniqueConstraint(
@@ -517,8 +541,8 @@ class EmergencyContact(TenantScopedModel):
                 name="intake_emergency_contact_org_id_uniq",
             ),
             models.UniqueConstraint(
-                fields=("organization", "patient", "sequence"),
-                name="intake_emergency_contact_org_patient_seq_uniq",
+                fields=("organization", "patient", "sequence", "version"),
+                name="intake_emergency_contact_org_patient_seq_version_uniq",
             ),
             models.CheckConstraint(
                 condition=models.Q(sequence__gte=1) & models.Q(sequence__lte=3),
@@ -536,7 +560,8 @@ class InsuranceMembership(TenantScopedModel):
 
     Payer identity is encrypted free text until todo 59 introduces the
     ``insurance.Payer`` table and a nullable foreign key plus matcher; no
-    plaintext shadow column is kept for it.
+    plaintext shadow column is kept for it. Versions are append-only like
+    the other identity sections.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -560,10 +585,9 @@ class InsuranceMembership(TenantScopedModel):
     version = models.PositiveIntegerField(default=1)
     retired_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Keep membership slots bounded and unique per patient."""
+        """Keep membership slots bounded and their versions dense."""
 
         constraints: ClassVar[list[BaseConstraint]] = [
             models.UniqueConstraint(
@@ -571,8 +595,8 @@ class InsuranceMembership(TenantScopedModel):
                 name="intake_membership_org_id_uniq",
             ),
             models.UniqueConstraint(
-                fields=("organization", "patient", "sequence"),
-                name="intake_membership_org_patient_seq_uniq",
+                fields=("organization", "patient", "sequence", "version"),
+                name="intake_membership_org_patient_seq_version_uniq",
             ),
             models.CheckConstraint(
                 condition=models.Q(sequence__gte=1) & models.Q(sequence__lte=3),
@@ -589,10 +613,10 @@ class ClinicIntakePolicy(TenantScopedModel):
     """Append-only clinic policy marking required demographics fields.
 
     The current policy is the latest ``version``; ``required_fields`` is a
-    JSON array of demographic field names that ``update_demographics``
-    refuses to leave empty. Fields absent from the list stay optional, and
-    the explicit ``not_informed``/``declined`` sentinels always satisfy a
-    requirement without inventing values.
+    JSON array of demographic field names that registration and
+    ``update_demographics`` refuse to leave unanswered. Fields absent from
+    the list stay optional, and an explicit ``not_informed``/``declined``
+    answer always satisfies a requirement without inventing values.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

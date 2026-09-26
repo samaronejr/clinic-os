@@ -716,14 +716,19 @@ def _invalid_registration(page: Page, base_url: str, patients: str, root: Path) 
     alert = page.locator(ALERT)
     expect(alert).to_contain_text(gettext("We could not register that patient"))
     expect(alert).to_contain_text(
-        gettext("Enter a patient name and a valid birth date.")
+        gettext(
+            "Check the registration fields: the birth date cannot be in the "
+            "future and the document number must be valid."
+        )
     )
     assert _focused(page) == "intake-errors"
     expect(page.locator("#id_full_name")).to_have_value("Teste Sintético Futuro")
     expect(page.locator("#id_birth_date")).to_have_value("3999-01-01")
     assert _no_overflow(page)
     _capture(page, root, f"register-invalid-{_width(page)}")
-    _remove_attribute(page, "#id_full_name", "required")
+    # No name is natively required: a legal or a social name is enough,
+    # and the server names the missing identity when both are blank.
+    expect(page.locator("#id_full_name")).not_to_have_attribute("required", "")
     page.locator("#id_full_name").fill("   ")
     page.locator("#id_birth_date").fill("1990-01-01")
     assert _submit(page, REGISTER) == OK
@@ -1023,7 +1028,21 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_registry_usable(
 # --------------------------------------------------------------------------
 
 DEMOGRAPHICS_PANEL = "#patient-demographics-panel"
-DEMOGRAPHICS_FORM = f"{DEMOGRAPHICS_PANEL} form[data-auth-form]"
+DEMOGRAPHICS_FORM = "#demographics-form"
+HISTORY_REGION = "#patient-correction-history [role=region]"
+DEMOGRAPHICS_WIDTHS = (1280, 768, 375, 320)
+AXE_URL = "/static/vendor/axe/axe.min.js"
+AXE_RUN_JS = """async () => {
+  const result = await axe.run(document, {
+    runOnly: {type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa',
+      'wcag22aa', 'best-practice']},
+    resultTypes: ['violations'],
+  });
+  return result.violations.map((v) => ({
+    id: v.id, impact: v.impact,
+    nodes: v.nodes.slice(0, 5).map((n) => n.target.join(' ')),
+  }));
+}"""
 
 
 def _cpf_for(seed: str) -> str:
@@ -1035,6 +1054,22 @@ def _cpf_for(seed: str) -> str:
     second = (sum(int(seed[i]) * (11 - i) for i in range(9)) + d1 * 2) % 11
     d2 = 0 if second < 2 else 11 - second
     return f"{seed[:3]}.{seed[3:6]}.{seed[6:9]}-{d1}{d2}"
+
+
+@pytest.fixture(
+    params=DEMOGRAPHICS_WIDTHS, ids=[f"{width}px" for width in DEMOGRAPHICS_WIDTHS]
+)
+def demographics_page(
+    request: pytest.FixtureRequest, intake_browser: Browser
+) -> Iterator[Page]:
+    """One pt-BR context per width, 320px included for the owned surface."""
+    context = intake_browser.new_context(
+        locale="pt-BR", viewport={"width": int(request.param), "height": 900}
+    )
+    page = context.new_page()
+    page.set_default_timeout(20_000)
+    yield page
+    context.close()
 
 
 def _register_with_document(  # noqa: PLR0913 - the journey needs every field
@@ -1075,27 +1110,59 @@ def _open_demographics(page: Page) -> None:
         ).first.click()
 
 
-def test_demographics_social_name_identifier_search_and_duplicate_review(  # noqa: PLR0915 - one end-to-end journey
-    journey: Page,
+def _post_section(page: Page, button: str) -> None:
+    """Submit one section form by its visible button and wait for the page."""
+    with page.expect_navigation():
+        page.get_by_role("button", name=button, exact=True).first.click()
+    expect(page.locator(DEMOGRAPHICS_PANEL)).to_contain_text(gettext("Record saved."))
+
+
+def _axe_violations(page: Page, base_url: str) -> list[dict[str, object]]:
+    with page.expect_response(f"{base_url}{AXE_URL}") as axe_response:
+        page.add_script_tag(url=f"{base_url}{AXE_URL}")
+    assert axe_response.value.status == OK
+    violations = page.evaluate(AXE_RUN_JS)
+    assert isinstance(violations, list)
+    return violations
+
+
+def _keyboard_scrolls(page: Page, selector: str) -> bool:
+    """Focus one scroll region by keyboard and scroll it with ArrowRight."""
+    region = page.locator(selector)
+    overflows = region.evaluate("(el) => el.scrollWidth > el.clientWidth")
+    if not overflows:
+        return True
+    region.focus()
+    assert region.evaluate("(el) => el === document.activeElement")
+    page.keyboard.press("ArrowRight")
+    page.wait_for_function(
+        "(selector) => document.querySelector(selector).scrollLeft > 0", arg=selector
+    )
+    return True
+
+
+def test_demographics_edit_surface_search_and_duplicate_review(  # noqa: PLR0915 - one end-to-end journey
+    demographics_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     intake_staff: dict[str, str],
     browser_report: dict[str, object],
 ) -> None:
-    """Receptionist records a social name and CPF; the banner and exact search
-    prefer the social name, the profile shows a masked document and a
-    correction receipt, and a second registration with the same CPF warns."""
-    page = journey
+    """Receptionist registers a social name and CPF, then corrects identity,
+    records a deliberate non-answer, an address, an emergency contact and a
+    health plan through the real forms; exact search shows the corrected
+    name; the history is translated and keyboard-scrollable; axe reports no
+    violation; a second registration with the same CPF warns."""
+    page = demographics_page
     width = _width(page)
     root = renewal_artifact_root
     errors = _watch_errors(page)
     patients = f"/intake/clinics/{intake_staff['clinic_a']}/patients/"
-    suffix = uuid4().hex[:4]
-    legal = f"Aurora Sintética {suffix}"
-    social = f"Rosa Sintética {suffix}"
-    # One mod-11-valid CPF per run: the session registry is shared across
-    # matrix widths, so a constant CPF would collide with earlier widths.
-    cpf = _cpf_for(f"{int(suffix, 16):09d}")
+    # Width-bound synthetic identity: distinct per matrix width in the shared
+    # session registry, never a repeated-digit CPF.
+    legal = f"Aurora Sintética L{width}"
+    social = f"Rosa Sintética L{width}"
+    cpf = _cpf_for(f"{width:04d}17017")
 
     _sign_in(page, renewal_base_url, intake_staff)
     _register_with_document(
@@ -1112,7 +1179,7 @@ def test_demographics_social_name_identifier_search_and_duplicate_review(  # noq
     assert _no_overflow(page), _overflow_offenders(page)
     _capture(page, root, f"demographics-search-social-{width}")
 
-    # Exact CPF lookup lands on the same patient, even masked in the form.
+    # Exact CPF lookup lands on the same patient.
     _identifier_search(page, kind="cpf", value=cpf)
     expect(page.locator(STATUS)).to_have_text(_status_text(1, 1, 1))
     expect(page.locator(".intake-table tbody th").first).to_contain_text(social)
@@ -1125,30 +1192,70 @@ def test_demographics_social_name_identifier_search_and_duplicate_review(  # noq
     expect(page.locator("h1")).to_have_text(gettext("Patient demographics"))
     expect(page.locator(DEMOGRAPHICS_PANEL)).to_contain_text(social)
     expect(page.locator(DEMOGRAPHICS_PANEL)).to_contain_text(legal)
-    document_cell = page.locator(f"{DEMOGRAPHICS_PANEL} ~ .panel tbody td").first
+    document_cell = page.locator("#patient-documents tbody td").first
     expect(document_cell).to_contain_text(re.sub(r"\D", "", cpf)[-4:])
     assert cpf not in page.content()
+    # Coded answers render translated labels; stored codes stay invisible.
+    gender = page.locator(
+        "#id_gender_identity option", has_text=gettext("Declined to answer")
+    )
+    expect(gender).to_have_attribute("value", "declined")
     _capture(page, root, f"demographics-profile-{width}")
     assert _no_overflow(page), _overflow_offenders(page)
 
-    # A correction writes a new version and a receipt; the banner follows.
+    # One correction: a new social name and a deliberate non-answer.
     page.locator("#id_social_name").fill(f"{social} Correção")
+    page.locator("#id_gender_identity").select_option("declined")
+    page.locator("#id_pronouns_status").select_option("not_informed")
     page.locator("#id_reason").fill("paciente pediu correção")
     with page.expect_navigation():
         page.locator(f"{DEMOGRAPHICS_FORM} button[type=submit]").click()
     expect(page.locator(DEMOGRAPHICS_PANEL)).to_contain_text(
         gettext("Demographics saved.")
     )
-    # The corrections table is a sibling panel, not part of the banner.
-    corrections = page.locator(".panel", has_text=gettext("Correction history"))
-    expect(corrections).to_contain_text("paciente pediu correção")
-    expect(corrections).to_contain_text("social_name")
     expect(page.locator("#id_expected_version")).to_have_value("2")
+    expect(page.locator("#id_gender_identity")).to_have_value("declined")
+    expect(page.locator("#id_pronouns_status")).to_have_value("not_informed")
+
+    # Address, emergency contact and health plan through their own forms.
+    page.locator("#address-new-postal_code").fill("01310-100")
+    page.locator("#address-new-city").fill("São Paulo")
+    page.locator("#address-new-state_code").select_option("SP")
+    _post_section(page, gettext("Add address"))
+    page.locator("#address-home-street").fill("Av. Paulista")
+    _post_section(page, f"{gettext('Save address')} {gettext('Home')}")
+    expect(page.locator("#address-home-street")).to_have_value("Av. Paulista")
+    page.locator("#contact-new-name").fill("Contato Sintético")
+    page.locator("#contact-new-phone").fill("(11) 98888-7777")
+    _post_section(page, gettext("Add contact"))
+    expect(page.locator("#contact-1-name")).to_have_value("Contato Sintético")
+    page.locator("#membership-new-payer_name").fill("Operadora Sintética")
+    page.locator("#membership-new-membership_number").fill("0000-SINT")
+    _post_section(page, gettext("Add health plan"))
+    expect(page.locator("#membership-1-payer_name")).to_have_value(
+        "Operadora Sintética"
+    )
+
+    # The history names fields in pt-BR and scrolls by keyboard.
+    history = page.locator("#patient-correction-history")
+    expect(history).to_contain_text("paciente pediu correção")
+    expect(history).to_contain_text(str(gettext("Social name")))
+    assert "social_name" not in history.inner_text()
+    assert _keyboard_scrolls(page, HISTORY_REGION)
     assert _no_overflow(page), _overflow_offenders(page)
+    violations = _axe_violations(page, renewal_base_url)
+    assert violations == [], violations
     _capture(page, root, f"demographics-corrected-{width}")
 
+    # Exact search after corrections shows the current social name.
+    page.goto(f"{renewal_base_url}{patients}")
+    _identifier_search(page, kind="cpf", value=cpf)
+    expect(page.locator(".intake-table tbody th").first).to_contain_text(
+        f"{social} Correção"
+    )
+
     # The second registration with the same CPF saves and warns, never blocks.
-    other = f"Íris Sintética {suffix}"
+    other = f"Íris Sintética L{width}"
     _register_with_document(
         page, renewal_base_url, patients, name=other, social_name="", cpf=cpf
     )
@@ -1173,9 +1280,11 @@ def test_demographics_social_name_identifier_search_and_duplicate_review(  # noq
         {
             "surface": "staff-intake",
             "width": width,
-            "assertion": "register with social name and CPF, social-name-first "
-            "banner, exact identifier search, demographics profile with masked "
-            "document, versioned correction with receipt, duplicate-CPF warning",
+            "assertion": "register with social name and CPF; correct identity "
+            "with a declined answer; add/edit address, emergency contact and "
+            "health plan; exact search shows the corrected name; translated, "
+            "keyboard-scrollable history; axe 0 violations; duplicate-CPF warning",
+            "axe_violations": violations,
             "console_errors": errors,
         }
     )

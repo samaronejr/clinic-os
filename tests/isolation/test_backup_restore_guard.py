@@ -33,7 +33,9 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    assert len(restore_contract.DOMAIN_RELATIONS) == 63
+    assert len(restore_contract.DOMAIN_RELATIONS) == 70
+    assert "clinic_app.intake_patientdemographics" in restore_contract.TABLE_DATA
+    assert "clinic_app.intake_demographicscorrection" in restore_contract.TABLE_DATA
     assert "clinic_app.tenancy_tenantdatakey" in restore_contract.TABLE_DATA
     assert "clinic_app.ehr_clinicalattachment" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_signatureoperation" in restore_contract.TABLE_DATA

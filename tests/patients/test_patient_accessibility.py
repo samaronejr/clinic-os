@@ -152,11 +152,15 @@ def test_search_results_expose_an_accessible_table_and_pagination(
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
     ):
-        birth_dates = list(
-            Patient.objects.filter(
+        # Every seeded patient records a birth date; an unrecorded one
+        # would be None and is not part of this page's fixture.
+        birth_dates = [
+            birth_date
+            for birth_date in Patient.objects.filter(
                 organization_id=rbac_graph.organization_a
             ).values_list("birth_date", flat=True)
-        )
+            if birth_date is not None
+        ]
         enrollment_ids = [
             str(enrollment_id)
             for enrollment_id in PatientClinicEnrollment.objects.filter(
@@ -396,8 +400,12 @@ def test_invalid_create_preserves_the_typed_name_for_retry(
     assert document.attributes_for("id_full_name")["value"] == "Teste Synthetic Retry"
     assert document.attributes_for("id_birth_date")["value"] == "3999-01-01"
     assert document.attributes_for("intake-errors")["role"] == "alert"
-    assert gettext("Enter a patient name and a valid birth date.") in (
-        response.content.decode()
+    assert (
+        gettext(
+            "Check the registration fields: the birth date cannot be in the future "
+            "and the document number must be valid."
+        )
+        in response.content.decode()
     )
 
 

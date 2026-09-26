@@ -2561,3 +2561,201 @@ msgstr "Outro cadastro já usa este documento. Um revisor vai confirmar se é o 
 
 msgid "Possible duplicate"
 msgstr "Possível duplicidade"
+
+msgid "Declined to answer"
+msgstr "Prefere não informar"
+
+msgid "CPF"
+msgstr "CPF"
+
+msgid "CNS"
+msgstr "CNS"
+
+msgid "RG"
+msgstr "RG"
+
+msgid "Other document"
+msgstr "Outro documento"
+
+msgid "Home"
+msgstr "Residencial"
+
+msgid "Work"
+msgstr "Comercial"
+
+msgctxt "address kind"
+msgid "Other"
+msgstr "Outro"
+
+msgctxt "gender identity"
+msgid "Other"
+msgstr "Outra"
+
+msgctxt "address"
+msgid "State"
+msgstr "UF"
+
+msgid "Social name"
+msgstr "Nome social"
+
+msgid "Check the registration fields: the birth date cannot be in the future and the document number must be valid."
+msgstr "Confira os campos do cadastro: a data de nascimento não pode estar no futuro e o número do documento precisa ser válido."
+
+msgid "Enter the legal name or the social name."
+msgstr "Informe o nome civil ou o nome social."
+
+msgid "Leave the field empty to record why it was not informed."
+msgstr "Deixe o campo vazio para registrar por que não foi informado."
+
+#, python-format
+msgid "%(field)s: reason when empty"
+msgstr "%(field)s: motivo se vazio"
+
+msgid "Not applicable"
+msgstr "Não se aplica"
+
+msgid "Address type"
+msgstr "Tipo de endereço"
+
+msgid "CEP"
+msgstr "CEP"
+
+msgid "Street"
+msgstr "Logradouro"
+
+msgid "Complement"
+msgstr "Complemento"
+
+msgid "District"
+msgstr "Bairro"
+
+msgid "City"
+msgstr "Cidade"
+
+msgid "Choose the address type."
+msgstr "Escolha o tipo de endereço."
+
+msgid "Contact name"
+msgstr "Nome do contato"
+
+msgid "Relationship"
+msgstr "Parentesco ou relação"
+
+msgid "Health plan operator"
+msgstr "Operadora do plano"
+
+msgid "ANS registration"
+msgstr "Registro ANS"
+
+msgid "Card number"
+msgstr "Número da carteirinha"
+
+msgid "Valid until"
+msgstr "Válido até"
+
+msgid "This clinic requires some fields. Answer them, or record why they were not informed."
+msgstr "Esta clínica exige alguns campos. Preencha-os ou registre por que não foram informados."
+
+msgid "Record saved."
+msgstr "Registro salvo."
+
+msgid "Record removed. Earlier versions stay in history."
+msgstr "Registro removido. As versões anteriores continuam no histórico."
+
+msgid "Record what the patient informs. A legal or a social name is enough; leave anything unknown empty and record why. Afterwards you return to the search to book the appointment."
+msgstr "Registre o que o paciente informar. Basta o nome civil ou o nome social; deixe vazio o que não souber e registre o motivo. Depois você volta à busca para agendar a consulta."
+
+msgid "This clinic requires:"
+msgstr "Esta clínica exige:"
+
+msgid "An explicit reason also answers a required field."
+msgstr "Registrar o motivo também atende a um campo exigido."
+
+msgid "Names"
+msgstr "Nomes"
+
+msgid "As on the patient's documents. Leave empty when the patient did not inform it and record why below."
+msgstr "Como nos documentos do paciente. Deixe vazio se o paciente não informou e registre o motivo abaixo."
+
+msgid "The name the patient uses socially. Staff screens show it first."
+msgstr "O nome que o paciente usa socialmente. As telas da equipe mostram esse nome primeiro."
+
+msgid "Optional unless this clinic requires it. It cannot be later than today in this clinic."
+msgstr "Opcional, a menos que a clínica exija. Não pode ser posterior à data de hoje nesta clínica."
+
+msgid "Fields this clinic requires"
+msgstr "Campos exigidos por esta clínica"
+
+msgid "Identification document"
+msgstr "Documento de identificação"
+
+msgid "Required by this clinic"
+msgstr "Exigido por esta clínica"
+
+msgid "Leave a field empty when the patient did not inform it, and choose why. Nothing needs to be invented."
+msgstr "Deixe o campo vazio quando o paciente não informou e escolha o motivo. Nada precisa ser inventado."
+
+msgid "Issuing body"
+msgstr "Órgão emissor"
+
+msgid "Addresses"
+msgstr "Endereços"
+
+msgid "No address recorded."
+msgstr "Nenhum endereço registrado."
+
+msgid "Save address"
+msgstr "Salvar endereço"
+
+msgid "Remove address"
+msgstr "Remover endereço"
+
+msgid "Add an address"
+msgstr "Adicionar um endereço"
+
+msgid "Add address"
+msgstr "Adicionar endereço"
+
+msgid "Emergency contacts"
+msgstr "Contatos de emergência"
+
+msgid "No emergency contact recorded."
+msgstr "Nenhum contato de emergência registrado."
+
+#, python-format
+msgid "Emergency contact %(number)s"
+msgstr "Contato de emergência %(number)s"
+
+msgid "Save contact"
+msgstr "Salvar contato"
+
+msgid "Remove contact"
+msgstr "Remover contato"
+
+msgid "Add an emergency contact"
+msgstr "Adicionar um contato de emergência"
+
+msgid "Add contact"
+msgstr "Adicionar contato"
+
+msgid "Health plans"
+msgstr "Planos de saúde"
+
+msgid "No health plan recorded."
+msgstr "Nenhum plano de saúde registrado."
+
+#, python-format
+msgid "Health plan %(number)s"
+msgstr "Plano de saúde %(number)s"
+
+msgid "Save health plan"
+msgstr "Salvar plano de saúde"
+
+msgid "Remove health plan"
+msgstr "Remover plano de saúde"
+
+msgid "Add a health plan"
+msgstr "Adicionar um plano de saúde"
+
+msgid "Add health plan"
+msgstr "Adicionar plano de saúde"
