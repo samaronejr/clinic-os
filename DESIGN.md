@@ -537,6 +537,8 @@ states, AI drafts awaiting confirmation, held slots and missing citations.
   (Agenda and Disponibilidade; Pacientes and Consentimentos), a row of link
   tabs on paper sits under the navy band, the current place with the Trust
   Teal bottom rule. A single place renders no row.
+- **Footer:** Small Navy Gray text on paper above a 1px Rule; its links
+  ("Preferências de exibição") keep the 44px target like every shell item.
 - **Default / hover:** Light Ink Soft text; hover fills Navy Hover.
 - **Current:** `aria-current="page"`, Light Ink text and a 3px cyan bar along
   the bottom edge (an underline in forced colors).
