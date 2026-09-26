@@ -25,7 +25,7 @@ from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
-from renewal.browser._protected import encrypt
+from renewal.browser._protected import rename_patient
 from renewal.browser.engines import (
     full_page_screenshot,
     install_media,
@@ -124,12 +124,14 @@ def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:
             "SELECT set_config('app.current_tenant',%s,true)",
             [case.staff["organization"]],
         )
-        conn.execute(
-            "UPDATE clinic_app.intake_patient SET full_name=%s WHERE id=%s",
-            [
-                encrypt(conn, "intake.patient.full_name", name.encode()),
-                data["patient"],
-            ],
+        rename_patient(
+            conn,
+            organization=case.staff["organization"],
+            clinic=case.staff["clinic_a"],
+            patient=data["patient"],
+            enrollment=data["enrollment"],
+            actor=case.staff["receptionist_id"],
+            name=name,
         )
     data["name"] = name
     return data

@@ -16,7 +16,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._page_wait import evaluate_all_js, evaluate_js
-from renewal.browser._protected import encrypt
+from renewal.browser._protected import encrypt, rename_patient
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import _sign_in_receptionist, availability_staff
 from renewal.browser.test_patient_access import _redeem
@@ -37,12 +37,14 @@ def _seed_contact(
         conn.execute(
             "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
         )
-        conn.execute(
-            "UPDATE clinic_app.intake_patient SET full_name=%s WHERE id=%s",
-            [
-                encrypt(conn, "intake.patient.full_name", name.encode()),
-                data["patient"],
-            ],
+        rename_patient(
+            conn,
+            organization=staff["organization"],
+            clinic=staff["clinic_a"],
+            patient=data["patient"],
+            enrollment=data["enrollment"],
+            actor=staff["receptionist_id"],
+            name=name,
         )
         conn.execute(
             "INSERT INTO clinic_app.intake_patientcontact "
