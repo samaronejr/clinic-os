@@ -288,9 +288,6 @@ SELECT json_build_object(
             (
                 *DOMAIN_RELATIONS,
                 *EXCLUDED_RELATIONS,
-                "auth_group",
-                "auth_group_permissions",
-                "auth_permission",
             )
         )
     )

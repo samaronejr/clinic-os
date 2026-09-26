@@ -70,7 +70,6 @@ class Manifest:
         restore_contract.SEQUENCE_TARGETS.items()
     )
     excluded: tuple[str, ...] = restore_contract.EXCLUDED_RELATIONS
-    prefixes: tuple[str, ...] = restore_contract.EXCLUDED_PREFIXES
 
 
 def catalog_relations() -> tuple[Relation, ...]:
@@ -81,7 +80,7 @@ def catalog_relations() -> tuple[Relation, ...]:
 
 
 def _excluded(name: str, manifest: Manifest) -> bool:
-    return name in manifest.excluded or name.startswith(manifest.prefixes)
+    return name in manifest.excluded
 
 
 def _table_violation(relation: Relation, manifest: Manifest) -> str | None:
@@ -279,6 +278,29 @@ def test_new_unclassified_relations_fail_by_name() -> None:
         "zz_recovery_probe_partition",
         "zz_recovery_probe_table",
     }
+    assert unclassified(catalog_relations()) == []
+
+
+def test_new_auth_prefixed_relation_is_refused() -> None:
+    # Given: a new framework-shaped table rolled back after the check; the
+    # census must refuse it by name because no prefix exclusion exists
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "CREATE TABLE clinic_app.auth_probe_unclassified "
+                "(id bigint NOT NULL PRIMARY KEY)"
+            )
+        violations = dict(unclassified(catalog_relations()))
+        runtime = _runtime_unexpected_relations()
+        transaction.set_rollback(True)
+
+    # Then: the census and the rehearsal's runtime gate both name it
+    assert set(violations) == {"auth_probe_unclassified"}, violations
+    assert (
+        "unclassified table 'auth_probe_unclassified'"
+        in (violations["auth_probe_unclassified"])
+    )
+    assert runtime == ["auth_probe_unclassified"]
     assert unclassified(catalog_relations()) == []
 
 

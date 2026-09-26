@@ -5,9 +5,10 @@ Every relation in the ``clinic_app`` schema has exactly one classification:
 - ``DOMAIN_RELATIONS``: data restored through the fixed archive manifest;
 - ``SEQUENCE_TARGETS``: sequences restored and advanced past their table;
 - ``REQUIRED_EMPTY``: must hold zero source rows, so nothing is lost;
-- ``TARGET_OWNED_RELATIONS``: excluded, each with its written reason;
-- ``EXCLUDED_PREFIXES``: target-owned framework tables and their sequences.
+- ``TARGET_OWNED_RELATIONS``: excluded, each with its written reason.
 
+Every exclusion names one relation; there are no prefix exclusions, so a
+new relation can never inherit a classification silently.
 ``tests/infra/test_recovery_manifest.py`` derives the relation set from the
 live migrated catalog and fails on any relation left unclassified.
 """
@@ -112,6 +113,11 @@ TARGET_SEEDED_RELATIONS: Final = (
 )
 TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
     "audit_event_tenant": "view over audit_event; holds no rows of its own",
+    "auth_group": "framework auth groups; UserClinicRole is the only RBAC authority",
+    "auth_group_permissions": (
+        "framework auth group links; UserClinicRole is the only RBAC authority"
+    ),
+    "auth_permission": "framework auth permissions recreated by target migrations",
     "django_admin_log": "framework admin log; never recovery scope",
     "django_content_type": "framework state recreated by target migrations",
     "django_migrations": "target migration leaf set must equal the source",
@@ -121,7 +127,6 @@ TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
         "platform provider registry seeded by target migrations; not tenant data",
     ),
 }
-EXCLUDED_PREFIXES: Final = ("auth_",)
 EXCLUDED_RELATIONS: Final = (
     *TARGET_OWNED_RELATIONS,
     *REQUIRED_EMPTY,
