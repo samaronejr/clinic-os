@@ -261,6 +261,14 @@ BOUNDARIES = (
         lambda w, ok: retention._require_manager(w.clinic_for(ok), w.encounter),
     ),
     Boundary(
+        "apps.retention.services._author_label",
+        "resolver",
+        # retention_author_label admits the legacy staff roles; the executed
+        # exemption probe showed it refuses the new bundle roles.
+        LEGACY,
+        lambda w, ok: retention._author_label(w.graph.physician if ok else uuid4()),
+    ),
+    Boundary(
         "apps.retention.services._record_scope",
         "resolver",
         ADMINS,

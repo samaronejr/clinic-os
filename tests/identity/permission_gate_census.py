@@ -1,25 +1,30 @@
-"""Derive the permission-gated runtime functions from the live system.
+"""Static cross-check of permission-gated runtime functions.
 
-A census row may carry an exemption label (infrastructure, provider, ...)
-only if the function cannot reach a permission decision. "Reaches" is not a
-spelling list: the permission decisions are read from the live database
-(``clinic_app.has_permission`` and every SQL function whose body reaches it,
-plus the tables whose RLS policies call one), and the Python side is the
-transitive closure of every function that references a function which
-executes one of those decisions or touches one of those tables. References
-resolve through imports, aliases, module attributes, ``self``/``cls``
-methods, decorators and functions passed as values, so wrapping a gate in a
-helper, a helper chain or an alias does not hide it.
+This graph is an early warning, not the authority. Static analysis cannot
+prove that a function has NO permission gate (a partial, a table, an
+instance ``__call__``, a trigger or an unqualified SQL call all hide one),
+so an exemption is valid only when an executed differential probe shows an
+identical decision across every staff role state (identity/
+exemption_probes.py). The census fails when this graph and a probe
+disagree: a function the graph derives as gated can never be exempt.
 
-Anything the census cannot follow fails closed: an opaque SQL function that
-is not extension-owned is an error, and an exempted row whose reachable code
-uses dynamic dispatch (``getattr`` with a computed name, ``import_module``,
-``eval``...) needs an explicit reviewed ``DYNAMIC_DISPATCH_REVIEWED`` entry.
+The derived set starts from the live catalog (``clinic_app.has_permission``,
+SQL functions whose bodies reach it, tables whose RLS policies call one) and
+closes transitively over references resolved through imports, aliases,
+module attributes, ``self``/``cls`` methods, decorators and function values.
+
+It fails closed on what it cannot read: an opaque non-extension SQL
+function, a relative import, a name that is neither local, a parameter, a
+builtin, module-level nor imported, an attribute or import a project module
+does not define, and (for exempt rows) reachable dynamic dispatch without a
+reviewed ``DYNAMIC_DISPATCH_REVIEWED`` entry. Module-level bindings count as
+bound names but their values are not followed: that is the probe's job.
 """
 
 from __future__ import annotations
 
 import ast
+import builtins
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -112,6 +117,16 @@ def live_decisions(cursor: CursorWrapper) -> LiveDecisions:
     return LiveDecisions(frozenset(decisions), frozenset(tables))
 
 
+_BUILTIN_NAMES: Final = frozenset(dir(builtins)) | {
+    "__name__",
+    "__file__",
+    "__doc__",
+    "__package__",
+    "__spec__",
+    "__class__",
+}
+
+
 @dataclass(slots=True)
 class _Module:
     name: str
@@ -120,6 +135,7 @@ class _Module:
     )
     classes: dict[str, set[str]] = field(default_factory=dict)
     imports: dict[str, str] = field(default_factory=dict)
+    bound: set[str] = field(default_factory=set)
     tables: dict[str, str] = field(default_factory=dict)
 
 
@@ -139,24 +155,44 @@ def _collect(name: str, tree: ast.Module) -> _Module:
 
 
 def _collect_node(module: _Module, node: ast.stmt) -> None:
+    """Record one module-level statement's definitions and bindings."""
     if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
         module.defs[node.name] = node
+        module.bound.add(node.name)
     elif isinstance(node, ast.ClassDef):
-        methods: set[str] = set()
-        for item in node.body:
-            if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef):
-                module.defs[f"{node.name}.{item.name}"] = item
-                methods.add(item.name)
-        module.classes[node.name] = methods
-        table = _db_table(node)
-        if table:
-            module.tables[node.name] = table
+        _collect_class(module, node)
     elif isinstance(node, ast.Import | ast.ImportFrom):
         _collect_import(module, node)
-    elif isinstance(node, ast.If):
-        # TYPE_CHECKING / version branches still bind names.
-        for child in (*node.body, *node.orelse):
+    else:
+        _collect_statement(module, node)
+
+
+def _collect_statement(module: _Module, node: ast.stmt) -> None:
+    """Assignments, loops, with/try/if blocks: bind targets and descend."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+            module.bound.add(child.id)
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.stmt):
             _collect_node(module, child)
+        elif isinstance(child, ast.ExceptHandler):
+            if child.name:
+                module.bound.add(child.name)
+            for statement in child.body:
+                _collect_node(module, statement)
+
+
+def _collect_class(module: _Module, node: ast.ClassDef) -> None:
+    methods: set[str] = set()
+    for item in node.body:
+        if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef):
+            module.defs[f"{node.name}.{item.name}"] = item
+            methods.add(item.name)
+    module.classes[node.name] = methods
+    module.bound.add(node.name)
+    table = _db_table(node)
+    if table:
+        module.tables[node.name] = table
 
 
 def _collect_import(module: _Module, node: ast.Import | ast.ImportFrom) -> None:
@@ -164,12 +200,18 @@ def _collect_import(module: _Module, node: ast.Import | ast.ImportFrom) -> None:
         for alias in node.names:
             bound = alias.asname or alias.name.split(".", 1)[0]
             module.imports[bound] = alias.name if alias.asname else bound
+            module.bound.add(bound)
         return
     if node.level:
         message = f"relative import in {module.name} is not resolved"
         raise CensusError(message)
     for alias in node.names:
-        module.imports[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        if alias.name == "*":
+            message = f"star import in {module.name} is not resolved"
+            raise CensusError(message)
+        bound = alias.asname or alias.name
+        module.imports[bound] = f"{node.module}.{alias.name}"
+        module.bound.add(bound)
 
 
 def _db_table(node: ast.ClassDef) -> str:
@@ -197,6 +239,7 @@ class Graph:
     edges: dict[str, set[str]]
     seeds: dict[str, str]
     dynamic: dict[str, str]
+    unresolved: dict[str, set[str]] = field(default_factory=dict)
 
 
 def _app_label(module: str) -> str:
@@ -209,19 +252,21 @@ def build_graph(
 ) -> Graph:
     """Parse ``apps`` (``sources`` overrides file text by module name)."""
     modules: dict[str, _Module] = {}
-    trees: dict[str, ast.Module] = {}
     for path in sorted((ROOT / "apps").rglob("*.py")):
         if "migrations" in path.parts:
             continue
         name = _module_name(path)
         text = (sources or {}).get(name)
-        tree = ast.parse(path.read_text() if text is None else text)
-        trees[name] = tree
-        modules[name] = _collect(name, tree)
+        modules[name] = _collect(
+            name, ast.parse(path.read_text() if text is None else text)
+        )
     graph = Graph(modules, {}, {}, {})
     resolver = _Resolver(modules)
     tables = _model_tables(modules)
     for module in modules.values():
+        for target in module.imports.values():
+            if resolver.classify_global(target, 0)[0] == "unresolved":
+                graph.unresolved.setdefault(module.name, set()).add(target)
         for qualname, node in module.defs.items():
             _link(graph, resolver, module, qualname, node, decisions, tables)
     return graph
@@ -251,14 +296,19 @@ def _link(  # noqa: PLR0913 - one function's edges need the whole context
 ) -> None:
     symbol = f"{module.name}.{qualname}"
     owner = qualname.split(".", 1)[0] if "." in qualname else ""
+    local = _local_bindings(node)
     targets: set[str] = set()
     for dotted in _references(node):
-        target = resolver.resolve(module, dotted, owner)
-        if target is None:
+        head = dotted.split(".", 1)[0]
+        if head in local and head not in ("self", "cls"):
             continue
-        targets.add(target)
-        if tables.get(target) in decisions.tables:
-            graph.seeds[symbol] = f"touches RLS-gated {tables[target]}"
+        kind, target = resolver.classify(module, dotted, owner)
+        if kind == "unresolved":
+            graph.unresolved.setdefault(symbol, set()).add(dotted)
+        elif kind == "edge" and target is not None:
+            targets.add(target)
+            if tables.get(target) in decisions.tables:
+                graph.seeds[symbol] = f"touches RLS-gated {tables[target]}"
     graph.edges[symbol] = targets
     for called in _sql_calls(node):
         if called in decisions.functions:
@@ -266,6 +316,47 @@ def _link(  # noqa: PLR0913 - one function's edges need the whole context
     reason = _dynamic_dispatch(node)
     if reason:
         graph.dynamic[symbol] = reason
+
+
+def _local_bindings(node: ast.AST) -> set[str]:
+    """Every name bound anywhere inside a function (nested scopes included)."""
+    bound: set[str] = set()
+    for child in ast.walk(node):
+        bound.update(_bound_by(child, node))
+    return bound
+
+
+def _bound_by(child: ast.AST, root: ast.AST) -> tuple[str, ...]:  # noqa: PLR0911 - one binding form per branch
+    if isinstance(child, ast.arguments):
+        return tuple(
+            argument.arg
+            for argument in (
+                *child.posonlyargs,
+                *child.args,
+                *child.kwonlyargs,
+                *((child.vararg,) if child.vararg else ()),
+                *((child.kwarg,) if child.kwarg else ()),
+            )
+        )
+    if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store | ast.Del):
+        return (child.id,)
+    if isinstance(child, ast.Import | ast.ImportFrom):
+        return tuple(
+            alias.asname or alias.name.split(".", 1)[0] for alias in child.names
+        )
+    if isinstance(child, ast.Global | ast.Nonlocal):
+        return tuple(child.names)
+    if isinstance(child, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple):
+        return (child.name,)
+    if isinstance(child, ast.MatchMapping):
+        return (child.rest,) if child.rest else ()
+    named = getattr(child, "name", None)
+    if isinstance(child, ast.ExceptHandler | ast.MatchAs | ast.MatchStar) or (
+        isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        and child is not root
+    ):
+        return (named,) if isinstance(named, str) else ()
+    return ()
 
 
 def _references(node: ast.AST) -> Iterator[str]:
@@ -314,29 +405,36 @@ def _dynamic_dispatch(node: ast.AST) -> str:
     return ""
 
 
+type _Resolution = tuple[str, str | None]
+
+
 class _Resolver:
+    """Classify references: edge, bound, external or unresolved."""
+
     def __init__(self, modules: Mapping[str, _Module]) -> None:
         self.modules = modules
 
-    def resolve(self, module: _Module, dotted: str, owner: str) -> str | None:
+    def classify(self, module: _Module, dotted: str, owner: str) -> _Resolution:
         head, _, rest = dotted.partition(".")
         if head in ("self", "cls"):
-            return self._own_method(module, owner, rest)
+            return self._own(module, owner, rest)
         if head in module.defs and not rest:
-            return f"{module.name}.{head}"
+            return ("edge", f"{module.name}.{head}")
         if head in module.classes:
-            return self._in_class(module, head, rest)
+            return ("edge", self._in_class(module, head, rest))
         if head in module.imports:
             target = module.imports[head] + (f".{rest}" if rest else "")
-            return self.resolve_global(target, depth=0)
-        return None
+            return self.classify_global(target, 0)
+        if head in module.bound or head in _BUILTIN_NAMES:
+            return ("bound", None)
+        return ("unresolved", None)
 
     @staticmethod
-    def _own_method(module: _Module, owner: str, rest: str) -> str | None:
+    def _own(module: _Module, owner: str, rest: str) -> _Resolution:
         method = rest.split(".", 1)[0]
         if owner and method in module.classes.get(owner, set()):
-            return f"{module.name}.{owner}.{method}"
-        return None
+            return ("edge", f"{module.name}.{owner}.{method}")
+        return ("bound", None)
 
     def _in_class(self, module: _Module, cls: str, rest: str) -> str:
         method = rest.split(".", 1)[0] if rest else ""
@@ -344,30 +442,34 @@ class _Resolver:
             return f"{module.name}.{cls}.{method}"
         return f"{module.name}.{cls}"
 
-    def resolve_global(self, dotted: str, depth: int) -> str | None:
+    def classify_global(self, dotted: str, depth: int) -> _Resolution:
         """Resolve an absolute dotted name, following re-exports."""
         if depth > _MAX_REEXPORT_DEPTH:
-            return None
+            return ("unresolved", None)
         parts = dotted.split(".")
+        if parts[0] != "apps":
+            return ("external", None)
         for cut in range(len(parts), 0, -1):
             candidate = ".".join(parts[:cut])
             if candidate in self.modules:
-                return self._in_module(candidate, ".".join(parts[cut:]), depth)
-        return None
+                return self._in_module(candidate, parts[cut:], depth)
+        return ("unresolved", None)
 
-    def _in_module(self, name: str, rest: str, depth: int) -> str | None:
+    def _in_module(self, name: str, rest: list[str], depth: int) -> _Resolution:
+        if not rest:
+            return ("bound", None)
         module = self.modules[name]
-        head, _, tail = rest.partition(".")
-        if not head:
-            return None
+        head, tail = rest[0], ".".join(rest[1:])
         if head in module.defs and not tail:
-            return f"{name}.{head}"
+            return ("edge", f"{name}.{head}")
         if head in module.classes:
-            return self._in_class(module, head, tail)
+            return ("edge", self._in_class(module, head, tail))
         if head in module.imports:
             target = module.imports[head] + (f".{tail}" if tail else "")
-            return self.resolve_global(target, depth + 1)
-        return None
+            return self.classify_global(target, depth + 1)
+        if head in module.bound or head in module.defs:
+            return ("bound", None)
+        return ("unresolved", None)
 
 
 def permission_gated(graph: Graph) -> dict[str, str]:

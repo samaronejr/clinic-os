@@ -16,11 +16,13 @@ from apps.identity.permissions import (
     PERMISSIONS,
     PROFESSIONAL_PERMISSIONS_V1,
 )
+from apps.intake import demographics
 from apps.tenancy.db import tenant_context
-from django.db import connection
+from django.db import connection, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
+from identity import exemption_probes
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
@@ -39,6 +41,8 @@ from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -98,6 +102,8 @@ def _check_permission_gates(
     follow fails closed unless reviewed.
     """
     graph = live_graph() if graph is None else graph
+    # The static graph fails closed on names it cannot resolve.
+    assert not graph.unresolved, graph.unresolved
     gated = census.permission_gated(graph)
     assert census.spelled_gates(graph) <= set(gated)
     for row in candidates:
@@ -110,16 +116,49 @@ def _check_permission_gates(
         assert not unfollowed, (row["symbol"], unfollowed)
 
 
+# Labels that claim "no staff permission gate here". v2 is the permission
+# subsystem itself (identity only, anchored by the has_permission test).
+PROBED_EXEMPT_KINDS = EXEMPT_KINDS - {"v2"}
+
+
+def _check_exemption_probes(
+    candidates: list[Candidate],
+    probes: Mapping[str, exemption_probes.ExemptionProbe],
+    graph: census.Graph | None,
+) -> None:
+    """An exemption is valid only with an executed differential probe.
+
+    Static analysis cannot prove the absence of a gate, so the probe is the
+    authority: every exempt row must have a probe (executed across all 12
+    role states by ``test_every_exemption_probe_is_staff_independent``),
+    and the registry holds no probe for anything else. Where the static
+    graph derives a gate for a probed exemption, the two disagree and the
+    census fails.
+    """
+    exempt = {row["symbol"] for row in candidates if row["kind"] in PROBED_EXEMPT_KINDS}
+    unprobed = sorted(exempt - set(probes))
+    assert not unprobed, ("exemption without an executed differential probe", unprobed)
+    assert set(probes) <= exempt, sorted(set(probes) - exempt)
+    graph = live_graph() if graph is None else graph
+    disagree = sorted(set(census.permission_gated(graph)) & set(probes))
+    assert not disagree, (
+        "static graph derives a gate for a probed exemption",
+        disagree,
+    )
+
+
 def check_inventory(
     inventory: Inventory,
     declared: set[str] | None = None,
     graph: census.Graph | None = None,
+    probes: Mapping[str, exemption_probes.ExemptionProbe] | None = None,
 ) -> None:
     """Assert the reviewed census matches the tree and its own rules.
 
-    ``declared`` defaults to the probes the boundary modules declare and
-    ``graph`` to the live source; the rule tests pass a reduced probe set
-    or substituted source to model a withdrawn probe or a refactor.
+    ``declared`` defaults to the probes the boundary modules declare,
+    ``graph`` to the live source and ``probes`` to the exemption probe
+    registry; the rule tests pass reduced sets or substituted source to
+    model a withdrawn probe or a refactor.
     """
     assert inventory["schema_version"] == 2
     candidates = inventory["candidates"]
@@ -153,7 +192,11 @@ def check_inventory(
     for row in candidates:
         if "role_helper" in row["signals"]:
             assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
+    graph = live_graph() if graph is None else graph
     _check_permission_gates(candidates, graph)
+    _check_exemption_probes(
+        candidates, exemption_probes.PROBES if probes is None else probes, graph
+    )
     # A symbol with an executed probe is classified as what the probe
     # proves; an exemption cannot sit on top of an executable oracle.
     for row in candidates:
@@ -394,3 +437,227 @@ def test_permission_decision_is_actor_differential(rbac_graph: RbacGraph) -> Non
                 )
                 checked += 1
     assert checked == len(states) * len(PERMISSIONS)
+
+
+_CLASS_GATE = """
+
+class _Gate:
+    def __call__(self, clinic_id):
+        return require_permission("configuration.clinic", clinic_id=clinic_id)
+
+    def check(self, clinic_id):
+        return require_permission("configuration.clinic", clinic_id=clinic_id)
+"""
+_UNQUALIFIED_SQL_GATE = """
+CREATE FUNCTION clinic_app.zz_cfg_gate(clinic pg_catalog.uuid)
+RETURNS pg_catalog.uuid LANGUAGE plpgsql
+SET search_path = pg_catalog, clinic_app AS $f$
+BEGIN
+    IF NOT has_permission('configuration.clinic', clinic, NULL) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'denied';
+    END IF;
+    RETURN NULLIF(current_setting('app.current_user_id', true), '')::pg_catalog.uuid;
+END $f$;
+"""
+_TRIGGER_GATE = """
+CREATE FUNCTION clinic_app.zz_policy_gate() RETURNS trigger LANGUAGE plpgsql
+SET search_path = pg_catalog, clinic_app AS $f$
+BEGIN
+    IF NOT clinic_app.has_permission('configuration.clinic', NEW.clinic_id, NULL) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'denied';
+    END IF;
+    RETURN NEW;
+END $f$;
+CREATE TRIGGER zz_policy_gate BEFORE INSERT ON clinic_app.intake_clinicintakepolicy
+FOR EACH ROW EXECUTE FUNCTION clinic_app.zz_policy_gate();
+"""
+_CALL = '"configuration.clinic", clinic_id=clinic_id'
+# The reviewer's 11 bypass shapes (M1-M11): (body, appendix, database DDL).
+_REVIEWER_SHAPES: dict[str, tuple[str, str, str]] = {
+    "M1 module-level functools.partial": (
+        "            actor_id = _gate(clinic_id=clinic_id)\n",
+        "\nimport functools\n_gate = functools.partial("
+        'require_permission, "configuration.clinic")\n',
+        "",
+    ),
+    "M2 module-level lambda": (
+        "            actor_id = _gate(clinic_id)\n",
+        f"\n_gate = lambda clinic_id: require_permission({_CALL})\n",
+        "",
+    ),
+    "M3 dispatch table": (
+        f'            actor_id = _GATES["clinic"]({_CALL})\n',
+        '\n_GATES = {"clinic": require_permission}\n',
+        "",
+    ),
+    "M4 getattr with a constant name": (
+        f'            actor_id = getattr(_ctx, "require_permission")({_CALL})\n',
+        "\nimport apps.identity.current_context as _ctx\n",
+        "",
+    ),
+    "M5 module instance __call__": (
+        "            actor_id = _gate(clinic_id)\n",
+        _CLASS_GATE + "\n_gate = _Gate()\n",
+        "",
+    ),
+    "M6 class-level __call__": (
+        "            actor_id = _Gate()(clinic_id)\n",
+        _CLASS_GATE,
+        "",
+    ),
+    "M7 method on a local instance": (
+        "            _g = _Gate()\n            actor_id = _g.check(clinic_id)\n",
+        _CLASS_GATE,
+        "",
+    ),
+    "M8 in-function lambda": (
+        "            actor_id = (lambda c: require_permission("
+        '"configuration.clinic", clinic_id=c))(clinic_id)\n',
+        "",
+        "",
+    ),
+    "M9 in-function functools.partial": (
+        "            actor_id = functools.partial(require_permission, "
+        '"configuration.clinic")(clinic_id=clinic_id)\n',
+        "\nimport functools\n",
+        "",
+    ),
+    "M10 SQL function calling has_permission unqualified": (
+        "            actor_id = _cfg(clinic_id)\n",
+        """
+
+def _cfg(clinic_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT zz_cfg_gate(%s)", [clinic_id])
+        return cursor.fetchone()[0]
+""",
+        _UNQUALIFIED_SQL_GATE,
+    ),
+    "M11 gate only in a BEFORE INSERT trigger": (
+        "            actor_id = current_actor_id()\n",
+        "\nfrom apps.identity.current_context import current_actor_id\n",
+        _TRIGGER_GATE,
+    ),
+}
+
+
+def _shape_graph(body: str, appendix: str, ddl: str) -> census.Graph:
+    path = Path(census.ROOT, "apps/intake/demographics.py")
+    source = path.read_text()
+    assert source.count(_GATE_CALLS) == 1
+    sources = {"apps.intake.demographics": source.replace(_GATE_CALLS, body) + appendix}
+    if not ddl:
+        return live_graph(sources)
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(ddl)
+        graph = live_graph(sources)
+        transaction.set_rollback(True)
+    return graph
+
+
+@pytest.mark.parametrize("shape", sorted(_REVIEWER_SHAPES))
+def test_census_refuses_every_reviewer_bypass_shape(shape: str) -> None:
+    """R3-1: whatever the spelling or indirection (Python or database side),
+    an exemption whose differential probe is withdrawn is refused."""
+    graph = _shape_graph(*_REVIEWER_SHAPES[shape])
+    mutated = _exempted(_POLICY)
+    declared = declared_probes() - {_POLICY}
+    mutated["probes"] = sorted(declared)
+    with pytest.raises(AssertionError):
+        check_inventory(mutated, declared, graph)
+
+
+def _probe_world(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> exemption_probes.ProbeWorld:
+    subject = world(rbac_graph, "receptionist")
+    op = operational.seed_operational(subject)
+    rx = prescriptions.seed_prescription(subject)
+    tc = teleconsult.seed_teleconsult(subject, op, monkeypatch)
+    return exemption_probes.build_world(subject, op, rx, tc)
+
+
+_SYNTHETIC = {
+    "BILLING_SYNTHETIC_PIX": True,
+    "PRESCRIPTION_SYNTHETIC_SIGNING": True,
+    "PHYSICIAN_SYNTHETIC_REGISTRY": True,
+    "TELECONSULT_SYNTHETIC_PROVIDER": True,
+}
+
+
+def test_every_exemption_probe_is_staff_independent(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every census exemption runs, under all 13 staff states (10 roles,
+    none, all, the assigned physician), to one identical decision; the
+    declared class (success/refusal) holds, as deployed for patient code."""
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        assert len(probe_world.actors) == 13
+        failures: dict[str, object] = {}
+        for symbol, probe in sorted(exemption_probes.PROBES.items()):
+            try:
+                outcomes = exemption_probes.differential(probe, probe_world)
+            except AssertionError as error:
+                failures[symbol] = str(error)
+                continue
+            expected = {"success": "ok", "refusal": "raise"}[probe.reaches]
+            declared = (
+                {exemption_probes.baseline(probe, probe_world)[0]}
+                if probe.context == "patient"
+                else {kind for kind, _ in outcomes.values()}
+            )
+            print(  # noqa: T201 - per-probe evidence line (pytest -s)
+                "PROBE",
+                json.dumps(
+                    {
+                        "symbol": symbol,
+                        "context": probe.context,
+                        "reaches": probe.reaches,
+                        "baseline": sorted(declared),
+                        "states": len(outcomes),
+                        "outcomes": sorted({f"{k}:{v}" for k, v in outcomes.values()}),
+                    }
+                ),
+            )
+            if not exemption_probes.staff_independent(outcomes):
+                failures[symbol] = {
+                    state: f"{kind}:{value}"
+                    for state, (kind, value) in outcomes.items()
+                }
+            elif declared != {expected}:
+                failures[symbol] = (probe.context, declared, set(outcomes.values()))
+    if failures:
+        pytest.fail(
+            "\n".join(f"{symbol}: {detail}" for symbol, detail in failures.items())
+        )
+
+
+def test_differential_probe_classifies_a_gated_function_as_gated(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With a real probe, a permission-gated function is classified gated:
+    set_intake_policy decides differently across role states, so no
+    exemption for it could ever pass the probe execution."""
+    probe = exemption_probes.ExemptionProbe(
+        _POLICY,
+        "staff",
+        "success",
+        lambda pw: demographics.set_intake_policy(
+            clinic_id=pw.w.clinic, required_fields=[]
+        ),
+    )
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        outcomes = exemption_probes.differential(probe, probe_world)
+    assert not exemption_probes.staff_independent(outcomes)
+    allowed = {state for state, (kind, _) in outcomes.items() if kind == "ok"}
+    assert allowed == {
+        "all",
+        "clinic_admin",
+        "clinic_manager",
+        "finance",
+        "org_admin",
+        "owner",
+    }

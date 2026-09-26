@@ -177,6 +177,14 @@ _UF_VALUES: Final = frozenset(
     }
 )
 _CPF_ALL_SAME: Final = re.compile(r"^(\d)\1{10}$")
+_BR_DATE: Final = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
+# A deliberate non-answer is information: "declined" says more than
+# "not_informed", which says more than nothing at all.
+_NON_ANSWER_RANK: Final[Mapping[str | None, int]] = {
+    None: 0,
+    "not_informed": 1,
+    "declined": 2,
+}
 _PHONE_PATTERN: Final = re.compile(r"^\+?\d{8,15}$")
 _CORRECTION_HISTORY_LIMIT: Final = 20
 
@@ -229,6 +237,22 @@ class IdentifierOutcome:
 
     identifier_id: UUID
     matching_enrollment_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class NotCarried:
+    """One questionnaire answer carry-forward skipped, and why."""
+
+    field: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class CarryForwardOutcome:
+    """The version a carry-forward wrote (if any) and the skipped answers."""
+
+    version: PatientDemographics | None
+    not_carried: tuple[NotCarried, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,8 +404,11 @@ def _clean_birth_date(value: object, clinic: Clinic) -> date | None:
     if value is None or value == "":
         return None
     if type(value) is str:
+        # ISO (form inputs) or the pt-BR DD/MM/AAAA a patient types.
+        match = _BR_DATE.fullmatch(value.strip())
+        text = f"{match[3]}-{match[2]}-{match[1]}" if match else value
         try:
-            value = date.fromisoformat(value)
+            value = date.fromisoformat(text)
         except ValueError as error:
             raise DemographicsInputError from error
     if type(value) is not date:
@@ -862,40 +889,63 @@ def _carried_answers(
     current: PatientDemographics | None,
     patient: Patient,
     clinic: Clinic,
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[dict[str, object], dict[str, object], tuple[NotCarried, ...]]:
     """Map questionnaire answers to explicit changes and non-answers.
 
-    Only an explicit patient answer carries. A blank, whitespace-only,
-    missing or non-text answer means "no information supplied" and never
-    touches the record. An answer that is exactly ``not_informed`` or
-    ``declined`` (a template's deliberate non-answer option) is recorded
-    only where no value is on record: a patient's non-answer never clears
-    or downgrades a value staff recorded. An answer equal to the recorded
+    Only an explicit patient answer carries, and each field carries on its
+    own. A blank, whitespace-only, missing or non-text answer means "no
+    information supplied" and never touches the record. An answer that is
+    exactly ``not_informed`` or ``declined`` (a template's deliberate
+    non-answer option) never replaces a recorded value and carries only
+    when it says more than the recorded non-answer: a decline is never
+    downgraded to "not informed" or erased. An answer equal to the recorded
     value carries nothing, so a no-op never relabels the record as patient
-    reported.
+    reported. A malformed answer is skipped and reported as not carried;
+    the other answers still carry.
     """
     recorded = _version_values(current, patient)
     statuses = _version_unknown(current)
     changes: dict[str, object] = {}
     unknown: dict[str, object] = {}
+    skipped: list[NotCarried] = []
     for key, value in answers.items():
         answer = _explicit_answer(key, value)
         if answer is None:
             continue
         field, text = answer
-        on_record = recorded[field] not in (None, *UNKNOWN_DEMOGRAPHIC_VALUES)
         if text in UNKNOWN_DEMOGRAPHIC_VALUES:
-            if on_record:
-                continue
-            if field in CODED_FIELDS:
-                if recorded[field] != text:
-                    changes[field] = text
-            elif statuses.get(field) != text:
-                unknown[field] = text
+            _carry_non_answer(field, text, recorded, statuses, changes, unknown)
             continue
-        if _clean_field(field, text, clinic) != recorded[field]:
-            changes[field] = text
-    return changes, unknown
+        try:
+            cleaned = _clean_field(field, text, clinic)
+        except DemographicsInputError:
+            skipped.append(NotCarried(field=field, reason="invalid_value"))
+            continue
+        if cleaned != recorded[field]:
+            changes[field] = cleaned
+    return changes, unknown, tuple(skipped)
+
+
+def _carry_non_answer(  # noqa: PLR0913 - one field against the whole record
+    field: str,
+    text: str,
+    recorded: Mapping[str, FieldValue],
+    statuses: Mapping[str, str],
+    changes: dict[str, object],
+    unknown: dict[str, object],
+) -> None:
+    value = recorded[field]
+    if value not in (None, *UNKNOWN_DEMOGRAPHIC_VALUES):
+        return
+    held = value if field in CODED_FIELDS else statuses.get(field)
+    if _NON_ANSWER_RANK[text] <= _NON_ANSWER_RANK.get(
+        held if isinstance(held, str) else None, 0
+    ):
+        return
+    if field in CODED_FIELDS:
+        changes[field] = text
+    else:
+        unknown[field] = text
 
 
 def carry_forward_demographics(
@@ -903,15 +953,16 @@ def carry_forward_demographics(
     clinic_id: UUID,
     enrollment_id: UUID,
     reason: str,
-) -> PatientDemographics | None:
+) -> CarryForwardOutcome:
     """Carry explicit questionnaire answers into demographics, unverified.
 
     Answers whose keys name demographic fields (``q_<field>``) carry into a
     new version recorded with ``source='patient_reported'``, so staff
     surfaces present it as reported by the patient and unverified. Blank or
     missing answers supply no information and never erase what staff
-    recorded (see ``_carried_answers``). A response that supplies nothing
-    new changes nothing.
+    recorded, and a malformed answer is skipped on its own (see
+    ``_carried_answers``). ``version`` is ``None`` when nothing new carried;
+    ``not_carried`` names each skipped field and why.
     """
     with transaction.atomic():
         actor_id, clinic, enrollment = authorized_enrollment_for(
@@ -928,14 +979,14 @@ def carry_forward_demographics(
             .first()
         )
         if response is None or not isinstance(response.answers, dict):
-            return None
+            return CarryForwardOutcome(version=None, not_carried=())
         current = _latest_demographics(clinic.organization_id, enrollment.patient_id)
-        changes, unknown = _carried_answers(
+        changes, unknown, skipped = _carried_answers(
             response.answers, current, enrollment.patient, clinic
         )
         if not changes and not unknown:
-            return None
-        return _apply_demographics(
+            return CarryForwardOutcome(version=None, not_carried=skipped)
+        version = _apply_demographics(
             clinic=clinic,
             enrollment=enrollment,
             actor_id=actor_id,
@@ -946,6 +997,7 @@ def carry_forward_demographics(
             reason=" ".join(reason.split()),
             source="patient_reported",
         )
+        return CarryForwardOutcome(version=version, not_carried=skipped)
 
 
 def _current_identifiers(organization_id: UUID) -> QuerySet[PatientIdentifier]:
