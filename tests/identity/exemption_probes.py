@@ -3,23 +3,31 @@
 A census row labelled nonstaff, provider, infrastructure, presentation or
 data_operation claims "no staff permission gate here". Static analysis cannot
 prove that claim, so each such row must carry a probe here. The probe calls
-the real function on real PostgreSQL as ``clinic_app`` once per staff role
-state: the 10 permission-bundle roles, no role here (member elsewhere) and
-all roles at once. Every actor also holds an other-clinic role. The outcome
-(normalized result or exception type) must be identical across all 12
-states, the function body must actually run, and the outcome class must
-match the probe's declaration. A 13th state is the encounter's assigned
-physician, so a gate keyed on assignment rather than role (care scope)
-also shows up as a divergence. A gate in any form (partial, table, instance
-``__call__``, trigger, unqualified SQL call) changes the executed outcome
-for some state, so no spelling or indirection can hide it.
+the real function on real PostgreSQL as ``clinic_app`` once per state of the
+staff-state matrix (identity/probe_states.py), whose dimensions are derived
+from the inputs the live permission decision reads: the role power set,
+professional registration and care-team values, legacy profiles, encounter
+assignment, inactive users, memberships elsewhere and role-grant removals.
+A probe certifies the exemption only when, across every state:
+- the outcome is exactly identical: the full canonical result or the raised
+  type and message (``canonical``), with any per-call noise normalized by
+  an explicit, justified ``normalize`` on that probe;
+- every line of the body holding a call executed in at least one state
+  (``gate_lines``, observed through ``sys.monitoring`` LINE events), so a
+  gate behind an input the probe never supplies cannot pass as absent;
+- the body started in every state, and the primary input reaches the
+  declared class (success or refusal).
+A gate in any form (partial, table, instance ``__call__``, trigger,
+unqualified SQL call, a value change without a branch) changes the executed
+outcome for some state, so no spelling or indirection can hide it.
 
 Contexts:
 - ``staff``: inside ``tenant_context(actor, organization)``.
 - ``patient``: inside the seeded patient session, with the actor's
   user/tenant GUCs injected, so a function that consulted staff authority
-  would diverge. The call also runs once as deployed (no staff GUC), and
-  that baseline must reach the declared outcome class.
+  would diverge. The call also runs once as deployed (no staff GUC is bound,
+  which ``baseline`` asserts); that run must reach the declared outcome
+  class, and the lines it executes count towards ``gate_lines``.
 - ``entry``: sessionless callers (redemption, provider callbacks, commands)
   with the actor's GUCs set at session level.
 - ``entry_bare``: like ``entry`` but outside any savepoint, for context
@@ -29,15 +37,26 @@ Every call runs in a savepoint that is rolled back, except ``entry_bare``.
 
 from __future__ import annotations
 
+import base64
+import dataclasses
+import dis
 import hashlib
+import io
+import os
+import re
 import sys
-from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, Final, Literal
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
+from dataclasses import dataclass, fields, is_dataclass
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
+from enum import Enum
+from pathlib import Path
+from time import perf_counter
+from types import CodeType, SimpleNamespace
+from typing import TYPE_CHECKING, Final, Literal, Self
 from uuid import UUID, uuid4
 
+import coverage
 from apps.audit.events import build_phase1_audit_event
 from apps.audit.services import _record_system_event, record_event
 from apps.billing import presentation as billing_presentation
@@ -52,14 +71,17 @@ from apps.consent import services as consent
 from apps.consent.models import ConsentAcceptance, ConsentText
 from apps.core.fairness import _organization_quotas
 from apps.ehr import finalization
+from apps.ehr.attachment_migration import ObjectMigrationReceipt
+from apps.ehr.management.commands import (
+    encrypt_attachment_objects as attachment_command,
+)
 from apps.ehr.management.commands.encrypt_attachment_objects import (
     Command as EncryptAttachmentObjects,
 )
 from apps.ehr.models import ClinicalDocumentVersion, Encounter
 from apps.identity.management.base import owner_tty
 from apps.identity.management.bootstrap import BootstrapRequest, bootstrap_clinic
-from apps.identity.models import Clinic, User, UserClinicRole
-from apps.identity.permissions import BUNDLES_V1
+from apps.identity.models import Clinic
 from apps.identity.phase1a_identity_acl_migration import remove_runtime_identity_acl
 from apps.intake import patient_access, questionnaire_views, questionnaires
 from apps.intake.patient_access import PATIENT_SESSION_KEY
@@ -73,34 +95,40 @@ from apps.scheduling import (
     waitlist,
     waitlist_views,
 )
+from apps.scheduling.models import WaitlistEntry, WaitlistOffer
+from apps.scheduling.services import SlotConflict
 from apps.teleconsult import services as teleconsult
 from apps.teleconsult import views as teleconsult_views
-from apps.teleconsult.models import TeleconsultCredential
+from apps.teleconsult.models import TeleconsultCredential, TeleconsultSession
 from apps.tenancy import envelope
 from apps.tenancy.db import clear_connection_tenant_gucs, tenant_context
 from apps.tenancy.middleware import TenantMiddleware
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.messages.middleware import MessageMiddleware
 from django.contrib.sessions.backends.db import SessionStore
+from django.core import signing as signing_core
 from django.db import connection, transaction
+from django.db.models import Model
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.test import RequestFactory
+from PIL import Image
 
+from auth.stepup_test_support import STEP_UP_NOW, verified_request
+from identity import probe_states
 from identity.legacy_parity_support import target_code
-from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from identity.legacy_operational_boundaries import OperationalSubjects
     from identity.legacy_parity_support import LegacyWorld
     from identity.legacy_prescription_boundaries import PrescriptionSubjects
     from identity.legacy_teleconsult_boundaries import TeleconsultSubjects
-    from rbac_fixtures import RbacGraph
 
 type Context = Literal["staff", "patient", "entry", "entry_bare"]
+type Outcome = tuple[object, ...]
 type Reaches = Literal["success", "refusal"]
 _PLAINTEXT: Final = b"synthetic-probe"
 _PURPOSE: Final = "intake.patientdemographics.occupation"
@@ -108,70 +136,58 @@ _PURPOSE: Final = "intake.patientdemographics.occupation"
 
 @dataclass(frozen=True, slots=True)
 class ProbeWorld:
-    """The seeded parity world plus the 12 staff role states."""
+    """The seeded parity world plus the staff-state matrix."""
 
     w: LegacyWorld
     op: OperationalSubjects
     rx: PrescriptionSubjects
     tc: TeleconsultSubjects
-    actors: dict[str, UUID]
+    matrix: probe_states.Matrix
     invitation_code: str
     authority: object
     offer: str
     slot_token: str
     patient_credential: TeleconsultCredential
-    text_id: UUID
+    text: ConsentText
     acceptance_id: UUID
     released_version: UUID
     clinic: Clinic
     encounter: Encounter
     envelope: bytes
     sealed: bytes
+    fresh_request: HttpRequest
+    charge_row: tuple[object, ...]
+    offer_id: UUID
 
     @property
     def organization(self) -> UUID:
         return self.w.graph.organization_a
 
+    @property
+    def actors(self) -> dict[str, UUID]:
+        """State label -> actor, in execution order."""
+        return {state.label: state.actor for state in self.matrix.states}
+
 
 @dataclass(frozen=True, slots=True)
 class ExemptionProbe:
-    """One exempt symbol, the context it runs in, the call and its outcome."""
+    """One exempt symbol, the context it runs in, the call and its outcome.
+
+    Outcomes are compared exactly. ``normalize`` may map an outcome before
+    the comparison only where a part of it changes on every call for a
+    non-permission reason; ``why`` must say what and why, and the
+    normalized part must actually differ between two runs of one state
+    (``test_every_exemption_probe_is_staff_independent`` checks it).
+    ``code`` overrides the target code (a probe of a mutated copy).
+    """
 
     symbol: str
     context: Context
     reaches: Reaches
     invoke: Callable[[ProbeWorld], object]
-
-
-def role_states(graph: RbacGraph) -> dict[str, UUID]:
-    """Create 12 actors: each bundle role, none here, all roles here.
-
-    ``build_world`` adds the 13th state, the encounter's assigned physician.
-    """
-    states: dict[str, tuple[UserClinicRole.Role, ...]] = {
-        role: (UserClinicRole.Role(role),) for role in sorted(BUNDLES_V1)
-    }
-    states["none"] = ()
-    states["all"] = tuple(UserClinicRole.Role(role) for role in BUNDLES_V1)
-    actors: dict[str, UUID] = {}
-    for label, roles in states.items():
-        actor = User.objects.create(username=f"probe-{label}-{uuid4().hex}")
-        with owner_context(graph.organization_a):
-            UserClinicRole.objects.create(
-                organization_id=graph.organization_a,
-                clinic_id=graph.clinic_b,
-                user_id=actor.pk,
-                role=UserClinicRole.Role.RECEPTIONIST,
-            )
-            for role in roles:
-                UserClinicRole.objects.create(
-                    organization_id=graph.organization_a,
-                    clinic_id=graph.clinic_a,
-                    user_id=actor.pk,
-                    role=role,
-                )
-        actors[label] = actor.pk
-    return actors
+    normalize: Callable[[Outcome], Outcome] | None = None
+    why: str = ""
+    code: CodeType | None = None
 
 
 def build_world(
@@ -187,6 +203,7 @@ def build_world(
         )
         sealed = envelope.encrypt(purpose=_PURPOSE, plaintext=_PLAINTEXT)
         protected = envelope.protect(purpose=_PURPOSE, plaintext=_PLAINTEXT)
+        charge_row = _charge_row(w, op)
     with setup_context(w.graph.organization_a):
         text = ConsentText.objects.filter(clinic_id=w.clinic).latest("created_at")
         acceptance = ConsentAcceptance.objects.filter(clinic_id=w.clinic).latest(
@@ -200,6 +217,7 @@ def build_world(
         assert released is not None
         clinic = Clinic.objects.get(pk=w.clinic)
         encounter = Encounter.objects.get(pk=w.encounter)
+        offer_id = _waitlist_offer(w, op)
     with runtime_role(), patient_access.patient_session_context(op.patient_session):
         authority = consent.patient_authority()
         _, offer = consent.prepare_acceptance(text_id=text.pk)
@@ -209,27 +227,84 @@ def build_world(
         credential = TeleconsultCredential.objects.select_related("session").get(
             token_digest=hashlib.sha256(join.token.encode()).hexdigest()
         )
-    actors = role_states(w.graph)
-    actors["assigned"] = w.graph.physician
     return ProbeWorld(
         w=w,
         op=op,
         rx=rx,
         tc=tc,
-        actors=actors,
+        matrix=probe_states.build_states(w.graph, w.graph.physician),
         authority=authority,
         offer=offer,
         slot_token=slots[0].token if slots else "no-slot",
         patient_credential=credential,
         invitation_code=invitation.secret,
-        text_id=text.pk,
+        text=text,
         acceptance_id=acceptance.pk,
         released_version=released.pk,
         clinic=clinic,
         encounter=encounter,
         envelope=protected,
         sealed=sealed,
+        fresh_request=_fresh_request(w),
+        charge_row=charge_row,
+        offer_id=offer_id,
     )
+
+
+def _fresh_request(w: LegacyWorld) -> HttpRequest:
+    """A step-up-fresh request; its lazy OTP device resolves as that user."""
+    request = verified_request(w.graph.physician, verified_at=STEP_UP_NOW)
+    with runtime_role(), tenant_context(w.graph.physician, w.graph.organization_a):
+        assert request.user.is_verified()  # type: ignore[union-attr]
+    return request
+
+
+def _charge_row(w: LegacyWorld, op: OperationalSubjects) -> tuple[object, ...]:
+    """A released Pix charge row, as billing_patient_charge would return it."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 3)).save(buffer, format="PNG")
+    qr = base64.b64encode(buffer.getvalue())
+    return (
+        op.invoice.pk,
+        "SINTETICO-REF",
+        100,
+        "BRL",
+        "issued",
+        datetime(2035, 1, 1, tzinfo=UTC),
+        None,
+        None,
+        envelope.protect(purpose="billing.pixcharge.copy_code", plaintext=b"0002SINT"),
+        envelope.protect(purpose="billing.pixcharge.qr_base64", plaintext=qr),
+        datetime(2035, 1, 2, tzinfo=UTC),
+        False,
+        "America/Sao_Paulo",
+    )
+
+
+def _waitlist_offer(w: LegacyWorld, op: OperationalSubjects) -> UUID:
+    """A pending offer to the probe patient inside the seeded availability."""
+    starts = datetime(2035, 6, 3, 11, 30, tzinfo=UTC)
+    ends = datetime(2035, 6, 3, 12, 0, tzinfo=UTC)
+    entry = WaitlistEntry.objects.create(
+        organization_id=w.graph.organization_a,
+        clinic_id=w.clinic,
+        patient_id=w.appointment.patient_id,
+        enrollment_id=op.enrollment,
+        practitioner_id=w.graph.physician,
+        practitioner_label="Sintetico",
+        start_at=starts,
+        end_at=ends,
+        state=WaitlistEntry.State.OFFERED,
+    )
+    return WaitlistOffer.objects.create(
+        organization_id=w.graph.organization_a,
+        clinic_id=w.clinic,
+        practitioner_id=w.graph.physician,
+        entry=entry,
+        start_at=starts,
+        end_at=ends,
+        expires_at=datetime(2035, 6, 1, tzinfo=UTC),
+    ).pk
 
 
 def _request(pw: ProbeWorld, method: str = "GET", data: object = None) -> HttpRequest:
@@ -269,26 +344,146 @@ _RANGE: Final = (
 )
 
 
-def _audit(pw: ProbeWorld) -> object:
-    event = build_phase1_audit_event(
+class Each(tuple[Outcome, ...]):
+    """Outcomes of several inputs to one function; the first is primary.
+
+    Each input runs in its own savepoint (except in ``entry_bare``), so
+    one input's writes never reach the next. Extra inputs exist to drive
+    every call line of the body in some state (``gate_lines``).
+    """
+
+    __slots__ = ()
+
+
+def _each(*calls: Callable[[], object]) -> Each:
+    return Each(_outcome(call, savepoint=True) for call in calls)
+
+
+def _each_bare(*calls: Callable[[], object]) -> Each:
+    return Each(_outcome(call, savepoint=False) for call in calls)
+
+
+def reached(outcome: Outcome) -> str:
+    """The outcome class (ok/raise) of the primary input."""
+    value = outcome[1] if outcome[0] == "ok" else None
+    if isinstance(value, tuple) and value[:1] == ("Each",):
+        primary = value[1][0]
+        assert isinstance(primary, tuple)
+        return str(primary[0])
+    return str(outcome[0])
+
+
+@contextmanager
+def _as_owner() -> Iterator[None]:
+    """Run as clinic_owner, the deployed role of owner-only code paths.
+
+    SET ROLE is transactional: an error rolls the savepoint back and with
+    it the role; success switches back to the runtime role explicitly.
+    """
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("RESET ROLE")
+        yield
+        cursor.execute("SET ROLE clinic_app")
+
+
+@contextmanager
+def _answer(fragment: str, sql: str, params: Sequence[object] = ()) -> Iterator[None]:
+    """Answer every statement containing ``fragment`` with ``sql`` instead.
+
+    Drives a body past a resolver that returns nothing (or forces a
+    defensive empty result); the real resolver still runs in the primary
+    input under every state.
+    """
+
+    def wrapper(
+        execute: Callable[..., object],
+        statement: str,
+        parameters: object,
+        many: bool,
+        context: object,
+    ) -> object:
+        if fragment in statement:
+            return execute(sql, list(params), many, context)
+        return execute(statement, parameters, many, context)
+
+    with connection.execute_wrapper(wrapper):
+        yield
+
+
+@contextmanager
+def _forced(owner: object, name: str, value: object) -> Iterator[None]:
+    """Replace one module global for one input (a forced branch)."""
+    original = getattr(owner, name)
+    setattr(owner, name, value)
+    try:
+        yield
+    finally:
+        setattr(owner, name, original)
+
+
+def _raiser(error: BaseException) -> Callable[..., object]:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise error
+
+    return fail
+
+
+_NOTHING: Final = "SELECT 1 WHERE false"
+
+
+def _with(*contexts: object) -> Callable[[Callable[[], object]], Callable[[], object]]:
+    """Bind context managers around a thunk."""
+
+    def bind(call: Callable[[], object]) -> Callable[[], object]:
+        def run() -> object:
+            with ExitStack() as stack:
+                for context in contexts:
+                    stack.enter_context(context)  # type: ignore[arg-type]
+                return call()
+
+        return run
+
+    return bind
+
+
+def _audit_event(pw: ProbeWorld) -> object:
+    return build_phase1_audit_event(
         "intake.patient.searched",
         clinic_id=pw.w.clinic,
         affected_record_id=pw.w.clinic,
     )
-    return record_event(event.event, payload=event.payload)
+
+
+def _audit(pw: ProbeWorld) -> object:
+    def append() -> object:
+        event = _audit_event(pw)
+        return record_event(event.event, payload=event.payload)  # type: ignore[attr-defined]
+
+    return _each(
+        append,
+        _with(_answer("current_setting('app.current_tenant'", _NOTHING))(append),
+        _with(_answer("clinic_app.audit_append(", _NOTHING))(append),
+    )
 
 
 def _system_audit(pw: ProbeWorld) -> object:
-    event = build_phase1_audit_event(
-        "intake.patient.searched",
-        clinic_id=pw.w.clinic,
-        affected_record_id=pw.w.clinic,
-    )
-    return _record_system_event(event.event, payload=event.payload)
+    def append() -> object:
+        event = _audit_event(pw)
+        return _record_system_event(event.event, payload=event.payload)  # type: ignore[attr-defined]
+
+    def owner() -> object:
+        with _as_owner():
+            return append()
+
+    def owner_empty() -> object:
+        with _as_owner(), _answer("audit_append_system(", _NOTHING):
+            return append()
+
+    return _each(append, owner, owner_empty)
 
 
-def _bootstrap(pw: ProbeWorld) -> object:
-    request = BootstrapRequest(
+def _bootstrap_request() -> BootstrapRequest:
+    return BootstrapRequest(
         organization_id=uuid4(),
         organization_name="Probe",
         cnpj="00000000000191",
@@ -300,21 +495,122 @@ def _bootstrap(pw: ProbeWorld) -> object:
         owner_username=f"probe-{uuid4().hex}",
         owner_email="probe@example.invalid",
     )
+
+
+def _bootstrap(pw: ProbeWorld) -> object:
     del pw
-    bootstrap_clinic(request, "synthetic-probe-password")
-    return None
+
+    def run() -> object:
+        bootstrap_clinic(_bootstrap_request(), "synthetic-probe-password")
+        return None
+
+    def owner() -> object:
+        with _as_owner():
+            return run()
+
+    return _each(run, owner)
 
 
 def _record_consent(pw: ProbeWorld) -> object:
-    return consent.record_consent(
-        offer=pw.offer, purpose="teleconsultation", accepted=True
+    def record(offer: str, *, accepted: bool = True) -> Callable[[], object]:
+        return lambda: consent.record_consent(
+            offer=offer, purpose="teleconsultation", accepted=accepted
+        )
+
+    stale = signing_core.dumps(
+        {"text": str(pw.text.pk), "purpose": "teleconsultation", "digest": "stale"},
+        salt=f"consent.offer:{pw.op.patient_session}",
     )
+
+    def revoked() -> object:
+        consent.revoke_consent(acceptance_id=pw.acceptance_id)
+        return consent.record_consent(
+            offer=pw.offer, purpose="teleconsultation", accepted=True
+        )
+
+    def fresh_text() -> object:
+        # A newer text version has no acceptance yet: the created branch.
+        # The publication guard binds the publisher as the acting user.
+        text = pw.text
+        with _as_owner(), _bound(pw, text.published_by_id):
+            newer = ConsentText.objects.create(
+                organization_id=text.organization_id,
+                clinic_id=text.clinic_id,
+                purpose=text.purpose,
+                version=text.version + 1,
+                text="Sintetico nova",
+                language=text.language,
+                digest=hashlib.sha256(b"Sintetico nova").hexdigest(),
+                published_by_id=text.published_by_id,
+            )
+        _, offer = consent.prepare_acceptance(text_id=newer.pk)
+        return consent.record_consent(
+            offer=offer, purpose="teleconsultation", accepted=True
+        )
+
+    return _each(
+        record(pw.offer),
+        record(pw.offer, accepted=False),
+        record(stale),
+        revoked,
+        fresh_text,
+    )
+
+
+_GUCS: Final = ("app.current_tenant", "app.current_user_id")
+
+
+@contextmanager
+def _bound(pw: ProbeWorld, user: UUID) -> Iterator[None]:
+    """Bind tenant and user for one staff-side write, then restore both.
+
+    Runs inside ``_as_owner``'s savepoint: an error rolls the settings back
+    with it, success restores them explicitly.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.current_setting(%s, true), "
+            "pg_catalog.current_setting(%s, true)",
+            list(_GUCS),
+        )
+        saved = cursor.fetchone() or ("", "")
+        for setting, value in zip(_GUCS, (pw.organization, user), strict=True):
+            cursor.execute(
+                "SELECT pg_catalog.set_config(%s, %s, true)", [setting, str(value)]
+            )
+    yield
+    with connection.cursor() as cursor:
+        for setting, value in zip(_GUCS, saved, strict=True):
+            cursor.execute(
+                "SELECT pg_catalog.set_config(%s, %s, true)", [setting, value or ""]
+            )
 
 
 def _owner_tty(pw: ProbeWorld) -> object:
     del pw
-    with owner_tty() as tty:
-        return tty.writable()
+
+    def enter() -> object:
+        with owner_tty() as tty:
+            return tty.writable()
+
+    def with_terminal() -> object:
+        # The deployed shape: a controlling terminal and the owner role.
+        leader, follower = os.openpty()
+        terminal = os.ttyname(follower)
+        original = Path.open
+
+        def opener(self: Path, *args: object, **kwargs: object) -> object:
+            target = Path(terminal) if str(self) == "/dev/tty" else self
+            return original(target, *args, **kwargs)  # type: ignore[call-overload]
+
+        try:
+            with _forced(Path, "open", opener), _as_owner():
+                return enter()
+        finally:
+            os.close(leader)
+            os.close(follower)
+
+    return _each(enter, with_terminal)
 
 
 def _session_entry(pw: ProbeWorld) -> object:
@@ -323,8 +619,306 @@ def _session_entry(pw: ProbeWorld) -> object:
 
 
 def _middleware_patient(pw: ProbeWorld) -> object:
-    middleware = TenantMiddleware(lambda _request: HttpResponse(status=204))
-    return middleware._patient(_request(pw))
+    def patient(status: int, request: HttpRequest) -> Callable[[], object]:
+        middleware = TenantMiddleware(lambda _request: HttpResponse(status=status))
+        return lambda: middleware._patient(request)
+
+    anonymous = _request(pw)
+    anonymous.session = SessionStore()
+    unknown = _request(pw)
+    unknown.session[PATIENT_SESSION_KEY] = str(uuid4())
+    return _each_bare(
+        patient(204, _request(pw)),
+        patient(204, anonymous),
+        patient(204, unknown),
+        patient(500, _request(pw)),
+    )
+
+
+def _attachments(pw: ProbeWorld) -> object:
+    def handle(**options: object) -> Callable[[], object]:
+        def run() -> object:
+            output = io.StringIO()
+            EncryptAttachmentObjects(stdout=output).handle(**options)
+            return output.getvalue()
+
+        return run
+
+    organization = [str(pw.organization)]
+    failing = ObjectMigrationReceipt(
+        organizations=1, already_enveloped=0, migrated=0, failed=1
+    )
+    return _each(
+        handle(),
+        handle(organization_id=["not-a-uuid"]),
+        handle(organization_id=organization),
+        _with(_as_owner())(handle(organization_id=organization)),
+        _with(
+            _as_owner(),
+            _forced(
+                attachment_command, "migrate_attachment_objects", lambda _ids: failing
+            ),
+        )(handle(organization_id=organization)),
+    )
+
+
+def _acl_reverse(pw: ProbeWorld) -> object:
+    del pw
+
+    def reverse(editor_factory: Callable[[], object]) -> Callable[[], object]:
+        def run() -> object:
+            with editor_factory() as editor:  # type: ignore[attr-defined]
+                remove_runtime_identity_acl(None, editor)  # type: ignore[arg-type]
+            return None
+
+        return run
+
+    def owner() -> object:
+        with _as_owner():
+            return reverse(lambda: connection.schema_editor(atomic=False))()
+
+    return _each(
+        reverse(lambda: nullcontext(SimpleNamespace(connection=connection))),
+        owner,
+    )
+
+
+def _owner_only(call: Callable[[], object]) -> object:
+    """An owner-only function as the runtime role (refused) and as owner."""
+
+    def owner() -> object:
+        with _as_owner():
+            return call()
+
+    return _each(call, owner)
+
+
+def _charge_sql(width: int) -> str:
+    return "SELECT " + ", ".join(["%s"] * width)
+
+
+def _patient_charge(pw: ProbeWorld) -> object:
+    call = lambda: billing_presentation.patient_charge(invoice_id=pw.op.invoice.pk)  # noqa: E731
+    row = pw.charge_row
+    return _each(
+        call,
+        _with(_answer("billing_patient_charge(", _charge_sql(len(row)), row))(call),
+    )
+
+
+def _resolve_charge(pw: ProbeWorld) -> object:
+    call = lambda: reconciliation._resolve_charge(SYNTHETIC_PROVIDER, "probe-reference")  # noqa: E731
+    state = dataclasses.replace(_charge_state(pw), operation_id=_OPERATION)
+    row = tuple(getattr(state, item.name) for item in fields(state))
+    return _each(
+        call,
+        _with(_answer("billing_payment_event_scope(", _charge_sql(len(row)), row))(
+            call
+        ),
+    )
+
+
+def _callback_scope(pw: ProbeWorld) -> object:
+    call = lambda: signing._resolve_callback_scope(  # noqa: E731
+        pw.rx.operation.provider, str(pw.rx.operation.pk)
+    )
+    row = (
+        pw.rx.operation.pk,
+        pw.organization,
+        pw.w.clinic,
+        pw.w.graph.physician,
+        pw.rx.operation.provider,
+    )
+    return _each(
+        call,
+        _with(_answer("prescription_signature_callback_scope(", _charge_sql(5), row))(
+            call
+        ),
+    )
+
+
+_ISSUED: Final = datetime(2035, 1, 1, tzinfo=UTC)
+_OPERATION: Final = UUID("00000000-0000-4000-8000-00000000c0de")
+
+
+def _patient_documents(pw: ProbeWorld) -> object:
+    call = verification.patient_documents
+    row = (pw.rx.document.pk, 1, "released", _ISSUED, "https://verify.invalid/x")
+    return _each(
+        call,
+        _with(_answer("prescription_patient_documents(", _charge_sql(5), row))(call),
+    )
+
+
+def _patient_download(pw: ProbeWorld) -> object:
+    call = lambda: verification.patient_document_download(  # noqa: E731
+        document_id=pw.rx.document.pk
+    )
+    return _each(
+        call,
+        _with(
+            _answer("prescription_patient_document_bytes(", "SELECT %s", [b"%PDF"]),
+            _answer("prescription_document_viewed(", "SELECT 1"),
+        )(call),
+    )
+
+
+def _record_download(pw: ProbeWorld) -> object:
+    call = lambda: verification._record_patient_download(pw.rx.document.pk)  # noqa: E731
+    return _each(
+        call,
+        _with(_answer("prescription_document_viewed(", "SELECT 1"))(call),
+        _with(_answer("prescription_document_viewed(", _NOTHING))(call),
+    )
+
+
+def _identity_state(pw: ProbeWorld) -> object:
+    return _each(
+        lambda: prescription_views._identity_state(pw.w.request),
+        lambda: prescription_views._identity_state(pw.fresh_request),
+    )
+
+
+def _questionnaires(pw: ProbeWorld) -> object:
+    response = str(pw.op.response.pk)
+    revision = str(pw.op.response.revision)
+
+    def post(**data: str) -> Callable[[], object]:
+        return lambda: questionnaire_views.patient_questionnaires(
+            _request(pw, "POST", data)
+        )
+
+    return _each(
+        lambda: questionnaire_views.patient_questionnaires(_request(pw)),
+        post(response_id=response, action="open"),
+        post(response_id=response, action="save", revision=revision, q_synthetic="a"),
+        post(response_id=response, action="submit", revision=revision),
+        post(response_id=response, action="save", revision="99"),
+        post(response_id=response, action="other"),
+        post(response_id="not-a-uuid", action="open"),
+    )
+
+
+def _slots(pw: ProbeWorld) -> object:
+    return _each(
+        lambda: patient_booking.patient_slots(date(2035, 6, 3)),
+        lambda: patient_booking.patient_slots(
+            date(2035, 6, 3), appointment_id=pw.w.appointment.pk
+        ),
+    )
+
+
+def _patient_submit(pw: ProbeWorld) -> object:
+    def submit(**data: str) -> Callable[[], object]:
+        return lambda: patient_views._submit(_request(pw, "POST", data), str(uuid4()))
+
+    # Book and reschedule only need their call lines executed: an unknown
+    # slot token is refused by the callee after the line ran.
+    appointment = str(pw.w.appointment.pk)
+    return _each(
+        submit(action="cancel", appointment_id=appointment),
+        submit(action="book", slot="unknown-slot"),
+        submit(action="reschedule", appointment_id=appointment, slot="unknown-slot"),
+    )
+
+
+def _respond(pw: ProbeWorld) -> object:
+    def respond(*, accept: bool) -> Callable[[], object]:
+        return lambda: waitlist.respond_to_offer(pw.offer_id, accept=accept)
+
+    def booked(*_args: object) -> object:
+        return pw.w.appointment
+
+    # Each accepting input forces _book_offer's result, so every branch
+    # after the booking call runs without a real booking per state.
+    return _each(
+        lambda: waitlist.respond_to_offer(uuid4(), accept=True),
+        respond(accept=False),
+        _with(
+            _forced(
+                waitlist, "_book_offer", _raiser(waitlist._ExpiredDuringBookingError())
+            )
+        )(respond(accept=True)),
+        _with(_forced(waitlist, "_book_offer", _raiser(SlotConflict())))(
+            respond(accept=True)
+        ),
+        _with(_forced(waitlist, "_book_offer", booked))(respond(accept=True)),
+    )
+
+
+def _patient_join(pw: ProbeWorld) -> object:
+    call = lambda: teleconsult.request_patient_join(session_id=pw.tc.session.pk)  # noqa: E731
+    states = tuple(TeleconsultSession.State.values)
+    return _each(
+        call,
+        _with(_forced(teleconsult, "_TERMINAL_STATES", states))(call),
+        _with(_forced(teleconsult, "_room_ready", lambda _session: False))(call),
+        _with(
+            _forced(
+                teleconsult, "_liveness_failure", lambda _session: "consent_revoked"
+            )
+        )(call),
+    )
+
+
+type _Normalizer = Callable[[Outcome], Outcome]
+_CSRF: Final = re.compile(rb'(name="csrfmiddlewaretoken" value=")[^"]*')
+_SIGNED_AT: Final = re.compile(r"^(eyJ[^:]*):[0-9A-Za-z]+:[-_0-9A-Za-z]+$")
+
+
+def _rewrite(node: object, change: Callable[[object], object]) -> object:
+    node = change(node)
+    if isinstance(node, tuple):
+        return tuple(_rewrite(item, change) for item in node)
+    return node
+
+
+def _fields(*names: str, why: str) -> tuple[_Normalizer, str]:
+    """Blank the named fields wherever they occur in the outcome."""
+
+    def change(node: object) -> object:
+        if (
+            isinstance(node, tuple)
+            and len(node) == 2
+            and node[0] in names
+            and isinstance(node[1], tuple)
+        ):
+            return (node[0], ("volatile",))
+        return node
+
+    return (lambda outcome: _rewrite(outcome, change), why)  # type: ignore[return-value]
+
+
+def _leaves(
+    pattern: re.Pattern[bytes] | re.Pattern[str], *, why: str
+) -> tuple[_Normalizer, str]:
+    """Blank the per-call part of matching text or bytes leaves."""
+
+    def change(node: object) -> object:
+        if isinstance(node, bytes) and isinstance(pattern.pattern, bytes):
+            return pattern.sub(rb"\1<volatile>", node)
+        if isinstance(node, str) and isinstance(pattern.pattern, str):
+            return pattern.sub(r"\1:<volatile>", node)
+        return node
+
+    return (lambda outcome: _rewrite(outcome, change), why)  # type: ignore[return-value]
+
+
+def _fresh_ids(*inputs: int) -> tuple[_Normalizer, str]:
+    """Blank the audit row id the given inputs return (a sequence value)."""
+
+    def change(outcome: Outcome) -> Outcome:
+        kind, value = outcome[0], outcome[1] if len(outcome) > 1 else None
+        if kind != "ok" or not isinstance(value, tuple) or value[:1] != ("Each",):
+            return outcome
+        subs = list(value[1])
+        for index in inputs:
+            sub = subs[index]
+            if sub[0] == "ok" and sub[1][0] == "int":
+                subs[index] = ("ok", ("int", "fresh sequence value"))
+        return ("ok", ("Each", tuple(subs)))
+
+    return (change, "audit_append returns the next audit sequence value per call")
 
 
 def _probes() -> tuple[ExemptionProbe, ...]:
@@ -336,8 +930,20 @@ def _probes() -> tuple[ExemptionProbe, ...]:
     probe = ExemptionProbe
     return (
         # Infrastructure: audit, fairness, envelope, owner-only commands.
-        probe("apps.audit.services.record_event", staff, ok, _audit),
-        probe("apps.audit.services._record_system_event", staff, no, _system_audit),
+        probe(
+            "apps.audit.services.record_event",
+            staff,
+            ok,
+            _audit,
+            *_fresh_ids(0),
+        ),
+        probe(
+            "apps.audit.services._record_system_event",
+            staff,
+            no,
+            _system_audit,
+            *_fresh_ids(1),
+        ),
         probe(
             "apps.core.fairness._organization_quotas",
             staff,
@@ -348,7 +954,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.ehr.management.commands.encrypt_attachment_objects.Command.handle",
             entry,
             no,
-            lambda pw: EncryptAttachmentObjects().handle(),
+            _attachments,
         ),
         probe("apps.identity.management.base.owner_tty", entry, no, _owner_tty),
         probe(
@@ -358,10 +964,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.identity.phase1a_identity_acl_migration.remove_runtime_identity_acl",
             entry,
             no,
-            lambda pw: remove_runtime_identity_acl(
-                None,  # type: ignore[arg-type]
-                SimpleNamespace(connection=connection),  # type: ignore[arg-type]
-            ),
+            _acl_reverse,
         ),
         probe(
             "apps.tenancy.envelope.decrypt",
@@ -387,7 +990,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.tenancy.envelope.issue_tenant_key",
             staff,
             no,
-            lambda pw: envelope.issue_tenant_key(),
+            lambda pw: _owner_only(envelope.issue_tenant_key),
         ),
         probe(
             "apps.tenancy.envelope.protect",
@@ -405,12 +1008,16 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.tenancy.envelope.reencrypt",
             staff,
             no,
-            lambda pw: (
-                envelope.decrypt(
-                    purpose=_PURPOSE,
-                    envelope=envelope.reencrypt(purpose=_PURPOSE, envelope=pw.sealed),
+            lambda pw: _owner_only(
+                lambda: (
+                    envelope.decrypt(
+                        purpose=_PURPOSE,
+                        envelope=envelope.reencrypt(
+                            purpose=_PURPOSE, envelope=pw.sealed
+                        ),
+                    )
+                    == _PLAINTEXT
                 )
-                == _PLAINTEXT
             ),
         ),
         probe(
@@ -425,13 +1032,15 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.tenancy.envelope.rewrap_tenant_keys",
             staff,
             no,
-            lambda pw: envelope.rewrap_tenant_keys(new_kek="ab" * 32),
+            lambda pw: _owner_only(
+                lambda: envelope.rewrap_tenant_keys(new_kek="ab" * 32)
+            ),
         ),
         probe(
             "apps.tenancy.envelope.tenant_key_status",
             staff,
             no,
-            lambda pw: envelope.tenant_key_status(),
+            lambda pw: _owner_only(envelope.tenant_key_status),
         ),
         # Provider callbacks: sessionless, resolved by stored references.
         probe(
@@ -458,9 +1067,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.billing.reconciliation._resolve_charge",
             entry,
             ok,
-            lambda pw: reconciliation._resolve_charge(
-                SYNTHETIC_PROVIDER, "probe-reference"
-            ),
+            _resolve_charge,
         ),
         probe(
             "apps.billing.reconciliation._superseded",
@@ -474,9 +1081,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.prescription.signing._resolve_callback_scope",
             entry,
             ok,
-            lambda pw: signing._resolve_callback_scope(
-                pw.rx.operation.provider, str(pw.rx.operation.pk)
-            ),
+            _callback_scope,
         ),
         probe(
             "apps.prescription.signing._resolve_operation_scope",
@@ -513,14 +1118,14 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.prescription.views._identity_state",
             staff,
             ok,
-            lambda pw: sorted(prescription_views._identity_state(pw.w.request)),
+            _identity_state,
         ),
         # Patient-session functions: the actor's staff GUCs are injected.
         probe(
             "apps.billing.presentation.patient_charge",
             patient,
             ok,
-            lambda pw: billing_presentation.patient_charge(invoice_id=pw.op.invoice.pk),
+            _patient_charge,
         ),
         probe(
             "apps.billing.services.patient_charges",
@@ -548,7 +1153,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.consent.services.prepare_acceptance",
             patient,
             ok,
-            lambda pw: consent.prepare_acceptance(text_id=pw.text_id),
+            lambda pw: consent.prepare_acceptance(text_id=pw.text.pk),
         ),
         probe("apps.consent.services.record_consent", patient, ok, _record_consent),
         probe(
@@ -574,6 +1179,10 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             patient,
             ok,
             lambda pw: patient_access.patient_session_overview(),
+            *_fields(
+                "idle_expires_at",
+                why="touch_patient_session renews the idle deadline on every call",
+            ),
         ),
         probe(
             "apps.intake.patient_access.redeem_invitation",
@@ -588,7 +1197,11 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.intake.questionnaire_views.patient_questionnaires",
             patient,
             ok,
-            lambda pw: questionnaire_views.patient_questionnaires(_request(pw)),
+            _questionnaires,
+            *_leaves(
+                _CSRF,
+                why="Django renders a fresh CSRF token into every form",
+            ),
         ),
         probe(
             "apps.intake.questionnaires.patient_response",
@@ -612,21 +1225,19 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.prescription.verification._record_patient_download",
             patient,
             no,
-            lambda pw: verification._record_patient_download(pw.rx.document.pk),
+            _record_download,
         ),
         probe(
             "apps.prescription.verification.patient_document_download",
             patient,
             no,
-            lambda pw: verification.patient_document_download(
-                document_id=pw.rx.document.pk
-            ),
+            _patient_download,
         ),
         probe(
             "apps.prescription.verification.patient_documents",
             patient,
             ok,
-            lambda pw: verification.patient_documents(),
+            _patient_documents,
         ),
         probe(
             "apps.retention.services._record_patient_view",
@@ -703,7 +1314,11 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.scheduling.patient_booking.patient_slots",
             patient,
             ok,
-            lambda pw: patient_booking.patient_slots(date(2035, 6, 3)),
+            _slots,
+            *_leaves(
+                _SIGNED_AT,
+                why="slot tokens carry the TimestampSigner issue time and its MAC",
+            ),
         ),
         probe(
             "apps.scheduling.patient_booking.reschedule_patient_appointment",
@@ -712,25 +1327,25 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             lambda pw: patient_booking.reschedule_patient_appointment(
                 pw.w.appointment.pk, pw.slot_token
             ),
+            *_fields("updated_at", why="auto_now stamps each reschedule write"),
         ),
         probe(
             "apps.scheduling.patient_views._submit",
             patient,
             ok,
-            lambda pw: patient_views._submit(
-                _request(
-                    pw,
-                    "POST",
-                    {"action": "cancel", "appointment_id": str(pw.w.appointment.pk)},
-                ),
-                str(uuid4()),
-            ),
+            _patient_submit,
         ),
         probe(
             "apps.scheduling.waitlist.respond_to_offer",
             patient,
             no,
-            lambda pw: waitlist.respond_to_offer(uuid4(), accept=True),
+            _respond,
+            *_fields(
+                "responded_at",
+                "appointment_id",
+                why="an answered offer stamps timezone.now(); an accepted one "
+                "books a new appointment with a fresh uuid4 key",
+            ),
         ),
         probe(
             "apps.scheduling.waitlist_views._patient_submit",
@@ -756,7 +1371,7 @@ def _probes() -> tuple[ExemptionProbe, ...]:
             "apps.teleconsult.services.request_patient_join",
             patient,
             ok,
-            lambda pw: teleconsult.request_patient_join(session_id=pw.tc.session.pk),
+            _patient_join,
         ),
         probe(
             "apps.teleconsult.views._patient_status",
@@ -776,17 +1391,109 @@ def _probes() -> tuple[ExemptionProbe, ...]:
 PROBES: Final[Mapping[str, ExemptionProbe]] = {item.symbol: item for item in _probes()}
 
 
-def normalize(result: object) -> object:
-    """Reduce a result to what must match across states (no fresh ids)."""
-    if isinstance(result, HttpResponseBase):
-        return ("http", result.status_code)
-    if result is None or isinstance(result, bool | str):
-        return result
-    if isinstance(result, int | float | bytes | UUID | datetime | date):
-        return type(result).__name__
-    if isinstance(result, list | tuple | set | frozenset | dict):
-        return (type(result).__name__, len(result))
-    return type(result).__name__
+_SCALARS: Final = (
+    bool,
+    int,
+    float,
+    str,
+    bytes,
+    UUID,
+    Decimal,
+    date,
+    time,
+    timedelta,
+)
+_MAX_DEPTH: Final = 16
+
+
+def canonical(value: object, depth: int = 0) -> object:
+    """Return a hashable, exact image of ``value`` (type-tagged, recursive).
+
+    Fails closed: a value with no known structure raises ``TypeError``, so
+    a probe can never compare less than the whole result.
+    """
+    if depth > _MAX_DEPTH:
+        message = "result nests too deeply to compare exactly"
+        raise TypeError(message)
+    if value is None or isinstance(value, _SCALARS):
+        return (type(value).__qualname__, value)
+    if isinstance(value, Enum):
+        return (type(value).__qualname__, canonical(value.value, depth + 1))
+    if isinstance(value, memoryview):
+        return ("bytes", value.tobytes())
+    if isinstance(value, Each):
+        return ("Each", tuple(value))
+    if isinstance(value, HttpResponseBase):
+        return _canonical_http(value)
+    return _canonical_structure(value, depth + 1)
+
+
+def _canonical_structure(value: object, inner: int) -> object:
+    """Models, dataclasses, containers and plain objects, field by field."""
+    name = type(value).__qualname__
+    if isinstance(value, Model):
+        return (
+            value._meta.label,
+            tuple(
+                (field.attname, canonical(getattr(value, field.attname), inner))
+                for field in value._meta.concrete_fields
+            ),
+        )
+    if is_dataclass(value) and not isinstance(value, type):
+        return (
+            name,
+            tuple(
+                (item.name, canonical(getattr(value, item.name), inner))
+                for item in fields(value)
+            ),
+        )
+    if isinstance(value, list | tuple):
+        return (name, tuple(canonical(v, inner) for v in value))
+    if isinstance(value, dict):
+        pairs = ((canonical(k, inner), canonical(v, inner)) for k, v in value.items())
+        return (name, tuple(sorted(pairs, key=repr)))
+    if isinstance(value, set | frozenset):
+        return (name, tuple(sorted((canonical(v, inner) for v in value), key=repr)))
+    state = _attributes(value)
+    if state is None:
+        message = f"no exact comparison for {name}"
+        raise TypeError(message)
+    return (name, canonical(state, inner))
+
+
+def _attributes(value: object) -> dict[str, object] | None:
+    names = [
+        name
+        for klass in type(value).__mro__
+        for name in getattr(klass, "__slots__", ())
+        if not name.startswith("__")
+    ]
+    found = {name: getattr(value, name) for name in names if hasattr(value, name)}
+    own = getattr(value, "__dict__", None)
+    if isinstance(own, dict):
+        found.update(own)
+    return found if (names or isinstance(own, dict)) else None
+
+
+def _canonical_http(response: HttpResponseBase) -> object:
+    body = (
+        b"".join(response.streaming_content)  # type: ignore[attr-defined]
+        if getattr(response, "streaming", False)
+        else response.content  # type: ignore[attr-defined]
+    )
+    cookies = tuple(
+        sorted(
+            (key, morsel.value, tuple(sorted((k, str(v)) for k, v in morsel.items())))
+            for key, morsel in response.cookies.items()
+        )
+    )
+    return (
+        "http",
+        response.status_code,
+        tuple(sorted(response.items())),
+        cookies,
+        body,
+    )
 
 
 @contextmanager
@@ -802,70 +1509,343 @@ def _inject_actor(pw: ProbeWorld, actor: UUID, *, local: bool) -> Iterator[None]
     yield
 
 
-def _outcome(invoke: Callable[[], object], *, savepoint: bool) -> tuple[str, object]:
+def _outcome(invoke: Callable[[], object], *, savepoint: bool) -> Outcome:
     try:
         if savepoint:
             with transaction.atomic():
-                result = normalize(invoke())
+                result = canonical(invoke())
                 transaction.set_rollback(True)
         else:
-            result = normalize(invoke())
-    except Exception as error:  # noqa: BLE001 - the refusal type is the outcome
-        return ("raise", type(error).__name__)
+            result = canonical(invoke())
+    except Exception as error:  # noqa: BLE001 - the refusal is the outcome
+        return ("raise", type(error).__qualname__, str(error))
     return ("ok", result)
 
 
-def execute(probe: ExemptionProbe, pw: ProbeWorld, actor: UUID) -> tuple[str, object]:
-    """Run one probe once as ``actor`` in its declared context."""
-    call = lambda: probe.invoke(pw)  # noqa: E731 - bound once per state
-    if probe.context == "staff":
+@contextmanager
+def _state_scope(context: Context, pw: ProbeWorld, actor: UUID) -> Iterator[None]:
+    """Bind one staff state for a context; each input then takes a savepoint.
+
+    ``staff``: one tenant transaction. ``patient``: one patient-session
+    transaction with the actor's GUCs injected. ``entry``: the actor's GUCs
+    at session level (each input is its own rolled-back transaction).
+    """
+    if context == "staff":
         with runtime_role(), tenant_context(actor, pw.organization):
-            return _outcome(call, savepoint=True)
-    if probe.context == "patient":
+            yield
+    elif context == "patient":
         with (
             runtime_role(),
             patient_access.patient_session_context(pw.op.patient_session),
             _inject_actor(pw, actor, local=True),
         ):
-            return _outcome(call, savepoint=True)
-    try:
-        with runtime_role(), _inject_actor(pw, actor, local=False):
-            return _outcome(call, savepoint=probe.context == "entry")
-    finally:
-        clear_connection_tenant_gucs()
+            yield
+    else:
+        try:
+            with runtime_role(), _inject_actor(pw, actor, local=False):
+                yield
+        finally:
+            clear_connection_tenant_gucs()
 
 
-def baseline(probe: ExemptionProbe, pw: ProbeWorld) -> tuple[str, object]:
-    """Run a patient probe as deployed: in the session, no staff GUC."""
-    call = lambda: probe.invoke(pw)  # noqa: E731 - bound once
-    with runtime_role(), patient_access.patient_session_context(pw.op.patient_session):
+def execute(probe: ExemptionProbe, pw: ProbeWorld, actor: UUID) -> Outcome:
+    """Run one probe once as ``actor`` in its declared context."""
+    call = lambda: probe.invoke(pw)  # noqa: E731 - bound once per state
+    if probe.context == "entry_bare":
+        try:
+            with runtime_role(), _inject_actor(pw, actor, local=False):
+                return _outcome(call, savepoint=False)
+        finally:
+            clear_connection_tenant_gucs()
+    with _state_scope(probe.context, pw, actor):
         return _outcome(call, savepoint=True)
 
 
-def differential(
-    probe: ExemptionProbe, pw: ProbeWorld
-) -> dict[str, tuple[str, object]]:
-    """Execute ``probe`` under every role state; the body must run each time."""
-    code = target_code(probe.symbol)
-    outcomes: dict[str, tuple[str, object]] = {}
-    for state, actor in pw.actors.items():
-        entered = False
-
-        def observe(frame: object, event: str, _arg: object) -> None:
-            nonlocal entered
-            if event == "call" and getattr(frame, "f_code", None) is code:
-                entered = True
-
-        previous = sys.getprofile()
-        sys.setprofile(observe)
-        try:
-            outcomes[state] = execute(probe, pw, actor)
-        finally:
-            sys.setprofile(previous)
-        assert entered, (probe.symbol, state, "the function body never ran")
-    return outcomes
+def baseline(probe: ExemptionProbe, pw: ProbeWorld) -> Outcome:
+    """Run a patient probe as deployed: in the session, no staff GUC."""
+    call = lambda: probe.invoke(pw)  # noqa: E731 - bound once
+    with runtime_role(), patient_access.patient_session_context(pw.op.patient_session):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.current_setting('app.current_user_id', true)"
+            )
+            bound = cursor.fetchone()
+        assert bound in ((None,), ("",)), (
+            "staff actor bound in patient context",
+            bound,
+        )
+        return _outcome(call, savepoint=True)
 
 
-def staff_independent(outcomes: Mapping[str, tuple[str, object]]) -> bool:
-    """Every role state produced the same decision."""
+def probe_code(probe: ExemptionProbe) -> CodeType:
+    """The code object the probe certifies."""
+    code = probe.code or target_code(probe.symbol)
+    assert code is not None, probe.symbol
+    return code
+
+
+def _nested(code: CodeType) -> tuple[CodeType, ...]:
+    found = [code]
+    for constant in code.co_consts:
+        if isinstance(constant, CodeType):
+            found.extend(_nested(constant))
+    return tuple(found)
+
+
+def gate_lines(code: CodeType) -> frozenset[int]:
+    """Every line holding a call in the body (nested code included).
+
+    A permission gate is a call, however it is spelled or bound (a partial,
+    a table entry, an instance, a helper), so a probe can certify a body
+    only if its inputs execute every such line in at least one state.
+    Interpreter intrinsics (``CALL_INTRINSIC_*``) are not calls.
+    """
+    return frozenset(
+        instruction.positions.lineno
+        for nested in _nested(code)
+        for instruction in dis.get_instructions(nested)
+        if instruction.opname.startswith("CALL")
+        and not instruction.opname.startswith("CALL_INTRINSIC")
+        and instruction.positions is not None
+        and instruction.positions.lineno is not None
+    )
+
+
+class _Monitor:
+    """``sys.monitoring`` LINE and PY_START events on the probed code only."""
+
+    def __init__(self, codes: Mapping[str, CodeType]) -> None:
+        self.entry = {code: symbol for symbol, code in codes.items()}
+        self.owner = {
+            nested: symbol for symbol, code in codes.items() for nested in _nested(code)
+        }
+        self.current: str | None = None
+        self.entered = False
+        self.lines: dict[str, set[int]] = {symbol: set() for symbol in codes}
+        self.tool = -1
+
+    def __enter__(self) -> Self:
+        monitoring = sys.monitoring
+        self.tool = next(i for i in range(6) if monitoring.get_tool(i) is None)
+        monitoring.use_tool_id(self.tool, "exemption-probes")
+        monitoring.register_callback(self.tool, monitoring.events.PY_START, self._start)
+        monitoring.register_callback(self.tool, monitoring.events.LINE, self._line)
+        for code in self.owner:
+            events = monitoring.events.LINE
+            if code in self.entry:
+                events |= monitoring.events.PY_START
+            monitoring.set_local_events(self.tool, code, events)
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        monitoring = sys.monitoring
+        for code in self.owner:
+            monitoring.set_local_events(self.tool, code, 0)
+        monitoring.register_callback(self.tool, monitoring.events.PY_START, None)
+        monitoring.register_callback(self.tool, monitoring.events.LINE, None)
+        monitoring.free_tool_id(self.tool)
+
+    def _start(self, code: CodeType, _offset: int) -> None:
+        if self.current is not None and self.entry.get(code) == self.current:
+            self.entered = True
+
+    def _line(self, code: CodeType, line: int) -> None:
+        if self.current is not None and self.owner.get(code) == self.current:
+            self.lines[self.current].add(line)
+
+    def begin(self, symbol: str) -> None:
+        self.current = symbol
+        self.entered = False
+
+    def end(self) -> bool:
+        self.current = None
+        return self.entered
+
+
+@dataclass(slots=True)
+class ProbeRun:
+    """What one probe did across the matrix (and, for patient code, once
+    as deployed)."""
+
+    outcomes: dict[str, Outcome]
+    required: frozenset[int]
+    reached: set[int]
+    not_entered: list[str]
+    baseline: Outcome | None = None
+    seconds: float = 0.0
+
+
+def run_matrix(
+    probes: Sequence[ExemptionProbe],
+    pw: ProbeWorld,
+    states: Sequence[probe_states.ProbeState] | None = None,
+) -> dict[str, ProbeRun]:
+    """Execute every probe under every state, in state order.
+
+    Phase states apply their shared-row setup once, before their turn, so
+    each world runs the matrix once. Patient-context probes also run once
+    as deployed (patient session, no staff actor bound), before the
+    states; the lines that run reaches count too, because there no staff
+    actor exists for a permission decision to vary with (``baseline``
+    asserts it).
+    """
+    assert not pw.matrix.applied, "a probe world runs its matrix once"
+    pw.matrix.applied.add("run")
+    codes = {probe.symbol: probe_code(probe) for probe in probes}
+    runs = {
+        probe.symbol: ProbeRun({}, gate_lines(codes[probe.symbol]), set(), [])
+        for probe in probes
+    }
+    grouped: dict[Context, list[ExemptionProbe]] = {}
+    for probe in probes:
+        grouped.setdefault(probe.context, []).append(probe)
+    chosen = list(pw.matrix.states if states is None else states)
+    with _Monitor(codes) as monitor:
+        # Baselines first: they use world tokens with a lifetime (a consent
+        # offer lasts 30 minutes), so they never depend on the matrix's
+        # wall time.
+        for probe in grouped.get("patient", ()):
+            run = runs[probe.symbol]
+            run.baseline = _observed(
+                monitor, probe, "baseline", run, _deployed(probe, pw)
+            )
+        for index, state in enumerate(chosen):
+            # Every state after the first repeats code coverage.py already
+            # traced; pausing its tracer keeps the matrix affordable under
+            # --cov (the reach check uses its own sys.monitoring tool).
+            with nullcontext() if index == 0 else _untraced():
+                _run_state(state, grouped, runs, monitor, pw)
+        for symbol, lines in monitor.lines.items():
+            runs[symbol].reached = lines
+    return runs
+
+
+def _run_state(
+    state: probe_states.ProbeState,
+    grouped: Mapping[Context, list[ExemptionProbe]],
+    runs: Mapping[str, ProbeRun],
+    monitor: _Monitor,
+    pw: ProbeWorld,
+) -> None:
+    """One state: one bound scope per context, one savepoint per probe."""
+    if state.setup is not None:
+        state.setup()
+    for context, group in grouped.items():
+        if context == "entry_bare":
+            scope: AbstractContextManager[None] = nullcontext()
+        else:
+            scope = _state_scope(context, pw, state.actor)
+        with scope:
+            for probe in group:
+                run = runs[probe.symbol]
+                started = perf_counter()
+                outcome = _observed(
+                    monitor, probe, state.label, run, _thunk(probe, pw, state.actor)
+                )
+                run.seconds += perf_counter() - started
+                run.outcomes[state.label] = outcome
+
+
+def _deployed(probe: ExemptionProbe, pw: ProbeWorld) -> Callable[[], Outcome]:
+    return lambda: baseline(probe, pw)
+
+
+def _thunk(probe: ExemptionProbe, pw: ProbeWorld, actor: UUID) -> Callable[[], Outcome]:
+    """One input inside an already bound state scope (``entry_bare``: alone)."""
+    if probe.context == "entry_bare":
+        return lambda: execute(probe, pw, actor)
+    return lambda: _outcome(lambda: probe.invoke(pw), savepoint=True)
+
+
+def _observed(
+    monitor: _Monitor,
+    probe: ExemptionProbe,
+    label: str,
+    run: ProbeRun,
+    thunk: Callable[[], Outcome],
+) -> Outcome:
+    """Execute once under the monitor; the body must start."""
+    monitor.begin(probe.symbol)
+    outcome = thunk()
+    if not monitor.end():
+        run.not_entered.append(label)
+    return outcome if probe.normalize is None else probe.normalize(outcome)
+
+
+@contextmanager
+def _untraced() -> Iterator[None]:
+    """Pause coverage.py's collector, if one is running, for repeated code."""
+    current = coverage.Coverage.current()
+    if current is None:
+        yield
+        return
+    current.stop()
+    try:
+        yield
+    finally:
+        current.start()
+
+
+def differential(probe: ExemptionProbe, pw: ProbeWorld) -> dict[str, Outcome]:
+    """Execute ``probe`` under every state; the body must run each time."""
+    run = run_matrix([probe], pw)[probe.symbol]
+    assert not run.not_entered, (probe.symbol, run.not_entered, "body never ran")
+    return run.outcomes
+
+
+def staff_independent(outcomes: Mapping[str, Outcome]) -> bool:
+    """Every state produced exactly the same outcome."""
     return len(set(outcomes.values())) == 1
+
+
+def problems(probe: ExemptionProbe, run: ProbeRun) -> list[str]:
+    """Why ``run`` cannot certify ``probe`` (empty when it can)."""
+    found: list[str] = []
+    if run.not_entered:
+        found.append(f"body never ran in {len(run.not_entered)} states")
+    unreached = sorted(run.required - run.reached)
+    if unreached:
+        found.append(f"call lines never executed in any state: {unreached}")
+    if probe.normalize is not None and not probe.why:
+        found.append("normalized without a reason")
+    if not staff_independent(run.outcomes):
+        groups: dict[Outcome, list[str]] = {}
+        for state, outcome in run.outcomes.items():
+            groups.setdefault(outcome, []).append(state)
+        ranked = sorted(groups.items(), key=lambda item: -len(item[1]))
+        found.append(
+            f"outcome differs across states ({len(groups)} outcomes): "
+            + "; ".join(
+                f"{len(states)} states (e.g. {states[:3]})"
+                + (
+                    ""
+                    if index == 0
+                    else f" differ at {difference(ranked[0][0], outcome)}"
+                )
+                for index, (outcome, states) in enumerate(ranked[:6])
+            )
+        )
+    return found
+
+
+def difference(left: object, right: object, path: str = "") -> str:
+    """The first path where two canonical outcomes differ, with both values."""
+    if (
+        isinstance(left, tuple)
+        and isinstance(right, tuple)
+        and len(left) == len(right)
+        and left != right
+    ):
+        for index, (a, b) in enumerate(zip(left, right, strict=True)):
+            if a != b:
+                label = (
+                    a[0]
+                    if isinstance(a, tuple)
+                    and len(a) == 2
+                    and isinstance(a[0], str)
+                    and isinstance(b, tuple)
+                    and a[0] == b[0]
+                    else index
+                )
+                return difference(a, b, f"{path}/{label}")
+    return f"{path or '/'}: {str(left)[:120]} != {str(right)[:120]}"

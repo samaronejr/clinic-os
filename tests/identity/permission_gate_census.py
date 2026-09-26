@@ -4,9 +4,10 @@ This graph is an early warning, not the authority. Static analysis cannot
 prove that a function has NO permission gate (a partial, a table, an
 instance ``__call__``, a trigger or an unqualified SQL call all hide one),
 so an exemption is valid only when an executed differential probe shows an
-identical decision across every staff role state (identity/
-exemption_probes.py). The census fails when this graph and a probe
-disagree: a function the graph derives as gated can never be exempt.
+identical outcome across the derived staff-state matrix
+(identity/exemption_probes.py, identity/probe_states.py). The census fails
+when this graph and a probe disagree: a function the graph derives as gated
+can never be exempt.
 
 The derived set starts from the live catalog (``clinic_app.has_permission``,
 SQL functions whose bodies reach it, tables whose RLS policies call one) and

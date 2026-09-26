@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import collections
 import copy
+import dataclasses
 import json
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 from uuid import uuid4
 
@@ -18,11 +22,12 @@ from apps.identity.permissions import (
 )
 from apps.intake import demographics
 from apps.tenancy.db import tenant_context
+from django.core import signing
 from django.db import connection, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
-from identity import exemption_probes
+from identity import exemption_probes, probe_states
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
@@ -129,8 +134,9 @@ def _check_exemption_probes(
     """An exemption is valid only with an executed differential probe.
 
     Static analysis cannot prove the absence of a gate, so the probe is the
-    authority: every exempt row must have a probe (executed across all 12
-    role states by ``test_every_exemption_probe_is_staff_independent``),
+    authority: every exempt row must have a probe (executed across the whole
+    derived staff-state matrix by
+    ``test_every_exemption_probe_is_staff_independent``),
     and the registry holds no probe for anything else. Where the static
     graph derives a gate for a probed exemption, the two disagree and the
     census fails.
@@ -586,52 +592,131 @@ _SYNTHETIC = {
 }
 
 
+def _volatility_is_per_call(
+    probe: exemption_probes.ExemptionProbe, probe_world: exemption_probes.ProbeWorld
+) -> bool:
+    """A normalized part must change between two runs of one state.
+
+    The second run's signing clock is an hour later, so a timestamped
+    token cannot look stable just because both runs fell in one second.
+    """
+    raw = dataclasses.replace(probe, normalize=None)
+    actor = probe_world.matrix.states[0].actor
+    first = exemption_probes.execute(raw, probe_world, actor)
+    later = SimpleNamespace(time=lambda: time.time() + 3600)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(signing, "time", later)
+        second = exemption_probes.execute(raw, probe_world, actor)
+    return first != second
+
+
 def test_every_exemption_probe_is_staff_independent(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Every census exemption runs, under all 13 staff states (10 roles,
-    none, all, the assigned physician), to one identical decision; the
-    declared class (success/refusal) holds, as deployed for patient code."""
+    """Every census exemption runs under every state of the staff-state
+    matrix derived from the live permission decision (identity/
+    probe_states.py: the role power set, credential levels per bundle
+    class, every registration/care/profile value, inactive, elsewhere,
+    assignment, role-grant removals) and reaches one exactly identical
+    outcome; every call line of its body executes in some state; the
+    declared class (success/refusal) holds, as deployed for patient code;
+    and the rows written realize every declared value of every varied
+    input. The original 13 states (10 roles, none, all, the assigned
+    physician) are still in the matrix."""
+    started = time.monotonic()
     with override_settings(**_SYNTHETIC):
         probe_world = _probe_world(rbac_graph, monkeypatch)
-        assert len(probe_world.actors) == 13
+        states = probe_world.matrix.states
+        labels = [state.label for state in states]
+        assert len(set(labels)) == len(labels)
+        assert {*BUNDLES_V1, "none", "all", "assigned"} <= set(labels)
+        families = collections.Counter(state.family for state in states)
+        assert families["power"] == 2 ** len(BUNDLES_V1)
+        assert families == {
+            "power": 1024,
+            "credential": 193,
+            "realization": 75,
+            "inactive": 2,
+            "elsewhere": 2,
+            "assigned": 2,
+            "grant": 11,
+            "control": 1,
+        }
+        built = time.monotonic()
+        probes = [
+            exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)
+        ]
+        runs = exemption_probes.run_matrix(probes, probe_world)
+        ran = time.monotonic()
         failures: dict[str, object] = {}
-        for symbol, probe in sorted(exemption_probes.PROBES.items()):
-            try:
-                outcomes = exemption_probes.differential(probe, probe_world)
-            except AssertionError as error:
-                failures[symbol] = str(error)
-                continue
+        for probe in probes:
+            run = runs[probe.symbol]
+            found = exemption_probes.problems(probe, run)
             expected = {"success": "ok", "refusal": "raise"}[probe.reaches]
             declared = (
-                {exemption_probes.baseline(probe, probe_world)[0]}
-                if probe.context == "patient"
-                else {kind for kind, _ in outcomes.values()}
+                {exemption_probes.reached(run.baseline)}
+                if run.baseline is not None
+                else {exemption_probes.reached(o) for o in run.outcomes.values()}
             )
+            if declared != {expected}:
+                found.append(f"declared {probe.reaches}, reached {sorted(declared)}")
+            if probe.normalize is not None and not _volatility_is_per_call(
+                probe, probe_world
+            ):
+                found.append("normalized part does not change between calls")
             print(  # noqa: T201 - per-probe evidence line (pytest -s)
                 "PROBE",
                 json.dumps(
                     {
-                        "symbol": symbol,
+                        "symbol": probe.symbol,
                         "context": probe.context,
                         "reaches": probe.reaches,
                         "baseline": sorted(declared),
-                        "states": len(outcomes),
-                        "outcomes": sorted({f"{k}:{v}" for k, v in outcomes.values()}),
+                        "states": len(run.outcomes),
+                        "distinct_outcomes": len(set(run.outcomes.values())),
+                        "outcome": str(next(iter(run.outcomes.values())))[:200],
+                        "call_lines": sorted(run.required),
+                        "reached_call_lines": sorted(run.required & run.reached),
+                        "normalized": probe.why,
+                        "seconds": round(run.seconds, 2),
                     }
                 ),
             )
-            if not exemption_probes.staff_independent(outcomes):
-                failures[symbol] = {
-                    state: f"{kind}:{value}"
-                    for state, (kind, value) in outcomes.items()
-                }
-            elif declared != {expected}:
-                failures[symbol] = (probe.context, declared, set(outcomes.values()))
+            if found:
+                failures[probe.symbol] = found
+        realized = probe_states.realized(probe_world.matrix)
+        for key, (_kind, values) in probe_states.DIMENSIONS.items():
+            if isinstance(values, frozenset) and realized[key] != values:
+                failures[key] = (sorted(values - realized[key]), "not realized")
+    print(  # noqa: T201 - matrix size and cost evidence (pytest -s)
+        "MATRIX",
+        json.dumps(
+            {
+                "states": len(states),
+                "families": dict(sorted(families.items())),
+                "probes": len(probes),
+                "executions": len(states) * len(probes),
+                "build_seconds": round(built - started, 1),
+                "run_seconds": round(ran - built, 1),
+            }
+        ),
+    )
     if failures:
         pytest.fail(
             "\n".join(f"{symbol}: {detail}" for symbol, detail in failures.items())
         )
+
+
+def _configuration_answer(pw: exemption_probes.ProbeWorld) -> bool:
+    """The live decision set_intake_policy asks, read as data."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.has_permission('configuration.clinic', %s, NULL) "
+            "OR clinic_app.has_permission('configuration.organization', %s, NULL)",
+            [pw.w.clinic, pw.w.clinic],
+        )
+        row = cursor.fetchone()
+    return bool(row and row[0])
 
 
 def test_differential_probe_classifies_a_gated_function_as_gated(
@@ -639,7 +724,10 @@ def test_differential_probe_classifies_a_gated_function_as_gated(
 ) -> None:
     """With a real probe, a permission-gated function is classified gated:
     set_intake_policy decides differently across role states, so no
-    exemption for it could ever pass the probe execution."""
+    exemption for it could ever pass the probe execution. Across the whole
+    matrix it succeeds in exactly the states whose live decision grants a
+    configuration permission at that moment (an oracle probe reads it in
+    the same run)."""
     probe = exemption_probes.ExemptionProbe(
         _POLICY,
         "staff",
@@ -648,12 +736,28 @@ def test_differential_probe_classifies_a_gated_function_as_gated(
             clinic_id=pw.w.clinic, required_fields=[]
         ),
     )
+    oracle = exemption_probes.ExemptionProbe(
+        f"{_POLICY}#oracle",
+        "staff",
+        "success",
+        _configuration_answer,
+        code=_configuration_answer.__code__,
+    )
     with override_settings(**_SYNTHETIC):
         probe_world = _probe_world(rbac_graph, monkeypatch)
-        outcomes = exemption_probes.differential(probe, probe_world)
+        runs = exemption_probes.run_matrix([probe, oracle], probe_world)
+    outcomes = runs[_POLICY].outcomes
+    assert not runs[_POLICY].not_entered
     assert not exemption_probes.staff_independent(outcomes)
-    allowed = {state for state, (kind, _) in outcomes.items() if kind == "ok"}
-    assert allowed == {
+    allowed = {state for state, outcome in outcomes.items() if outcome[0] == "ok"}
+    granted = {
+        state
+        for state, outcome in runs[oracle.symbol].outcomes.items()
+        if outcome == ("ok", ("bool", True))
+    }
+    assert allowed == granted
+    original = {*BUNDLES_V1, "none", "all", "assigned"}
+    assert allowed & original == {
         "all",
         "clinic_admin",
         "clinic_manager",
