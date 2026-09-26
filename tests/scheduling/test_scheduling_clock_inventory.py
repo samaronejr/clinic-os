@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from django.db import connection
 
+from scheduling.clock_catalog import catalog_readers, functions, live_clock_inventory
 from scheduling.clock_support import SOURCE_CLOCKS, SQL_CLOCKS, clock_counts
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -36,6 +38,29 @@ def test_all_live_scheduling_sql_time_reads_are_controlled() -> None:
             if (counts := clock_counts(source))
         }
     assert observed == SQL_CLOCKS
+    expected = json.loads(
+        Path(__file__).with_name("clock_catalog_inventory.json").read_text()
+    )
+    assert live_clock_inventory() == expected
+
+
+def test_catalog_reader_set_contains_the_explicit_clock_cross_check() -> None:
+    procedures = functions()
+    readers = catalog_readers()
+    names = {procedures[oid].name for oid in readers}
+    assert {"now", "statement_timestamp", "clock_timestamp"} <= names
+    assert {"transaction_timestamp", "timeofday"} <= names
+    for oid in readers:
+        reader = procedures[oid]
+        assert reader.schema == "pg_catalog"
+        assert reader.volatility in {"s", "v"}
+        assert reader.returns in {
+            "timestamp with time zone",
+            "timestamp without time zone",
+            "date",
+            "time with time zone",
+            "time without time zone",
+        } or (reader.name == "timeofday" and reader.returns == "text")
 
 
 @pytest.mark.parametrize(

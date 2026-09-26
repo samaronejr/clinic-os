@@ -1,0 +1,227 @@
+{
+  "constraint:scheduling_appointment.scheduling_appointment_positive_minute_range_check": {
+    "direct": {
+      "pg_catalog.date_trunc(text, timestamp with time zone)": 2
+    },
+    "via": []
+  },
+  "constraint:scheduling_availabilityblock.scheduling_availability_positive_minute_range_check": {
+    "direct": {
+      "pg_catalog.date_trunc(text, timestamp with time zone)": 2
+    },
+    "via": []
+  },
+  "function:clinic_app.comms_schedule_reminders_v1()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 4
+    },
+    "via": []
+  },
+  "function:clinic_app.has_permission(text, uuid, uuid)": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": []
+  },
+  "function:clinic_app.patient_booking_guard()": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.patient_booking_lock_availability(uuid[], timestamp with time zone[], timestamp with time zone[])": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.patient_booking_practitioner(uuid)": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.patient_booking_receipt()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.patient_booking_scope()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 2
+    },
+    "via": []
+  },
+  "function:clinic_app.patient_booking_slots(date, uuid)": {
+    "direct": {
+      "pg_catalog.generate_series(timestamp with time zone, timestamp with time zone, interval)": 1,
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": [
+      "function:clinic_app.patient_booking_practitioner(uuid)",
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.scheduling_appointment_guard_v1()": {
+    "direct": {
+      "sql:current_timestamp": 1
+    },
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.scheduling_capacity_guard()": {
+    "direct": {
+      "pg_catalog.generate_series(timestamp with time zone, timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "function:clinic_app.scheduling_definition_guard()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 3
+    },
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)"
+    ]
+  },
+  "function:clinic_app.scheduling_generated_block_guard()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)"
+    ]
+  },
+  "function:clinic_app.scheduling_service_practitioners(uuid)": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)"
+    ]
+  },
+  "policy:scheduling_appointment.patient_booking_insert": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_appointment.patient_booking_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_appointment.patient_booking_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_availabilityblock.patient_booking_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_waitlistentry.waitlist_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_waitlistentry.waitlist_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_waitlistoffer.waitlist_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "policy:scheduling_waitlistoffer.waitlist_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_scope()"
+    ]
+  },
+  "trigger:scheduling_absence.scheduling_definition_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_definition_guard()"
+    ]
+  },
+  "trigger:scheduling_appointment.comms_schedule_reminders": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.comms_schedule_reminders_v1()"
+    ]
+  },
+  "trigger:scheduling_appointment.patient_booking_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_guard()"
+    ]
+  },
+  "trigger:scheduling_appointment.patient_booking_receipt": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_booking_receipt()"
+    ]
+  },
+  "trigger:scheduling_appointment.scheduling_appointment_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_appointment_guard_v1()"
+    ]
+  },
+  "trigger:scheduling_appointment.scheduling_capacity_after": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_capacity_guard()"
+    ]
+  },
+  "trigger:scheduling_appointment.scheduling_capacity_before": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_capacity_guard()"
+    ]
+  },
+  "trigger:scheduling_availabilityblock.scheduling_generated_block_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_generated_block_guard()"
+    ]
+  },
+  "trigger:scheduling_availabilitytemplate.scheduling_definition_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_definition_guard()"
+    ]
+  },
+  "trigger:scheduling_holiday.scheduling_definition_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_definition_guard()"
+    ]
+  },
+  "trigger:scheduling_resource.scheduling_definition_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_definition_guard()"
+    ]
+  },
+  "trigger:scheduling_servicetype.scheduling_definition_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scheduling_definition_guard()"
+    ]
+  }
+}
