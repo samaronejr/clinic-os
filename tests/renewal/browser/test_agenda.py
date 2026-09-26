@@ -39,7 +39,7 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import assert_only_refused_document_logged, new_context
 
@@ -1062,9 +1062,9 @@ def _paginated(
     assert _no_overflow(page)
     _capture(page, root, f"paginated-{width}", full_page=False)
     with page.expect_navigation():
-        page.locator(".agenda-pagination a").filter(
-            has_text=gettext("Next page")
-        ).click()
+        click_when_hittable(
+            page.locator(".agenda-pagination a").filter(has_text=gettext("Next page"))
+        )
     page.wait_for_url(f"**{_agenda_path(staff, 'day', busy_day, 2)}")
     assert "?" not in page.url
     assert len(_rows(page)) == 1

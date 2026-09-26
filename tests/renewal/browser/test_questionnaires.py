@@ -13,6 +13,7 @@ import pytest
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
+from renewal.browser._page_wait import click_when_hittable
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
@@ -171,7 +172,7 @@ def _capture(page: Page, root: Path, state: str, width: int) -> None:
 
 def _press(page: Page, action: str) -> None:
     with page.expect_navigation():
-        page.locator(f'button[value="{action}"]').first.click()
+        click_when_hittable(page.locator(f'button[value="{action}"]').first)
 
 
 def _other_patient_denial(

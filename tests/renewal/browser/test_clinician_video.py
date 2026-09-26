@@ -24,7 +24,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     install_media,
@@ -483,7 +483,7 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
         "Relato retificado offline"
     )
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
-    physician.locator('button[value="note-save"]').click()
+    click_when_hittable(physician.locator('button[value="note-save"]'))
     expect(physician.locator("#save-state")).to_contain_text("Sem conexão")
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     expect(physician.locator("#save-state")).to_be_focused()

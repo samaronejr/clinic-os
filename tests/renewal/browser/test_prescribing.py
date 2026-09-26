@@ -40,7 +40,7 @@ from renewal.browser.test_document_verification import (
     _operation_row,
     _signed_callback,
 )
-from renewal.browser.test_encounter import press, seed
+from renewal.browser.test_encounter import press, press_in_view, seed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -154,7 +154,7 @@ def author_and_render(page: Page, base: str, staff: dict[str, str], day: str) ->
     for field, value in ITEM.items():
         page.locator(f"#id_items-0-{field}").fill(value)
     press(page, "save")
-    press(page, "render_document")
+    press_in_view(page, "render_document")
     expect(page.locator("[data-step]")).to_have_attribute("data-step", "review")
     document = page.locator("[data-document]").first.get_attribute("data-document")
     assert document
@@ -295,7 +295,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         press_once(page, "#sign-form", "sign_document", root, width)
 
         # Sign: explicit progress, nothing issued yet.
-        press(page, "sign_document")
+        press_in_view(page, "sign_document")
         signing_url = page.url
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "signing")
         assert page.locator("[data-progress-state]").evaluate_all(
@@ -347,7 +347,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         )
 
         # Discard removes editing, not immutable history or its evidence links.
-        press(page, "discard")
+        press_in_view(page, "discard")
         expect(row).to_have_attribute("data-signature", "rehearsal_complete")
         assert page.locator("#prescription-form").count() == 0
         assert page.locator('button[value="render_document"]').count() == 0
@@ -504,12 +504,12 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         stale.goto(draft_url)
         page.goto(draft_url)
         page.locator("#id_items-0-dose").fill("Dose alterada depois da renderização")
-        press(page, "save")
+        press_in_view(page, "save")
         expect(page.locator("[data-draft]")).to_have_attribute("data-version", "3")
         with stale.expect_response(
             lambda response: response.request.method == "POST"
         ) as conflict:
-            press(stale, "render_document")
+            press_in_view(stale, "render_document")
         assert conflict.value.status == 409
         expect(stale.locator("[data-draft]")).to_have_attribute("data-version", "3")
         expect(stale.locator("[data-step]")).to_have_attribute("data-step", "author")
@@ -528,11 +528,11 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         # A precondition the physician can act on is named, not refused: the
         # released document has no verified patient destination yet.
         page.goto(draft_url)
-        press(page, "release_document")
+        press_in_view(page, "release_document")
         with page.expect_response(
             lambda response: response.request.method == "POST"
         ) as denied:
-            press(page, "deliver_document")
+            press_in_view(page, "deliver_document")
         assert denied.value.status == 409
         expect(page.locator("[data-outcome]")).to_have_attribute(
             "data-outcome", "no_verified_contact"

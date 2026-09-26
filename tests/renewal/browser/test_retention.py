@@ -22,6 +22,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser.engines import failed_responses_logged, new_context
 from renewal.browser.test_availability import (
     _sign_in,
@@ -29,7 +30,7 @@ from renewal.browser.test_availability import (
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_encounter import DAYS, press, seed
+from renewal.browser.test_encounter import DAYS, press, press_in_view, seed
 from renewal.browser.test_patient_access import (
     MIN_TARGET_PX,
     ZOOM_FACTOR,
@@ -77,9 +78,8 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 # Page state at the check_disposal click, for the hosted Firefox stall where
 # the click returned but no POST reached the server. Structure only: paths,
 # states and validity flags, never field values, headers or bodies.
-DISPOSAL_STATE_JS = """async () => {
+DISPOSAL_STATE_JS = """() => {
   const sw = navigator.serviceWorker;
-  const reg = sw ? await sw.getRegistration() : undefined;
   const state = (worker) => (worker ? worker.state : null);
   const button = document.querySelector(
     '#disposal-form button[value="check_disposal"]');
@@ -108,9 +108,7 @@ DISPOSAL_STATE_JS = """async () => {
     serviceWorker: sw ? {
       controlled: Boolean(sw.controller),
       controller: state(sw.controller),
-      installing: state(reg && reg.installing),
-      waiting: state(reg && reg.waiting),
-      active: state(reg && reg.active),
+      registration: window.__disposalRegistration || null,
     } : null,
     button: target,
     pointer: window.__disposalPointer || null,
@@ -124,6 +122,22 @@ DISPOSAL_STATE_JS = """async () => {
 POINTER_WATCH_JS = """() => {
   const seen = [];
   window.__disposalPointer = seen;
+  // Never awaited: Firefox's getRegistration() can stay pending, and an
+  // evaluate that awaits it would hang the suite (fix-a5 round 3). The state
+  // snapshot reads whatever it resolved to so far.
+  const sw = navigator.serviceWorker;
+  if (sw) {
+    const state = (worker) => (worker ? worker.state : null);
+    window.__disposalRegistration = {settled: false};
+    sw.getRegistration().then((reg) => {
+      window.__disposalRegistration = {
+        settled: true,
+        installing: state(reg && reg.installing),
+        waiting: state(reg && reg.waiting),
+        active: state(reg && reg.active),
+      };
+    });
+  }
   for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup',
       'click', 'submit']) {
     document.addEventListener(type, (event) => {
@@ -138,6 +152,7 @@ POINTER_WATCH_JS = """() => {
       });
     }, {capture: true});
   }
+  return true;
 }"""
 CONSOLE_LIMIT = 200
 
@@ -203,6 +218,15 @@ class _StepRecorder:
         self.active = False
 
 
+def _probe(page: Page, script: str) -> Any:  # noqa: ANN401 - JSON page state
+    """Evaluate a synchronous probe under wait_for_js's driver-side deadline.
+
+    A plain ``page.evaluate`` has no deadline; a probe must never be the
+    thing that hangs the suite.
+    """
+    return wait_for_js(page, script).json_value()
+
+
 def _first_line(error: BaseException) -> str:
     text = str(error)
     return f"{type(error).__name__}: {text.splitlines()[0] if text else ''}"
@@ -218,13 +242,13 @@ def disposal_diagnostics(page: Page, destination: Path) -> Iterator[None]:
     recorder = _StepRecorder(page)
     recorder.attach()
     try:
-        page.evaluate(POINTER_WATCH_JS)
-        before = page.evaluate(DISPOSAL_STATE_JS)
+        _probe(page, POINTER_WATCH_JS)
+        before = _probe(page, DISPOSAL_STATE_JS)
         try:
             yield
         except BaseException as error:
             try:
-                after = page.evaluate(DISPOSAL_STATE_JS)
+                after = _probe(page, DISPOSAL_STATE_JS)
             except PlaywrightError as problem:
                 # A closed or crashed page must not mask the step's own error.
                 after = {"unavailable": _first_line(problem)}
@@ -462,7 +486,7 @@ def open_finalized(  # noqa: PLR0913 - the journey needs its full context
     for field, value in (content or FIRST).items():
         page.locator(f"#id_{field}").fill(value)
     press(page, "save")
-    press(page, "finalize")
+    press_in_view(page, "finalize")
     expect(page.locator("[data-version]")).to_have_attribute("data-state", "finalized")
     version = page.locator("[data-version]").get_attribute("data-version")
     assert version is not None
@@ -510,10 +534,12 @@ def _physician_scene(  # noqa: PLR0913 - the scene needs its full context
     expect(page.locator("#release-list")).to_be_visible()
     capture(page, root, "released", width)
     with page.expect_download() as received:
-        page.locator(
-            f'#export-patient-list li[data-patient="{data["patient"]}"] '
-            'button[value="export"]'
-        ).click()
+        click_when_hittable(
+            page.locator(
+                f'#export-patient-list li[data-patient="{data["patient"]}"] '
+                'button[value="export"]'
+            )
+        )
     package = received.value
     package_path = package.path()
     assert package_path is not None
@@ -541,7 +567,7 @@ def _policy_scene(
     """Propose and approve one zero-day policy through the manager forms."""
     page.locator("#policy-form #id_record_class").select_option("ehr.document_version")
     page.locator("#policy-form #id_retention_days").fill("0")
-    press(page, "propose_policy")
+    press_in_view(page, "propose_policy")
     proposed = stored_policies(staff, manager["id"])
     assert [(row[0], row[2]) for row in proposed] == [
         ("ehr.document_version", "proposed")
@@ -573,7 +599,7 @@ def _hold_scene(  # noqa: PLR0913 - the scene needs its full context
     page.locator("#hold-form #id_record_id").fill(version)
     page.locator("#hold-form #id_authority").fill("Autoridade sintética")
     page.locator("#hold-form #id_reason").fill("Motivo sintético")
-    press(page, "place_hold")
+    press_in_view(page, "place_hold")
     expect(page.locator("#hold-list")).to_contain_text("ativa")
     assert stored_holds(staff, version) == [("ehr.document_version", version, False)]
     capture(page, root, "hold-active", width)
@@ -582,7 +608,7 @@ def _hold_scene(  # noqa: PLR0913 - the scene needs its full context
     )
     page.locator("#disposal-form #id_record_id").fill(version)
     with disposal_diagnostics(page, diagnostics_path(root, width)):
-        press(page, "check_disposal")
+        press_in_view(page, "check_disposal")
     expect(page.locator("#retention-error")).to_contain_text("Descarte negado")
     _consume_expected_error(errors, "403")
     assert stored_version_state(staff, version) == "finalized"
@@ -592,14 +618,14 @@ def _hold_scene(  # noqa: PLR0913 - the scene needs its full context
         "Autoridade de liberação"
     )
     page.locator("#hold-release-form #id_release_reason").fill("Motivo de liberação")
-    press(page, "release_hold")
+    press_in_view(page, "release_hold")
     expect(page.locator("#hold-list")).to_contain_text("liberada")
     page.locator("#disposal-form #id_record_class").select_option(
         "ehr.document_version"
     )
     page.locator("#disposal-form #id_record_id").fill(version)
     with disposal_diagnostics(page, diagnostics_path(root, width)):
-        press(page, "check_disposal")
+        press_in_view(page, "check_disposal")
     expect(page.locator("#disposal-result")).to_contain_text("Elegível")
     capture(page, root, "disposal-eligible", width)
 
@@ -793,13 +819,13 @@ def test_disposal_diagnostics_are_written_only_on_failure(
         assert set(state["serviceWorker"]) == {
             "controlled",
             "controller",
-            "installing",
-            "waiting",
-            "active",
+            "registration",
         }
     # The watcher is armed in the step's document; the navigation replaced it.
     assert report["before"]["pointer"] == []
     assert report["after"]["pointer"] is None
+    assert report["before"]["serviceWorker"]["registration"] is not None
+    assert report["after"]["serviceWorker"]["registration"] is None
     # Subresources of the page loaded before the step may still report.
     first = next(e for e in report["events"] if e.get("navigation"))
     assert {k: first[k] for k in ("method", "path", "type")} == {
@@ -1254,9 +1280,12 @@ def test_retention_native_form_fallback(
         url = f"{base}/retention/clinics/{staff['clinic_a']}/"
         page.goto(url)
         with page.expect_navigation():
-            page.locator(
-                f'#releasable-list li[data-version="{version}"] button[value="release"]'
-            ).click()
+            click_when_hittable(
+                page.locator(
+                    f'#releasable-list li[data-version="{version}"] '
+                    'button[value="release"]'
+                )
+            )
         expect(page.locator("#release-list")).to_be_visible()
         code = grant_records(staff, data)
         _redeem(page, base, staff["clinic_a"], code)

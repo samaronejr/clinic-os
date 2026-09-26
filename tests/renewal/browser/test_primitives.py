@@ -24,7 +24,7 @@ from django.utils.translation import gettext
 from PIL import Image
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser.engines import (
     focus_reveal,
     focuses_dialogs_and_scrollers,
@@ -1472,7 +1472,7 @@ def test_tabs_select_with_arrows_home_and_end(
 def test_announcer_speaks_and_toast_waits_for_dismissal(
     live_page: Page, showcase: Showcase
 ) -> None:
-    live_page.locator("[data-announce]").click()
+    click_when_hittable(live_page.locator("[data-announce]"))
     expect(live_page.locator('[data-announcer="polite"]')).to_have_text(
         gettext("Reminder confirmed.")
     )

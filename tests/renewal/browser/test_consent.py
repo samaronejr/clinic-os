@@ -15,7 +15,7 @@ from playwright.sync_api import expect
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import zoom_200
 from renewal.browser.test_availability import availability_staff
-from renewal.browser.test_encounter import press
+from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import _redeem, _watch_errors
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 
@@ -140,7 +140,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
         )
         == 403
     )
-    press(patient, "revoke")
+    press_in_view(patient, "revoke")
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
     patient.locator("summary").click()
     capture(patient, root, "revoked-retained-receipt", width)

@@ -19,7 +19,7 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import click_when_hittable, wait_for_js
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import MOBILE_PROFILES, element_box, mobile_context
 
@@ -365,3 +365,76 @@ def test_element_box_measures_a_straddling_target_exactly(csp_page: Page) -> Non
     csp_page.evaluate(STRADDLING_BUTTON_JS)
     box = element_box(csp_page.locator("#element-box-probe"))
     assert (box["width"], box["height"]) == (44, 44), box
+
+
+# click_when_hittable: a far-below target is pressed once, after scrolling; a
+# covered or moving target is never pressed and the helper's own wait fails at
+# its deadline (never a blind click).
+PRESS_PROBE_JS = """(mode) => {
+  const spacer = document.createElement('div');
+  spacer.style.height = '3000px';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'press-probe';
+  button.style.cssText = 'position: relative; width: 120px; height: 44px;';
+  const label = document.createElement('span');
+  label.textContent = 'Pressionar';
+  button.append(label);
+  window.pressProbeClicks = 0;
+  window.pressProbeDowns = 0;
+  button.addEventListener('mousedown', () => { window.pressProbeDowns += 1; });
+  button.addEventListener('click', () => { window.pressProbeClicks += 1; });
+  document.body.append(spacer, button);
+  if (mode === 'covered') {
+    const cover = document.createElement('div');
+    cover.id = 'press-probe-cover';
+    cover.style.cssText = 'position: fixed; inset: 0; z-index: 10;';
+    document.body.append(cover);
+  }
+  if (mode === 'moving') {
+    // Still while Playwright scrolls it into view, then it moves on every
+    // frame: only the helper's own stability check can refuse it.
+    let shift = 0;
+    const move = () => {
+      shift = (shift + 1) % 7;
+      button.style.top = shift + 'px';
+      requestAnimationFrame(move);
+    };
+    addEventListener('scroll', () => requestAnimationFrame(move), {once: true});
+  }
+}"""
+PRESS_PROBE_TIMEOUT_MS = 400
+REFUSED_BY = {
+    "covered": "wait_for_js: Timeout",
+    "moving": "ElementHandle.wait_for_element_state: Timeout",
+}
+
+
+def test_click_when_hittable_scrolls_far_targets_and_presses_once(
+    csp_page: Page,
+) -> None:
+    csp_page.evaluate(PRESS_PROBE_JS, "still")
+    assert csp_page.evaluate("scrollY") == 0
+
+    click_when_hittable(csp_page.locator("#press-probe"))
+
+    assert csp_page.evaluate("[pressProbeDowns, pressProbeClicks]") == [1, 1]
+    assert csp_page.evaluate("scrollY") > 0
+
+
+@pytest.mark.parametrize("mode", ["covered", "moving"])
+def test_click_when_hittable_fails_loudly_without_pressing(
+    csp_page: Page, mode: str
+) -> None:
+    csp_page.evaluate(PRESS_PROBE_JS, mode)
+
+    with pytest.raises(
+        PlaywrightTimeoutError, match=f"Timeout {PRESS_PROBE_TIMEOUT_MS}ms exceeded"
+    ) as refused:
+        click_when_hittable(
+            csp_page.locator("#press-probe"), timeout=PRESS_PROBE_TIMEOUT_MS
+        )
+    # The helper's own precondition refused it; no click was ever attempted.
+    assert str(refused.value).startswith(REFUSED_BY[mode]), refused.value
+
+    assert csp_page.evaluate("[pressProbeDowns, pressProbeClicks]") == [0, 0]
