@@ -97,7 +97,9 @@ MIDDLEWARE: list[str] = [
     # Strict first-party Content-Security-Policy on every Django response,
     # refusals included; static files served above it need none.
     "apps.core.middleware.ContentSecurityPolicyMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    # Django's session middleware, except that a request still carrying a
+    # pre-rotation key never deletes the rotated cookie (apps.identity.sessions).
+    "apps.identity.sessions.RotationSafeSessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
