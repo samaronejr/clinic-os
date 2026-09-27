@@ -113,6 +113,13 @@ LOG_MESSAGE_ALLOWLIST: Final = frozenset(
         # Worker readiness (celery.apps.worker); the hostname arg is dropped.
         # Operators and the broker gate detect readiness from this line.
         "%s ready.",
+        # Realtime (todo 8) degraded-mode and denial signals; no arguments.
+        "realtime subscription denied",
+        "realtime publication unavailable; polling required",
+        "realtime scope unavailable; polling required",
+        "realtime stream unavailable; polling required",
+        "realtime subscription unavailable; polling required",
+        "realtime ticket unavailable; polling required",
     }
 )
 

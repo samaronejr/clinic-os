@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import environ
 
 from .base import *  # noqa: F403
@@ -13,6 +15,10 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
     "-c search_path=clinic_app,public"
 )
+DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
+DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+DATABASES["locks"] = deepcopy(DATABASES["default"])
+DATABASES["locks"]["TEST"] = {"MIRROR": "default"}
 PASSWORD_HASHERS: list[str] = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 # Test runs never reach for a developer workstation's Redis: base defaults
 # the broker to redis://localhost:6379/0, which is often another project's

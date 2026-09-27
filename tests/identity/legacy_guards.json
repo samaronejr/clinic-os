@@ -2074,6 +2074,97 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
+      "symbol": "apps.realtime.authorization._patient_topics",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "reason": "Patient-session boundary, not a nonstaff exemption: the observer sees it read clinic and enrollment relations through patient_session_context. The named executable oracle requires that observed evidence, an exact-enrollment grant and a foreign-enrollment denial; staff GUCs are never installed.",
+      "observe": true,
+      "probes": [
+        "apps.realtime.authorization._patient_topics#observed"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.hooks.permission_changed",
+      "signals": [
+        "membership"
+      ],
+      "kind": "direct",
+      "reason": "Reads clinic memberships to choose invalidation subjects, so it cannot be a nonstaff or infrastructure exemption. The named executable oracle observes the membership read and compares the scheduled authz:user topics exactly with the owner-read member set.",
+      "observe": true,
+      "probes": [
+        "apps.realtime.hooks.permission_changed#observed"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.scopes._schedule_scope",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "infrastructure",
+      "reason": "Serializes a signed transport lease into an on_commit Redis write after its callers checked permission; grants nothing. Certified by the authority observer and the complete staff-state backstop in tests/identity/nonstaff_realtime_probes.py."
+    },
+    {
+      "symbol": "apps.realtime.scopes.authorize_scope",
+      "signals": [
+        "actor",
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.scopes.grant_clinic_topic",
+      "signals": [
+        "denial",
+        "membership"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.scopes.revoke_clinic_topic",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization._verified_staff",
+      "signals": [
+        "authentication",
+        "tenant_boundary"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization.authorize_topics_sync",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
       "symbol": "apps.retention.services._denied",
       "signals": [
         "denial",
@@ -3222,6 +3313,8 @@
     "apps.prescription.views.draft_workspace",
     "apps.prescription.views.review_view",
     "apps.prescription.views.signing_status_view",
+    "apps.realtime.authorization._patient_topics#observed",
+    "apps.realtime.hooks.permission_changed#observed",
     "apps.retention.services._clinic",
     "apps.retention.services._denied",
     "apps.retention.services._record_patient_view#observed",

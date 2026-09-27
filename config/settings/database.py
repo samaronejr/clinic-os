@@ -96,6 +96,7 @@ def parse_database_url(
     options: dict[str, object] = {
         "connect_timeout": int(timeout_text),
         "options": "-c search_path=clinic_app,public",
+        "prepare_threshold": None,
         "sslmode": "verify-full",
         "sslrootcert": str(ca),
     }
@@ -103,6 +104,7 @@ def parse_database_url(
         options["hostaddr"] = required_hostaddr
     return {
         "ATOMIC_REQUESTS": False,
+        "DISABLE_SERVER_SIDE_CURSORS": True,
         "ENGINE": "django.db.backends.postgresql",
         "HOST": host,
         "NAME": database,

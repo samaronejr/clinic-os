@@ -34,3 +34,10 @@ USER 10001:10001
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/app/ops/container/entrypoint.sh"]
 CMD ["gunicorn", "--config=/app/ops/container/gunicorn_no_proxy.py", "--bind=0.0.0.0:8000", "--workers=2", "--threads=4", "--timeout=30", "--graceful-timeout=30", "--keep-alive=5", "--max-requests=1000", "--max-requests-jitter=100", "--access-logfile=-", "--error-logfile=-", "config.wsgi:application"]
+
+# Optional independent deploy unit. The final/default target remains WSGI.
+FROM runtime AS realtime
+ENV CLINIC_PROCESS_PURPOSE=realtime
+CMD ["uvicorn", "config.asgi_realtime:application", "--host=0.0.0.0", "--port=8001", "--no-proxy-headers", "--no-access-log", "--lifespan=off", "--timeout-graceful-shutdown=5", "--limit-concurrency=1000"]
+
+FROM runtime AS web

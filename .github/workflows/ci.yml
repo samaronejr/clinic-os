@@ -117,15 +117,15 @@ jobs:
           - "clinic-settings,billing,prescription-draft,prescribing,document-verification"
           - "consent,amendments,attachments,clinical-history,clinician-video"
           - "video-recovery,encounter,end-to-end"
-          - "agenda,availability,contacts,locale,patient-access"
+          - "agenda,availability,contacts,locale,patient-access,realtime"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
           - "smoke@firefox,billing@firefox,clinic-settings@firefox,clinical-history@firefox,clinician-video@firefox,consent@firefox,end-to-end@firefox,patient-video@firefox,video-recovery@firefox,amendments@firefox,document-verification@firefox,prescribing@firefox,prescription-draft@firefox,reminders@firefox,teleconsult@firefox,waitlist@firefox"
           - "primitives@firefox,workspace@firefox,self-booking@firefox,locale@firefox"
-          - "agenda@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox"
+          - "agenda@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox,realtime@firefox"
           - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit,amendments@webkit,document-verification@webkit,prescribing@webkit,prescription-draft@webkit,reminders@webkit,teleconsult@webkit,waitlist@webkit"
           - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit"
-          - "agenda@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit"
+          - "agenda@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -159,6 +159,7 @@ jobs:
         run: |
           set -u
           uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m playwright install ffmpeg
           status=0
           for entry in ${RENEWAL_SUITES//,/ }; do
             suite="${entry%%@*}"
@@ -225,7 +226,7 @@ jobs:
           install -d "$RUNNER_TEMP/worker-integration"
           CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
             --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
-            tests/renewal/test_broker_delivery.py
+            tests/renewal/test_broker_delivery.py tests/realtime/
       - name: Publish broker gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

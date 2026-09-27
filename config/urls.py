@@ -1,4 +1,5 @@
 from apps.core import telemetry, views
+from apps.realtime.views import ticket_view
 from django.urls import include, path
 from django.urls.resolvers import URLPattern, URLResolver
 
@@ -10,6 +11,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("readyz", views.readyz, name="readyz"),
     path("api/ui/v1/", include("apps.core.api.urls")),
     path("internal/metrics", telemetry.internal_metrics, name="internal-metrics"),
+    path("rt/stream", ticket_view, name="realtime-ticket"),
     path("", include("apps.identity.urls")),
     path("", include("apps.intake.urls")),
     path("", include("apps.scheduling.urls")),
