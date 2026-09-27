@@ -44,6 +44,22 @@ def test_all_live_scheduling_sql_time_reads_are_controlled() -> None:
     assert live_clock_inventory() == expected
 
 
+def test_reachable_opaque_functions_have_exact_reviewed_identities() -> None:
+    observed = live_clock_inventory()
+    markers = {
+        key
+        for node in observed.values()
+        for key in node["direct"]
+        if key.startswith("opaque:")
+    }
+    assert not any(key.startswith("opaque:unreviewed:") for key in markers)
+    allowlist = json.loads(
+        Path(__file__).with_name("clock_opaque_allowlist.json").read_text()
+    )
+    assert {key.removeprefix("opaque:reviewed:") for key in markers} == set(allowlist)
+    assert all(entry["reason"] for entry in allowlist.values())
+
+
 def test_catalog_reader_set_contains_the_explicit_clock_cross_check() -> None:
     procedures = functions()
     readers = catalog_readers()
