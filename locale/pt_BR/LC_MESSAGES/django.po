@@ -2391,6 +2391,90 @@ msgstr "Caixa clínica"
 msgid "Messages"
 msgstr "Mensagens"
 
+msgid "All kinds"
+msgstr "Todos os tipos"
+
+msgid "All priorities"
+msgstr "Todas as prioridades"
+
+msgid "All statuses"
+msgstr "Todos os estados"
+
+msgid "Allied professional"
+msgstr "Profissional de saúde"
+
+msgid "Apply reassignment"
+msgstr "Aplicar reatribuição"
+
+msgid "Appointment"
+msgstr "Consulta"
+
+msgid "Assign to me"
+msgstr "Atribuir a mim"
+
+msgid "Assigned"
+msgstr "Atribuída"
+
+msgid "Cancel task"
+msgstr "Cancelar tarefa"
+
+msgid "Checklist"
+msgstr "Lista de verificação"
+
+msgid "Clinic admin"
+msgstr "Administrador da clínica"
+
+msgid "Clinic manager"
+msgstr "Gestor da clínica"
+
+msgid "Clinic time zone"
+msgstr "Fuso horário da clínica"
+
+msgid "Complete with evidence"
+msgstr "Concluir com evidência"
+
+msgid "Connection unavailable. Your task has not been saved. Try again when connected."
+msgstr "Conexão indisponível. A tarefa não foi salva. Tente novamente quando a conexão voltar."
+
+msgid "Create task"
+msgstr "Criar tarefa"
+
+msgid "Depends on task"
+msgstr "Depende da tarefa"
+
+msgid "Done"
+msgstr "Concluída"
+
+msgid "Due"
+msgstr "Prazo"
+
+msgid "Due date and time"
+msgstr "Data e hora do prazo"
+
+msgid "Escalated"
+msgstr "Escalonada"
+
+msgid "Escalated for manager review"
+msgstr "Encaminhada para revisão do gestor"
+
+msgid "Evidence reference"
+msgstr "Referência da evidência"
+
+msgid "Evidence type"
+msgstr "Tipo de evidência"
+
+msgid "Exception queue"
+msgstr "Fila de exceções"
+
+msgid "Failed"
+msgstr "Falhou"
+
+msgid "Failed or delayed runs require review. Active runs keep their published version."
+msgstr "Execuções com falha ou atraso precisam de revisão. Execuções ativas mantêm a versão publicada."
+
+msgid "Filter tasks"
+msgstr "Filtrar tarefas"
+
 msgid "Finance"
 msgstr "Financeiro"
 
@@ -2517,3 +2601,138 @@ msgstr "Remover visão salva: %(name)s"
 
 msgid "Save this view: %(name)s"
 msgstr "Salvar esta visão: %(name)s"
+
+msgid "Follow-up"
+msgstr "Acompanhamento"
+
+msgid "High"
+msgstr "Alta"
+
+msgid "I checked the task requirements."
+msgstr "Verifiquei os requisitos da tarefa."
+
+msgid "In progress"
+msgstr "Em andamento"
+
+msgid "Low"
+msgstr "Baixa"
+
+msgid "New owner"
+msgstr "Novo responsável"
+
+msgid "No tasks in this queue."
+msgstr "Nenhuma tarefa nesta fila."
+
+msgid "No workflow exceptions."
+msgstr "Nenhuma exceção de fluxo de trabalho."
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Nurse"
+msgstr "Enfermeiro"
+
+msgid "Open"
+msgstr "Aberta"
+
+msgid "Organization admin"
+msgstr "Administrador da organização"
+
+msgid "Outcome"
+msgstr "Resultado"
+
+msgid "Owner"
+msgstr "Responsável"
+
+msgid "Patient enrollment"
+msgstr "Vínculo do paciente"
+
+msgid "Preview reassignment"
+msgstr "Prévia da reatribuição"
+
+msgid "Priority"
+msgstr "Prioridade"
+
+msgid "Reassignment preview"
+msgstr "Prévia da reatribuição"
+
+msgid "Receptionist"
+msgstr "Recepcionista"
+
+msgid "Reference"
+msgstr "Referência"
+
+msgid "Reference type"
+msgstr "Tipo de referência"
+
+msgid "Resolved"
+msgstr "Resolvido"
+
+msgid "Review"
+msgstr "Revisão"
+
+msgid "Review the highlighted fields."
+msgstr "Revise os campos destacados."
+
+msgid "Reviewed"
+msgstr "Revisado"
+
+msgid "Revision"
+msgstr "Revisão"
+
+msgid "Role"
+msgstr "Função"
+
+msgid "Scheduler"
+msgstr "Agendador"
+
+msgid "Select for reassignment"
+msgstr "Selecionar para reatribuição"
+
+msgid "Start task"
+msgstr "Iniciar tarefa"
+
+msgid "Task"
+msgstr "Tarefa"
+
+msgid "Task changes saved."
+msgstr "Alterações da tarefa salvas."
+
+msgid "Task kind"
+msgstr "Tipo de tarefa"
+
+msgid "Task queues"
+msgstr "Filas de tarefas"
+
+msgid "Tasks"
+msgstr "Tarefas"
+
+msgid "The task changed. Review the current version and try again."
+msgstr "A tarefa mudou. Revise a versão atual e tente novamente."
+
+msgid "Unassigned"
+msgstr "Sem responsável"
+
+msgid "Urgent"
+msgstr "Urgente"
+
+msgid "Use references only. Do not enter clinical information here."
+msgstr "Use apenas referências. Não insira informações clínicas aqui."
+
+msgid "Waiting for an authorized worker or reconciliation"
+msgstr "Aguardando execução autorizada ou conciliação"
+
+msgid "Workflow exceptions"
+msgstr "Exceções de fluxos de trabalho"
+
+msgid "Workflow version"
+msgstr "Versão do fluxo de trabalho"
+
+msgid "Saving task changes..."
+msgstr "Salvando alterações da tarefa..."
+
+#, python-format
+msgid "One task will be reassigned."
+msgid_plural "%(count)s tasks will be reassigned."
+msgstr[0] "Uma tarefa será reatribuída."
+msgstr[1] "%(count)s tarefas serão reatribuídas."

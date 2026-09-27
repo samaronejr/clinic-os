@@ -947,6 +947,7 @@
       "signals": [
         "actor",
         "membership",
+        "permission_helper",
         "role_helper",
         "scope_name"
       ],
@@ -959,6 +960,7 @@
       "symbol": "apps.identity.current_context.require_permission",
       "signals": [
         "actor",
+        "permission_helper",
         "resolver",
         "scope_name"
       ],
@@ -1231,7 +1233,8 @@
     {
       "symbol": "apps.identity.scope_provisioning._owner_clinic",
       "signals": [
-        "denial"
+        "denial",
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -3319,6 +3322,529 @@
       "probes": [
         "apps.tenancy.middleware.TenantMiddleware._patient#observed"
       ]
+    },
+    {
+      "symbol": "apps.workflows.access.owner_matches",
+      "signals": [
+        "membership",
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.owner_matches#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.access.require_clinic_access",
+      "signals": [
+        "permission_delegation",
+        "permission_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.require_clinic_access#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.access.require_manager",
+      "signals": [
+        "permission_delegation",
+        "permission_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.require_manager#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.access.require_owner_target",
+      "signals": [
+        "denial",
+        "permission_delegation",
+        "permission_helper",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.require_owner_target#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.access.require_reference",
+      "signals": [
+        "denial",
+        "permission_delegation",
+        "permission_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.require_reference#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.access.require_task_access",
+      "signals": [
+        "denial",
+        "permission_delegation",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.require_task_access#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.engine._apply_or_fail",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.engine._apply_or_fail#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.engine._locked_step",
+      "signals": [
+        "denial",
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.engine._locked_step#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.engine._step_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "infrastructure",
+      "reason": "Executed by nonstaff_workflow_probes under the authority observer and complete role backstop. This routine renders a fixed denial or returns opaque stored worker references; it does not observe the calling staff actor. Worker execution separately rechecks the immutable stored actor."
+    },
+    {
+      "symbol": "apps.workflows.engine._task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.engine._task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.engine.apply_claim",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.engine.apply_claim#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.engine.claim_step",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.engine.claim_step#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.engine.due_steps",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "infrastructure",
+      "reason": "Executed by nonstaff_workflow_probes under the authority observer and complete role backstop. This routine renders a fixed denial or returns opaque stored worker references; it does not observe the calling staff actor. Worker execution separately rechecks the immutable stored actor."
+    },
+    {
+      "symbol": "apps.workflows.engine.execute_step",
+      "signals": [
+        "permission_delegation",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.engine.execute_step#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.external.SyntheticWorkflowAdapter.prepare",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.external.SyntheticWorkflowAdapter.prepare#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.external.step_send_eligible",
+      "signals": [
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.external.step_send_eligible#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.reassignment.apply_reassignment",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.reassignment.apply_reassignment#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.reassignment.preview_reassignment",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.reassignment.preview_reassignment#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.run_services.cancel_run",
+      "signals": [
+        "denial",
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.run_services.cancel_run#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.run_services.publish_definition",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.run_services.publish_definition#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.run_services.start_run",
+      "signals": [
+        "denial",
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.run_services.start_run#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services._command",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services._command#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.add_comment",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.add_comment#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.assign_task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.assign_task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.cancel_task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.cancel_task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.complete_task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.complete_task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.create_task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.create_task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.escalate_task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.escalate_task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.list_tasks",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.list_tasks#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.task_services.start_task",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.task_services.start_task#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.tasks.escalate",
+      "signals": [
+        "permission_delegation",
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.tasks.escalate#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.tasks.execute_step",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.tasks.execute_step#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.tasks.scan_due",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "infrastructure",
+      "reason": "Executed by nonstaff_workflow_probes under the authority observer and complete role backstop. This routine renders a fixed denial or returns opaque stored worker references; it does not observe the calling staff actor. Worker execution separately rechecks the immutable stored actor."
+    },
+    {
+      "symbol": "apps.workflows.views._action",
+      "signals": [
+        "denial",
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._action#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views._authorized_tasks",
+      "signals": [
+        "decorator",
+        "denial",
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._authorized_tasks#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views._bulk_action",
+      "signals": [
+        "denial",
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._bulk_action#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views._denied",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Executed by nonstaff_workflow_probes under the authority observer and complete role backstop. This routine renders a fixed denial or returns opaque stored worker references; it does not observe the calling staff actor. Worker execution separately rechecks the immutable stored actor."
+    },
+    {
+      "symbol": "apps.workflows.views._manager",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._manager#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views._staff_catalog",
+      "signals": [
+        "permission_delegation",
+        "permission_helper",
+        "resolver"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._staff_catalog#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views._submit",
+      "signals": [
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._submit#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views._task_row",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._task_row#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.workflows.views.tasks",
+      "signals": [
+        "denial",
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views.tasks#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
     }
   ],
   "probes": [
@@ -3349,6 +3875,7 @@
     "apps.core.integration._resolve_scope",
     "apps.core.navigation.granted_permissions",
     "apps.core.views.workspace_home",
+    "apps.core.workspace._links#observed",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
     "apps.ehr.attachment_views._workspace",
@@ -3535,6 +4062,44 @@
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
+    "apps.workflows.access.owner_matches#observed",
+    "apps.workflows.access.require_clinic_access#observed",
+    "apps.workflows.access.require_manager#observed",
+    "apps.workflows.access.require_owner_target#observed",
+    "apps.workflows.access.require_reference#observed",
+    "apps.workflows.access.require_task_access#observed",
+    "apps.workflows.engine._apply_or_fail#observed",
+    "apps.workflows.engine._locked_step#observed",
+    "apps.workflows.engine._task#observed",
+    "apps.workflows.engine.apply_claim#observed",
+    "apps.workflows.engine.claim_step#observed",
+    "apps.workflows.engine.execute_step#observed",
+    "apps.workflows.external.SyntheticWorkflowAdapter.prepare#observed",
+    "apps.workflows.external.step_send_eligible#observed",
+    "apps.workflows.reassignment.apply_reassignment#observed",
+    "apps.workflows.reassignment.preview_reassignment#observed",
+    "apps.workflows.run_services.cancel_run#observed",
+    "apps.workflows.run_services.publish_definition#observed",
+    "apps.workflows.run_services.start_run#observed",
+    "apps.workflows.task_services._command#observed",
+    "apps.workflows.task_services.add_comment#observed",
+    "apps.workflows.task_services.assign_task#observed",
+    "apps.workflows.task_services.cancel_task#observed",
+    "apps.workflows.task_services.complete_task#observed",
+    "apps.workflows.task_services.create_task#observed",
+    "apps.workflows.task_services.escalate_task#observed",
+    "apps.workflows.task_services.list_tasks#observed",
+    "apps.workflows.task_services.start_task#observed",
+    "apps.workflows.tasks.escalate#observed",
+    "apps.workflows.tasks.execute_step#observed",
+    "apps.workflows.views._action#observed",
+    "apps.workflows.views._authorized_tasks#observed",
+    "apps.workflows.views._bulk_action#observed",
+    "apps.workflows.views._manager#observed",
+    "apps.workflows.views._staff_catalog#observed",
+    "apps.workflows.views._submit#observed",
+    "apps.workflows.views._task_row#observed",
+    "apps.workflows.views.tasks#observed",
     "apps.tenancy.middleware.TenantMiddleware._response",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
@@ -5175,14 +5740,31 @@
           }
         ],
         "migrations": [
-          "apps/identity/migrations/_permission_sql.py"
+          "apps/identity/migrations/_permission_sql.py",
+          "apps/identity/migrations/_task_permission_sql.py"
         ],
         "policies": [
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_professionalregistration:scope_read",
-          "clinic_app.identity_rolegrant:scope_read"
+          "clinic_app.identity_rolegrant:scope_read",
+          "clinic_app.workflows_task:workflow_insert",
+          "clinic_app.workflows_task:workflow_read",
+          "clinic_app.workflows_task:workflow_update",
+          "clinic_app.workflows_taskcomment:workflow_insert",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_insert",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_read",
+          "clinic_app.workflows_workflowrun:workflow_insert",
+          "clinic_app.workflows_workflowrun:workflow_read",
+          "clinic_app.workflows_workflowrun:workflow_update",
+          "clinic_app.workflows_workflowstep:workflow_insert",
+          "clinic_app.workflows_workflowstep:workflow_update"
         ],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.workflows_guard",
+          "clinic_app.workflows_owned",
+          "clinic_app.workflows_owner_valid",
+          "clinic_app.workflows_staff_catalog"
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -7226,6 +7808,237 @@
         "waitlist_staff"
       ],
       "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.workflows_reference_valid": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "ref jsonb, tenant uuid, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ]
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_owner_valid": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, owner_user uuid, owner_role text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ]
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_due_steps": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "due_at timestamp with time zone",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_task_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_task uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_staff_catalog": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_step_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_step uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_steps_valid": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "steps jsonb",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ]
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_owned": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, owner_user uuid, owner_role text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [
+          "clinic_app.workflows_task:workflow_read",
+          "clinic_app.workflows_task:workflow_update"
+        ],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ]
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
+    },
+    "clinic_app.workflows_due_tasks": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "due_at timestamp with time zone",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "workflow_protocol",
+      "probes": [
+        "test_every_workflow_sql_member_for_every_catalog_role"
+      ],
+      "reason": "Every member is derived from migration declarations plus the live catalog and executed by tests/workflows/test_sql_authority.py across the complete stored-role catalog, no membership and inactive state. Private validators and trigger decisions run through their real SQL bodies, not a label exemption."
     }
   },
   "sql_method": [

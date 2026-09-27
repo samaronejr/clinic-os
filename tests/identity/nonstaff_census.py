@@ -29,6 +29,7 @@ from identity.nonstaff_principal_probes import principal_probes
 from identity.nonstaff_realtime_probes import realtime_probes
 from identity.nonstaff_states import CareScope, ReplayScope
 from identity.nonstaff_subjects import seed_nonstaff
+from identity.nonstaff_workflow_probes import workflow_probes
 from identity.permission_support import owner_context
 
 if TYPE_CHECKING:
@@ -90,6 +91,7 @@ def run_nonstaff_census(
             *realtime_probes(data),
             *principal_probes(graph),
             *delegation_probes(graph, data.actor.pk),
+            *workflow_probes(data, patch),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(

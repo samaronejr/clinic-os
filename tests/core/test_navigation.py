@@ -188,7 +188,7 @@ def test_destination_links_lead_to_the_first_open_place(
     # The registry denies physicians, so Patients opens the consent entry.
     assert physician_links["patients"] == f"/clinics/{clinic}/consent/"
     assert receptionist_links["patients"] == f"/intake/clinics/{clinic}/patients/"
-    assert receptionist_links["operations"] == f"/retention/clinics/{clinic}/"
+    assert receptionist_links["operations"] == f"/clinics/{clinic}/tasks/"
     assert receptionist_links["finance"] == f"/billing/clinics/{clinic}/charges/"
 
 
@@ -209,8 +209,8 @@ def test_section_row_lists_open_places_and_marks_the_current_one(
     assert 'data-tab="agenda"' in html
     assert re.search(r'data-module="agenda" aria-current="page"', html)
     # A section with one open place renders no row.
-    retention = _get(client, f"/retention/clinics/{rbac_graph.clinic_a}/")
-    assert 'class="shell-subnav"' not in retention.content.decode()
+    finance = _get(client, f"/billing/clinics/{rbac_graph.clinic_a}/charges/")
+    assert 'class="shell-subnav"' not in finance.content.decode()
 
 
 def test_a_clinic_narrowed_permission_hides_its_destination(
@@ -241,7 +241,6 @@ def test_registry_never_renders_an_undelivered_destination() -> None:
         "today",
         "inbox",
         "messages",
-        "operations",
         "automations",
         "reports",
     }

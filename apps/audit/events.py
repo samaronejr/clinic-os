@@ -49,6 +49,33 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "realtime.subscription.authorized": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic", "authorized"
         ),
+        **{
+            f"workflows.{record}.{verb}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", f"workflows.{record}", verb
+            )
+            for record, verbs in {
+                "task": (
+                    "created",
+                    "assigned",
+                    "started",
+                    "completed",
+                    "cancelled",
+                    "escalated",
+                ),
+                "comment": ("created",),
+                "definition": ("published",),
+                "run": (
+                    "started",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                ),
+                "step": ("claimed", "waiting", "completed", "failed", "cancelled"),
+            }.items()
+            for verb in verbs
+        },
         "identity.principal.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-ops", "identity.service_principal", "created"
         ),

@@ -23,6 +23,7 @@ from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
+from apps.workflows import services as workflow_services
 from django.apps import apps as django_apps
 
 FOUNDATION_APP_NAMES: Final = frozenset(
@@ -57,6 +58,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.scheduling.apps.SchedulingConfig",
         "apps.teleconsult.apps.TeleconsultConfig",
         "apps.tenancy.apps.TenancyConfig",
+        "apps.workflows.apps.WorkflowsConfig",
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
@@ -100,6 +102,29 @@ def test_realtime_public_services_have_exact_keyword_only_boundaries(
         for name, parameter in parameters.items()
         if parameter.default is not Parameter.empty
     } == defaults
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("create_task", ["clinic_id", "spec", "idempotency_key"]),
+        ("assign_task", ["clinic_id", "task_id", "owner", "expected_revision"]),
+        ("complete_task", ["clinic_id", "task_id", "evidence", "expected_revision"]),
+        ("publish_definition", ["clinic_id", "key", "steps", "idempotency_key"]),
+        (
+            "start_run",
+            ["clinic_id", "definition_version_id", "context_refs", "idempotency_key"],
+        ),
+    ],
+)
+def test_workflow_services_derive_actor_and_require_clinic(
+    name: str, expected: list[str]
+) -> None:
+    parameters = signature(getattr(workflow_services, name)).parameters
+    assert list(parameters) == expected
+    assert all(
+        parameter.kind is Parameter.KEYWORD_ONLY for parameter in parameters.values()
+    )
 
 
 def test_machine_context_never_accepts_a_user_or_tenant_claim() -> None:

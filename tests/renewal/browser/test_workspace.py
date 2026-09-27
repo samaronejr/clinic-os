@@ -440,6 +440,11 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     assert _modules(page) == ["agenda", "patients", "finance", "operations"]
     _capture(page, root, "receptionist-landing-1280")
+    click_to_navigate(page.locator("a[data-module=operations]"))
+    assert page.url.endswith(f"/clinics/{workspace_staff['clinic_a']}/tasks/")
+    expect(page.locator("a[data-module=operations]")).to_have_attribute(
+        "aria-current", "page"
+    )
 
     # Brand link and Agenda entry both land on today's agenda of this clinic.
     click_to_navigate(page.locator(".nav-brand"))

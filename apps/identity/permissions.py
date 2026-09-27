@@ -124,8 +124,22 @@ BUNDLES_V1: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
         "owner": _ORG_ADMIN,
     }
 )
+# Task 26 adds task authority in a successor bundle, never by editing v1.
+TASK_PERMISSIONS_V2: Final = frozenset({"tasks.view", "tasks.assign", "tasks.complete"})
+BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        role: permissions
+        | TASK_PERMISSIONS_V2
+        | (
+            {"tasks.reassign"}
+            if role in {"owner", "org_admin", "clinic_admin", "clinic_manager"}
+            else set()
+        )
+        for role, permissions in BUNDLES_V1.items()
+    }
+)
 PERMISSIONS: Final[frozenset[str]] = frozenset().union(
-    *BUNDLES_V1.values(), {"restricted.read"}
+    *BUNDLES_V2.values(), {"restricted.read"}
 )
 # Patient-specific clinical actions require a current professional registration
 # and assigned/care-team scope. Break-glass here only requests a future grant.

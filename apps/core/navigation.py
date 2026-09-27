@@ -179,9 +179,12 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "operations",
         gettext_noop("Operations"),
-        None,
-        ("demographics.read", *_CONFIGURATION),
-        owner_todo=26,
+        "workflows:tasks",
+        ("tasks.view",),
+        # The task queue is gated by the tasks.view bundle permission alone
+        # (apps.workflows.access), not by a legacy role list.
+        route_roles=None,
+        views=frozenset({"workflows:tasks", "workflows:exceptions"}),
         entries=(
             Destination(
                 "retention",

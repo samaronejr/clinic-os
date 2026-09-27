@@ -67,6 +67,10 @@ app.conf.update(
     worker_log_format=_SAFE_WORKER_LOG_FORMAT,
     worker_task_log_format=_SAFE_WORKER_LOG_FORMAT,
     beat_schedule={
+        "workflow-timers-and-escalation": {
+            "task": "apps.workflows.tasks.scan_due",
+            "schedule": 60.0,
+        },
         "appointment-reminders": {
             "task": "comms.dispatch_due_reminders",
             "schedule": 60.0,

@@ -1,0 +1,101 @@
+{% load i18n tz %}
+<section id="tasks-panel" class="tasks-panel" data-tasks-state="{{ state }}">
+  {% if message %}<div class="feedback{% if state == 'error' or state == 'conflict' %} feedback--error{% else %} feedback--success{% endif %}" role="status" tabindex="-1"{% if state == 'error' or state == 'conflict' %} data-focus-error{% endif %}>{{ message }}</div>{% endif %}
+  <p class="feedback" data-task-progress role="status" hidden>{% trans "Saving task changes..." %}</p>
+  <p class="feedback feedback--error" data-task-offline role="alert" tabindex="-1" hidden>{% trans "Connection unavailable. Your task has not been saved. Try again when connected." %}</p>
+  <p class="feedback feedback--error" data-task-denied role="alert" tabindex="-1" hidden>{% trans "Access unavailable" %}</p>
+  {% if preview %}
+  <section class="task-preview" data-reassignment-preview>
+    <h2>{% trans "Reassignment preview" %}</h2>
+    <p><strong>{% trans "New owner" %}:</strong> {{ preview_owner_label }}</p>
+    <p>{% blocktrans count count=preview.tasks|length %}One task will be reassigned.{% plural %}{{ count }} tasks will be reassigned.{% endblocktrans %}</p>
+    <ul>{% for task in preview.tasks %}<li>{% trans "Task" %} · {% timezone clinic.timezone %}{{ task.due_at|date:"d/m/Y H:i" }}{% endtimezone %} · {% trans "Revision" %} {{ task.revision }}</li>{% endfor %}</ul>
+    <form method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML">
+      {% csrf_token %}<input type="hidden" name="preview_token" value="{{ preview.token }}">
+      <button class="button" name="action" value="bulk-apply">{% trans "Apply reassignment" %}</button>
+      <a class="button button--secondary" href="{{ request.path }}">{% trans "Cancel" %}</a>
+    </form>
+  </section>
+  {% endif %}
+  <form class="task-filters" method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML" novalidate>
+    {% csrf_token %}
+    {% for field in filter_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+    <button class="button button--secondary" name="action" value="filter">{% trans "Filter tasks" %}</button>
+  </form>
+  {% if manager %}
+  <form id="bulk-reassign" class="task-filters" method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML">
+    {% csrf_token %}
+    <div class="field"><label for="bulk-owner">{% trans "New owner" %}</label>
+    <select id="bulk-owner" name="owner">
+      {% for id,label in staff %}<option value="user:{{ id }}">{{ label }}</option>{% endfor %}
+      {% for value,label in roles %}<option value="role:{{ value }}">{% trans "Role" %}: {{ label }}</option>{% endfor %}
+    </select></div>
+    <button class="button button--secondary" name="action" value="bulk-preview">{% trans "Preview reassignment" %}</button>
+  </form>
+  {% endif %}
+  <div class="task-list" aria-live="polite">
+  {% for row in task_rows %}{% with task=row.record %}
+    <article class="task-row" data-task="{{ task.pk }}" data-task-state="{{ task.state }}" data-revision="{{ task.revision }}">
+      <header><h2>{{ row.kind }}</h2><span class="badge">{{ row.state }}</span></header>
+      <dl class="task-facts"><div><dt>{% trans "Owner" %}</dt><dd>{{ row.owner }}</dd></div><div><dt>{% trans "Due" %}</dt><dd>{% timezone clinic.timezone %}{{ task.due_at|date:"d/m/Y H:i" }}{% endtimezone %}</dd></div><div><dt>{% trans "Priority" %}</dt><dd>{{ row.priority }}</dd></div></dl>
+      {% if task.escalated_at %}<p class="feedback feedback--muted">{% trans "Escalated for manager review" %}</p>{% endif %}
+      {% if manager and row.active %}<label class="task-select"><input type="checkbox" name="task_ids" value="{{ task.pk }}" form="bulk-reassign">{% trans "Select for reassignment" %}</label>{% endif %}
+      {% if task.state == 'open' and can_assign %}
+      <form method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="task_id" value="{{ task.pk }}"><input type="hidden" name="expected_revision" value="{{ task.revision }}"><input type="hidden" name="owner" value="me">
+        <button class="button button--secondary" name="action" value="assign">{% trans "Assign to me" %}</button>
+      </form>
+      {% elif task.state == 'assigned' and row.owned and can_complete %}
+      <form method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="task_id" value="{{ task.pk }}"><input type="hidden" name="expected_revision" value="{{ task.revision }}">
+        <button class="button" name="action" value="start">{% trans "Start task" %}</button>
+      </form>
+      {% elif task.state == 'in_progress' and row.owned and can_complete %}
+      <form class="task-completion" method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="task_id" value="{{ task.pk }}"><input type="hidden" name="expected_revision" value="{{ task.revision }}">
+        {% if task.kind == 'checklist' %}
+        <label class="task-select"><input type="checkbox" name="checked" required>{% trans "I checked the task requirements." %}</label>
+        {% else %}
+        <input type="hidden" name="evidence_kind" value="reference">
+        <label for="record-kind-{{ task.pk }}">{% trans "Evidence type" %}</label><select id="record-kind-{{ task.pk }}" name="record_kind">{% for value,label in references %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+        <label for="record-id-{{ task.pk }}">{% trans "Evidence reference" %}</label><input id="record-id-{{ task.pk }}" name="record_id" required>
+        <label for="outcome-{{ task.pk }}">{% trans "Outcome" %}</label><select id="outcome-{{ task.pk }}" name="outcome"><option value="reviewed">{% trans "Reviewed" %}</option><option value="resolved">{% trans "Resolved" %}</option><option value="escalated">{% trans "Escalated" %}</option></select>
+        {% endif %}
+        <button class="button" name="action" value="complete">{% trans "Complete with evidence" %}</button>
+      </form>
+      {% endif %}
+      {% if manager and row.active %}
+      <form method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML">
+        {% csrf_token %}<input type="hidden" name="task_id" value="{{ task.pk }}"><input type="hidden" name="expected_revision" value="{{ task.revision }}">
+        <button class="button button--secondary" name="action" value="cancel">{% trans "Cancel task" %}</button>
+      </form>
+      {% endif %}
+    </article>
+  {% endwith %}{% empty %}<p class="feedback feedback--muted" data-tasks-empty>{% trans "No tasks in this queue." %}</p>{% endfor %}
+  </div>
+  {% if exceptions %}
+  <section class="task-exceptions"><h2>{% trans "Workflow exceptions" %}</h2>
+    <p>{% trans "Failed or delayed runs require review. Active runs keep their published version." %}</p>
+    {% for run in runs %}<p data-run-state="{{ run.state }}">{% trans "Workflow version" %} {{ run.definition_version.version }} · {% if run.state == 'failed' %}{% trans "Failed" %}{% else %}{% trans "Waiting for an authorized worker or reconciliation" %}{% endif %}</p>{% empty %}<p>{% trans "No workflow exceptions." %}</p>{% endfor %}
+  </section>
+  {% elif can_assign %}
+  <section class="task-create"><h2>{% trans "Create task" %}</h2>
+    <p>{% trans "Use references only. Do not enter clinical information here." %}</p>
+    <form id="create-task" method="post" action="{{ request.path }}" hx-post="{{ request.path }}" hx-target="#tasks-panel" hx-swap="outerHTML" novalidate data-auth-form>
+      {% csrf_token %}
+      {{ create_form.non_field_errors }}
+      {% for field in create_form %}
+        {% if field.is_hidden %}{{ field }}
+        {% elif field.name == 'due_date' %}
+          {% trans "Due date and time" as due_legend %}
+          {% include "includes/components/datetime.html" with id="task-due" name="due" legend=due_legend timezone=clinic.timezone date_value=create_form.due_date.value time_value=create_form.due_time.value state=date_state only %}
+          {{ create_form.due_date.errors }}{{ create_form.due_time.errors }}
+        {% elif field.name != 'due_time' %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endif %}
+      {% endfor %}
+      <p class="field-hint">{% trans "Clinic time zone" %}: {{ clinic.timezone }}</p>
+      <button class="button" name="action" value="create">{% trans "Create task" %}</button>
+      <p class="feedback feedback--error" data-network-error hidden>{% trans "Connection unavailable. Your task has not been saved. Try again when connected." %}</p>
+    </form>
+  </section>
+  {% endif %}
+</section>

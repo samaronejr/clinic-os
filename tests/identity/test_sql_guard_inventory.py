@@ -13,19 +13,26 @@ from identity.legacy_sql_inventory import assert_sql_inventory
 from identity.sql_guard_probes import ALL_ROLES, PROBES
 from identity.test_metrics_guard_parity import METRICS_SQL_ORACLES
 from identity.test_permission_parity import INVENTORY
+from workflows import test_sql_authority as workflow_sql
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from rbac_fixtures import RbacGraph
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
+def test_sql_inventory_classifications_have_executable_role_oracles(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     entries = INVENTORY["sql_guards"]
     assert_sql_inventory(entries)
     listed = set()
     operation_oracles = {}
     machine_oracles = {}
+    workflow_oracles = {}
     for name, entry in entries.items():
         if entry["kind"] == "staff_guard":
             assert len(entry["discovery"]["signatures"]) == 1, name
@@ -44,6 +51,8 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert entry["reason"], name
             assert entry["probes"], name
             machine_oracles[name] = entry["probes"]
+        elif entry["kind"] == "workflow_protocol":
+            workflow_oracles[name] = entry["probes"]
         else:
             assert entry["kind"] in {
                 "migration_only",
@@ -57,6 +66,14 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             }, name
             assert entry["reason"], name
             assert not entry["probes"], name
+    assert workflow_oracles == {
+        name: ["test_every_workflow_sql_member_for_every_catalog_role"]
+        for name in workflow_sql.workflow_sql_members()
+    }
+    assert set(workflow_oracles) == set(workflow_sql.SQL_CASES)
+    workflow_sql.test_every_workflow_sql_member_for_every_catalog_role(
+        rbac_graph, monkeypatch
+    )
     assert listed == set(PROBES)
     assert operation_oracles == METRICS_SQL_ORACLES
     # Membership is the registry label itself; the oracles derive their member

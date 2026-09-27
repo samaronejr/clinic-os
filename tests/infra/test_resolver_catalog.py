@@ -6,6 +6,10 @@ from django.db import connection
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    ("workflows_task", "SELECT"),
+    ("workflows_workflowdefinitionversion", "SELECT"),
+    ("workflows_workflowrun", "SELECT"),
+    ("workflows_workflowstep", "SELECT"),
     ("billing_invoice", "SELECT"),
     ("billing_invoicerevision", "INSERT"),
     ("billing_invoicerevision", "SELECT"),
@@ -97,6 +101,11 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "workflows_owner_valid": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_reference_valid": ("s", False, ["clinic_resolver"]),
+    "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
+    "workflows_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_staff_catalog": ("v", True, ["clinic_app", "clinic_resolver"]),
     "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
@@ -203,6 +212,16 @@ POSTURE_OVERRIDES: Final = {
     "waitlist_binding": ("v", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
+    ("workflows_owned", "clinic uuid, owner_user uuid, owner_role text"),
+    ("workflows_owner_valid", "clinic uuid, owner_user uuid, owner_role text"),
+    ("workflows_reference_valid", "ref jsonb, tenant uuid, clinic uuid"),
+    ("workflows_steps_valid", "steps jsonb"),
+    ("workflows_guard", ""),
+    ("workflows_step_scope", "requested_step uuid"),
+    ("workflows_task_scope", "requested_task uuid"),
+    ("workflows_due_steps", "due_at timestamp with time zone"),
+    ("workflows_due_tasks", "due_at timestamp with time zone"),
+    ("workflows_staff_catalog", "clinic uuid"),
     ("auth_lookup", "requested_username text"),
     ("billing_immutable", ""),
     ("billing_invoice_guard", ""),
@@ -343,6 +362,28 @@ FUNCTION_SIGNATURES: Final = {
     ("waitlist_staff", "requested_clinic uuid"),
 }
 FUNCTION_RESULTS: Final = {
+    ("workflows_owned", "clinic uuid, owner_user uuid, owner_role text"): "boolean",
+    (
+        "workflows_owner_valid",
+        "clinic uuid, owner_user uuid, owner_role text",
+    ): "boolean",
+    ("workflows_reference_valid", "ref jsonb, tenant uuid, clinic uuid"): "boolean",
+    ("workflows_steps_valid", "steps jsonb"): "boolean",
+    ("workflows_guard", ""): "trigger",
+    (
+        "workflows_step_scope",
+        "requested_step uuid",
+    ): "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)",
+    (
+        "workflows_task_scope",
+        "requested_task uuid",
+    ): "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)",
+    ("workflows_due_steps", "due_at timestamp with time zone"): "TABLE(step_id uuid)",
+    ("workflows_due_tasks", "due_at timestamp with time zone"): "TABLE(task_id uuid)",
+    (
+        "workflows_staff_catalog",
+        "clinic uuid",
+    ): "TABLE(user_id uuid, display_label text)",
     ("auth_lookup", "requested_username text"): (
         "TABLE(id uuid, username character varying, "
         "password character varying, is_active boolean)"

@@ -347,7 +347,7 @@ class RoleGrant(TenantScopedModel):
 
         constraints: ClassVar[list[BaseConstraint]] = [
             models.CheckConstraint(
-                condition=models.Q(effect="remove", bundle_version=1),
+                condition=models.Q(effect="remove", bundle_version__in=(1, 2)),
                 name="identity_rolegrant_remove_only",
             ),
             models.CheckConstraint(

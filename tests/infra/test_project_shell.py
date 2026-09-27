@@ -84,17 +84,19 @@ def test_sentry_stays_dormant_without_a_dsn() -> None:
 
 def test_celery_app_registers_only_the_integration_task() -> None:
     # Given: the celery application behind the integration job boundary
-    # When: the comms task module is imported and tasks are inspected
-    import apps.comms.tasks  # noqa: F401, PLC0415 - registration is
-    # deferred until the shared task module is imported
+    # When: the worker's real autodiscovery registers every installed app's tasks
+    celery_app.autodiscover_tasks(force=True)
 
     project_tasks = [
         name for name in celery_app.tasks if not name.startswith("celery.")
     ]
 
-    # Then: only the shared comms operation and reminder tasks exist
-    # beyond built-ins (registration order is not part of the contract)
+    # Task 26 adds workflow execution, escalation and scanning; keep the
+    # exact task set closed (registration order is not part of the contract).
     assert sorted(project_tasks) == [
+        "apps.workflows.tasks.escalate",
+        "apps.workflows.tasks.execute_step",
+        "apps.workflows.tasks.scan_due",
         "comms.dispatch_due_reminders",
         "comms.execute_operation",
         "comms.recover_pending_operations",

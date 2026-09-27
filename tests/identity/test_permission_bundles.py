@@ -104,7 +104,10 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
         for actions in row.values()
         for permission in actions.split()
     ) | {"restricted.read"}
-    assert expected == PERMISSIONS
+    assert (
+        expected | {"tasks.view", "tasks.assign", "tasks.complete", "tasks.reassign"}
+        == PERMISSIONS
+    )
     assert len(RP) * len(COLUMNS) == 117
     for role in COLUMNS[:6]:
         assert BUNDLES_V1[role] == frozenset(

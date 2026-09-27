@@ -83,6 +83,7 @@ def narrow_role(
         clinic=clinic,
         role=role,
         permission=permission,
+        bundle_version=2 if permission.startswith("tasks.") else 1,
         valid_from=valid_from,
         valid_to=valid_to,
     )

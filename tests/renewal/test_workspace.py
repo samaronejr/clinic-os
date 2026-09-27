@@ -101,7 +101,7 @@ def test_receptionist_sees_manager_modules_for_the_url_clinic(
         "agenda": (agenda, True),
         "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
         "patients": (f"/intake/clinics/{rbac_graph.clinic_a}/patients/", False),
-        "operations": (f"/retention/clinics/{rbac_graph.clinic_a}/", False),
+        "operations": (f"/clinics/{rbac_graph.clinic_a}/tasks/", False),
     }
     # Availability and consent moved into the Agenda and Patients sections.
     assert (

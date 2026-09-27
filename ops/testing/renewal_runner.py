@@ -100,6 +100,7 @@ SUITES: Final = {
         "tests/renewal/browser/test_workspace.py",
         "tests/renewal/browser/test_workspace_navigation.py",
     ),
+    "tasks": ("tests/renewal/browser/test_tasks.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -132,6 +133,7 @@ FIXTURE_SUITES: Final = frozenset(
         "retention",
         "staff-intake",
         "workspace",
+        "tasks",
     }
 )
 # Suites that exercise the synthetic room provider through the real outbox.

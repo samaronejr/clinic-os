@@ -263,6 +263,11 @@ def test_route_table_maps_task_modules_to_queues() -> None:
 
 def test_beat_schedule_is_unchanged() -> None:
     assert celery_app.conf.beat_schedule == {
+        # Task 26 adds durable workflow scans; existing schedules stay unchanged.
+        "workflow-timers-and-escalation": {
+            "task": "apps.workflows.tasks.scan_due",
+            "schedule": 60.0,
+        },
         "appointment-reminders": {
             "task": "comms.dispatch_due_reminders",
             "schedule": 60.0,

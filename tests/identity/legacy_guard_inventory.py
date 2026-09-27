@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from identity.legacy_sql_inventory import discover_sql
+from workflows.guard_discovery import discover_guards
 
 __all__ = ["declared_probes", "discover", "discover_sql"]
 
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[2]
 SIGNALS = {
+    "permission_helper": r"\brequire_permission\(",
     "role_helper": (
         r"\b(?:require_current_actor_(?:clinic_roles|org_admin)|has_clinic_role|"
         r"clinics_for_user_roles)\("
@@ -84,6 +86,11 @@ def discover() -> dict[str, list[str]]:
             )
             if signals:
                 found[f"{module}.{name}"] = signals
+    # The workflow facade and resolver routes are independent reference roots:
+    # deleting a delegated guard cannot remove its public boundary from census.
+    if (ROOT / "apps/workflows/services.py").is_file():
+        for symbol in discover_guards():
+            found[symbol] = sorted({*found.get(symbol, []), "permission_delegation"})
     return found
 
 

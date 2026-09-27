@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Tasks" %} · Clinic Ops{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-workflows.css' %}">
+<script src="{% static 'js/components/datetime.js' %}" defer></script>
+<script src="{% static 'js/workflows.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<header class="tasks-heading">
+  <h1>{% trans "Tasks" %}</h1>
+  <p>{% trans "Operations" %} · {{ clinic.name }}</p>
+  <nav aria-label="{% trans 'Task queues' %}">
+    <a class="button button--secondary" href="{% url 'workflows:tasks' clinic.id %}"{% if not exceptions %} aria-current="page"{% endif %}>{% trans "Tasks" %}</a>
+    <a class="button button--secondary" href="{% url 'workflows:exceptions' clinic.id %}"{% if exceptions %} aria-current="page"{% endif %}>{% trans "Exception queue" %}</a>
+  </nav>
+</header>
+{% include "workflows/partials/queue.html" %}
+{% endblock %}

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Final
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,8 +45,12 @@ def check_page(
     page: Page, base_url: str, artifact_root: Path, state: str
 ) -> dict[str, object]:
     """Run axe on the page as it is now; fail on serious/critical violations."""
-    with page.expect_response(f"{base_url}{AXE_URL}") as axe_response:
-        page.add_script_tag(url=f"{base_url}{AXE_URL}")
+    # HTMX keeps the document alive. Give each capture its own asset URL so
+    # re-injection has a real response event rather than a reused script entry.
+    # The state is a harness label, never a record selector or clinical value.
+    script_url = f"{base_url}{AXE_URL}?capture={quote(state, safe='')}"
+    with page.expect_response(script_url) as axe_response:
+        page.add_script_tag(url=script_url)
     assert axe_response.value.status == OK_STATUS
     violations: list[dict[str, object]] = page.evaluate(AXE_RUN_JS)
     destination = artifact_root / "axe" / f"{state}.json"

@@ -18,7 +18,7 @@ from apps.identity.models import (
     User,
     UserClinicRole,
 )
-from apps.identity.permissions import BUNDLES_V1, PERMISSIONS
+from apps.identity.permissions import BUNDLES_V2, PERMISSIONS
 from django.db import IntegrityError, connection, connections, transaction
 from django.utils import timezone
 from psycopg.errors import CheckViolation
@@ -60,7 +60,7 @@ def test_alias_roles_are_checked_for_every_permission(
     actor, enrollment = permission_actor(rbac_graph, role)
     with permission_context(rbac_graph, actor):
         for permission in sorted(PERMISSIONS):
-            if permission in BUNDLES_V1[role]:
+            if permission in BUNDLES_V2[role]:
                 assert (
                     require_permission(
                         permission,

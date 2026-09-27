@@ -75,6 +75,12 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "identity_serviceprincipalgrant",
         "identity_careteammembership",
         "identity_professionalregistration",
+        # Task 26 exact owner/permission policies: tests/workflows/test_posture.py.
+        "workflows_task",
+        "workflows_taskcomment",
+        "workflows_workflowdefinitionversion",
+        "workflows_workflowrun",
+        "workflows_workflowstep",
         # Exact clinical predicates and ACLs are checked in test_encounters.
         # Exact append-only history policies/ACLs: test_clinical_history.
         "ehr_historyassessment",

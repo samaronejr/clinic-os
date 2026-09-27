@@ -74,6 +74,7 @@ INSTALLED_APPS: list[str] = [
     "apps.interop.apps.InteropConfig",
     "apps.providers.apps.ProvidersConfig",
     "apps.realtime.apps.RealtimeConfig",
+    "apps.workflows.apps.WorkflowsConfig",
 ]
 
 AUTH_USER_MODEL: str = "identity.User"
