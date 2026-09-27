@@ -452,6 +452,10 @@ class Matrix:
     states: tuple[ProbeState, ...]
     places: _Places
     applied: set[str] = field(default_factory=set)
+    # What a sharded run read back in its workers (``realized``), unioned,
+    # and each shard's wall time in its worker.
+    written: dict[str, set[str]] = field(default_factory=dict)
+    shard_seconds: list[float] = field(default_factory=list)
 
 
 def build_states(graph: RbacGraph, assigned: UUID, closed: UUID) -> Matrix:
@@ -875,7 +879,21 @@ def _window_label(
 
 
 def realized(matrix: Matrix) -> dict[str, set[str]]:
-    """Read back, from the written rows, the values each varied input took."""
+    """Read back, from the written rows, the values each varied input took.
+
+    The rows are read where the states ran: this database, or, after a
+    sharded run (identity/probe_shards.py), each worker's clone just before
+    it was dropped (``Matrix.written``, the union; only the last worker's
+    phase setups commit rows, so the union is what one database would hold
+    after the serial run).
+    """
+    if matrix.written:
+        return {key: set(values) for key, values in matrix.written.items()}
+    return read_back(matrix)
+
+
+def read_back(matrix: Matrix) -> dict[str, set[str]]:
+    """``realized`` from this connection's database."""
     graph = matrix.places.graph
     actors = {state.actor for state in matrix.states}
     seen: dict[str, set[str]] = {

@@ -32,7 +32,7 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from database_urls import database_url_for_name
-from identity import actor_channels, exemption_probes, probe_states
+from identity import actor_channels, exemption_probes, probe_shards, probe_states
 from identity import permission_gate_census as census
 from identity.permission_inputs import decision_inputs
 from identity.test_certifier_boundary import R9_S4_DDL, R9_S5_DDL
@@ -480,7 +480,9 @@ def test_exemption_probes_refuse_every_r4_gate_variant(
     with override_settings(**_SYNTHETIC):
         probe_world = _probe_world(rbac_graph, monkeypatch)
         probes = _variant_probes(probe_world)
-        runs = exemption_probes.run_matrix(probes, probe_world)
+        runs = exemption_probes.run_matrix(
+            probes, probe_world, workers=probe_shards.worker_count()
+        )
     matrix = {
         probe.symbol: exemption_probes.problems(
             probe, runs[probe.symbol], observed=False

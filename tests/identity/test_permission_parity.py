@@ -29,7 +29,7 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from database_urls import database_url_for_name
-from identity import actor_channels, exemption_probes, probe_states
+from identity import actor_channels, exemption_probes, probe_shards, probe_states
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
@@ -659,7 +659,9 @@ def test_every_exemption_probe_is_staff_independent(
         probes = [
             exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)
         ]
-        runs = exemption_probes.run_matrix(probes, probe_world)
+        runs = exemption_probes.run_matrix(
+            probes, probe_world, workers=probe_shards.worker_count()
+        )
         ran = time.monotonic()
         failures: dict[str, object] = {}
         for probe in probes:
@@ -711,6 +713,8 @@ def test_every_exemption_probe_is_staff_independent(
                 "executions": len(states) * len(probes),
                 "build_seconds": round(built - started, 1),
                 "run_seconds": round(ran - built, 1),
+                "workers": probe_shards.worker_count(),
+                "shard_seconds": probe_world.matrix.shard_seconds,
             }
         ),
     )
@@ -758,7 +762,9 @@ def test_differential_probe_classifies_a_gated_function_as_gated(
     )
     with override_settings(**_SYNTHETIC):
         probe_world = _probe_world(rbac_graph, monkeypatch)
-        runs = exemption_probes.run_matrix([probe, oracle], probe_world)
+        runs = exemption_probes.run_matrix(
+            [probe, oracle], probe_world, workers=probe_shards.worker_count()
+        )
     outcomes = runs[_POLICY].outcomes
     assert not runs[_POLICY].not_entered
     assert not exemption_probes.staff_independent(outcomes)

@@ -133,7 +133,7 @@ from django.test import RequestFactory
 from PIL import Image
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
-from identity import actor_channels, probe_states
+from identity import actor_channels, probe_shards, probe_states
 from identity import permission_gate_census as census
 from identity.legacy_parity_support import target_code
 from identity.permission_support import owner_context
@@ -1882,6 +1882,7 @@ def run_matrix(
     states: Sequence[probe_states.ProbeState] | None = None,
     *,
     observe: bool = True,
+    workers: int = 1,
 ) -> dict[str, ProbeRun]:
     """Execute every probe under every state, in state order.
 
@@ -1898,6 +1899,11 @@ def run_matrix(
     injected actor (where binding one is what counts). There is no sampling:
     process state (counters, caches, the clock) can tell any two states
     apart, so no state stands in for another.
+
+    With ``workers`` above one, the states after the first run in forked
+    workers, each on its own clone of the database taken after the parent's
+    runs (identity/probe_shards.py); every state still runs exactly once,
+    and the merged runs must hold exactly the chosen states, in order.
     """
     assert not pw.matrix.applied, "a probe world runs its matrix once"
     pw.matrix.applied.add("run")
@@ -1929,12 +1935,108 @@ def run_matrix(
         # their own sys.monitoring tool and statistics).
         for state in chosen[:1]:
             _run_state(state, grouped, runs, monitor, pw, observer)
+        rest = chosen[1:]
+        sharded = workers > 1 and len(rest) > 1
         with _untraced():
-            for state in chosen[1:]:
+            for state in [] if sharded else rest:
                 _run_state(state, grouped, runs, monitor, pw, observer)
         for symbol, lines in monitor.lines.items():
             runs[symbol].reached = lines
+    if sharded:
+        with _untraced():
+            shards = probe_shards.partition(rest, workers)
+            work = _shard_work(probes, grouped, codes, pw, observer)
+            _merge(runs, pw.matrix, probe_shards.run_shards(rest, shards, work))
+    labels = [state.label for state in chosen]
+    for symbol, run in runs.items():
+        if list(run.outcomes) != labels:
+            message = f"{symbol} has no single outcome for every chosen state"
+            raise probe_shards.ShardError(message)
     return runs
+
+
+# One probe's part of a shard: (outcomes, observed, not entered, seconds,
+# reached lines).
+type _ShardRun = tuple[
+    dict[str, Outcome], dict[str, list[str]], list[str], float, frozenset[int]
+]
+# A shard's runs by probe, the matrix rows read back on its clone, and its
+# wall time.
+type _ShardPayload = tuple[dict[str, _ShardRun], dict[str, set[str]], float]
+
+
+def _shard_work(
+    probes: Sequence[ExemptionProbe],
+    grouped: Mapping[Context, list[ExemptionProbe]],
+    codes: Mapping[str, CodeType],
+    pw: ProbeWorld,
+    observer: actor_channels.ActorObserver | None,
+) -> Callable[
+    [tuple[probe_states.ProbeState, ...]],
+    probe_shards.ShardResult[_ShardPayload],
+]:
+    """A shard's states, run in its worker exactly as the serial loop runs
+    them: the worker's own monitor, and the observer on the worker's own
+    connection (its wire trace and per-execution session reads)."""
+
+    def work(
+        shard: tuple[probe_states.ProbeState, ...],
+    ) -> probe_shards.ShardResult[_ShardPayload]:
+        runs = {probe.symbol: ProbeRun({}, frozenset(), set(), []) for probe in probes}
+        capture: AbstractContextManager[None] = (
+            nullcontext()
+            if observer is None
+            else actor_channels.statements_captured(observer)
+        )
+        ran: list[str] = []
+        started = perf_counter()
+        with _Monitor(codes, observer) as monitor, capture:
+            for state in shard:
+                _run_state(state, grouped, runs, monitor, pw, observer)
+                ran.append(state.label)
+        shard_runs = {
+            symbol: (
+                run.outcomes,
+                run.observed,
+                run.not_entered,
+                run.seconds,
+                frozenset(monitor.lines[symbol]),
+            )
+            for symbol, run in runs.items()
+        }
+        written = probe_states.read_back(pw.matrix)
+        return tuple(ran), (shard_runs, written, perf_counter() - started)
+
+    return work
+
+
+def _merge(
+    runs: Mapping[str, ProbeRun],
+    matrix: probe_states.Matrix,
+    payloads: Sequence[_ShardPayload],
+) -> None:
+    """Fold the shards' runs, in shard order, into the parent's, and the rows
+    each shard's clone held into ``matrix.written``."""
+    for payload, written, wall in payloads:
+        matrix.shard_seconds.append(round(wall, 1))
+        for key, values in written.items():
+            matrix.written.setdefault(key, set()).update(values)
+        if set(payload) != set(runs):
+            message = "a shard returned runs for other probes"
+            raise probe_shards.ShardError(message)
+        for symbol, (
+            outcomes,
+            observed,
+            not_entered,
+            seconds,
+            lines,
+        ) in payload.items():
+            run = runs[symbol]
+            run.outcomes.update(outcomes)
+            run.observed.update(observed)
+            run.not_entered.extend(not_entered)
+            run.seconds += seconds
+            run.reached |= lines
 
 
 def _run_deployed(

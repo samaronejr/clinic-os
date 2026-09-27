@@ -570,6 +570,34 @@ _INDEPENDENT: Final = (
         "pg16 docs sql-syntax",
     ),
     ("enumerating-reader", "sql", "SHOW ALL;", "pg16 docs sql-show"),
+    (
+        "unresolvable-name",
+        "sql",
+        "CREATE FUNCTION clinic_app.zz_varfn(k text) RETURNS text "
+        "LANGUAGE plpgsql AS $f$ BEGIN "
+        "RETURN pg_catalog.current_setting(k, true); END $f$",
+        "r8 zz_varfn (the review's plpgsql body reading via a variable)",
+    ),
+    (
+        "raw-socket",
+        "python",
+        "os.write(connection.connection.fileno(), frame)\n",
+        "r8 raw-socket writing (the review's boundary shape)",
+    ),
+    (
+        "raw-socket",
+        "python",
+        "sock = socket.fromfd(\n"
+        "    connection.connection.fileno(), socket.AF_INET, socket.SOCK_STREAM\n"
+        ")\n",
+        "python 3.12 docs socket.fromfd",
+    ),
+    (
+        "unlexable",
+        "sql",
+        "SET standard_conforming_strings = on;",
+        "pg_dump 16.14 output header",
+    ),
 )
 # Text PostgreSQL reads as a literal, an identifier or a comment, put ahead
 # of a shape: the guard must refuse the shape all the same (R9-1).
