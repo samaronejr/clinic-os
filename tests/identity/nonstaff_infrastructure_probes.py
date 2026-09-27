@@ -81,11 +81,15 @@ def infrastructure_probes(
     probes = [
         DifferentialProbe(
             "apps.audit.services.record_event",
-            lambda: audit.record_event(event, payload={}),
+            lambda: audit.record_event(
+                replace(event, occurred_at_utc=timezone.now()), payload={}
+            ),
         ),
         DifferentialProbe(
             "apps.audit.services._record_system_event",
-            lambda: audit._record_system_event(event, payload={}),
+            lambda: audit._record_system_event(
+                replace(event, occurred_at_utc=timezone.now()), payload={}
+            ),
             database_role="clinic_owner",
         ),
         DifferentialProbe(

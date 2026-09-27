@@ -6556,7 +6556,8 @@
           }
         ],
         "migrations": [
-          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
+          "apps/tenancy/migrations/0002_rls_and_resolvers.py",
+          "apps/tenancy/migrations/0005_active_tenant_actor.py"
         ],
         "policies": [],
         "resolvers": []

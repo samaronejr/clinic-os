@@ -72,7 +72,22 @@ def nonstaff_differential_census(
 ) -> None:
     receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
     record_property(
-        "nonstaff_staff_state_decisions", json.dumps(receipts, sort_keys=True)
+        "nonstaff_staff_state_decisions", json.dumps(receipts.decisions, sort_keys=True)
+    )
+    record_property(
+        "nonstaff_state_space",
+        json.dumps(
+            {
+                "role_subsets": receipts.subset_count,
+                "profiles": receipts.profile_count,
+                "states": receipts.state_count,
+                "elapsed_seconds": receipts.elapsed_seconds,
+                "serial_profile_seconds": receipts.serial_profile_seconds,
+                "parallel_profile_seconds": receipts.parallel_profile_seconds,
+                "serial_parallel_equal": receipts.serial_profile_seconds is not None,
+            },
+            sort_keys=True,
+        ),
     )
 
 

@@ -21,6 +21,7 @@ from identity.nonstaff_differential import (
     StaffDependentError,
     assert_behavioral_classifications,
 )
+from identity.nonstaff_states import ReplayScope
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
 from identity.test_guard_classification import SOURCES
 
@@ -110,8 +111,7 @@ def test_behaviour_refuses_every_role_guard_spelling(
             [row],
             {SYMBOL: [probe]},
             actor=actor,
-            clinic=rbac_graph.clinic_a,
-            organization=rbac_graph.organization_a,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
         )
     symbol, decisions = refused.value.args
     assert symbol == SYMBOL
@@ -144,8 +144,7 @@ def test_computed_method_is_detected_even_when_static_analysis_misses_it(
                 ]
             },
             actor=actor,
-            clinic=rbac_graph.clinic_a,
-            organization=rbac_graph.organization_a,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
         )
 
 
@@ -190,8 +189,7 @@ def test_unregistered_exemption_fails_closed(rbac_graph: RbacGraph, kind: str) -
             [row],
             {},
             actor=actor,
-            clinic=rbac_graph.clinic_a,
-            organization=rbac_graph.organization_a,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
         )
 
 
@@ -208,8 +206,7 @@ def test_adapter_must_enter_the_named_guard(
             [row],
             {SYMBOL: [DifferentialProbe(SYMBOL, lambda: True)]},
             actor=actor,
-            clinic=rbac_graph.clinic_a,
-            organization=rbac_graph.organization_a,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
         )
     assert rejected.value.args[0] == (SYMBOL, "target_not_entered")
 
@@ -227,6 +224,5 @@ def test_broken_invocation_cannot_be_counted_as_authorization_denial(
             [row],
             {SYMBOL: [DifferentialProbe(SYMBOL, guard)]},
             actor=actor,
-            clinic=rbac_graph.clinic_a,
-            organization=rbac_graph.organization_a,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
         )
