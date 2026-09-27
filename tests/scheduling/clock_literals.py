@@ -66,6 +66,9 @@ def _raw_literal(
     return raw, start, index
 
 
+# Immutable decoded text is identical across template clones. The setting is
+# part of the key; no type, relation or clock-classification verdict is cached.
+@lru_cache(maxsize=2048)
 def literal_values(source: str, *, standard_strings: bool) -> tuple[str, ...]:
     stream = list(sql_tokens(source))
     result: list[str] = []

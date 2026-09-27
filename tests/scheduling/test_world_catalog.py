@@ -102,13 +102,25 @@ def test_omitting_world_class_serves_its_plant(
     assert held is not None
     install, remove = plant(held.name, kind, 0)
     complete = clock_catalog_cache.CATALOG_VERSION
+    # Column grants now live in the complete pg_attribute row, not a
+    # separately selected ACL projection. Dropping that class must still
+    # demonstrate the original column-grant defect by serving its plant.
+    catalog_class = "attribute" if kind == "column-acl" else kind
     dropped, count = re.subn(
-        r" UNION ALL SELECT '" + kind + r"',.*?(?=\n UNION ALL|\n\))",
+        r" UNION ALL SELECT '" + catalog_class + r"',.*?(?=\n UNION ALL|\n\))",
         "",
         complete,
         flags=re.DOTALL,
     )
     assert count == 1
+    if kind == "operator":
+        # The full dependency census also records an operator's namespace edge.
+        # This mutant removes the entire operator class, including its edges.
+        dropped = dropped.replace(
+            "SELECT 'dependency',ROW(x.*)::text FROM pg_depend x",
+            "SELECT 'dependency',ROW(x.*)::text FROM pg_depend x "
+            "WHERE x.classid<>'pg_operator'::regclass",
+        )
     with (
         scheduling_worlds.world(synthetic_secret_backend),
         monkeypatch.context() as patch,

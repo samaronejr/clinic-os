@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
@@ -19,6 +19,7 @@ from .clock_coercions import Coercions
 from .clock_dependencies import sql_dependencies
 from .clock_identifiers import Identifiers
 from .clock_plpgsql_coercions import PLCoercions
+from .clock_relation_edges import Address, References, RelationEdges
 from .clock_temporal_inputs import LiteralInputs
 from .clock_tokens import sql_tokens
 from .clock_types import Types
@@ -85,6 +86,7 @@ class Surface:
     coercion_tree: str = ""
     temporal_coercions: int = 0
     unanalysed_statements: tuple[str, ...] = ()
+    catalog_address: Address | None = None
 
 
 def functions() -> dict[int, Function]:
@@ -287,6 +289,9 @@ class Census:
         for oid, procedure in procedures.items():
             self.by_name[procedure.name].add(oid)
         self.types = Types(readers)
+        self.catalog_edges = RelationEdges()
+        self.seen_relations: set[int] = set()
+        self.seen_types: set[int] = set()
         self.coercions = Coercions(self.types)
         self.pl_coercions = PLCoercions(self.types, self.coercions)
         self.identifiers = Identifiers(self.by_name, self.types.names)
@@ -295,7 +300,11 @@ class Census:
             {oid for group in self.identifiers.relations.values() for oid in group}
         )
         for surface in surfaces(relation_ids):
-            self.batched_surfaces[surface.owner_oid].append(surface)
+            self.batched_surfaces[surface.owner_oid].append(
+                replace(
+                    surface, catalog_address=self.catalog_edges.objects.get(surface.key)
+                )
+            )
         self.children: dict[int, set[int]] = defaultdict(set)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -321,43 +330,19 @@ class Census:
                 int(oid): int(function) for oid, function in cursor.fetchall()
             }
             cursor.execute(
-                "SELECT objid,refobjid FROM pg_depend "
-                "WHERE classid='pg_proc'::regclass AND refclassid='pg_proc'::regclass"
-            )
-            self.dependencies: dict[int, set[int]] = defaultdict(set)
-            for caller, callee in cursor.fetchall():
-                self.dependencies[int(caller)].add(int(callee))
-            cursor.execute(
                 "SELECT c.oid,'view:' || c.oid::regclass::text,pg_get_viewdef(c.oid),"
                 "r.ev_action::text || ' ' || r.ev_qual::text,r.oid,c.relname "
                 "FROM pg_class c JOIN pg_rewrite r ON r.ev_class=c.oid "
                 "WHERE c.relkind IN ('v','m') AND r.rulename='_RETURN'"
             )
             view_rows = cursor.fetchall()
-            cursor.execute(
-                "SELECT objid,refclassid::regclass::text,refobjid FROM pg_depend "
-                "WHERE classid='pg_rewrite'::regclass "
-                "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,"
-                "'pg_type'::regclass)"
-            )
-            view_functions: dict[int, set[int]] = defaultdict(set)
-            view_relations: dict[int, set[int]] = defaultdict(set)
-            view_types: dict[int, set[int]] = defaultdict(set)
-            for rule, kind, reference in cursor.fetchall():
-                target = {
-                    "pg_proc": view_functions,
-                    "pg_class": view_relations,
-                    "pg_type": view_types,
-                }[kind]
-                target[int(rule)].add(int(reference))
             self.views = {
                 int(oid): Surface(
                     str(key),
                     str(source),
                     str(tree),
-                    frozenset(view_functions[int(rule)]),
-                    frozenset(view_relations[int(rule)]),
-                    types=frozenset(view_types[int(rule)]),
+                    owner_oid=int(oid),
+                    catalog_address=("pg_rewrite", int(rule)),
                 )
                 for oid, key, source, tree, rule, _ in view_rows
             }
@@ -373,7 +358,7 @@ class Census:
         if procedure.oid in self.function_surfaces:
             return self.function_surfaces[procedure.oid]
         marker = self.unresolved_marker(procedure)
-        calls = set(self.dependencies[procedure.oid])
+        calls: set[int] = set()
         relations: frozenset[int] = frozenset()
         unresolved: tuple[str, ...] = ()
         types = set(self.types.functions[procedure.oid])
@@ -394,6 +379,11 @@ class Census:
             unanalysed_statements = self.pl_coercions.unanalysed
         if procedure.language == "sql":
             dependencies = sql_dependencies(procedure.oid)
+            # Quoted SQL has no retained body dependencies. The rolled-back
+            # SQL-standard clone contributes its complete catalog edge receipt.
+            self.catalog_edges.dependencies[("pg_proc", procedure.oid)].update(
+                dependencies.catalog_edges
+            )
             calls.update(dependencies.functions)
             relations = dependencies.relations
             types.update(dependencies.types)
@@ -412,6 +402,7 @@ class Census:
             coercion_tree=coercion_tree,
             temporal_coercions=temporal_coercions,
             unanalysed_statements=unanalysed_statements,
+            catalog_address=("pg_proc", procedure.oid),
         )
         self.function_surfaces[procedure.oid] = surface
         return surface
@@ -433,6 +424,7 @@ class Census:
                 if child not in descendants:
                     descendants.add(child)
                     pending.extend(self.children[child] - descendants)
+            self.seen_relations.update(descendants)
             self.relation_surfaces[oid] = [
                 surface
                 for child in sorted(descendants)
@@ -464,7 +456,13 @@ class Census:
         )
         return result
 
+    def references(self, surface: Surface) -> References:
+        if surface.catalog_address is None:
+            return References()
+        return self.catalog_edges.references(surface.catalog_address)
+
     def related(self, surface: Surface) -> list[Surface]:
+        dependencies = self.references(surface)
         expression_types = frozenset(
             int(value)
             for value in re.findall(
@@ -473,19 +471,21 @@ class Census:
                 surface.tree,
             )
         )
+        type_roots = surface.types | expression_types | dependencies.types
+        self.seen_types.update(self.types.closure(type_roots))
         return [
             Surface(key, source, tree)
-            for key, source, tree in self.types.surfaces(
-                surface.types | expression_types
-            )
+            for key, source, tree in self.types.surfaces(type_roots)
         ] + [
             related
-            for oid in surface.relations
+            for oid in surface.relations | dependencies.relations
+            if oid != surface.owner_oid  # Local column/ownership edge, already scanned.
             for related in self.related_surfaces(oid)
         ]
 
     def inspect(self, surface: Surface) -> tuple[Counter[str], set[int]]:
-        calls = set(surface.calls)
+        dependency_calls = self.references(surface).functions
+        calls = set(surface.calls | dependency_calls)
         textual: Counter[str] = Counter()
         if surface.opaque:
             textual[surface.opaque] = 1
@@ -510,7 +510,7 @@ class Census:
             textual["sql:" + re.sub(r"\s+", "", match.group()).lower()] += 1
         compiled: Counter[str] = Counter(
             self.procedures[oid].identity
-            for oid in surface.calls
+            for oid in surface.calls | dependency_calls
             if oid in self.readers
         )
         node_calls = [
@@ -538,11 +538,16 @@ class Census:
         direct: dict[str, Counter[str]] = {}
         edges: dict[str, set[str]] = {}
         pending = list(roots)
+        objects: set[Address] = set()
+        functions: set[int] = set()
         while pending:
             surface = pending.pop()
             if surface.key in direct:
                 continue
             direct[surface.key], calls = self.inspect(surface)
+            if surface.catalog_address is not None:
+                objects.add(surface.catalog_address)
+            functions.update(calls & self.readers)
             edges[surface.key] = set()
             for related in self.related(surface):
                 edges[surface.key].add(related.key)
@@ -555,6 +560,10 @@ class Census:
                 edges[surface.key].add(key)
                 if key not in direct:
                     pending.append(self.function_surface(procedure))
+        functions.update(oid for catalog, oid in objects if catalog == "pg_proc")
+        self.catalog_edges.assert_closed(
+            objects, self.seen_relations, functions, self.seen_types
+        )
         clocked = {key for key, counts in direct.items() if counts}
         while True:
             inherited = {key for key, callees in edges.items() if callees & clocked}

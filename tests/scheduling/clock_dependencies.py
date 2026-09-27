@@ -15,15 +15,14 @@ class Dependencies:
     unresolved: bool = False
     types: frozenset[int] = frozenset()
     tree: str = ""
+    catalog_edges: frozenset[tuple[str, int]] = frozenset()
 
 
 def _edges(oid: int) -> Dependencies:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT refclassid::regclass::text,refobjid FROM pg_depend "
-            "WHERE classid='pg_proc'::regclass AND objid=%s "
-            "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,"
-            "'pg_type'::regclass)",
+            "WHERE classid='pg_proc'::regclass AND objid=%s",
             [oid],
         )
         rows = cursor.fetchall()
@@ -37,6 +36,7 @@ def _edges(oid: int) -> Dependencies:
         frozenset(int(ref) for kind, ref in rows if kind == "pg_class"),
         types=frozenset(int(ref) for kind, ref in rows if kind == "pg_type"),
         tree=str(body[0]),
+        catalog_edges=frozenset((str(kind), int(ref)) for kind, ref in rows),
     )
 
 
