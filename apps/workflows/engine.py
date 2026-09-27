@@ -14,7 +14,7 @@ from apps.comms.models import IntegrationOperation
 from apps.core.integration import ActionOperationRequest, enqueue_operation
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
-from apps.workflows.access import WorkflowAccessDeniedError
+from apps.workflows.access import WorkflowAccessDeniedError, require_manager
 from apps.workflows.models import WorkflowRun, WorkflowStep
 from apps.workflows.task_services import assign_task, create_task
 from apps.workflows.validation import (
@@ -148,6 +148,8 @@ def operation_digest(step: WorkflowStep) -> str:
 
 
 def _task(step: WorkflowStep) -> Result:
+    # Decide role-owner assignment authority before the task row is written.
+    require_manager(clinic_id=step.clinic_id)
     specification = step.run.definition_version.steps[step.position]
     task = create_task(
         clinic_id=step.clinic_id,

@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 from uuid import uuid5
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id
 from apps.workflows.access import (
-    owner_matches,
+    may_self_claim,
     require_clinic_access,
     require_manager,
     require_owner_target,
@@ -100,21 +100,26 @@ def create_task(*, clinic_id: UUID, spec: TaskSpec, idempotency_key: UUID) -> Ta
             clinic_id=clinic_id, task_id=spec.depends_on, permission="tasks.view"
         )
     fingerprint = digest({"actor": str(actor), **terms})
-    task, created = Task.objects.get_or_create(
-        clinic_id=clinic_id,
-        idempotency_key=idempotency_key,
-        defaults={
-            "organization_id": clinic.organization_id,
-            "created_by_id": actor,
-            "kind": spec.kind,
-            "subject_ref": subject,
-            "due_at": spec.due_at,
-            "priority": spec.priority,
-            "depends_on_id": spec.depends_on,
-            "escalation_policy_version": spec.escalation_policy_version,
-            "fingerprint": fingerprint,
-        },
-    )
+    try:
+        task, created = Task.objects.get_or_create(
+            clinic_id=clinic_id,
+            idempotency_key=idempotency_key,
+            defaults={
+                "organization_id": clinic.organization_id,
+                "created_by_id": actor,
+                "kind": spec.kind,
+                "subject_ref": subject,
+                "due_at": spec.due_at,
+                "priority": spec.priority,
+                "depends_on_id": spec.depends_on,
+                "escalation_policy_version": spec.escalation_policy_version,
+                "fingerprint": fingerprint,
+            },
+        )
+    except IntegrityError as error:
+        # The key exists outside this actor's visibility: a conflicting replay,
+        # never a server error and never a disclosure of the other request.
+        raise WorkflowConflictError from error
     if task.fingerprint != fingerprint:
         raise WorkflowConflictError
     if created:
@@ -130,18 +135,10 @@ def assign_task(
     task = require_task_access(
         clinic_id=clinic_id, task_id=task_id, permission="tasks.assign"
     )
-    _clinic, actor = require_clinic_access(
-        clinic_id=clinic_id, permission="tasks.assign"
-    )
     validate_owner(owner)
     require_owner_target(clinic_id=clinic_id, user_id=owner.user_id, role=owner.role)
-    if not (
-        owner.user_id == actor
-        and (
-            (task.state == "open" and task.created_by_id == actor)
-            or owner_matches(task)
-        )
-    ):
+    # Role owners (workflow steps included) are always a manager's assignment.
+    if owner.user_id is None or not may_self_claim(task, owner):
         require_manager(clinic_id=clinic_id)
     if not _command(
         task,

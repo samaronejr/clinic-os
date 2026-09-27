@@ -24,7 +24,11 @@ from apps.workflows.services import (
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from identity.permission_support import owner_context, permission_context
+from identity.permission_support import (
+    owner_context,
+    permission_actor,
+    permission_context,
+)
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -179,3 +183,43 @@ def test_stale_revision_does_not_overwrite_assignment(rbac_graph: RbacGraph) -> 
             )
         task.refresh_from_db()
         assert task.state == "assigned"
+
+
+def test_command_replay_is_bound_to_actor_and_terms(rbac_graph: RbacGraph) -> None:
+    """A retried command returns its result only to the same actor and terms."""
+    graph = rbac_graph
+    first, _enrollment = permission_actor(graph, "clinic_manager")
+    second, _enrollment = permission_actor(graph, "clinic_manager")
+    with runtime_role(), tenant_context(first, graph.organization_a):
+        task = create_task(
+            clinic_id=graph.clinic_a, spec=spec(graph), idempotency_key=uuid4()
+        )
+        assigned = assign_task(
+            clinic_id=graph.clinic_a,
+            task_id=task.pk,
+            owner=TaskOwner(user_id=first),
+            expected_revision=1,
+        )
+        replayed = assign_task(
+            clinic_id=graph.clinic_a,
+            task_id=task.pk,
+            owner=TaskOwner(user_id=first),
+            expected_revision=1,
+        )
+        assert replayed.revision == assigned.revision == 2
+        with pytest.raises(WorkflowConflictError):
+            assign_task(
+                clinic_id=graph.clinic_a,
+                task_id=task.pk,
+                owner=TaskOwner(user_id=second),
+                expected_revision=1,
+            )
+    with runtime_role(), tenant_context(second, graph.organization_a):
+        with pytest.raises(WorkflowConflictError):
+            assign_task(
+                clinic_id=graph.clinic_a,
+                task_id=task.pk,
+                owner=TaskOwner(user_id=first),
+                expected_revision=1,
+            )
+        assert Task.objects.get(pk=task.pk).revision == 2

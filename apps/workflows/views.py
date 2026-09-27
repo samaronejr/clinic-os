@@ -116,16 +116,20 @@ def _task_row(task: Task, staff: Mapping[UUID, str]) -> dict[str, object]:
     }
 
 
-ACTION_PERMISSIONS = {
-    "filter": "tasks.view",
-    "assign": "tasks.assign",
-    "start": "tasks.complete",
-    "complete": "tasks.complete",
-    "cancel": "tasks.reassign",
-    "comment": "tasks.view",
-    "bulk-preview": "tasks.reassign",
-    "bulk-apply": "tasks.reassign",
-}
+# Closed action vocabulary. Each service below decides its own permission and
+# ownership; the view adds no second, unobservable copy of those decisions.
+ACTIONS = frozenset(
+    {
+        "filter",
+        "assign",
+        "start",
+        "complete",
+        "cancel",
+        "comment",
+        "bulk-preview",
+        "bulk-apply",
+    }
+)
 
 
 def _bulk_action(
@@ -164,10 +168,8 @@ def _action(
     request: HttpRequest, clinic_id: UUID, actor: UUID
 ) -> ReassignmentPreview | None:
     action = request.POST.get("action", "")
-    permission = ACTION_PERMISSIONS.get(action)
-    if permission is None:
+    if action not in ACTIONS:
         raise WorkflowAccessDeniedError
-    require_permission(permission, clinic_id=clinic_id)
     if action == "filter":
         return None
     if action in {"bulk-preview", "bulk-apply"}:

@@ -17,6 +17,8 @@ from apps.workflows.validation import reference
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from apps.workflows.validation import TaskOwner
+
 
 class WorkflowAccessDeniedError(CurrentActorError):
     """Use one payload-free denial for every inaccessible workflow record."""
@@ -58,6 +60,23 @@ def owner_matches(task: Task) -> bool:
         and UserClinicRole.objects.filter(
             clinic_id=task.clinic_id, user_id=actor, role=task.owner_role
         ).exists()
+    )
+
+
+def may_self_claim(task: Task, owner: TaskOwner) -> bool:
+    """Staff may take their own open task or work they own; other moves need a manager.
+
+    The decision reads the relation itself instead of relying on row visibility,
+    so it holds for any record a caller has already loaded.
+    """
+    actor = require_permission("tasks.assign", clinic_id=task.clinic_id)
+    return (
+        owner.user_id is not None
+        and owner.user_id == actor
+        and (
+            (task.state == "open" and task.created_by_id == actor)
+            or owner_matches(task)
+        )
     )
 
 

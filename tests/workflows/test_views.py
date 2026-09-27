@@ -8,11 +8,14 @@ from uuid import uuid4
 
 import pytest
 from apps.comms.models import IntegrationOperation
+from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
-from apps.workflows.services import create_task
+from apps.workflows.models import Task
+from apps.workflows.services import TaskOwner, assign_task, create_task, start_task
 from django.db import connection
 from django.urls import URLPattern, URLResolver, get_resolver, reverse
 
+from identity.permission_support import owner_context, permission_actor
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client
 from workflows.test_tasks import spec
@@ -141,3 +144,61 @@ def test_all_routes_unknown_foreign_and_malformed_selectors_are_side_effect_free
         task.refresh_from_db()
         assert task.state == "open"
         assert writes() == before
+
+
+@pytest.mark.parametrize("manager", [False, True], ids=["staff", "manager"])
+def test_non_owner_start_and_complete_are_the_identical_route_denial(
+    rbac_graph: RbacGraph, manager: bool
+) -> None:
+    """B1 at the route: seeing a task (as a manager) never grants its owner's work."""
+    graph = rbac_graph
+    owner, _enrollment = permission_actor(graph, "nurse")
+    boss, _enrollment = permission_actor(graph, "clinic_manager")
+    with runtime_role(), tenant_context(boss, graph.organization_a):
+        assigned, started = (
+            assign_task(
+                clinic_id=graph.clinic_a,
+                task_id=create_task(
+                    clinic_id=graph.clinic_a, spec=spec(graph), idempotency_key=uuid4()
+                ).pk,
+                owner=TaskOwner(user_id=owner),
+                expected_revision=1,
+            )
+            for _ in range(2)
+        )
+    with runtime_role(), tenant_context(owner, graph.organization_a):
+        started = start_task(
+            clinic_id=graph.clinic_a, task_id=started.pk, expected_revision=2
+        )
+    if manager:
+        with owner_context(graph.organization_a):
+            UserClinicRole.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                user_id=graph.physician,
+                role=UserClinicRole.Role.CLINIC_MANAGER,
+            )
+    with runtime_role(), tenant_context(boss, graph.organization_a):
+        before = writes()
+    own_url = reverse("workflows:tasks", kwargs={"clinic_id": graph.clinic_a})
+    with physician_client(graph) as client:
+        baseline = client.get(reverse("workflows:tasks", kwargs={"clinic_id": uuid4()}))
+        for headers in ({}, {"HX-Request": "true"}):
+            for action, task in (("start", assigned), ("complete", started)):
+                assert_refused(
+                    client.post(
+                        own_url,
+                        {
+                            "action": action,
+                            "task_id": str(task.pk),
+                            "expected_revision": str(task.revision),
+                            "checked": "on",
+                        },
+                        headers=headers,
+                    ),
+                    baseline,
+                )
+    with runtime_role(), tenant_context(boss, graph.organization_a):
+        assert writes() == before
+        assert Task.objects.get(pk=assigned.pk).state == "assigned"
+        assert Task.objects.get(pk=started.pk).state == "in_progress"

@@ -3324,6 +3324,19 @@
       ]
     },
     {
+      "symbol": "apps.workflows.access.may_self_claim",
+      "signals": [
+        "permission_delegation",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.access.may_self_claim#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
       "symbol": "apps.workflows.access.owner_matches",
       "signals": [
         "membership",
@@ -3735,8 +3748,7 @@
       "symbol": "apps.workflows.views._action",
       "signals": [
         "denial",
-        "permission_delegation",
-        "permission_helper"
+        "permission_delegation"
       ],
       "kind": "direct",
       "observe": true,
@@ -4062,6 +4074,7 @@
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
+    "apps.workflows.access.may_self_claim#observed",
     "apps.workflows.access.owner_matches#observed",
     "apps.workflows.access.require_clinic_access#observed",
     "apps.workflows.access.require_manager#observed",
