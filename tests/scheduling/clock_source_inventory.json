@@ -1,0 +1,18 @@
+{
+  "tests/scheduling/clock_boundary.py": {
+    "findings": ["unresolved-runsql"],
+    "reason": "Detector implementation declares the unresolved RunSQL sentinel; this is test tooling, not migration input."
+  },
+  "tests/scheduling/clock_construction_probes.py": {
+    "findings": ["event-trigger-ddl"],
+    "reason": "Deliberate round-6 event-trigger and source-construction probes, installed only in the owned test database."
+  },
+  "tests/scheduling/clock_residual_probes.py": {
+    "findings": ["event-trigger-ddl"],
+    "reason": "Deliberate round-5 event-trigger probe corpus, retained for non-regression."
+  },
+  "tests/scheduling/clock_runsql.py": {
+    "findings": ["unresolved-runsql"],
+    "reason": "Static decoder produces the fail-closed RunSQL sentinel; this is test tooling, not migration input."
+  }
+}

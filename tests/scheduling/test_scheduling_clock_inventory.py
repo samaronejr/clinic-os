@@ -16,7 +16,10 @@ from scheduling.clock_support import (
     clock_counts,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True, available_apps=[]),
+    pytest.mark.usefixtures("clock_catalog_session"),
+]
 
 
 def test_all_migration_sql_time_reads_are_accounted_for() -> None:

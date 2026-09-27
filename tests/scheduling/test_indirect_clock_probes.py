@@ -10,7 +10,10 @@ from scheduling.test_scheduling_clock_inventory import (
     test_all_live_scheduling_sql_time_reads_are_controlled as assert_inventory,
 )
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True, available_apps=[]),
+    pytest.mark.usefixtures("clock_catalog_session"),
+]
 
 VIEW_PROBE = (
     "CREATE SCHEMA clock_probe; "

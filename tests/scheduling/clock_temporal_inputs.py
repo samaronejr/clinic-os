@@ -1,77 +1,49 @@
-"""Fail closed on literal coercions through catalog-derived clock input types."""
+"""Count literal values with server-derived clock prefixes, irrespective of type."""
 
 from __future__ import annotations
 
-import re
+import json
+from collections import Counter
+from pathlib import Path
+from typing import cast
 
 from django.db import connection
-from sqlparse import tokens
 
-from .clock_tokens import sql_tokens
-
-# String syntax, not a vocabulary of values such as now/today. Every literal
-# coercion through an affected input function remains potentially clock-reading.
-LITERAL = r"(?:E)?'(?:[^']|'')*'|\$(?:\w*)\$[\s\S]*?\$(?:\w*)\$"
-
-
-def temporal_input_types(readers: frozenset[int]) -> frozenset[str]:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "WITH RECURSIVE affected(oid) AS ("
-            "SELECT oid FROM pg_type WHERE typinput=ANY(%s) UNION "
-            "SELECT t.oid FROM pg_type t JOIN affected a ON t.typbasetype=a.oid) "
-            "SELECT n.nspname,t.typname,format_type(t.oid,NULL) FROM affected a "
-            "JOIN pg_type t ON t.oid=a.oid "
-            "JOIN pg_namespace n ON n.oid=t.typnamespace",
-            [list(readers)],
-        )
-        spellings = set()
-        for schema, name, formatted in cursor.fetchall():
-            spellings.update(
-                {
-                    str(name),
-                    str(formatted),
-                    f"{schema}.{name}",
-                    f'"{schema}"."{name}"',
-                    f'{schema}."{name}"',
-                    f'"{name}"',
-                }
-            )
-    return frozenset(spellings)
+from .clock_datetime_tokens import special_datetime_tokens
+from .clock_literals import literal_values
 
 
 class LiteralInputs:
-    def __init__(self, readers: frozenset[int]) -> None:
-        spellings = temporal_input_types(readers)
-        precision = r"(?:\s*\(\s*\d+\s*\))?"
-        names = []
-        for spelling in sorted(spellings):
-            head, *tail = spelling.split(" ")
-            names.append(
-                re.escape(head).replace(r"\.", r"\s*\.\s*")
-                + precision
-                + "".join(r"\s+" + re.escape(word) for word in tail)
-            )
-        kind = r"(?<![\w$])(?:" + "|".join(names) + r")(?![\w$])"
-        literal = "(?:" + LITERAL + ")"
-        self.patterns = (
-            tuple(
-                re.compile(pattern, re.IGNORECASE)
-                for pattern in (
-                    literal + r"\s*\)*\s*::\s*" + kind,
-                    r"\bCAST\s*\(\s*\(*\s*" + literal + r"\s*\)*\s+AS\s+" + kind,
-                    kind + r"\s+" + literal,
-                    kind + r"(?:\s+NOT\s+NULL)?\s*(?::=|=|\bDEFAULT\b)\s*" + literal,
-                )
-            )
-            if spellings
-            else ()
+    def __init__(self) -> None:
+        self.tokens = special_datetime_tokens()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_setting('standard_conforming_strings')")
+            row = cursor.fetchone()
+        assert row is not None
+        self.standard_strings = row[0] == "on"
+        self.allowlist = cast(
+            "dict[str, dict[str, str]]",
+            json.loads(
+                Path(__file__).with_name("clock_literal_allowlist.json").read_text()
+            ),
         )
+        assert all(
+            entry.get("reason") and entry.get("scope") == "python-mapping-key"
+            for entry in self.allowlist.values()
+        ), "literal exceptions need exact scope and reason"
+
+    def risky(self, value: str) -> bool:
+        return value.strip().casefold().startswith(tuple(self.tokens))
+
+    def python_risky(self, value: str, *, mapping_key: bool) -> bool:
+        return self.risky(value) and not (mapping_key and value in self.allowlist)
+
+    def counts(self, source: str) -> Counter[str]:
+        count = sum(
+            self.risky(value)
+            for value in literal_values(source, standard_strings=self.standard_strings)
+        )
+        return Counter({"unresolved-temporal-input": count}) if count else Counter()
 
     def unresolved(self, source: str) -> bool:
-        # Removing comments handles legal whitespace without interpreting values.
-        normalized = "".join(
-            value if kind not in tokens.Comment else " "
-            for kind, value in sql_tokens(source)
-        )
-        return any(pattern.search(normalized) for pattern in self.patterns)
+        return bool(self.counts(source))

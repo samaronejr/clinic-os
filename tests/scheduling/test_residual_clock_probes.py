@@ -22,7 +22,10 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Any
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True, available_apps=[]),
+    pytest.mark.usefixtures("clock_catalog_session"),
+]
 RESTORATION = pytest.StashKey[dict[str, str]]()
 
 
