@@ -135,7 +135,9 @@ def environment() -> Environment:
         cursor.execute(
             "SELECT session_user, current_user, "
             "pg_catalog.current_setting('standard_conforming_strings'), "
-            "(SELECT d.datacl::text FROM pg_catalog.pg_database d "
+            "(SELECT (SELECT pg_catalog.array_agg(a::text ORDER BY a::text) "
+            "  FROM pg_catalog.unnest(d.datacl) a)::text "
+            " FROM pg_catalog.pg_database d "
             " WHERE d.datname = pg_catalog.current_database()), "
             "(SELECT pg_catalog.count(*) FROM pg_catalog.pg_db_role_setting s "
             " JOIN pg_catalog.pg_database d ON d.oid = s.setdatabase "
@@ -159,8 +161,59 @@ def _superuser_url(database: str) -> str:
     return database_url_for_name(os.environ["TEST_SUPERUSER_DATABASE_URL"], database)
 
 
+_DATABASE_PRIVILEGES: Final = frozenset({"CONNECT", "CREATE", "TEMPORARY"})
+# A database's ACL, entry by entry (the owner's defaults when it has none).
+_DATABASE_ACL: Final = (
+    "SELECT CASE a.grantee WHEN 0 THEN 'PUBLIC' "
+    "ELSE pg_catalog.pg_get_userbyid(a.grantee) END, a.grantee = d.datdba, "
+    "a.privilege_type, a.is_grantable FROM pg_catalog.pg_database d, "
+    "pg_catalog.aclexplode(COALESCE(d.datacl, "
+    "  pg_catalog.acldefault('d', d.datdba))) a "
+    "WHERE d.datname = %s ORDER BY 1, 3"
+)
+
+
+def _grantee(name: str) -> sql.Composable:
+    return sql.SQL("PUBLIC") if name == "PUBLIC" else sql.Identifier(name)
+
+
+def _mirror_acl(
+    admin: psycopg.Connection[tuple[object, ...]], name: str, source: str, owner: str
+) -> None:
+    """Give ``name`` exactly ``source``'s database ACL, the owner's own
+    privileges included (a lock may have revoked some of them)."""
+    entries = admin.execute(_DATABASE_ACL, [source]).fetchall()
+    database = sql.Identifier(name)
+    admin.execute(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(database))
+    kept = {str(privilege) for _, is_owner, privilege, _ in entries if is_owner}
+    for missing in sorted(_DATABASE_PRIVILEGES - kept):
+        admin.execute(
+            sql.SQL("REVOKE {} ON DATABASE {} FROM {}").format(
+                sql.SQL(missing), database, sql.Identifier(owner)
+            )
+        )
+    for grantee, is_owner, privilege, grantable in entries:
+        if not is_owner:
+            admin.execute(
+                sql.SQL("GRANT {} ON DATABASE {} TO {}{}").format(
+                    sql.SQL(str(privilege)),
+                    database,
+                    _grantee(str(grantee)),
+                    sql.SQL(" WITH GRANT OPTION" if grantable else ""),
+                )
+            )
+    found = {
+        database_name: admin.execute(_DATABASE_ACL, [database_name]).fetchall()
+        for database_name in (source, name)
+    }
+    if found[source] != found[name]:
+        message = f"the clone's database ACL differs from the source: {found}"
+        raise ShardError(message)
+
+
 def _clone(name: str, source: str) -> None:
-    """A copy of ``source`` with its owner and database ACL."""
+    """A copy of ``source`` with its owner and its database ACL, entry by
+    entry; a clone that cannot be made exact is dropped before the error."""
     with psycopg.connect(_superuser_url("postgres"), autocommit=True) as admin:
         row = admin.execute(
             "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database "
@@ -168,40 +221,19 @@ def _clone(name: str, source: str) -> None:
             [source],
         ).fetchone()
         assert row is not None, source
+        owner = str(row[0])
         admin.execute(
             sql.SQL("CREATE DATABASE {} WITH TEMPLATE {} OWNER {}").format(
-                sql.Identifier(name), sql.Identifier(source), sql.Identifier(row[0])
+                sql.Identifier(name), sql.Identifier(source), sql.Identifier(owner)
             )
         )
-        admin.execute(
-            sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(
-                sql.Identifier(name)
-            )
-        )
-        grants = admin.execute(
-            "SELECT pg_catalog.pg_get_userbyid(a.grantee), a.privilege_type, "
-            "a.is_grantable FROM pg_catalog.pg_database d, "
-            "pg_catalog.aclexplode(d.datacl) a "
-            "WHERE d.datname = %s AND a.grantee <> d.datdba ORDER BY 1, 2",
-            [source],
-        ).fetchall()
-        for grantee, privilege, grantable in grants:
+        try:
+            _mirror_acl(admin, name, source, owner)
+        except BaseException:
             admin.execute(
-                sql.SQL("GRANT {} ON DATABASE {} TO {}{}").format(
-                    sql.SQL(privilege),
-                    sql.Identifier(name),
-                    sql.Identifier(grantee),
-                    sql.SQL(" WITH GRANT OPTION" if grantable else ""),
-                )
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
             )
-        acls = admin.execute(
-            "SELECT datname, datacl::text FROM pg_catalog.pg_database "
-            "WHERE datname IN (%s, %s)",
-            [source, name],
-        ).fetchall()
-    if len({acl for _, acl in acls}) != 1:
-        message = f"the clone's database ACL differs from the source: {acls}"
-        raise ShardError(message)
+            raise
 
 
 def _drop(name: str) -> None:
