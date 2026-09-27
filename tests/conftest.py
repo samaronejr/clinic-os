@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
-from functools import wraps
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
@@ -12,23 +11,19 @@ import pytest
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
-from django.test import AsyncClient, Client
 
 from database_urls import database_url_for_name
 from rbac_fixtures import RbacGraph, rbac_graph
 from tenant_key_support import issue_tenant_key_for, synthetic_secret_backend
 from tenant_probe_support import tenant_probe_pair
-from workspace_refusal_support import GUARD_STATS, RefusalGuardStats, check_refusal
+from workspace_refusal_observer import RefusalObserver
+from workspace_refusal_support import GUARD_STATS
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
     from pathlib import Path
 
     from _pytest.terminal import TerminalReporter
-    from django.test.client import (
-        _MonkeyPatchedASGIResponse,
-        _MonkeyPatchedWSGIResponse,
-    )
 
 SYNTHETIC_AUTH_VALUE_A = "synthetic-hash-a"
 SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
@@ -42,13 +37,22 @@ __all__: Final = (
 )
 
 
+REFUSAL_OBSERVER: pytest.StashKey[RefusalObserver] = pytest.StashKey()
+REFUSAL_BEFORE: pytest.StashKey[int] = pytest.StashKey()
+TAMPERING_BEFORE: pytest.StashKey[int] = pytest.StashKey()
+REFUSAL_ISSUES: pytest.StashKey[list[str]] = pytest.StashKey()
+REFUSAL_FAILED: pytest.StashKey[bool] = pytest.StashKey()
+
+
+@pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Include the session-lock mirror whenever a test uses the runtime database.
 
     Todo 8 splits session locks from transaction-pooled queries; both aliases
     address the same test database. Django must permit and close both, rather
     than bypassing its connection guard or leaking session locks across tests.
-    Explicit non-default database selections remain unchanged.
+    Explicit non-default database selections remain unchanged. The refusal
+    exit oracle runs last, after every scenario it aggregates.
     """
     for item in items:
         marker = item.get_closest_marker("django_db")
@@ -64,34 +68,72 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(
                 pytest.mark.django_db(*marker.args, **options), append=False
             )
+    # Preserve every existing scenario's order; only the aggregate oracle is last.
+    items.sort(
+        key=lambda item: item.name == "test_all_workspace_refusal_exits_are_executed"
+    )
 
 
-@pytest.fixture(scope="session", autouse=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    observer = RefusalObserver()
+    session.config.stash[REFUSAL_OBSERVER] = observer
+    session.config.stash[GUARD_STATS] = observer.stats
+    observer.start()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    observer = item.config.stash[REFUSAL_OBSERVER]
+    item.stash[REFUSAL_BEFORE] = observer.stats.violations
+    item.stash[TAMPERING_BEFORE] = len(observer.tampering)
+    item.stash[REFUSAL_ISSUES] = []
+    item.stash[REFUSAL_FAILED] = False
+
+
+def _check_observer(item: pytest.Item) -> None:
+    observer = item.config.stash[REFUSAL_OBSERVER]
+    errors = observer.integrity_errors()
+    item.stash[REFUSAL_ISSUES].extend(errors)
+    observer.tampering.extend(errors)
+
+
+@pytest.fixture(autouse=True)
 def workspace_refusal_guard(request: pytest.FixtureRequest) -> Iterator[None]:
-    """Every Django client response in the default collection enforces the rule."""
-    stats = RefusalGuardStats()
-    request.config.stash[GUARD_STATS] = stats
-    original = Client.request
-    original_async = AsyncClient.request
+    """Fixture cleanup cannot silently remove the response observer."""
+    yield
+    _check_observer(request.node)
 
-    @wraps(original)
-    def checked(client: Client, **kwargs: object) -> _MonkeyPatchedWSGIResponse:
-        response = original(client, **kwargs)
-        check_refusal(response.wsgi_request, response, stats)
-        return response
 
-    @wraps(original_async)
-    async def checked_async(
-        client: AsyncClient, **kwargs: object
-    ) -> _MonkeyPatchedASGIResponse:
-        response = await original_async(client, **kwargs)
-        check_refusal(response.asgi_request, response, stats)
-        return response
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    if call.when == "call":
+        _check_observer(item)
+    observer = item.config.stash[REFUSAL_OBSERVER]
+    issues = [
+        *item.stash[REFUSAL_ISSUES],
+        *observer.tampering[item.stash[TAMPERING_BEFORE] :],
+    ]
+    if observer.stats.violations > item.stash[REFUSAL_BEFORE]:
+        issues.append("The test produced a session-writing refusal")
+    if issues and report.passed and not item.stash[REFUSAL_FAILED]:
+        report.outcome = "failed"
+        report.longrepr = "\n".join(sorted(set(issues)))
+    if report.failed:
+        item.stash[REFUSAL_FAILED] = True
+    return report
 
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(Client, "request", checked)
-        patch.setattr(AsyncClient, "request", checked_async)
-        yield
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    observer = session.config.stash[REFUSAL_OBSERVER]
+    errors = observer.session_errors()
+    observer.tampering.extend(errors)
+    if errors:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    observer.stop()
+    observer.stats.trace_ns = observer.trace.elapsed_ns
 
 
 def pytest_terminal_summary(
@@ -102,6 +144,8 @@ def pytest_terminal_summary(
             "REFUSAL_GUARD "
             + json.dumps(asdict(config.stash[GUARD_STATS]), sort_keys=True)
         )
+        for error in sorted(set(config.stash[REFUSAL_OBSERVER].tampering)):
+            terminalreporter.write_line(f"REFUSAL_GUARD_FAILURE {error}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +240,8 @@ def pytest_runtest_teardown(
     item: pytest.Item,
     nextitem: pytest.Item | None,
 ) -> Generator[None, None, None]:
+    # Check before other fixtures (notably monkeypatch) can undo tampering.
+    _check_observer(item)
     marker = item.get_closest_marker("django_db")
     transactional = marker is not None and bool(marker.kwargs.get("transaction", False))
     if not transactional:

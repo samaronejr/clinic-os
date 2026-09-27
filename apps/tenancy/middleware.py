@@ -1,6 +1,7 @@
 """Synchronous request tenant transaction boundary."""
 
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import Final
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from django.shortcuts import render
 
 from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
 from apps.core.patient_context import persist_bound_patient_context
+from apps.core.workspace import finish_clinic_selection
 from apps.core.workspace_access import workspace_denial
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
@@ -83,6 +85,16 @@ class TenantMiddleware:
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest) -> HttpResponseBase:
+        """Commit clinic selection only after the response and transaction succeed."""
+        accepted = False
+        try:
+            response = self._response(request)
+            accepted = response.status_code < HTTPStatus.BAD_REQUEST
+            return response
+        finally:
+            finish_clinic_selection(request, accepted=accepted)
+
+    def _response(self, request: HttpRequest) -> HttpResponseBase:
         """Validate signed session identifiers and execute the full response chain."""
         path = request.path_info
         if path in BYPASS_PATHS or path.startswith(

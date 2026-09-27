@@ -9,6 +9,7 @@ from apps.tenancy.middleware import TenantMiddleware
 from django.contrib.auth import SESSION_KEY
 from django.db import connection
 from django.http import HttpResponse
+from django.test.utils import CaptureQueriesContext
 
 from patient_service_support import runtime_role
 
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 
 TARGETS = (
     "apps.tenancy.db.tenant_context",
-    "apps.tenancy.middleware.TenantMiddleware.__call__",
+    "apps.tenancy.middleware.TenantMiddleware._response",
 )
 
 
@@ -40,8 +41,9 @@ def exercise_tenant_boundaries(w: LegacyWorld) -> None:
         w.request.path_info = "/workspace/"
         w.request.session[SESSION_KEY] = str(w.actor.pk)
         w.request.session["active_org_id"] = str(organization)
-        with runtime_role():
+        with runtime_role(), CaptureQueriesContext(connection) as queries:
             response = TenantMiddleware(lambda _request: HttpResponse(status=204))(
                 w.request
             )
+        assert sum("clinic_app.user_has_org(" in row["sql"] for row in queries) == 1
         assert response.status_code == (204 if valid else 403)

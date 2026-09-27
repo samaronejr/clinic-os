@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class RefusalGuardStats:
+    client_requests: int = 0
+    integrity_ns: int = 0
+    trace_ns: int = 0
     responses: int = 0
     refusals: int = 0
     violations: int = 0

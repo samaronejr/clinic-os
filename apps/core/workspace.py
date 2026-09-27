@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from django.http import HttpRequest
 
 ACTIVE_CLINIC_SESSION_KEY: Final = "active_clinic_id"
+PENDING_CLINIC_ATTRIBUTE: Final = "_clinic_workspace_pending_clinic"
 DENIED_ATTRIBUTE: Final = "_clinic_workspace_denied"
 AUTH_FLOW_VIEWS: Final = frozenset(
     {
@@ -143,13 +144,26 @@ def _select_clinic(
         selected = by_id.get(remembered)
     if selected is None and clinics:
         selected = clinics[0]
-    persisted = str(selected.id) if selected else None
-    if persisted != request.session.get(ACTIVE_CLINIC_SESSION_KEY):
-        if persisted is None:
-            request.session.pop(ACTIVE_CLINIC_SESSION_KEY, None)
-        else:
-            request.session[ACTIVE_CLINIC_SESSION_KEY] = persisted
+    setattr(request, PENDING_CLINIC_ATTRIBUTE, str(selected.id) if selected else None)
     return selected
+
+
+def finish_clinic_selection(request: HttpRequest, *, accepted: bool) -> None:
+    """Consume pending selection only after the complete request has been accepted.
+
+    Both explicit route selection and the default used by session-scoped views
+    remain request-local until then. Refusals and exceptions discard the intent.
+    """
+    if not hasattr(request, PENDING_CLINIC_ATTRIBUTE):
+        return
+    selected = getattr(request, PENDING_CLINIC_ATTRIBUTE)
+    delattr(request, PENDING_CLINIC_ATTRIBUTE)
+    if not accepted or selected == request.session.get(ACTIVE_CLINIC_SESSION_KEY):
+        return
+    if selected is None:
+        request.session.pop(ACTIVE_CLINIC_SESSION_KEY, None)
+    else:
+        request.session[ACTIVE_CLINIC_SESSION_KEY] = selected
 
 
 def _targets_clinic(request: HttpRequest, clinic: WorkspaceClinic) -> bool:

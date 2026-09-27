@@ -3262,14 +3262,14 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.tenancy.middleware.TenantMiddleware.__call__",
+      "symbol": "apps.tenancy.middleware.TenantMiddleware._response",
       "signals": [
         "resolver",
         "tenant_boundary"
       ],
       "kind": "direct",
       "probes": [
-        "apps.tenancy.middleware.TenantMiddleware.__call__"
+        "apps.tenancy.middleware.TenantMiddleware._response"
       ]
     },
     {
@@ -3494,8 +3494,8 @@
     "apps.tenancy.envelope.reveal#observed",
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
-    "apps.tenancy.middleware.TenantMiddleware.__call__",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
+    "apps.tenancy.middleware.TenantMiddleware._response",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
     "clinic_app.ehr_assigned",
