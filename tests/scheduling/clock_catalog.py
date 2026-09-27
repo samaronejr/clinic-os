@@ -14,6 +14,7 @@ from sqlparse import tokens
 
 from .clock_boundary import sql_boundary_violations
 from .clock_dependencies import sql_dependencies
+from .clock_temporal_inputs import LiteralInputs
 from .clock_tokens import sql_tokens
 
 if TYPE_CHECKING:
@@ -134,9 +135,10 @@ def _scheduling_relations() -> list[int]:
         return [int(row[0]) for row in cursor.fetchall()]
 
 
-def surfaces() -> list[Surface]:
-    """Read expression-bearing catalog objects, not a hand-written table list."""
-    relations = _scheduling_relations()
+def surfaces(relations: list[int] | None = None) -> list[Surface]:
+    """Read every surface of the supplied relations, or the scheduling roots."""
+    if relations is None:
+        relations = _scheduling_relations()
     queries = (
         # Generated columns share pg_attrdef with ordinary defaults.
         (
@@ -262,6 +264,8 @@ class Census:
     ) -> None:
         self.procedures = procedures
         self.readers = readers
+        self.literal_inputs = LiteralInputs(readers)
+        self.relation_surfaces: dict[int, list[Surface]] = {}
         self.by_name: dict[str, set[int]] = defaultdict(set)
         for oid, procedure in procedures.items():
             self.by_name[procedure.name].add(oid)
@@ -338,6 +342,15 @@ class Census:
         marker = self.unresolved_marker(procedure)
         calls = set(self.dependencies[procedure.oid])
         relations: frozenset[int] = frozenset()
+        if procedure.language == "plpgsql":
+            # Attribute notation and typed declarations need no name(...).
+            # Resolve every identifier against live pg_proc, including overloads.
+            calls.update(
+                oid
+                for kind, value in sql_tokens(procedure.implementation)
+                if kind in tokens.Name or kind in tokens.Literal.String.Symbol
+                for oid in self.by_name.get(_identifier(value), ())
+            )
         if procedure.language == "sql":
             dependencies = sql_dependencies(procedure.oid)
             calls.update(dependencies.functions)
@@ -361,6 +374,13 @@ class Census:
             for oid in self.reader_operators.get(value, ())
         )
 
+    def related_surfaces(self, oid: int) -> list[Surface]:
+        if oid not in self.relation_surfaces:
+            self.relation_surfaces[oid] = (
+                [self.views[oid]] if oid in self.views else surfaces([oid])
+            )
+        return self.relation_surfaces[oid]
+
     def inspect(self, surface: Surface) -> tuple[Counter[str], set[int]]:
         calls = set(surface.calls)
         textual: Counter[str] = Counter()
@@ -368,6 +388,11 @@ class Census:
             textual[surface.opaque] = 1
             if surface.opaque.startswith("opaque:"):
                 return textual, calls
+        textual.update(
+            {"unresolved-temporal-input": 1}
+            if self.literal_inputs.unresolved(surface.source)
+            else {}
+        )
         for match in CALL.finditer(surface.source):
             schema = match.group("schema")
             for oid in self.by_name.get(_identifier(match.group("name")), ()):
@@ -384,7 +409,11 @@ class Census:
         )
         for match in SQL_VALUE.finditer(surface.source):
             textual["sql:" + re.sub(r"\s+", "", match.group()).lower()] += 1
-        compiled: Counter[str] = Counter()
+        compiled: Counter[str] = Counter(
+            self.procedures[oid].identity
+            for oid in surface.calls
+            if oid in self.readers
+        )
         node_calls = [
             int(oid) for oid in NODE_FUNCTION.findall(surface.tree) if int(oid)
         ]
@@ -417,10 +446,9 @@ class Census:
             direct[surface.key], calls = self.inspect(surface)
             edges[surface.key] = set()
             for oid in surface.relations:
-                if oid in self.views:
-                    view = self.views[oid]
-                    edges[surface.key].add(view.key)
-                    pending.append(view)
+                for related in self.related_surfaces(oid):
+                    edges[surface.key].add(related.key)
+                    pending.append(related)
             for oid in calls:
                 procedure = self.procedures.get(oid)
                 if procedure is None or oid in self.readers:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
@@ -38,6 +39,9 @@ SOURCE_CLOCKS: Final = {
     "_resources_sql.py": {"statement_timestamp()": 4},
 }
 AUTHORITY_CLOCKS: Final = frozenset({"patient_booking_scope()"})
+SQL_CLOCKS_CONTROLLED: ContextVar[bool] = ContextVar(
+    "scheduling_sql_clocks_controlled", default=False
+)
 
 
 def clock_counts(source: str) -> Counter[str]:
@@ -87,7 +91,11 @@ def frozen_sql_clocks(
 
                 owner.execute(SQL_TIME.sub(replacement, original).encode())
                 originals.append((signature, original))
-            yield authority_now
+            token = SQL_CLOCKS_CONTROLLED.set(True)
+            try:
+                yield authority_now
+            finally:
+                SQL_CLOCKS_CONTROLLED.reset(token)
         finally:
             for signature, original in reversed(originals):
                 owner.execute(original.encode())
