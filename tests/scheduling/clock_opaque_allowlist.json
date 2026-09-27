@@ -71,6 +71,15 @@
     "returns": "text",
     "volatility": "i"
   },
+  "pg_catalog.byteaeq(bytea, bytea)": {
+    "extension": "",
+    "implementation": "byteaeq",
+    "language": "internal",
+    "library": "",
+    "reason": "Bytea equality on reached immutable audit/snapshot constraints; retained native risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.cardinality(anyarray)": {
     "extension": "",
     "implementation": "array_cardinality",
@@ -159,6 +168,15 @@
     "library": "",
     "reason": "Required minute-boundary normalization of supplied values; potential temporal dependency remains visible.",
     "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.decode(text, text)": {
+    "extension": "",
+    "implementation": "binary_decode",
+    "language": "internal",
+    "library": "",
+    "reason": "Byte decoding used by reached audit/hash definitions; retained native risk, not a clock-free exemption.",
+    "returns": "bytea",
     "volatility": "i"
   },
   "pg_catalog.extract(text, date)": {
@@ -314,6 +332,15 @@
     "returns": "smallint",
     "volatility": "i"
   },
+  "pg_catalog.int24eq(smallint, integer)": {
+    "extension": "",
+    "implementation": "int24eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Smallint/integer equality on reached relation constraints; retained native risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.int24ge(smallint, integer)": {
     "extension": "",
     "implementation": "int24ge",
@@ -341,6 +368,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.int2le(smallint, smallint)": {
+    "extension": "",
+    "implementation": "int2le",
+    "language": "internal",
+    "library": "",
+    "reason": "Smallint ordering on reached relation bounds; retained native risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.int4(smallint)": {
     "extension": "",
     "implementation": "i2toi4",
@@ -359,12 +395,30 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.int4ge(integer, integer)": {
+    "extension": "",
+    "implementation": "int4ge",
+    "language": "internal",
+    "library": "",
+    "reason": "Integer ordering on reached relation bounds; retained native risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.int4gt(integer, integer)": {
     "extension": "",
     "implementation": "int4gt",
     "language": "internal",
     "library": "",
     "reason": "Reached relation integer-bound constraints; retain this exact comparison implementation as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int4le(integer, integer)": {
+    "extension": "",
+    "implementation": "int4le",
+    "language": "internal",
+    "library": "",
+    "reason": "Integer ordering on reached relation bounds; retained native risk.",
     "returns": "boolean",
     "volatility": "i"
   },
@@ -393,6 +447,51 @@
     "library": "",
     "reason": "PL/pgSQL interval declarations also match callable identifiers; retain this exact conversion/precision candidate as opaque risk.",
     "returns": "interval",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_delete(jsonb, text[])": {
+    "extension": "",
+    "implementation": "jsonb_delete_array",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached audit snapshot JSON key removal; retained exact native implementation risk.",
+    "returns": "jsonb",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_each_text(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_each_text",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached template validation JSON field expansion; retained exact native implementation risk.",
+    "returns": "record",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_eq(jsonb, jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached JSON equality constraints; retained native risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_path_exists(jsonb, jsonpath, jsonb, boolean)": {
+    "extension": "",
+    "implementation": "jsonb_path_exists",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached JSON-path constraint validation; the native interpreter remains an explicit opaque risk, not certified independent of its inputs.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_typeof(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_typeof",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached JSON-shape validation; retained native risk.",
+    "returns": "text",
     "volatility": "i"
   },
   "pg_catalog.lower(anymultirange)": {
@@ -429,6 +528,204 @@
     "library": "",
     "reason": "Required construction of service-buffer intervals from supplied components.",
     "returns": "interval",
+    "volatility": "i"
+  },
+  "pg_catalog.max(anyarray)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "anyarray",
+    "volatility": "i"
+  },
+  "pg_catalog.max(anyenum)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "anyenum",
+    "volatility": "i"
+  },
+  "pg_catalog.max(bigint)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "bigint",
+    "volatility": "i"
+  },
+  "pg_catalog.max(character)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "character",
+    "volatility": "i"
+  },
+  "pg_catalog.max(date)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "date",
+    "volatility": "i"
+  },
+  "pg_catalog.max(double precision)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "double precision",
+    "volatility": "i"
+  },
+  "pg_catalog.max(inet)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "inet",
+    "volatility": "i"
+  },
+  "pg_catalog.max(integer)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.max(interval)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "interval",
+    "volatility": "i"
+  },
+  "pg_catalog.max(money)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "money",
+    "volatility": "i"
+  },
+  "pg_catalog.max(numeric)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.max(oid)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "oid",
+    "volatility": "i"
+  },
+  "pg_catalog.max(pg_lsn)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "pg_lsn",
+    "volatility": "i"
+  },
+  "pg_catalog.max(real)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "real",
+    "volatility": "i"
+  },
+  "pg_catalog.max(smallint)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "smallint",
+    "volatility": "i"
+  },
+  "pg_catalog.max(text)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.max(tid)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "tid",
+    "volatility": "i"
+  },
+  "pg_catalog.max(time with time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "time with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.max(time without time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "time without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.max(timestamp with time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "timestamp with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.max(timestamp without time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.max(xid8)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached version aggregate resolves every catalog overload conservatively; this exact aggregate identity remains opaque risk.",
+    "returns": "xid8",
     "volatility": "i"
   },
   "pg_catalog.md5(bytea)": {
@@ -512,6 +809,105 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.similar_to_escape(text)": {
+    "extension": "",
+    "implementation": "similar_to_escape_1",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached SIMILAR TO constraints lower to this exact native escape implementation; retained risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.similar_to_escape(text, text)": {
+    "extension": "",
+    "implementation": "similar_to_escape_2",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached SIMILAR TO constraints lower to this exact native escape implementation; retained risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.string_agg(bytea, bytea)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached text aggregation for protected/template validation; both overloads remain opaque risk.",
+    "returns": "bytea",
+    "volatility": "i"
+  },
+  "pg_catalog.string_agg(text, text)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached text aggregation for protected/template validation; both overloads remain opaque risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(bit, integer)": {
+    "extension": "",
+    "implementation": "bitsubstr_no_len",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "bit",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(bit, integer, integer)": {
+    "extension": "",
+    "implementation": "bitsubstr",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "bit",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(bytea, integer)": {
+    "extension": "",
+    "implementation": "bytea_substr_no_len",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "bytea",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(bytea, integer, integer)": {
+    "extension": "",
+    "implementation": "bytea_substr",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "bytea",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(text, integer)": {
+    "extension": "",
+    "implementation": "text_substr_no_len",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(text, integer, integer)": {
+    "extension": "",
+    "implementation": "text_substr",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(text, text)": {
+    "extension": "",
+    "implementation": "textregexsubstr",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
   "pg_catalog.text(\"char\")": {
     "extension": "",
     "implementation": "char_text",
@@ -575,6 +971,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.textin(cstring)": {
+    "extension": "",
+    "implementation": "textin",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached text input coercion; retained exact native implementation risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
   "pg_catalog.textne(text, text)": {
     "extension": "",
     "implementation": "textne",
@@ -582,6 +987,51 @@
     "library": "",
     "reason": "Reached relation text inequalities; retain this exact comparison implementation as opaque risk.",
     "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.textregexeq(text, text)": {
+    "extension": "",
+    "implementation": "textregexeq",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached regular-expression constraints; retained exact native implementation risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.time(interval)": {
+    "extension": "",
+    "implementation": "interval_time",
+    "language": "internal",
+    "library": "",
+    "reason": "Exact immutable time-value conversion reached by conservative keyword/identifier binding; retained opaque implementation risk, never a clock-free exemption.",
+    "returns": "time without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.time(time with time zone)": {
+    "extension": "",
+    "implementation": "timetz_time",
+    "language": "internal",
+    "library": "",
+    "reason": "Exact immutable time-value conversion reached by conservative keyword/identifier binding; retained opaque implementation risk, never a clock-free exemption.",
+    "returns": "time without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.time(time without time zone, integer)": {
+    "extension": "",
+    "implementation": "time_scale",
+    "language": "internal",
+    "library": "",
+    "reason": "Exact immutable time-value conversion reached by conservative keyword/identifier binding; retained opaque implementation risk, never a clock-free exemption.",
+    "returns": "time without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.time(timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_time",
+    "language": "internal",
+    "library": "",
+    "reason": "Exact immutable time-value conversion reached by conservative keyword/identifier binding; retained opaque implementation risk, never a clock-free exemption.",
+    "returns": "time without time zone",
     "volatility": "i"
   },
   "pg_catalog.time_gt(time without time zone, time without time zone)": {

@@ -1,5 +1,6 @@
 """Plant unsupported constructs outside scheduling; the repository guard must fail."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -104,12 +105,27 @@ SQL += "LANGUAGE internal AS 'now'"''',
 }
 
 
+pytestmark = [
+    pytest.mark.django_db(transaction=True, available_apps=[]),
+    pytest.mark.usefixtures("clock_catalog_session"),
+]
+
+
 def test_application_sql_stays_inside_clock_census_boundary() -> None:
     assert application_boundary(APPS) == {}
 
 
 def test_repository_refuses_event_trigger_ddl() -> None:
-    assert repository_event_trigger_boundary(APPS.parent) == {}
+    reviewed = json.loads(
+        Path(__file__).with_name("clock_source_inventory.json").read_text()
+    )
+    assert all(
+        path.startswith("tests/") and entry["reason"]
+        for path, entry in reviewed.items()
+    )
+    assert repository_event_trigger_boundary(APPS.parent) == {
+        path: entry["findings"] for path, entry in reviewed.items()
+    }
 
 
 @pytest.mark.parametrize(

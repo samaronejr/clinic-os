@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING
 
 from sqlparse import tokens
 
-from .clock_source import DYNAMIC, source_fragments
+from .clock_runsql import SQLDecoder
+from .clock_source import DYNAMIC, parsed_source, source_fragments
+from .clock_source_files import source_files
+from .clock_temporal_inputs import LiteralInputs
 from .clock_tokens import sql_tokens
 
 if TYPE_CHECKING:
@@ -93,8 +96,9 @@ def sql_boundary_violations(source: str) -> set[str]:
     patterns = {
         "runtime-code-generation": r"__clock_runtime_code__",
         "unresolved-statement": r"__clock_unresolved_statement__",
+        "unresolved-runsql": r"__clock_unresolved_runsql__",
         "operator-ddl": r"\bCREATE\s+(?:OR\s+REPLACE\s+)?OPERATOR\b",
-        "event-trigger-ddl": r"\bCREATE\s+EVENT\s+TRIGGER\b",
+        "event-trigger-ddl": r"\b(?:CREATE|ALTER)\s+EVENT\s+TRIGGER\b",
         "server-prepare": r"\bPREPARE\s+.+?\s+AS\b|\bDEALLOCATE\s+\w+",
         "temporary-ddl": r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\b",
         "temporary-search-path": (
@@ -127,43 +131,66 @@ def sql_boundary_violations(source: str) -> set[str]:
 def application_boundary(root: Path) -> dict[str, list[str]]:
     """Scan every apps Python/SQL file, including migration helpers and new files."""
     found: dict[str, list[str]] = {}
+    repository = root.parent if root.name == "apps" else root
+    decoder = SQLDecoder(repository)
+    literals: LiteralInputs | None = None
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix not in {".py", ".sql"}:
             continue
         source = path.read_text()
-        if path.suffix == ".sql":
+        tree = parsed_source(source) if path.suffix == ".py" else None
+        if tree is None:
             fragments = [source]
         else:
-            fragments = source_fragments(ast.parse(source))
+            fragments = source_fragments(tree)
+            fragments.extend(decoder.fragments(path, tree))
         violations = set().union(*(sql_boundary_violations(text) for text in fragments))
+        if tree is not None and any(
+            pair == ("apps", "scheduling")
+            for pair in zip(path.parts, path.parts[1:], strict=False)
+        ):
+            if literals is None:
+                literals = LiteralInputs()
+            keys = {
+                id(key)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Dict)
+                for key in node.keys
+                if key is not None
+            }
+            if any(
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and literals.python_risky(node.value, mapping_key=id(node) in keys)
+                for node in ast.walk(tree)
+            ):
+                violations.add("scheduling-clock-literal")
         if violations:
             found[str(path.relative_to(root))] = sorted(violations)
     return found
 
 
 def repository_event_trigger_boundary(root: Path) -> dict[str, list[str]]:
-    """Refuse event-trigger DDL in executable repo sources, not probe fixtures."""
+    """Cross-check every non-binary tracked/current file; live catalog is authority."""
     found: dict[str, list[str]] = {}
-    for directory, folders, names in root.walk():
-        folders[:] = [
-            name
-            for name in folders
-            if name not in {"tests", "node_modules", "__pycache__"}
-            and (not name.startswith(".") or name == ".github")
+    decoder = SQLDecoder(root)
+    for path, source in source_files(root):
+        if path.suffix == ".py":
+            tree = parsed_source(source)
+            fragments = source_fragments(tree)
+            fragments.extend(decoder.fragments(path, tree))
+        else:
+            fragments = [source]
+        # Cross-check only candidate fragments; this does not select clock readers.
+        candidates = [
+            text
+            for text in fragments
+            if "event" in text.casefold() or "__clock_unresolved_runsql__" in text
         ]
-        for name in names:
-            path = directory / name
-            if path.suffix not in {".py", ".sql", ".sh", ".yml", ".yaml"}:
-                continue
-            source = path.read_text()
-            fragments = (
-                source_fragments(ast.parse(source))
-                if path.suffix == ".py"
-                else [source]
-            )
-            if any(
-                "event-trigger-ddl" in sql_boundary_violations(text)
-                for text in fragments
-            ):
-                found[str(path.relative_to(root))] = ["event-trigger-ddl"]
+        violations = set().union(
+            *(sql_boundary_violations(text) for text in candidates)
+        )
+        relevant = violations & {"event-trigger-ddl", "unresolved-runsql"}
+        if relevant:
+            found[str(path.relative_to(root))] = sorted(relevant)
     return found

@@ -19,13 +19,17 @@ from apps.scheduling import (
     patient_views,
     waitlist,
 )
-from django.db import models
+from django.db import connection, models
 from django.utils import timezone
 
 from scheduling.clock_support import frozen_sql_clocks
 
+from .clock_catalog import live_clock_inventory
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from pytest_django.plugin import DjangoDbBlocker
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -36,6 +40,21 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Advance ambient scheduling Python and SQL clocks for the full suite.",
     )
+
+
+@pytest.fixture(scope="session")
+def clock_catalog_session(
+    django_db_setup: None, django_db_blocker: DjangoDbBlocker
+) -> None:
+    """Share the full migrated catalog; never reseed model rows for catalog probes.
+
+    Catalog-only modules use transactional access with available_apps=[] solely
+    to avoid Django flush/post-migrate model seeding. PostgreSQL's entire schema
+    is still migrated once and inspected; probe DDL has exact finally cleanup.
+    """
+    assert str(connection.settings_dict["NAME"]).startswith("test_")
+    with django_db_blocker.unblock():
+        live_clock_inventory()
 
 
 @pytest.fixture(autouse=True)

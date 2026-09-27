@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import ast
+from functools import lru_cache
 from string import Formatter
 
 DYNAMIC = "__clock_unresolved__"
+
+
+@lru_cache(maxsize=2048)
+def parsed_source(source: str) -> ast.Module:
+    return ast.parse(source)
 
 
 def _text(node: ast.AST, values: dict[str, str]) -> str:
@@ -193,6 +199,11 @@ def _ordinary_fragments(node: ast.AST, contexts: list[dict[str, str]]) -> list[s
 
 
 def source_fragments(tree: ast.Module) -> list[str]:
+    return list(_cached_fragments(tree))
+
+
+@lru_cache(maxsize=2048)
+def _cached_fragments(tree: ast.Module) -> tuple[str, ...]:
     parents = {
         child: parent
         for parent in ast.walk(tree)
@@ -221,9 +232,12 @@ def source_fragments(tree: ast.Module) -> list[str]:
             for values in contexts[node]:
                 result.extend(_bound_query(node, parents, values))
             skipped.update(ast.walk(node.args[0]))
-    return result + [
-        fragment
-        for node in ast.walk(tree)
-        if node not in skipped
-        for fragment in _ordinary_fragments(node, contexts[node])
-    ]
+    return tuple(
+        result
+        + [
+            fragment
+            for node in ast.walk(tree)
+            if node not in skipped
+            for fragment in _ordinary_fragments(node, contexts[node])
+        ]
+    )

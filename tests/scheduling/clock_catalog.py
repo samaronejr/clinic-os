@@ -6,6 +6,7 @@ import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict, cast
 
@@ -13,12 +14,14 @@ from django.db import connection
 from sqlparse import tokens
 
 from .clock_boundary import sql_boundary_violations
+from .clock_catalog_cache import shared_inventory
 from .clock_dependencies import sql_dependencies
+from .clock_identifiers import Identifiers
 from .clock_temporal_inputs import LiteralInputs
 from .clock_tokens import sql_tokens
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
 # SQL value expressions are grammar nodes, not pg_proc functions. Unlike the
 # function reader set, this is SQL syntax (including precision forms), not a
@@ -73,6 +76,7 @@ class Surface:
     calls: frozenset[int] = frozenset()
     relations: frozenset[int] = frozenset()
     opaque: str = ""
+    unresolved: tuple[str, ...] = ()
 
 
 def functions() -> dict[int, Function]:
@@ -232,14 +236,24 @@ def _identifier(value: str) -> str:
     return value[1:-1].replace('""', '"') if value.startswith('"') else value.lower()
 
 
+@lru_cache(maxsize=4)
+def _parse_opaque_policy(
+    source: str, loads: Callable[[str], object]
+) -> dict[str, dict[str, str]]:
+    return cast("dict[str, dict[str, str]]", loads(source))
+
+
+def opaque_policy() -> dict[str, dict[str, str]]:
+    return _parse_opaque_policy(
+        Path(__file__).with_name("clock_opaque_allowlist.json").read_text(), json.loads
+    )
+
+
 def opaque_marker(procedure: Function) -> str:
     """Retain approved opaque risk; never certify native code clock-free."""
     if procedure.language in {"sql", "plpgsql"}:
         return ""
-    allowlist = cast(
-        "dict[str, dict[str, str]]",
-        json.loads(Path(__file__).with_name("clock_opaque_allowlist.json").read_text()),
-    )
+    allowlist = opaque_policy()
     entry = allowlist.get(procedure.identity, {})
     approved = bool(entry.get("reason")) and all(
         entry.get(field) == getattr(procedure, field)
@@ -264,11 +278,12 @@ class Census:
     ) -> None:
         self.procedures = procedures
         self.readers = readers
-        self.literal_inputs = LiteralInputs(readers)
+        self.literal_inputs = LiteralInputs()
         self.relation_surfaces: dict[int, list[Surface]] = {}
         self.by_name: dict[str, set[int]] = defaultdict(set)
         for oid, procedure in procedures.items():
             self.by_name[procedure.name].add(oid)
+        self.identifiers = Identifiers(self.by_name)
         with connection.cursor() as cursor:
             cursor.execute("SELECT oid,oprcode::oid FROM pg_operator WHERE oprcode<>0")
             self.operators = {
@@ -319,38 +334,24 @@ class Census:
                 )
                 for oid, key, source, tree, rule, _ in view_rows
             }
-            self.view_names = {str(row[5]) for row in view_rows}
 
     def unresolved_marker(self, procedure: Function) -> str:
         if procedure.language not in {"sql", "plpgsql"}:
             return opaque_marker(procedure)
         if sql_boundary_violations(procedure.source):
             return f"unresolved-sql-boundary:{procedure.identity}"
-        if procedure.language == "plpgsql":
-            # PL/pgSQL does not persist relation dependencies. Do not pretend a
-            # token match is a catalog edge: a possible view reference is risky.
-            identifiers = {
-                value.strip('"')
-                for kind, value in sql_tokens(procedure.implementation)
-                if kind in tokens.Name or kind in tokens.Literal.String.Symbol
-            }
-            if identifiers & self.view_names:
-                return f"unresolved-plpgsql-view:{procedure.identity}"
         return ""
 
     def function_surface(self, procedure: Function) -> Surface:
         marker = self.unresolved_marker(procedure)
         calls = set(self.dependencies[procedure.oid])
         relations: frozenset[int] = frozenset()
+        unresolved: tuple[str, ...] = ()
         if procedure.language == "plpgsql":
-            # Attribute notation and typed declarations need no name(...).
-            # Resolve every identifier against live pg_proc, including overloads.
-            calls.update(
-                oid
-                for kind, value in sql_tokens(procedure.implementation)
-                if kind in tokens.Name or kind in tokens.Literal.String.Symbol
-                for oid in self.by_name.get(_identifier(value), ())
-            )
+            bindings = self.identifiers.bind(procedure.oid, procedure.implementation)
+            calls.update(bindings.functions)
+            relations = bindings.relations
+            unresolved = bindings.unresolved
         if procedure.language == "sql":
             dependencies = sql_dependencies(procedure.oid)
             calls.update(dependencies.functions)
@@ -364,6 +365,7 @@ class Census:
             frozenset(calls),
             relations,
             marker,
+            unresolved,
         )
 
     def operator_calls(self, source: str) -> Counter[int]:
@@ -388,11 +390,8 @@ class Census:
             textual[surface.opaque] = 1
             if surface.opaque.startswith("opaque:"):
                 return textual, calls
-        textual.update(
-            {"unresolved-temporal-input": 1}
-            if self.literal_inputs.unresolved(surface.source)
-            else {}
-        )
+        textual.update(self.literal_inputs.counts(surface.source))
+        textual.update("unresolved-identifier:" + name for name in surface.unresolved)
         for match in CALL.finditer(surface.source):
             schema = match.group("schema")
             for oid in self.by_name.get(_identifier(match.group("name")), ()):
@@ -473,7 +472,24 @@ class Census:
         }
 
 
+def assert_event_trigger_catalog() -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT e.evtname,e.evtevent,n.nspname,p.proname,"
+            "oidvectortypes(p.proargtypes),e.evtenabled FROM pg_event_trigger e "
+            "JOIN pg_proc p ON p.oid=e.evtfoid "
+            "JOIN pg_namespace n ON n.oid=p.pronamespace ORDER BY e.evtname"
+        )
+        observed = cursor.fetchall()
+    assert observed == [], f"unreviewed event-trigger catalog: {observed}"
+
+
 def live_clock_inventory() -> dict[str, ClockNode]:
+    assert_event_trigger_catalog()
+    return shared_inventory(_build_inventory, opaque_policy())
+
+
+def _build_inventory() -> dict[str, ClockNode]:
     procedures = functions()
     census = Census(procedures, catalog_readers())
     roots = surfaces()

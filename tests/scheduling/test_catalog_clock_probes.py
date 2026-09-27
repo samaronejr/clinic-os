@@ -15,7 +15,10 @@ from scheduling.test_scheduling_clock_inventory import (
 if TYPE_CHECKING:
     from typing import LiteralString
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.django_db(transaction=True, available_apps=[]),
+    pytest.mark.usefixtures("clock_catalog_session"),
+]
 
 PROBES = {
     "transaction-function": (

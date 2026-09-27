@@ -4,21 +4,20 @@
       "pg_catalog.statement_timestamp()": 1,
       "pg_catalog.timestamptz(date)": 1,
       "pg_catalog.timestamptz(date, time without time zone)": 1,
-      "pg_catalog.timestamptz(timestamp without time zone)": 1,
-      "unresolved-temporal-input": 1
+      "pg_catalog.timestamptz(timestamp without time zone)": 1
     },
     "via": [
       "function:clinic_app.gen_random_uuid()",
       "function:clinic_app.patient_booking_scope()",
       "function:pg_catalog.gen_random_uuid()",
       "function:pg_catalog.timestamptz(date, time with time zone)",
-      "function:pg_catalog.timestamptz(timestamp with time zone, integer)"
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "policy:scheduling_patientbookingevent.tenant_isolation"
     ]
   },
   "function:clinic_app.patient_booking_scope()": {
     "direct": {
-      "pg_catalog.statement_timestamp()": 2,
-      "unresolved-temporal-input": 1
+      "pg_catalog.statement_timestamp()": 2
     },
     "via": [
       "constraint:identity_clinic.identity_clinic_timezone_nonblank",
@@ -42,8 +41,7 @@
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 7,
       "pg_catalog.statement_timestamp()": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 7,
-      "unresolved-temporal-input": 1
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 7
     },
     "via": [
       "constraint:scheduling_absence.scheduling_absence_reason",
@@ -108,14 +106,20 @@
   "function:clinic_app.scheduling_appointment_guard_v1()": {
     "direct": {
       "pg_catalog.date(timestamp with time zone)": 1,
+      "pg_catalog.time(timestamp with time zone)": 1,
       "pg_catalog.timestamptz(date)": 1,
       "pg_catalog.timestamptz(date, time without time zone)": 1,
       "pg_catalog.timestamptz(timestamp without time zone)": 1,
       "pg_catalog.timezone(text, time with time zone)": 1,
-      "sql:current_timestamp": 1,
-      "unresolved-temporal-input": 1
+      "sql:current_timestamp": 1
     },
     "via": [
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:scheduling_availabilityblock.scheduling_availability_active_practitioner_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_fingerprint_32_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_positive_minute_range_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_resource_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_retirement_check",
       "function:clinic_app.patient_booking_scope()",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -126,13 +130,23 @@
       "function:pg_catalog.text(inet)",
       "function:pg_catalog.text(name)",
       "function:pg_catalog.text(xml)",
+      "function:pg_catalog.time(interval)",
+      "function:pg_catalog.time(time with time zone)",
+      "function:pg_catalog.time(time without time zone, integer)",
+      "function:pg_catalog.time(timestamp without time zone)",
       "function:pg_catalog.timestamptz(date, time with time zone)",
       "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
       "function:pg_catalog.timezone(interval, time with time zone)",
       "function:pg_catalog.timezone(interval, timestamp with time zone)",
       "function:pg_catalog.timezone(interval, timestamp without time zone)",
       "function:pg_catalog.timezone(text, timestamp with time zone)",
-      "function:pg_catalog.timezone(text, timestamp without time zone)"
+      "function:pg_catalog.timezone(text, timestamp without time zone)",
+      "index:scheduling_availability_active_practitioner_excl",
+      "index:scheduling_availability_resource_excl",
+      "policy:identity_clinic.tenant_isolation",
+      "policy:scheduling_availabilityblock.patient_booking_read",
+      "policy:scheduling_availabilityblock.tenant_isolation",
+      "trigger:scheduling_availabilityblock.scheduling_generated_block_guard"
     ]
   },
   "function:clinic_app.scheduling_definition_guard()": {
@@ -142,10 +156,28 @@
       "pg_catalog.timestamptz(date, time without time zone)": 1,
       "pg_catalog.timestamptz(timestamp without time zone)": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timezone(text, time with time zone)": 1,
-      "unresolved-temporal-input": 1
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_after_check",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_before_check",
+      "constraint:scheduling_appointment.scheduling_appointment_fingerprint_32_check",
+      "constraint:scheduling_appointment.scheduling_appointment_lifecycle_check",
+      "constraint:scheduling_appointment.scheduling_appointment_positive_minute_range_check",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_patient_excl",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_practitioner_excl",
+      "constraint:scheduling_appointment.scheduling_z_buffer_practitioner_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_active_practitioner_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_fingerprint_32_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_positive_minute_range_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_resource_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_retirement_check",
+      "constraint:scheduling_resource.scheduling_resource_capacity",
+      "constraint:scheduling_resource.scheduling_resource_capacity_check",
+      "constraint:scheduling_resource.scheduling_resource_kind",
+      "default:scheduling_appointment.buffer_after",
+      "default:scheduling_appointment.buffer_before",
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.scheduling_effective_interval(timestamp with time zone, timestamp with time zone, integer, integer)",
       "function:pg_catalog.array_position(anycompatiblearray, anycompatible)",
@@ -177,22 +209,59 @@
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)",
       "function:pg_catalog.varchar(character varying, integer, boolean)",
-      "function:pg_catalog.varchar(name)"
+      "function:pg_catalog.varchar(name)",
+      "index:scheduling_appointment_scheduled_patient_excl",
+      "index:scheduling_appointment_scheduled_practitioner_excl",
+      "index:scheduling_availability_active_practitioner_excl",
+      "index:scheduling_availability_resource_excl",
+      "index:scheduling_z_buffer_practitioner_excl",
+      "policy:identity_clinic.tenant_isolation",
+      "policy:identity_userclinicrole.tenant_isolation",
+      "policy:scheduling_appointment.patient_booking_insert",
+      "policy:scheduling_appointment.patient_booking_read",
+      "policy:scheduling_appointment.patient_booking_update",
+      "policy:scheduling_appointment.tenant_isolation",
+      "policy:scheduling_availabilityblock.patient_booking_read",
+      "policy:scheduling_availabilityblock.tenant_isolation",
+      "policy:scheduling_resource.tenant_isolation",
+      "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.patient_booking_guard",
+      "trigger:scheduling_appointment.patient_booking_receipt",
+      "trigger:scheduling_appointment.scheduling_appointment_guard",
+      "trigger:scheduling_appointment.scheduling_capacity_after",
+      "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_availabilityblock.scheduling_generated_block_guard",
+      "trigger:scheduling_resource.scheduling_definition_guard"
     ]
   },
   "function:clinic_app.scheduling_generated_block_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
       "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.time(timestamp with time zone)": 1,
       "pg_catalog.timestamptz(date)": 1,
       "pg_catalog.timestamptz(date, time without time zone)": 1,
       "pg_catalog.timestamptz(timestamp without time zone)": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timezone(text, time with time zone)": 1,
-      "unresolved-temporal-input": 1
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_after_check",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_before_check",
+      "constraint:scheduling_appointment.scheduling_appointment_fingerprint_32_check",
+      "constraint:scheduling_appointment.scheduling_appointment_lifecycle_check",
+      "constraint:scheduling_appointment.scheduling_appointment_positive_minute_range_check",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_patient_excl",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_practitioner_excl",
+      "constraint:scheduling_appointment.scheduling_z_buffer_practitioner_excl",
+      "constraint:scheduling_availabilitytemplate.scheduling_template_window",
+      "constraint:scheduling_resource.scheduling_resource_capacity",
+      "constraint:scheduling_resource.scheduling_resource_capacity_check",
+      "constraint:scheduling_resource.scheduling_resource_kind",
+      "default:scheduling_appointment.buffer_after",
+      "default:scheduling_appointment.buffer_before",
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.scheduling_effective_interval(timestamp with time zone, timestamp with time zone, integer, integer)",
       "function:pg_catalog.extract(text, date)",
@@ -201,6 +270,10 @@
       "function:pg_catalog.extract(text, time without time zone)",
       "function:pg_catalog.extract(text, timestamp with time zone)",
       "function:pg_catalog.extract(text, timestamp without time zone)",
+      "function:pg_catalog.time(interval)",
+      "function:pg_catalog.time(time with time zone)",
+      "function:pg_catalog.time(time without time zone, integer)",
+      "function:pg_catalog.time(timestamp without time zone)",
       "function:pg_catalog.timestamptz(date, time with time zone)",
       "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
       "function:pg_catalog.timezone(interval, time with time zone)",
@@ -210,7 +283,25 @@
       "function:pg_catalog.timezone(text, timestamp without time zone)",
       "function:pg_catalog.to_jsonb(anyelement)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
-      "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)"
+      "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)",
+      "index:scheduling_appointment_scheduled_patient_excl",
+      "index:scheduling_appointment_scheduled_practitioner_excl",
+      "index:scheduling_z_buffer_practitioner_excl",
+      "policy:identity_clinic.tenant_isolation",
+      "policy:scheduling_appointment.patient_booking_insert",
+      "policy:scheduling_appointment.patient_booking_read",
+      "policy:scheduling_appointment.patient_booking_update",
+      "policy:scheduling_appointment.tenant_isolation",
+      "policy:scheduling_availabilitytemplate.tenant_isolation",
+      "policy:scheduling_resource.tenant_isolation",
+      "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.patient_booking_guard",
+      "trigger:scheduling_appointment.patient_booking_receipt",
+      "trigger:scheduling_appointment.scheduling_appointment_guard",
+      "trigger:scheduling_appointment.scheduling_capacity_after",
+      "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_availabilitytemplate.scheduling_definition_guard",
+      "trigger:scheduling_resource.scheduling_definition_guard"
     ]
   }
 }
