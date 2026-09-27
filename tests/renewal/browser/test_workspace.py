@@ -806,6 +806,51 @@ def test_stale_clinic_context_is_dropped_after_revocation(
     _capture(page, renewal_artifact_root, "stale-clinic-denied-1280")
 
 
+def _settle_offline_navigation(page: Page) -> Page:
+    """Close the page holding the refused navigation; continue in a fresh one.
+
+    Firefox's network-error document retries its navigation when the browser
+    comes back online, and that retry can start after a later ``goto`` and
+    interrupt it. Chromium commits its error document after ``goto`` has
+    already raised, so even an ``about:blank`` navigation can be overtaken.
+    Closing the page, while still offline, ends every navigation and handler
+    it owns in every engine; the recovery ``goto`` cannot overlap them.
+    """
+    context = page.context
+    page.close()
+    fresh = context.new_page()
+    fresh.set_default_timeout(20_000)  # the suite's page default
+    return fresh
+
+
+def test_offline_settle_discards_a_retrying_document(
+    desktop: Page, renewal_base_url: str
+) -> None:
+    page = desktop
+    login = f"{renewal_base_url}/auth/login/"
+    page.goto(login)
+    # Simulate the engine's pending retry: a reconnect listener owned by the
+    # refused document that would start a navigation the test did not request.
+    evaluate_js(
+        page,
+        """url => {
+          window.__retryPending = true;
+          addEventListener('online', () => location.assign(url));
+          return true;
+        }""",
+        login,
+    )
+    page.context.set_offline(offline=True)
+    try:
+        page = _settle_offline_navigation(page)
+        assert evaluate_js(page, "() => window.__retryPending === undefined")
+    finally:
+        page.context.set_offline(offline=False)
+    response = page.goto(login)
+    assert response is not None
+    assert response.status == OK
+
+
 def test_offline_reload_reveals_no_patient_content(
     workspace_browser: Browser,
     renewal_base_url: str,
@@ -864,16 +909,16 @@ def test_offline_reload_reveals_no_patient_content(
         assert str(offline["patients"]).startswith("rejected")
         assert str(offline["worker"]).startswith("rejected")
         # The refused navigation leaves an error document committing under
-        # the refused URL; goto_refused drains that commit so nothing pending
-        # can interrupt the recovery goto (hosted flake, fix-a14).
+        # the refused URL; goto_refused drains that commit (fix-a14), and the
+        # page that held it is then closed while still offline, so neither
+        # the commit nor Firefox's reconnect retry can reach the recovery.
         with pytest.raises(PlaywrightError, match=offline_navigation_error(context)):
             goto_refused(page, f"{renewal_base_url}{patients_a}")
+        page = _settle_offline_navigation(page)
         context.set_offline(offline=False)
 
-        # A bare goto: the error document is fully committed, so no pending
-        # navigation can interrupt, and the worker already activated before
-        # the offline phase, so none can be mid-activation. A settle would
-        # evaluate on Firefox's error document, where evaluate raises.
+        # The recovery runs in the fresh page, which never held the error
+        # document.
         page.goto(f"{renewal_base_url}{patients_a}")
         cached_after = _cached_urls(page)
         assert all(url.startswith("/static/") for url in cached_after)

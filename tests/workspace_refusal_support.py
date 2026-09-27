@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from time import perf_counter_ns
-from typing import TYPE_CHECKING
+from types import FunctionType
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -20,9 +22,19 @@ if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponseBase
 
 
+class RefusalCheck(Protocol):
+    def __call__(
+        self,
+        request: HttpRequest,
+        response: HttpResponseBase,
+        stats: RefusalGuardStats,
+    ) -> None: ...
+
+
 @dataclass(slots=True)
 class RefusalGuardStats:
     client_requests: int = 0
+    evaluated_requests: int = 0
     integrity_ns: int = 0
     trace_ns: int = 0
     responses: int = 0
@@ -87,6 +99,37 @@ def check_refusal(
             )
     finally:
         stats.elapsed_ns += perf_counter_ns() - started
+
+
+def _function(function: object) -> FunctionType:
+    assert isinstance(function, FunctionType)
+    return function
+
+
+def _function_globals(function: object) -> frozenset[str]:
+    module = vars(sys.modules[__name__])
+    code = _function(function).__code__
+    return frozenset(name for name in code.co_names if name in module)
+
+
+def bind_refusal_check() -> tuple[RefusalCheck, dict[str, tuple[object, str, object]]]:
+    """Freeze the guard's code and every module global it reads at install time."""
+    module = sys.modules[__name__]
+    names = _function_globals(check_refusal) | _function_globals(workspace_scope)
+    namespace: dict[str, object] = {"__builtins__": __builtins__}
+    namespace.update((name, getattr(module, name)) for name in names)
+    scope = FunctionType(_function(workspace_scope).__code__, namespace)
+    namespace["workspace_scope"] = scope
+    check = cast(
+        "RefusalCheck", FunctionType(_function(check_refusal).__code__, namespace)
+    )
+    dependencies: dict[str, tuple[object, str, object]] = {
+        f"{__name__}.{name}": (module, name, getattr(module, name))
+        for name in sorted(names | {"check_refusal", "workspace_scope"})
+    }
+    # The frozen namespace keeps the pytest module; also bind the method called.
+    dependencies["pytest.fail"] = (pytest, "fail", pytest.fail)
+    return check, dependencies
 
 
 @dataclass(frozen=True)

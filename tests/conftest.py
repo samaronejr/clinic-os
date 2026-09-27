@@ -20,7 +20,7 @@ from workspace_refusal_observer import RefusalObserver
 from workspace_refusal_support import GUARD_STATS
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
+    from collections.abc import Callable, Generator, Iterator
     from pathlib import Path
 
     from _pytest.terminal import TerminalReporter
@@ -38,6 +38,8 @@ __all__: Final = (
 
 
 REFUSAL_OBSERVER: pytest.StashKey[RefusalObserver] = pytest.StashKey()
+REFUSAL_INTEGRITY: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
+REFUSAL_SESSION_ERRORS: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
 REFUSAL_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 TAMPERING_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 REFUSAL_ISSUES: pytest.StashKey[list[str]] = pytest.StashKey()
@@ -79,6 +81,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     session.config.stash[REFUSAL_OBSERVER] = observer
     session.config.stash[GUARD_STATS] = observer.stats
     observer.start()
+    # Bound before tests run: later class patches cannot replace the checks.
+    session.config.stash[REFUSAL_INTEGRITY] = observer.integrity_errors
+    session.config.stash[REFUSAL_SESSION_ERRORS] = observer.session_errors
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -92,7 +97,7 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 def _check_observer(item: pytest.Item) -> None:
     observer = item.config.stash[REFUSAL_OBSERVER]
-    errors = observer.integrity_errors()
+    errors = item.config.stash[REFUSAL_INTEGRITY]()
     item.stash[REFUSAL_ISSUES].extend(errors)
     observer.tampering.extend(errors)
 
@@ -128,7 +133,7 @@ def pytest_runtest_makereport(
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     observer = session.config.stash[REFUSAL_OBSERVER]
-    errors = observer.session_errors()
+    errors = session.config.stash[REFUSAL_SESSION_ERRORS]()
     observer.tampering.extend(errors)
     if errors:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED

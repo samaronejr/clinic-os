@@ -16,6 +16,14 @@ from ops.testing.runtime_paths import runtime_directory
 
 from workspace_refusal_observer import RefusalMiddleware
 
+# Reviewer bypasses plus one further dependency bound by the observer.
+DEPENDENCY_PATCHES = {
+    "check-noop": ("workspace_refusal_observer", "check_refusal", "lambda *a: None"),
+    "scope-off": ("workspace_refusal_support", "workspace_scope", "lambda *a: False"),
+    "resolve-off": ("workspace_refusal_support", "resolve", "lambda *a, **k: None"),
+}
+FAILING = {"write", "swallow", "unwrap", "disabled", "restored", *DEPENDENCY_PATCHES}
+
 
 @override_settings(
     ROOT_URLCONF="workspace_guard_probe_urls",
@@ -40,7 +48,7 @@ def test_guard_canary() -> None:
             with pytest.raises(pytest.fail.Exception):
                 client.get(root + "404/")
         return
-    if mode in {"write", "swallow"}:
+    if mode in {"write", "swallow", *DEPENDENCY_PATCHES}:
         if mode == "swallow":
             # An adversarial caller catches the immediate failure. The report
             # and session still have to fail from the latched violation.
@@ -66,6 +74,7 @@ def test_guard_canary() -> None:
         "unwrap",
         "disabled",
         "restored",
+        *DEPENDENCY_PATCHES,
         "success-only",
         "no-client",
     ],
@@ -89,6 +98,14 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
                 "    from workspace_refusal_observer import RefusalMiddleware\n"
                 "    monkeypatch.setattr(RefusalMiddleware, 'process_response', "
                 "lambda self, request, response: response)\n"
+            )
+        if mode in DEPENDENCY_PATCHES:
+            module, name, value = DEPENDENCY_PATCHES[mode]
+            source += (
+                "@pytest.fixture(autouse=True)\n"
+                "def bypass(monkeypatch):\n"
+                f"    import {module}\n"
+                f"    monkeypatch.setattr({module}, {name!r}, {value})\n"
             )
         plugin.write_text(source)
         with pytest.MonkeyPatch.context() as environment:
@@ -119,9 +136,7 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
         tests, failures, errors, skipped = _junit_counts(directory / "junit.xml")
     assert tests == 1
     assert errors == skipped == 0
-    assert failures == int(
-        mode in {"write", "swallow", "unwrap", "disabled", "restored"}
-    )
+    assert failures == int(mode in FAILING)
     lines = completed.stdout.splitlines()
     stats = json.loads(
         next(
@@ -135,8 +150,16 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
     if mode == "normal":
         assert stats["responses"] == stats["client_requests"] == 2
         assert stats["refusals"] == 1
-    elif mode in {"write", "swallow"}:
+    elif mode in {"write", "swallow", *DEPENDENCY_PATCHES}:
+        # The frozen check still runs and fails; teardown also names the patch.
         assert stats["violations"] == 1
+        assert stats["responses"] == stats["evaluated_requests"] == 1
+        if mode in DEPENDENCY_PATCHES:
+            module, name, _ = DEPENDENCY_PATCHES[mode]
+            assert (
+                f"REFUSAL_GUARD_FAILURE Refusal guard dependency replaced: "
+                f"{module}.{name}"
+            ) in lines
     elif mode == "unwrap":
         # The wrapper was removed, but the actual response observer still ran.
         assert stats["responses"] == 2
@@ -144,6 +167,11 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
     elif mode in {"disabled", "restored"}:
         assert stats["client_requests"] > 0
         assert stats["responses"] == stats["refusals"] == 0
+        assert stats["evaluated_requests"] == 0
+        assert (
+            "REFUSAL_GUARD_FAILURE Client request was not evaluated exactly once: "
+            "started=1 evaluated=0"
+        ) in lines
     elif mode == "success-only":
         assert stats["client_requests"] == stats["responses"] == 1
         assert stats["refusals"] == 0
