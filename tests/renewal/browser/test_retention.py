@@ -22,8 +22,12 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable, wait_for_js
-from renewal.browser.engines import failed_responses_logged, new_context
+from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
+from renewal.browser.engines import (
+    failed_responses_logged,
+    full_page_screenshot,
+    new_context,
+)
 from renewal.browser.test_availability import (
     _sign_in,
     _sign_in_physician,
@@ -71,8 +75,8 @@ FIRST = {
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "retention"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 # Page state at the check_disposal click, for the hosted Firefox stall where

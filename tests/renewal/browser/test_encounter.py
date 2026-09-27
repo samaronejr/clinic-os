@@ -12,9 +12,9 @@ import pytest
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
-from renewal.browser._page_wait import click_when_hittable
+from renewal.browser._page_wait import click_when_hittable, evaluate_js
 from renewal.browser._protected import decrypt
-from renewal.browser.engines import element_box, new_context
+from renewal.browser.engines import element_box, full_page_screenshot, new_context
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -103,8 +103,8 @@ def seed(staff: dict[str, str], day: str) -> dict[str, str]:
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "encounter"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def press(page: Page, action: str) -> None:

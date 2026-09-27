@@ -25,9 +25,13 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import await_autofocus, wait_for_js
+from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
-from renewal.browser.engines import assert_only_refused_document_logged, new_context
+from renewal.browser.engines import (
+    assert_only_refused_document_logged,
+    full_page_screenshot,
+    new_context,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -270,13 +274,15 @@ def _watch_errors(page: Page) -> list[str]:
 def _capture(page: Page, root: Path, name: str, *, full_page: bool = True) -> str:
     destination = root / "contacts" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=full_page)
+    if full_page:
+        return ", ".join(path.name for path in full_page_screenshot(page, destination))
+    page.screenshot(path=str(destination))
     destination.chmod(0o600)
     return destination.name
 
 
 def _no_overflow(page: Page) -> bool:
-    return bool(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+    return bool(evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth"))
 
 
 def _ring(page: Page) -> dict[str, str]:

@@ -11,7 +11,8 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser.engines import new_context
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
     _no_overflow,
     _ring,
@@ -47,8 +48,8 @@ ACTIVE_PDF = b"%PDF-1.4\n1 0 obj<</OpenAction<</S/JavaScript/JS(app.alert(1))>>>
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "attachments"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _attachment_ids(page: Page) -> set[str]:

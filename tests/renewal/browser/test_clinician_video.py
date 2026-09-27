@@ -24,9 +24,10 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
-from renewal.browser._page_wait import click_when_hittable, wait_for_js
+from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
+    full_page_screenshot,
     install_media,
     launch_selected,
     logs_failed_responses,
@@ -112,8 +113,8 @@ class _Case:
 
 
 def _capture(page: Page, case: _Case, state: str) -> None:
-    page.screenshot(path=str(case.root / f"{state}-{case.width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, case.root / f"{state}-{case.width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:

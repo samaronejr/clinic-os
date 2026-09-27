@@ -12,16 +12,33 @@ in the iPhone 15 and Pixel 8 emulation profiles.
 from __future__ import annotations
 
 import json
+import math
 import time
 from typing import TYPE_CHECKING
 
 import pytest
+from PIL import Image
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import ViewportSize
 
-from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
+from renewal.browser._page_wait import (
+    EvaluateTimeoutError,
+    await_autofocus,
+    click_when_hittable,
+    evaluate_all_js,
+    evaluate_js,
+    wait_for_js,
+)
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import MOBILE_PROFILES, element_box, mobile_context
+from renewal.browser.engines import (
+    MAX_CAPTURE_DEVICE_PX,
+    MOBILE_PROFILES,
+    PAGE_EXTENT_JS,
+    element_box,
+    full_page_screenshot,
+    mobile_context,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -35,9 +52,7 @@ FOUND_STATUS = 302
 
 def _capture(page: Page, artifact_root: Path, label: str) -> str:
     destination = artifact_root / f"{label}.png"
-    destination.write_bytes(page.screenshot(full_page=True))
-    destination.chmod(0o600)
-    return destination.name
+    return ", ".join(path.name for path in full_page_screenshot(page, destination))
 
 
 def test_readiness_reports_the_migrated_app_role(
@@ -299,6 +314,78 @@ def test_wait_for_js_resolves_values_and_surfaces_predicate_errors(
 
     with pytest.raises(PlaywrightError, match="predicate threw: sentinel-error"):
         wait_for_js(csp_page, "() => { throw new Error('sentinel-error'); }")
+
+
+# Self-tests of the bounded one-shot evaluate the capture helpers use after
+# each screenshot (fix-a8: a wedged page held video-recovery until the
+# runner's 900 s bound).
+def test_evaluate_js_answers_once_like_evaluate(csp_page: Page) -> None:
+    # A falsy answer comes straight back; it is never waited on.
+    assert evaluate_js(csp_page, "document.documentElement.scrollWidth < 0") is False
+    assert evaluate_js(csp_page, "(n) => n + 1", 1) == 2
+    assert evaluate_js(csp_page.locator("form"), "(form) => form.method") == "post"
+    fields = csp_page.locator("form input").count()
+    assert fields > 0
+    assert evaluate_all_js(csp_page.locator("form input"), "(all) => all.length") == (
+        fields
+    )
+
+    with pytest.raises(PlaywrightError, match="sentinel-error"):
+        evaluate_js(csp_page, "() => { throw new Error('sentinel-error'); }")
+
+
+def test_evaluate_js_fails_at_its_deadline_while_the_page_is_busy(
+    csp_page: Page,
+) -> None:
+    started = time.monotonic()
+    with pytest.raises(EvaluateTimeoutError, match="Timeout 25ms exceeded"):
+        evaluate_js(csp_page, BUSY_THEN_TRUE_JS, timeout=BUSY_TIMEOUT_MS)
+    elapsed_ms = (time.monotonic() - started) * 1000
+
+    assert elapsed_ms < BUSY_TIMEOUT_MS + DEADLINE_SLACK_MS
+    # The page answers the next evaluation once it is free again.
+    assert evaluate_js(csp_page, "document.readyState") == "complete"
+
+
+def test_evaluate_js_honors_the_page_default_timeout(csp_page: Page) -> None:
+    csp_page.set_default_timeout(40)
+
+    with pytest.raises(EvaluateTimeoutError, match="Timeout 40ms exceeded"):
+        evaluate_js(csp_page, BUSY_THEN_TRUE_JS)
+    with pytest.raises(EvaluateTimeoutError, match="Timeout 40ms exceeded"):
+        evaluate_all_js(csp_page.locator("form"), BUSY_THEN_TRUE_JS)
+
+
+# 40000 CSS px at devicePixelRatio 1: past the 32767 device-pixel limit that
+# failed hosted primitives@chromium at 375px.
+TALL_PAGE_PX = 40_000
+NARROW_VIEWPORT: ViewportSize = {"width": 375, "height": 667}
+
+
+def test_capture_splits_a_narrow_page_taller_than_the_screenshot_limit(
+    csp_page: Page, renewal_artifact_root: Path
+) -> None:
+    csp_page.set_viewport_size(NARROW_VIEWPORT)
+    csp_page.evaluate(f"document.body.style.minHeight = '{TALL_PAGE_PX}px'")
+    width, height, ratio = csp_page.evaluate(PAGE_EXTENT_JS)
+    assert (width, ratio) == (NARROW_VIEWPORT["width"], 1)
+    assert height > MAX_CAPTURE_DEVICE_PX
+
+    names = _capture(csp_page, renewal_artifact_root, "tall-375").split(", ")
+
+    count = math.ceil(height / MAX_CAPTURE_DEVICE_PX)
+    assert names == [f"tall-375-part{index}.png" for index in range(1, count + 1)]
+    assert not (renewal_artifact_root / "tall-375.png").exists()
+    sizes = []
+    for name in names:
+        part = renewal_artifact_root / name
+        assert part.stat().st_mode & 0o777 == 0o600
+        with Image.open(part) as image:
+            sizes.append(image.size)
+    # Full-width sections, each within the limit, that cover the whole page.
+    assert {section_width for section_width, _ in sizes} == {width}
+    assert max(section_height for _, section_height in sizes) <= MAX_CAPTURE_DEVICE_PX
+    assert sum(section_height for _, section_height in sizes) == height
 
 
 INJECT_INLINE_SCRIPT_JS = """() => {

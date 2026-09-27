@@ -16,7 +16,9 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -134,8 +136,8 @@ def _seed(staff: dict[str, str], day: str, hour: int) -> dict[str, str]:
 
 
 def _capture(page: Page, root: Path, state: str, width: int) -> None:
-    page.screenshot(path=str(root / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, root / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _press(page: Page, action: str) -> None:

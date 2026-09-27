@@ -12,9 +12,9 @@ import pytest
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable
+from renewal.browser._page_wait import click_when_hittable, evaluate_js
 from renewal.browser._protected import decrypt
-from renewal.browser.engines import element_box
+from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import (
     _no_overflow,
     _ring,
@@ -50,8 +50,8 @@ MIN_TARGET_PX = 44
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "amendments"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def csrf(page: Page) -> str:

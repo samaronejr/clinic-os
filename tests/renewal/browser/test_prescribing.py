@@ -29,6 +29,8 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
     availability_staff,
@@ -68,10 +70,8 @@ CALLBACK_PATH = "/prescription/signing/callback/synthetic-signature-v1/"
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "prescribing"
     folder.mkdir(exist_ok=True, mode=0o700)
-    destination = folder / f"{state}-{width}.png"
-    page.screenshot(path=str(destination), full_page=True)
-    destination.chmod(0o600)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def ensure_physician_profile(staff: dict[str, str]) -> None:

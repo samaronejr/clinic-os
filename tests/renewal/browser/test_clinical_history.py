@@ -9,8 +9,13 @@ from typing import TYPE_CHECKING
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable
-from renewal.browser.engines import browser_zoom_200, element_box, zoom_screenshot
+from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser.engines import (
+    browser_zoom_200,
+    element_box,
+    full_page_screenshot,
+    zoom_screenshot,
+)
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -29,8 +34,8 @@ __all__ = ("availability_staff",)
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "clinical-history"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def edit(page: Page, kind: str, action: str) -> None:
@@ -236,7 +241,7 @@ def zoom_metrics(page: Page) -> dict[str, float]:
 
 def capture_zoom(page: Page, root: Path, state: str) -> None:
     zoom_screenshot(page, root / "clinical-history" / f"{state}-1280.png")
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def zoom_journey(page: Page, root: Path) -> None:

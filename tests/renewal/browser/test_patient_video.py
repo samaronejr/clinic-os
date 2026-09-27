@@ -20,10 +20,11 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser.engines import (
     END_TRACK_JS,
     displays_clipped_video,
+    full_page_screenshot,
     grant_media,
     install_media,
     launch_selected,
@@ -114,8 +115,8 @@ class _Case:
 
 
 def _capture(page: Page, case: _Case, state: str) -> None:
-    page.screenshot(path=str(case.root / f"{state}-{case.width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, case.root / f"{state}-{case.width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _context(browser: Browser, case: _Case, *, media: bool) -> BrowserContext:

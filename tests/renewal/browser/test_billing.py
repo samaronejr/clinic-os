@@ -31,6 +31,7 @@ from playwright.sync_api import ViewportSize, expect
 from renewal.browser._page_wait import click_when_hittable
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
+    full_page_screenshot,
     grant_clipboard,
     history_back,
     history_reload,
@@ -87,7 +88,7 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     """Store one privacy-safe capture and prove the width holds no overflow."""
     folder = root / "billing"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
     assert _no_overflow(page), _overflowing(page)
 
 

@@ -25,6 +25,10 @@ The starting evaluation, the console outcome and a timer run concurrently:
   predicate exception (``WaitPredicateError``) raises at once. A navigation
   destroys the watcher, so the wait then fails at its deadline.
 
+``evaluate_js`` gives a one-shot ``evaluate`` the same driver-side deadline.
+Playwright's ``evaluate`` has no timeout, so a page whose main thread is
+wedged would hold the suite until the runner's 900 s bound.
+
 It uses Playwright 1.61 internals (``_impl_obj``, ``_sync``, the impl-to-API
 ``mapping``) because the public sync API cannot start an evaluation without
 blocking on it.
@@ -38,15 +42,15 @@ from typing import TYPE_CHECKING, Any, Final, cast
 
 from playwright._impl._sync_base import mapping
 from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import Locator, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import expect
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
+    from collections.abc import Awaitable, Coroutine
 
     from playwright._impl._console_message import ConsoleMessage as ConsoleMessageImpl
     from playwright._impl._page import Page as PageImpl
-    from playwright.sync_api import JSHandle, Locator, Page
+    from playwright.sync_api import JSHandle, Page
 
 _WATCH_HEAD: Final = """([token, arg, timeout]) => {
   const deadline = timeout > 0 ? performance.now() + timeout : Infinity;
@@ -199,6 +203,70 @@ def wait_for_js(
     if message.text.startswith(failed):
         raise WaitPredicateError(message.text.removeprefix(failed).strip())
     return cast("JSHandle", mapping.from_impl(message.args[1]))
+
+
+class EvaluateTimeoutError(PlaywrightTimeoutError):
+    """The page did not answer a one-shot evaluation by the deadline."""
+
+    def __init__(self, timeout: float) -> None:
+        super().__init__(f"evaluate_js: Timeout {timeout:g}ms exceeded.")
+
+
+async def _answer_within(milliseconds: float, work: Coroutine[Any, Any, Any]) -> Any:  # noqa: ANN401 - the page's JSON answer, as Page.evaluate returns it
+    """Await ``work`` by a timer in the driver loop; ``0`` means no bound."""
+    evaluation = asyncio.get_running_loop().create_task(work)
+    try:
+        done, _ = await asyncio.wait(
+            {evaluation}, timeout=milliseconds / 1000 if milliseconds > 0 else None
+        )
+    finally:
+        if not evaluation.done():
+            # The page may still answer; that late answer is consumed unseen.
+            evaluation.add_done_callback(_retrieve)
+    if not done:
+        raise EvaluateTimeoutError(milliseconds)
+    return evaluation.result()
+
+
+def _answer(page: Page, work: Coroutine[Any, Any, Any], timeout: float | None) -> Any:  # noqa: ANN401 - the page's JSON answer, as Page.evaluate returns it
+    impl_page: PageImpl = page._impl_obj
+    settings = impl_page._timeout_settings
+    resolved = settings.timeout() if timeout is None else settings.timeout(timeout)
+    return mapping.from_maybe_impl(page._sync(_answer_within(resolved, work)))
+
+
+def evaluate_js(
+    target: Page | Locator,
+    expression: str,
+    arg: object = None,
+    *,
+    timeout: float | None = None,
+) -> Any:  # noqa: ANN401 - the page's JSON answer, as Page.evaluate returns it
+    """``target.evaluate(expression, arg)`` that fails at a deadline.
+
+    It evaluates once and returns the answer exactly as ``evaluate`` does; a
+    falsy answer comes back at once and is never waited on (``wait_for_js``
+    waits for truth). If the page has not answered by the deadline,
+    ``EvaluateTimeoutError`` is raised; nothing on that path waits for the
+    page, and a later answer is discarded. ``timeout`` is in milliseconds;
+    ``None`` uses the page's default timeout, as for ``wait_for_js``, and
+    ``0`` disables it.
+    """
+    page = target.page if isinstance(target, Locator) else target
+    work = target._impl_obj.evaluate(expression, mapping.to_impl(arg))
+    return _answer(page, work, timeout)
+
+
+def evaluate_all_js(
+    locator: Locator,
+    expression: str,
+    arg: object = None,
+    *,
+    timeout: float | None = None,
+) -> Any:  # noqa: ANN401 - the page's JSON answer, as Locator.evaluate_all returns it
+    """``locator.evaluate_all(expression, arg)`` with ``evaluate_js``'s deadline."""
+    work = locator._impl_obj.evaluate_all(expression, mapping.to_impl(arg))
+    return _answer(locator.page, work, timeout)
 
 
 # A press is only delivered once the target is where the pointer will land.

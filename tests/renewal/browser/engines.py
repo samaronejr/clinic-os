@@ -78,7 +78,10 @@ Playwright 1.61.0, so this module owns the one place each differs:
   than 32767 device pixels ("Cannot take screenshot larger than 32767").
   ``full_page_screenshot`` captures such a page as consecutive full-width
   sections (``<name>-partN.png``) that together cover the whole page, on
-  every engine.
+  every engine; ``full_page_clip`` captures one document rect and refuses a
+  rect past the limit. Only these two call ``screenshot(full_page=True)``
+  (tests/renewal/test_browser_runner.py guards it), so a page that grows past
+  the limit at a narrow width cannot fail a suite's capture.
 * Screenshot cost. WebKit's capture is CPU-bound: on 4 CPUs at a 100% CPU
   quota, scrolling a showcase block into view and taking its element
   screenshot costs 280 ms on WebKit against 101 ms on Chromium, whose capture
@@ -179,6 +182,8 @@ from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlsplit
 
 import pytest
+
+from renewal.browser._page_wait import evaluate_js
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -603,7 +608,7 @@ PAGE_EXTENT_JS: Final = """() => [
 
 def full_page_screenshot(page: Page, destination: Path) -> list[Path]:
     """Capture the whole page, in sections when it exceeds the pixel limit."""
-    width, height, ratio = page.evaluate(PAGE_EXTENT_JS)
+    width, height, ratio = evaluate_js(page, PAGE_EXTENT_JS)
     section = int(MAX_CAPTURE_DEVICE_PX // ratio)
     if height <= section:
         page.screenshot(path=str(destination), full_page=True)
@@ -625,6 +630,14 @@ def full_page_screenshot(page: Page, destination: Path) -> list[Path]:
     for path in written:
         path.chmod(0o600)
     return written
+
+
+def full_page_clip(page: Page, clip: FloatRect) -> bytes:
+    """Capture one document rect; a rect past the pixel limit fails loudly."""
+    ratio = evaluate_js(page, "devicePixelRatio")
+    extent = max(clip["width"], clip["height"]) * ratio
+    assert extent <= MAX_CAPTURE_DEVICE_PX, (clip, ratio)
+    return page.screenshot(full_page=True, clip=clip)
 
 
 ELEMENT_SIZE_JS: Final = """(element) => {
@@ -765,7 +778,7 @@ def browser_zoom_200(page: Page, profile_root: Path) -> Iterator[tuple[Page, str
 def zoom_screenshot(page: Page, destination: Path) -> None:
     """Write a full-page capture of a ``browser_zoom_200`` page."""
     if _engine_of(page.context) != "chromium":
-        page.screenshot(path=str(destination), full_page=True)
+        full_page_screenshot(page, destination)
         return
     # Playwright's full_page clips to CSS pixels even at native browser zoom;
     # DevTools' screenshot clip uses device-independent pixels.
