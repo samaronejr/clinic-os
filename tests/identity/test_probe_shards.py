@@ -12,25 +12,28 @@ from __future__ import annotations
 import multiprocessing
 import os
 import signal
-from contextlib import contextmanager
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from django.db import connection, connections
-from django.db.backends.postgresql.base import DatabaseWrapper
+from django.db import connection
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from database_urls import database_url_for_name
-from identity import actor_channels, exemption_probes, probe_shards, probe_states
+from identity import (
+    actor_channels,
+    exemption_probes,
+    probe_shards,
+    probe_states,
+    probe_worlds,
+)
 from identity.probe_states import ProbeState
-from identity.test_permission_parity import _SYNTHETIC, _probe_world
+from identity.probe_worlds import SYNTHETIC as _SYNTHETIC
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Sequence
 
-    from rbac_fixtures import RbacGraph
 
 _DB = pytest.mark.django_db(transaction=True)
 
@@ -66,6 +69,8 @@ def _statistics() -> None:
 
 
 def _nothing_left() -> None:
+    """No shard clone or backend on one, and no worker process (the test's
+    own world clone is dropped at its teardown)."""
     assert probe_shards.leftovers() == []
     assert multiprocessing.active_children() == []
 
@@ -187,55 +192,45 @@ def test_a_failing_worker_fails_the_run_and_leaves_nothing(
     _nothing_left()
 
 
-@contextmanager
-def _database(name: str) -> Iterator[None]:
-    """Point the default connection at ``name`` for the block."""
-    original = connections["default"]
-    settings = original.settings_dict.copy()
-    settings["NAME"] = name
-    connections.close_all()
-    connections["default"] = DatabaseWrapper(settings, alias="default")
-    try:
-        yield
-    finally:
-        connections.close_all()
-        connections["default"] = original
+# One pass over a world: the runs for the chosen states.
+type Pass = Callable[
+    [exemption_probes.ProbeWorld, Sequence[ProbeState]],
+    dict[str, exemption_probes.ProbeRun],
+]
+
+
+def serial_pass(
+    world: exemption_probes.ProbeWorld, states: Sequence[ProbeState]
+) -> dict[str, exemption_probes.ProbeRun]:
+    probes = [exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)]
+    return exemption_probes.run_matrix(probes, world, states)
+
+
+def sharded_pass(
+    world: exemption_probes.ProbeWorld, states: Sequence[ProbeState]
+) -> dict[str, exemption_probes.ProbeRun]:
+    probes = [exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)]
+    return exemption_probes.run_matrix(
+        probes, world, states, workers=probe_shards.WORKERS
+    )
 
 
 def equivalent_runs(
-    rbac_graph: RbacGraph,
-    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
     pick: Callable[[tuple[ProbeState, ...]], Sequence[ProbeState]],
+    left: Pass = serial_pass,
+    right: Pass = sharded_pass,
 ) -> tuple[Runs, Runs]:
-    """The same world and states run serially and sharded, each from one
-    snapshot of the database taken before either ran; each run's rows read
-    back where they were written."""
+    """Two passes over the same seeded world, each on its own fresh clone
+    of the session template (identical database, deep-copied Python world);
+    each pass's rows are read back where they were written."""
+    results: list[Runs] = []
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
-        probes = [
-            exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)
-        ]
-        states = pick(probe_world.matrix.states)
-        source = _current_database()
-        snapshot = probe_shards.CLONE_PREFIX + uuid4().hex
-        connections.close_all()
-        probe_shards._clone(snapshot, source)
-        try:
-            _statistics()
-            serial = exemption_probes.run_matrix(probes, probe_world, states)
-            serial_rows = probe_states.read_back(probe_world.matrix)
-            with _database(snapshot):
-                _statistics()
-                probe_world.matrix.applied.clear()
-                assert probe_world.observer is not None
-                probe_world.observer.drop_carried()
-                sharded = exemption_probes.run_matrix(
-                    probes, probe_world, states, workers=probe_shards.WORKERS
-                )
-                sharded_rows = probe_states.realized(probe_world.matrix)
-        finally:
-            probe_shards._drop(snapshot)
-    return (serial, serial_rows), (sharded, sharded_rows)
+        for run in (left, right):
+            world = seeded_world()
+            runs = run(world, pick(world.matrix.states))
+            results.append((runs, probe_states.realized(world.matrix)))
+    return results[0], results[1]
 
 
 type Runs = tuple[dict[str, exemption_probes.ProbeRun], dict[str, set[str]]]
@@ -264,14 +259,13 @@ def verdicts(
 
 @_DB
 def test_a_sharded_matrix_equals_the_serial_one_and_leaves_nothing(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """A slice with every family kind, the removals' scoped changes and the
     whole phase tail: identical outcomes, observations, reach and problems;
     no clone and no backend is left once the matrix returns."""
     serial, sharded = equivalent_runs(
-        rbac_graph,
-        monkeypatch,
+        seeded_world,
         lambda states: (*states[:5], *states[-118:-112], *states[-14:]),
     )
     assert verdicts(sharded[0]) == verdicts(serial[0])
@@ -281,12 +275,12 @@ def test_a_sharded_matrix_equals_the_serial_one_and_leaves_nothing(
 
 @_DB
 def test_a_worker_killed_mid_matrix_or_a_dropped_state_fails_the_run(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch, seeded_world: probe_worlds.SeededWorld
 ) -> None:
     """A worker killed after its first state, and a partition that drops
     one state, fail the matrix; nothing is left behind either way."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         probes = [
             exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)
         ]
@@ -317,7 +311,7 @@ def test_a_worker_killed_mid_matrix_or_a_dropped_state_fails_the_run(
 
         monkeypatch.setattr(probe_shards, "partition", dropping)
         probe_world.matrix.applied.clear()
-        _statistics()  # the sharded run closed the parent's connection
+        probe_worlds.enable_statistics()  # the sharded run closed the connection
         with pytest.raises(probe_shards.ShardError, match="misses"):
             exemption_probes.run_matrix(probes, probe_world, states, workers=4)
         _nothing_left()

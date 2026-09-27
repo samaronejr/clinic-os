@@ -32,11 +32,17 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from database_urls import database_url_for_name
-from identity import actor_channels, exemption_probes, probe_shards, probe_states
+from identity import (
+    actor_channels,
+    certifier_pass,
+    exemption_probes,
+    probe_states,
+    probe_worlds,
+)
 from identity import permission_gate_census as census
 from identity.permission_inputs import decision_inputs
 from identity.test_certifier_boundary import R9_S4_DDL, R9_S5_DDL
-from identity.test_permission_parity import _SYNTHETIC, INVENTORY, _probe_world
+from identity.test_permission_parity import _SYNTHETIC, INVENTORY
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -469,20 +475,24 @@ def _variant_probes(
 
 
 def test_exemption_probes_refuse_every_r4_gate_variant(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """R4-1, R5-1 and their variants, each run by the registered
     _next_version probe (same context, input and class) against a mutated
     copy of the function. The matrix alone (the actor rule left out of the
     verdict) refuses every behavioural shape by the repair it targets; the
     actor rule refuses every shape that executes; the unmutated function is
-    certified by both in the same run."""
+    certified by both in the same run (the shared pass, identity/
+    certifier_pass.py)."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
-        probes = _variant_probes(probe_world)
-        runs = exemption_probes.run_matrix(
-            probes, probe_world, workers=probe_shards.worker_count()
-        )
+        shared = certifier_pass.full_pass(seeded_world())
+    probes = [
+        shared.probes[symbol]
+        for symbol in (_SYMBOL, *(f"{_SYMBOL}#{name}" for name in _VARIANTS))
+    ]
+    runs = shared.runs
     matrix = {
         probe.symbol: exemption_probes.problems(
             probe, runs[probe.symbol], observed=False
@@ -534,14 +544,16 @@ _RULE_SHAPES = (
 
 
 def test_actor_rule_alone_refuses_every_r5_shape(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """With the matrix disabled (one state, so nothing to differ), the actor
     rule alone refuses each R5-1 shape and an RLS-relation touch, and still
     certifies the unmutated function. Each shape is refused by the channel
     that sees it (receipt printed per shape)."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         probes = [
             probe
             for probe in _variant_probes(probe_world)
@@ -586,7 +598,9 @@ def test_actor_rule_alone_refuses_every_r5_shape(
 
 
 def test_reclassified_functions_observe_the_actor(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """The four former exemptions the actor rule refused keep their probes as
     evidence: each observes the actor, and the census now classifies each by
@@ -601,7 +615,7 @@ def test_reclassified_functions_observe_the_actor(
         for symbol in sorted(exemption_probes.RECLASSIFIED)
     ]
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         runs = exemption_probes.run_matrix(
             probes, probe_world, probe_world.matrix.states[:1]
         )
@@ -728,13 +742,15 @@ def test_expression_columns_are_the_live_catalog(
 
 
 def test_an_unlisted_accessor_fails_closed(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """A Python accessor missing from the derived set still cannot hide: the
     statement it sends names its frame as an unlisted accessor."""
     missing = "apps.identity.current_context._actor_uuid_from_guc"
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         observer = probe_world.observer
         trimmed = dataclasses.replace(
             observer,
@@ -928,7 +944,9 @@ def _r7_schema(allow: str) -> Iterator[None]:
 
 
 def test_actor_rule_refuses_every_r7_shape(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """R7-1: each shape flips the allowlisted user's outcome (never a matrix
     actor's), so the matrix alone cannot see it; the actor rule refuses each
@@ -936,7 +954,7 @@ def test_actor_rule_refuses_every_r7_shape(
     function in the same run. The server-side cursor is seen as a recorded
     statement, never as a path outside the recording."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         with _r7_schema(str(probe_world.w.actor.pk)):
             probe_world = dataclasses.replace(
                 probe_world, observer=exemption_probes.actor_observer(probe_world.w)
@@ -1265,7 +1283,9 @@ def _r8_session() -> Iterator[None]:
 
 
 def test_actor_rule_refuses_every_r8_shape(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """R8-1: each shape flips the allowlisted user's outcome only. The rule
     refuses each by the channel that sees it: text classified against the
@@ -1274,7 +1294,7 @@ def test_actor_rule_refuses_every_r8_shape(
     temporary schema), and texts the classifier cannot read failing closed.
     The unmutated function stays certified in the same run."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         with _r8_schema():
             probe_world = dataclasses.replace(
                 probe_world, observer=exemption_probes.actor_observer(probe_world.w)
@@ -1441,14 +1461,16 @@ def _r9_schema() -> Iterator[None]:
 
 
 def test_actor_rule_refuses_every_r9_shape(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """R9-1: each shape flips the allowlisted user's outcome only, and hides
     its read behind text a comment-first classifier misreads. The rule reads
     every text through the one lexer and refuses each by the channel that
     sees it; the unmutated function stays certified in the same run."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         with _r9_schema():
             probe_world = dataclasses.replace(
                 probe_world, observer=exemption_probes.actor_observer(probe_world.w)
@@ -1513,13 +1535,15 @@ def test_the_catalog_fails_closed_on_r9_bodies(ddl: str, message: str) -> None:
 
 
 def test_a_session_left_with_nonstandard_strings_is_refused(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """Session state made before the window: with standard_conforming_strings
     off, no text the probe sends can be lexed, so the per-execution session
     read refuses even the unmutated function (the setting is restored after)."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         probes = [exemption_probes.PROBES[_SYMBOL]]
         with connection.cursor() as cursor:
             cursor.execute("SET standard_conforming_strings = off")

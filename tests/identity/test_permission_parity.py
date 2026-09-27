@@ -6,7 +6,6 @@ import collections
 import copy
 import dataclasses
 import json
-import os
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,15 +20,19 @@ from apps.identity.permissions import (
     PERMISSIONS,
     PROFESSIONAL_PERMISSIONS_V1,
 )
-from apps.intake import demographics
 from apps.tenancy.db import tenant_context
 from django.core import signing
 from django.db import connection, transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
-from database_urls import database_url_for_name
-from identity import actor_channels, exemption_probes, probe_shards, probe_states
+from identity import (
+    certifier_pass,
+    exemption_probes,
+    probe_shards,
+    probe_states,
+    probe_worlds,
+)
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
@@ -324,7 +327,7 @@ _GATE_CALLS = """            try:
                     "configuration.organization", clinic_id=clinic_id
                 )
 """
-_POLICY = "apps.intake.demographics.set_intake_policy"
+_POLICY = certifier_pass.POLICY
 # Each refactor moves set_intake_policy's permission decision out of its
 # own body; none of them may let the census accept an exemption.
 _REFACTORS = {
@@ -576,28 +579,7 @@ def test_census_refuses_every_reviewer_bypass_shape(shape: str) -> None:
         check_inventory(mutated, declared, graph)
 
 
-def _probe_world(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
-) -> exemption_probes.ProbeWorld:
-    actor_channels.enable_function_statistics(
-        database_url_for_name(
-            os.environ["TEST_SUPERUSER_DATABASE_URL"],
-            str(connection.settings_dict["NAME"]),
-        )
-    )
-    subject = world(rbac_graph, "receptionist")
-    op = operational.seed_operational(subject)
-    rx = prescriptions.seed_prescription(subject)
-    tc = teleconsult.seed_teleconsult(subject, op, monkeypatch)
-    return exemption_probes.build_world(subject, op, rx, tc)
-
-
-_SYNTHETIC = {
-    "BILLING_SYNTHETIC_PIX": True,
-    "PRESCRIPTION_SYNTHETIC_SIGNING": True,
-    "PHYSICIAN_SYNTHETIC_REGISTRY": True,
-    "TELECONSULT_SYNTHETIC_PROVIDER": True,
-}
+_SYNTHETIC = probe_worlds.SYNTHETIC
 
 
 def _volatility_is_per_call(
@@ -619,7 +601,9 @@ def _volatility_is_per_call(
 
 
 def test_every_exemption_probe_is_staff_independent(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """Every census exemption runs under every state of the staff-state
     matrix derived from the live permission decision (identity/
@@ -636,7 +620,7 @@ def test_every_exemption_probe_is_staff_independent(
     physician) are still in the matrix."""
     started = time.monotonic()
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probe_world = seeded_world()
         states = probe_world.matrix.states
         labels = [state.label for state in states]
         assert len(set(labels)) == len(labels)
@@ -656,13 +640,9 @@ def test_every_exemption_probe_is_staff_independent(
             "control": 1,
         }
         built = time.monotonic()
-        probes = [
-            exemption_probes.PROBES[key] for key in sorted(exemption_probes.PROBES)
-        ]
-        runs = exemption_probes.run_matrix(
-            probes, probe_world, workers=probe_shards.worker_count()
-        )
-        ran = time.monotonic()
+        shared = certifier_pass.full_pass(probe_world)
+        probes = certifier_pass.census_probes()
+        runs = shared.runs
         failures: dict[str, object] = {}
         for probe in probes:
             run = runs[probe.symbol]
@@ -699,7 +679,7 @@ def test_every_exemption_probe_is_staff_independent(
             )
             if found:
                 failures[probe.symbol] = found
-        realized = probe_states.realized(probe_world.matrix)
+        realized = shared.realized
         for key, (_kind, values) in probe_states.DIMENSIONS.items():
             if isinstance(values, frozenset) and realized[key] != values:
                 failures[key] = (sorted(values - realized[key]), "not realized")
@@ -710,11 +690,12 @@ def test_every_exemption_probe_is_staff_independent(
                 "states": len(states),
                 "families": dict(sorted(families.items())),
                 "probes": len(probes),
-                "executions": len(states) * len(probes),
-                "build_seconds": round(built - started, 1),
-                "run_seconds": round(ran - built, 1),
+                "pass_probes": len(shared.probes),
+                "executions": len(states) * len(shared.probes),
+                "world_seconds": round(built - started, 1),
+                "pass_seconds": shared.run_seconds,
                 "workers": probe_shards.worker_count(),
-                "shard_seconds": probe_world.matrix.shard_seconds,
+                "shard_seconds": shared.shard_seconds,
             }
         ),
     )
@@ -724,54 +705,28 @@ def test_every_exemption_probe_is_staff_independent(
         )
 
 
-def _configuration_answer(pw: exemption_probes.ProbeWorld) -> bool:
-    """The live decision set_intake_policy asks, read as data."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT clinic_app.has_permission('configuration.clinic', %s, NULL) "
-            "OR clinic_app.has_permission('configuration.organization', %s, NULL)",
-            [pw.w.clinic, pw.w.clinic],
-        )
-        row = cursor.fetchone()
-    return bool(row and row[0])
-
-
 def test_differential_probe_classifies_a_gated_function_as_gated(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    seeded_world: probe_worlds.SeededWorld,
 ) -> None:
     """With a real probe, a permission-gated function is classified gated:
     set_intake_policy decides differently across role states, so no
     exemption for it could ever pass the probe execution. Across the whole
     matrix it succeeds in exactly the states whose live decision grants a
     configuration permission at that moment (an oracle probe reads it in
-    the same run)."""
-    probe = exemption_probes.ExemptionProbe(
-        _POLICY,
-        "staff",
-        "success",
-        lambda pw: demographics.set_intake_policy(
-            clinic_id=pw.w.clinic, required_fields=[]
-        ),
-    )
-    oracle = exemption_probes.ExemptionProbe(
-        f"{_POLICY}#oracle",
-        "staff",
-        "success",
-        _configuration_answer,
-        code=_configuration_answer.__code__,
-    )
+    the same run). Both probes run in the shared pass
+    (identity/certifier_pass.py)."""
     with override_settings(**_SYNTHETIC):
-        probe_world = _probe_world(rbac_graph, monkeypatch)
-        runs = exemption_probes.run_matrix(
-            [probe, oracle], probe_world, workers=probe_shards.worker_count()
-        )
+        probe_world = seeded_world()
+        runs = certifier_pass.full_pass(probe_world).runs
     outcomes = runs[_POLICY].outcomes
     assert not runs[_POLICY].not_entered
     assert not exemption_probes.staff_independent(outcomes)
     allowed = {state for state, outcome in outcomes.items() if outcome[0] == "ok"}
     granted = {
         state
-        for state, outcome in runs[oracle.symbol].outcomes.items()
+        for state, outcome in runs[certifier_pass.ORACLE].outcomes.items()
         if outcome == ("ok", ("bool", True))
     }
     assert allowed == granted
