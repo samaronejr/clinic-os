@@ -22,7 +22,7 @@ from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import await_autofocus
+from renewal.browser._page_wait import await_autofocus, evaluate_all_js, evaluate_js
 from renewal.browser._protected import encrypt, kek
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
@@ -278,30 +278,31 @@ def _sign_in(page: Page, base: str, staff: dict[str, str], role: str) -> None:
 
 
 def _modules(page: Page) -> list[str]:
-    modules = page.locator(".nav-list a[data-module]").evaluate_all(
-        "links => links.map(link => link.dataset.module)"
+    modules = evaluate_all_js(
+        page.locator(".nav-list a[data-module]"),
+        "links => links.map(link => link.dataset.module)",
     )
     return [str(module) for module in modules]
 
 
 def _axe(page: Page, base: str, include: list[list[str]] | None = None) -> list[object]:
-    if not page.evaluate("typeof window.axe !== 'undefined'"):
+    if not evaluate_js(page, "typeof window.axe !== 'undefined'"):
         with page.expect_response(f"{base}{AXE_URL}") as loaded:
             page.add_script_tag(url=f"{base}{AXE_URL}")
         assert loaded.value.status == OK
-    violations = page.evaluate(AXE_RUN_JS, include)
+    violations = evaluate_js(page, AXE_RUN_JS, include)
     assert isinstance(violations, list)
     return violations
 
 
 def _targets(page: Page) -> dict[str, object]:
-    result = page.evaluate(TARGETS_JS, MIN_TARGET_PX)
+    result = evaluate_js(page, TARGETS_JS, MIN_TARGET_PX)
     assert isinstance(result, dict)
     return result
 
 
 def _no_overflow(page: Page) -> bool:
-    return bool(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+    return bool(evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth"))
 
 
 def _is_options(query: str) -> Callable[[Response], bool]:
@@ -455,7 +456,7 @@ def test_reception_pins_a_patient_from_the_palette_at_every_width(
             )
             assert nav_staff["patient_name"] not in page.title()
             assert nav_staff["enrollment"] not in page.url
-            stored = page.evaluate(STORAGE_JS)
+            stored = evaluate_js(page, STORAGE_JS)
             assert stored["local"] == {}
             assert set(stored["session"]) <= ALLOWED_SESSION_KEYS
             kept = json.dumps(stored, ensure_ascii=False)
