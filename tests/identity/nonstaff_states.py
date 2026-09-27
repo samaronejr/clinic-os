@@ -1,23 +1,24 @@
-"""Finite, model-backed staff-state domain for differential execution.
+"""Small adversarial backstop, not the nonstaff certificate.
 
-Canonical role revocation deletes a UserClinicRole row. There is no per-row
-active, revoked or organization-wide assignment flag. Account authentication
-(User.is_active) is held fixed, not confused with membership activity.
-
-Care history is immutable. Between synthetic care profiles only, reset the
-otherwise empty owned fixture table, as Django's transaction-test flush does.
-Never disable a trigger or change an authorization function/grant for setup.
+The certificate is authority-channel observation. These named cases retain role
+unions, scope and lifecycle regression examples without claiming exhaustive
+coverage. Canonical constraints, RLS and immutable-history triggers stay live.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
-from itertools import combinations
 from typing import TYPE_CHECKING
 from uuid import uuid5
 
-from apps.identity.models import CareTeamMembership, UserClinicRole
+from apps.identity.models import (
+    CareTeamMembership,
+    PhysicianProfile,
+    ProfessionalRegistration,
+    RoleGrant,
+    UserClinicRole,
+)
 from django.db import connection
 from django.utils import timezone
 
@@ -30,8 +31,13 @@ if TYPE_CHECKING:
     from apps.identity.models import User
 
 ROLES = tuple(UserClinicRole.Role.values)
-ROLE_SUBSETS = tuple(
-    subset for size in range(len(ROLES) + 1) for subset in combinations(ROLES, size)
+ROLE_CASES = (
+    (),
+    *((role,) for role in ROLES),
+    ("owner", "physician"),
+    ("owner", "physician", "clinic_admin"),
+    ("nurse", "scheduler", "finance"),
+    ("receptionist", "org_admin"),
 )
 CLINIC_LAYOUTS = ("target", "other", "both")
 CARE_LIFECYCLES = ("active", "revoked", "expired", "future")
@@ -59,24 +65,29 @@ class StaffState:
     layout: str = "target"
     care: str = "absent"
     care_patient: str = "target"
+    authority: str = "baseline"
 
     def key(self) -> str:
-        return f"{self.layout}/{self.care}/{self.care_patient}/" + ",".join(self.roles)
-
-
-def profiles(
-    other_clinic: UUID | None, care_scope: CareScope | None
-) -> Iterator[tuple[str, str, str]]:
-    care_profiles = [("absent", "target")]
-    if care_scope is not None:
-        care_profiles.extend(
-            (life, patient)
-            for life in CARE_LIFECYCLES
-            for patient in CARE_PATIENT_SCOPES
+        return (
+            f"{self.layout}/{self.care}/{self.care_patient}/{self.authority}/"
+            + ",".join(self.roles)
         )
-    for care, patient in care_profiles:
-        for layout in CLINIC_LAYOUTS if other_clinic is not None else ("target",):
-            yield layout, care, patient
+
+
+def backstop_states(scope: ReplayScope) -> Iterator[StaffState]:
+    yield from (StaffState(roles) for roles in ROLE_CASES)
+    if scope.other_clinic is not None:
+        yield StaffState(("owner",), layout="other")
+        yield StaffState(("owner", "physician"), layout="both")
+    if scope.care is not None:
+        for life in CARE_LIFECYCLES:
+            yield StaffState(CLINICAL_ROLES, care=life)
+        yield StaffState(CLINICAL_ROLES, care="active", care_patient="other")
+        for life in ("revoked", "expired"):
+            yield StaffState(("receptionist", "org_admin"), care=life)
+        yield StaffState(("physician",), care="active", authority="professional")
+    yield StaffState(("owner",), authority="rolegrant")
+    yield StaffState(("physician",), authority="inactive")
 
 
 def set_memberships(actor: User, scope: ReplayScope, state: StaffState) -> None:
@@ -165,9 +176,48 @@ def set_care_profile(actor: User, scope: ReplayScope, life: str, patient: str) -
         assert all(row.patient_enrollment_id == enrollment for row in rows)
 
 
+def add_authority_backstop(actor: User, scope: ReplayScope, state: StaffState) -> None:
+    now = timezone.now()
+    with owner_context(scope.organization):
+        if state.authority == "rolegrant":
+            RoleGrant.objects.create(
+                organization_id=scope.organization,
+                clinic_id=scope.clinic,
+                role="owner",
+                permission="appointment.read",
+                valid_from=now - timedelta(days=1),
+            )
+        elif state.authority == "professional":
+            profile = PhysicianProfile.objects.create(
+                organization_id=scope.organization,
+                user=actor,
+                jurisdiction="SP",
+                registration_number="SINTETICO-" + actor.pk.hex,
+                signing_subject="Sintetico",
+                status="regular",
+                synthetic=True,
+                last_checked_at=now - timedelta(days=1),
+                recheck_at=now + timedelta(days=1),
+                expires_at=now + timedelta(days=1),
+            )
+            ProfessionalRegistration.objects.create(
+                organization_id=scope.organization,
+                clinic_id=scope.clinic,
+                user=actor,
+                physician_profile=profile,
+                role="physician",
+                council="CRM",
+                number="SINTETICO-OBSERVER",
+                jurisdiction="SP",
+                specialty="Sintetico",
+                status="regular",
+                valid_from=now - timedelta(days=1),
+                valid_to=now + timedelta(days=1),
+            )
+
+
 def assert_membership_schema() -> None:
-    # A future lifecycle/scope field must expand the generator, not silently
-    # inherit today's documented structural equivalences.
+    # Fixture hygiene only; live channel derivation is the authority-input gate.
     assert {f.name for f in UserClinicRole._meta.fields} == {
         "id",
         "user",

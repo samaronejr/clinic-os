@@ -1,4 +1,4 @@
-"""The decision domain includes all role subsets, scope and care revocation."""
+"""Observation rejects gates; named differential cases retain concrete witnesses."""
 
 from __future__ import annotations
 
@@ -6,64 +6,97 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from apps.identity.models import User
+from apps.core import telemetry
+from apps.identity.models import (
+    PhysicianProfile,
+    ProfessionalRegistration,
+    RoleGrant,
+    User,
+)
 
+from identity.authority_observer import AuthorityObservedError
 from identity.nonstaff_differential import (
     DifferentialProbe,
     StaffDependentError,
+    _replay,
     assert_behavioral_classifications,
 )
-from identity.nonstaff_states import (
-    CARE_LIFECYCLES,
-    CARE_PATIENT_SCOPES,
-    CLINIC_LAYOUTS,
-    ROLE_SUBSETS,
-    ROLES,
-    CareScope,
-    ReplayScope,
-    assert_membership_schema,
-    profiles,
-)
-from identity.permission_support import permission_actor
+from identity.nonstaff_states import ROLE_CASES, ROLES, CareScope, ReplayScope
+from identity.permission_support import owner_context, permission_actor
 from identity.test_nonstaff_differential import SPELLINGS, SYMBOL, load_reproducer
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from identity.guard_classification import Candidate
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-def test_role_domain_is_the_complete_model_power_set() -> None:
-    assert_membership_schema()
-    assert len(ROLE_SUBSETS) == 2 ** len(ROLES)
-    assert len(set(ROLE_SUBSETS)) == len(ROLE_SUBSETS)
-    masks = {sum(1 << ROLES.index(role) for role in subset) for subset in ROLE_SUBSETS}
-    assert masks == set(range(2 ** len(ROLES)))
-    assert () in ROLE_SUBSETS
-    assert tuple(ROLES) in ROLE_SUBSETS
+def test_backstop_retains_singletons_and_multirole_cases() -> None:
+    assert () in ROLE_CASES
+    assert all((role,) in ROLE_CASES for role in ROLES)
+    assert ("owner", "physician") in ROLE_CASES
+    assert ("nurse", "scheduler", "finance") in ROLE_CASES
+    assert len(ROLE_CASES) == len(ROLES) + 5
 
 
-def test_scope_and_care_dimensions_are_crossed_with_every_subset() -> None:
-    scope = CareScope(uuid4(), uuid4())
-    actual = tuple(profiles(uuid4(), scope))
-    expected = {(layout, "absent", "target") for layout in CLINIC_LAYOUTS} | {
-        (layout, life, patient)
-        for layout in CLINIC_LAYOUTS
-        for life in CARE_LIFECYCLES
-        for patient in CARE_PATIENT_SCOPES
-    }
-    assert set(actual) == expected
-    assert len(actual) == len(CLINIC_LAYOUTS) * (
-        1 + len(CARE_LIFECYCLES) * len(CARE_PATIENT_SCOPES)
+def test_backstop_executes_authority_row_examples(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    actor_id, enrollment = permission_actor(rbac_graph, "unassigned")
+    _, other = permission_actor(rbac_graph, "unassigned")
+    actor = User.objects.get(pk=actor_id)
+    monkeypatch.setenv(telemetry.OPS_METRICS_NETWORKS_ENV, "192.0.2.0/24")
+    probe = DifferentialProbe(
+        "apps.core.telemetry._allowed_networks", telemetry._allowed_networks, bool
     )
-    assert len(actual) * len(ROLE_SUBSETS) == 27648
+    report = _replay(
+        [probe],
+        actor=actor,
+        scope=ReplayScope(
+            rbac_graph.clinic_a,
+            rbac_graph.organization_a,
+            other_clinic=rbac_graph.clinic_b,
+            care=CareScope(enrollment, other),
+        ),
+    )
+    assert report.decisions[probe.symbol] == [(True,) * report.state_count]
+    with owner_context(rbac_graph.organization_a):
+        assert (
+            RoleGrant.objects.filter(
+                role="owner", permission="appointment.read"
+            ).count()
+            == 1
+        )
+        profile = PhysicianProfile.objects.get(user=actor)
+        registration = ProfessionalRegistration.objects.get(user=actor)
+        assert registration.physician_profile_id == profile.pk
+    assert User.objects.get(pk=actor.pk).is_active
+
+
+def _refuse_and_replay(
+    probe: DifferentialProbe, actor: User, scope: ReplayScope
+) -> StaffDependentError:
+    with pytest.raises(AuthorityObservedError):
+        assert_behavioral_classifications(
+            [{"symbol": SYMBOL, "kind": "nonstaff", "signals": []}],
+            {SYMBOL: [probe]},
+            actor=actor,
+            scope=scope,
+        )
+    with pytest.raises(StaffDependentError) as refused:
+        _replay([probe], actor=actor, scope=scope)
+    return refused.value
 
 
 @pytest.mark.parametrize(
-    "roles", [("owner", "physician"), ("owner", "physician", "clinic_admin")]
+    "roles",
+    [
+        ("owner", "physician"),
+        ("owner", "physician", "clinic_admin"),
+        ("nurse", "scheduler", "finance"),
+    ],
 )
 def test_combination_guard_cannot_claim_nonstaff(
     roles: tuple[str, ...],
@@ -83,24 +116,13 @@ def require_future_owner(*, clinic_id):
     )
     guard = load_reproducer("combination", tmp_path, monkeypatch)
     actor = User.objects.create(username="synthetic-combination-" + uuid4().hex)
-    row: Candidate = {"symbol": SYMBOL, "kind": "nonstaff", "signals": []}
-    with pytest.raises(StaffDependentError) as refused:
-        assert_behavioral_classifications(
-            [row],
-            {
-                SYMBOL: [
-                    DifferentialProbe(
-                        SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a)
-                    )
-                ]
-            },
-            actor=actor,
-            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
-        )
-    assert set(refused.value.witnesses.values()) == {False, True}
-    denied = next(
-        key for key, allowed in refused.value.witnesses.items() if not allowed
+    refused = _refuse_and_replay(
+        DifferentialProbe(SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a)),
+        actor,
+        ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
     )
+    assert set(refused.witnesses.values()) == {False, True}
+    denied = next(key for key, allowed in refused.witnesses.items() if not allowed)
     assert set(denied.rsplit("/", 1)[1].split(",")) == set(roles)
 
 
@@ -122,28 +144,18 @@ def require_future_owner(*, clinic_id):
     actor_id, enrollment = permission_actor(rbac_graph, "unassigned")
     _, other = permission_actor(rbac_graph, "unassigned")
     actor = User.objects.get(pk=actor_id)
-    row: Candidate = {"symbol": SYMBOL, "kind": "nonstaff", "signals": []}
-    with pytest.raises(StaffDependentError) as refused:
-        assert_behavioral_classifications(
-            [row],
-            {
-                SYMBOL: [
-                    DifferentialProbe(
-                        SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a)
-                    )
-                ]
-            },
-            actor=actor,
-            scope=ReplayScope(
-                rbac_graph.clinic_a,
-                rbac_graph.organization_a,
-                care=CareScope(enrollment, other),
-            ),
-        )
-    assert set(refused.value.witnesses.values()) == {False, True}
+    refused = _refuse_and_replay(
+        DifferentialProbe(SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a)),
+        actor,
+        ReplayScope(
+            rbac_graph.clinic_a,
+            rbac_graph.organization_a,
+            care=CareScope(enrollment, other),
+        ),
+    )
+    assert set(refused.witnesses.values()) == {False, True}
     assert any(
-        "/revoked/" in key and not value
-        for key, value in refused.value.witnesses.items()
+        "/revoked/" in key and not value for key, value in refused.witnesses.items()
     )
 
 
@@ -160,25 +172,16 @@ def test_other_clinic_membership_is_not_treated_as_absent(
     monkeypatch.setitem(SPELLINGS, "other_clinic", source)
     guard = load_reproducer("other_clinic", tmp_path, monkeypatch)
     actor = User.objects.create(username="synthetic-other-clinic-" + uuid4().hex)
-    row: Candidate = {"symbol": SYMBOL, "kind": "nonstaff", "signals": []}
-    with pytest.raises(StaffDependentError) as refused:
-        assert_behavioral_classifications(
-            [row],
-            {
-                SYMBOL: [
-                    DifferentialProbe(
-                        SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a)
-                    )
-                ]
-            },
-            actor=actor,
-            scope=ReplayScope(
-                rbac_graph.clinic_a,
-                rbac_graph.organization_a,
-                other_clinic=rbac_graph.clinic_b,
-            ),
-        )
+    refused = _refuse_and_replay(
+        DifferentialProbe(SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a)),
+        actor,
+        ReplayScope(
+            rbac_graph.clinic_a,
+            rbac_graph.organization_a,
+            other_clinic=rbac_graph.clinic_b,
+        ),
+    )
     assert any(
         key.startswith("other/") and not value
-        for key, value in refused.value.witnesses.items()
+        for key, value in refused.witnesses.items()
     )

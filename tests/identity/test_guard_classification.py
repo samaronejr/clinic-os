@@ -12,7 +12,6 @@ from django.db import connection, transaction
 
 from auth.stepup_test_support import create_role_actor
 from identity import legacy_guard_inventory as discovery
-from identity import test_permission_parity as parity
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.permission_support import permission_context
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
@@ -134,14 +133,13 @@ def test_actual_membership_guard_cannot_claim_nonstaff(
             "Synthetic attempted non-staff exemption without an executable oracle."
         ),
     }
-    manifest = dict(parity.INVENTORY)
-    manifest["candidates"] = [*parity.INVENTORY["candidates"], row]
-    monkeypatch.setattr(parity, "INVENTORY", manifest)
+    analysis = python_staff_analysis(root)
+    add_sql_staff_analysis(analysis)
     with pytest.raises(
         AssertionError,
         match=r"require_future_owner.*staff-state read requires executable authority",
     ):
-        parity.test_every_authorization_candidate_is_accounted_for()
+        assert_staff_coverage([row], analysis, set())
 
 
 @pytest.mark.parametrize("spelling", SOURCES)

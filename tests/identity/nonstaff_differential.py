@@ -1,43 +1,41 @@
-"""Behavioural exemption check: change stored staff state, not the request.
-
-Adapters supply real arguments, never authorization results. Missing adapters,
-pre-target failures and unexpected errors fail closed. Static analysis is not
-consulted by this gate.
-"""
+"""Authority observation is the certificate; a small matrix is only a backstop."""
 
 from __future__ import annotations
 
 import sys
-from contextlib import nullcontext
-from dataclasses import dataclass
-from functools import partial
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from time import perf_counter
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from apps.audit.services import SystemAuditAccessRejectedError
 from apps.identity.models import User, UserClinicRole
+from apps.intake.patient_access import patient_session_context
 from django.core.management import CommandError
 from django.db import DatabaseError, connection, transaction
 from psycopg import sql
 
+from identity.authority_catalog import Catalog
+from identity.authority_observer import AuthorityObserver
 from identity.legacy_parity_support import DENIALS, target_code
-from identity.nonstaff_parallel import replay_profiles
 from identity.nonstaff_states import (
-    ROLE_SUBSETS,
+    ROLE_CASES,
     ReplayScope,
     StaffState,
+    add_authority_backstop,
     assert_membership_schema,
-    profiles,
+    backstop_states,
     set_care_profile,
     set_memberships,
 )
 from identity.permission_support import owner_context
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
-    from types import CodeType, FrameType
-    from uuid import UUID
+    from collections.abc import Callable, Iterator, Mapping, Sequence
+    from types import FrameType
 
+    from identity.authority_observer import Touch
     from identity.guard_classification import Candidate
 
 STAFF_STATES = (None, *UserClinicRole.Role.values)
@@ -57,10 +55,11 @@ class DifferentialProbe:
     database_role: str = "clinic_app"
     patient_session: UUID | None = None
     owns_transaction: bool = False
+    patient_context: bool = False
 
 
 class StaffDependentError(AssertionError):
-    """Retain the old singleton diagnostic and attach exhaustive state witnesses."""
+    """A backstop witness, not a claim to enumerate all authority inputs."""
 
     def __init__(
         self, symbol: str, legacy: dict[str | None, bool], witnesses: dict[str, bool]
@@ -76,28 +75,33 @@ class DifferentialReport:
     profile_count: int
     state_count: int
     elapsed_seconds: float
-    serial_profile_seconds: float | None = None
-    parallel_profile_seconds: float | None = None
+    observations: dict[str, tuple[Touch, ...]] = field(default_factory=dict)
+    channels: dict[str, list[str]] = field(default_factory=dict)
+    executed: frozenset[str] = frozenset()
 
 
-def _invoke(
-    probe: DifferentialProbe,
-    actor: User,
-    organization: UUID,
-    code: CodeType | None = None,
-) -> bool:
-    code = code or target_code(probe.symbol)
-    assert code is not None
-    entered = False
+@contextmanager
+def _invocation_context(probe: DifferentialProbe) -> Iterator[None]:
+    if probe.patient_context:
+        # Trusted adapter preparation is outside the observed callable. Its
+        # real patient boundary runs, including session validity and GUC reset.
+        with patient_session_context(probe.patient_session or UUID(int=0)):
+            try:
+                yield
+            finally:
+                transaction.set_rollback(True)
+    elif probe.owns_transaction:
+        yield
+    else:
+        with transaction.atomic():
+            try:
+                yield
+            finally:
+                transaction.set_rollback(True)
 
-    def observe(frame: FrameType, event: str, _arg: object) -> None:
-        nonlocal entered
-        if event == "call" and frame.f_code is code:
-            entered = True
-            # A single genuine entry is the witness. Do not profile the whole
-            # Django/render/crypto stack tens of thousands of times.
-            sys.setprofile(previous)
 
+def _bind_actor(probe: DifferentialProbe, actor: User, organization: UUID) -> None:
+    """Trusted fixture binding, deliberately outside observed guard execution."""
     assert probe.database_role in {"clinic_app", "clinic_owner"}
     with connection.cursor() as cursor:
         cursor.execute(
@@ -109,25 +113,54 @@ def _invoke(
             "set_config('app.current_patient_session', %s, false)",
             [str(actor.pk), str(organization), str(probe.patient_session or "")],
         )
+
+
+def _invoke(
+    probe: DifferentialProbe,
+    actor: User,
+    organization: UUID,
+    *,
+    authority: AuthorityObserver | None = None,
+    errors: list[type[BaseException] | None] | None = None,
+) -> bool:
+    code = target_code(probe.symbol)
+    assert code is not None
+    entered = False
+    error_type: type[BaseException] | None = None
+
+    def observe(frame: FrameType, event: str, arg: object) -> None:
+        nonlocal entered
+        if authority is not None:
+            authority.profile(frame, event, arg)
+        if event == "call" and frame.f_code is code:
+            entered = True
+            if authority is None:
+                sys.setprofile(previous)
+
+    _bind_actor(probe, actor, organization)
     previous = sys.getprofile()
     try:
-        with nullcontext() if probe.owns_transaction else transaction.atomic():
+        with _invocation_context(probe):
             sys.setprofile(observe)
             try:
-                result = probe.invoke()
-                allowed = probe.decision(result)
-            except (*DENIALS, SystemAuditAccessRejectedError, CommandError):
+                if authority is None:
+                    allowed = probe.decision(probe.invoke())
+                else:
+                    authority.install()
+                    try:
+                        allowed = probe.decision(probe.invoke())
+                    finally:
+                        authority.restore()
+            except (*DENIALS, SystemAuditAccessRejectedError, CommandError) as error:
+                error_type = type(error)
                 allowed = False
             except DatabaseError as error:
-                # Syntax, missing fixtures, constraint failures etc. are NOT
-                # authorization refusals and cannot establish invariance.
                 if getattr(error.__cause__, "sqlstate", None) != "42501":
                     raise
+                error_type = type(error)
                 allowed = False
             finally:
                 sys.setprofile(previous)
-                if not probe.owns_transaction:
-                    transaction.set_rollback(True)
     finally:
         sys.setprofile(previous)
         with connection.cursor() as cursor:
@@ -138,6 +171,8 @@ def _invoke(
                 "set_config('app.current_patient_session', '', false)"
             )
     assert entered, (probe.symbol, "target_not_entered")
+    if errors is not None:
+        errors.append(error_type)
     return allowed
 
 
@@ -146,7 +181,7 @@ def _check_decisions(
 ) -> None:
     if len(set(decisions)) != 1:
         legacy = {
-            role: decisions[ROLE_SUBSETS.index(() if role is None else (role,))]
+            role: decisions[ROLE_CASES.index(() if role is None else (role,))]
             for role in STAFF_STATES
         }
         first = decisions[0]
@@ -154,10 +189,7 @@ def _check_decisions(
         raise StaffDependentError(
             probe.symbol,
             legacy,
-            {
-                states[0].key(): first,
-                states[changed].key(): decisions[changed],
-            },
+            {states[0].key(): first, states[changed].key(): decisions[changed]},
         )
     assert decisions == [probe.expected] * len(states), (
         probe.symbol,
@@ -167,65 +199,63 @@ def _check_decisions(
 
 
 def _replay(
-    probes: Sequence[DifferentialProbe],
-    *,
-    actor: User,
-    scope: ReplayScope,
-    selected_profiles: tuple[tuple[str, str, str], ...] | None = None,
+    probes: Sequence[DifferentialProbe], *, actor: User, scope: ReplayScope
 ) -> DifferentialReport:
     start = perf_counter()
     assert_membership_schema()
     before = User.objects.filter(pk=actor.pk).values().get()
     with owner_context(scope.organization):
         assert not UserClinicRole.objects.filter(user=actor).exists()
-    codes = [target_code(probe.symbol) for probe in probes]
     values: list[list[bool]] = [[] for _ in probes]
-    states: list[StaffState] = []
-    combinations = selected_profiles or tuple(profiles(scope.other_clinic, scope.care))
+    errors: list[list[type[BaseException] | None]] = [[] for _ in probes]
+    states = list(backstop_states(scope))
     previous_care = None
     try:
-        for layout, care, patient in combinations:
-            if scope.care is not None and previous_care != (care, patient):
-                set_care_profile(actor, scope, care, patient)
-                previous_care = (care, patient)
-            for roles in ROLE_SUBSETS:
-                state = StaffState(roles, layout, care, patient)
-                set_memberships(actor, scope, state)
-                states.append(state)
-                for index, probe in enumerate(probes):
-                    values[index].append(
-                        _invoke(probe, actor, scope.organization, codes[index])
+        for state in states:
+            User.objects.filter(pk=actor.pk).update(
+                is_active=state.authority != "inactive"
+            )
+            if scope.care is not None and previous_care != (
+                state.care,
+                state.care_patient,
+            ):
+                set_care_profile(actor, scope, state.care, state.care_patient)
+                previous_care = state.care, state.care_patient
+            set_memberships(actor, scope, state)
+            add_authority_backstop(actor, scope, state)
+            for index, probe in enumerate(probes):
+                values[index].append(
+                    _invoke(
+                        probe,
+                        actor,
+                        scope.organization,
+                        errors=errors[index],
                     )
-                assert User.objects.filter(pk=actor.pk).values().get() == before
-            # A failure can stop further profiles, but acceptance requires every
-            # subset in every profile. Never sample or cache a guard decision.
-            for probe, decisions in zip(probes, values, strict=True):
-                _check_decisions(probe, decisions, states)
+                )
+            expected = {**before, "is_active": state.authority != "inactive"}
+            assert User.objects.filter(pk=actor.pk).values().get() == expected
+        for probe, decisions, raised in zip(probes, values, errors, strict=True):
+            _check_decisions(probe, decisions, states)
+            assert len(set(raised)) == 1, (probe.symbol, "exception_type_changed")
     finally:
+        User.objects.filter(pk=actor.pk).update(is_active=before["is_active"])
         if scope.care is not None:
             set_care_profile(actor, scope, "absent", "target")
         set_memberships(actor, scope, StaffState(()))
     receipts: dict[str, list[tuple[bool, ...]]] = {}
     for probe, decisions in zip(probes, values, strict=True):
         receipts.setdefault(probe.symbol, []).append(tuple(decisions))
-    assert len(states) == len(ROLE_SUBSETS) * len(combinations)
     return DifferentialReport(
-        receipts,
-        len(ROLE_SUBSETS),
-        len(combinations),
-        len(states),
-        perf_counter() - start,
+        receipts, len(ROLE_CASES), len(states), len(states), perf_counter() - start
     )
 
 
 def assert_staff_invariant(
     probe: DifferentialProbe, *, actor: User, clinic: UUID, organization: UUID
 ) -> tuple[bool, ...]:
-    """Standalone role power-set gate; the census additionally crosses scopes."""
+    """Exercise regression examples only; observation separately certifies absence."""
     return _replay(
-        [probe],
-        actor=actor,
-        scope=ReplayScope(clinic, organization),
+        [probe], actor=actor, scope=ReplayScope(clinic, organization)
     ).decisions[probe.symbol][0]
 
 
@@ -235,69 +265,70 @@ def assert_behavioral_classifications(
     *,
     actor: User,
     scope: ReplayScope,
-    parallel: bool = False,
 ) -> DifferentialReport:
-    # Shared patient/staff facades may retain supplementary patient-context
-    # replays after being classified as delegated. This flag can only ADD
-    # checks: a nonstaff/infrastructure row always requires execution.
+    start = perf_counter()
     required = {
-        row["symbol"]
+        row["symbol"]: row
         for row in candidates
-        if row["kind"] in EXEMPT_KINDS or row.get("differential", False)
+        if row["kind"] in EXEMPT_KINDS
+        or row.get("differential", False)
+        or row.get("observe", False)
     }
-    assert required == set(probes), (
+    assert set(required) == set(probes), (
         "missing_or_stale_differential_adapters",
-        required ^ set(probes),
+        set(required) ^ set(probes),
     )
-    ordered = []
+    assert required, "no_executable_guard_candidates"
+    catalog = Catalog()
+    channels = catalog.derive()
+    observed: dict[str, tuple[Touch, ...]] = {}
+    backstop = []
+    executed = set()
     for symbol in sorted(required):
         assert probes[symbol], (symbol, "missing_scenarios")
+        touches = set()
         for probe in probes[symbol]:
             assert probe.symbol == symbol
-            ordered.append(probe)
-    if not parallel:
-        return _replay(ordered, actor=actor, scope=scope)
-    groups = tuple(profiles(scope.other_clinic, scope.care))
-    # Run the first complete profile both ways over identical seeded data.
-    # This is an equality control, not a sampled replacement for any profile.
-    serial = _replay(ordered, actor=actor, scope=scope, selected_profiles=(groups[0],))
-    reports, elapsed = replay_profiles(
-        groups,
-        partial(_replay_group, ordered, actor, scope),
-    )
-    assert reports[0].decisions == serial.decisions
-    assert reports[0].state_count == serial.state_count == len(ROLE_SUBSETS)
-    merged: dict[str, list[tuple[bool, ...]]] = {}
-    for report in reports:
-        assert report.subset_count == len(ROLE_SUBSETS)
-        for symbol, scenarios in report.decisions.items():
-            if symbol not in merged:
-                merged[symbol] = [() for _ in scenarios]
-            for index, values in enumerate(scenarios):
-                merged[symbol][index] += values
-    count = sum(report.state_count for report in reports)
-    assert count == len(groups) * len(ROLE_SUBSETS)
-    assert sum(report.profile_count for report in reports) == len(groups)
-    assert all(
-        len(values) == count and len(set(values)) == 1
-        for scenarios in merged.values()
-        for values in scenarios
-    )
+            observer = AuthorityObserver(catalog, channels)
+            decision = _invoke(probe, actor, scope.organization, authority=observer)
+            # Observation wins even if a plant catches a denial and returns True.
+            if required[symbol]["kind"] in EXEMPT_KINDS:
+                observer.assert_nonstaff(symbol)
+                backstop.append(probe)
+            assert decision is probe.expected, (symbol, "invalid_control", decision)
+            touches.update(observer.touches)
+        observed[symbol] = tuple(sorted(touches))
+        if required[symbol].get("observe", False):
+            assert any(kind != "opaque" for kind, _name in touches), (
+                symbol,
+                "declared_authority_channel_not_reached",
+            )
+            executed.add(symbol + "#observed")
+    replay = _replay(backstop, actor=actor, scope=scope)
     return DifferentialReport(
-        merged,
-        len(ROLE_SUBSETS),
-        len(groups),
-        count,
-        elapsed,
-        serial.elapsed_seconds,
-        reports[0].elapsed_seconds,
+        replay.decisions,
+        replay.subset_count,
+        replay.profile_count,
+        replay.state_count,
+        perf_counter() - start,
+        observations=observed,
+        channels={
+            "relations": sorted(
+                catalog.relations[oid].name for oid in channels.relations
+            ),
+            "columns": sorted(
+                catalog.relations[oid].name + "." + column
+                for oid in channels.relations
+                for column in catalog.relations[oid].columns
+            ),
+            "python_accessors": sorted(
+                set(observer._accessors.values())
+                | set(observer._accessor_objects.values())
+            ),
+            "gucs": sorted(channels.settings),
+            "functions": sorted(
+                catalog.functions[oid].name for oid in channels.functions
+            ),
+        },
+        executed=frozenset(executed),
     )
-
-
-def _replay_group(
-    probes: Sequence[DifferentialProbe],
-    actor: User,
-    scope: ReplayScope,
-    group: tuple[tuple[str, str, str], ...],
-) -> DifferentialReport:
-    return _replay(probes, actor=actor, scope=scope, selected_profiles=group)

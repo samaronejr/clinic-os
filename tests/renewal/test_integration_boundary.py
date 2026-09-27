@@ -28,7 +28,7 @@ from apps.core.integration import (
     register_callback_authenticator,
     register_send_adapter,
 )
-from apps.identity.models import Clinic, UserClinicRole
+from apps.identity.models import Clinic, User, UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
 
@@ -540,10 +540,12 @@ def test_unknown_provider_reference_is_rejected(
     _assert_gucs_empty()
 
 
+@pytest.mark.parametrize("revocation", ["membership", "inactive"])
 def test_revoked_authority_cancels_without_external_effect(
     tenant_graph: TenantGraph,
     harness: Harness,
     recorded_dispatch: list[str],
+    revocation: str,
 ) -> None:
     with runtime_role():
         operation_id = _enqueue(
@@ -556,10 +558,13 @@ def test_revoked_authority_cancels_without_external_effect(
             "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
             [str(tenant_graph.organization_a)],
         )
-        UserClinicRole.objects.filter(
-            user_id=tenant_graph.user_a,
-            organization_id=tenant_graph.organization_a,
-        ).delete()
+        if revocation == "membership":
+            UserClinicRole.objects.filter(
+                user_id=tenant_graph.user_a,
+                organization_id=tenant_graph.organization_a,
+            ).delete()
+        else:
+            User.objects.filter(pk=tenant_graph.user_a).update(is_active=False)
 
     with runtime_role():
         assert _run_task(operation_id) == "cancelled"
@@ -574,6 +579,16 @@ def test_revoked_authority_cancels_without_external_effect(
         "enqueued",
     ]
     _assert_gucs_empty()
+    if revocation == "inactive":
+        User.objects.filter(pk=tenant_graph.user_a).update(is_active=True)
+        with runtime_role():
+            assert _run_task(operation_id) == "skipped"
+        assert harness.adapter.sent == []
+        assert harness.adapter.prepared_calls == []
+        assert _operation(tenant_graph.organization_a, operation_id).status == (
+            IntegrationOperation.Status.CANCELLED
+        )
+        _assert_gucs_empty()
 
 
 def test_bounded_attempts_fail_closed(

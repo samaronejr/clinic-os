@@ -5,16 +5,24 @@
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.audit.services.record_event#observed"
+      ]
     },
     {
       "symbol": "apps.audit.services._record_system_event",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.audit.services._record_system_event#observed"
+      ]
     },
     {
       "symbol": "apps.billing.adapters.require_synthetic_pix",
@@ -39,8 +47,12 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.billing.presentation.patient_charge#observed"
+      ]
     },
     {
       "symbol": "apps.billing.reconciliation._resolve_charge",
@@ -150,8 +162,12 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.consent.services.patient_authority#observed"
+      ]
     },
     {
       "symbol": "apps.consent.services.publish_text",
@@ -168,32 +184,48 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.consent.services.prepare_acceptance#observed"
+      ]
     },
     {
       "symbol": "apps.consent.services._patient_audit",
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.consent.services._patient_audit#observed"
+      ]
     },
     {
       "symbol": "apps.consent.services.record_consent",
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.consent.services.record_consent#observed"
+      ]
     },
     {
       "symbol": "apps.consent.services.revoke_consent",
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.consent.services.revoke_consent#observed"
+      ]
     },
     {
       "symbol": "apps.consent.services.staff_receipts",
@@ -272,6 +304,7 @@
       "symbol": "apps.core.integration._actor_has_clinic_authority",
       "signals": [
         "membership",
+        "resolver",
         "scope_name"
       ],
       "kind": "direct",
@@ -580,8 +613,12 @@
       "signals": [
         "authentication"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.ehr.management.commands.encrypt_attachment_objects.Command.handle#observed"
+      ]
     },
     {
       "symbol": "apps.ehr.services._denied",
@@ -913,8 +950,12 @@
       "signals": [
         "membership"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.identity.management.bootstrap.bootstrap_clinic#observed"
+      ]
     },
     {
       "symbol": "apps.identity.management.context.assume_runtime_owner",
@@ -1057,8 +1098,12 @@
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.identity.phase1a_identity_acl_migration.remove_runtime_identity_acl#observed"
+      ]
     },
     {
       "symbol": "apps.identity.physician_verification._assigned_encounter",
@@ -1308,8 +1353,12 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.intake.patient_access.redeem_invitation#observed"
+      ]
     },
     {
       "symbol": "apps.intake.patient_access.patient_session_context",
@@ -1317,24 +1366,36 @@
         "resolver",
         "tenant_boundary"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Patient-session writes reach clinic and enrollment relations through catalog constraints; this is an observed boundary, not an absence certificate.",
+      "observe": true,
+      "probes": [
+        "apps.intake.patient_access.patient_session_context#observed"
+      ]
     },
     {
       "symbol": "apps.intake.patient_access.patient_session_overview",
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.intake.patient_access.patient_session_overview#observed"
+      ]
     },
     {
       "symbol": "apps.intake.patient_access.end_patient_session",
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.intake.patient_access.end_patient_session#observed"
+      ]
     },
     {
       "symbol": "apps.intake.patient_search.search_patients",
@@ -1363,8 +1424,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.intake.questionnaire_views.patient_questionnaires#observed"
+      ]
     },
     {
       "symbol": "apps.intake.questionnaire_views.staff_questionnaires",
@@ -1425,16 +1490,24 @@
         "denial",
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.intake.questionnaires.patient_responses#observed"
+      ]
     },
     {
       "symbol": "apps.intake.questionnaires.patient_response",
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.intake.questionnaires.patient_response#observed"
+      ]
     },
     {
       "symbol": "apps.intake.questionnaires.clinical_response",
@@ -1716,8 +1789,12 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.prescription.verification.patient_documents#observed"
+      ]
     },
     {
       "symbol": "apps.prescription.verification._record_patient_download",
@@ -1725,8 +1802,12 @@
         "denial",
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.prescription.verification._record_patient_download#observed"
+      ]
     },
     {
       "symbol": "apps.prescription.verification._patient_session_scope",
@@ -1744,8 +1825,12 @@
         "denial",
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.prescription.verification.patient_document_download#observed"
+      ]
     },
     {
       "symbol": "apps.prescription.views._subject",
@@ -2161,16 +2246,24 @@
         "denial",
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.retention.services._record_patient_view#observed"
+      ]
     },
     {
       "symbol": "apps.retention.services.patient_released_records",
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.retention.services.patient_released_records#observed"
+      ]
     },
     {
       "symbol": "apps.retention.services.export_staff_records",
@@ -2444,8 +2537,12 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_authority.patient_booking_scope#observed"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_authority.require_patient_booking_scope",
@@ -2453,8 +2550,12 @@
         "denial",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_authority.require_patient_booking_scope#observed"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_authority.authorized_appointment_clinic",
@@ -2472,8 +2573,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_authority.patient_enrollment#observed"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_authority.patient_practitioner_active",
@@ -2492,8 +2597,12 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_authority.lock_patient_availability#observed"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_booking.patient_slots",
@@ -2511,16 +2620,24 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_booking._slot#observed"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_booking.patient_appointment",
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_booking.patient_appointment#observed"
+      ]
     },
     {
       "symbol": "apps.scheduling.patient_booking.reschedule_patient_appointment",
@@ -2736,8 +2853,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.services._enter_as_patient#observed"
+      ]
     },
     {
       "symbol": "apps.teleconsult.services.enter_room",
@@ -2777,8 +2898,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.services.patient_session_events#observed"
+      ]
     },
     {
       "symbol": "apps.teleconsult.views.staff_teleconsult",
@@ -2795,8 +2920,12 @@
       "signals": [
         "denial"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.views._patient_status#observed"
+      ]
     },
     {
       "symbol": "apps.teleconsult.workspace._session_version",
@@ -2825,64 +2954,96 @@
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.issue_tenant_key#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.encrypt",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.encrypt#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.decrypt",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.decrypt#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.reencrypt",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.reencrypt#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.protect",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.protect#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.reveal",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.reveal#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.rewrap_tenant_keys",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.rewrap_tenant_keys#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.tenant_key_status",
       "signals": [
         "resolver"
       ],
-      "kind": "infrastructure",
-      "reason": "Owner/bootstrap, audit, crypto, migration or OS-tty boundary; not a staff-role permission grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.tenant_key_status#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.management.TenantCommand.handle",
@@ -2911,20 +3072,32 @@
       "signals": [
         "tenant_boundary"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "The patient context reaches clinic and enrollment relations through catalog constraints; this is an observed boundary, not an absence certificate.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.middleware.TenantMiddleware._patient#observed"
+      ]
     }
   ],
   "probes": [
+    "apps.audit.services._record_system_event#observed",
+    "apps.audit.services.record_event#observed",
     "apps.billing.pix.prepare_pix_charge",
+    "apps.billing.presentation.patient_charge#observed",
     "apps.billing.services._clinic",
     "apps.billing.services._invoice",
     "apps.billing.views.charges_workspace",
     "apps.billing.views.invoice_detail",
     "apps.billing.views.invoice_status",
     "apps.comms.views.reminders_view",
+    "apps.consent.services._patient_audit#observed",
     "apps.consent.services.consent_for_future_use",
+    "apps.consent.services.patient_authority#observed",
+    "apps.consent.services.prepare_acceptance#observed",
     "apps.consent.services.publish_text",
+    "apps.consent.services.record_consent#observed",
+    "apps.consent.services.revoke_consent#observed",
     "apps.consent.services.staff_receipts",
     "apps.consent.views.staff_consent",
     "apps.core.api.authentication.StepUpVerified.has_permission",
@@ -2947,6 +3120,7 @@
     "apps.ehr.history.save_history",
     "apps.ehr.history_views._workspace",
     "apps.ehr.history_views.history_workspace",
+    "apps.ehr.management.commands.encrypt_attachment_objects.Command.handle#observed",
     "apps.ehr.services._appointment",
     "apps.ehr.services._assigned",
     "apps.ehr.services._denied",
@@ -2973,6 +3147,7 @@
     "apps.identity.current_context.require_current_actor_clinic_roles",
     "apps.identity.current_context.require_current_actor_org_admin",
     "apps.identity.management.base.assert_owner_database_role",
+    "apps.identity.management.bootstrap.bootstrap_clinic#observed",
     "apps.identity.management.context.assume_runtime_owner",
     "apps.identity.management.provisioning.provision_staff",
     "apps.identity.management.revocation.revoke_staff_role",
@@ -2988,6 +3163,7 @@
     "apps.identity.otp_views.verify_view",
     "apps.identity.permissions.IsClinicAdminForClinic.has_permission",
     "apps.identity.permissions.IsPhysicianForClinic.has_permission",
+    "apps.identity.phase1a_identity_acl_migration.remove_runtime_identity_acl#observed",
     "apps.identity.physician_verification._assigned_encounter",
     "apps.identity.physician_verification.verify_physician_for_signing",
     "apps.identity.preferences.save_ui_preferences",
@@ -3007,13 +3183,20 @@
     "apps.intake.access.authorized_manager_clinic",
     "apps.intake.contacts._actor_label",
     "apps.intake.patient_access._actor_label",
+    "apps.intake.patient_access.end_patient_session#observed",
+    "apps.intake.patient_access.patient_session_context#observed",
+    "apps.intake.patient_access.patient_session_overview#observed",
+    "apps.intake.patient_access.redeem_invitation#observed",
     "apps.intake.patient_access.revoke_patient_access",
     "apps.intake.questionnaire_views._denied",
+    "apps.intake.questionnaire_views.patient_questionnaires#observed",
     "apps.intake.questionnaire_views.staff_questionnaires",
     "apps.intake.questionnaires.appointment_enrollment",
     "apps.intake.questionnaires.assign_questionnaire",
     "apps.intake.questionnaires.clinical_response",
     "apps.intake.questionnaires.completion_status",
+    "apps.intake.questionnaires.patient_response#observed",
+    "apps.intake.questionnaires.patient_responses#observed",
     "apps.intake.questionnaires.publish_template",
     "apps.intake.questionnaires.published_templates",
     "apps.intake.views._render_access",
@@ -3029,6 +3212,9 @@
     "apps.prescription.signing.initiate_signature",
     "apps.prescription.signing.signature_status",
     "apps.prescription.verification._issuer_document",
+    "apps.prescription.verification._record_patient_download#observed",
+    "apps.prescription.verification.patient_document_download#observed",
+    "apps.prescription.verification.patient_documents#observed",
     "apps.prescription.views._draft_document",
     "apps.prescription.views._issuer_document",
     "apps.prescription.views._selected_encounter",
@@ -3038,9 +3224,11 @@
     "apps.prescription.views.signing_status_view",
     "apps.retention.services._clinic",
     "apps.retention.services._denied",
+    "apps.retention.services._record_patient_view#observed",
     "apps.retention.services._record_scope",
     "apps.retention.services._require_manager",
     "apps.retention.services.export_staff_records",
+    "apps.retention.services.patient_released_records#observed",
     "apps.retention.services.release_version",
     "apps.retention.services.verify_stored_export",
     "apps.retention.views._is_manager",
@@ -3064,6 +3252,12 @@
     "apps.scheduling.booking_queries.prepare_booking",
     "apps.scheduling.booking_views.appointment_create_view",
     "apps.scheduling.patient_authority.authorized_appointment_clinic",
+    "apps.scheduling.patient_authority.lock_patient_availability#observed",
+    "apps.scheduling.patient_authority.patient_booking_scope#observed",
+    "apps.scheduling.patient_authority.patient_enrollment#observed",
+    "apps.scheduling.patient_authority.require_patient_booking_scope#observed",
+    "apps.scheduling.patient_booking._slot#observed",
+    "apps.scheduling.patient_booking.patient_appointment#observed",
     "apps.scheduling.transition_views.appointment_cancel_view",
     "apps.scheduling.transition_views.appointment_reschedule_view",
     "apps.scheduling.views.availability_list_view",
@@ -3071,17 +3265,29 @@
     "apps.scheduling.waitlist_views.waitlist_view",
     "apps.teleconsult.services._assigned_physician",
     "apps.teleconsult.services._denied",
+    "apps.teleconsult.services._enter_as_patient#observed",
     "apps.teleconsult.services._enter_as_physician",
     "apps.teleconsult.services._room_state",
     "apps.teleconsult.services._session_scope",
     "apps.teleconsult.services._staff_session",
     "apps.teleconsult.services.create_session",
     "apps.teleconsult.services.open_encounters",
+    "apps.teleconsult.services.patient_session_events#observed",
     "apps.teleconsult.services.staff_sessions",
+    "apps.teleconsult.views._patient_status#observed",
     "apps.teleconsult.views.staff_teleconsult",
     "apps.teleconsult.workspace._session_version",
     "apps.tenancy.db.tenant_context",
+    "apps.tenancy.envelope.decrypt#observed",
+    "apps.tenancy.envelope.encrypt#observed",
+    "apps.tenancy.envelope.issue_tenant_key#observed",
+    "apps.tenancy.envelope.protect#observed",
+    "apps.tenancy.envelope.reencrypt#observed",
+    "apps.tenancy.envelope.reveal#observed",
+    "apps.tenancy.envelope.rewrap_tenant_keys#observed",
+    "apps.tenancy.envelope.tenant_key_status#observed",
     "apps.tenancy.middleware.TenantMiddleware.__call__",
+    "apps.tenancy.middleware.TenantMiddleware._patient#observed",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
     "clinic_app.ehr_assigned",

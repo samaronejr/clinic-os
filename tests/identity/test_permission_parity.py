@@ -39,6 +39,7 @@ from patient_service_support import runtime_role
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from identity.nonstaff_differential import DifferentialReport
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -69,35 +70,35 @@ def nonstaff_differential_census(
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     record_property: Callable[[str, object], None],
-) -> None:
+) -> DifferentialReport:
     receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
+    record_property("authority_channels", json.dumps(receipts.channels, sort_keys=True))
     record_property(
-        "nonstaff_staff_state_decisions", json.dumps(receipts.decisions, sort_keys=True)
+        "authority_observations", json.dumps(receipts.observations, sort_keys=True)
     )
     record_property(
-        "nonstaff_state_space",
+        "nonstaff_backstop",
         json.dumps(
             {
-                "role_subsets": receipts.subset_count,
-                "profiles": receipts.profile_count,
+                "role_cases": receipts.subset_count,
                 "states": receipts.state_count,
                 "elapsed_seconds": receipts.elapsed_seconds,
-                "serial_profile_seconds": receipts.serial_profile_seconds,
-                "parallel_profile_seconds": receipts.parallel_profile_seconds,
-                "serial_parallel_equal": receipts.serial_profile_seconds is not None,
+                "decisions": receipts.decisions,
             },
             sort_keys=True,
         ),
     )
+    return receipts
 
 
-@pytest.mark.usefixtures("nonstaff_differential_census")
-def test_every_authorization_candidate_is_accounted_for() -> None:
+def test_every_authorization_candidate_is_accounted_for(
+    nonstaff_differential_census: DifferentialReport,
+) -> None:
     assert INVENTORY["schema_version"] == 2
     candidates = INVENTORY["candidates"]
     assert len({row["symbol"] for row in candidates}) == len(candidates)
     assert discover() == {row["symbol"]: row["signals"] for row in candidates}
-    declared = declared_probes()
+    declared = declared_probes() | set(nonstaff_differential_census.executed)
     assert sorted(declared) == INVENTORY["probes"]
     sql_oracles = {f"clinic_app.{probe.name}" for probe in PROBES.values()}
     bases = {probe.split("#", 1)[0] for probe in declared} | sql_oracles

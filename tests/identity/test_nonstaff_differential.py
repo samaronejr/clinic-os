@@ -13,6 +13,7 @@ from apps.identity.current_context import CurrentActorError, current_actor_id
 from apps.identity.models import Clinic, User, UserClinicRole
 from django.db import connection
 
+from identity.authority_observer import AuthorityObservedError
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.legacy_guard_inventory import ROOT
 from identity.nonstaff_differential import (
@@ -20,6 +21,7 @@ from identity.nonstaff_differential import (
     DifferentialProbe,
     StaffDependentError,
     assert_behavioral_classifications,
+    assert_staff_invariant,
 )
 from identity.nonstaff_states import ReplayScope
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
@@ -104,14 +106,23 @@ def test_behaviour_refuses_every_role_guard_spelling(
         "signals": [],
         "reason": "Synthetic attempted exemption",
     }
-    # This is the same behavioural gate used by the census fixture. There is
-    # deliberately no static-analysis call on this primary rejection path.
-    with pytest.raises(StaffDependentError) as refused:
+    # The certificate refuses the observed channel before the backstop runs.
+    with pytest.raises(AuthorityObservedError) as observed:
         assert_behavioral_classifications(
             [row],
             {SYMBOL: [probe]},
             actor=actor,
             scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
+        )
+    assert observed.value.args[0] == SYMBOL
+    assert observed.value.args[1]
+    # Retain the real singleton/union refusal oracle independently.
+    with pytest.raises(StaffDependentError) as refused:
+        assert_staff_invariant(
+            probe,
+            actor=actor,
+            clinic=rbac_graph.clinic_a,
+            organization=rbac_graph.organization_a,
         )
     symbol, decisions = refused.value.args
     assert symbol == SYMBOL
@@ -133,7 +144,7 @@ def test_computed_method_is_detected_even_when_static_analysis_misses_it(
     actor = User.objects.create(username="synthetic-opaque-" + uuid4().hex)
     row: Candidate = {"symbol": SYMBOL, "kind": "nonstaff", "signals": []}
     assert_staff_coverage([row], analysis, set())
-    with pytest.raises(StaffDependentError):
+    with pytest.raises(AuthorityObservedError):
         assert_behavioral_classifications(
             [row],
             {

@@ -13,7 +13,7 @@ from apps.scheduling.services import (
     retire_availability,
     view_availability,
 )
-from apps.tenancy.db import tenant_context
+from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 
@@ -246,10 +246,17 @@ def test_inactive_missing_and_malformed_current_actors_fail_closed(
     User.objects.filter(pk=rbac_graph.shared_user).update(is_active=False)
     with (
         runtime_role(),
+        pytest.raises(TenantAccessDeniedError),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
-        pytest.raises(AvailabilityAccessDeniedError),
     ):
-        view_availability(clinic_id=rbac_graph.clinic_a)
+        pass
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+            [str(rbac_graph.shared_user)],
+        )
+        with pytest.raises(AvailabilityAccessDeniedError):
+            view_availability(clinic_id=rbac_graph.clinic_a)
 
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(

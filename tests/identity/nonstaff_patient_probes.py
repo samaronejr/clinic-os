@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from functools import partial
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from apps.billing import presentation as billing_presentation
 from apps.billing import services as billing
@@ -31,8 +29,6 @@ from identity.nonstaff_differential import DifferentialProbe
 from identity.nonstaff_subjects import patient_context_probe
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from django.http import HttpRequest
 
     from identity.nonstaff_subjects import NonstaffSubjects
@@ -47,17 +43,6 @@ def _patient_middleware(data: NonstaffSubjects) -> object:
         return HttpResponse()
 
     return TenantMiddleware(response)._patient(request)
-
-
-def _patient_call(invoke: Callable[[], object], session: UUID | None) -> object:
-    # consent_session explicitly rejects a mixed staff/patient GUC context.
-    # Enter the real production boundary, which clears ambient staff GUCs;
-    # leave the request user and the stored membership variation untouched.
-    with patient_access.patient_session_context(session or UUID(int=0)):
-        try:
-            return invoke()
-        finally:
-            transaction.set_rollback(True)
 
 
 def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
@@ -273,7 +258,7 @@ def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
         if p.owns_transaction
         else replace(
             p,
-            invoke=partial(_patient_call, p.invoke, p.patient_session),
+            patient_context=True,
             owns_transaction=True,
         )
         for p in scenarios

@@ -90,7 +90,6 @@ def run_nonstaff_census(
             candidates,
             probes,
             actor=data.actor,
-            parallel=True,
             scope=ReplayScope(
                 graph.clinic_a,
                 graph.organization_a,
