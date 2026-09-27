@@ -14,14 +14,20 @@ Python context variable or thread-local carries it. It can therefore be
 observed only through:
 
 - a session-setting read, whether the statement comes from Python or from the
-  database. The readers are derived (``setting_readers``: the backend's
-  setting builtins, by oid). Every use has its name resolved: in a client
-  statement at run time from literals and bound parameters, in a stored
-  expression from its constant argument. A name that resolves to an actor
-  setting, a name that cannot be resolved (computed, a column, a variable),
+  database. The reader set is derived: the backend's setting builtins by oid
+  (``setting_readers``), the views built on them, and every operator whose
+  function is one of them. Text (client statements, function bodies,
+  prepared statements) is classified against that set, a stored expression
+  by oid. Every use has its name resolved: in a client statement at run time
+  from literals and bound parameters, in a stored expression from its
+  constant argument. A name that resolves to an actor setting, a name that
+  cannot be resolved (computed, a column, a variable, an operator operand),
   and every enumerating reader (``pg_show_all_settings`` and whatever is
   built on it, such as ``pg_settings``, and ``SHOW ALL``) count. Spelling
-  does not matter;
+  does not matter; text whose meaning cannot be read at all (SQL run from
+  text by a derived executor such as ``query_to_xml``, a DO block running
+  dynamic SQL, a Unicode-escaped identifier) counts wherever reading or
+  binding counts;
 - a database object whose evaluation reaches one. ``actor_catalog`` derives
   them by oid over every schema: function bodies (``prosrc``) and every
   expression the catalog stores, which is every ``pg_node_tree`` column of
@@ -42,7 +48,18 @@ observed only through:
 - a database object that can bind an actor setting (``binders``: the same
   derivation, seeded by ``set_config`` on an actor or unresolvable name, and
   following triggers too), which counts wherever binding counts;
+- session state a statement reaches without naming what it does: prepared
+  statements and the session's temporary schema are read for every
+  execution, a prepared statement's text classified like any statement, and
+  a temporary object the catalog was not derived with makes it derive again
+  (one it cannot observe fails closed);
 - the request's authenticated user, for code handed a staff request.
+
+What text classification cannot fully see is bounded by enforcement, not by
+parser completeness: ``test_certifier_boundary`` refuses those constructs
+anywhere in ``apps/`` (operators over readers, server-side PREPARE, pg_temp
+objects, unresolvable setting names, SQL run from text, dynamic EXECUTE,
+Unicode escapes, libpq reached directly).
 
 Behaviour backs the reading rules: with an actor bound, the actor's id showing
 up in any statement's text or parameters, in anything the server sends back,
@@ -202,6 +219,10 @@ class ActorCatalog:
     # Everything whose evaluation can bind an actor setting: function,
     # relation and type names, and operator symbols.
     binders: frozenset[str] = frozenset()
+    # Symbols of operators whose function observes the actor.
+    operators: frozenset[str] = frozenset()
+    # The session's temporary objects the catalog was derived with.
+    temporary: frozenset[int] = frozenset()
 
 
 def _code(text: str) -> str:
@@ -230,6 +251,10 @@ def _binding(setting: str) -> re.Pattern[str]:
 
 
 def _system(schema: str) -> bool:
+    """Schemas PostgreSQL ships. A session's temporary schema holds objects
+    the session created and is scanned like any other."""
+    if schema.startswith(("pg_temp_", "pg_toast_temp_")):
+        return False
     return schema in _SYSTEM_SCHEMAS or schema.startswith("pg_")
 
 
@@ -319,6 +344,7 @@ class _Graph:
     policy_reads: set[int] = field(default_factory=set)
     binds: set[int] = field(default_factory=set)
     tokens: dict[int, set[str]] = field(default_factory=dict)
+    code: dict[int, str] = field(default_factory=dict)
 
 
 def actor_catalog(cursor: CursorWrapper, settings: frozenset[str]) -> ActorCatalog:
@@ -348,14 +374,30 @@ def actor_catalog(cursor: CursorWrapper, settings: frozenset[str]) -> ActorCatal
         oid
         for oid in operators
         if graph.evaluates.get(oid, set())
-        & (set(builtins.named_oids) | builtins.enumerator_oids)
+        & (set(builtins.named_oids) | builtins.enumerator_oids | builtins.executor_oids)
     }
+    # The derived reader set, as text sees it: operators whose function is a
+    # reader are readers (their operand cannot be resolved).
+    builtins = dataclasses.replace(
+        builtins,
+        operators=frozenset(operators[oid][1] for oid in reader_operators),
+    )
     _add_trees(cursor, graph, builtins, settings, reader_operators)
     _add_column_types(cursor, graph)
     _add_bodies(graph, functions, builtins, settings)
-    actor, _ = _actor_closure(graph, functions, relations, types)
-    binders = _binder_closure(graph, functions, relations)
-    _fail_closed(functions.values(), actor, settings)
+    actor, _ = _actor_closure(graph, functions, relations, types, operators)
+    binders = _binder_closure(graph, functions, relations, operators)
+    _fail_closed(
+        functions.values(),
+        actor,
+        settings,
+        frozenset(
+            oid
+            for oid, function in functions.items()
+            if function.language in ("sql", "plpgsql")
+            and _executor_calls(function.body, builtins)
+        ),
+    )
     names = {oid: function.name for oid, function in functions.items()}
     relation_names = frozenset(name for _, name in relations.values())
     reads: dict[int, frozenset[str]] = {}
@@ -388,6 +430,8 @@ def actor_catalog(cursor: CursorWrapper, settings: frozenset[str]) -> ActorCatal
         for oid in binders
         if oid in objects
     }
+    cursor.execute(_TEMPORARY_OBJECTS)
+    temporary = frozenset(int(oid) for (oid,) in cursor.fetchall())
     return ActorCatalog(
         settings=settings,
         functions={oid: function.name for oid, function in actor_functions.items()},
@@ -408,7 +452,20 @@ def actor_catalog(cursor: CursorWrapper, settings: frozenset[str]) -> ActorCatal
             if oid in actor and not _system(schema)
         ),
         binders=frozenset(binder_names),
+        operators=frozenset(
+            symbol for oid, (_, symbol) in operators.items() if oid in actor
+        ),
+        temporary=temporary,
     )
+
+
+# The objects in this session's temporary schema (every object records a
+# dependency on its schema).
+_TEMPORARY_OBJECTS: Final = (
+    "SELECT objid FROM pg_catalog.pg_depend "
+    "WHERE refclassid = 'pg_catalog.pg_namespace'::pg_catalog.regclass "
+    "AND refobjid = pg_catalog.pg_my_temp_schema()"
+)
 
 
 def _function_names(functions: Mapping[int, _Function]) -> dict[int, tuple[str, str]]:
@@ -634,12 +691,16 @@ def _tree_setting_uses(  # noqa: PLR0913 - one tree needs the reader context
 ) -> tuple[bool, bool]:
     """(reads, binds): the tree reads or binds an actor setting, one it
     cannot resolve, or every setting."""
-    reads = any(
+    runs = any(
+        oid in readers.executor_oids and _FUNCTION_FIELD.search(name)
+        for name, oid in fields
+    )
+    reads = runs or any(
         (oid in readers.enumerator_oids and _FUNCTION_FIELD.search(name))
         or (oid in reader_operators and _OPERATOR_FIELD.search(name))
         for name, oid in fields
     )
-    binds = False
+    binds = runs
     if any(oid in readers.named_oids for _, oid in fields):
         for oid, argument in _named_calls(tree, readers.named_oids, where):
             if _named(argument, settings):
@@ -760,7 +821,11 @@ def _add_bodies(
             continue
         body = function.body
         graph.tokens[function.oid] = _tokens(body)
+        graph.code[function.oid] = _LITERAL.sub(" ", _code(body))
         calls = setting_calls(body, None, readers)
+        if _executor_calls(body, readers):
+            graph.reads.add(function.oid)
+            graph.binds.add(function.oid)
         if _reads_setting(body, settings) or any(
             reader != "set" and (not arguments or _named(arguments[0], settings))
             for reader, arguments in calls
@@ -780,6 +845,7 @@ def _actor_closure(
     functions: Mapping[int, _Function],
     relations: Mapping[int, tuple[str, str]],
     types: Mapping[int, tuple[str, str]],
+    operators: Mapping[int, tuple[str, str]],
 ) -> tuple[set[int], set[int]]:
     """(actor, open): every object whose evaluation observes the actor; open
     excludes relations that observe it only through their policies."""
@@ -792,6 +858,7 @@ def _actor_closure(
         type_names = {types[oid][1] for oid in actor if oid in types}
         relation_all = {relations[oid][1] for oid in actor if oid in relations}
         relation_open = {relations[oid][1] for oid in open_actor if oid in relations}
+        symbols = {operators[oid][1] for oid in actor if oid in operators}
         for owner, targets in graph.evaluates.items():
             if owner in open_actor:
                 continue
@@ -808,7 +875,9 @@ def _actor_closure(
             if oid in open_actor:
                 continue
             seen = relation_open if functions[oid].blind else relation_all
-            if tokens & (function_names | type_names | seen):
+            if tokens & (function_names | type_names | seen) or any(
+                symbol in graph.code[oid] for symbol in symbols
+            ):
                 open_actor.add(oid)
                 actor.add(oid)
                 changed = True
@@ -819,6 +888,7 @@ def _binder_closure(
     graph: _Graph,
     functions: Mapping[int, _Function],
     relations: Mapping[int, tuple[str, str]],
+    operators: Mapping[int, tuple[str, str]],
 ) -> set[int]:
     """Every object whose evaluation (triggers included) can bind an actor
     setting."""
@@ -834,8 +904,11 @@ def _binder_closure(
                 if owner not in binders and targets & binders:
                     binders.add(owner)
                     changed = True
+        symbols = {operators[oid][1] for oid in binders if oid in operators}
         for oid, tokens in graph.tokens.items():
-            if oid not in binders and tokens & names:
+            if oid not in binders and (
+                tokens & names or any(symbol in graph.code[oid] for symbol in symbols)
+            ):
                 binders.add(oid)
                 changed = True
     return binders
@@ -845,6 +918,7 @@ def _fail_closed(
     functions: Iterable[_Function],
     actor: set[int],
     settings: frozenset[str],
+    runs_text: frozenset[int] = frozenset(),
 ) -> None:
     for function in functions:
         if function.system:
@@ -872,6 +946,9 @@ def _fail_closed(
             _LITERAL.sub(" ", _code(function.body))
         ):
             message = f"{where} uses dynamic SQL; its actor reads are unknown"
+            raise CensusError(message)
+        if language in ("sql", "plpgsql") and function.oid in runs_text:
+            message = f"{where} runs SQL from text; its actor reads are unknown"
             raise CensusError(message)
         if (
             function.oid in actor
@@ -988,6 +1065,12 @@ class SettingReaders:
     enumerator_oids: frozenset[int] = frozenset()
     # Named builtins that set the setting (``set_config``).
     setter_oids: frozenset[int] = frozenset()
+    # Symbols of operators whose function is one of the readers.
+    operators: frozenset[str] = frozenset()
+    # Builtins that run SQL handed to them as text (``query_to_xml``,
+    # ``ts_stat``, ...): what that SQL reads or binds cannot be read.
+    executors: frozenset[str] = frozenset()
+    executor_oids: frozenset[int] = frozenset()
 
 
 # C symbols of the backend's setting accessors (show/set by name, show all).
@@ -998,10 +1081,15 @@ _SETTER_SYMBOL: Final = re.compile(r"^set_config_by_name$")
 
 
 def setting_readers(cursor: CursorWrapper) -> SettingReaders:
-    """Derive every builtin that reads or sets a session setting."""
+    """Derive every builtin that reads or sets a session setting, and every
+    builtin that runs SQL given as text: a text input named ``query``, or a
+    C symbol naming a query (``query_to_xml``, ``tsquery_rewrite_query``)."""
     cursor.execute(
         "SELECT p.oid, p.proname, p.prosrc, COALESCE(p.proargtypes[0], 0) "
-        "  = 'pg_catalog.text'::pg_catalog.regtype "
+        "  = 'pg_catalog.text'::pg_catalog.regtype, "
+        "'pg_catalog.text'::pg_catalog.regtype = ANY(p.proargtypes::pg_catalog.oid[]) "
+        "  AND ('query' = ANY(p.proargnames[1:p.pronargs]) "
+        "    OR p.prosrc ~ '(^|_)query(_|$)') "
         "FROM pg_catalog.pg_proc p "
         "JOIN pg_catalog.pg_language l ON l.oid = p.prolang "
         "WHERE p.pronamespace = 'pg_catalog'::pg_catalog.regnamespace "
@@ -1009,19 +1097,52 @@ def setting_readers(cursor: CursorWrapper) -> SettingReaders:
     )
     named: dict[int, str] = {}
     enumerators: dict[int, str] = {}
+    executors: dict[int, str] = {}
     setters: set[int] = set()
-    for oid, name, symbol, takes_name in cursor.fetchall():
+    for oid, name, symbol, takes_name, runs_text in cursor.fetchall():
         if _READER_SYMBOL.search(str(symbol)):
             (named if takes_name else enumerators)[int(oid)] = str(name)
             if _SETTER_SYMBOL.search(str(symbol)):
                 setters.add(int(oid))
+        elif runs_text:
+            executors[int(oid)] = str(name)
     return SettingReaders(
         frozenset(named.values()),
         frozenset(enumerators.values()),
         named,
         frozenset(enumerators),
         frozenset(setters),
+        executors=frozenset(executors.values()),
+        executor_oids=frozenset(executors),
     )
+
+
+def _executor_calls(text: str, readers: SettingReaders) -> list[str]:
+    """The SQL-text executors a text calls."""
+    code = _LITERAL.sub(" ", _code(text))
+    return [
+        name
+        for name in sorted(readers.executors)
+        if re.search(rf'(?<![\w$])"?{re.escape(name)}"?\s*\(', code)
+    ]
+
+
+def _unreadable(text: str, readers: SettingReaders) -> list[str]:
+    """Text whose meaning the observer cannot read: SQL run from text, a DO
+    block running dynamic SQL, a Unicode-escaped identifier or string."""
+    code = _LITERAL.sub(" ", _code(text))
+    found = [
+        f"runs SQL from text via {name}, which the observer cannot read"
+        for name in _executor_calls(text, readers)
+    ]
+    if re.match(r"\s*do\b", code) and _DYNAMIC.search(code):
+        found.append("runs dynamic SQL in a DO block, which the observer cannot read")
+    if "u&" in code:
+        found.append(
+            "uses a Unicode-escaped identifier or string, which the observer "
+            "cannot read"
+        )
+    return found
 
 
 _PLACEHOLDER: Final = re.compile(r"%(?:\((?P<key>[^)]+)\))?s|\$(?P<number>[1-9]\d*)")
@@ -1117,6 +1238,11 @@ def setting_calls(
         (reader, [_UNRESOLVED])
         for reader in sorted(readers.enumerators)
         if re.search(rf'(?<![\w$])"?{re.escape(reader)}"?(?![\w$])', lowered)
+    )
+    calls.extend(
+        (f"operator {symbol}", [_UNRESOLVED])
+        for symbol in sorted(readers.operators)
+        if symbol in lowered
     )
     show = _SHOW.match(code)
     if show is not None:
@@ -1288,20 +1414,32 @@ class ActorObserver:
     _tables: dict[int, int] = field(default_factory=dict)
     # The last bound snapshot, reusable as the next execution's starting
     # point while the scope transaction is unchanged (``carry``/``drop``).
-    _carried: tuple[dict[int, int], dict[int, int], list[str]] | None = None
+    _carried: tuple[dict[int, int], dict[int, int], list[str], int, int] | None = None
+    # Prepared statements of the session by name: (reads, acquires or hides).
+    _prepared: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
+    _classified: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
+    # Findings about the session state itself, for the current execution.
+    _session: list[str] = field(default_factory=list)
+    _failed: tuple[frozenset[int], str] | None = None
     _may_bind: re.Pattern[str] = field(init=False)
     _symbols: tuple[str, ...] = field(init=False)
     _by_name: dict[str, str] = field(init=False)
 
     def __post_init__(self) -> None:
+        self._derive()
+
+    def _derive(self) -> None:
+        """What the statement checks need from the catalog."""
         words = sorted(name for name in self.catalog.binders if _TOKEN.fullmatch(name))
         self._symbols = tuple(
             sorted(name for name in self.catalog.binders if not _TOKEN.fullmatch(name))
         )
+        executors = sorted(self.catalog.readers.executors)
         self._may_bind = re.compile(
             "|".join(
-                [r"set_config", r"^\s*set\s"]
+                [r"set_config", r"^\s*set\s", r"^\s*do\b", r"\bexecute\b", r"u&"]
                 + [rf"(?<![\w$]){re.escape(word)}(?![\w$])" for word in words]
+                + [rf"(?<![\w$]){re.escape(name)}(?![\w$])" for name in executors]
                 + [re.escape(symbol) for symbol in self._symbols]
             ),
             re.IGNORECASE,
@@ -1310,27 +1448,133 @@ class ActorObserver:
             name: self.catalog.qualified.get(oid, f"clinic_app.{name}")
             for oid, name in self.catalog.functions.items()
         }
+        self._classified.clear()
 
-    def _snapshot(self) -> tuple[dict[int, int], dict[int, int], list[str]]:
+    def _session_state(self) -> tuple[int, int]:
+        """Whether the session holds state a statement can reach without
+        naming what it does: its temporary schema (0 when it has none) and its
+        prepared statements (how many). Read for every execution, one libpq
+        round trip outside the window; a bound execution reads the same two
+        columns with its statistics snapshot."""
+        ((schema, prepared),) = self._rows(_SESSION_STATE)
+        return int(schema), int(prepared)
+
+    def _rows(self, query: bytes) -> list[tuple[str, ...]]:
+        """Rows of an observer query sent through libpq, outside the window."""
+        assert self.wire is not None
+        result = self.wire.pgconn.exec_(query)
+        if result.status != pq.ExecStatus.TUPLES_OK:
+            message = f"the session state cannot be read: {result.error_message!r}"
+            raise AssertionError(message)
+        return [
+            tuple(
+                (result.get_value(row, column) or b"").decode()
+                for column in range(result.nfields)
+            )
+            for row in range(result.ntuples)
+        ]
+
+    def _apply_session(self, schema: int, prepared: int) -> bool:
+        """Take in the session state before this execution: the temporary
+        schema's objects (one the catalog was not derived with makes it derive
+        again; one it cannot observe fails closed) and every prepared
+        statement's text, classified like a statement. True when the catalog
+        changed."""
+        temporary = (
+            frozenset(int(oid) for (oid,) in self._rows(_TEMPORARY_OBJECTS.encode()))
+            if schema
+            else frozenset()
+        )
+        derived = False
+        if not temporary <= self.catalog.temporary:
+            derived = self._rederive(temporary)
+        self._session = (
+            [self._failed[1]]
+            if self._failed is not None and self._failed[0] == temporary
+            else []
+        )
+        self._prepared = {
+            name: self._text_reasons(text)
+            for name, text in (self._rows(_PREPARED_STATEMENTS) if prepared else [])
+        }
+        return derived
+
+    def _rederive(self, temporary: frozenset[int]) -> bool:
+        if self._failed is not None and self._failed[0] == temporary:
+            return False
+        try:
+            with connection.cursor() as cursor:
+                catalog = actor_catalog(cursor, self.catalog.settings)
+        except CensusError as error:
+            self._failed = (
+                temporary,
+                f"the session's temporary objects cannot be observed: {error}",
+            )
+            return False
+        self._failed = None
+        self.catalog = catalog
+        self._carried = None
+        self._derive()
+        return True
+
+    def _text_reasons(self, text: str) -> tuple[list[str], list[str]]:
+        """What a stored text (a prepared statement) reads, and what it
+        acquires or hides, against the derived reader set."""
+        if text in self._classified:
+            return self._classified[text]
+        settings = self.catalog.settings
+        reads: list[str] = []
+        acquires = list(_unreadable(text, self.catalog.readers))
+        for reader, arguments in setting_calls(text, None, self.catalog.readers):
+            if (
+                reader in ("set_config", "set")
+                and arguments
+                and _named(arguments[0], settings)
+            ):
+                acquires.append("binds an actor or unresolvable setting")
+            elif reader != "set" and (not arguments or _named(arguments[0], settings)):
+                reads.append(f"reads an actor or unresolvable setting via {reader}")
+        tokens = _tokens(text)
+        code = _LITERAL.sub(" ", _code(text))
+        reads.extend(
+            f"calls {self._by_name[name]}"
+            for name in sorted(tokens & set(self._by_name))
+        )
+        reads.extend(
+            f"touches actor relation {name}"
+            for name in sorted(tokens & self.catalog.relations)
+        )
+        reads.extend(
+            f"uses actor type {name}" for name in sorted(tokens & self.catalog.types)
+        )
+        reads.extend(
+            f"uses actor operator {symbol}"
+            for symbol in sorted(self.catalog.operators)
+            if symbol in code
+        )
+        acquires.extend(
+            f"may bind an actor setting through {name}"
+            for name in sorted(tokens & self.catalog.binders)
+        )
+        acquires.extend(
+            f"may bind an actor setting through {symbol}"
+            for symbol in self._symbols
+            if symbol in code
+        )
+        self._classified[text] = (reads, acquires)
+        return reads, acquires
+
+    def _snapshot(
+        self,
+    ) -> tuple[dict[int, int], dict[int, int], list[str], int, int]:
         """One statement: watched call counts, actor relation touches, the
-        bound actor values (per-oid statistics, not the full views)."""
+        bound actor values (per-oid statistics, not the full views), and the
+        session state (``_session_state``)."""
         self.active = False
         relations = self.catalog.relation_oids
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT ARRAY(SELECT COALESCE("
-                "  pg_catalog.pg_stat_get_xact_function_calls(f.oid), 0) "
-                "  FROM pg_catalog.unnest(%s::oid[]) WITH ORDINALITY f(oid, n) "
-                "  ORDER BY f.n), "
-                "ARRAY(SELECT pg_catalog.pg_stat_get_xact_numscans(r.oid) "
-                "  + pg_catalog.pg_stat_get_xact_tuples_inserted(r.oid) "
-                "  + pg_catalog.pg_stat_get_xact_tuples_updated(r.oid) "
-                "  + pg_catalog.pg_stat_get_xact_tuples_deleted(r.oid) "
-                "  FROM pg_catalog.unnest(%s::oid[]) WITH ORDINALITY r(oid, n) "
-                "  ORDER BY r.n), "
-                "ARRAY(SELECT pg_catalog.current_setting(s, true) "
-                "  FROM pg_catalog.unnest(%s::text[]) s), "
-                "pg_catalog.current_setting('track_functions')",
+                _SNAPSHOT,
                 [
                     list(self.catalog.watched),
                     [oid for oid, _ in relations],
@@ -1339,7 +1583,7 @@ class ActorObserver:
             )
             row = cursor.fetchone()
         assert row is not None
-        calls, touches, values, tracking = row
+        calls, touches, values, tracking, schema, prepared = row
         assert tracking == "all", "track_functions must be all"
         return (
             dict(zip(self.catalog.watched, map(int, calls), strict=True)),
@@ -1348,6 +1592,8 @@ class ActorObserver:
                 for (oid, _), count in zip(relations, touches, strict=True)
             },
             [str(value) for value in values if value],
+            int(schema),
+            int(prepared),
         )
 
     def begin(self, *, mode: str, actor: str | None = None) -> None:
@@ -1357,11 +1603,17 @@ class ActorObserver:
             assert actor, "an injected execution names its injected actor"
             self.values = frozenset({actor})
         if mode == "bound":
+            # A carried snapshot is the previous execution's end: nothing runs
+            # between two inputs of a scope, so it is this one's start.
             snapshot, self._carried = self._carried or self._snapshot(), None
-            self._functions, self._tables, values = snapshot
+            if self._apply_session(snapshot[3], snapshot[4]):
+                snapshot = self._snapshot()
+            self._functions, self._tables, values, _, _ = snapshot
             assert values, "a bound execution needs a bound actor"
             self.values = frozenset(values)
-        elif mode == "unbound":
+        if mode != "bound":
+            self._apply_session(*self._session_state())
+        if mode == "unbound":
             assert not self._bound_values(), "the deployed context binds an actor"
             self.values = frozenset()
         self._needles = _needles(self.values) if mode == "bound" else ()
@@ -1388,7 +1640,7 @@ class ActorObserver:
     def end(self, outcome: object = None) -> list[str]:
         self.active = False
         self._close_segment()
-        found: list[str] = []
+        found: list[str] = list(self._session)
         for statement in self.statements:
             found.extend(self._binds(statement))
         if self._executions != self._sent:
@@ -1428,6 +1680,16 @@ class ActorObserver:
         if not self._may_bind.search(statement.sql):
             return []
         found = [
+            f"statement {reason} from {statement.stack[:1]}"
+            for reason in _unreadable(statement.sql, self.catalog.readers)
+        ]
+        for name in _executed(statement.sql):
+            reads, acquires = self._prepared.get(name, ([], []))
+            found.extend(
+                f"statement executes prepared statement {name}, which {reason}"
+                for reason in acquires + (reads if self.mode == "bound" else [])
+            )
+        found += [
             f"statement may bind an actor setting through {name} from "
             f"{statement.stack[:1]}"
             for name in sorted(_tokens(statement.sql) & self.catalog.binders)
@@ -1464,7 +1726,7 @@ class ActorObserver:
         # input's savepoint release or rollback does not), so this end is
         # the next input's start.
         self._carried = snapshot
-        functions, tables, _ = snapshot
+        functions, tables, _, _, _ = snapshot
         found: list[str] = []
         called = {
             oid
@@ -1529,6 +1791,13 @@ class ActorObserver:
             f"statement uses actor type {name}"
             for name in sorted(tokens & self.catalog.types)
         )
+        if self.catalog.operators:
+            code = _LITERAL.sub(" ", statement.sql)
+            found.extend(
+                f"statement uses actor operator {symbol}"
+                for symbol in sorted(self.catalog.operators)
+                if symbol in code
+            )
         sender = next(
             (name for name in statement.stack if name.startswith("apps.identity.")), ""
         )
@@ -1591,6 +1860,51 @@ class ActorObserver:
             if active and self.wire is not None:
                 self.wire.mark()
             self.active = active
+
+
+# The session state read for every execution: whether the session has a
+# temporary schema, and how many prepared statements (SQL or protocol level);
+# then, only when there are any, the schema's objects and the statements' text.
+_SESSION_COLUMNS: Final = sql.SQL(
+    "pg_catalog.pg_my_temp_schema(), "
+    "(SELECT pg_catalog.count(*) FROM pg_catalog.pg_prepared_statements)"
+)
+_SESSION_STATE: Final = sql.SQL("SELECT {}").format(_SESSION_COLUMNS).as_bytes(None)
+_PREPARED_STATEMENTS: Final = (
+    b"SELECT name, statement FROM pg_catalog.pg_prepared_statements"
+)
+# A bound execution's statistics snapshot, with the session state.
+_SNAPSHOT: Final = (
+    sql.SQL(
+        "SELECT ARRAY(SELECT COALESCE("
+        "  pg_catalog.pg_stat_get_xact_function_calls(f.oid), 0) "
+        "  FROM pg_catalog.unnest(%s::oid[]) WITH ORDINALITY f(oid, n) "
+        "  ORDER BY f.n), "
+        "ARRAY(SELECT pg_catalog.pg_stat_get_xact_numscans(r.oid) "
+        "  + pg_catalog.pg_stat_get_xact_tuples_inserted(r.oid) "
+        "  + pg_catalog.pg_stat_get_xact_tuples_updated(r.oid) "
+        "  + pg_catalog.pg_stat_get_xact_tuples_deleted(r.oid) "
+        "  FROM pg_catalog.unnest(%s::oid[]) WITH ORDINALITY r(oid, n) "
+        "  ORDER BY r.n), "
+        "ARRAY(SELECT pg_catalog.current_setting(s, true) "
+        "  FROM pg_catalog.unnest(%s::text[]) s), "
+        "pg_catalog.current_setting('track_functions'), {session}"
+    )
+    .format(session=_SESSION_COLUMNS)
+    .as_string(None)
+)
+_EXECUTED: Final = re.compile(
+    r'\bexecute\s+("(?:[^"]|"")+"|[a-z_][a-z0-9_$]*)', re.IGNORECASE
+)
+
+
+def _executed(text: str) -> list[str]:
+    """Names of the prepared statements a statement executes (SQL EXECUTE)."""
+    code = _LITERAL.sub(" ", _COMMENT.sub(" ", text))
+    return [
+        name[1:-1].replace('""', '"') if name.startswith('"') else name.lower()
+        for name in _EXECUTED.findall(code)
+    ]
 
 
 def _driver_frame(frame: FrameType) -> bool:

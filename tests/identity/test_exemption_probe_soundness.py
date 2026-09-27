@@ -1085,3 +1085,218 @@ def test_the_wire_check_follows_every_driver_path() -> None:
     assert all(outside in found[name] for name in direct)
     assert "uses COPY, which the observer cannot inspect" in found["copy"]
     assert not [name for name in found if name not in {*direct, "copy"} and found[name]]
+
+
+# R8-1: A1/A2, an operator whose function is current_setting, in a statement
+# and inside a plpgsql body (the name travels as a parameter, so only the
+# operator can be seen); A3/A4, a server-side PREPARE and a pg_temp function
+# created on the session after the observer was derived, then used by the
+# probe. With them, three texts whose meaning a regular classifier cannot
+# read: a Unicode-escaped identifier, SQL run from text (query_to_xml), and a
+# DO block running dynamic SQL.
+_R8_DDL = """
+CREATE OPERATOR clinic_app.@#@ (
+  RIGHTARG = text, FUNCTION = pg_catalog.current_setting
+);
+CREATE FUNCTION clinic_app.zz_r8_opfn(k text, p text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, clinic_app
+AS $f$ BEGIN RETURN (OPERATOR(clinic_app.@#@) k) = p; END $f$;
+GRANT EXECUTE ON FUNCTION clinic_app.zz_r8_opfn(text, text) TO clinic_app;
+"""
+_R8_DROP = """
+DROP FUNCTION IF EXISTS clinic_app.zz_r8_opfn(text, text);
+DROP OPERATOR IF EXISTS clinic_app.@#@ (NONE, text);
+"""
+_R8_SESSION = (
+    "PREPARE zz_r8_prepared(text) AS "
+    "SELECT pg_catalog.current_setting('app.current_user_id', true) = $1",
+    "CREATE FUNCTION pg_temp.zz_r8_temp(p text) RETURNS boolean LANGUAGE plpgsql "
+    "AS $f$ BEGIN RETURN pg_catalog.current_setting('app.current_user_id', true) = p; "
+    "END $f$",
+)
+_R8_SESSION_DROP = (
+    "DEALLOCATE zz_r8_prepared",
+    "DROP FUNCTION pg_temp.zz_r8_temp(text)",
+)
+_R8_VARIANTS: dict[str, tuple[str, str, str, str]] = {
+    "r8-a1 reader operator in a statement": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'SELECT (OPERATOR(clinic_app.@#@) %s) = %s', [_KEY, _ALLOW]\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
+    "r8-a2 reader operator in a plpgsql body": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'SELECT clinic_app.zz_r8_opfn(%s, %s)', [_KEY, _ALLOW]\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
+    "r8-a3 prepared before the window": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute('EXECUTE zz_r8_prepared(%s)', [_ALLOW])\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "r8-a4 pg_temp function before the window": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute('SELECT pg_temp.zz_r8_temp(%s)', [_ALLOW])\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "",
+        "rule",
+    ),
+    "unicode-escaped reader name": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            'SELECT U&\"!0063urrent_setting\" UESCAPE \\'!\\''\n"
+        "            '(%s, true) = %s',\n"
+        "            [_KEY, _ALLOW],\n"
+        "        )\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
+    "SQL run from text": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        '            "SELECT pg_catalog.query_to_xml("\n'
+        "            \"'SELECT pg_catalog.current_' || 'setting(' \"\n"
+        "            \"|| pg_catalog.quote_literal(%s) || ', true) = ' \"\n"
+        "            \"|| pg_catalog.quote_literal(%s) || ' AS a', \"\n"
+        "            \"false, false, '')::text\",\n"
+        "            [_KEY, _ALLOW],\n"
+        "        )\n"
+        "        (xml,) = probe_cursor.fetchone()\n"
+        "    if '<a>true</a>' in xml:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_KEY = 'app.current_' + 'user_id'\n",
+        "rule",
+    ),
+    "DO block with dynamic SQL": (
+        _RETURN,
+        "    try:\n"
+        "        with transaction.atomic(), connection.cursor() as probe_cursor:\n"
+        "            probe_cursor.execute(\n"
+        "                'DO $zz$ DECLARE r boolean; BEGIN EXECUTE '\n"
+        "                \"'SELECT pg_catalog.current_' || \"\n"
+        "                \"'setting(''app.current_user_id'', \"\n"
+        "                \"true) = ''\" + _ALLOW + \"''' INTO r; \"\n"
+        "                \"IF r THEN RAISE EXCEPTION 'zz'; END IF; END $zz$\"\n"
+        "            )\n"
+        "    except DatabaseError:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "from django.db import DatabaseError, transaction\n",
+        "rule",
+    ),
+}
+_R8_CHANNELS = {
+    "r8-a1 reader operator in a statement": "via operator @#@",
+    "r8-a2 reader operator in a plpgsql body": "calls clinic_app.zz_r8_opfn",
+    "r8-a3 prepared before the window": "executes prepared statement zz_r8_prepared",
+    "r8-a4 pg_temp function before the window": "zz_r8_temp",
+    "unicode-escaped reader name": "Unicode-escaped identifier",
+    "SQL run from text": "runs SQL from text via query_to_xml",
+    "DO block with dynamic SQL": "runs dynamic SQL in a DO block",
+}
+
+
+@contextlib.contextmanager
+def _r8_schema() -> Iterator[None]:
+    url = database_url_for_name(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"],
+        str(connection.settings_dict["NAME"]),
+    )
+    with psycopg.connect(url, autocommit=True) as superuser:
+        superuser.execute(_R8_DROP)
+        superuser.execute(_R8_DDL)
+    try:
+        yield
+    finally:
+        with psycopg.connect(url, autocommit=True) as superuser:
+            superuser.execute(_R8_DROP)
+
+
+@contextlib.contextmanager
+def _r8_session() -> Iterator[None]:
+    """Session state made on the probed connection itself, outside any
+    observation window and after the observer was derived."""
+    with connection.cursor() as cursor:
+        for statement in _R8_SESSION:
+            cursor.execute(statement)
+    try:
+        yield
+    finally:
+        with connection.cursor() as cursor:
+            for statement in _R8_SESSION_DROP:
+                cursor.execute(statement)
+
+
+def test_actor_rule_refuses_every_r8_shape(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R8-1: each shape flips the allowlisted user's outcome only. The rule
+    refuses each by the channel that sees it: text classified against the
+    derived reader set (reader operators in statements and bodies), the
+    session state read for every execution (prepared statements, the
+    temporary schema), and texts the classifier cannot read failing closed.
+    The unmutated function stays certified in the same run."""
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        with _r8_schema():
+            probe_world = dataclasses.replace(
+                probe_world, observer=exemption_probes.actor_observer(probe_world.w)
+            )
+            probes = _variant_probes(probe_world, _R8_VARIANTS)
+            with _r8_session():
+                runs = exemption_probes.run_matrix(
+                    probes, probe_world, probe_world.matrix.states[:1]
+                )
+    for probe in probes:
+        print("R8", probe.symbol, runs[probe.symbol].observed)  # noqa: T201 - receipt
+    assert exemption_probes.actor_problems(runs[_SYMBOL]) == []
+    observed = {
+        probe.symbol.split("#")[1]: " ".join(
+            runs[probe.symbol].observed.get("none", [])
+        )
+        for probe in probes[1:]
+    }
+    accepted = [
+        name
+        for name in _R8_VARIANTS
+        if not exemption_probes.actor_problems(runs[f"{_SYMBOL}#{name}"])
+    ]
+    assert not accepted, ("R8 shapes the actor rule accepted", accepted)
+    unseen = [
+        name for name, channel in _R8_CHANNELS.items() if channel not in observed[name]
+    ]
+    assert not unseen, ("R8 shapes refused by another channel", unseen)
