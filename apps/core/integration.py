@@ -391,11 +391,18 @@ def _dispatch(operation_id: UUID) -> None:
 
 
 def _actor_has_clinic_authority(scope: OperationScope) -> bool:
-    """Recheck the stored actor's membership in the operation's clinic.
+    """Recheck the stored actor's active account and exact-clinic membership.
 
-    Clinic membership is the baseline authority for the send; an
-    organization-level membership in another clinic does not satisfy it.
+    An inactive account or membership in another clinic cannot authorize a send.
+    The caller binds the stored actor; runtime has no direct User-table SELECT.
     """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT is_active FROM clinic_app.load_current_user() WHERE id = %s",
+            [scope.actor_id],
+        )
+        if cursor.fetchone() != (True,):
+            return False
     return UserClinicRole.objects.filter(
         user_id=scope.actor_id,
         organization_id=scope.organization_id,

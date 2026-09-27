@@ -11,7 +11,7 @@ from apps.tenancy.db import tenant_context
 from apps.tenancy.management import TenantCommand
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.management import CommandError, call_command
-from django.db import connection
+from django.db import connection, transaction
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 
@@ -182,10 +182,13 @@ def test_clinic_backend_get_user_rejects_inactive_resolver_rows(
 ) -> None:
     User.objects.filter(pk=tenant_graph.user_a).update(is_active=False)
 
-    with (
-        _runtime_role(),
-        tenant_context(tenant_graph.user_a, tenant_graph.organization_a),
-    ):
+    # Inactive accounts cannot enter tenant_context. Exercise reconstruction
+    # with only the identity GUC, as the sessionless auth resolver permits.
+    with _runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_user_id', %s, true)",
+            [str(tenant_graph.user_a)],
+        )
         loaded = ClinicBackend().get_user(tenant_graph.user_a)
 
     assert loaded is None

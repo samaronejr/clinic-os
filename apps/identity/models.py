@@ -11,6 +11,8 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
+from apps.tenancy.fields import EncryptedTextField
+from apps.tenancy.models import TenantScopedModel
 
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint
@@ -150,6 +152,12 @@ class UserClinicRole(models.Model):
         PHYSICIAN = "physician", "Physician"
         RECEPTIONIST = "receptionist", "Receptionist"
         CLINIC_ADMIN = "clinic_admin", "Clinic admin"
+        NURSE = "nurse", "Nurse"
+        ALLIED_PROFESSIONAL = "allied_professional", "Allied professional"
+        SCHEDULER = "scheduler", "Scheduler"
+        CLINIC_MANAGER = "clinic_manager", "Clinic manager"
+        FINANCE = "finance", "Finance"
+        ORG_ADMIN = "org_admin", "Organization admin"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -265,6 +273,118 @@ class PhysicianProfile(models.Model):
     def __str__(self) -> str:
         """Return only the stable record identifier."""
         return str(self.pk)
+
+
+class RoleGrant(TenantScopedModel):
+    """Owner-provisioned, append-only clinic subtraction from a versioned bundle."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    role = models.CharField(max_length=20, choices=UserClinicRole.Role.choices)
+    permission = models.CharField(max_length=64)
+    bundle_version = models.PositiveSmallIntegerField(default=1)
+    effect = models.CharField(max_length=6, default="remove")
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """A grant is never an addition, including through raw SQL."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(effect="remove", bundle_version=1),
+                name="identity_rolegrant_remove_only",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(valid_to__isnull=True)
+                | models.Q(valid_to__gt=models.F("valid_from")),
+                name="identity_rolegrant_window",
+            ),
+        ]
+
+
+class CareTeamMembership(TenantScopedModel):
+    """Time-bounded patient scope, never a substitute for canonical staff roles."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    patient_enrollment = models.ForeignKey(
+        "intake.PatientClinicEnrollment", on_delete=models.PROTECT
+    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    role = models.CharField(max_length=20, choices=UserClinicRole.Role.choices)
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Keep clinical scopes and half-open validity windows explicit."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    role__in=("physician", "nurse", "allied_professional")
+                ),
+                name="identity_careteam_clinical_role",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(valid_to__isnull=True)
+                | models.Q(valid_to__gt=models.F("valid_from")),
+                name="identity_careteam_window",
+            ),
+        ]
+
+
+class ProfessionalRegistration(TenantScopedModel):
+    """Synthetic council evidence; encrypted number, optional legacy CRM linkage.
+
+    A new council is data, not a provider implementation or authority to sign.
+    Issuance still requires the existing per-attempt verification and step-up.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    physician_profile = models.ForeignKey(
+        PhysicianProfile, on_delete=models.PROTECT, null=True, blank=True
+    )
+    role = models.CharField(max_length=20, choices=UserClinicRole.Role.choices)
+    council = models.CharField(max_length=16)
+    number = EncryptedTextField(purpose="identity.registration.number")
+    jurisdiction = models.CharField(max_length=2)
+    specialty = EncryptedTextField(purpose="identity.registration.specialty", null=True)
+    synthetic = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=16,
+        choices=PhysicianProfile.Status,
+        default=PhysicianProfile.Status.UNKNOWN,
+    )
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Deny live evidence and cross-profession widening at the database."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(synthetic=True)
+                & models.Q(status__in=PhysicianProfile.Status.values)
+                & models.Q(council__regex=r"^[A-Z][A-Z0-9]{1,15}$")
+                & models.Q(jurisdiction__regex=r"^[A-Z]{2}$")
+                & models.Q(valid_to__gt=models.F("valid_from")),
+                name="identity_registration_synthetic",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(role="physician", council="CRM")
+                | models.Q(role="nurse", council="COREN")
+                | (
+                    models.Q(role="allied_professional")
+                    & ~models.Q(council__in=("CRM", "COREN"))
+                ),
+                name="identity_registration_profession",
+            ),
+        ]
 
 
 class PhysicianEvidence(models.Model):

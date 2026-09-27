@@ -18,7 +18,7 @@ from apps.scheduling.services import (
     view_agenda,
     view_appointment_for_transition,
 )
-from apps.tenancy.db import tenant_context
+from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 
@@ -206,7 +206,18 @@ def _assert_authorized_input_and_scope_denials(
         agenda_denials.append(foreign_error.value)
 
     User.objects.filter(pk=setup.actor_id).update(is_active=False)
-    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+    with (
+        runtime_role(),
+        pytest.raises(TenantAccessDeniedError),
+        tenant_context(setup.actor_id, setup.organization_id),
+    ):
+        pass
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(setup.actor_id), str(setup.organization_id)],
+        )
         with pytest.raises(AvailabilityAccessDeniedError) as inactive_error:
             view_agenda(
                 clinic_id=setup.clinic_id,

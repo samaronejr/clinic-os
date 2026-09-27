@@ -5,7 +5,7 @@ from typing import Final
 from uuid import UUID
 
 from django.contrib.auth import SESSION_KEY
-from django.db import transaction
+from django.db import connection, transaction
 from django.http import HttpRequest
 from django.http.response import HttpResponseBase
 from django.shortcuts import render
@@ -115,7 +115,22 @@ class TenantMiddleware:
                     transaction.set_rollback(True)
                 return response
         except TenantAccessDeniedError:
-            return _staff_denial(request)
+            # Resolve account status without opening a tenant. An inactive
+            # account must still reach the existing anonymous-session cleanup
+            # and login/step-up redirects, never a staff tenant transaction.
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT set_config('app.current_user_id', %s, true)",
+                    [str(user_id)],
+                )
+                cursor.execute("SELECT is_active FROM clinic_app.load_current_user()")
+                inactive = cursor.fetchone() == (False,)
+            if inactive:
+                clear_connection_tenant_gucs()
+                response = self.get_response(request)
+            else:
+                response = _staff_denial(request)
+            return response
 
     def _patient(self, request: HttpRequest) -> HttpResponseBase:
         """Run one patient request inside its own session-bound transaction.

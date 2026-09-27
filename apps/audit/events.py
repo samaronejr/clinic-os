@@ -46,6 +46,21 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "identity.role_grant.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.role_grant", "created"
+        ),
+        "identity.care_team.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.care_team_membership", "created"
+        ),
+        "identity.care_team.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.care_team_membership", "revoked"
+        ),
+        "identity.professional_registration.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.professional_registration", "created"
+        ),
+        "identity.professional_registration.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.professional_registration", "revoked"
+        ),
         "identity.clinic_configuration.published": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic_configuration", "published"
         ),
