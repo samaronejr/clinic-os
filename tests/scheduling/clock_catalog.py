@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from django.db import connection
+from sqlparse import tokens
+
+from .clock_boundary import sql_boundary_violations
+from .clock_dependencies import sql_dependencies
+from .clock_tokens import sql_tokens
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -32,6 +39,11 @@ NODE_IO_CAST = re.compile(
 )
 
 
+class ClockNode(TypedDict):
+    direct: dict[str, int]
+    via: list[str]
+
+
 @dataclass(frozen=True)
 class Function:
     oid: int
@@ -42,6 +54,10 @@ class Function:
     volatility: str
     source: str
     tree: str
+    language: str
+    implementation: str
+    library: str
+    extension: str
 
     @property
     def identity(self) -> str:
@@ -54,6 +70,8 @@ class Surface:
     source: str
     tree: str = ""
     calls: frozenset[int] = frozenset()
+    relations: frozenset[int] = frozenset()
+    opaque: str = ""
 
 
 def functions() -> dict[int, Function]:
@@ -65,8 +83,13 @@ def functions() -> dict[int, Function]:
             "ELSE p.prosrc END || ' ' || "
             "COALESCE(pg_get_expr(p.proargdefaults,0),'') AS source, "
             "COALESCE(p.proargdefaults::text,'') || ' ' || "
-            "COALESCE(p.prosqlbody::text,'') AS tree "
-            "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace"
+            "COALESCE(p.prosqlbody::text,'') AS tree, l.lanname,p.prosrc,"
+            "COALESCE(p.probin,''),COALESCE((SELECT e.extname FROM pg_depend d "
+            "JOIN pg_extension e ON e.oid=d.refobjid "
+            "WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid "
+            "AND d.refclassid='pg_extension'::regclass AND d.deptype='e'),'') "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+            "JOIN pg_language l ON l.oid=p.prolang"
         )
         return {
             int(row[0]): Function(int(row[0]), *(str(value) for value in row[1:]))
@@ -102,7 +125,8 @@ def _scheduling_relations() -> list[int]:
             "ON d.classid='pg_rewrite'::regclass AND r.oid=d.objid "
             "WHERE d.refclassid='pg_class'::regclass), relations(oid) AS ("
             "SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-            "WHERE n.nspname='clinic_app' AND c.relname LIKE 'scheduling_%%' "
+            "WHERE ((n.nspname='clinic_app' AND c.relname LIKE 'scheduling_%%') "
+            "OR n.oid=pg_my_temp_schema()) "
             "AND c.relkind IN ('r','p','f','v','m') UNION "
             "SELECT links.child FROM relations JOIN links ON links.parent=relations.oid"
             ") SELECT oid FROM relations ORDER BY oid"
@@ -206,6 +230,30 @@ def _identifier(value: str) -> str:
     return value[1:-1].replace('""', '"') if value.startswith('"') else value.lower()
 
 
+def opaque_marker(procedure: Function) -> str:
+    """Retain approved opaque risk; never certify native code clock-free."""
+    if procedure.language in {"sql", "plpgsql"}:
+        return ""
+    allowlist = cast(
+        "dict[str, dict[str, str]]",
+        json.loads(Path(__file__).with_name("clock_opaque_allowlist.json").read_text()),
+    )
+    entry = allowlist.get(procedure.identity, {})
+    approved = bool(entry.get("reason")) and all(
+        entry.get(field) == getattr(procedure, field)
+        for field in (
+            "language",
+            "implementation",
+            "library",
+            "extension",
+            "returns",
+            "volatility",
+        )
+    )
+    status = "reviewed" if approved else "unreviewed"
+    return f"opaque:{status}:{procedure.identity}"
+
+
 class Census:
     """Conservatively resolve overloaded calls and walk helpers with cycle safety."""
 
@@ -222,6 +270,13 @@ class Census:
             self.operators = {
                 int(oid): int(function) for oid, function in cursor.fetchall()
             }
+            cursor.execute(
+                "SELECT oprname,oprcode::oid FROM pg_operator WHERE oprcode=ANY(%s)",
+                [list(readers)],
+            )
+            self.reader_operators: dict[str, set[int]] = defaultdict(set)
+            for name, function in cursor.fetchall():
+                self.reader_operators[str(name)].add(int(function))
             cursor.execute("SELECT oid,typinput::oid FROM pg_type WHERE typinput<>0")
             self.inputs = {
                 int(oid): int(function) for oid, function in cursor.fetchall()
@@ -233,10 +288,86 @@ class Census:
             self.dependencies: dict[int, set[int]] = defaultdict(set)
             for caller, callee in cursor.fetchall():
                 self.dependencies[int(caller)].add(int(callee))
+            cursor.execute(
+                "SELECT c.oid,'view:' || c.oid::regclass::text,pg_get_viewdef(c.oid),"
+                "r.ev_action::text || ' ' || r.ev_qual::text,r.oid,c.relname "
+                "FROM pg_class c JOIN pg_rewrite r ON r.ev_class=c.oid "
+                "WHERE c.relkind IN ('v','m') AND r.rulename='_RETURN'"
+            )
+            view_rows = cursor.fetchall()
+            cursor.execute(
+                "SELECT objid,refclassid::regclass::text,refobjid FROM pg_depend "
+                "WHERE classid='pg_rewrite'::regclass "
+                "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass)"
+            )
+            view_functions: dict[int, set[int]] = defaultdict(set)
+            view_relations: dict[int, set[int]] = defaultdict(set)
+            for rule, kind, reference in cursor.fetchall():
+                target = view_functions if kind == "pg_proc" else view_relations
+                target[int(rule)].add(int(reference))
+            self.views = {
+                int(oid): Surface(
+                    str(key),
+                    str(source),
+                    str(tree),
+                    frozenset(view_functions[int(rule)]),
+                    frozenset(view_relations[int(rule)]),
+                )
+                for oid, key, source, tree, rule, _ in view_rows
+            }
+            self.view_names = {str(row[5]) for row in view_rows}
+
+    def unresolved_marker(self, procedure: Function) -> str:
+        if procedure.language not in {"sql", "plpgsql"}:
+            return opaque_marker(procedure)
+        if sql_boundary_violations(procedure.source):
+            return f"unresolved-sql-boundary:{procedure.identity}"
+        if procedure.language == "plpgsql":
+            # PL/pgSQL does not persist relation dependencies. Do not pretend a
+            # token match is a catalog edge: a possible view reference is risky.
+            identifiers = {
+                value.strip('"')
+                for kind, value in sql_tokens(procedure.implementation)
+                if kind in tokens.Name or kind in tokens.Literal.String.Symbol
+            }
+            if identifiers & self.view_names:
+                return f"unresolved-plpgsql-view:{procedure.identity}"
+        return ""
+
+    def function_surface(self, procedure: Function) -> Surface:
+        marker = self.unresolved_marker(procedure)
+        calls = set(self.dependencies[procedure.oid])
+        relations: frozenset[int] = frozenset()
+        if procedure.language == "sql":
+            dependencies = sql_dependencies(procedure.oid)
+            calls.update(dependencies.functions)
+            relations = dependencies.relations
+            if dependencies.unresolved:
+                marker = f"unresolved-sql:{procedure.identity}"
+        return Surface(
+            "function:" + procedure.identity,
+            procedure.source,
+            procedure.tree,
+            frozenset(calls),
+            relations,
+            marker,
+        )
+
+    def operator_calls(self, source: str) -> Counter[int]:
+        return Counter(
+            oid
+            for token, value in sql_tokens(source)
+            if token in tokens.Operator
+            for oid in self.reader_operators.get(value, ())
+        )
 
     def inspect(self, surface: Surface) -> tuple[Counter[str], set[int]]:
         calls = set(surface.calls)
         textual: Counter[str] = Counter()
+        if surface.opaque:
+            textual[surface.opaque] = 1
+            if surface.opaque.startswith("opaque:"):
+                return textual, calls
         for match in CALL.finditer(surface.source):
             schema = match.group("schema")
             for oid in self.by_name.get(_identifier(match.group("name")), ()):
@@ -246,6 +377,11 @@ class Census:
                 calls.add(oid)
                 if oid in self.readers:
                     textual[procedure.identity] += 1
+        operators = self.operator_calls(surface.source)
+        calls.update(operators)
+        textual.update(
+            {self.procedures[oid].identity: count for oid, count in operators.items()}
+        )
         for match in SQL_VALUE.finditer(surface.source):
             textual["sql:" + re.sub(r"\s+", "", match.group()).lower()] += 1
         compiled: Counter[str] = Counter()
@@ -270,7 +406,7 @@ class Census:
         # it twice. Compiled nodes also expose operators and casts with no call text.
         return textual | compiled, calls
 
-    def inventory(self, roots: Iterable[Surface]) -> dict[str, dict[str, object]]:
+    def inventory(self, roots: Iterable[Surface]) -> dict[str, ClockNode]:
         direct: dict[str, Counter[str]] = {}
         edges: dict[str, set[str]] = {}
         pending = list(roots)
@@ -280,20 +416,19 @@ class Census:
                 continue
             direct[surface.key], calls = self.inspect(surface)
             edges[surface.key] = set()
+            for oid in surface.relations:
+                if oid in self.views:
+                    view = self.views[oid]
+                    edges[surface.key].add(view.key)
+                    pending.append(view)
             for oid in calls:
                 procedure = self.procedures.get(oid)
-                if procedure is None or procedure.schema == "pg_catalog":
+                if procedure is None or oid in self.readers:
                     continue
                 key = "function:" + procedure.identity
                 edges[surface.key].add(key)
-                pending.append(
-                    Surface(
-                        key,
-                        procedure.source,
-                        procedure.tree,
-                        frozenset(self.dependencies[oid]),
-                    )
-                )
+                if key not in direct:
+                    pending.append(self.function_surface(procedure))
         clocked = {key for key, counts in direct.items() if counts}
         while True:
             inherited = {key for key, callees in edges.items() if callees & clocked}
@@ -310,13 +445,37 @@ class Census:
         }
 
 
-def live_clock_inventory() -> dict[str, dict[str, object]]:
+def live_clock_inventory() -> dict[str, ClockNode]:
     procedures = functions()
+    census = Census(procedures, catalog_readers())
     roots = surfaces()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT name,statement,from_sql FROM pg_prepared_statements")
+        roots.extend(
+            Surface(
+                "prepared:" + str(name),
+                str(statement),
+                opaque="unresolved-prepared" if from_sql else "",
+            )
+            for name, statement, from_sql in cursor.fetchall()
+        )
+        cursor.execute("SELECT pg_my_temp_schema()")
+        temporary = cursor.fetchone()
+        assert temporary is not None
+        temporary_schema = int(temporary[0])
+        cursor.execute(
+            "SELECT nspname FROM pg_namespace WHERE oid=%s", [temporary_schema]
+        )
+        temporary_name = cursor.fetchone()
     roots.extend(
-        Surface("function:" + function.identity, function.source, function.tree)
+        census.function_surface(function)
         for function in procedures.values()
-        if function.schema == "clinic_app"
-        and function.name.startswith(("scheduling_", "patient_booking_", "waitlist_"))
+        if (
+            function.schema == "clinic_app"
+            and function.name.startswith(
+                ("scheduling_", "patient_booking_", "waitlist_")
+            )
+        )
+        or (temporary_name is not None and function.schema == temporary_name[0])
     )
-    return Census(procedures, catalog_readers()).inventory(roots)
+    return census.inventory(roots)

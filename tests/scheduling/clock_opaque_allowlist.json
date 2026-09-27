@@ -1,0 +1,569 @@
+{
+  "clinic_app.gen_random_uuid()": {
+    "extension": "pgcrypto",
+    "implementation": "pg_random_uuid",
+    "language": "c",
+    "library": "$libdir/pgcrypto",
+    "reason": "Required UUID identity generation; admitted native randomness dependency, not a claim of clock independence.",
+    "returns": "uuid",
+    "volatility": "v"
+  },
+  "pg_catalog.array_position(anycompatiblearray, anycompatible)": {
+    "extension": "",
+    "implementation": "array_position",
+    "language": "internal",
+    "library": "",
+    "reason": "Required lookup of values within supplied arrays; admits this exact array-search implementation.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.array_position(anycompatiblearray, anycompatible, integer)": {
+    "extension": "",
+    "implementation": "array_position_start",
+    "language": "internal",
+    "library": "",
+    "reason": "Required lookup of values within supplied arrays; admits this exact array-search implementation.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.cardinality(anyarray)": {
+    "extension": "",
+    "implementation": "array_cardinality",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-array cardinality used in definition shape checks.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.count(\"any\")": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Required row-count aggregate used in capacity/shape checks; admits the exact aggregate implementation.",
+    "returns": "bigint",
+    "volatility": "i"
+  },
+  "pg_catalog.count()": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "reason": "Required row-count aggregate used in capacity/shape checks; admits the exact aggregate implementation.",
+    "returns": "bigint",
+    "volatility": "i"
+  },
+  "pg_catalog.current_setting(text)": {
+    "extension": "",
+    "implementation": "show_config_by_name",
+    "language": "internal",
+    "library": "",
+    "reason": "Required literal tenant/actor/configuration lookups. Dynamic names are forbidden by the repo guard; this is not a claim that arbitrary GUCs are clock independent.",
+    "returns": "text",
+    "volatility": "s"
+  },
+  "pg_catalog.current_setting(text, boolean)": {
+    "extension": "",
+    "implementation": "show_config_by_name_missing_ok",
+    "language": "internal",
+    "library": "",
+    "reason": "Required literal tenant/actor/configuration lookups. Dynamic names are forbidden by the repo guard; this is not a claim that arbitrary GUCs are clock independent.",
+    "returns": "text",
+    "volatility": "s"
+  },
+  "pg_catalog.date_ge(date, date)": {
+    "extension": "",
+    "implementation": "date_ge",
+    "language": "internal",
+    "library": "",
+    "reason": "Required comparison of supplied validity dates.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.date_trunc(text, interval)": {
+    "extension": "",
+    "implementation": "interval_trunc",
+    "language": "internal",
+    "library": "",
+    "reason": "Required minute-boundary normalization of supplied values; potential temporal dependency remains visible.",
+    "returns": "interval",
+    "volatility": "i"
+  },
+  "pg_catalog.date_trunc(text, timestamp with time zone, text)": {
+    "extension": "",
+    "implementation": "timestamptz_trunc_zone",
+    "language": "internal",
+    "library": "",
+    "reason": "Required minute-boundary normalization of supplied values; potential temporal dependency remains visible.",
+    "returns": "timestamp with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.date_trunc(text, timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_trunc",
+    "language": "internal",
+    "library": "",
+    "reason": "Required minute-boundary normalization of supplied values; potential temporal dependency remains visible.",
+    "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.extract(text, date)": {
+    "extension": "",
+    "implementation": "extract_date",
+    "language": "internal",
+    "library": "",
+    "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.extract(text, interval)": {
+    "extension": "",
+    "implementation": "extract_interval",
+    "language": "internal",
+    "library": "",
+    "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.extract(text, time with time zone)": {
+    "extension": "",
+    "implementation": "extract_timetz",
+    "language": "internal",
+    "library": "",
+    "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.extract(text, time without time zone)": {
+    "extension": "",
+    "implementation": "extract_time",
+    "language": "internal",
+    "library": "",
+    "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.extract(text, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "extract_timestamptz",
+    "language": "internal",
+    "library": "",
+    "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible.",
+    "returns": "numeric",
+    "volatility": "s"
+  },
+  "pg_catalog.extract(text, timestamp without time zone)": {
+    "extension": "",
+    "implementation": "extract_timestamp",
+    "language": "internal",
+    "library": "",
+    "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.gen_random_uuid()": {
+    "extension": "",
+    "implementation": "gen_random_uuid",
+    "language": "internal",
+    "library": "",
+    "reason": "Required UUID identity generation; admitted native randomness dependency, not a claim of clock independence.",
+    "returns": "uuid",
+    "volatility": "v"
+  },
+  "pg_catalog.generate_series(bigint, bigint)": {
+    "extension": "",
+    "implementation": "generate_series_int8",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "bigint",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(bigint, bigint, bigint)": {
+    "extension": "",
+    "implementation": "generate_series_step_int8",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "bigint",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(integer, integer)": {
+    "extension": "",
+    "implementation": "generate_series_int4",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(integer, integer, integer)": {
+    "extension": "",
+    "implementation": "generate_series_step_int4",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(numeric, numeric)": {
+    "extension": "",
+    "implementation": "generate_series_numeric",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(numeric, numeric, numeric)": {
+    "extension": "",
+    "implementation": "generate_series_step_numeric",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "numeric",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(timestamp with time zone, timestamp with time zone, interval, text)": {
+    "extension": "",
+    "implementation": "generate_series_timestamptz_at_zone",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "timestamp with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(timestamp without time zone, timestamp without time zone, interval)": {
+    "extension": "",
+    "implementation": "generate_series_timestamp",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.hashtextextended(text, bigint)": {
+    "extension": "",
+    "implementation": "hashtextextended",
+    "language": "internal",
+    "library": "",
+    "reason": "Required hashing of supplied lock-key text and seed.",
+    "returns": "bigint",
+    "volatility": "i"
+  },
+  "pg_catalog.int2(integer)": {
+    "extension": "",
+    "implementation": "i4toi2",
+    "language": "internal",
+    "library": "",
+    "reason": "Required integer narrowing for stored capacity units.",
+    "returns": "smallint",
+    "volatility": "i"
+  },
+  "pg_catalog.int24ge(smallint, integer)": {
+    "extension": "",
+    "implementation": "int24ge",
+    "language": "internal",
+    "library": "",
+    "reason": "Required smallint/integer bound comparison.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int24le(smallint, integer)": {
+    "extension": "",
+    "implementation": "int24le",
+    "language": "internal",
+    "library": "",
+    "reason": "Required smallint/integer bound comparison.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int2eq(smallint, smallint)": {
+    "extension": "",
+    "implementation": "int2eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Required smallint equality comparison.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int4(smallint)": {
+    "extension": "",
+    "implementation": "i2toi4",
+    "language": "internal",
+    "library": "",
+    "reason": "Required integer widening for capacity arithmetic.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.int4eq(integer, integer)": {
+    "extension": "",
+    "implementation": "int4eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Required integer equality comparison.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int8eq(bigint, bigint)": {
+    "extension": "",
+    "implementation": "int8eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bigint equality comparison.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.lower(anymultirange)": {
+    "extension": "",
+    "implementation": "multirange_lower",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-text/range lower operation; conservative overload resolution retains each exact implementation.",
+    "returns": "anyelement",
+    "volatility": "i"
+  },
+  "pg_catalog.lower(anyrange)": {
+    "extension": "",
+    "implementation": "range_lower",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-text/range lower operation; conservative overload resolution retains each exact implementation.",
+    "returns": "anyelement",
+    "volatility": "i"
+  },
+  "pg_catalog.lower(text)": {
+    "extension": "",
+    "implementation": "lower",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-text/range lower operation; conservative overload resolution retains each exact implementation.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.make_interval(integer, integer, integer, integer, integer, integer, double precision)": {
+    "extension": "",
+    "implementation": "make_interval",
+    "language": "internal",
+    "library": "",
+    "reason": "Required construction of service-buffer intervals from supplied components.",
+    "returns": "interval",
+    "volatility": "i"
+  },
+  "pg_catalog.md5(bytea)": {
+    "extension": "",
+    "implementation": "md5_bytea",
+    "language": "internal",
+    "library": "",
+    "reason": "Required hashing of supplied bytes/text for deterministic identifiers; not a security-signature primitive.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.md5(text)": {
+    "extension": "",
+    "implementation": "md5_text",
+    "language": "internal",
+    "library": "",
+    "reason": "Required hashing of supplied bytes/text for deterministic identifiers; not a security-signature primitive.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.octet_length(bit)": {
+    "extension": "",
+    "implementation": "bitoctetlength",
+    "language": "internal",
+    "library": "",
+    "reason": "Required byte-length checks of supplied values.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.octet_length(bytea)": {
+    "extension": "",
+    "implementation": "byteaoctetlen",
+    "language": "internal",
+    "library": "",
+    "reason": "Required byte-length checks of supplied values.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.octet_length(character)": {
+    "extension": "",
+    "implementation": "bpcharoctetlen",
+    "language": "internal",
+    "library": "",
+    "reason": "Required byte-length checks of supplied values.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.octet_length(text)": {
+    "extension": "",
+    "implementation": "textoctetlen",
+    "language": "internal",
+    "library": "",
+    "reason": "Required byte-length checks of supplied values.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.pg_advisory_xact_lock(bigint)": {
+    "extension": "",
+    "implementation": "pg_advisory_xact_lock_int8",
+    "language": "internal",
+    "library": "",
+    "reason": "Required transaction-scoped scheduling lock acquisition. Blocking/time effects are admitted, not asserted absent.",
+    "returns": "void",
+    "volatility": "v"
+  },
+  "pg_catalog.pg_advisory_xact_lock(integer, integer)": {
+    "extension": "",
+    "implementation": "pg_advisory_xact_lock_int4",
+    "language": "internal",
+    "library": "",
+    "reason": "Required transaction-scoped scheduling lock acquisition. Blocking/time effects are admitted, not asserted absent.",
+    "returns": "void",
+    "volatility": "v"
+  },
+  "pg_catalog.range_overlaps(anyrange, anyrange)": {
+    "extension": "",
+    "implementation": "range_overlaps",
+    "language": "internal",
+    "library": "",
+    "reason": "Required overlap comparison of supplied ranges.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.texteq(text, text)": {
+    "extension": "",
+    "implementation": "texteq",
+    "language": "internal",
+    "library": "",
+    "reason": "Required equality comparison of supplied text.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.time_gt(time without time zone, time without time zone)": {
+    "extension": "",
+    "implementation": "time_gt",
+    "language": "internal",
+    "library": "",
+    "reason": "Required comparison of supplied local times.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz_eq(timestamp with time zone, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamp_eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Required equality comparison of supplied instants.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz_ge(timestamp with time zone, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamp_ge",
+    "language": "internal",
+    "library": "",
+    "reason": "Required ordering of supplied instants.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamp_gt",
+    "language": "internal",
+    "library": "",
+    "reason": "Required ordering of supplied instants.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.to_jsonb(anyelement)": {
+    "extension": "",
+    "implementation": "to_jsonb",
+    "language": "internal",
+    "library": "",
+    "reason": "Required snapshot comparison of supplied definition rows.",
+    "returns": "jsonb",
+    "volatility": "s"
+  },
+  "pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "range_constructor2",
+    "language": "internal",
+    "library": "",
+    "reason": "Required half-open range construction from supplied appointment/availability bounds.",
+    "returns": "tstzrange",
+    "volatility": "i"
+  },
+  "pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)": {
+    "extension": "",
+    "implementation": "range_constructor3",
+    "language": "internal",
+    "library": "",
+    "reason": "Required half-open range construction from supplied appointment/availability bounds.",
+    "returns": "tstzrange",
+    "volatility": "i"
+  },
+  "pg_catalog.unnest(anyarray)": {
+    "extension": "",
+    "implementation": "array_unnest",
+    "language": "internal",
+    "library": "",
+    "reason": "Required expansion of supplied arrays/multiranges; conservative overload resolution retains the exact implementation.",
+    "returns": "anyelement",
+    "volatility": "i"
+  },
+  "pg_catalog.unnest(anymultirange)": {
+    "extension": "",
+    "implementation": "multirange_unnest",
+    "language": "internal",
+    "library": "",
+    "reason": "Required expansion of supplied arrays/multiranges; conservative overload resolution retains the exact implementation.",
+    "returns": "anyrange",
+    "volatility": "i"
+  },
+  "pg_catalog.unnest(tsvector)": {
+    "extension": "",
+    "implementation": "tsvector_unnest",
+    "language": "internal",
+    "library": "",
+    "reason": "Required expansion of supplied arrays/multiranges; conservative overload resolution retains the exact implementation.",
+    "returns": "record",
+    "volatility": "i"
+  },
+  "pg_catalog.upper(anymultirange)": {
+    "extension": "",
+    "implementation": "multirange_upper",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-text/range upper operation; conservative overload resolution retains each exact implementation.",
+    "returns": "anyelement",
+    "volatility": "i"
+  },
+  "pg_catalog.upper(anyrange)": {
+    "extension": "",
+    "implementation": "range_upper",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-text/range upper operation; conservative overload resolution retains each exact implementation.",
+    "returns": "anyelement",
+    "volatility": "i"
+  },
+  "pg_catalog.upper(text)": {
+    "extension": "",
+    "implementation": "upper",
+    "language": "internal",
+    "library": "",
+    "reason": "Required supplied-text/range upper operation; conservative overload resolution retains each exact implementation.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.uuid_eq(uuid, uuid)": {
+    "extension": "",
+    "implementation": "uuid_eq",
+    "language": "internal",
+    "library": "",
+    "reason": "Required equality comparison of supplied identity keys.",
+    "returns": "boolean",
+    "volatility": "i"
+  }
+}
