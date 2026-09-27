@@ -2075,51 +2075,94 @@
     },
     {
       "symbol": "apps.realtime.authorization._patient_topics",
-      "signals": ["tenant_boundary"],
-      "kind": "nonstaff",
-      "reason": "Exact patient-session enrollment and operation authority, exercised through ticket and stream views in tests/realtime/test_topics.py; never installs staff GUCs."
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "reason": "Patient-session boundary, not a nonstaff exemption: the observer sees it read clinic and enrollment relations through patient_session_context. The named executable oracle requires that observed evidence, an exact-enrollment grant and a foreign-enrollment denial; staff GUCs are never installed.",
+      "observe": true,
+      "probes": [
+        "apps.realtime.authorization._patient_topics#observed"
+      ]
     },
     {
       "symbol": "apps.realtime.hooks.permission_changed",
-      "signals": ["membership"],
-      "kind": "infrastructure",
-      "reason": "Selects affected subjects only to publish commit-bound invalidations, never grants permission; real idle-stream revocation is exercised in tests/realtime/test_invalidation.py."
+      "signals": [
+        "membership"
+      ],
+      "kind": "direct",
+      "reason": "Reads clinic memberships to choose invalidation subjects, so it cannot be a nonstaff or infrastructure exemption. The named executable oracle observes the membership read and compares the scheduled authz:user topics exactly with the owner-read member set.",
+      "observe": true,
+      "probes": [
+        "apps.realtime.hooks.permission_changed#observed"
+      ]
     },
     {
       "symbol": "apps.realtime.scopes._schedule_scope",
-      "signals": ["scope_name"],
+      "signals": [
+        "scope_name"
+      ],
       "kind": "infrastructure",
-      "reason": "Serializes a signed, bounded transport binding after commit; caller permissions and subscriber permissions are independently checked in tests/realtime/test_topics.py."
+      "reason": "Serializes a signed transport lease into an on_commit Redis write after its callers checked permission; grants nothing. Certified by the authority observer and the complete staff-state backstop in tests/identity/nonstaff_realtime_probes.py."
     },
     {
       "symbol": "apps.realtime.scopes.authorize_scope",
-      "signals": ["actor", "denial", "scope_name"],
-      "kind": "v2",
-      "reason": "Verifies exact signed topic/subject binding and current originating permission, including clinical subject scope; tests/realtime/test_topics.py exercises ownership, transplantation and care-team revocation."
+      "signals": [
+        "actor",
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.realtime.scopes.grant_clinic_topic",
-      "signals": ["denial", "membership"],
-      "kind": "v2",
-      "reason": "New transport-lease boundary requires current staff.organization permission and exact-clinic target membership; positive and denied calls are exercised in tests/realtime/test_topics.py."
+      "signals": [
+        "denial",
+        "membership"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.realtime.scopes.revoke_clinic_topic",
-      "signals": ["denial"],
-      "kind": "v2",
-      "reason": "Revokes only the exact topic/subject lease after checking current staff.organization permission; tests/realtime/test_topics.py proves subsequent subscription denial."
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.realtime.authorization._verified_staff",
-      "signals": ["authentication", "tenant_boundary"],
-      "kind": "v2",
-      "reason": "New SSE session/OTP and permission-bundle boundary, exercised through real clinic_app checks in tests/realtime/test_authorization.py and test_tickets.py; not a pre-v2 role guard."
+      "signals": [
+        "authentication",
+        "tenant_boundary"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.realtime.authorization.authorize_topics_sync",
-      "signals": ["scope_name"],
-      "kind": "v2",
-      "reason": "New SSE short-transaction boundary, including patient-session isolation and fresh revocation checks; tests/realtime/test_stream.py proves backend release and reauthorization."
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.retention.services._denied",
@@ -3270,6 +3313,8 @@
     "apps.prescription.views.draft_workspace",
     "apps.prescription.views.review_view",
     "apps.prescription.views.signing_status_view",
+    "apps.realtime.authorization._patient_topics#observed",
+    "apps.realtime.hooks.permission_changed#observed",
     "apps.retention.services._clinic",
     "apps.retention.services._denied",
     "apps.retention.services._record_patient_view#observed",

@@ -10,6 +10,7 @@ from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._page_wait import wait_for_js
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_agenda import (
     BOOKING_SUBMIT,
     DAYS,
@@ -53,7 +54,7 @@ def _accessibility(page: Page, root: Path, width: int) -> None:
     }).map(n => n.tagName)""")
     assert small == []
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    page.screenshot(path=str(root / f"agenda-{width}.png"), full_page=True)
+    full_page_screenshot(page, root / f"agenda-{width}.png")
 
 
 def _ticket_replay(page: Page) -> None:
@@ -93,7 +94,7 @@ def _degraded(page: Page, base_url: str, clinic_id: str, root: Path) -> None:
     ) as polling:
         page.clock.fast_forward(30000)
     assert polling.value.status == 200
-    page.screenshot(path=str(root / "degraded.png"), full_page=True)
+    full_page_screenshot(page, root / "degraded.png")
 
 
 def test_two_sessions_refetch_and_fail_closed_without_realtime(

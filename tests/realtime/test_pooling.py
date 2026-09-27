@@ -130,7 +130,7 @@ def test_realtime_settings_mount_only_stream_without_tenant_middleware(
         "apps.core.middleware.ResponsePrivacyMiddleware",
         "apps.core.middleware.LiveModeHaltMiddleware",
         "apps.core.middleware.ContentSecurityPolicyMiddleware",
-        "django.contrib.sessions.middleware.SessionMiddleware",
+        "apps.identity.sessions.RotationSafeSessionMiddleware",
         "django.middleware.csrf.CsrfViewMiddleware",
         "django.contrib.auth.middleware.AuthenticationMiddleware",
         "django_otp.middleware.OTPMiddleware",

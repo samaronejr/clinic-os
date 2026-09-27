@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
-from apps.identity.models import RoleGrant, UserClinicRole
+from apps.identity.models import RoleGrant, User, UserClinicRole
 from apps.realtime import stream as stream_module
 from apps.realtime import transport
 from apps.realtime.authorization import authorize_topics_sync
@@ -73,6 +73,10 @@ def mutate(graph: RbacGraph, key: str, action: str) -> None:
                 session.save(update_fields=("expire_date",))
             elif action == "session_delete":
                 Session.objects.get(pk=key).delete()
+            elif action == "inactive":
+                user = User.objects.get(pk=graph.shared_user)
+                user.is_active = False
+                user.save(update_fields=("is_active",))
             else:
                 raise AssertionError(action)
     finally:
@@ -82,7 +86,8 @@ def mutate(graph: RbacGraph, key: str, action: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "action", ["membership", "role", "permission", "expiry", "session_delete"]
+    "action",
+    ["membership", "role", "permission", "expiry", "session_delete", "inactive"],
 )
 def test_committed_changes_wake_idle_stream_and_reauthorize_immediately(
     rbac_graph: RbacGraph,
@@ -132,7 +137,7 @@ def test_committed_changes_wake_idle_stream_and_reauthorize_immediately(
     assert not any(observed)
 
 
-@pytest.mark.parametrize("action", ["membership", "expiry", "permission"])
+@pytest.mark.parametrize("action", ["membership", "expiry", "permission", "inactive"])
 def test_lost_control_message_cannot_release_a_post_commit_domain_frame(
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
@@ -162,6 +167,12 @@ def test_lost_control_message_cannot_release_a_post_commit_domain_frame(
                             "DELETE FROM clinic_app.identity_userclinicrole "
                             "WHERE user_id=%s AND clinic_id=%s",
                             [rbac_graph.shared_user, rbac_graph.clinic_a],
+                        )
+                    elif action == "inactive":
+                        owner.execute(
+                            "UPDATE clinic_app.identity_user SET is_active = false "
+                            "WHERE id = %s",
+                            [rbac_graph.shared_user],
                         )
                     elif action == "expiry":
                         owner.execute(

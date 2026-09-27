@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.identity.models import User, UserClinicRole
 from apps.realtime.authorization import TopicDeniedError
 from apps.realtime.tickets import consume_ticket, issue_ticket
 from apps.realtime.transport import redis_client
 from django.conf import settings
+from django.contrib.sessions.models import Session
+from django.db import connection, transaction
 from django.test import Client
 
 from patient_service_support import runtime_role
@@ -100,6 +103,56 @@ def test_ticket_http_denials_csrf_and_private_headers(rbac_graph: RbacGraph) -> 
         assert denied.status_code == 403
         bodies.append(denied.content)
     assert len(set(bodies)) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("state", ["inactive", "revoked"])
+def test_inactive_or_revoked_actor_cannot_obtain_a_ticket(
+    rbac_graph: RbacGraph, state: str
+) -> None:
+    key = session_key(rbac_graph)
+    csrf = "a" * 32
+    client = Client(enforce_csrf_checks=True)
+    client.cookies[settings.SESSION_COOKIE_NAME] = key
+    client.cookies[settings.CSRF_COOKIE_NAME] = csrf
+
+    def request(clinic: object) -> tuple[int, bytes, set[str]]:
+        with runtime_role():
+            response = client.post(
+                "/rt/stream",
+                {"topics": [f"clinic:{clinic}:agenda"]},
+                content_type="application/json",
+                HTTP_X_CSRFTOKEN=csrf,
+            )
+        return response.status_code, response.content, set(response.cookies)
+
+    assert request(rbac_graph.clinic_a)[0] == 200
+    unknown = request(uuid4())
+    assert unknown[0] == 403
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.organization_a)],
+        )
+        if state == "inactive":
+            user = User.objects.get(pk=rbac_graph.shared_user)
+            user.is_active = False
+            user.save(update_fields=("is_active",))
+        else:
+            UserClinicRole.objects.filter(
+                user_id=rbac_graph.shared_user, clinic_id=rbac_graph.clinic_a
+            ).delete()
+    stored = Session.objects.values_list("session_data", "expire_date").get(pk=key)
+    with redis_client() as redis:
+        tickets = set(redis.scan_iter("rt-ticket:*"))
+    # Byte-identical to the unknown-topic refusal; no ticket, cookie or session
+    # write accompanies the refusal (SC-1).
+    assert request(rbac_graph.clinic_a) == unknown
+    with redis_client() as redis:
+        assert set(redis.scan_iter("rt-ticket:*")) == tickets
+    assert (
+        Session.objects.values_list("session_data", "expire_date").get(pk=key) == stored
+    )
 
 
 @pytest.mark.parametrize("ticket", ["", "../", "x" * 1000, "SINTETICO-SENTINELA-PHI"])

@@ -114,7 +114,7 @@ def test_asgi_disconnect_leaves_no_database_or_pubsub_connection(
                 "apps.core.middleware.ResponsePrivacyMiddleware",
                 "apps.core.middleware.LiveModeHaltMiddleware",
                 "apps.core.middleware.ContentSecurityPolicyMiddleware",
-                "django.contrib.sessions.middleware.SessionMiddleware",
+                "apps.identity.sessions.RotationSafeSessionMiddleware",
                 "django.middleware.csrf.CsrfViewMiddleware",
                 "django.contrib.auth.middleware.AuthenticationMiddleware",
                 "django_otp.middleware.OTPMiddleware",

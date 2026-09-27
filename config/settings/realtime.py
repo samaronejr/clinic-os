@@ -29,7 +29,9 @@ MIDDLEWARE = [
     "apps.core.middleware.ResponsePrivacyMiddleware",
     "apps.core.middleware.LiveModeHaltMiddleware",
     "apps.core.middleware.ContentSecurityPolicyMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    # Same rotation-safe session middleware as WSGI: a stale-key stream or
+    # ticket refusal never deletes the browser's freshly rotated cookie.
+    "apps.identity.sessions.RotationSafeSessionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_otp.middleware.OTPMiddleware",
