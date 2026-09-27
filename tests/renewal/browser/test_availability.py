@@ -32,7 +32,7 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable, wait_for_js
+from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
@@ -263,6 +263,7 @@ def _list_path(staff: dict[str, str], clinic: str = "clinic_a") -> str:
 
 def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
     page.goto(f"{base_url}/auth/login/")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(username)
     page.locator("#id_password").fill(password)
     with page.expect_navigation():

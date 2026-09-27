@@ -32,7 +32,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import await_autofocus, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import new_context
 
@@ -280,6 +280,7 @@ def _ring(page: Page) -> dict[str, str]:
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
     page.goto(f"{base_url}/auth/login/")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
     with page.expect_navigation():

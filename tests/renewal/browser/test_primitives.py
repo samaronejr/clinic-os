@@ -24,7 +24,7 @@ from django.utils.translation import gettext
 from PIL import Image
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable, wait_for_js
+from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
 from renewal.browser.engines import (
     focus_reveal,
     focuses_dialogs_and_scrollers,
@@ -411,6 +411,7 @@ def test_showcase_is_absent_from_the_served_runtime_and_css_is_served(
     assert anonymous.status == FORBIDDEN_STATUS
     # Signed in: the production resolver has no showcase route at all.
     renewal_page.goto(f"{showcase.base_url}/auth/login/", wait_until="load")
+    await_autofocus(renewal_page.locator("#id_username"))
     renewal_page.fill("#id_username", renewal_owner["username"])
     renewal_page.fill("#id_password", renewal_owner["password"])
     with renewal_page.expect_navigation(wait_until="load"):
