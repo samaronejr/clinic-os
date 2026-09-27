@@ -23,9 +23,10 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import await_autofocus, wait_for_js
+from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
+    full_page_screenshot,
     navigations_are_worker_controlled,
     offline_navigation_error,
     worker_answers_offline,
@@ -157,9 +158,7 @@ def _watch_errors(page: Page) -> list[str]:
 def _capture(page: Page, root: Path, name: str) -> str:
     destination = root / "workspace" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=True)
-    destination.chmod(0o600)
-    return destination.name
+    return ", ".join(path.name for path in full_page_screenshot(page, destination))
 
 
 # Page state around a workspace submit, for the hosted WebKit stall where the
@@ -308,7 +307,7 @@ def _modules(page: Page) -> list[str]:
 
 
 def _no_overflow(page: Page) -> bool:
-    return bool(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+    return bool(evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth"))
 
 
 def _await_worker(page: Page) -> None:

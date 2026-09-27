@@ -11,7 +11,8 @@ import pytest
 from PIL import Image
 from playwright.sync_api import expect
 
-from renewal.browser.engines import zoom_200
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import full_page_screenshot, zoom_200
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 
@@ -31,8 +32,8 @@ def submit(page: Page, action: str) -> None:
 def capture(page: Page, root: Path, scene: str, width: int) -> None:
     destination = root / "clinic-settings"
     destination.mkdir(exist_ok=True)
-    page.screenshot(path=str(destination / f"{scene}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, destination / f"{scene}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def contrast(page: Page) -> float:

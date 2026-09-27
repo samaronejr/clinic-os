@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import contextlib
 import json
 import os
@@ -248,6 +249,99 @@ def test_browser_suites_leave_engine_specific_apis_to_the_engines_module() -> No
         for api in ENGINE_SPECIFIC_APIS
         if api in (REPOSITORY / relpath).read_text(encoding="utf-8")
     ]
+    assert offenders == []
+
+
+BROWSER_SUITES = REPOSITORY / "tests" / "renewal" / "browser"
+ENGINES_MODULE = BROWSER_SUITES / "engines.py"
+# The only functions that may capture beyond the viewport: both keep each
+# capture within the engines' pixel limit (engines.py, Screenshot size).
+FULL_PAGE_CAPTURERS = ("full_page_screenshot", "full_page_clip")
+# Reviewed exemptions, per file: function -> reason.
+CAPTURE_EXEMPTIONS: dict[Path, dict[str, str]] = {
+    ENGINES_MODULE: dict.fromkeys(
+        FULL_PAGE_CAPTURERS, "the splitter: sections within the pixel limit"
+    ),
+    BROWSER_SUITES / "conftest.py": {
+        "csp_console_violations": (
+            "patches Page/Locator.screenshot with a pass-through that attributes"
+            " WebKit's screenshot style; every capture is still a call site here"
+        ),
+    },
+}
+
+
+def _full_page_captures(path: Path, exempt: tuple[str, ...]) -> list[str]:
+    """Screenshots in ``path`` that may capture past the viewport.
+
+    A ``screenshot`` call counts unless its ``full_page`` is absent or the
+    literal ``False``. Forms that cannot be read statically count too: a
+    ``**`` splat, ``screenshot`` referenced without a call, or looked up by
+    name. Sites inside the ``exempt`` functions of ``path`` do not count.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    parents = {
+        child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)
+    }
+    exempt_lines = {
+        line
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name in exempt
+        for line in range(node.lineno, (node.end_lineno or node.lineno) + 1)
+    }
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and node.value == "screenshot":
+            unbounded = True
+        elif isinstance(node, ast.Attribute) and node.attr == "screenshot":
+            call = parents[node]
+            if not isinstance(call, ast.Call) or call.func is not node:
+                unbounded = True
+            else:
+                unbounded = any(
+                    keyword.arg is None
+                    or (
+                        keyword.arg == "full_page"
+                        and not (
+                            isinstance(keyword.value, ast.Constant)
+                            and keyword.value.value is False
+                        )
+                    )
+                    for keyword in call.keywords
+                )
+        else:
+            continue
+        if unbounded and node.lineno not in exempt_lines:
+            found.append(f"{path.relative_to(REPOSITORY)}:{node.lineno}")
+    return sorted(found)
+
+
+def test_browser_suites_capture_full_pages_only_through_the_engines_splitter() -> None:
+    # Firefox and WebKit refuse, and Chromium fails, a capture past 32767
+    # device pixels; hosted primitives@chromium failed exactly so at 375px.
+    scanned = sorted(BROWSER_SUITES.rglob("*.py"))
+    registered = {
+        REPOSITORY / relpath for paths in runner.SUITES.values() for relpath in paths
+    }
+    assert registered <= set(scanned)
+    assert all(callable(getattr(engines, name)) for name in FULL_PAGE_CAPTURERS)
+    # Every exemption names a function that exists and that the detector
+    # flags once its exemption is lifted.
+    for path, functions in CAPTURE_EXEMPTIONS.items():
+        for function in functions:
+            others = tuple(name for name in functions if name != function)
+            assert len(_full_page_captures(path, exempt=others)) > len(
+                _full_page_captures(path, exempt=tuple(functions))
+            ), (path, function)
+
+    offenders = [
+        site
+        for path in scanned
+        for site in _full_page_captures(
+            path, exempt=tuple(CAPTURE_EXEMPTIONS.get(path, {}))
+        )
+    ]
+
     assert offenders == []
 
 

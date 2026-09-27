@@ -45,9 +45,10 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._page_wait import click_when_hittable, wait_for_js
+from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     element_box,
+    full_page_screenshot,
     install_media,
     launch_selected,
     watch_page_errors,
@@ -266,17 +267,16 @@ class Day:
 def capture(case: Day, page: Page, state: str) -> None:
     """Store a capture and prove pt-BR copy and reflow for the rendered screen."""
     destination = case.root / f"{case.name}-{state}-{_width(page)}.png"
-    page.screenshot(path=str(destination), full_page=True)
-    destination.chmod(0o600)
-    lang = str(page.evaluate("document.documentElement.lang")).lower()
+    written = full_page_screenshot(page, destination)
+    lang = str(evaluate_js(page, "document.documentElement.lang")).lower()
     assert lang.startswith("pt"), (state, lang)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), (
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth"), (
         state,
         _overflowing(page),
     )
-    english = sorted(set(ENGLISH.findall(str(page.evaluate(PROSE_JS)))))
+    english = sorted(set(ENGLISH.findall(str(evaluate_js(page, PROSE_JS)))))
     assert not english, (state, english)
-    case.captures.append(destination.name)
+    case.captures.extend(path.name for path in written)
 
 
 def _width(page: Page) -> int:

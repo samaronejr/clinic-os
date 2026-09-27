@@ -21,6 +21,7 @@ from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._page_wait import await_autofocus
+from renewal.browser.engines import full_page_screenshot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -84,8 +85,7 @@ def _submit(page: Page, selector: str) -> None:
 def _capture(page: Page, root: Path, name: str) -> None:
     destination = root / "locale" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=True)
-    destination.chmod(0o600)
+    full_page_screenshot(page, destination)
 
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:

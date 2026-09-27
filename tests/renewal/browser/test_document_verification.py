@@ -21,6 +21,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._protected import decrypt, encrypt
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
     availability_staff,
@@ -52,8 +53,7 @@ END = b"\n%%END-SIGNATURE\n"
 def _capture(page: Page, root: Path, name: str) -> None:
     destination = root / "document-verification" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=True)
-    destination.chmod(0o600)
+    full_page_screenshot(page, destination)
 
 
 def _seed_patient_access(staff: dict[str, str], patient: str) -> str:

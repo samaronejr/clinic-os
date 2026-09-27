@@ -9,6 +9,8 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_attachments import cookie_csrf, csrf
 from renewal.browser.test_availability import (
     _sign_in_physician,
@@ -38,8 +40,8 @@ ITEM = {
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "prescription-draft"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def form_data(page: Page) -> dict[str, str]:

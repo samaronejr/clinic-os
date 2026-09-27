@@ -24,10 +24,16 @@ from django.utils.translation import gettext
 from PIL import Image
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
+from renewal.browser._page_wait import (
+    await_autofocus,
+    click_when_hittable,
+    evaluate_js,
+    wait_for_js,
+)
 from renewal.browser.engines import (
     focus_reveal,
     focuses_dialogs_and_scrollers,
+    full_page_clip,
     full_page_screenshot,
     paints_offscreen_clips_like_the_viewport,
     scroll_width_includes_flex_end_padding,
@@ -997,7 +1003,7 @@ class _BlockCapture:
         assert size is not None
         self._page = page
         self._strips = paints_offscreen_clips_like_the_viewport(page.context)
-        self._page_width, self._page_height = page.evaluate(PAGE_SIZE_JS)
+        self._page_width, self._page_height = evaluate_js(page, PAGE_SIZE_JS)
         self._span = STRIP_PX if self._strips else size["height"]
         self._width = self._page_width if self._strips else size["width"]
         self._shot: Image.Image | None = None
@@ -1006,7 +1012,7 @@ class _BlockCapture:
         self._bottom = 0.0
 
     def png(self, block: Locator) -> bytes:
-        left, top, right, bottom = block.evaluate(BLOCK_RECT_JS)
+        left, top, right, bottom = evaluate_js(block, BLOCK_RECT_JS)
         first, last = math.floor(top), math.ceil(bottom)
         if last - first > self._span or left < 0 or right > self._page_width:
             return block.screenshot()
@@ -1035,10 +1041,10 @@ class _BlockCapture:
                 "width": self._page_width,
                 "height": height,
             }
-            raw = self._page.screenshot(full_page=True, clip=clip)
+            raw = full_page_clip(self._page, clip)
             self._x, self._top, self._bottom = 0.0, first, first + height
         else:
-            self._x, self._top = self._page.evaluate(SCROLL_TO_JS, first)
+            self._x, self._top = evaluate_js(self._page, SCROLL_TO_JS, first)
             raw = self._page.screenshot()
             self._bottom = self._top + self._span
         self._shot = Image.open(io.BytesIO(raw))
