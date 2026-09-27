@@ -2,8 +2,9 @@
 
 One patient per clinic may be in context. The context lives in the
 server-side session (never a URL, title, cookie value or browser storage) and
-is re-authorized on every render: a revoked grant hides the banner and drops
-the context. Pages that display one patient's record (``PATIENT_BOUND_VIEWS``)
+is re-authorized on every authorized render: a revoked grant hides the banner
+and drops the context then. Refusals never mutate it. Pages that display one
+patient's record (``PATIENT_BOUND_VIEWS``)
 must bind that patient in the same request; when they do not, the banner is
 suppressed rather than risk naming a different patient above the record.
 
@@ -132,7 +133,7 @@ def current_patient(request: HttpRequest, clinic_id: UUID) -> UUID | None:
     """Return the enrollment in the clinic's session context, if any."""
     enrollment_id = _parse(request.session.get(_session_key(clinic_id)))
     if enrollment_id is not None and not patient_context_allowed(
-        request, clinic_id=clinic_id, enrollment_id=enrollment_id
+        clinic_id=clinic_id, enrollment_id=enrollment_id
     ):
         return None
     return enrollment_id
@@ -142,9 +143,7 @@ def set_patient_context(
     request: HttpRequest, *, clinic_id: UUID, enrollment_id: UUID
 ) -> None:
     """Store one authorized enrollment as the clinic's patient in context."""
-    if not patient_context_allowed(
-        request, clinic_id=clinic_id, enrollment_id=enrollment_id
-    ):
+    if not patient_context_allowed(clinic_id=clinic_id, enrollment_id=enrollment_id):
         raise Http404
     request.session[_session_key(clinic_id)] = str(enrollment_id)
 
@@ -167,32 +166,26 @@ def bind_patient_context(
     the banner then names exactly this patient on this response, and the
     session context follows so the next page keeps it pinned.
     """
-    if not patient_context_allowed(
-        request, clinic_id=clinic_id, enrollment_id=enrollment_id
-    ):
+    if not patient_context_allowed(clinic_id=clinic_id, enrollment_id=enrollment_id):
         return
     request.session[_session_key(clinic_id)] = str(enrollment_id)
     setattr(request, BOUND_ATTRIBUTE, (clinic_id, enrollment_id, encounter_id))
 
 
 def patient_context_allowed(
-    request: HttpRequest, *, clinic_id: UUID, enrollment_id: UUID | None = None
+    *, clinic_id: UUID, enrollment_id: UUID | None = None
 ) -> bool:
-    """Recheck the grant and enrollment before any context read or write."""
+    """Read-only authority check; cleanup belongs to an authorized render."""
     try:
         require_permission(DEMOGRAPHICS_READ, clinic_id=clinic_id)
     except CurrentActorError:
-        clear_patient_context(request, clinic_id=clinic_id)
         return False
-    if (
-        enrollment_id is not None
-        and not PatientClinicEnrollment.objects.filter(
+    return (
+        enrollment_id is None
+        or PatientClinicEnrollment.objects.filter(
             pk=enrollment_id, clinic_id=clinic_id
         ).exists()
-    ):
-        clear_patient_context(request, clinic_id=clinic_id)
-        return False
-    return True
+    )
 
 
 def bind_encounter_context(request: HttpRequest, encounter: Encounter) -> None:
@@ -298,7 +291,8 @@ def resolve_patient_banner(  # noqa: PLR0913 - the banner needs the whole shell 
     view_name: str,
 ) -> PatientBanner | None:
     """Return the banner for this response, or ``None`` when no context applies."""
-    if not patient_context_allowed(request, clinic_id=clinic_id):
+    if not patient_context_allowed(clinic_id=clinic_id):
+        clear_patient_context(request, clinic_id=clinic_id)
         return None
     bound = _bound(request, clinic_id)
     encounter_id: UUID | None = None
@@ -309,6 +303,7 @@ def resolve_patient_banner(  # noqa: PLR0913 - the banner needs the whole shell 
     else:
         remembered = current_patient(request, clinic_id)
         if remembered is None:
+            clear_patient_context(request, clinic_id=clinic_id)
             return None
         if DEMOGRAPHICS_READ not in granted:
             clear_patient_context(request, clinic_id=clinic_id)

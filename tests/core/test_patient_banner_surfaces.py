@@ -120,8 +120,17 @@ def test_each_patient_surface_binds_and_refuses_revocation(
     assert b"data-patient-banner" in response.content, view
     key = f"workspace.patient.{graph.clinic_a}"
     assert key in client.session
+    pinned = client.session[key]
+    with owner_context(graph.organization_a):
+        name = str(PatientClinicEnrollment.objects.get(pk=pinned).patient.full_name)
     remove_permission(graph, role, "demographics.read")
     refused = _post(client, url, data) if data else _get(client, url)
     assert refused.status_code in {403, 404}
     assert b"data-patient-banner" not in refused.content
+    assert name.encode() not in refused.content
+    assert client.session[key] == pinned
+    authorized = _get(client, "/auth/protected/")
+    assert authorized.status_code == 200
+    assert b"data-patient-banner" not in authorized.content
+    assert name.encode() not in authorized.content
     assert key not in client.session

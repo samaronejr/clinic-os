@@ -15,7 +15,6 @@ from django.shortcuts import render
 
 from apps.core.navigation import DESTINATIONS, granted_permissions
 from apps.core.patient_context import PATIENT_BOUND_VIEWS, patient_context_allowed
-from apps.core.workspace import DENIED_ATTRIBUTE
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
@@ -40,10 +39,9 @@ def workspace_denial(request: HttpRequest) -> HttpResponse | None:
         return None
     granted = granted_permissions(clinic_id)
     denied = any(not granted.intersection(place.permission) for place in places)
-    if patient_page and not patient_context_allowed(request, clinic_id=clinic_id):
+    if patient_page and not patient_context_allowed(clinic_id=clinic_id):
         denied = True
     if not denied:
         return None
-    setattr(request, DENIED_ATTRIBUTE, True)
     status = 404 if match.namespace in {"scheduling", "intake"} else 403
     return render(request, f"{status}.html", status=status)

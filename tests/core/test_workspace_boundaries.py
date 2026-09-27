@@ -228,6 +228,12 @@ def test_revoked_patient_cannot_be_reopened_or_repinned(rbac_graph: RbacGraph) -
     )
     assert response.status_code == 404
     assert PATIENT.encode() not in response.content
+    assert b"data-patient-banner" not in response.content
+    assert client.session[key] == enrollment
+    authorized = _get(client, agenda)
+    assert authorized.status_code == 200
+    assert PATIENT.encode() not in authorized.content
+    assert b"data-patient-banner" not in authorized.content
     assert key not in client.session
 
 

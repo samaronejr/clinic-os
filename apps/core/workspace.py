@@ -130,9 +130,12 @@ def _select_clinic(
     clinics: tuple[WorkspaceClinic, ...],
 ) -> WorkspaceClinic | None:
     by_id = {clinic.id: clinic for clinic in clinics}
+    remembered = _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY))
+    # A refusal has no authority to select, repair or persist clinic context.
+    if getattr(request, DENIED_ATTRIBUTE, False):
+        return by_id.get(remembered) if remembered is not None else None
     match = request.resolver_match
     requested = _parse_uuid(match.kwargs.get("clinic_id")) if match else None
-    remembered = _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY))
     selected = by_id.get(requested) if requested else None
     if selected is None and remembered is not None:
         selected = by_id.get(remembered)

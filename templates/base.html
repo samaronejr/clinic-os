@@ -1,6 +1,6 @@
 {% load static i18n workspace clinic_branding ui_preferences %}
 {% get_current_language as LANGUAGE_CODE %}
-{% workspace_context as workspace %}
+{% block workspace_refusal %}{% endblock %}{% workspace_context as workspace %}
 {% if workspace %}{% ui_preferences as ui %}{% endif %}
 <!doctype html>
 <html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js" data-theme="{{ ui.theme }}" data-density="{{ ui.density }}"{% endif %}>
