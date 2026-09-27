@@ -33,6 +33,15 @@ Only the exact execute surface needed by `clinic_app` is granted. Bypass RLS is
 therefore contained behind reviewed functions rather than exposed to a runtime
 credential.
 
+`user_has_org` joins the actor's `identity_user` row and requires `is_active`,
+so a deactivated account cannot open a tenant transaction even with a valid
+session. `user_organizations` does not check `is_active`, because it is a
+post-login lookup and not a gate. Its only caller chooses the session's initial
+`active_org_id` after the login backend has already refused inactive accounts,
+and `user_has_org` rechecks `is_active` before any tenant work.
+`load_current_user` returns the row including `is_active`, and every caller
+refuses an inactive row.
+
 ## Tenant boundary and fail-closed order
 
 `TenantMiddleware.__call__` owns an outermost transaction for each tenant
