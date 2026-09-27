@@ -20,6 +20,16 @@ from identity.legacy_owner_boundaries import _owner_call
 from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
+from identity.sql_scheduling_probes import (
+    SchedulingSubjects,
+    insert_definition,
+    insert_resource_block,
+    insert_service_booking,
+    own_permitted,
+    permitted,
+    seed_scheduling,
+    update_service_booking,
+)
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -44,6 +54,7 @@ class SqlWorld:
     teleconsult: TeleconsultSubjects
     manager_payment: UUID
     actor_payment: UUID
+    scheduling: SchedulingSubjects
 
 
 def seed_sql_world(
@@ -89,7 +100,8 @@ def seed_sql_world(
             purpose="teleconsultation",
             text="Sintetico superseded",
         )
-    return SqlWorld(actor, op, tc, manager_payment.pk, actor_payment.pk)
+    scheduling = seed_scheduling(actor, op.enrollment)
+    return SqlWorld(actor, op, tc, manager_payment.pk, actor_payment.pk, scheduling)
 
 
 @dataclass(frozen=True)
@@ -99,6 +111,8 @@ class SqlProbe:
     arguments: Callable[[SqlWorld, bool], list[SqlArgument]]
     result: str = "rows"
     refusal_state: str | None = None
+    # Trigger guards cannot be called; the executor fires the guarded statement.
+    execute: Callable[[SqlWorld, bool], bool] | None = None
 
 
 def _bound_actor(w: SqlWorld, valid: bool) -> list[SqlArgument]:
@@ -133,6 +147,8 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
 
 
 def call(probe: SqlProbe, w: SqlWorld, valid: bool) -> bool:
+    if probe.execute is not None:
+        return probe.execute(w, valid)
     arguments = probe.arguments(w, valid)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -302,6 +318,53 @@ PROBES = {
     ),
     "waitlist_staff": SqlProbe(
         "waitlist_staff", MANAGERS, lambda w, ok: [w.actor.clinic_for(ok)], "boolean"
+    ),
+    "scheduling_service_practitioners": SqlProbe(
+        "scheduling_service_practitioners",
+        # Clinic-wide holders see every professional; own-scope holders see
+        # only themselves, and only the world's physician is a professional.
+        tuple(
+            sorted(
+                {
+                    *permitted(
+                        "appointment.book",
+                        "appointment.move",
+                        "configuration.organization",
+                    ),
+                    *own_permitted("appointment.book", "appointment.book_own"),
+                    *own_permitted("appointment.move", "appointment.move_own"),
+                }
+            )
+        ),
+        lambda w, ok: [w.actor.clinic if ok else w.actor.graph.clinic_b],
+    ),
+    "scheduling_definition_guard": SqlProbe(
+        "scheduling_definition_guard",
+        permitted("appointment.book", "configuration.organization"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: insert_definition(w.actor, ok),
+    ),
+    "scheduling_generated_block_guard": SqlProbe(
+        "scheduling_generated_block_guard",
+        permitted("appointment.book", "configuration.organization"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: insert_resource_block(w.actor, w.scheduling, ok),
+    ),
+    "scheduling_capacity_guard": SqlProbe(
+        "scheduling_capacity_guard",
+        own_permitted("appointment.move", "appointment.move_own"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: update_service_booking(w.scheduling, ok),
+    ),
+    "scheduling_capacity_guard#insert": SqlProbe(
+        "scheduling_capacity_guard",
+        own_permitted("appointment.book", "appointment.book_own"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: insert_service_booking(w.scheduling, ok),
     ),
     "has_permission": SqlProbe(
         "has_permission",

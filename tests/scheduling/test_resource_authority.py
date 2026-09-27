@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 from apps.identity.models import RoleGrant
-from apps.scheduling.models import AvailabilityBlock, Resource
+from apps.scheduling.models import AvailabilityBlock
 from apps.scheduling.resource_services import (
     ResourceInput,
     ServiceInput,
@@ -31,7 +31,6 @@ from apps.scheduling.timezones import (
 )
 from apps.tenancy.db import tenant_context
 from django.core.management import call_command
-from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from identity.permission_support import owner_context, permission_actor
@@ -50,45 +49,6 @@ pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.usefixtures("resource_clock"),
 ]
-
-
-@pytest.mark.parametrize(
-    ("role", "allowed"),
-    [
-        ("scheduler", True),
-        ("clinic_manager", True),
-        ("receptionist", True),
-        ("clinic_admin", True),
-        ("owner", True),
-        ("org_admin", True),
-        ("physician", False),
-        ("nurse", False),
-        ("finance", False),
-    ],
-)
-def test_configuration_authority_is_explicit_and_db_enforced(
-    rbac_graph: RbacGraph, role: str, allowed: bool
-) -> None:
-    actor, _ = permission_actor(rbac_graph, role)
-    with runtime_role(), tenant_context(actor, rbac_graph.organization_a):
-        if allowed:
-            assert create_resource(
-                clinic_id=rbac_graph.clinic_a,
-                content=ResourceInput(name="Sintetico authority", kind="location"),
-            ).active
-        else:
-            with pytest.raises(AppointmentAccessDeniedError):
-                create_resource(
-                    clinic_id=rbac_graph.clinic_a,
-                    content=ResourceInput(name="Sintetico denied", kind="location"),
-                )
-            with pytest.raises(DatabaseError), transaction.atomic():
-                Resource.objects.create(
-                    organization_id=rbac_graph.organization_a,
-                    clinic_id=rbac_graph.clinic_a,
-                    name="Sintetico denied SQL",
-                    kind="room",
-                )
 
 
 def test_narrowed_scheduling_permission_blocks_configuration(
