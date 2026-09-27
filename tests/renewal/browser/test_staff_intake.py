@@ -1149,8 +1149,10 @@ def _keyboard_scrolls(page: Page, selector: str) -> bool:
     region.focus()
     assert region.evaluate("(el) => el === document.activeElement")
     page.keyboard.press("ArrowRight")
-    page.wait_for_function(
-        "(selector) => document.querySelector(selector).scrollLeft > 0", arg=selector
+    wait_for_js(
+        page,
+        "(selector) => document.querySelector(selector).scrollLeft > 0",
+        arg=selector,
     )
     return True
 
