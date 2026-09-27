@@ -292,7 +292,13 @@ def await_autofocus(locator: Locator, *, timeout: float | None = None) -> None:
     autofocused field and the typed text lands there (fix-a7: the password
     went into the username field, the empty required password blocked the
     submit, and no request left the page). Once the autofocus has landed it
-    is spent, so later typing stays where it is sent. The wait uses the
-    page's default timeout unless ``timeout`` (milliseconds) is given.
+    is spent, so later typing stays where it is sent.
+
+    The wait is bounded by Playwright's ``expect`` default of 5000 ms (this
+    repository never changes it), not by the page's default timeout, unless
+    ``timeout`` (milliseconds) is given. 5 s is the right bound: the autofocus
+    lands at the first rendering update, milliseconds after ``load``, and 5 s
+    is shorter than the suites' 20 s page default, so this wait can never
+    outlive the page operations around it.
     """
     expect(locator).to_be_focused(timeout=timeout)
