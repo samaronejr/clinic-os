@@ -166,8 +166,14 @@ def test_forbidden_clinic_is_denied_and_never_becomes_the_context(
     assert response.status_code == NOT_FOUND
     assert b"Todo 8 Clinic B" not in response.content
     assert _clinics_in_nav(response.content) == ["Todo 8 Clinic A"]
-    assert client.session[ACTIVE_CLINIC_SESSION_KEY] == str(rbac_graph.clinic_a)
+    assert ACTIVE_CLINIC_SESSION_KEY not in client.session
+    assert response.wsgi_request.session.modified is False
     assert str(rbac_graph.clinic_b) not in response.content.decode()
+    with runtime_role():
+        authorized = client.get(f"/scheduling/clinics/{rbac_graph.clinic_a}/agenda/")
+    assert authorized.status_code == OK
+    assert _clinics_in_nav(authorized.content) == ["Todo 8 Clinic A"]
+    assert client.session[ACTIVE_CLINIC_SESSION_KEY] == str(rbac_graph.clinic_a)
 
 
 @pytest.mark.parametrize(

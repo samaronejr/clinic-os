@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
@@ -765,9 +766,7 @@ def _selected_encounter(
         posted = request.POST.get("encounter_id") if request.method == "POST" else None
         if posted and UUID(str(posted)) != encounter_id:
             raise ClinicalAccessDeniedError
-        encounter = authorize_encounter(clinic_id=clinic_id, encounter_id=encounter_id)
-        request.session[key] = str(encounter.pk)
-        return encounter
+        return authorize_encounter(clinic_id=clinic_id, encounter_id=encounter_id)
     selected = (
         request.POST.get("encounter_id")
         if request.method == "POST"
@@ -878,14 +877,14 @@ def draft_workspace(
 ) -> HttpResponseBase:
     """Keep failures non-enumerating and unsaved medication text in its bound form."""
     try:
-        return _workspace(request, clinic_id, encounter_id)
+        response = _workspace(request, clinic_id, encounter_id)
     except (ValueError, CurrentActorError, ClinicalAccessDeniedError):
         return render(request, "403.html", status=403)
     except DocumentStorageError:
         logger.log(logging.ERROR, "prescription document storage failed")
         return render(request, "403.html", status=403)
     except (ValidationError, ClinicalConflictError):
-        return render(
+        response = render(
             request,
             "prescription/draft.html",
             {
@@ -897,6 +896,13 @@ def draft_workspace(
             },
             status=400,
         )
+    if (
+        encounter_id is not None
+        and response.status_code < HTTPStatus.INTERNAL_SERVER_ERROR
+        and response.status_code not in {403, 404}
+    ):
+        request.session[f"prescription.encounter.{clinic_id}"] = str(encounter_id)
+    return response
 
 
 # ---------------------------------------------------------------------------

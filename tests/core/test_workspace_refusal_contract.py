@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from apps.core.navigation import DESTINATIONS
 from apps.core.patient_context import PATIENT_BOUND_VIEWS
 from apps.identity.models import UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
-from apps.tenancy.middleware import PATIENT_PREFIX
-from django.urls import URLPattern, URLResolver, get_resolver, reverse
-from django.urls.converters import IntConverter, StringConverter, UUIDConverter
+from django.urls import URLResolver, get_resolver
 
 from core.test_navigation import _client_for, _get, _post
 from core.test_workspace_boundaries import (
@@ -24,6 +21,7 @@ from core.test_workspace_boundaries import (
     remove_permission,
 )
 from identity.permission_support import owner_context
+from workspace_refusal_support import WorkspaceRoute, workspace_routes
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -34,18 +32,6 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
-
-
-@dataclass(frozen=True)
-class ClinicRoute:
-    name: str
-    kwargs: dict[str, object]
-
-    def url(self, clinic_id: UUID) -> str:
-        kwargs = dict(self.kwargs)
-        if "clinic_id" in kwargs:
-            kwargs["clinic_id"] = clinic_id
-        return reverse(self.name, kwargs=kwargs)
 
 
 def _registered_views() -> set[str]:
@@ -60,45 +46,11 @@ def _registered_views() -> set[str]:
     return names
 
 
-def _sample(converter: object) -> object:
-    if isinstance(converter, UUIDConverter):
-        return uuid4()
-    if isinstance(converter, IntConverter):
-        return 1
-    if isinstance(converter, StringConverter):
-        return "synthetic"
-    pytest.fail(f"Uninspected URL converter: {type(converter).__name__}")
-
-
-def _clinic_routes(
-    resolver: URLResolver,
-    namespace: str = "",
-    inherited: dict[str, object] | None = None,
-) -> Iterator[ClinicRoute]:
-    for entry in resolver.url_patterns:
-        converters = {**(inherited or {}), **entry.pattern.converters}
-        if isinstance(entry, URLResolver):
-            prefix = f"{namespace}{entry.namespace}:" if entry.namespace else namespace
-            yield from _clinic_routes(entry, prefix, converters)
-        else:
-            assert isinstance(entry, URLPattern)
-            parameters = entry.pattern.regex.groupindex.keys() | converters.keys()
-            if (
-                "clinic_id" not in parameters
-                and f"{namespace}{entry.name}" not in _registered_views()
-            ):
-                continue
-            assert entry.name is not None, "Clinic routes must be named and reversible"
-            assert parameters <= converters.keys(), "Uninspected regex route parameters"
-            route = ClinicRoute(
-                f"{namespace}{entry.name}",
-                {key: _sample(value) for key, value in converters.items()},
-            )
-            # Unregistered patient-portal entrypoints use a different authority.
-            if route.name in _registered_views() or not route.url(uuid4()).startswith(
-                PATIENT_PREFIX
-            ):
-                yield route
+def _clinic_routes(resolver: URLResolver) -> Iterator[WorkspaceRoute]:
+    registered = _registered_views()
+    for route in workspace_routes(resolver):
+        if "clinic_id" in route.kwargs or route.name in registered:
+            yield route
 
 
 def _prepared_client(graph: RbacGraph, role: str, state: str) -> Client:

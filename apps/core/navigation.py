@@ -114,6 +114,8 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 "scheduling:appointment-create",
                 "scheduling:appointment-reschedule",
                 "scheduling:appointment-cancel",
+                "scheduling:reminders",
+                "scheduling:waitlist",
             }
         ),
         entries=(

@@ -2,10 +2,10 @@
 
 One patient per clinic may be in context. The context lives in the
 server-side session (never a URL, title, cookie value or browser storage) and
-is re-authorized on every authorized render: a revoked grant hides the banner
-and drops the context then. Refusals never mutate it. Pages that display one
-patient's record (``PATIENT_BOUND_VIEWS``)
-must bind that patient in the same request; when they do not, the banner is
+is re-authorized on each authorized render in the same clinic: a revoked grant
+hides the banner and drops that clinic's context then. Other clinics never use
+that pin, and refusals never mutate it. Pages displaying one patient's record
+(``PATIENT_BOUND_VIEWS``) must bind that patient in the same request; otherwise it is
 suppressed rather than risk naming a different patient above the record.
 
 Switching patients goes through registered context-switch guards (the hook
@@ -151,6 +151,8 @@ def set_patient_context(
 def clear_patient_context(request: HttpRequest, *, clinic_id: UUID) -> None:
     """Drop the clinic's patient context (close, revocation or stale record)."""
     request.session.pop(_session_key(clinic_id), None)
+    if _bound(request, clinic_id) is not None:
+        delattr(request, BOUND_ATTRIBUTE)
 
 
 def bind_patient_context(
@@ -163,13 +165,21 @@ def bind_patient_context(
     """Record the patient a record page is rendering, after its own authorization.
 
     Called by patient-bound views once their service has authorized the read;
-    the banner then names exactly this patient on this response, and the
-    session context follows so the next page keeps it pinned.
+    the banner then names exactly this patient on this response. Persistence
+    waits until the tenant middleware has the completed, non-refused response:
+    authorizing the encounter does not authorize every subsequent action.
     """
     if not patient_context_allowed(clinic_id=clinic_id, enrollment_id=enrollment_id):
         return
-    request.session[_session_key(clinic_id)] = str(enrollment_id)
     setattr(request, BOUND_ATTRIBUTE, (clinic_id, enrollment_id, encounter_id))
+
+
+def persist_bound_patient_context(request: HttpRequest) -> None:
+    """Persist the validated binding after the whole response is authorized."""
+    bound = getattr(request, BOUND_ATTRIBUTE, None)
+    if bound is not None:
+        clinic_id, enrollment_id, _encounter_id = bound
+        request.session[_session_key(clinic_id)] = str(enrollment_id)
 
 
 def patient_context_allowed(

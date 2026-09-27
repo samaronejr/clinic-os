@@ -11,6 +11,7 @@ from django.http.response import HttpResponseBase
 from django.shortcuts import render
 
 from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
+from apps.core.patient_context import persist_bound_patient_context
 from apps.core.workspace_access import workspace_denial
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
@@ -115,6 +116,8 @@ class TenantMiddleware:
                     raise TenantStreamingResponseError
                 if response.status_code >= SERVER_ERROR_STATUS:
                     transaction.set_rollback(True)
+                elif response.status_code not in {403, 404}:
+                    persist_bound_patient_context(request)
                 return response
         except TenantAccessDeniedError:
             # Resolve account status without opening a tenant. An inactive

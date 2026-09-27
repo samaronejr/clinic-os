@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from functools import wraps
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
@@ -10,15 +12,23 @@ import pytest
 from apps.identity.models import Clinic, Organization, User, UserClinicRole
 from apps.tenancy.models import TenantProbe
 from django.db import connection, transaction
+from django.test import AsyncClient, Client
 
 from database_urls import database_url_for_name
 from rbac_fixtures import RbacGraph, rbac_graph
 from tenant_key_support import issue_tenant_key_for, synthetic_secret_backend
 from tenant_probe_support import tenant_probe_pair
+from workspace_refusal_support import GUARD_STATS, RefusalGuardStats, check_refusal
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator
     from pathlib import Path
+
+    from _pytest.terminal import TerminalReporter
+    from django.test.client import (
+        _MonkeyPatchedASGIResponse,
+        _MonkeyPatchedWSGIResponse,
+    )
 
 SYNTHETIC_AUTH_VALUE_A = "synthetic-hash-a"
 SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
@@ -54,6 +64,44 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(
                 pytest.mark.django_db(*marker.args, **options), append=False
             )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def workspace_refusal_guard(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Every Django client response in the default collection enforces the rule."""
+    stats = RefusalGuardStats()
+    request.config.stash[GUARD_STATS] = stats
+    original = Client.request
+    original_async = AsyncClient.request
+
+    @wraps(original)
+    def checked(client: Client, **kwargs: object) -> _MonkeyPatchedWSGIResponse:
+        response = original(client, **kwargs)
+        check_refusal(response.wsgi_request, response, stats)
+        return response
+
+    @wraps(original_async)
+    async def checked_async(
+        client: AsyncClient, **kwargs: object
+    ) -> _MonkeyPatchedASGIResponse:
+        response = await original_async(client, **kwargs)
+        check_refusal(response.asgi_request, response, stats)
+        return response
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Client, "request", checked)
+        patch.setattr(AsyncClient, "request", checked_async)
+        yield
+
+
+def pytest_terminal_summary(
+    terminalreporter: TerminalReporter, config: pytest.Config
+) -> None:
+    if GUARD_STATS in config.stash:
+        terminalreporter.write_line(
+            "REFUSAL_GUARD "
+            + json.dumps(asdict(config.stash[GUARD_STATS]), sort_keys=True)
+        )
 
 
 @dataclass(frozen=True, slots=True)

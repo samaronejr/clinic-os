@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 from apps.audit.models import AuditEvent
+from apps.core import patient_context
 from apps.core.navigation import DESTINATIONS, destination_url
 from apps.core.patient_context import DEMOGRAPHICS_READ, SESSION_PREFIX
 from apps.identity.models import RoleGrant, SavedView, UserClinicRole
@@ -39,8 +40,11 @@ from patient_http_support import seed_patients
 from renewal.test_clinical_history import begin
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from apps.core.navigation import Destination
     from apps.identity.models import User
+    from django.http import HttpRequest
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
 
@@ -231,6 +235,70 @@ def test_revoked_patient_cannot_be_reopened_or_repinned(rbac_graph: RbacGraph) -
     assert b"data-patient-banner" not in response.content
     assert client.session[key] == enrollment
     authorized = _get(client, agenda)
+    assert authorized.status_code == 200
+    assert PATIENT.encode() not in authorized.content
+    assert b"data-patient-banner" not in authorized.content
+    assert key not in client.session
+
+
+@pytest.mark.parametrize("route", ["scheduling:reminders", "scheduling:waitlist"])
+def test_agenda_subroutes_honor_revoked_read_permission(
+    rbac_graph: RbacGraph, route: str
+) -> None:
+    client, _ = _client_for(rbac_graph, "receptionist")
+    own = reverse(route, kwargs={"clinic_id": rbac_graph.clinic_a})
+    assert _get(client, own).status_code == 200
+    remove_permission(rbac_graph, "receptionist", "appointment.read")
+    denied = _get(client, own)
+    assert denied.status_code == 404
+    for clinic in (uuid4(), rbac_graph.clinic_b, rbac_graph.clinic_c):
+        unknown = _get(client, reverse(route, kwargs={"clinic_id": clinic}))
+        _assert_identical_denials(denied, unknown, pinned=False)
+
+
+def test_other_clinic_never_resolves_or_serves_a_revoked_pin(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph = rbac_graph
+    client, user = _client_for(graph, "receptionist")
+    agenda_a = f"/scheduling/clinics/{graph.clinic_a}/agenda/"
+    assert _get(client, agenda_a).status_code == 200
+    _pin_patient(client, graph, user, "receptionist")
+    key = f"{SESSION_PREFIX}{graph.clinic_a}"
+    pinned = client.session[key]
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            user_id=user.pk,
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_b,
+            role=UserClinicRole.Role.RECEPTIONIST,
+        )
+    remove_permission(graph, "receptionist", DEMOGRAPHICS_READ)
+    refused = _get(client, f"/intake/clinics/{graph.clinic_a}/patients/")
+    assert refused.status_code == 404
+    assert PATIENT.encode() not in refused.content
+    assert client.session[key] == pinned
+    resolved: list[UUID] = []
+    current = patient_context.current_patient
+
+    def observe(request: HttpRequest, clinic_id: UUID) -> UUID | None:
+        resolved.append(clinic_id)
+        assert clinic_id == graph.clinic_b
+        return current(request, clinic_id)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(patient_context, "current_patient", observe)
+        other = _get(client, f"/scheduling/clinics/{graph.clinic_b}/agenda/")
+        assert other.status_code == 200
+        assert PATIENT.encode() not in other.content
+        assert pinned.encode() not in other.content
+        assert b"data-patient-banner" not in other.content
+        assert set(resolved) == {graph.clinic_b}
+        results = _api(client, {"q": PATIENT, "clinic_id": str(graph.clinic_b)})
+        assert results.status_code == 200
+        assert results.json() == []
+        assert client.session[key] == pinned
+    authorized = _get(client, agenda_a)
     assert authorized.status_code == 200
     assert PATIENT.encode() not in authorized.content
     assert b"data-patient-banner" not in authorized.content

@@ -131,9 +131,11 @@ def _select_clinic(
 ) -> WorkspaceClinic | None:
     by_id = {clinic.id: clinic for clinic in clinics}
     remembered = _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY))
-    # A refusal has no authority to select, repair or persist clinic context.
+    # Refusals display the remembered/default clinic without persisting it.
+    # The requested clinic must not influence this read-only fallback.
     if getattr(request, DENIED_ATTRIBUTE, False):
-        return by_id.get(remembered) if remembered is not None else None
+        selected = by_id.get(remembered) if remembered is not None else None
+        return selected or (clinics[0] if clinics else None)
     match = request.resolver_match
     requested = _parse_uuid(match.kwargs.get("clinic_id")) if match else None
     selected = by_id.get(requested) if requested else None
