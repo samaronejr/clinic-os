@@ -295,12 +295,17 @@ components:
           type: string
           readOnly: true
           nullable: true
+        html:
+          type: string
+          readOnly: true
+          description: Server-rendered, escaped option markup for the workspace combobox.
         label:
           type: string
           readOnly: true
       required:
       - action_url_name
       - href
+      - html
       - kind
       - label
       - meta
@@ -345,6 +350,7 @@ components:
       - save_view
       - archive_view
       - patient
+      - notice
       type: string
       description: |-
         * `destination` - destination
@@ -353,6 +359,7 @@ components:
         * `save_view` - save_view
         * `archive_view` - archive_view
         * `patient` - patient
+        * `notice` - notice
     ViewEnum:
       enum:
       - day

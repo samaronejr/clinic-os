@@ -13,10 +13,12 @@ Context:
   groups       Iterable of {label, items: [...]} instead of options.
   value        Current text.
   placeholder  Placeholder text.
-  endpoint     URL for async search: POST (never GET, no terms in URLs)
-               form field "q" + CSRF, response is <li role="option"> HTML.
-  search_context  Optional page path posted as "context" with each search
-               (never a record selector).
+  endpoint     URL for async search: POST (never GET, no terms in URLs).
+               /api/ui/ endpoints receive JSON {q, page_path} + CSRF and
+               return typed rows with server-rendered "html" option markup.
+               Other endpoints receive form field "q" and return option HTML.
+  search_context  Optional page path posted as "page_path" to the UI API,
+               or "context" to an HTML adapter (never a record selector).
   status_live  True renders the status line as aria-live="polite" instead of
                role="status" (the shell palette, present on every page, must
                not add a status landmark next to the page's own).

@@ -26,6 +26,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.core.patient_context import bind_encounter_context
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
 from apps.identity.current_context import (
     CurrentActorError,
@@ -814,6 +815,7 @@ def _workspace(
     encounter = _selected_encounter(request, clinic_id, key, encounter_id)
     if encounter is None:
         return render(request, "prescription/draft.html", {"clinic_id": clinic_id})
+    bind_encounter_context(request, encounter)
     scope = {
         "clinic_id": clinic_id,
         "encounter_id": encounter.pk,
@@ -947,6 +949,7 @@ def _review(
     encounter = authorize_encounter(
         clinic_id=clinic_id, encounter_id=document.encounter_id
     )
+    bind_encounter_context(request, encounter)
     subject = _subject(encounter)
     frozen = document.frozen_input if isinstance(document.frozen_input, dict) else {}
     attempts = [
@@ -1149,6 +1152,7 @@ def _signing_page(
     encounter = authorize_encounter(
         clinic_id=clinic_id, encounter_id=operation.encounter_id
     )
+    bind_encounter_context(request, encounter)
     document = operation.document
     view = _operation_view(operation)
     siblings = list(

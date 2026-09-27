@@ -110,6 +110,7 @@ class CommandResultSerializer(serializers.Serializer[Any]):
             ("save_view", "save_view"),
             ("archive_view", "archive_view"),
             ("patient", "patient"),
+            ("notice", "notice"),
         ),
         read_only=True,
     )
@@ -117,6 +118,10 @@ class CommandResultSerializer(serializers.Serializer[Any]):
     action_url_name = serializers.CharField(read_only=True)
     token = serializers.CharField(read_only=True, allow_null=True)
     href = serializers.CharField(read_only=True, allow_null=True)
+    html = serializers.CharField(
+        read_only=True,
+        help_text="Server-rendered, escaped option markup for the workspace combobox.",
+    )
 
     def get_fields(self) -> dict[str, serializers.Field[Any, Any, Any, Any]]:
         """Add ``label`` here: as a class attribute it would shadow ``Field.label``."""

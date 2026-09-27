@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
+from apps.audit.services import record_phase1_event
 from apps.identity.current_context import current_actor_id
 from apps.identity.models import Clinic, SavedView
 
@@ -110,6 +111,11 @@ def save_view(
                 destination=destination,
                 params=clean,
             )
+            record_phase1_event(
+                "identity.saved_view.created",
+                clinic_id=clinic_id,
+                affected_record_id=row.pk,
+            )
     except DatabaseError as error:  # no role in the clinic, or a racing save
         raise SavedViewError from error
     return _record(row)
@@ -117,8 +123,14 @@ def save_view(
 
 def archive_saved_view(*, clinic_id: UUID, view_id: UUID) -> None:
     """Archive one of the current user's views; unknown and foreign ids match."""
-    updated = SavedView.objects.filter(
-        pk=view_id, clinic_id=clinic_id, archived_at__isnull=True
-    ).update(archived_at=timezone.now())
-    if updated != 1:
-        raise SavedViewError
+    with transaction.atomic():
+        updated = SavedView.objects.filter(
+            pk=view_id, clinic_id=clinic_id, archived_at__isnull=True
+        ).update(archived_at=timezone.now())
+        if updated != 1:
+            raise SavedViewError
+        record_phase1_event(
+            "identity.saved_view.archived",
+            clinic_id=clinic_id,
+            affected_record_id=view_id,
+        )

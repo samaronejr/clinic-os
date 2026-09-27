@@ -1487,6 +1487,12 @@
       ]
     },
     {
+      "symbol": "apps.intake.patient_search.search_patients_exact",
+      "signals": ["denial"],
+      "kind": "v2",
+      "reason": "Todo 13 exact HMAC lookup: manager and demographics permissions are exercised through all three real search adapters in tests/core/test_command_blind_index.py and tests/core/test_navigation.py. This is a new boundary, not a legacy parity exemption."
+    },
+    {
       "symbol": "apps.intake.patient_search.search_patients",
       "signals": [
         "resolver"
@@ -3201,6 +3207,12 @@
       "probes": [
         "apps.tenancy.envelope.protect#observed"
       ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.blind_indexes",
+      "signals": ["resolver"],
+      "kind": "v2",
+      "reason": "Todo 13 purpose-bound tenant-DEK HMAC boundary. tests/core/test_command_blind_index.py executes tenant separation, rotation and lookup through the real database; no staff-independence or absence-of-gate claim is made."
     },
     {
       "symbol": "apps.tenancy.envelope.reveal",

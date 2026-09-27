@@ -16,12 +16,13 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from apps.intake.patient_name_index import PURPOSE, normalized_name_bytes
 from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._protected import encrypt
+from renewal.browser._protected import encrypt, kek
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_encounter import press
 from renewal.browser.test_encounter import seed as seed_encounter
@@ -179,13 +180,18 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
         ):
             connection.execute(
                 "INSERT INTO clinic_app.intake_patient "
-                "(id,organization_id,full_name,birth_date,created_at) "
-                "VALUES (%s,%s,%s,%s,now())",
+                "(id,organization_id,full_name,birth_date,full_name_index,created_at) "
+                "VALUES (%s,%s,%s,%s,(SELECT blind_index FROM "
+                "clinic_app.protected_blind_index(%s,%s,%s) "
+                "ORDER BY key_version DESC LIMIT 1),now())",
                 [
                     patient,
                     values["organization"],
                     encrypt(connection, "intake.patient.full_name", name.encode()),
                     encrypt(connection, "intake.patient.birth_date", b"1988-02-29"),
+                    kek(),
+                    PURPOSE,
+                    normalized_name_bytes(name),
                 ],
             )
             connection.execute(
@@ -294,11 +300,17 @@ def _no_overflow(page: Page) -> bool:
 
 
 def _is_options(query: str) -> Callable[[Response], bool]:
-    return lambda response: (
-        response.url.endswith("/workspace/command/options/")
-        and response.request.post_data is not None
-        and f"q={query}" in response.request.post_data
-    )
+    def matches(response: Response) -> bool:
+        if not response.url.endswith("/api/ui/v1/command/search/"):
+            return False
+        data = response.request.post_data_json
+        return (
+            response.request.method == "POST"
+            and isinstance(data, dict)
+            and str(data["q"]).startswith(query)
+        )
+
+    return matches
 
 
 def errors_sink(errors: list[str]) -> Callable[[Error], None]:

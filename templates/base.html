@@ -102,7 +102,7 @@
       {% endblock %}
     </main>
     {% if workspace.clinic %}
-      {% url 'workspace-command-options' as palette_endpoint %}{% url 'workspace-command-run' as palette_run %}{% trans "Patients: type the full name." as palette_note %}
+      {% url 'ui_api:command-search' as palette_endpoint %}{% url 'workspace-command-run' as palette_run %}{% trans "Patients: type the full name." as palette_note %}
       {% include "includes/components/command_palette.html" with id="command-palette" groups=workspace.palette_groups endpoint=palette_endpoint run_action=palette_run next=workspace.resume_path note=palette_note state="default" message="" specimen=False csrf_token=csrf_token only %}
       {% block context_switch_dialog %}{% if workspace.patient %}{% include "includes/components/context_switch_dialog.html" only %}{% endif %}{% endblock %}
     {% endif %}

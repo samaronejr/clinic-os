@@ -16,6 +16,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.core.patient_context import bind_encounter_context
 from apps.ehr.attachment_forms import AttachmentUploadForm
 from apps.ehr.attachment_storage import AttachmentStorageError
 from apps.ehr.attachments import (
@@ -127,6 +128,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             raise ClinicalAccessDeniedError
         return render(request, "ehr/attachments.html", {"clinic_id": clinic_id})
     encounter = authorize_attachment_encounter(clinic_id, UUID(str(selected)))
+    bind_encounter_context(request, encounter)
     form = None
     status = OK
     error = ""

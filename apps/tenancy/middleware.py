@@ -11,6 +11,7 @@ from django.http.response import HttpResponseBase
 from django.shortcuts import render
 
 from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
+from apps.core.workspace_access import workspace_denial
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     patient_session_context,
@@ -132,6 +133,17 @@ class TenantMiddleware:
             else:
                 response = _staff_denial(request)
             return response
+
+    def process_view(
+        self,
+        request: HttpRequest,
+        view_func: Callable[..., HttpResponseBase],
+        view_args: tuple[object, ...],
+        view_kwargs: dict[str, object],
+    ) -> HttpResponseBase | None:
+        """Apply workspace permissions inside the already-open tenant transaction."""
+        del view_func, view_args, view_kwargs
+        return workspace_denial(request)
 
     def _patient(self, request: HttpRequest) -> HttpResponseBase:
         """Run one patient request inside its own session-bound transaction.

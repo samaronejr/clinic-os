@@ -210,6 +210,27 @@ def reveal(*, purpose: str, envelope: bytes) -> bytes:
     return bytes(result)
 
 
+def blind_indexes(*, purpose: str, plaintext: bytes) -> tuple[bytes, ...]:
+    """Return one tenant/purpose HMAC per DEK version, oldest first.
+
+    Writes use the last digest; reads match every digest so key rotation
+    does not make existing indexes unreachable. Rewrapping changes no digest.
+    """
+    _validate_purpose(purpose)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT blind_index FROM clinic_app.protected_blind_index(%s, %s, %s)",
+                (_kek(), purpose, plaintext),
+            )
+            rows = cursor.fetchall()
+    except DatabaseError as error:
+        _raise_mapped(error)
+    if not rows:
+        raise EnvelopeUnavailableError
+    return tuple(bytes(row[0]) for row in rows)
+
+
 def rewrap_tenant_keys(*, new_kek: str) -> int:
     """Re-wrap every DEK version of the current tenant under ``new_kek``.
 

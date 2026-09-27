@@ -15,6 +15,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.core.patient_context import bind_encounter_context
 from apps.ehr.history import (
     HistoryChange,
     authorize_history,
@@ -127,6 +128,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             raise ClinicalAccessDeniedError
         return render(request, "ehr/history.html", {"clinic_id": clinic_id})
     encounter = authorize_history(clinic_id, UUID(str(selected)))
+    bind_encounter_context(request, encounter)
     form = None
     status = OK
     if request.method == "POST":

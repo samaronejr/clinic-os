@@ -281,7 +281,8 @@ def test_palette_search_filters_destinations_by_permission(
         row["action_url_name"] for row in receptionist_rows
     }
     assert all(
-        set(row) == {"kind", "label", "meta", "action_url_name", "token", "href"}
+        set(row)
+        == {"kind", "label", "meta", "action_url_name", "token", "href", "html"}
         for row in receptionist_rows
     )
     agenda = _api(physician, {"q": "AGEN", "clinic_id": str(rbac_graph.clinic_a)})

@@ -61,6 +61,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "identity.principal_grant.revoked": Phase1AuditEventDefinition(
             "tenant", "clinic-os-ops", "identity.service_principal_grant", "revoked"
         ),
+        "identity.saved_view.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.saved_view", "created"
+        ),
+        "identity.saved_view.archived": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.saved_view", "archived"
+        ),
         "identity.role_grant.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-ops", "identity.role_grant", "created"
         ),

@@ -187,7 +187,11 @@ day/week view, reopened at the clinic-local date). Migration `0015_saved_views`
 creates the table with FORCE RLS: a row is visible and writable only for
 `app.current_user_id`, in `app.current_tenant`, while the user still holds a
 role in the row's clinic. The runtime role has SELECT and INSERT plus UPDATE of
-`archived_at` only; there is no DELETE. `list_saved_views`, `save_view` and
+`archived_at` only; a transition trigger admits only active-to-archived writes,
+refusing resurrection, rewrites and deletes. Creation and archival append
+`identity.saved_view.created` / `identity.saved_view.archived` metadata-only
+audit events in the same transaction; failed audit rolls back the write.
+`list_saved_views`, `save_view` and
 `archive_saved_view` are keyword-only with an explicit `clinic_id`; unknown,
 foreign and other users' views share one `SavedViewError`. Reversing the
 migration drops the policy and table; it holds no clinical data.

@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from django.template.loader import render_to_string
+from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema
 from rest_framework.parsers import JSONParser
@@ -34,7 +36,7 @@ from apps.core.api.serializers import (
     CommandSearchRequestSerializer,
     ErrorSerializer,
 )
-from apps.core.command_search import search_commands
+from apps.core.command_search import CommandResult, CommandSearch, search_commands
 from apps.core.command_views import tokenized
 from apps.core.workspace import ACTIVE_CLINIC_SESSION_KEY, clinic_of_actor
 from apps.identity.models import User
@@ -133,17 +135,49 @@ class CommandSearchView(UiApiView):
             query=data["q"],
             context_path=data.get("page_path", ""),
         )
-        rows = [
-            {
-                "kind": result.kind,
-                "label": result.label,
-                "meta": result.meta,
-                "action_url_name": result.action_url_name,
-                "token": token or None,
-                "href": result.href,
-            }
-            for result, token in tokenized(request.session, clinic.id, search)
-        ]
+        if search.patient_status == "refine":
+            search = CommandSearch(
+                results=(
+                    *search.results,
+                    CommandResult(
+                        kind="notice",
+                        group=gettext("Patients"),
+                        label=gettext(
+                            "Several patients share this name. "
+                            "Use the patient registry to tell them apart."
+                        ),
+                        meta="",
+                        action_url_name="",
+                        href=None,
+                    ),
+                ),
+                patient_status="refine",
+            )
+        rows = []
+        previous_group = ""
+        for index, (result, token) in enumerate(
+            tokenized(request.session, clinic.id, search)
+        ):
+            rows.append(
+                {
+                    "kind": result.kind,
+                    "label": result.label,
+                    "meta": result.meta,
+                    "action_url_name": result.action_url_name,
+                    "token": token or None,
+                    "href": result.href,
+                    "html": render_to_string(
+                        "core/partials/command_api_option.html",
+                        {
+                            "result": result,
+                            "token": token,
+                            "index": index,
+                            "group_start": result.group != previous_group,
+                        },
+                    ),
+                }
+            )
+            previous_group = result.group
         return Response(CommandResultSerializer(rows, many=True).data)
 
 
