@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from functools import partialmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -21,7 +22,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import expect
+from playwright.sync_api import Locator, expect
 
 from renewal.browser._navigation import goto_refused
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
@@ -52,6 +53,15 @@ NOT_FOUND = 404
 FORBIDDEN = 403
 
 
+class _FixtureSecret(str):
+    """Preserve credential values for clients, but redact fixture failure reprs."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "<fixture secret>"
+
+
 @pytest.fixture
 def workspace_staff(renewal_base_url: str) -> dict[str, str]:
     """Seed a two-clinic receptionist, a TOTP-enrolled physician and clinic B."""
@@ -64,8 +74,8 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
         "receptionist_id": str(uuid4()),
         "physician": f"medico-{uuid4().hex[:8]}",
         "physician_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
-        "totp_key": secrets.token_hex(20),
+        "password": _FixtureSecret(secrets.token_urlsafe(24)),
+        "totp_key": _FixtureSecret(secrets.token_hex(20)),
     }
     with psycopg.connect(
         os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
@@ -268,9 +278,11 @@ def _submit_diagnostics(page: Page, selector: str) -> Iterator[None]:
         recorder.detach()
 
 
-def _submit(page: Page, selector: str) -> None:
+def _submit(page: Page, selector: str, *, navigation: bool = True) -> None:
+    """Finish the triggered document, not merely its POST's response headers."""
     with (
         _submit_diagnostics(page, selector),
+        page.expect_navigation(wait_until="load") if navigation else nullcontext(),
         page.expect_response(
             lambda response: response.request.method == "POST"
         ) as received,
@@ -297,8 +309,45 @@ def _register_and_find_patient(page: Page, base_url: str, patients: str) -> None
     _submit(page, "button[type=submit]")
     page.wait_for_url(f"**{patients}")
     page.locator("#id_q").fill(PATIENT)
-    _submit(page, "#patient-search-form button[type=submit]")
+    _submit(page, "#patient-search-form button[type=submit]", navigation=False)
     expect(page.locator(".intake-table tbody")).to_contain_text(PATIENT)
+
+
+def test_submit_finishes_native_and_htmx_redirect_navigation(
+    desktop: Page,
+    renewal_base_url: str,
+    workspace_staff: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An incidental click wait must not be what makes the helper safe.
+    monkeypatch.setattr(
+        Locator, "click", partialmethod(Locator.click, no_wait_after=True)
+    )
+    loaded: list[str] = []
+    desktop.on("load", lambda page: loaded.append(page.url))
+    original = _submit
+
+    def checked(page: Page, selector: str, *, navigation: bool = True) -> None:
+        before = len(loaded)
+        original(page, selector, navigation=navigation)
+        if navigation:
+            assert len(loaded) > before
+
+    monkeypatch.setattr(f"{__name__}._submit", checked)
+    assert "dsn" not in workspace_staff
+    for key in ("password", "totp_key"):
+        assert workspace_staff[key] not in repr(workspace_staff)
+    _sign_in(
+        desktop,
+        renewal_base_url,
+        workspace_staff["receptionist"],
+        workspace_staff["password"],
+    )
+    _register_and_find_patient(
+        desktop,
+        renewal_base_url,
+        f"/intake/clinics/{workspace_staff['clinic_a']}/patients/",
+    )
 
 
 def _modules(page: Page) -> list[str]:
