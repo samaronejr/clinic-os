@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from itertools import product
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import psycopg
@@ -54,7 +57,7 @@ from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
     from uuid import UUID
 
     from pytest_django.plugin import DjangoDbBlocker
@@ -62,32 +65,85 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
-# Census oracles for the machine-principal SQL kind (test_sql_guard_inventory).
-PRINCIPAL_SQL_ORACLES = {
-    name: [
-        "test_machine_sql_closure_reads_no_staff_authority",
-        "test_staff_state_never_grants_machine_authority",
-    ]
-    for name in ("clinic_app.principal_has", "clinic_app.principal_scope")
-}
-MACHINE_SQL_CALLS = {
-    "clinic_app.principal_has": (
-        "SELECT clinic_app.principal_has(NULL::text, NULL::uuid)"
-    ),
-    "clinic_app.principal_scope": (
-        "SELECT clinic_app.principal_scope(NULL::uuid, NULL::uuid)"
-    ),
-}
-# Staff-authority channels each machine function may read, derived from the
-# live has_permission/user_has_org closure. The actor GUC is read only to
-# refuse a mixed human context; the tenant GUC is the machine's own scope.
-MACHINE_SQL_CHANNELS = {
-    "clinic_app.principal_has": {"app.current_tenant", "app.current_user_id"},
-    "clinic_app.principal_scope": {"app.current_user_id"},
-}
+# Census contract for the machine_principal SQL kind (test_sql_guard_inventory):
+# every registry member carries exactly these executed oracles.
+MACHINE_ORACLES = [
+    "test_machine_sql_closure_reads_no_staff_authority",
+    "test_staff_state_never_grants_machine_authority",
+]
+REGISTRY = json.loads(Path(__file__).with_name("legacy_guards.json").read_text())
+# Staff-authority channel GUCs the staff-state matrix varies for every member.
+# A member whose derived closure reads any other channel GUC is refused.
+VARIED_CHANNELS = frozenset({"app.current_tenant", "app.current_user_id"})
 # Reviewed opaque callee: pg_has_role(session_user, 'clinic_agent', 'USAGE')
 # inspects the database login role graph, never application staff rows.
 MACHINE_SQL_OPAQUE = {"opaque function pg_catalog.pg_has_role"}
+# Actor GUC cells: cleared; the matrix actor; other staff; every pooled uuid
+# ("pooled"); and each call's own argument values ("own_argument"), so a member
+# that grants when the actor equals an argument or the principal is refused.
+ACTOR_GUCS = ("cleared", "forged", "mismatched", "pooled", "own_argument")
+
+
+def machine_members(registry: dict[str, Any] = REGISTRY) -> list[str]:
+    """Every SQL function the census registry labels machine_principal."""
+    return sorted(
+        name
+        for name, entry in registry["sql_guards"].items()
+        if entry["kind"] == "machine_principal"
+    )
+
+
+def _argument_types(members: list[str]) -> dict[str, list[str]]:
+    """Live argument types; a registered member missing from the catalog fails."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT n.nspname || '.' || p.proname, "
+            "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes) t) "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+            "WHERE n.nspname || '.' || p.proname = ANY(%s)",
+            [members],
+        )
+        rows = cursor.fetchall()
+    found = {name: list(types) for name, types in rows}
+    assert sorted(found) == sorted(members), (members, sorted(found))
+    assert len(rows) == len(members), "overloaded machine member"
+    return found
+
+
+def _machine_vectors(
+    types: dict[str, list[str]], pools: dict[str, list[UUID | str]]
+) -> dict[str, list[tuple[UUID | str, ...]]]:
+    """Every combination of pooled arguments; an unpooled type fails closed."""
+    vectors = {}
+    for name, argument_types in types.items():
+        for argument_type in argument_types:
+            assert pools.get(argument_type), (name, "no argument pool", argument_type)
+        vectors[name] = list(product(*(pools[t] for t in argument_types)))
+    return vectors
+
+
+def _call(name: str, types: list[str]) -> str:
+    arguments = ", ".join(f"%s::{t}" for t in types)
+    return f"SELECT {name}({arguments})"
+
+
+def _granted(value: object) -> bool:
+    return value is not None and value is not False
+
+
+def _assert_every_member_executed(
+    members: list[str], decisions: Mapping[tuple[str, str, str], tuple[object, ...]]
+) -> None:
+    for name in members:
+        executed = [
+            values for (member, _t, _a), values in decisions.items() if member == name
+        ]
+        assert len(executed) == 2 * len(ACTOR_GUCS), (name, "not executed")
+        assert all(
+            values
+            for (member, _t, actor_guc), values in decisions.items()
+            if member == name and actor_guc != "own_argument"
+        ), (name, "no executed decisions")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -655,8 +711,10 @@ def test_repeatable_read_cannot_hide_committed_revocation(
 
 def _machine_sql_reads(catalog: Catalog) -> dict[str, dict[str, set[str]]]:
     channels = catalog.derive()
+    members = machine_members()
     result = {}
-    for name, statement in MACHINE_SQL_CALLS.items():
+    for name, types in _argument_types(members).items():
+        statement = f"SELECT {name}({', '.join(f'NULL::{t}' for t in types)})"
         reads = catalog.statement(statement)
         result[name] = {
             "relations": {
@@ -674,15 +732,16 @@ def _machine_sql_reads(catalog: Catalog) -> dict[str, dict[str, set[str]]]:
 
 
 def test_machine_sql_closure_reads_no_staff_authority() -> None:
-    assert _machine_sql_reads(Catalog()) == {
-        name: {
-            "relations": set(),
-            "functions": set(),
-            "settings": MACHINE_SQL_CHANNELS[name],
-            "opaque": MACHINE_SQL_OPAQUE,
-        }
-        for name in MACHINE_SQL_CALLS
-    }
+    reads = _machine_sql_reads(Catalog())
+    assert sorted(reads) == machine_members()
+    assert reads
+    for name, closure in reads.items():
+        assert closure["relations"] == set(), name
+        assert closure["functions"] == set(), name
+        assert closure["settings"] <= VARIED_CHANNELS, name
+        assert closure["opaque"] <= MACHINE_SQL_OPAQUE, name
+    # The actor GUC is read only to refuse a mixed human context.
+    assert all("app.current_user_id" in c["settings"] for c in reads.values())
 
 
 def test_planted_staff_read_in_machine_sql_is_detected() -> None:
@@ -701,51 +760,112 @@ def test_planted_staff_read_in_machine_sql_is_detected() -> None:
     assert "clinic_app.identity_userclinicrole" in reads["relations"]
 
 
+def test_machine_matrix_fails_closed_without_executable_members() -> None:
+    member = "clinic_app.synthetic_member"
+    with pytest.raises(AssertionError, match="no argument pool"):
+        _machine_vectors({member: ["integer"]}, {"uuid": [uuid4()]})
+    with pytest.raises(AssertionError, match="not executed"):
+        _assert_every_member_executed([member], {})
+    empty = {(member, t, a): () for t in ("own", "foreign") for a in ACTOR_GUCS}
+    with pytest.raises(AssertionError, match="no executed decisions"):
+        _assert_every_member_executed([member], empty)
+    assert machine_members({"sql_guards": {}}) == []
+
+
 def _machine_decisions(
-    principal: ServicePrincipal, actor: UUID, other_organization: UUID
-) -> tuple[object, ...]:
-    """Every channel input: actor GUC absent/forged, own/foreign tenant, role."""
-    decisions: list[object] = []
-    scope = [principal.pk, principal.clinic_id]
+    principal: ServicePrincipal,
+    actors: dict[str, list[object]],
+    tenants: dict[str, UUID],
+    calls: dict[str, tuple[str, list[tuple[UUID | str, ...]]]],
+) -> dict[tuple[str, str, str], tuple[object, ...]]:
+    """Run every member on the agent login under each tenant and actor GUC.
+
+    Fixed cells run every vector under each listed actor value. The
+    own_argument cell sets the actor GUC to each argument of the vector it
+    then calls, so actor == argument is exercised for every argument.
+    """
+    decisions = {}
     with transaction.atomic(using="agent"), connections["agent"].cursor() as cursor:
-        for tenant in (principal.organization_id, other_organization):
+
+        def decide(
+            statement: str, vector: tuple[UUID | str, ...], actor: object
+        ) -> object:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id',%s,true)",
+                [str(actor or "")],
+            )
+            cursor.execute(statement, list(vector))
+            row = cursor.fetchone()
+            assert row is not None
+            return row[0]
+
+        for tenant_label, tenant in tenants.items():
             cursor.execute(
                 "SELECT set_config('app.current_principal',%s,true), "
-                "set_config('app.current_tenant',%s,true), "
-                "set_config('app.current_user_id','',true)",
+                "set_config('app.current_tenant',%s,true)",
                 [str(principal.pk), str(tenant)],
             )
-            for forged in (False, True):
-                if forged:
-                    cursor.execute(
-                        "SELECT set_config('app.current_user_id',%s,true)",
-                        [str(actor)],
+            for name, (statement, vectors) in calls.items():
+                for actor_label, values in actors.items():
+                    decisions[name, tenant_label, actor_label] = tuple(
+                        decide(statement, vector, actor)
+                        for actor in values
+                        for vector in vectors
                     )
-                cursor.execute(
-                    "SELECT clinic_app.principal_scope(%s,%s), "
-                    "clinic_app.principal_has('appointment.read',%s)",
-                    [*scope, principal.clinic_id],
+                decisions[name, tenant_label, "own_argument"] = tuple(
+                    decide(statement, vector, argument)
+                    for vector in vectors
+                    for argument in vector
                 )
-                decisions.append(cursor.fetchone())
         transaction.set_rollback(True, using="agent")
-    for statement in MACHINE_SQL_CALLS.values():
+    return decisions
+
+
+def _runtime_refusals(
+    types: dict[str, list[str]], actor: UUID, organization: UUID
+) -> dict[str, object]:
+    refusals: dict[str, object] = {}
+    for name, argument_types in types.items():
         with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
             cursor.execute(
                 "SELECT set_config('app.current_user_id',%s,true), "
                 "set_config('app.current_tenant',%s,true)",
-                [str(actor), str(principal.organization_id)],
+                [str(actor), str(organization)],
             )
             with pytest.raises(DatabaseError) as error:
-                cursor.execute(statement)
+                cursor.execute(
+                    _call(name, argument_types), [None] * len(argument_types)
+                )
             transaction.set_rollback(True)
-        decisions.append(type(error.value.__cause__))
-    return tuple(decisions)
+        refusals[name] = type(error.value.__cause__)
+    return refusals
 
 
 def test_staff_state_never_grants_machine_authority(
     principal: ServicePrincipal, rbac_graph: RbacGraph
 ) -> None:
+    members = machine_members()
+    types = _argument_types(members)
+    uuid_pool: list[UUID | str] = [
+        principal.pk,
+        principal.clinic_id,
+        principal.organization_id,
+        rbac_graph.clinic_b,
+        uuid4(),
+    ]
+    vectors = _machine_vectors(
+        types, {"uuid": uuid_pool, "text": ["appointment.read", "clinical.finalize"]}
+    )
+    calls = {name: (_call(name, types[name]), vectors[name]) for name in members}
     actor = User.objects.create(username="synthetic-machine-staff-" + uuid4().hex)
+    actors: dict[str, list[object]] = {
+        "cleared": [None],
+        "forged": [actor.pk],
+        "mismatched": [rbac_graph.physician],
+        "pooled": list(uuid_pool),
+    }
+    assert (*actors, "own_argument") == ACTOR_GUCS
+    tenants = {"own": principal.organization_id, "foreign": rbac_graph.organization_b}
     scope = ReplayScope(
         rbac_graph.clinic_a, rbac_graph.organization_a, other_clinic=rbac_graph.clinic_b
     )
@@ -758,21 +878,27 @@ def test_staff_state_never_grants_machine_authority(
             )
             set_memberships(actor, scope, state)
             add_authority_backstop(actor, scope, state)
-            observed[state.key()] = _machine_decisions(
-                principal, actor.pk, rbac_graph.organization_b
+            decisions = _machine_decisions(principal, actors, tenants, calls)
+            _assert_every_member_executed(members, decisions)
+            observed[state.key()] = (
+                decisions,
+                _runtime_refusals(types, actor.pk, principal.organization_id),
             )
     finally:
         set_memberships(actor, scope, StaffState(()))
-    granted = (principal.organization_id, True)
-    refused = (None, False)
-    assert set(observed.values()) == {
-        (
-            granted,
-            refused,
-            (principal.organization_id, False),
-            refused,
-            psycopg.errors.InsufficientPrivilege,
-            psycopg.errors.InsufficientPrivilege,
-        )
-    }
     assert len(observed) == len(states)
+    first, refusals = observed[states[0].key()]
+    # Staff state never changes any machine decision or runtime refusal.
+    assert all(value == (first, refusals) for value in observed.values())
+    assert refusals == dict.fromkeys(members, psycopg.errors.InsufficientPrivilege)
+    for (name, _tenant, actor_guc), values in first.items():
+        if actor_guc == "cleared":
+            continue
+        assert not any(map(_granted, values)), (name, actor_guc, "actor GUC granted")
+    for name in members:
+        # Anti-vacuity: the pooled arguments reach each member's grant path.
+        assert any(map(_granted, first[name, "own", "cleared"])), (name, "never grants")
+        # Every argument was also presented as the actor GUC.
+        assert len(first[name, "own", "own_argument"]) == len(types[name]) * len(
+            vectors[name]
+        ), (name, "actor == argument not exercised")

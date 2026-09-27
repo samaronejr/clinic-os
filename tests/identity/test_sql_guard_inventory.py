@@ -59,11 +59,13 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert not entry["probes"], name
     assert listed == set(PROBES)
     assert operation_oracles == METRICS_SQL_ORACLES
-    assert machine_oracles == test_service_principals.PRINCIPAL_SQL_ORACLES
-    assert set(machine_oracles) == set(test_service_principals.MACHINE_SQL_CALLS)
-    for oracles in machine_oracles.values():
-        for oracle in oracles:
-            assert callable(getattr(test_service_principals, oracle)), oracle
+    # Membership is the registry label itself; the oracles derive their member
+    # set from it, so every labelled function is executed, not hand-listed.
+    assert sorted(machine_oracles) == test_service_principals.machine_members()
+    for name, oracles in machine_oracles.items():
+        assert oracles == test_service_principals.MACHINE_ORACLES, name
+    for oracle in test_service_principals.MACHINE_ORACLES:
+        assert callable(getattr(test_service_principals, oracle)), oracle
 
 
 def test_omitting_a_deployed_sql_guard_breaks_the_inventory() -> None:

@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
 import pytest
 from apps.audit.models import AuditEvent
+from apps.identity import service_principals
 from apps.identity.current_context import CurrentActorError
-from apps.identity.models import ServicePrincipal, ServicePrincipalGrant, UserClinicRole
+from apps.identity.models import (
+    ServicePrincipal,
+    ServicePrincipalGrant,
+    User,
+    UserClinicRole,
+)
+from apps.identity.permissions import BUNDLES_V1
 from apps.identity.service_principals import (
     grant_principal,
     register_principal,
@@ -18,11 +26,14 @@ from apps.identity.service_principals import (
 )
 from django.db import ProgrammingError, connection, transaction
 
-from identity.permission_support import owner_context
+from identity.permission_support import owner_context, permission_actor
 from identity.test_scope_provisioning import provisioning_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from uuid import UUID
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -209,3 +220,112 @@ def test_unknown_and_foreign_principals_share_denial(
             clinic_id=rbac_graph.clinic_a,
             principal_id=principal.pk if foreign else uuid4(),
         )
+
+
+# Every public service in the provisioning module, derived rather than listed.
+PROVISIONING = sorted(
+    name
+    for name, value in vars(service_principals).items()
+    if inspect.isfunction(value)
+    and value.__module__ == service_principals.__name__
+    and not name.startswith("_")
+)
+ACTOR_STATES = (*UserClinicRole.Role.values, "none", "inactive_owner")
+
+
+def _allowed(state: str) -> bool:
+    return state in BUNDLES_V1 and "staff.organization" in BUNDLES_V1[state]
+
+
+def _state_actor(graph: RbacGraph, state: str) -> UUID:
+    actor, _ = permission_actor(graph, "owner" if state == "inactive_owner" else state)
+    if state == "inactive_owner":
+        User.objects.filter(pk=actor).update(is_active=False)
+    return actor
+
+
+def _provisioning_seed(graph: RbacGraph) -> dict[str, Callable[[], object]]:
+    """One valid call per service; each call is otherwise legal for an owner."""
+    with owner_context(graph.organization_a):
+        granted, ungranted = (
+            ServicePrincipal.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                name=f"sintetico-matrix-{suffix}",
+                db_identity=f"clinic_agent_{uuid4().hex}",
+                purpose="availability",
+            )
+            for suffix in ("granted", "ungranted")
+        )
+        grant = ServicePrincipalGrant.objects.create(
+            organization_id=graph.organization_a,
+            principal=granted,
+            permission="appointment.read",
+            subject_scope="clinic",
+        )
+    clinic = graph.clinic_a
+    return {
+        "grant_principal": lambda: service_principals.grant_principal(
+            clinic_id=clinic,
+            principal_id=ungranted.pk,
+            permission="appointment.read",
+            subject_scope="clinic",
+        ),
+        "register_principal": lambda: service_principals.register_principal(
+            clinic_id=clinic,
+            name="sintetico-matrix-new",
+            db_identity=f"clinic_agent_{uuid4().hex}",
+            purpose="availability",
+        ),
+        "revoke_principal": lambda: service_principals.revoke_principal(
+            clinic_id=clinic, principal_id=granted.pk
+        ),
+        "revoke_principal_grant": lambda: service_principals.revoke_principal_grant(
+            clinic_id=clinic, grant_id=grant.pk
+        ),
+    }
+
+
+def _authority_state(
+    graph: RbacGraph,
+) -> tuple[frozenset[object], frozenset[object], int]:
+    with owner_context(graph.organization_a):
+        return (
+            frozenset(ServicePrincipal.objects.values_list("pk", "active")),
+            frozenset(ServicePrincipalGrant.objects.values_list("pk", "active")),
+            AuditEvent.objects.filter(
+                event_type__startswith="identity.principal"
+            ).count(),
+        )
+
+
+def test_provisioning_authority_comes_from_the_role_catalog() -> None:
+    assert {state for state in ACTOR_STATES if _allowed(state)} == {
+        "owner",
+        "org_admin",
+    }
+    assert {"physician", "clinic_admin", "receptionist", "none"} <= set(ACTOR_STATES)
+
+
+@pytest.mark.parametrize("state", ACTOR_STATES)
+def test_every_provisioning_service_requires_organization_staff_authority(
+    rbac_graph: RbacGraph, state: str
+) -> None:
+    calls = _provisioning_seed(rbac_graph)
+    assert sorted(calls) == PROVISIONING
+    actor = _state_actor(rbac_graph, state)
+    for name in PROVISIONING:
+        before = _authority_state(rbac_graph)
+        if _allowed(state):
+            with provisioning_context(rbac_graph, actor):
+                calls[name]()
+            after = _authority_state(rbac_graph)
+            assert after[:2] != before[:2], name
+            assert after[2] == before[2] + 1, name
+        else:
+            with (
+                pytest.raises(CurrentActorError),
+                provisioning_context(rbac_graph, actor),
+            ):
+                calls[name]()
+            assert _authority_state(rbac_graph) == before, name

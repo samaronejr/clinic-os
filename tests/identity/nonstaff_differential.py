@@ -16,7 +16,7 @@ from django.core.management import CommandError
 from django.db import DatabaseError, connection, transaction
 from psycopg import sql
 
-from identity.authority_catalog import Catalog
+from identity.authority_catalog import ROOTS, Catalog
 from identity.authority_observer import AuthorityObserver
 from identity.legacy_parity_support import DENIALS, target_code
 from identity.nonstaff_states import (
@@ -42,6 +42,13 @@ STAFF_STATES = (None, *UserClinicRole.Role.values)
 EXEMPT_KINDS = frozenset({"nonstaff", "infrastructure"})
 
 
+def root_delegation(row: Candidate) -> frozenset[str]:
+    """Authority roots a delegated label names; each must be reached when run."""
+    if row["kind"] != "delegated":
+        return frozenset()
+    return frozenset(row.get("enforced_by", ())) & ROOTS
+
+
 def completed(value: object) -> bool:
     return value is not False
 
@@ -56,6 +63,9 @@ class DifferentialProbe:
     patient_session: UUID | None = None
     owns_transaction: bool = False
     patient_context: bool = False
+    # Trusted seeding inside the scenario transaction, before observation:
+    # real subjects exist for the call and are rolled back with it.
+    prepare: Callable[[], object] | None = None
 
 
 class StaffDependentError(AssertionError):
@@ -100,6 +110,14 @@ def _invocation_context(probe: DifferentialProbe) -> Iterator[None]:
                 transaction.set_rollback(True)
 
 
+@contextmanager
+def _scenario(probe: DifferentialProbe) -> Iterator[None]:
+    with _invocation_context(probe):
+        if probe.prepare is not None:
+            probe.prepare()
+        yield
+
+
 def _bind_actor(probe: DifferentialProbe, actor: User, organization: UUID) -> None:
     """Trusted fixture binding, deliberately outside observed guard execution."""
     assert probe.database_role in {"clinic_app", "clinic_owner"}
@@ -140,7 +158,7 @@ def _invoke(
     _bind_actor(probe, actor, organization)
     previous = sys.getprofile()
     try:
-        with _invocation_context(probe):
+        with _scenario(probe):
             sys.setprofile(observe)
             try:
                 if authority is None:
@@ -273,6 +291,7 @@ def assert_behavioral_classifications(
         if row["kind"] in EXEMPT_KINDS
         or row.get("differential", False)
         or row.get("observe", False)
+        or root_delegation(row)
     }
     assert set(required) == set(probes), (
         "missing_or_stale_differential_adapters",
@@ -287,10 +306,14 @@ def assert_behavioral_classifications(
     for symbol in sorted(required):
         assert probes[symbol], (symbol, "missing_scenarios")
         touches = set()
+        reached_roots = []
         for probe in probes[symbol]:
             assert probe.symbol == symbol
             observer = AuthorityObserver(catalog, channels)
             decision = _invoke(probe, actor, scope.organization, authority=observer)
+            reached_roots.append(
+                {name for kind, name in observer.touches if kind == "function"}
+            )
             # Observation wins even if a plant catches a denial and returns True.
             if required[symbol]["kind"] in EXEMPT_KINDS:
                 observer.assert_nonstaff(symbol)
@@ -304,6 +327,16 @@ def assert_behavioral_classifications(
                 "declared_authority_channel_not_reached",
             )
             executed.add(symbol + "#observed")
+        roots = root_delegation(required[symbol])
+        if roots:
+            # The label is a verified claim: every scenario must execute one of
+            # the named roots, or the delegation it names no longer happens.
+            assert all(roots & reached for reached in reached_roots), (
+                symbol,
+                "delegation_not_observed",
+                sorted(roots),
+                sorted(touches),
+            )
     replay = _replay(backstop, actor=actor, scope=scope)
     return DifferentialReport(
         replay.decisions,
