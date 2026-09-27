@@ -33,6 +33,7 @@ from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_access_code, new_password
+from renewal.browser._navigation import click_to_navigate, expect_document
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
@@ -287,8 +288,7 @@ def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
     page.wait_for_url("**/auth/protected/")
 
 
@@ -304,15 +304,15 @@ def _open_access(page: Page, base_url: str, staff: dict[str, str], name: str) ->
     assert received.value.status == OK
     wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
-    with page.expect_navigation():
-        row.locator("button", has_text=gettext("Access")).click()
+    click_to_navigate(row.locator("button", has_text=gettext("Access")))
     expect(page.locator("h1")).to_have_text(gettext("Patient access"))
 
 
 def _issue_code(page: Page) -> str:
     """Issue one invitation through the staff screen and read the code."""
-    with page.expect_navigation():
-        page.locator("button", has_text=gettext("Issue a new invitation")).click()
+    click_to_navigate(
+        page.locator("button", has_text=gettext("Issue a new invitation"))
+    )
     code = page.locator("#issued-code").inner_text()
     assert code
     return code
@@ -322,8 +322,7 @@ def _redeem(page: Page, base_url: str, clinic_id: str, code: str) -> None:
     """Submit one code through the real redemption form."""
     page.goto(f"{base_url}/patient/access/{clinic_id}/")
     page.locator("#id_code").fill(code)
-    with page.expect_navigation():
-        page.locator("button", has_text=gettext("Continue")).click()
+    click_to_navigate(page.locator("button", has_text=gettext("Continue")))
 
 
 def _patient_journey(  # noqa: PLR0913 - the journey needs its full context
@@ -355,8 +354,7 @@ def _patient_journey(  # noqa: PLR0913 - the journey needs its full context
     _capture(patient, root, f"patient-home-{width}")
 
     # Sign out ends the session server-side and shows the gate.
-    with patient.expect_navigation():
-        patient.locator("button", has_text=gettext("Sign out")).click()
+    click_to_navigate(patient.locator("button", has_text=gettext("Sign out")))
     expect(patient.locator("h1")).to_have_text(gettext("You are signed out"))
     _capture(patient, root, f"patient-signed-out-{width}")
 
@@ -527,8 +525,9 @@ def test_failure_states_reject_and_stay_generic(
 
         # Staff revocation ends the live session immediately.
         _open_access(page, renewal_base_url, access_staff, PATIENT_A)
-        with page.expect_navigation():
-            page.locator("button", has_text=gettext("Revoke access")).first.click()
+        click_to_navigate(
+            page.locator("button", has_text=gettext("Revoke access")).first
+        )
         expect(page.locator(".feedback--success")).to_contain_text(
             gettext(
                 "Patient access revoked. The invitation and its sessions no "
@@ -599,8 +598,7 @@ def test_native_post_completes_the_journey_without_javascript(
             _redeem(patient, renewal_base_url, access_staff["clinic_a"], code)
             patient.wait_for_url("**/patient/")
             expect(patient.locator("#patient-name")).to_have_text(PATIENT_A)
-            with patient.expect_navigation():
-                patient.locator("button", has_text=gettext("Sign out")).click()
+            click_to_navigate(patient.locator("button", has_text=gettext("Sign out")))
             expect(patient.locator("h1")).to_have_text(gettext("You are signed out"))
             assert _no_overflow(patient)
             _capture(patient, renewal_artifact_root, "native-journey-768")
@@ -667,7 +665,7 @@ def test_keyboard_reaches_and_activates_issue_redeem_and_sign_out(
         )
         focused: list[str] = []
         _tab_until(page, issue_button, focused)
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator(".access-issued")).to_contain_text(
             gettext("Invitation code")
@@ -692,14 +690,14 @@ def test_keyboard_reaches_and_activates_issue_redeem_and_sign_out(
             patient.keyboard.type(code)
             continue_button = patient.locator("button", has_text=gettext("Continue"))
             _tab_until(patient, continue_button, focused)
-            with patient.expect_navigation():
+            with expect_document(patient):
                 patient.keyboard.press("Enter")
             patient.wait_for_url("**/patient/")
             expect(patient.locator("#patient-name")).to_have_text(PATIENT_A)
 
             sign_out = patient.locator("button", has_text=gettext("Sign out"))
             _tab_until(patient, sign_out, focused)
-            with patient.expect_navigation():
+            with expect_document(patient):
                 patient.keyboard.press("Enter")
             expect(patient.locator("h1")).to_have_text(gettext("You are signed out"))
             _capture(patient, renewal_artifact_root, "keyboard-signed-out-1280")

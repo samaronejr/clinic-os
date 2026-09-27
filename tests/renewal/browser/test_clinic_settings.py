@@ -11,6 +11,7 @@ import pytest
 from PIL import Image
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot, zoom_200
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
@@ -25,8 +26,7 @@ __all__ = ("availability_staff",)
 
 
 def submit(page: Page, action: str) -> None:
-    with page.expect_navigation():
-        page.locator(f'button[value="{action}"]').click()
+    click_to_navigate(page.locator(f'button[value="{action}"]'))
 
 
 def capture(page: Page, root: Path, scene: str, width: int) -> None:

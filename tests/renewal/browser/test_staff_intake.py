@@ -28,6 +28,7 @@ from django.utils.translation import gettext, ngettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password
+from renewal.browser._navigation import click_to_navigate, expect_document
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -349,8 +350,7 @@ def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
     page.wait_for_url("**/auth/protected/")
 
 
@@ -435,8 +435,7 @@ def _register_and_land(
 ) -> dict[str, object]:
     """Register through the secondary action, hold the POST, land on the notice."""
     width = _width(page)
-    with page.expect_navigation():
-        page.locator(f"{SEARCH_FORM} a.button--secondary").click()
+    click_to_navigate(page.locator(f"{SEARCH_FORM} a.button--secondary"))
     expect(page.locator("h1")).to_have_text(gettext("Register a patient"))
     assert _no_overflow(page)
     _capture(page, root, f"register-blank-{width}")
@@ -444,7 +443,7 @@ def _register_and_land(
     page.locator("#id_birth_date").fill("1990-05-17")
     with (
         _observed_in_flight(page, f"{patients}new/", "register", root) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         page.locator(REGISTER).click()
     page.wait_for_url(f"**{patients}")
@@ -543,8 +542,7 @@ def _disambiguate_same_name(page: Page) -> None:
 def _book_handoff(page: Page, name: str, root: Path) -> None:
     """The row action posts the enrollment and the booking names the patient."""
     _search(page, name)
-    with page.expect_navigation():
-        page.locator(".intake-table tbody button").first.click()
+    click_to_navigate(page.locator(".intake-table tbody button").first)
     assert page.url.endswith("/appointments/new/")
     assert "?" not in page.url
     expect(page.locator("#booking-patient")).to_have_text(name)
@@ -612,13 +610,11 @@ def test_native_post_completes_find_and_register_without_javascript(
         page.goto(f"{renewal_base_url}{patients}new/")
         page.locator("#id_full_name").fill(native)
         page.locator("#id_birth_date").fill("1984-09-09")
-        with page.expect_navigation():
-            page.locator(REGISTER).click()
+        click_to_navigate(page.locator(REGISTER))
         page.wait_for_url(f"**{patients}")
         expect(page.locator("#intake-registered")).to_be_visible()
         page.locator("#id_q").fill(native)
-        with page.expect_navigation():
-            page.locator(SEARCH).click()
+        click_to_navigate(page.locator(SEARCH))
         assert page.url == f"{renewal_base_url}{patients}"
         assert _row_names(page) == [native]
         # Without scripts the browser owns the focus move: the status is the
@@ -632,8 +628,7 @@ def test_native_post_completes_find_and_register_without_javascript(
         # Native validation error: the summary is the focus target, the input kept.
         _remove_attribute(page, "#id_q", "minlength")
         page.locator("#id_q").fill("N")
-        with page.expect_navigation():
-            page.locator(SEARCH).click()
+        click_to_navigate(page.locator(SEARCH))
         _assert_autofocus_target(page, "intake-errors")
         expect(page.locator("#id_q")).to_have_value("N")
         expect(page.locator("#id_q")).to_have_attribute(

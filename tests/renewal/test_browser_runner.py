@@ -18,7 +18,14 @@ import pytest
 from ops.testing import renewal_runner as runner
 from ops.testing.browser_server_supervisor import SupervisedMaster
 from ops.testing.isolation_common import IsolationError, JsonObject
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import (
+    ElementHandle,
+    Frame,
+    Keyboard,
+    Locator,
+    Page,
+    sync_playwright,
+)
 
 from renewal.browser import _fixture_secrets as fixture_secrets
 from renewal.browser import a11y_support, engines
@@ -344,6 +351,191 @@ def test_browser_suites_capture_full_pages_only_through_the_engines_splitter() -
         for path in scanned
         for site in _full_page_captures(
             path, exempt=tuple(CAPTURE_EXEMPTIONS.get(path, {}))
+        )
+    ]
+
+    assert offenders == []
+
+
+NAVIGATION_MODULE = BROWSER_SUITES / "_navigation.py"
+NAVIGATION_WAIT = "expect_navigation"
+NAVIGATION_HELPER = "expect_document"
+# Reviewed exemptions, per file: function -> reason.
+NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
+    NAVIGATION_MODULE: {
+        NAVIGATION_HELPER: "the helper: subscribes only after the worker settled",
+    },
+    BROWSER_SUITES / "test_smoke.py": {
+        "_unsafe_press": (
+            "the deterministic reproduction of the unsafe shape against a held"
+            " worker activation (fix-a12)"
+        ),
+    },
+    BROWSER_SUITES / "test_workspace.py": dict.fromkeys(
+        (
+            "test_receptionist_reaches_every_module_and_switches_clinic",
+            "test_keyboard_order_and_reflow_hold_at_every_width",
+        ),
+        "todo 13 owns the workspace suites and adopts click_to_navigate at rebase",
+    ),
+}
+
+
+def _waiting_methods() -> frozenset[str]:
+    """Playwright actions that take ``no_wait_after``.
+
+    Derived from the pinned sync API: every public method of the objects a
+    suite acts on that has the parameter.
+    """
+    return frozenset(
+        name
+        for owner in (Locator, Page, Frame, ElementHandle)
+        for name, member in vars(owner).items()
+        if not name.startswith("_")
+        and callable(member)
+        and "no_wait_after" in inspect.signature(member).parameters
+    )
+
+
+def _unsafe_navigation_waits(
+    source: str, label: str, exempt: tuple[str, ...]
+) -> list[str]:
+    """Navigation waits in ``source`` that bypass ``_navigation``.
+
+    Counted: any ``expect_navigation`` reference (attribute or name string,
+    so ``getattr`` lookups count too); and, inside ``with expect_document``,
+    an action (``_waiting_methods`` on any receiver but ``.keyboard``/
+    ``.mouse``, or ``click_when_hittable``) that passes ``no_wait_after``
+    other than a literal ``False``, or a ``**`` splat that could. In
+    Playwright 1.61 that flag also drops the hit-target recheck, so an
+    intercepted click is lost instead of retried. Sites inside the ``exempt``
+    functions do not count.
+    """
+    tree = ast.parse(source, filename=label)
+    exempt_lines = {
+        line
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name in exempt
+        for line in range(node.lineno, (node.end_lineno or node.lineno) + 1)
+    }
+    waiting = _waiting_methods()
+    found: list[int] = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and node.attr == NAVIGATION_WAIT) or (
+            isinstance(node, ast.Constant) and node.value == NAVIGATION_WAIT
+        ):
+            found.append(node.lineno)
+        if not isinstance(node, ast.With) or not any(
+            isinstance(item.context_expr, ast.Call)
+            and isinstance(item.context_expr.func, ast.Name)
+            and item.context_expr.func.id == NAVIGATION_HELPER
+            for item in node.items
+        ):
+            continue
+        for statement in node.body:
+            for call in ast.walk(statement):
+                if not isinstance(call, ast.Call):
+                    continue
+                func = call.func
+                acts = (
+                    isinstance(func, ast.Attribute)
+                    and func.attr in waiting
+                    and not (
+                        isinstance(func.value, ast.Attribute)
+                        and func.value.attr in {"keyboard", "mouse"}
+                    )
+                ) or (isinstance(func, ast.Name) and func.id == "click_when_hittable")
+                skips_recheck = any(
+                    keyword.arg is None
+                    or (
+                        keyword.arg == "no_wait_after"
+                        and not (
+                            isinstance(keyword.value, ast.Constant)
+                            and keyword.value.value is False
+                        )
+                    )
+                    for keyword in call.keywords
+                )
+                if acts and skips_recheck:
+                    found.append(call.lineno)
+    return sorted(f"{label}:{line}" for line in found if line not in exempt_lines)
+
+
+def _navigation_offenders(path: Path, exempt: tuple[str, ...]) -> list[str]:
+    return _unsafe_navigation_waits(
+        path.read_text(encoding="utf-8"), str(path.relative_to(REPOSITORY)), exempt
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "unsafe"),
+    [
+        ("with page.expect_navigation():\n    page.locator('a').click()\n", True),
+        (
+            "with page.expect_navigation(url=u):\n    page.keyboard.press('Enter')\n",
+            True,
+        ),
+        ("with getattr(page, 'expect_navigation')():\n    b.click()\n", True),
+        ("wait = page.expect_navigation\n", True),
+        (
+            "with expect_document(page):\n    b.click(no_wait_after=True)\n",
+            True,
+        ),
+        ("with expect_document(page):\n    b.click(no_wait_after=flag)\n", True),
+        ("with expect_document(page):\n    b.click(**options)\n", True),
+        (
+            "with expect_document(page):\n    b.press('Enter', no_wait_after=True)\n",
+            True,
+        ),
+        ("with expect_document(page):\n    b.check(no_wait_after=True)\n", True),
+        (
+            "with expect_document(page):\n"
+            "    click_when_hittable(b, no_wait_after=True)\n",
+            True,
+        ),
+        ("with (x(), expect_document(page)):\n    page.click('a', **o)\n", True),
+        ("with expect_document(page):\n    page.locator('a').click()\n", False),
+        ("with expect_document(page):\n    b.click(no_wait_after=False)\n", False),
+        ("with expect_document(page):\n    page.keyboard.press('Enter')\n", False),
+        ("with expect_document(page):\n    page.evaluate('history.back()')\n", False),
+        ("with expect_document(page):\n    click_when_hittable(b)\n", False),
+        ("click_to_navigate(page.locator('a'), url=u)\n", False),
+    ],
+)
+def test_navigation_detector_flags_each_unsafe_shape(
+    source: str, *, unsafe: bool
+) -> None:
+    assert bool(_unsafe_navigation_waits(source, "planted.py", ())) is unsafe
+
+
+def test_browser_suites_await_navigations_only_through_the_navigation_helper() -> None:
+    # Hosted retention@firefox 36349167980: a press whose POST never left the
+    # browser, the signature of a navigation held behind an activating worker.
+    scanned = sorted(BROWSER_SUITES.rglob("*.py"))
+    registered = {
+        REPOSITORY / relpath for paths in runner.SUITES.values() for relpath in paths
+    }
+    assert registered <= set(scanned)
+    assert {"click", "press", "check"} <= _waiting_methods()
+    assert not {
+        name
+        for name, member in vars(Keyboard).items()
+        if callable(member) and "no_wait_after" in inspect.signature(member).parameters
+    }
+    # Every exemption names a function that exists and that the detector
+    # flags once its exemption is lifted.
+    for path, functions in NAVIGATION_EXEMPTIONS.items():
+        for function in functions:
+            others = tuple(name for name in functions if name != function)
+            assert len(_navigation_offenders(path, exempt=others)) > len(
+                _navigation_offenders(path, exempt=tuple(functions))
+            ), (path, function)
+
+    offenders = [
+        site
+        for path in scanned
+        for site in _navigation_offenders(
+            path, exempt=tuple(NAVIGATION_EXEMPTIONS.get(path, {}))
         )
     ]
 

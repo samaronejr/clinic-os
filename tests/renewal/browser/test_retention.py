@@ -23,6 +23,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, new_totp_key
+from renewal.browser._navigation import click_to_navigate, expect_document
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     failed_responses_logged,
@@ -360,8 +361,7 @@ def sign_in_manager(
     # never flake the challenge.
     token = TOTP(bytes.fromhex(manager["totp_key"]), 30, 0, 6, 1).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
     page.wait_for_url("**/auth/protected/")
 
 
@@ -957,7 +957,7 @@ def _matrix_widths(  # noqa: PLR0913 - the scene needs its full context
     # Keyboard: Enter submits the policy form and the patient export.
     focused: list[str] = []
     _tab_until(page, page.locator('button[value="propose_policy"]'), focused)
-    with page.expect_navigation():
+    with expect_document(page):
         page.keyboard.press("Enter")
     expect(page.locator(".feedback--success").first).to_be_visible()
     capture(page, root, "matrix-success", 1280)
@@ -1097,8 +1097,7 @@ def _matrix_conflict(  # noqa: PLR0913 - the scene needs its full context
     row.locator('input[name="version_id"]').evaluate(
         "(element, value) => { element.value = value; }", draft
     )
-    with page.expect_navigation():
-        row.locator('button[value="release"]').click()
+    click_to_navigate(row.locator('button[value="release"]'))
     expect(page.locator("#retention-error")).to_contain_text("finalizada")
     _consume_expected_error(errors, "409")
     capture(page, root, "matrix-conflict", 1280)
@@ -1127,10 +1126,11 @@ def _matrix_setup(  # noqa: PLR0913 - the scene needs its full context
         page.goto(url)
         # Release the first version; the second stays releasable for the
         # forged conflict below.
-        with page.expect_navigation():
+        click_to_navigate(
             page.locator(
                 f'#releasable-list li[data-version="{first}"] button[value="release"]'
-            ).click()
+            )
+        )
         second_version = open_finalized(
             page, staff, base, "2035-06-06", second["specialty"]
         )
@@ -1284,13 +1284,12 @@ def test_retention_native_form_fallback(
         version = open_finalized(page, staff, base, "2035-06-07", data["specialty"])
         url = f"{base}/retention/clinics/{staff['clinic_a']}/"
         page.goto(url)
-        with page.expect_navigation():
-            click_when_hittable(
-                page.locator(
-                    f'#releasable-list li[data-version="{version}"] '
-                    'button[value="release"]'
-                )
-            )
+        click_to_navigate(
+            page.locator(
+                f'#releasable-list li[data-version="{version}"] button[value="release"]'
+            ),
+            hittable=True,
+        )
         expect(page.locator("#release-list")).to_be_visible()
         code = grant_records(staff, data)
         _redeem(page, base, staff["clinic_a"], code)

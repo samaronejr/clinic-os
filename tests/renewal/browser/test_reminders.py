@@ -16,6 +16,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import worker_dsn
+from renewal.browser._navigation import click_to_navigate, expect_document
 from renewal.browser._page_wait import evaluate_all_js, evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -86,8 +87,7 @@ def _book(page: Page, base: str, staff: dict[str, str], data: dict[str, str]) ->
     _redeem(page, base, staff["clinic_a"], data["code"])
     page.goto(base + "/patient/appointments/")
     _choose_day(page, data["day"])
-    with page.expect_navigation():
-        page.locator("[data-slot] button").first.click()
+    click_to_navigate(page.locator("[data-slot] button").first)
     expect(page.locator('[data-status="scheduled"]')).to_have_count(1)
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
@@ -196,7 +196,7 @@ def test_reminder_journey(
         manager.set_viewport_size({"width": width // 2, "height": 500})
         _capture(manager, root, "zoom-200", width)
         manager.get_by_role("link", name="Atualizar situação").focus()
-        with manager.expect_navigation():
+        with expect_document(manager):
             manager.keyboard.press("Enter")
         assert not errors
         assert not console
@@ -232,8 +232,7 @@ def _open_contacts(page: Page, base: str, staff: dict[str, str], name: str) -> N
         page.locator("#patient-search-form button[type=submit]").click()
     assert response.value.status == 200
     row = page.locator(".intake-table tbody tr", has_text=name)
-    with page.expect_navigation():
-        row.get_by_role("button", name=re.compile(r"^Contatos")).click()
+    click_to_navigate(row.get_by_role("button", name=re.compile(r"^Contatos")))
     expect(page.locator(".contacts-purpose")).to_have_count(3)
 
 
@@ -260,12 +259,10 @@ def _journey_states(
                 '.contacts-purpose:has(input[value="appointment_reminder"])'
             )
             form.locator('input[name="channel"][value=""]').check()
-            with manager.expect_navigation():
-                form.get_by_role("button").click()
+            click_to_navigate(form.get_by_role("button"))
             _capture(manager, root, "opt-out-contact", width)
         elif outcome == "cancelled":
-            with patient.expect_navigation():
-                patient.get_by_role("button", name="Cancelar consulta").click()
+            click_to_navigate(patient.get_by_role("button", name="Cancelar consulta"))
             expect(patient.locator('[data-status="cancelled"]')).to_have_count(1)
         _worker(operation, outcome, root)
         manager.goto(url)
@@ -325,7 +322,7 @@ def test_native_long_content_and_denied_scope(
         )
         _capture(manager, root, "native-long-zoom-200", 1280)
         manager.get_by_role("link", name="Atualizar situação").focus()
-        with manager.expect_navigation():
+        with expect_document(manager):
             manager.keyboard.press("Enter")
         manager.set_viewport_size({"width": 320, "height": 900})
         _capture(manager, root, "native-long-reflow", 320)

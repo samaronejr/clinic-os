@@ -14,7 +14,8 @@ from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
 from renewal.browser._fixture_secrets import new_access_code
-from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
@@ -172,8 +173,7 @@ def _capture(page: Page, root: Path, state: str, width: int) -> None:
 
 
 def _press(page: Page, action: str) -> None:
-    with page.expect_navigation():
-        click_when_hittable(page.locator(f'button[value="{action}"]').first)
+    click_to_navigate(page.locator(f'button[value="{action}"]').first, hittable=True)
 
 
 def _other_patient_denial(
@@ -215,8 +215,7 @@ def _staff_journey(
     )
     expect(row.get_by_role("button", name="Questionários")).to_be_visible()
     _capture(page, root, "reception-patient-search", width)
-    with page.expect_navigation():
-        row.get_by_role("button", name="Questionários").click()
+    click_to_navigate(row.get_by_role("button", name="Questionários"))
     expect(page.locator('[data-state="submitted"]')).to_be_visible()
     assert PRIVATE not in page.content()
     _capture(page, root, "reception-status", width)
@@ -335,7 +334,7 @@ def test_versioned_patient_and_clinical_journey(
         page.locator("#id_q_bool").select_option("False")
         # Native keyboard submission, no JS-only form transport.
         page.locator('button[value="submit"]').focus()
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator("[data-template-version]")).to_have_attribute(
             "data-state", "submitted"
@@ -404,7 +403,7 @@ def _stale_editor_conflict(
     expect(page.locator("#id_q_long_0")).to_have_value(LONG_ANSWER)
     page.locator('button[value="submit"]').focus()
     expect(page.locator('button[value="submit"]')).to_be_focused()
-    with page.expect_navigation():
+    with expect_document(page):
         page.keyboard.press("Enter")
     expect(page.locator("[data-template-version]")).to_have_attribute(
         "data-state", "submitted"

@@ -183,6 +183,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from renewal.browser._navigation import expect_document
 from renewal.browser._page_wait import evaluate_js
 
 if TYPE_CHECKING:
@@ -547,13 +548,13 @@ def restores_forms_on_back(context: BrowserContext) -> bool:
 
 def history_reload(page: Page) -> None:
     """Reload the way the document's own Reload does (see Session history)."""
-    with page.expect_navigation():
+    with expect_document(page):
         page.evaluate("location.reload()")
 
 
 def history_back(page: Page, url: str) -> None:
     """Go Back the way the document's own Back does, landing on ``url``."""
-    with page.expect_navigation(url=url):
+    with expect_document(page, url=url):
         page.evaluate("history.back()")
 
 

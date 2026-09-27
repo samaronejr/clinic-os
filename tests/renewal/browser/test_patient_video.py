@@ -20,6 +20,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser.engines import (
     END_TRACK_JS,
@@ -151,10 +152,9 @@ def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
 
 def _staff_action(physician: Page, case: _Case, session_id: str, action: str) -> None:
     physician.goto(case.staff_url)
-    with physician.expect_navigation():
-        physician.locator(
-            f'[data-session="{session_id}"] button[value="{action}"]'
-        ).click()
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="{action}"]')
+    )
 
 
 def _expire_patient_session(case: _Case, patient_id: str) -> None:
@@ -243,8 +243,7 @@ def _check_devices(patient: Page, case: _Case) -> None:
 
 
 def _enter_room(patient: Page, case: _Case, session_id: str) -> None:
-    with patient.expect_navigation():
-        patient.locator('button[value="join"]').click()
+    click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-role", "patient")
     expect(patient.locator("#room-name")).to_contain_text(f"tc-{session_id}")
@@ -376,8 +375,7 @@ def _ended_room(patient: Page, physician: Page, case: _Case, session_id: str) ->
     assert patient.evaluate(TRACK_JS, "audio") is None
     _assert_late_media_dropped(patient, "ended")
     _capture(patient, case, "room-ended")
-    with patient.expect_navigation():
-        patient.locator("[data-back]").click()
+    click_to_navigate(patient.locator("[data-back]"))
     expect(patient.locator("h1")).to_have_text("Sala de espera")
     expect(patient.locator("#empty-title")).to_be_visible()
     row = patient.locator(f'.tele-history-item[data-session="{session_id}"]')
@@ -472,8 +470,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     expect(denied.locator('[data-device="camera"]')).to_have_text("Permissão negada")
     expect(denied.locator('button[value="join"]')).to_be_enabled()
     _capture(denied, case, "waiting-denied")
-    with denied.expect_navigation():
-        denied.locator('button[value="join"]').click()
+    click_to_navigate(denied.locator('button[value="join"]'))
     room = denied.locator("#room-panel")
     expect(room).to_have_attribute("data-media", "denied")
     expect(room).to_have_attribute("data-connection", "connected")
@@ -503,8 +500,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     assert denied.evaluate(TRACK_JS, "audio") is None
     _assert_late_media_dropped(denied, "expired")
     _capture(denied, case, "room-expired")
-    with denied.expect_navigation():
-        denied.locator("[data-portal]").click()
+    click_to_navigate(denied.locator("[data-portal]"))
     expect(denied.locator("h1")).to_have_text("Acesso necessário")
     _capture(denied, case, "gate-expired")
     assert (
@@ -518,11 +514,12 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
 def _unanswered_prompt(patient: Page, case: _Case, session_id: str) -> None:
     """The room connects and follows the session while the prompt is open."""
     patient.goto(case.patient_url)
-    with patient.expect_navigation():
+    click_to_navigate(
         patient.locator(
             f'form:has(input[name="session_id"][value="{session_id}"]) '
             'button[value="join"]'
-        ).click()
+        )
+    )
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(panel).to_have_attribute("data-media", "pending")

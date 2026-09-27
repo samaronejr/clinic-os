@@ -13,6 +13,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
+from renewal.browser._navigation import expect_document
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot, zoom_200
@@ -124,7 +125,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
     assert button.evaluate("e => e.getBoundingClientRect().height >= 44")
     assert button.evaluate("e => getComputedStyle(e).outlineStyle !== 'none'")
     capture(patient, root, "keyboard-focus", width)
-    with patient.expect_navigation():
+    with expect_document(patient):
         patient.keyboard.press("Enter")
     receipt = patient.locator("[data-receipt]")
     expect(receipt).to_have_attribute("data-state", "accepted")

@@ -24,6 +24,7 @@ from django.utils.translation import gettext
 from PIL import Image
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import (
     await_autofocus,
     click_when_hittable,
@@ -420,8 +421,7 @@ def test_showcase_is_absent_from_the_served_runtime_and_css_is_served(
     await_autofocus(renewal_page.locator("#id_username"))
     renewal_page.fill("#id_username", renewal_owner["username"])
     renewal_page.fill("#id_password", renewal_owner["password"])
-    with renewal_page.expect_navigation(wait_until="load"):
-        renewal_page.click("button[type=submit]")
+    click_to_navigate(renewal_page.locator("button[type=submit]"), wait_until="load")
     assert any(
         cookie["name"] == "sessionid" for cookie in renewal_page.context.cookies()
     )

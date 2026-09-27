@@ -17,6 +17,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, worker_dsn
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -142,8 +143,7 @@ def _capture(page: Page, root: Path, state: str, width: int) -> None:
 
 
 def _press(page: Page, action: str) -> None:
-    with page.expect_navigation():
-        page.locator(f'button[value="{action}"]').first.click()
+    click_to_navigate(page.locator(f'button[value="{action}"]').first)
 
 
 def _publish_consent(page: Page, url: str) -> None:
@@ -157,8 +157,7 @@ def _publish_consent(page: Page, url: str) -> None:
 def _accept_consent(patient: Page, base: str) -> None:
     patient.goto(f"{base}/patient/consent/")
     form = patient.locator("form", has_text="Teleconsulta").first
-    with patient.expect_navigation():
-        form.locator('button[value="read"]').click()
+    click_to_navigate(form.locator('button[value="read"]'))
     patient.locator("#id_accepted").check()
     _press(patient, "accept")
     expect(patient.locator('[role="status"]')).to_be_visible()
@@ -177,8 +176,7 @@ def _open_encounter(
         + appointment_id
         + '"]) button[value="open"]'
     )
-    with physician.expect_navigation():
-        button.click()
+    click_to_navigate(button)
 
 
 def _room_operation(staff: dict[str, str], session_id: str) -> str:
@@ -229,8 +227,7 @@ def _worker(operation: str, outcome: str, root: Path) -> None:
 
 
 def _create_session(physician: Page, url: str) -> str:
-    with physician.expect_navigation():
-        physician.locator('button[value="create"]').first.click()
+    click_to_navigate(physician.locator('button[value="create"]').first)
     session = physician.locator("[data-session]").first.get_attribute("data-session")
     assert session is not None
     return session
@@ -268,21 +265,22 @@ def _happy_path(  # noqa: PLR0913 - the journey needs its full context
     patient.goto(patient_url)
     _capture(patient, root, "patient-waiting", width)
     _join_patient(patient, root, width)
-    with physician.expect_navigation():
-        physician.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
     expect(physician.locator("#room-name")).to_contain_text(f"tc-{session_id}")
     expect(physician.locator("#room-panel")).to_have_attribute("data-role", "physician")
     _capture(physician, root, "physician-room", width)
     physician.goto(staff_url)
-    with physician.expect_navigation():
-        physician.locator(
-            f'[data-session="{session_id}"] button[value="start"]'
-        ).click()
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="start"]')
+    )
     expect(physician.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "active"
     )
-    with physician.expect_navigation():
-        physician.locator(f'[data-session="{session_id}"] button[value="end"]').click()
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="end"]')
+    )
     expect(physician.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "ended"
     )

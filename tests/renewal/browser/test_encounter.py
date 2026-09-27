@@ -12,7 +12,8 @@ import pytest
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
-from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser._navigation import click_to_navigate
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import element_box, full_page_screenshot, new_context
 from renewal.browser.test_availability import (
@@ -108,14 +109,12 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 
 
 def press(page: Page, action: str) -> None:
-    with page.expect_navigation():
-        page.locator(f'button[value="{action}"]').first.click()
+    click_to_navigate(page.locator(f'button[value="{action}"]').first)
 
 
 def press_in_view(page: Page, action: str) -> None:
     """``press`` for a button far outside the viewport (see click_when_hittable)."""
-    with page.expect_navigation():
-        click_when_hittable(page.locator(f'button[value="{action}"]').first)
+    click_to_navigate(page.locator(f'button[value="{action}"]').first, hittable=True)
 
 
 def stored(staff: dict[str, str], version: str) -> tuple[int, str]:

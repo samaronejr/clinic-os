@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import (
     browser_zoom_200,
     element_box,
@@ -39,10 +40,10 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 
 
 def edit(page: Page, kind: str, action: str) -> None:
-    with page.expect_navigation():
-        click_when_hittable(
-            page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first
-        )
+    click_to_navigate(
+        page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first,
+        hittable=True,
+    )
 
 
 def save(page: Page, expected_status: int = 302) -> None:
@@ -276,7 +277,7 @@ def zoom_journey(page: Page, root: Path) -> None:
             zoomed.locator("#id_reason").fill("Correção com zoom do navegador")
             checks[kind] = accessibility_checks(zoomed)
             capture_zoom(zoomed, root, f"zoom-200-{kind}-editor")
-            with zoomed.expect_navigation():
+            with expect_document(zoomed):
                 zoomed.keyboard.press("Enter")
             expect(zoomed.locator('[data-save-state="saved"]')).to_be_visible()
             zoomed.reload()
@@ -340,8 +341,7 @@ def test_clinical_history_journey(
             f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
         )
         press(page, "open")
-        with page.expect_navigation():
-            page.get_by_role("button", name="Problemas e alergias").click()
+        click_to_navigate(page.get_by_role("button", name="Problemas e alergias"))
         capture(page, root, "not-assessed", width)
         for kind in ("problem", "allergy"):
             record_and_revise(page, root, kind, width)

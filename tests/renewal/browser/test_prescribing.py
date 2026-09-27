@@ -29,6 +29,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
@@ -148,8 +149,7 @@ def author_and_render(page: Page, base: str, staff: dict[str, str], day: str) ->
     """Author one draft from the encounter and freeze it into a document."""
     page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
     press(page, "open")
-    with page.expect_navigation():
-        page.get_by_role("button", name="Prescrição sintética").click()
+    click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
     press(page, "create")
     for field, value in ITEM.items():
         page.locator(f"#id_items-0-{field}").fill(value)
@@ -322,8 +322,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         # Follow the actual result return link to the document's workspace.
         encounter = page.locator("[data-subject]").get_attribute("data-subject")
         assert encounter
-        with page.expect_navigation():
-            page.locator('a[href$="/draft/"]').click()
+        click_to_navigate(page.locator('a[href$="/draft/"]'))
         expect(page.locator("[data-subject]")).to_have_attribute(
             "data-subject", encounter
         )
@@ -340,8 +339,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
             "data-encounter", encounter
         )
         capture(page, root, "returned-encounter", width)
-        with page.expect_navigation():
-            page.get_by_role("button", name="Prescrição sintética").click()
+        click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
         expect(page.locator("[data-subject]")).to_have_attribute(
             "data-subject", encounter
         )
@@ -353,8 +351,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         assert page.locator('button[value="render_document"]').count() == 0
         expect(row.locator('button[value="release_document"]')).to_be_visible()
         capture(page, root, "history-discarded", width)
-        with page.expect_navigation():
-            row.locator('a[href*="/signing/"]').click()
+        click_to_navigate(row.locator('a[href*="/signing/"]'))
         assert page.url == signing_url
         expect(page.locator('[data-evidence="content_digest"]')).to_contain_text(digest)
         with page.expect_download() as download:

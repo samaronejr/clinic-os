@@ -9,6 +9,7 @@ import psycopg
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import expect_document
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_agenda import (
@@ -139,7 +140,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             b.evaluate("window.rtStarted = performance.now()")
             with (
                 b.expect_response(url) as refetch,
-                a.expect_navigation(),
+                expect_document(a),
             ):
                 a.locator(BOOKING_SUBMIT).click()
             assert refetch.value.status == 200
@@ -174,7 +175,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
                     and response.url.endswith("/rt/stream")
                 )
             ) as denied,
-            a.expect_navigation(),
+            expect_document(a),
         ):
             a.locator("form button[type=submit]").click()
         assert denied.value.status == 403

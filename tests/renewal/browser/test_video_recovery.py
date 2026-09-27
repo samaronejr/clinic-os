@@ -14,6 +14,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import (
     full_page_screenshot,
@@ -277,11 +278,11 @@ def begin(
     template = _seed_template(case)
     patient.goto(case.patient_url)
     device_recovery(patient, case)
-    with patient.expect_navigation():
-        patient.locator('button[value="join"]').click()
+    click_to_navigate(patient.locator('button[value="join"]'))
     physician.goto(case.staff_url)
-    with physician.expect_navigation():
-        physician.locator(f'[data-session="{session}"] button[value="join"]').click()
+    click_to_navigate(
+        physician.locator(f'[data-session="{session}"] button[value="join"]')
+    )
     for page in (patient, physician):
         expect(page.locator("#room-panel")).to_have_attribute(
             "data-connection", "connected"

@@ -12,7 +12,8 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_totp_key
-from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser._navigation import click_to_navigate
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import (
@@ -143,8 +144,7 @@ def reverify(page: Page, base: str, key: str) -> None:
     page.goto(f"{base}/auth/verify/")
     token = TOTP(bytes.fromhex(key), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
 
 
 def fill_and_save(page: Page, content: dict[str, str]) -> None:
@@ -190,10 +190,9 @@ def open_draft(
 
 def review_superseded(page: Page, root: Path, width: int, digest: str) -> None:
     """Render the preserved superseded original in the review panel."""
-    with page.expect_navigation():
-        click_when_hittable(
-            page.locator('[data-version-row] button[value="review"]').last
-        )
+    click_to_navigate(
+        page.locator('[data-version-row] button[value="review"]').last, hittable=True
+    )
     expect(page.locator("[data-review]")).to_have_attribute("data-state", "superseded")
     expect(page.locator("[data-review]")).to_have_attribute("data-digest", digest)
     assert FIRST["subjective"] in page.content()

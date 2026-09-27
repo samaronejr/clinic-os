@@ -40,7 +40,8 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
-from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
+from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._page_wait import await_autofocus, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
@@ -302,8 +303,7 @@ def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(username)
     page.locator("#id_password").fill(password)
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
 
 
 def _sign_in_receptionist(page: Page, base_url: str, staff: dict[str, str]) -> None:
@@ -329,8 +329,7 @@ def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None
     page.wait_for_url("**/auth/verify/**")
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
     page.wait_for_url("**/auth/protected/")
 
 
@@ -653,13 +652,11 @@ def _register_patient(
     page.locator("#id_q").fill(name)
     _submit_expecting_error(page, "#patient-search-form button[type=submit]")
     expect(page.locator(".intake-empty")).to_be_visible()
-    with page.expect_navigation():
-        page.locator(".intake-empty a.button--secondary").click()
+    click_to_navigate(page.locator(".intake-empty a.button--secondary"))
     expect(page.locator("h1")).to_have_text(gettext("Register a patient"))
     page.locator("#id_full_name").fill(name)
     page.locator("#id_birth_date").fill("1990-05-17")
-    with page.expect_navigation():
-        page.locator("#patient-create-panel button[type=submit]").click()
+    click_to_navigate(page.locator("#patient-create-panel button[type=submit]"))
     page.wait_for_url(f"**{patients}")
     expect(page.locator("#intake-registered")).to_contain_text(
         gettext("Patient registered")
@@ -671,10 +668,11 @@ def _open_booking(page: Page, base_url: str, staff: dict[str, str], name: str) -
     page.goto(f"{base_url}{_patients_path(staff)}")
     page.locator("#id_q").fill(name)
     _submit_expecting_error(page, "#patient-search-form button[type=submit]")
-    with page.expect_navigation():
-        page.locator(".intake-table tbody tr").filter(has_text=name).locator(
-            "button", has_text=gettext("Book appointment")
-        ).click()
+    click_to_navigate(
+        page.locator(".intake-table tbody tr")
+        .filter(has_text=name)
+        .locator("button", has_text=gettext("Book appointment"))
+    )
     assert page.url == f"{base_url}{_book_path(staff)}"
     expect(page.locator("#booking-patient")).to_have_text(name)
 
@@ -697,8 +695,7 @@ def _select_clinic_and_open_today(
     width = _width(page)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_B)
     page.locator(".nav-switch-summary").click()
-    with page.expect_navigation():
-        page.locator(".nav-switch-list a").filter(has_text=CLINIC_A).click()
+    click_to_navigate(page.locator(".nav-switch-list a").filter(has_text=CLINIC_A))
     page.wait_for_url(f"**/scheduling/clinics/{staff['clinic_a']}/agenda/")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator("h1")).to_have_text(gettext("Clinic agenda"))
@@ -740,8 +737,7 @@ def _register_find_and_book(
     """Register, open booking from the empty state, book with the POST held."""
     width = _width(page)
     name = _journey_name(page)
-    with page.expect_navigation():
-        page.locator("#agenda-empty a.button").click()
+    click_to_navigate(page.locator("#agenda-empty a.button"))
     expect(page.locator("h1")).to_have_text(gettext("Patient search"))
     _register_patient(page, base_url, staff, name)
     _open_booking(page, base_url, staff, name)
@@ -769,7 +765,7 @@ def _register_find_and_book(
             f"booking-loading-{width}",
             root,
         ) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         page.locator(BOOKING_SUBMIT).click()
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
@@ -837,8 +833,7 @@ def _week_and_steps(
     """Week view groups the rows under the day; the steps walk days and weeks."""
     width = _width(page)
     next_day = (date.fromisoformat(day) + timedelta(days=1)).isoformat()
-    with page.expect_navigation():
-        page.locator(".agenda-views a").filter(has_text=gettext("Week")).click()
+    click_to_navigate(page.locator(".agenda-views a").filter(has_text=gettext("Week")))
     page.wait_for_url(f"**{_agenda_path(staff, 'week', day)}")
     monday = date.fromisoformat(day) - timedelta(days=date.fromisoformat(day).weekday())
     sunday = monday + timedelta(days=6)
@@ -859,8 +854,9 @@ def _week_and_steps(
     assert len(_rows(page)) == 3
     assert _no_overflow(page)
     _capture(page, root, f"week-{width}")
-    with page.expect_navigation():
-        page.locator(".agenda-steps a").filter(has_text=gettext("Next week")).click()
+    click_to_navigate(
+        page.locator(".agenda-steps a").filter(has_text=gettext("Next week"))
+    )
     expect(page.locator(STATUS)).to_have_text(_week_status(0))
     expect(page.locator("#agenda-empty")).to_contain_text(
         gettext(
@@ -868,20 +864,20 @@ def _week_and_steps(
             "registry and press “Book appointment”."
         )
     )
-    with page.expect_navigation():
-        page.locator(".agenda-steps a").filter(
-            has_text=gettext("Previous week")
-        ).click()
+    click_to_navigate(
+        page.locator(".agenda-steps a").filter(has_text=gettext("Previous week"))
+    )
     assert len(_rows(page)) == 3
-    with page.expect_navigation():
-        page.locator(".agenda-views a").filter(has_text=gettext("Day")).click()
+    click_to_navigate(page.locator(".agenda-views a").filter(has_text=gettext("Day")))
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
-    with page.expect_navigation():
-        page.locator(".agenda-steps a").filter(has_text=gettext("Next day")).click()
+    click_to_navigate(
+        page.locator(".agenda-steps a").filter(has_text=gettext("Next day"))
+    )
     page.wait_for_url(f"**{_agenda_path(staff, 'day', next_day)}")
     expect(page.locator(".agenda-period time")).to_have_text(_day_label(next_day))
-    with page.expect_navigation():
-        page.locator(".agenda-steps a").filter(has_text=gettext("Previous day")).click()
+    click_to_navigate(
+        page.locator(".agenda-steps a").filter(has_text=gettext("Previous day"))
+    )
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
     assert base_url in page.url
 
@@ -914,8 +910,9 @@ def _reschedule(
     """Move the journey appointment with the POST held; land on the same object."""
     width = _width(page)
     name = _journey_name(page)
-    with page.expect_navigation():
-        _row_of(page, name).locator("a").filter(has_text=gettext("Reschedule")).click()
+    click_to_navigate(
+        _row_of(page, name).locator("a").filter(has_text=gettext("Reschedule"))
+    )
     assert page.url.endswith("/reschedule/")
     appointment_url = page.url
     expect(page.locator("h1")).to_have_text(gettext("Reschedule an appointment"))
@@ -937,7 +934,7 @@ def _reschedule(
             f"reschedule-loading-{width}",
             root,
         ) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         page.locator(TRANSITION_SUBMIT).click()
     page.wait_for_url(appointment_url)
@@ -954,8 +951,7 @@ def _reschedule(
     expect(page.locator("#appointment-rescheduled")).to_have_count(0)
     expect(summary).to_contain_text(f"{_short_date(day)} {_range('10:00', '10:30')}")
     # The return link opens the appointment's own day; history stays safe.
-    with page.expect_navigation():
-        page.locator("#scheduling-transition a.button").click()
+    click_to_navigate(page.locator("#scheduling-transition a.button"))
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
     row = _row_of(page, name)
     expect(row.locator(".agenda-time")).to_have_text(_range("10:00", "10:30"))
@@ -979,8 +975,9 @@ def _cancel(
     """Cancel with a closed reason and the POST held; the state is terminal."""
     width = _width(page)
     name = _journey_name(page)
-    with page.expect_navigation():
-        _row_of(page, name).locator("a").filter(has_text=gettext("Cancel")).click()
+    click_to_navigate(
+        _row_of(page, name).locator("a").filter(has_text=gettext("Cancel"))
+    )
     assert page.url.endswith("/cancel/")
     appointment_url = page.url
     expect(page.locator("h1")).to_have_text(gettext("Cancel an appointment"))
@@ -1000,7 +997,7 @@ def _cancel(
             f"cancel-loading-{width}",
             root,
         ) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         page.locator(TRANSITION_SUBMIT).click()
     page.wait_for_url(appointment_url)
@@ -1022,8 +1019,7 @@ def _cancel(
     expect(page.locator("#transition-status")).to_contain_text(
         gettext("This appointment is cancelled, so it can no longer be changed.")
     )
-    with page.expect_navigation():
-        page.locator("#scheduling-transition a.button").click()
+    click_to_navigate(page.locator("#scheduling-transition a.button"))
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
     row = _row_of(page, name)
     expect(row).to_have_class(re.compile("table-row--muted"))
@@ -1069,10 +1065,10 @@ def _paginated(
     assert len(_rows(page)) == PAGE_SIZE
     assert _no_overflow(page)
     _capture(page, root, f"paginated-{width}", full_page=False)
-    with page.expect_navigation():
-        click_when_hittable(
-            page.locator(".agenda-pagination a").filter(has_text=gettext("Next page"))
-        )
+    click_to_navigate(
+        page.locator(".agenda-pagination a").filter(has_text=gettext("Next page")),
+        hittable=True,
+    )
     page.wait_for_url(f"**{_agenda_path(staff, 'day', busy_day, 2)}")
     assert "?" not in page.url
     assert len(_rows(page)) == 1
@@ -1170,8 +1166,7 @@ def _native_book(
 ) -> None:
     """Native validation error keeps the inputs; the retry lands on the agenda."""
     _fill_booking(page, staff["physician_a"], f"{day}T09:30", f"{day}T09:00")
-    with page.expect_navigation():
-        page.locator(BOOKING_SUBMIT).click()
+    click_to_navigate(page.locator(BOOKING_SUBMIT))
     _assert_autofocus_target(page, "booking-errors")
     expect(page.locator(BOOKING_ALERT)).to_contain_text(
         gettext(
@@ -1183,8 +1178,7 @@ def _native_book(
     expect(page.locator("#id_practitioner")).to_have_value(staff["physician_a_id"])
     _capture(page, root, "native-invalid-768", full_page=False)
     page.locator("#id_end_local").fill(f"{day}T10:00")
-    with page.expect_navigation():
-        page.locator(BOOKING_SUBMIT).click()
+    click_to_navigate(page.locator(BOOKING_SUBMIT))
     assert page.url == f"{base}{_agenda_path(staff, 'day', day)}"
     expect(page.locator("#appointment-booked")).to_be_visible()
     rows = _rows(page)
@@ -1198,13 +1192,13 @@ def _native_transitions(
 ) -> None:
     """Native reschedule and cancel: one POST each, redirect to the same object."""
     name = f"Otto Sintético Nativo {RUN_TAG}"
-    with page.expect_navigation():
-        _row_of(page, name).locator("a").filter(has_text=gettext("Reschedule")).click()
+    click_to_navigate(
+        _row_of(page, name).locator("a").filter(has_text=gettext("Reschedule"))
+    )
     appointment_url = page.url
     page.locator("#id_start_local").fill(f"{day}T11:00")
     page.locator("#id_end_local").fill(f"{day}T11:30")
-    with page.expect_navigation():
-        page.locator(TRANSITION_SUBMIT).click()
+    click_to_navigate(page.locator(TRANSITION_SUBMIT))
     assert page.url == appointment_url
     expect(page.locator("#appointment-rescheduled")).to_be_visible()
     expect(page.locator(".transition-summary")).to_contain_text(
@@ -1214,13 +1208,11 @@ def _native_transitions(
     # Native cancel: the reason travels in the body; the state is terminal.
     page.goto(appointment_url.replace("/reschedule/", "/cancel/"))
     page.locator("#id_reason").select_option("clinic_request")
-    with page.expect_navigation():
-        page.locator(TRANSITION_SUBMIT).click()
+    click_to_navigate(page.locator(TRANSITION_SUBMIT))
     expect(page.locator("#appointment-cancelled")).to_be_visible()
     expect(page.locator("form")).to_have_count(0)
     _capture(page, root, "native-cancelled-768", full_page=False)
-    with page.expect_navigation():
-        page.locator("#scheduling-transition a.button").click()
+    click_to_navigate(page.locator("#scheduling-transition a.button"))
     expect(_row_of(page, name)).to_have_class(re.compile("table-row--muted"))
     assert _stored(staff, day) == [
         (_utc(day, "11:00"), _utc(day, "11:30"), "cancelled")
@@ -1258,8 +1250,7 @@ def _double_booking(
     # The retry with a free window lands; the refused one was never saved.
     page.locator("#id_start_local").fill(f"{day}T09:30")
     page.locator("#id_end_local").fill(f"{day}T10:00")
-    with page.expect_navigation():
-        page.locator(BOOKING_SUBMIT).click()
+    click_to_navigate(page.locator(BOOKING_SUBMIT))
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
     assert [row["time"] for row in _rows(page)] == [
         _range("09:00", "09:30"),
@@ -1369,8 +1360,9 @@ def _stale_reschedule_and_replayed_cancel(
     width = _width(page)
     first = _failure_names(page)[0]
     page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
-    with page.expect_navigation():
-        _row_of(page, first).locator("a").filter(has_text=gettext("Reschedule")).click()
+    click_to_navigate(
+        _row_of(page, first).locator("a").filter(has_text=gettext("Reschedule"))
+    )
     reschedule_url = page.url
     cancel_url = reschedule_url.replace("/reschedule/", "/cancel/")
     # Meanwhile the appointment is cancelled elsewhere (a real POST of this session).
@@ -1781,8 +1773,7 @@ def _zoom_200(page: Page, root: Path) -> dict[str, object]:
     )
     assert height >= MIN_TARGET_PX, height
     captures = [_capture(page, root, "list-zoom-200")]
-    with page.expect_navigation():
-        page.locator(f"{ROWS} .agenda-actions a").first.click()
+    click_to_navigate(page.locator(f"{ROWS} .agenda-actions a").first)
     expect(page.locator("h1")).to_have_text(gettext("Reschedule an appointment"))
     assert _no_overflow(page)
     captures.append(_capture(page, root, "reschedule-zoom-200"))

@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
@@ -67,8 +68,7 @@ def _open_workspace(
     _sign_in_physician(page, base, staff)
     page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
     press(page, "open")
-    with page.expect_navigation():
-        page.get_by_role("button", name="Anexos").click()
+    click_to_navigate(page.get_by_role("button", name="Anexos"))
     expect(page.locator("#attachments-title")).to_be_visible()
     url = f"{base}/ehr/clinics/{staff['clinic_a']}/attachments/"
     encounter = page.locator('input[name="encounter_id"]').first.input_value()
@@ -284,8 +284,7 @@ def test_attachment_journey(
             f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
         )
         press(page, "open")
-        with page.expect_navigation():
-            page.get_by_role("button", name="Anexos").click()
+        click_to_navigate(page.get_by_role("button", name="Anexos"))
         expect(page.locator("#attachments-title")).to_be_visible()
         capture(page, root, "empty", width)
         encounter = page.locator('input[name="encounter_id"]').first.input_value()

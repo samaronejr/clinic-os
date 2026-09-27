@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_attachments import cookie_csrf, csrf
@@ -194,8 +195,7 @@ def test_prescription_draft_journey(
         press(page, "open")
         encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
         assert encounter
-        with page.expect_navigation():
-            page.get_by_role("button", name="Prescrição sintética").click()
+        click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
         capture(page, root, "empty", width)
         draft = create_initial(
             page, encounter, data["patient"], staff["physician_a_id"]

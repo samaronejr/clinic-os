@@ -33,6 +33,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
+from renewal.browser._navigation import click_to_navigate, expect_document
 from renewal.browser._page_wait import (
     await_autofocus,
     click_when_hittable,
@@ -275,8 +276,7 @@ def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(username)
     page.locator("#id_password").fill(password)
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
 
 
 def _sign_in_receptionist(page: Page, base_url: str, staff: dict[str, str]) -> None:
@@ -302,8 +302,7 @@ def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None
     page.wait_for_url("**/auth/verify/**")
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
     page.wait_for_url("**/auth/protected/")
 
 
@@ -425,8 +424,7 @@ def _submit_expecting_error(page: Page) -> None:
 
 def _submit_expecting_success(page: Page, list_path: str) -> None:
     """Submit over HTMX; the 204 + HX-Redirect lands on the refreshed list."""
-    with page.expect_navigation():
-        page.locator(SUBMIT).click()
+    click_to_navigate(page.locator(SUBMIT))
     page.wait_for_url(f"**{list_path}")
 
 
@@ -602,7 +600,7 @@ def _create_first_period(
         _observed_in_flight(
             page, list_path, (FORM, SUBMIT, PROGRESS), f"loading-{width}", root
         ) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         page.locator(SUBMIT).click()
     page.wait_for_url(f"**{list_path}")
@@ -726,7 +724,7 @@ def _retire_first_period(
             f"retiring-{width}",
             root,
         ) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         _row_button(page, 0, 0).click()
     page.wait_for_url(f"**{list_path}")
@@ -832,8 +830,7 @@ def test_native_post_creates_and_retires_without_javascript(
         _sign_in_receptionist(page, renewal_base_url, staff)
         page.goto(f"{renewal_base_url}{list_path}")
         _fill(page, staff["physician_a"], day, "08:00", "09:00")
-        with page.expect_navigation():
-            page.locator(SUBMIT).click()
+        click_to_navigate(page.locator(SUBMIT))
         assert page.url == f"{renewal_base_url}{list_path}"
         expect(page.locator("#availability-created")).to_be_visible()
         assert _ranges(page, 0) == ["08:00-09:00"]
@@ -843,8 +840,7 @@ def test_native_post_creates_and_retires_without_javascript(
 
         # Native validation error: the summary is the focus target, inputs kept.
         _fill(page, staff["physician_a"], day, "10:00", "09:30")
-        with page.expect_navigation():
-            page.locator(SUBMIT).click()
+        click_to_navigate(page.locator(SUBMIT))
         _assert_autofocus_target(page, "scheduling-errors")
         expect(page.locator(ALERT)).to_contain_text(
             gettext("Enter a future clinic-local window that ends after it starts.")
@@ -857,8 +853,7 @@ def test_native_post_creates_and_retires_without_javascript(
         _capture(page, root, "native-invalid-768", full_page=False)
 
         # Native retirement: one POST, one redirect, the row is gone.
-        with page.expect_navigation():
-            page.locator(RETIRE).first.click()
+        click_to_navigate(page.locator(RETIRE).first)
         assert page.url == f"{renewal_base_url}{list_path}"
         expect(page.locator("#availability-retired")).to_be_visible()
         expect(page.locator(ROWS)).to_have_count(0)
@@ -1006,8 +1001,7 @@ def _refused_retirement(
     second_button = _row_button(page, ledger_a, 1)
     action = second_button.locator("xpath=ancestor::form").get_attribute("action")
     assert action
-    with page.expect_navigation():
-        second_button.click()
+    click_to_navigate(second_button)
     expect(page.locator("#availability-retired")).to_be_visible()
     replay = page.request.post(
         f"{page.url.split('/scheduling/')[0]}{action}",

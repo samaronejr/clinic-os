@@ -11,8 +11,10 @@ in the iPhone 15 and Pixel 8 emulation profiles.
 
 from __future__ import annotations
 
+import http.server
 import json
 import math
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -22,6 +24,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import ViewportSize
 
+from renewal.browser._navigation import click_to_navigate
 from renewal.browser._page_wait import (
     EvaluateTimeoutError,
     await_autofocus,
@@ -170,8 +173,7 @@ def test_owner_login_establishes_a_session_and_enters_the_totp_flow(  # noqa: PL
     await_autofocus(renewal_page.locator("#id_username"))
     renewal_page.fill("#id_username", renewal_owner["username"])
     renewal_page.fill("#id_password", renewal_owner["password"])
-    with renewal_page.expect_navigation(wait_until="load"):
-        renewal_page.click("button[type=submit]")
+    click_to_navigate(renewal_page.locator("button[type=submit]"), wait_until="load")
     assert any(
         cookie["name"] == "sessionid" for cookie in renewal_page.context.cookies()
     )
@@ -526,3 +528,144 @@ def test_click_when_hittable_fails_loudly_without_pressing(
     assert str(refused.value).startswith(REFUSED_BY[mode]), refused.value
 
     assert csp_page.evaluate("[pressProbeDowns, pressProbeClicks]") == [0, 0]
+
+
+# A registration whose activation is held on the origin's /gate: the app
+# worker's shape (skipWaiting at install, clients.claim at activate, a fetch
+# handler that leaves navigations to the network), with the claim deferred
+# until the test opens the gate. Without a fetch handler no engine routes a
+# navigation through the worker, so nothing would be held. Pages carry the
+# app's data-service-worker marker and register on load, as the shell does.
+HELD_WORKER = b"""self.addEventListener('install', (event) =>
+  event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', (event) =>
+  event.waitUntil(fetch('/gate').then(() => self.clients.claim())));
+self.addEventListener('fetch', () => {});"""
+HELD_SHELL = b"""window.pressProbeClicks = 0;
+addEventListener('click', () => { window.pressProbeClicks += 1; }, {capture: true});
+addEventListener('load', () =>
+  navigator.serviceWorker.register('/sw.js', {scope: '/'}));"""
+HELD_PAGE = (
+    b'<!doctype html><html lang="pt-BR" data-service-worker="/sw.js">'
+    b'<title>held</title><script src="/shell.js"></script>'
+    b'<form method="post" action="/submit">'
+    b'<button id="press" name="action" value="open">Abrir</button></form></html>'
+)
+HELD_PROBE_TIMEOUT_MS = 1_000
+# Bounds the server thread's wait for a gate the test never opens (a failure).
+HELD_GATE_BOUND_S = 60
+
+
+class _HeldOrigin(http.server.ThreadingHTTPServer):
+    """A loopback origin that records requests and holds /gate until opened."""
+
+    def __init__(self) -> None:
+        super().__init__(("127.0.0.1", 0), _HeldHandler)
+        self.requests: list[str] = []
+        self.activating = threading.Event()
+        self.gate = threading.Event()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server_address[1]}/"
+
+    def posts(self) -> list[str]:
+        return [line for line in self.requests if line.startswith("POST ")]
+
+
+class _HeldHandler(http.server.BaseHTTPRequestHandler):
+    server: _HeldOrigin
+
+    def _send(self, status: int, body: bytes, kind: str, *headers: str) -> None:
+        self.send_response(status)
+        for header in headers:
+            name, value = header.split(": ", 1)
+            self.send_header(name, value)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        self.server.requests.append(f"GET {self.path}")
+        if self.path == "/gate":
+            self.server.activating.set()
+            self.server.gate.wait(HELD_GATE_BOUND_S)
+            self._send(200, b"open", "text/plain")
+        elif self.path == "/sw.js":
+            self._send(200, HELD_WORKER, "text/javascript")
+        elif self.path == "/shell.js":
+            self._send(200, HELD_SHELL, "text/javascript")
+        else:
+            self._send(200, HELD_PAGE, "text/html; charset=utf-8")
+
+    def do_POST(self) -> None:
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self.server.requests.append(f"POST {self.path}")
+        self._send(302, b"", "text/html", "Location: /done")
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib signature
+        del format, args
+
+
+@pytest.fixture
+def held_origin() -> Iterator[_HeldOrigin]:
+    origin = _HeldOrigin()
+    serving = threading.Thread(target=origin.serve_forever, daemon=True)
+    serving.start()
+    try:
+        yield origin
+    finally:
+        origin.gate.set()
+        origin.shutdown()
+        serving.join()
+        origin.server_close()
+
+
+def _unsafe_press(page: Page) -> None:
+    """The pre-fix ``press``: no worker precondition before the click.
+
+    Kept only to reproduce the hosted hang.
+    """
+    with page.expect_navigation(timeout=HELD_PROBE_TIMEOUT_MS):
+        page.locator("#press").click(timeout=HELD_PROBE_TIMEOUT_MS)
+
+
+def test_navigation_helper_waits_out_a_held_worker_activation(
+    renewal_page: Page, held_origin: _HeldOrigin
+) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context()
+    try:
+        page = context.new_page()
+        page.goto(held_origin.url, wait_until="load")
+        assert held_origin.activating.wait(HELD_GATE_BOUND_S)
+
+        # The helper refuses to press while the worker activates: its
+        # precondition times out and no click is sent.
+        with pytest.raises(EvaluateTimeoutError):
+            click_to_navigate(page.locator("#press"), timeout=HELD_PROBE_TIMEOUT_MS)
+        assert evaluate_js(page, "window.pressProbeClicks") == 0
+
+        # The pre-fix shape reproduces hosted retention@firefox 36349167980:
+        # the click is dispatched, the POST is held and never sent, and the
+        # click hangs in its own wait for the navigation it scheduled.
+        with pytest.raises(PlaywrightTimeoutError) as held:
+            _unsafe_press(page)
+        assert "waiting for scheduled navigations to finish" in str(held.value)
+        assert held_origin.posts() == []
+
+        # Activation ends: the held POST goes out, exactly once.
+        held_origin.gate.set()
+        page.wait_for_url("**/done")
+        assert held_origin.posts() == ["POST /submit"]
+
+        # A settled worker: the helper presses once and awaits the document.
+        response = click_to_navigate(page.locator("#press"), url="**/done")
+        assert response is not None
+        assert response.status == OK_STATUS
+        assert held_origin.posts() == ["POST /submit", "POST /submit"]
+    finally:
+        context.close()

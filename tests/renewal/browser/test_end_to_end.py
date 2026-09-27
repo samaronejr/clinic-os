@@ -43,7 +43,8 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
+from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
 from renewal.browser.engines import (
     element_box,
@@ -500,8 +501,7 @@ def answer_challenge(page: Page, staff: dict[str, str]) -> None:
         )
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 1).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
 
 
 def press_stepped(page: Page, staff: dict[str, str], action: str) -> None:
@@ -520,8 +520,7 @@ def press_stepped(page: Page, staff: dict[str, str], action: str) -> None:
 def configure_clinic(case: Day, admin: Page, manager: dict[str, str]) -> None:
     """The clinic administrator publishes the day's templates and texts."""
     sign_in_manager(admin, case.base, case.staff, manager)
-    with admin.expect_navigation():
-        admin.locator("a[data-module=settings]").click()
+    click_to_navigate(admin.locator("a[data-module=settings]"))
     specialty = admin.locator('[data-settings-form="specialty"]')
     specialty.locator("#id_key").fill(f"jornada-{case.tag}")
     specialty.locator("#id_title").fill(case.specialty_title)
@@ -563,8 +562,7 @@ def open_patient_row(case: Day, page: Page, button: str) -> None:
         page.locator("#patient-search-form button[type=submit]").click()
     wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=case.patient_name)
-    with page.expect_navigation():
-        row.get_by_role("button", name=re.compile(f"^{button}")).click()
+    click_to_navigate(row.get_by_role("button", name=re.compile(f"^{button}")))
 
 
 def reception_prepares(case: Day, reception: Page) -> str:
@@ -583,12 +581,10 @@ def reception_prepares(case: Day, reception: Page) -> str:
     with reception.expect_response(lambda r: r.request.method == "POST"):
         reception.locator("#patient-search-form button[type=submit]").click()
     wait_for_js(reception, SETTLED_JS)
-    with reception.expect_navigation():
-        reception.locator(".intake-empty a.button--secondary").click()
+    click_to_navigate(reception.locator(".intake-empty a.button--secondary"))
     reception.locator("#id_full_name").fill(case.patient_name)
     reception.locator("#id_birth_date").fill("1988-02-29")
-    with reception.expect_navigation():
-        reception.locator("#patient-create-panel button[type=submit]").click()
+    click_to_navigate(reception.locator("#patient-create-panel button[type=submit]"))
     expect(reception.locator("#intake-registered")).to_contain_text(
         "Paciente cadastrado"
     )
@@ -607,8 +603,7 @@ def reception_prepares(case: Day, reception: Page) -> str:
 
     open_patient_row(case, reception, "Acesso")
     expect(reception.locator("h1")).to_have_text("Acesso do paciente")
-    with reception.expect_navigation():
-        reception.get_by_role("button", name="Emitir novo convite").click()
+    click_to_navigate(reception.get_by_role("button", name="Emitir novo convite"))
     code = reception.locator("#issued-code").inner_text()
     assert code
     capture(case, reception, "reception-invitation")
@@ -640,8 +635,7 @@ def book(case: Day, reception: Page) -> None:
         expect(notice).to_be_focused()
         expect(submit).to_be_enabled()
         capture(case, reception, "booking-interrupted")
-    with reception.expect_navigation(url=re.compile(r"/agenda/day/")):
-        submit.click()
+    click_to_navigate(submit, url=re.compile(r"/agenda/day/"))
     expect(reception.locator("#appointment-booked")).to_contain_text(
         "Consulta agendada"
     )
@@ -662,16 +656,15 @@ def verified_contact(case: Day, reception: Page) -> None:
     item = reception.locator(
         ".contacts-item", has=reception.locator("h3", has_text="E-mail")
     )
-    with reception.expect_navigation():
-        item.locator("form").first.locator("button").click()
+    click_to_navigate(item.locator("form").first.locator("button"))
     reception.locator("#id_destination").fill(f"jornada-{case.tag}@example.invalid")
-    with reception.expect_navigation():
-        reception.get_by_role("button", name="Salvar destino").click()
+    click_to_navigate(reception.get_by_role("button", name="Salvar destino"))
     item = reception.locator(
         ".contacts-item", has=reception.locator("h3", has_text="E-mail")
     )
-    with reception.expect_navigation():
-        item.get_by_role("button", name=re.compile("^Marcar como verificado")).click()
+    click_to_navigate(
+        item.get_by_role("button", name=re.compile("^Marcar como verificado"))
+    )
     capture(case, reception, "reception-contact-verified")
 
 
@@ -685,8 +678,7 @@ def assign_questionnaire(case: Day, physician: Page) -> None:
     _sign_in_physician(physician, case.base, case.staff)
     row = agenda_row(case, physician)
     capture(case, physician, "physician-agenda")
-    with physician.expect_navigation():
-        row.locator('button[value="appointment"]').click()
+    click_to_navigate(row.locator('button[value="appointment"]'))
     expect(physician.locator("[data-assign]")).to_be_visible()
     physician.locator("#template-id").select_option(
         label=f"{case.questionnaire_title} · versão 1"
@@ -724,15 +716,16 @@ def patient_arrives(case: Day, patient: Page, code: str) -> None:
     ):
         expect(patient.get_by_role("link", name=link)).to_be_visible()
     capture(case, patient, "patient-home")
-    with patient.expect_navigation():
-        patient.get_by_role("link", name="Questionários antes da consulta").click()
+    click_to_navigate(
+        patient.get_by_role("link", name="Questionários antes da consulta")
+    )
     press(patient, "open")
     patient.locator("#id_q_1").fill(ANSWER)
     patient.locator("#id_q_2").select_option("Mensagem")
     patient.locator("#id_q_3").select_option("False")
     submit = patient.locator('button[value="submit"]')
     keyboard_reaches(case, patient, submit, "questionnaire")
-    with patient.expect_navigation():
+    with expect_document(patient):
         patient.keyboard.press("Enter")
     expect(patient.locator("[data-template-version]")).to_have_attribute(
         "data-state", "submitted"
@@ -741,14 +734,13 @@ def patient_arrives(case: Day, patient: Page, code: str) -> None:
 
     patient.goto(case.url("/patient/consent/"))
     form = patient.locator("form", has_text="Teleconsulta").first
-    with patient.expect_navigation():
-        form.locator('button[value="read"]').click()
+    click_to_navigate(form.locator('button[value="read"]'))
     patient.locator("#id_accepted").focus()
     patient.keyboard.press("Space")
     expect(patient.locator("#id_accepted")).to_be_checked()
     accept = patient.locator('button[value="accept"]')
     keyboard_reaches(case, patient, accept, "consent")
-    with patient.expect_navigation():
+    with expect_document(patient):
         patient.keyboard.press("Enter")
     expect(patient.locator("[data-receipt]").first).to_have_attribute(
         "data-state", "accepted"
@@ -758,12 +750,10 @@ def patient_arrives(case: Day, patient: Page, code: str) -> None:
 
 def physician_reads_answers(case: Day, physician: Page) -> None:
     row = agenda_row(case, physician)
-    with physician.expect_navigation():
-        row.locator('button[value="appointment"]').click()
+    click_to_navigate(row.locator('button[value="appointment"]'))
     submitted = physician.locator('section[data-state="submitted"]')
     expect(submitted).to_have_count(1)
-    with physician.expect_navigation():
-        submitted.locator('button[value="inspect"]').click()
+    click_to_navigate(submitted.locator('button[value="inspect"]'))
     expect(physician.locator("main")).to_contain_text(ANSWER)
     expect(physician.locator("main")).to_contain_text("Mensagem")
     capture(case, physician, "physician-answers")
@@ -772,8 +762,7 @@ def physician_reads_answers(case: Day, physician: Page) -> None:
 def write_notes(case: Day, physician: Page) -> str:
     """Open the encounter from the agenda, pick the template and save notes."""
     row = agenda_row(case, physician)
-    with physician.expect_navigation():
-        row.locator('button[value="open"]').click()
+    click_to_navigate(row.locator('button[value="open"]'))
     physician.locator("#template-id").select_option(
         label=f"{case.specialty_title} · versão 1"
     )
@@ -811,15 +800,15 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
     staff_url = case.url(f"/teleconsult/clinics/{case.clinic}/")
     patient_url = case.url("/patient/teleconsult/")
     physician.goto(case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
-    with physician.expect_navigation():
-        physician.locator("[data-teleconsult-link]").click()
+    click_to_navigate(physician.locator("[data-teleconsult-link]"))
     assert physician.url == staff_url
     expect(physician.locator("[data-synthetic-room]")).to_be_visible()
-    with physician.expect_navigation():
+    click_to_navigate(
         physician.locator(
             f'form:has(input[name="encounter_id"][value="{encounter}"]) '
             'button[value="create"]'
-        ).click()
+        )
+    )
     session = owner_rows(
         case,
         "SELECT id::text FROM clinic_app.teleconsult_teleconsultsession "
@@ -841,15 +830,13 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
 
     for action in ("join", "start"):
         physician.goto(staff_url)
-        with physician.expect_navigation():
-            card.locator(f'button[value="{action}"]').click()
+        click_to_navigate(card.locator(f'button[value="{action}"]'))
     physician.goto(staff_url)
     expect(card).to_have_attribute("data-state", "active")
     patient.locator("[data-refresh-status]").click()
     expect(panel).to_have_attribute("data-state", "active")
     capture(case, patient, "patient-room-active")
-    with physician.expect_navigation():
-        card.locator('button[value="end"]').click()
+    click_to_navigate(card.locator('button[value="end"]'))
     expect(card).to_have_attribute("data-state", "ended")
     capture(case, physician, "physician-session-ended")
     patient.locator("[data-refresh-status]").click()
@@ -882,8 +869,7 @@ def patient_enters_room(case: Day, patient: Page, session_id: str) -> Locator:
     )
     capture(case, patient, "patient-waiting-devices")
     patient.locator("[data-device-stop]").click()
-    with patient.expect_navigation():
-        patient.locator('button[value="join"]').click()
+    click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(patient.locator("#room-name")).to_contain_text(f"tc-{session_id}")
@@ -924,8 +910,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     """Author, review, sign (synthetic provider), verify publicly, release."""
     base = case.base
     physician.goto(case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
-    with physician.expect_navigation():
-        physician.get_by_role("button", name="Prescrição sintética").click()
+    click_to_navigate(physician.get_by_role("button", name="Prescrição sintética"))
     press(physician, "create")
     for name, value in ITEM.items():
         physician.locator(f"#id_items-0-{name}").fill(value)
@@ -1001,14 +986,13 @@ def release_and_deliver(case: Day, physician: Page, document: str) -> None:
     """Release to the patient and deliver the link through the real outbox."""
     physician.goto(case.url(f"/prescription/clinics/{case.clinic}/draft/"))
     row = physician.locator(f'[data-document="{document}"]')
-    with physician.expect_navigation():
-        click_when_hittable(row.locator('button[value="release_document"]'))
-    with physician.expect_navigation():
-        click_when_hittable(
-            physician.locator(
-                f'[data-document="{document}"] button[value="deliver_document"]'
-            )
-        )
+    click_to_navigate(row.locator('button[value="release_document"]'), hittable=True)
+    click_to_navigate(
+        physician.locator(
+            f'[data-document="{document}"] button[value="deliver_document"]'
+        ),
+        hittable=True,
+    )
     delivery = owner_rows(
         case,
         "SELECT id::text FROM clinic_app.comms_integrationoperation "
@@ -1024,8 +1008,7 @@ def release_and_deliver(case: Day, physician: Page, document: str) -> None:
 
 def patient_downloads_document(case: Day, patient: Page, document: str) -> None:
     patient.goto(case.url("/patient/"))
-    with patient.expect_navigation():
-        patient.locator("#documents-link").click()
+    click_to_navigate(patient.locator("#documents-link"))
     row = patient.locator(f'[data-document="{document}"]')
     expect(row).to_be_visible()
     expect(row).to_contain_text("ensaio sintético")
@@ -1037,8 +1020,7 @@ def patient_downloads_document(case: Day, patient: Page, document: str) -> None:
 
 def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     """Reception charges the visit; the patient pays synthetically; receipt."""
-    with reception.expect_navigation():
-        reception.locator("a[data-module=billing]").click()
+    click_to_navigate(reception.locator("a[data-module=billing]"))
     ledger = case.url(f"/billing/clinics/{case.clinic}/charges/")
     assert reception.url == ledger
 
@@ -1077,11 +1059,9 @@ def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     capture(case, reception, "reception-charge-pending")
 
     patient.goto(case.url("/patient/"))
-    with patient.expect_navigation():
-        patient.locator("#charges-link").click()
+    click_to_navigate(patient.locator("#charges-link"))
     expect(patient.locator("[data-amount]")).to_have_text(AMOUNT_TEXT)
-    with patient.expect_navigation():
-        patient.locator("[data-charge] a").click()
+    click_to_navigate(patient.locator("[data-charge] a"))
     expect_state(patient, "pending")
     assert str(patient.locator("[data-code]").text_content()) == code
     expect(patient.locator("main")).to_contain_text("não pagável")
@@ -1156,10 +1136,11 @@ def export_records(case: Day, physician: Page, patient: Page) -> None:
     version = str(case.facts["version_id"])
     patient_id = str(case.facts["patient_id"])
     physician.goto(case.url(f"/retention/clinics/{case.clinic}/"))
-    with physician.expect_navigation():
+    click_to_navigate(
         physician.locator(
             f'#releasable-list li[data-version="{version}"] button[value="release"]'
-        ).click()
+        )
+    )
     with physician.expect_download() as received:
         physician.locator(
             f'#export-patient-list li[data-patient="{patient_id}"] '
@@ -1172,8 +1153,7 @@ def export_records(case: Day, physician: Page, patient: Page) -> None:
     capture(case, physician, "physician-export")
 
     patient.goto(case.url("/patient/"))
-    with patient.expect_navigation():
-        patient.locator("#records-link").click()
+    click_to_navigate(patient.locator("#records-link"))
     expect(patient.locator("main")).to_contain_text(NOTES["subjective"])
     export = patient.locator("#export-button")
     keyboard_reaches(case, patient, export, "export")
@@ -1193,8 +1173,7 @@ def export_records(case: Day, physician: Page, patient: Page) -> None:
 def denials(case: Day, reception: Page, physician: Page, patient: Page) -> None:
     """Revoke the patient's access and try staff sessions on the wrong clinic."""
     open_patient_row(case, reception, "Acesso")
-    with reception.expect_navigation():
-        reception.get_by_role("button", name="Revogar acesso").first.click()
+    click_to_navigate(reception.get_by_role("button", name="Revogar acesso").first)
     capture(case, reception, "reception-access-revoked")
     for path in ("/patient/", "/patient/documents/", "/patient/charges/"):
         response = patient.goto(case.url(path))

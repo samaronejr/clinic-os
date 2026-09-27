@@ -13,6 +13,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
+from renewal.browser._navigation import click_to_navigate, expect_document
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -110,8 +111,7 @@ def _capture(page: Page, root: Path, state: str, width: int) -> None:
 
 def _choose_day(page: Page, day: str) -> None:
     page.locator("#booking-day").fill(day)
-    with page.expect_navigation():
-        page.get_by_role("button", name="Ver horários").click()
+    click_to_navigate(page.get_by_role("button", name="Ver horários"))
 
 
 def _body(page: Page) -> dict[str, str]:
@@ -170,7 +170,7 @@ def test_patient_journey(
         body = _body(page)
         body["action"] = "book"
         page.locator("[data-slot] button").first.focus()
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator("[data-appointment]")).to_have_count(1)
         _capture(page, renewal_artifact_root, "booked", width)
@@ -178,15 +178,12 @@ def test_patient_journey(
         expect(page.locator("[data-appointment]")).to_have_count(1)
         _capture(page, renewal_artifact_root, "repeat-safe", width)
         _choose_day(page, day)
-        with page.expect_navigation():
-            page.get_by_role("button", name="Escolher novo horário").click()
+        click_to_navigate(page.get_by_role("button", name="Escolher novo horário"))
         expect(page.locator('[name="action"][value="reschedule"]')).to_have_count(8)
-        with page.expect_navigation():
-            page.locator("[data-slot] button").nth(2).click()
+        click_to_navigate(page.locator("[data-slot] button").nth(2))
         expect(page.locator("[data-appointment]")).to_have_count(1)
         _capture(page, renewal_artifact_root, "rescheduled", width)
-        with page.expect_navigation():
-            page.get_by_role("button", name="Cancelar consulta").click()
+        click_to_navigate(page.get_by_role("button", name="Cancelar consulta"))
         expect(page.locator('[data-status="cancelled"]')).to_have_count(1)
         _capture(page, renewal_artifact_root, "cancelled", width)
         _failure_journey(page, renewal_artifact_root, staff, data)
@@ -256,8 +253,7 @@ def _prepare_staff(
     row = manager.locator("tr").filter(
         has=manager.locator(f'input[value="{data["enrollment"]}"]')
     )
-    with manager.expect_navigation():
-        row.get_by_role("button", name="Agendar consulta").click()
+    click_to_navigate(row.get_by_role("button", name="Agendar consulta"))
     manager.locator("#id_practitioner").select_option(staff["physician_a_id"])
     manager.locator("#id_start_local").fill(data["day"] + "T08:00")
     manager.locator("#id_end_local").fill(data["day"] + "T08:30")
@@ -402,7 +398,7 @@ def test_native_long_content_zoom(
         _choose_day(page, day)
         _capture(page, renewal_artifact_root, f"native-long-zoom-{zoom}", width)
         page.locator("[data-slot] button").first.focus()
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator('[data-status="scheduled"]')).to_have_count(1)
         _capture(page, renewal_artifact_root, f"native-booked-zoom-{zoom}", width)
