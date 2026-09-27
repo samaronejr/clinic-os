@@ -18,7 +18,9 @@ class LiteralInputs:
     def __init__(self) -> None:
         self.tokens = special_datetime_tokens()
         self.words = re.compile(
-            r"(?<!\w)(?:" + "|".join(map(re.escape, sorted(self.tokens))) + r")(?!\w)"
+            r"(?<![a-z])(?:"
+            + "|".join(map(re.escape, sorted(self.tokens)))
+            + r")(?![a-z])"
         )
         with connection.cursor() as cursor:
             cursor.execute("SELECT current_setting('standard_conforming_strings')")

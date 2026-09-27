@@ -20,6 +20,7 @@ class Types:
         self.names: dict[str, set[int]] = defaultdict(set)
         self.links: dict[int, set[int]] = defaultdict(set)
         self.wrappers: dict[int, set[int]] = defaultdict(set)
+        self.bases: dict[int, int] = {}
         self.relations: dict[int, set[int]] = defaultdict(set)
         self.functions: dict[int, set[int]] = defaultdict(set)
         self.expressions: dict[int, list[tuple[str, str, str]]] = defaultdict(list)
@@ -28,6 +29,7 @@ class Types:
         self.row_types: dict[int, int] = {}
         self.field_types: dict[tuple[int, str], int] = {}
         self.prototypes: dict[int, tuple[int, dict[str, int]]] = {}
+        self.outputs: dict[int, tuple[int, ...]] = {}
         self.temporal: set[int] = set()
         self.nontext_temporal: set[int] = set()
         self._load_types(readers)
@@ -61,6 +63,8 @@ class Types:
                 ) = row
                 oid = int(raw_oid)
                 self.names[str(name)].add(oid)
+                if base:
+                    self.bases[oid] = int(base)
                 self.wrappers[oid].update(int(v) for v in (base, element, subtype) if v)
                 self.links[oid].update(self.wrappers[oid])
                 for spelling in (quoted, f"{schema}.{quoted}", formatted):
@@ -99,9 +103,16 @@ class Types:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT oid,prorettype,COALESCE(proallargtypes,proargtypes::oid[]),"
-                "proargnames FROM pg_proc"
+                "proargnames,proargmodes FROM pg_proc"
             )
-            for oid, result, arguments, names in cursor.fetchall():
+            for oid, result, arguments, names, modes in cursor.fetchall():
+                self.outputs[int(oid)] = tuple(
+                    int(arg)
+                    for arg, mode in zip(
+                        arguments, modes or ["i"] * len(arguments), strict=True
+                    )
+                    if mode in {"o", "b", "t"}
+                )
                 self.functions[int(oid)].update(map(int, [result, *arguments]))
                 self.prototypes[int(oid)] = (
                     int(result),
@@ -131,9 +142,14 @@ class Types:
         changed = True
         while changed:
             changed = False
-            for oid, children in self.wrappers.items():
-                for group in (self.temporal, self.nontext_temporal):
-                    if oid not in group and children & group:
+            for oid, children in self.links.items():
+                # Composite containment makes the destination temporal too.
+                # It does not prove every source field is non-text temporal.
+                for group, members in (
+                    (self.temporal, children),
+                    (self.nontext_temporal, self.wrappers.get(oid, set())),
+                ):
+                    if oid not in group and members & group:
                         group.add(oid)
                         changed = True
 
@@ -143,11 +159,18 @@ class Types:
         parts = tuple(
             text[1:-1].replace('""', '"')
             if kind in tokens.Literal.String.Symbol
+            else "[]"
+            if text.startswith("[") and text.endswith("]") and not text[1:-1].strip()
             else text.lower()
             for kind, text in sql_tokens(value)
             if kind not in tokens.Whitespace and kind not in tokens.Comment
         )
         return repr(parts[:-2] if parts[-2:] == ("%", "rowtype") else parts)
+
+    def base(self, oid: int) -> int:
+        while oid in self.bases:
+            oid = self.bases[oid]
+        return oid
 
     def resolve(self, value: str) -> int:
         found = self.spellings.get(self.normalise(value), set())

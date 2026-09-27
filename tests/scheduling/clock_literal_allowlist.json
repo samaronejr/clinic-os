@@ -1,4 +1,12 @@
 {
+  "today_url": {
+    "scope": "python-mapping-key",
+    "reason": "Exact agenda navigation mapping key, never exempt as a SQL or bound value."
+  },
+  "is_today": {
+    "scope": "python-mapping-key",
+    "reason": "Exact agenda navigation boolean mapping key, never exempt as a SQL or bound value."
+  },
   "Return the neighbouring civil-date, view, today and page links.": {
     "scope": "python-docstring",
     "reason": "Agenda navigation documentation. This exact value is exempt only as a Python docstring, never as SQL or a bound argument."

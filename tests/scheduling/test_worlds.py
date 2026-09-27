@@ -5,14 +5,13 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
-import psycopg
 import pytest
 from django.db import connection, connections
 
 from . import clock_catalog_cache
 from .clock_catalog import live_clock_inventory
-from .world_database import admin_url
-from .worlds import StaleWorldError, connected
+from .world_probe_support import unsealed
+from .worlds import StaleWorldError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,7 +33,7 @@ def test_stale_scheduling_template_is_refused(
     held = scheduling_worlds.template
     assert held is not None
     original_secret = held.secret.read_bytes()
-    with psycopg.connect(admin_url(held.name), autocommit=True) as admin:
+    with unsealed(held.name) as admin:
         if corruption == "row":
             admin.execute(
                 "UPDATE clinic_app.identity_user SET is_active=false WHERE id=%s",
@@ -54,7 +53,7 @@ def test_stale_scheduling_template_is_refused(
         ):
             pytest.fail("stale world was yielded")
     finally:
-        with psycopg.connect(admin_url(held.name), autocommit=True) as admin:
+        with unsealed(held.name) as admin:
             if corruption == "row":
                 admin.execute(
                     "UPDATE clinic_app.identity_user SET is_active=true WHERE id=%s",
@@ -66,8 +65,8 @@ def test_stale_scheduling_template_is_refused(
                 )
             else:
                 held.secret.write_bytes(original_secret)
-    with connected(held.name):
-        scheduling_worlds.check(held.name, held)
+    with scheduling_worlds.world(synthetic_secret_backend) as restored:
+        assert restored == rbac_graph
     assert scheduling_worlds.seed_count == 1
 
 

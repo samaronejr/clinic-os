@@ -44,6 +44,12 @@ WITH ns AS (
  a.atttypmod,a.attgenerated)::text FROM pg_attribute a
  JOIN pg_class c ON c.oid=a.attrelid JOIN ns ON ns.oid=c.relnamespace
  WHERE a.attnum>0 AND NOT a.attisdropped
+ UNION ALL SELECT 'column-acl',ROW(a.attrelid,a.attnum,
+ NULLIF(a.attacl,'{}'::aclitem[]))::text FROM pg_attribute a
+ WHERE a.attnum>0 AND NOT a.attisdropped
+ UNION ALL SELECT 'default-acl',ROW(x.*)::text FROM pg_default_acl x
+ UNION ALL SELECT 'sequence',ROW(x.*)::text FROM pg_sequence x
+ UNION ALL SELECT 'index',ROW(x.*)::text FROM pg_index x
  UNION ALL SELECT 'default',ROW(x.*)::text FROM pg_attrdef x
  UNION ALL SELECT 'constraint',ROW(x.*)::text FROM pg_constraint x
  UNION ALL SELECT 'policy',ROW(x.*)::text FROM pg_policy x
