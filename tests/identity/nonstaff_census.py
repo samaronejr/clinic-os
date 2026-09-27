@@ -27,6 +27,7 @@ from identity.nonstaff_infrastructure_probes import (
 from identity.nonstaff_patient_probes import patient_probes
 from identity.nonstaff_principal_probes import principal_probes
 from identity.nonstaff_realtime_probes import realtime_probes
+from identity.nonstaff_scheduling_probes import scheduling_probes
 from identity.nonstaff_states import CareScope, ReplayScope
 from identity.nonstaff_subjects import seed_nonstaff
 from identity.permission_support import owner_context
@@ -90,6 +91,7 @@ def run_nonstaff_census(
             *realtime_probes(data),
             *principal_probes(graph),
             *delegation_probes(graph, data.actor.pk),
+            *scheduling_probes(data),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(
