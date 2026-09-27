@@ -148,6 +148,10 @@ def controlled_scheduling_clock(
         yield None
         return
     request.getfixturevalue("db")
+    if "hint_world" in request.fixturenames:
+        # Seeding clones the test database, which must have no other session;
+        # build it before the ambient SQL clock connection below is opened.
+        request.getfixturevalue("hint_world")
     database_url = request.getfixturevalue("superuser_database_url")
     reference = (
         datetime(2035, 6, 1, tzinfo=UTC)
