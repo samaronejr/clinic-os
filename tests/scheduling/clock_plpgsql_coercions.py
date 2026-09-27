@@ -5,14 +5,14 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from sqlparse import tokens
-
 from .clock_dependencies import expression_tree
 from .clock_identifiers import identifier
-from .clock_tokens import sql_tokens
+from .clock_plpgsql_statements import pl_tokens, statements
+from .clock_plpgsql_transfers import Transfers
 
 if TYPE_CHECKING:
     from .clock_coercions import Coercions
+    from .clock_plpgsql_statements import Statement
     from .clock_types import Types
 
 
@@ -61,6 +61,12 @@ def _declarations(parts: list[str], types: Types) -> dict[str, int]:
             if start < len(parts) and parts[start].casefold() == "constant":
                 start += 1
             oid, _ = _type_end(parts, start, types)
+            stop = next(
+                (end for end in range(start, len(parts)) if parts[end] == ";"),
+                len(parts),
+            )
+            if not oid and any(part.lower() == "cursor" for part in parts[start:stop]):
+                oid = types.resolve("refcursor")
             if oid:
                 result[identifier(value)] = oid
             beginning = False
@@ -136,18 +142,6 @@ def _explicit(parts: list[str], types: Types, pairs: dict[int, int]) -> list[str
     return expressions
 
 
-def _target_type(parts: list[str], variables: dict[str, int], types: Types) -> int:
-    if len(parts) == 1:
-        return variables.get(identifier(parts[0]), 0)
-    if len(parts) == 3 and parts[1] == ".":
-        row = variables.get(identifier(parts[0]), 0)
-        relation = next(
-            (relation for relation, oid in types.row_types.items() if oid == row), 0
-        )
-        return types.field_types.get((relation, identifier(parts[2])), 0)
-    return 0
-
-
 def _initialisers(
     parts: list[str], variables: dict[str, int], types: Types
 ) -> list[str]:
@@ -155,7 +149,10 @@ def _initialisers(
     for index, value in enumerate(parts):
         if identifier(value) not in variables:
             continue
-        target, end = _type_end(parts, index + 1, types)
+        start = index + 1
+        if start < len(parts) and parts[start].lower() == "constant":
+            start += 1
+        target, end = _type_end(parts, start, types)
         if target not in types.temporal:
             continue
         while end < len(parts) and parts[end].casefold() in {"not", "null"}:
@@ -171,47 +168,51 @@ def _initialisers(
     return result
 
 
-def _implicit(
-    parts: list[str], variables: dict[str, int], returns: int, types: Types
-) -> list[str]:
-    expressions = []
-    for index, value in enumerate(parts):
-        if value.casefold() == "return" and returns in types.temporal:
-            target = returns
-        elif value in {":=", "="}:
-            start = index - 1
-            if start > 1 and parts[start - 1] == ".":
-                start -= 2
-            target = _target_type(parts[start:index], variables, types)
-        else:
-            continue
-        if target not in types.temporal:
-            continue
-        end = next(
-            (
-                position
-                for position in range(index + 1, len(parts))
-                if parts[position] == ";"
-            ),
-            len(parts),
-        )
-        expressions.append(
-            "(" + _text(parts[index + 1 : end]) + ")::" + types.sql_names[target]
-        )
-    return expressions
-
-
 class PLCoercions:
     def __init__(self, types: Types, coercions: Coercions) -> None:
         self.types = types
         self.coercions = coercions
+        self.unanalysed: tuple[str, ...] = ()
+
+    def declaration_risks(
+        self,
+        parsed: tuple[Statement, ...],
+        variables: dict[str, int],
+        parameters: dict[str, int],
+    ) -> set[str]:
+        unknown = set()
+        seen = set(parameters)
+        for statement in parsed:
+            if statement.kind != "declaration":
+                continue
+            name = identifier(statement.parts[0])
+            if name in seen or name not in variables:
+                unknown.add("unanalysed-declaration:" + name)
+            seen.add(name)
+            declaration = list(statement.parts)
+            if any(part.lower() == "cursor" for part in declaration):
+                continue  # Cursor bindings have their own handler.
+            start = (
+                2
+                if len(declaration) > 1 and declaration[1].lower() == "constant"
+                else 1
+            )
+            _, end = _type_end(declaration, start, self.types)
+            while end < len(declaration) and declaration[end].lower() in {
+                "not",
+                "null",
+            }:
+                end += 1
+            if end < len(declaration) and declaration[end].lower() not in {
+                ":=",
+                "=",
+                "default",
+            }:
+                unknown.add("unanalysed-declaration-form:" + name)
+        return unknown
 
     def count(self, oid: int, source: str, triggers: set[int]) -> int:
-        parts = [
-            value
-            for kind, value in sql_tokens(source)
-            if kind not in tokens.Whitespace and kind not in tokens.Comment
-        ]
+        parts = list(pl_tokens(source))
         returns, parameters = self.types.prototypes[oid]
         variables = parameters | _declarations(parts, self.types)
         expressions = _explicit(parts, self.types, _pairs(parts)) + _initialisers(
@@ -228,11 +229,15 @@ class PLCoercions:
             scopes.append(scope)
         # Every binding of a multiply-attached trigger must prove the input type.
         unresolved = set()
+        parsed = statements(source)
+        unknown = self.declaration_risks(parsed, variables, parameters)
         for scope in scopes:
-            for expression in expressions + _implicit(
-                parts, scope, returns, self.types
-            ):
-                used = {identifier(value) for _, value in sql_tokens(expression)}
+            transfers = Transfers(self.types, scope, returns, self.types.outputs[oid])
+            for statement in parsed:
+                transfers.inspect(statement)
+            unknown.update(transfers.unknown)
+            for expression in expressions + transfers.expressions:
+                used = {identifier(value) for value in pl_tokens(expression)}
                 arguments = {
                     name: self.types.sql_names[type_oid]
                     for name, type_oid in scope.items()
@@ -241,4 +246,5 @@ class PLCoercions:
                 tree = expression_tree(expression, arguments)
                 if tree is None or self.coercions.count(tree):
                     unresolved.add(expression)
+        self.unanalysed = tuple(sorted(unknown))
         return len(unresolved)

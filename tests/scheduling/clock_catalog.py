@@ -84,6 +84,7 @@ class Surface:
     owner_oid: int = 0
     coercion_tree: str = ""
     temporal_coercions: int = 0
+    unanalysed_statements: tuple[str, ...] = ()
 
 
 def functions() -> dict[int, Function]:
@@ -281,6 +282,7 @@ class Census:
         self.readers = readers
         self.literal_inputs = LiteralInputs()
         self.relation_surfaces: dict[int, list[Surface]] = {}
+        self.function_surfaces: dict[int, Surface] = {}
         self.by_name: dict[str, set[int]] = defaultdict(set)
         for oid, procedure in procedures.items():
             self.by_name[procedure.name].add(oid)
@@ -296,7 +298,11 @@ class Census:
             self.batched_surfaces[surface.owner_oid].append(surface)
         self.children: dict[int, set[int]] = defaultdict(set)
         with connection.cursor() as cursor:
-            cursor.execute("SELECT inhparent,inhrelid FROM pg_inherits")
+            cursor.execute(
+                "SELECT inhparent,inhrelid FROM pg_inherits UNION "
+                "SELECT confrelid,conrelid FROM pg_constraint WHERE contype='f' "
+                "AND (confdeltype IN ('c','n','d') OR confupdtype IN ('c','n','d'))"
+            )
             for parent, child in cursor.fetchall():
                 self.children[int(parent)].add(int(child))
             cursor.execute("SELECT oid,oprcode::oid FROM pg_operator WHERE oprcode<>0")
@@ -364,6 +370,8 @@ class Census:
         return ""
 
     def function_surface(self, procedure: Function) -> Surface:
+        if procedure.oid in self.function_surfaces:
+            return self.function_surfaces[procedure.oid]
         marker = self.unresolved_marker(procedure)
         calls = set(self.dependencies[procedure.oid])
         relations: frozenset[int] = frozenset()
@@ -371,6 +379,7 @@ class Census:
         types = set(self.types.functions[procedure.oid])
         coercion_tree = ""
         temporal_coercions = 0
+        unanalysed_statements: tuple[str, ...] = ()
         if procedure.language == "plpgsql":
             bindings = self.identifiers.bind(procedure.oid, procedure.implementation)
             calls.update(bindings.functions)
@@ -382,6 +391,7 @@ class Census:
                 procedure.implementation,
                 self.identifiers.triggers[procedure.oid],
             )
+            unanalysed_statements = self.pl_coercions.unanalysed
         if procedure.language == "sql":
             dependencies = sql_dependencies(procedure.oid)
             calls.update(dependencies.functions)
@@ -390,7 +400,7 @@ class Census:
             coercion_tree = dependencies.tree
             if dependencies.unresolved:
                 marker = f"unresolved-sql:{procedure.identity}"
-        return Surface(
+        surface = Surface(
             "function:" + procedure.identity,
             procedure.source,
             procedure.tree,
@@ -401,7 +411,10 @@ class Census:
             frozenset(types),
             coercion_tree=coercion_tree,
             temporal_coercions=temporal_coercions,
+            unanalysed_statements=unanalysed_statements,
         )
+        self.function_surfaces[procedure.oid] = surface
+        return surface
 
     def operator_calls(self, source: str) -> Counter[int]:
         return Counter(
@@ -446,6 +459,9 @@ class Census:
         if count:
             result["unresolved-temporal-coercion"] = count
         result.update("unresolved-identifier:" + name for name in surface.unresolved)
+        result.update(
+            "unanalysed-plpgsql:" + name for name in surface.unanalysed_statements
+        )
         return result
 
     def related(self, surface: Surface) -> list[Surface]:

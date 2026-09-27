@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from sqlparse import tokens
@@ -86,6 +87,12 @@ def _nested_body(stream: list[tuple[tokens._TokenType, str]], index: int) -> str
 
 
 def sql_boundary_violations(source: str) -> set[str]:
+    """Return an independent result for this immutable source text."""
+    return set(_cached_boundary(source))
+
+
+@lru_cache(maxsize=16384)
+def _cached_boundary(source: str) -> frozenset[str]:
     """Reject unsupported SQL constructs, not a growing list of clock names."""
     stream = [
         (kind, value)
@@ -125,7 +132,7 @@ def sql_boundary_violations(source: str) -> set[str]:
                 r"\b(SELECT|PERFORM|RETURN|BEGIN)\b", normalized, re.IGNORECASE
             ):
                 violations.add("dynamic-callee")
-    return violations
+    return frozenset(violations)
 
 
 def _docstring_ids(tree: ast.Module) -> set[int]:

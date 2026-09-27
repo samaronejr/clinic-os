@@ -15,8 +15,9 @@ from django.db.backends.postgresql.base import DatabaseWrapper
 
 from rbac_fixtures import rbac_graph as seed_graph
 
-from .clock_probe_catalog import catalog_sha256
+from .clock_catalog_cache import catalog_version
 from .world_database import clone_database, content_digest, drop_database
+from .world_lock import lock, reconnect
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -35,8 +36,9 @@ class Template:
     graph: RbacGraph
     secret: Path
     content: str
-    catalog: str
+    catalog: bytes
     secret_digest: str
+    connect_grants: tuple[tuple[str, bool], ...]
 
 
 @contextmanager
@@ -77,7 +79,7 @@ class Worlds:
             try:
                 with connected(name):
                     graph = seed_graph._get_wrapped_function()(secret_root)
-                    catalog = catalog_sha256()
+                    catalog = catalog_version()
                 secret = self.root / "tenant-kek.secret"
                 shutil.copyfile(secret_root / "tenant-kek.secret", secret)
                 secret.chmod(0o600)
@@ -88,6 +90,7 @@ class Worlds:
                     content_digest(name),
                     catalog,
                     hashlib.sha256(secret.read_bytes()).hexdigest(),
+                    lock(name),
                 )
                 self.seed_count += 1
             except BaseException:
@@ -99,7 +102,7 @@ class Worlds:
     def check(self, database: str, held: Template) -> None:
         if (
             content_digest(database) != held.content
-            or catalog_sha256() != held.catalog
+            or catalog_version() != held.catalog
             or hashlib.sha256(held.secret.read_bytes()).hexdigest()
             != held.secret_digest
         ):
@@ -113,6 +116,7 @@ class Worlds:
         clone_database(name, held.name)
         self.live.add(name)
         try:
+            reconnect(name, held.connect_grants)
             with connected(name):
                 self.check(name, held)
                 shutil.copyfile(held.secret, secret_root / "tenant-kek.secret")

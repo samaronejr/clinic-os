@@ -40,6 +40,7 @@ class Node:
             "coalescetype",
             "casetype",
             "array_typeid",
+            "row_typeid",
             "typeId",
             "type",
         ):
@@ -116,6 +117,7 @@ class Coercions:
             "COERCETODOMAIN",
             "ARRAYCOERCEEXPR",
             "RELABELTYPE",
+            "CONVERTROWTYPEEXPR",
         }:
             operands = node.children.get("arg", [])
         elif node.kind == "FUNCEXPR" and (
@@ -127,6 +129,8 @@ class Coercions:
             return False
         return not operands or any(
             operand.kind != "CONST"
+            and self.types.base(operand.result_type())
+            != self.types.base(node.result_type())
             and operand.result_type() not in self.types.nontext_temporal
             for operand in operands
         )
