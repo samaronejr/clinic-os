@@ -110,7 +110,6 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
     """One synthetic user per role in clinic A, plus patients in A and in B."""
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
@@ -126,7 +125,9 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
     surname = "".join(chr(ord("a") + int(char, 16)) for char in suffix).title()
     values["patient_name"] = f"{PATIENT_BASE} {surname}"
     values["foreign_name"] = f"{FOREIGN_BASE} {surname}"
-    with psycopg.connect(values["dsn"]) as connection:
+    with psycopg.connect(
+        os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
+    ) as connection:
         connection.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
             [values["organization"]],
@@ -259,7 +260,9 @@ def _sign_in(page: Page, base: str, staff: dict[str, str], role: str) -> None:
         page.locator("button[type=submit]").click()
     if role in PRIVILEGED:
         page.wait_for_url("**/auth/verify/**")
-        with psycopg.connect(staff["dsn"]) as connection:
+        with psycopg.connect(
+            os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
+        ) as connection:
             connection.execute("SET ROLE clinic_app")
             connection.execute(
                 "SELECT set_config('app.current_user_id', %s, true)",
@@ -369,12 +372,8 @@ def test_physician_reaches_the_agenda_by_keyboard(
     renewal_artifact_root: Path,
     nav_staff: dict[str, str],
 ) -> None:
-    video_dir = _folder(renewal_artifact_root) / "video"
     context = nav_browser.new_context(
-        locale="pt-BR",
-        viewport={"width": 1280, "height": 800},
-        record_video_dir=str(video_dir),
-        record_video_size={"width": 1280, "height": 800},
+        locale="pt-BR", viewport={"width": 1280, "height": 800}
     )
     page = context.new_page()
     agenda = f"/scheduling/clinics/{nav_staff['clinic_a']}/agenda/"
@@ -392,7 +391,9 @@ def test_physician_reaches_the_agenda_by_keyboard(
         expect(options.first).to_contain_text(gettext("Agenda"))
         assert _targets(page)["small"] == []
         assert _axe(page, renewal_base_url) == []
-        _capture(page, renewal_artifact_root, "palette-physician-1280", full_page=False)
+        palette_capture = _capture(
+            page, renewal_artifact_root, "palette-physician-1280"
+        )
         page.keyboard.press("ArrowDown")
         expect(page.locator("#command-palette-input")).to_have_attribute(
             "aria-activedescendant", re.compile(r"command-palette-input-opt-")
@@ -403,6 +404,7 @@ def test_physician_reaches_the_agenda_by_keyboard(
         expect(page.locator('a[data-module="agenda"]')).to_have_attribute(
             "aria-current", "page"
         )
+        agenda_capture = _capture(page, renewal_artifact_root, "keyboard-agenda-1280")
         # Escape closes and returns focus to the element that opened it.
         trigger = page.locator(".nav-command")
         trigger.focus()
@@ -412,11 +414,19 @@ def test_physician_reaches_the_agenda_by_keyboard(
         page.keyboard.press("Escape")
         expect(palette).not_to_have_attribute("open", "")
         expect(trigger).to_be_focused()
+        _write(
+            renewal_artifact_root,
+            "keyboard-path.json",
+            {
+                "destination": agenda,
+                "captures": [palette_capture, agenda_capture],
+                "focus_restored": evaluate_js(
+                    page, "document.activeElement.matches('.nav-command')"
+                ),
+            },
+        )
     finally:
-        video = page.video
         context.close()
-    assert video is not None
-    video.save_as(str(_folder(renewal_artifact_root) / "palette.webm"))
 
 
 def test_reception_pins_a_patient_from_the_palette_at_every_width(

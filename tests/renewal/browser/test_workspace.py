@@ -57,7 +57,6 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
     """Seed a two-clinic receptionist, a TOTP-enrolled physician and clinic B."""
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
@@ -68,7 +67,9 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
         "password": secrets.token_urlsafe(24),
         "totp_key": secrets.token_hex(20),
     }
-    with psycopg.connect(values["dsn"]) as connection:
+    with psycopg.connect(
+        os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
+    ) as connection:
         connection.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
             [values["organization"]],
@@ -731,7 +732,9 @@ def test_stale_clinic_context_is_dropped_after_revocation(
     page.goto(f"{renewal_base_url}{agenda_b}")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_B)
 
-    with psycopg.connect(workspace_staff["dsn"]) as connection:
+    with psycopg.connect(
+        os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
+    ) as connection:
         connection.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
             [workspace_staff["organization"]],

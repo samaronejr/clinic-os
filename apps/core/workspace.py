@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from django.http import HttpRequest
 
 ACTIVE_CLINIC_SESSION_KEY: Final = "active_clinic_id"
+DENIED_ATTRIBUTE: Final = "_clinic_workspace_denied"
 AUTH_FLOW_VIEWS: Final = frozenset(
     {
         "identity:login",
@@ -160,11 +161,13 @@ def _targets_clinic(request: HttpRequest, clinic: WorkspaceClinic) -> bool:
 def _resume_path(request: HttpRequest, clinic: WorkspaceClinic) -> str:
     """Return the page to come back to after a palette switch.
 
-    Only a path inside the clinic in context is echoed back; a refused page
-    for another clinic resumes at the workspace home, so no response ever
-    repeats a foreign clinic's identifier.
+    Refused requests always resume at the workspace home, including denials
+    in the actor's own clinic. Otherwise only a path inside the clinic in
+    context is echoed back.
     """
-    if not _targets_clinic(request, clinic):
+    if getattr(request, DENIED_ATTRIBUTE, False) or not _targets_clinic(
+        request, clinic
+    ):
         return reverse("workspace-home")
     return request.path
 

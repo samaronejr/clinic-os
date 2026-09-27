@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
+from difflib import unified_diff
 from itertools import chain, combinations
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -32,6 +35,7 @@ from patient_http_support import seed_patients
 
 if TYPE_CHECKING:
     from apps.core.navigation import Destination
+    from django.test.client import _MonkeyPatchedWSGIResponse
 
     from rbac_fixtures import RbacGraph
 
@@ -62,10 +66,53 @@ def remove_permission(graph: RbacGraph, role: str, permission: str) -> None:
         )
 
 
+def _normalized_denial(
+    response: _MonkeyPatchedWSGIResponse,
+) -> tuple[bytes, dict[str, str]]:
+    """Normalize only X-Request-ID, the CSRF form token and CSP nonces.
+
+    Paths, clinic identifiers and every other body/header byte remain intact.
+    """
+    body = response.content
+    headers = dict(response.headers.items())
+    # Django stores Set-Cookie separately from response.headers.
+    if response.cookies:
+        headers["Set-Cookie"] = response.cookies.output()
+    # X-Request-ID is generated per request; preserve the header's presence.
+    if request_id := headers.get("X-Request-ID"):
+        body = body.replace(request_id.encode(), b"REQUEST_ID")
+        headers["X-Request-ID"] = "REQUEST_ID"
+    # Django masks each csrfmiddlewaretoken form value independently.
+    body = re.sub(
+        rb'(name="csrfmiddlewaretoken" value=")[A-Za-z0-9]+(")',
+        rb"\1CSRF_TOKEN\2",
+        body,
+    )
+    # Normalize only nonce values declared by a CSP header, if any.
+    for name in ("Content-Security-Policy", "Content-Security-Policy-Report-Only"):
+        if name in headers:
+            for nonce in re.findall(r"'nonce-([^']+)'", headers[name]):
+                body = body.replace(nonce.encode(), b"CSP_NONCE")
+            headers[name] = re.sub(r"'nonce-[^']+'", "'nonce-CSP_NONCE'", headers[name])
+    return body, headers
+
+
 @pytest.mark.parametrize(("place", "role", "removed"), ROUTE_CASES)
 def test_every_destination_enforces_its_permission_over_http(
-    rbac_graph: RbacGraph, place: Destination, role: str, removed: tuple[str, ...]
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    place: Destination,
+    role: str,
+    removed: tuple[str, ...],
 ) -> None:
+    # The date badge must not change across a midnight boundary; authority is real.
+    monkeypatch.setattr(
+        "apps.core.navigation.clinic_local_today", lambda _zone: "2033-05-18"
+    )
+    # Freeze cookie expiry generation, not its value in the compared headers.
+    monkeypatch.setattr(
+        "django.http.response.time", SimpleNamespace(time=lambda: 2_000_000_000)
+    )
     client, _ = _client_for(rbac_graph, role)
     url = destination_url(place, rbac_graph.clinic_a)
     assert _get(client, url).status_code == 200
@@ -75,11 +122,26 @@ def test_every_destination_enforces_its_permission_over_http(
     actual = _get(client, url)
     if permissions - set(removed):
         assert actual.status_code == 200
+        for attribute in ("data-command-next", "data-combobox-context"):
+            assert f'{attribute}="{url}"' in actual.content.decode()
     else:
-        unknown = _get(client, destination_url(place, uuid4()))
-        assert actual.status_code == unknown.status_code
         assert actual.status_code in (403, 404)
-        assert _main(actual) == _main(unknown)
+        actual_body, actual_headers = _normalized_denial(actual)
+        for clinic_id in (uuid4(), rbac_graph.clinic_b, rbac_graph.clinic_c):
+            # Unknown, same-org without membership, and other-org destinations.
+            denied = _get(client, destination_url(place, clinic_id))
+            assert actual.status_code == denied.status_code
+            assert _main(actual) == _main(denied)
+            denied_body, denied_headers = _normalized_denial(denied)
+            assert actual_body == denied_body, "\n".join(
+                unified_diff(
+                    actual_body.decode().splitlines(),
+                    denied_body.decode().splitlines(),
+                    fromfile="permission-denied",
+                    tofile="unknown-or-foreign",
+                )
+            )
+            assert actual_headers == denied_headers
 
 
 def test_revoked_patient_cannot_be_reopened_or_repinned(rbac_graph: RbacGraph) -> None:
