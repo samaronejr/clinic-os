@@ -59,7 +59,10 @@ What text classification cannot fully see is bounded by enforcement, not by
 parser completeness: ``test_certifier_boundary`` refuses those constructs
 anywhere in ``apps/`` (operators over readers, server-side PREPARE, pg_temp
 objects, unresolvable setting names, SQL run from text, dynamic EXECUTE,
-Unicode escapes, libpq reached directly).
+Unicode escapes, libpq reached directly, text the lexer cannot settle).
+Every text is read through one lexer (``identity/sql_lexer.py``, shared with
+that guard): quoted forms are settled left to right before comments, and
+what it cannot settle is unreadable, never guessed.
 
 Behaviour backs the reading rules: with an actor bound, the actor's id showing
 up in any statement's text or parameters, in anything the server sends back,
@@ -115,6 +118,7 @@ from django.db import connection
 from psycopg import pq, sql
 
 from identity.permission_gate_census import CensusError
+from identity.sql_lexer import lex
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
@@ -127,12 +131,17 @@ if TYPE_CHECKING:
     from identity.permission_gate_census import Graph
 
 _TOKEN: Final = re.compile(r"[a-z_][a-z0-9_$]*")
-_LITERAL: Final = re.compile(r"'(?:[^']|'')*'")
-_COMMENT: Final = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 _DYNAMIC: Final = re.compile(r"\bexecute\b")
+# With it off, a backslash escapes a quote in a plain literal: every text
+# boundary the lexer settled could move (identity/sql_lexer.py).
+_STANDARD_STRINGS: Final = "standard_conforming_strings"
 # The runtime role and the owner role (owner-only paths run as it).
 RUNTIME_ROLES: Final = ("clinic_app", "clinic_owner")
 _SYSTEM_SCHEMAS: Final = ("pg_catalog", "information_schema")
+# What the observer reads around an execution: watched call counts, actor
+# relation touches, the bound actor values, and the session state (temporary
+# schema, prepared statements, standard_conforming_strings).
+type _Snapshot = tuple[dict[int, int], dict[int, int], list[str], int, int, str]
 
 
 _SET_CONFIG: Final = re.compile(r"set_config\(\s*'([^']+)'\s*,\s*%s", re.IGNORECASE)
@@ -226,11 +235,17 @@ class ActorCatalog:
 
 
 def _code(text: str) -> str:
-    return _COMMENT.sub(" ", text.lower())
+    """The text with its comments blanked, lowered (``sql_lexer`` ``code``)."""
+    return lex(text).code.lower()
+
+
+def _bare(text: str) -> str:
+    """The text with its comments and string literals blanked, lowered."""
+    return lex(text).bare.lower()
 
 
 def _tokens(text: str) -> set[str]:
-    return set(_TOKEN.findall(_LITERAL.sub(" ", _code(text))))
+    return set(_TOKEN.findall(_bare(text)))
 
 
 def _reads_setting(text: str, settings: frozenset[str]) -> bool:
@@ -821,7 +836,7 @@ def _add_bodies(
             continue
         body = function.body
         graph.tokens[function.oid] = _tokens(body)
-        graph.code[function.oid] = _LITERAL.sub(" ", _code(body))
+        graph.code[function.oid] = _bare(body)
         calls = setting_calls(body, None, readers)
         if _executor_calls(body, readers):
             graph.reads.add(function.oid)
@@ -942,9 +957,22 @@ def _fail_closed(
                 "actor could acquire one inside the database"
             )
             raise CensusError(message)
-        if language == "plpgsql" and _DYNAMIC.search(
-            _LITERAL.sub(" ", _code(function.body))
-        ):
+        if configured & {_STANDARD_STRINGS}:
+            message = (
+                f"{where} sets {_STANDARD_STRINGS}; the text it runs cannot be "
+                "lexed, so its actor reads are unknown"
+            )
+            raise CensusError(message)
+        unsettled = (
+            lex(function.body).unsettled if language in ("sql", "plpgsql") else ()
+        )
+        if unsettled:
+            message = (
+                f"{where} has a body the lexer cannot settle ({'; '.join(unsettled)}); "
+                "its actor reads are unknown"
+            )
+            raise CensusError(message)
+        if language == "plpgsql" and _DYNAMIC.search(_bare(function.body)):
             message = f"{where} uses dynamic SQL; its actor reads are unknown"
             raise CensusError(message)
         if language in ("sql", "plpgsql") and function.oid in runs_text:
@@ -1119,7 +1147,7 @@ def setting_readers(cursor: CursorWrapper) -> SettingReaders:
 
 def _executor_calls(text: str, readers: SettingReaders) -> list[str]:
     """The SQL-text executors a text calls."""
-    code = _LITERAL.sub(" ", _code(text))
+    code = _bare(text)
     return [
         name
         for name in sorted(readers.executors)
@@ -1128,13 +1156,18 @@ def _executor_calls(text: str, readers: SettingReaders) -> list[str]:
 
 
 def _unreadable(text: str, readers: SettingReaders) -> list[str]:
-    """Text whose meaning the observer cannot read: SQL run from text, a DO
-    block running dynamic SQL, a Unicode-escaped identifier or string."""
-    code = _LITERAL.sub(" ", _code(text))
+    """Text whose meaning the observer cannot read: text the lexer cannot
+    settle, SQL run from text, a DO block running dynamic SQL, a
+    Unicode-escaped identifier or string."""
+    code = _bare(text)
     found = [
+        f"cannot be lexed ({reason}), so the observer cannot read it"
+        for reason in lex(text).unsettled
+    ]
+    found.extend(
         f"runs SQL from text via {name}, which the observer cannot read"
         for name in _executor_calls(text, readers)
-    ]
+    )
     if re.match(r"\s*do\b", code) and _DYNAMIC.search(code):
         found.append("runs dynamic SQL in a DO block, which the observer cannot read")
     if "u&" in code:
@@ -1147,7 +1180,7 @@ def _unreadable(text: str, readers: SettingReaders) -> list[str]:
 
 _PLACEHOLDER: Final = re.compile(r"%(?:\((?P<key>[^)]+)\))?s|\$(?P<number>[1-9]\d*)")
 _ARGUMENT: Final = re.compile(
-    r"\s*(?:'(?P<literal>(?:[^']|'')*)'"
+    r"\s*(?:'(?P<literal>(?:[^']|'')*+)'"
     r"|(?P<placeholder>%(?:\([^)]+\))?s|\$[1-9]\d*))"
     r"(?:\s*::\s*[a-z_ .]+)?\s*(?P<end>[,)])"
 )
@@ -1160,7 +1193,10 @@ _SET: Final = re.compile(
 
 
 def _parameter(sql_text: str, position: int, token: str, params: object) -> object:
-    """The value a psycopg placeholder at ``position`` binds, or a sentinel."""
+    """The value a psycopg placeholder at ``position`` binds, or a sentinel.
+
+    ``sql_text`` is the statement as sent: psycopg numbers placeholders
+    without reading SQL, so one inside a comment or a literal counts too."""
     key = _PLACEHOLDER.fullmatch(token)
     if key is not None and key.group("number") is not None:
         index = int(key.group("number")) - 1
@@ -1190,12 +1226,15 @@ def _parameter(sql_text: str, position: int, token: str, params: object) -> obje
 _UNRESOLVED: Final = object()
 
 
-def _arguments(sql_text: str, start: int, params: object, count: int) -> list[object]:
-    """Resolve up to ``count`` leading arguments of a call opened at ``start``."""
+def _arguments(
+    code: str, sql_text: str, start: int, params: object, count: int
+) -> list[object]:
+    """Resolve up to ``count`` leading arguments of a call opened at ``start``
+    in ``code`` (the lexer's view of ``sql_text``, position for position)."""
     values: list[object] = []
     position = start
     for _ in range(count):
-        match = _ARGUMENT.match(sql_text, position)
+        match = _ARGUMENT.match(code, position)
         if match is None:
             values.append(_UNRESOLVED)
             break
@@ -1225,15 +1264,16 @@ def setting_calls(
     name or value is neither a literal nor a bound parameter; enumerating
     readers (``pg_settings``, ``SHOW ALL``) resolve to nothing at all.
     """
-    code = _COMMENT.sub(" ", sql_text)
+    lexed = lex(sql_text)
+    code = lexed.code
     calls: list[tuple[str, list[object]]] = []
     for reader in sorted(readers.named):
         pattern = re.compile(rf'(?<![\w$])"?{re.escape(reader)}"?\s*\(', re.IGNORECASE)
         calls.extend(
-            (reader, _arguments(code, match.end(), params, 2))
+            (reader, _arguments(code, sql_text, match.end(), params, 2))
             for match in pattern.finditer(code)
         )
-    lowered = _LITERAL.sub(" ", code.lower())
+    lowered = lexed.bare.lower()
     calls.extend(
         (reader, [_UNRESOLVED])
         for reader in sorted(readers.enumerators)
@@ -1254,9 +1294,23 @@ def setting_calls(
         placeholder = _PLACEHOLDER.fullmatch(value.strip())
         resolved: object = value.strip().strip("'")
         if placeholder is not None:
-            resolved = _parameter(code, setting.start("value"), value.strip(), params)
+            resolved = _parameter(
+                sql_text, setting.start("value"), value.strip(), params
+            )
         calls.append(("set", [setting.group("name").lower(), resolved]))
     return calls
+
+
+def _changes_lexing(reader: str, arguments: list[object]) -> bool:
+    """A set or ``set_config`` whose resolved name is
+    ``standard_conforming_strings`` (a name spelled in the text is already
+    unsettled; this is the one a bound parameter carries)."""
+    return (
+        reader in ("set_config", "set")
+        and bool(arguments)
+        and isinstance(arguments[0], str)
+        and arguments[0].strip().lower() == _STANDARD_STRINGS
+    )
 
 
 def _named(value: object, settings: frozenset[str]) -> bool:
@@ -1414,7 +1468,7 @@ class ActorObserver:
     _tables: dict[int, int] = field(default_factory=dict)
     # The last bound snapshot, reusable as the next execution's starting
     # point while the scope transaction is unchanged (``carry``/``drop``).
-    _carried: tuple[dict[int, int], dict[int, int], list[str], int, int] | None = None
+    _carried: _Snapshot | None = None
     # Prepared statements of the session by name: (reads, acquires or hides).
     _prepared: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
     _classified: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
@@ -1450,14 +1504,15 @@ class ActorObserver:
         }
         self._classified.clear()
 
-    def _session_state(self) -> tuple[int, int]:
+    def _session_state(self) -> tuple[int, int, str]:
         """Whether the session holds state a statement can reach without
-        naming what it does: its temporary schema (0 when it has none) and its
-        prepared statements (how many). Read for every execution, one libpq
-        round trip outside the window; a bound execution reads the same two
+        naming what it does: its temporary schema (0 when it has none), its
+        prepared statements (how many), and how it lexes string literals
+        (``standard_conforming_strings``). Read for every execution, one
+        libpq round trip outside the window; a bound execution reads the same
         columns with its statistics snapshot."""
-        ((schema, prepared),) = self._rows(_SESSION_STATE)
-        return int(schema), int(prepared)
+        ((schema, prepared, standard),) = self._rows(_SESSION_STATE)
+        return int(schema), int(prepared), standard
 
     def _rows(self, query: bytes) -> list[tuple[str, ...]]:
         """Rows of an observer query sent through libpq, outside the window."""
@@ -1474,12 +1529,13 @@ class ActorObserver:
             for row in range(result.ntuples)
         ]
 
-    def _apply_session(self, schema: int, prepared: int) -> bool:
+    def _apply_session(self, schema: int, prepared: int, standard: str) -> bool:
         """Take in the session state before this execution: the temporary
         schema's objects (one the catalog was not derived with makes it derive
         again; one it cannot observe fails closed) and every prepared
-        statement's text, classified like a statement. True when the catalog
-        changed."""
+        statement's text, classified like a statement; a session that lexes
+        string literals with ``standard_conforming_strings`` off is a finding
+        of its own. True when the catalog changed."""
         temporary = (
             frozenset(int(oid) for (oid,) in self._rows(_TEMPORARY_OBJECTS.encode()))
             if schema
@@ -1493,6 +1549,11 @@ class ActorObserver:
             if self._failed is not None and self._failed[0] == temporary
             else []
         )
+        if standard != "on":
+            self._session.append(
+                f"the session runs with {_STANDARD_STRINGS} {standard!r}, so its "
+                "text cannot be lexed"
+            )
         self._prepared = {
             name: self._text_reasons(text)
             for name, text in (self._rows(_PREPARED_STATEMENTS) if prepared else [])
@@ -1532,10 +1593,14 @@ class ActorObserver:
                 and _named(arguments[0], settings)
             ):
                 acquires.append("binds an actor or unresolvable setting")
+            elif _changes_lexing(reader, arguments):
+                acquires.append(
+                    f"sets {_STANDARD_STRINGS}, so later text cannot be lexed"
+                )
             elif reader != "set" and (not arguments or _named(arguments[0], settings)):
                 reads.append(f"reads an actor or unresolvable setting via {reader}")
         tokens = _tokens(text)
-        code = _LITERAL.sub(" ", _code(text))
+        code = _bare(text)
         reads.extend(
             f"calls {self._by_name[name]}"
             for name in sorted(tokens & set(self._by_name))
@@ -1566,7 +1631,7 @@ class ActorObserver:
 
     def _snapshot(
         self,
-    ) -> tuple[dict[int, int], dict[int, int], list[str], int, int]:
+    ) -> _Snapshot:
         """One statement: watched call counts, actor relation touches, the
         bound actor values (per-oid statistics, not the full views), and the
         session state (``_session_state``)."""
@@ -1583,7 +1648,7 @@ class ActorObserver:
             )
             row = cursor.fetchone()
         assert row is not None
-        calls, touches, values, tracking, schema, prepared = row
+        calls, touches, values, tracking, schema, prepared, standard = row
         assert tracking == "all", "track_functions must be all"
         return (
             dict(zip(self.catalog.watched, map(int, calls), strict=True)),
@@ -1594,6 +1659,7 @@ class ActorObserver:
             [str(value) for value in values if value],
             int(schema),
             int(prepared),
+            str(standard),
         )
 
     def begin(self, *, mode: str, actor: str | None = None) -> None:
@@ -1606,9 +1672,9 @@ class ActorObserver:
             # A carried snapshot is the previous execution's end: nothing runs
             # between two inputs of a scope, so it is this one's start.
             snapshot, self._carried = self._carried or self._snapshot(), None
-            if self._apply_session(snapshot[3], snapshot[4]):
+            if self._apply_session(*snapshot[3:]):
                 snapshot = self._snapshot()
-            self._functions, self._tables, values, _, _ = snapshot
+            self._functions, self._tables, values, *_ = snapshot
             assert values, "a bound execution needs a bound actor"
             self.values = frozenset(values)
         if mode != "bound":
@@ -1677,7 +1743,10 @@ class ActorObserver:
         it cannot resolve) to a value other than empty or the actor already
         bound (a lifecycle helper restoring the saved value acquires none),
         or it uses a derived binder."""
-        if not self._may_bind.search(statement.sql):
+        if (
+            not self._may_bind.search(statement.sql)
+            and not lex(statement.sql).unsettled
+        ):
             return []
         found = [
             f"statement {reason} from {statement.stack[:1]}"
@@ -1714,6 +1783,11 @@ class ActorObserver:
                     value not in (None, "") and str(value) not in self.values
                 ):
                     found.append(f"binds an actor setting from {statement.stack[:1]}")
+            elif _changes_lexing(reader, arguments):
+                found.append(
+                    f"statement sets {_STANDARD_STRINGS}, so later text cannot be "
+                    f"lexed, from {statement.stack[:1]}"
+                )
         return found
 
     def drop_carried(self) -> None:
@@ -1726,7 +1800,7 @@ class ActorObserver:
         # input's savepoint release or rollback does not), so this end is
         # the next input's start.
         self._carried = snapshot
-        functions, tables, _, _, _ = snapshot
+        functions, tables, *_ = snapshot
         found: list[str] = []
         called = {
             oid
@@ -1792,7 +1866,7 @@ class ActorObserver:
             for name in sorted(tokens & self.catalog.types)
         )
         if self.catalog.operators:
-            code = _LITERAL.sub(" ", statement.sql)
+            code = lex(statement.sql).bare
             found.extend(
                 f"statement uses actor operator {symbol}"
                 for symbol in sorted(self.catalog.operators)
@@ -1863,11 +1937,13 @@ class ActorObserver:
 
 
 # The session state read for every execution: whether the session has a
-# temporary schema, and how many prepared statements (SQL or protocol level);
-# then, only when there are any, the schema's objects and the statements' text.
+# temporary schema, how many prepared statements (SQL or protocol level), and
+# standard_conforming_strings; then, only when there are any, the schema's
+# objects and the statements' text.
 _SESSION_COLUMNS: Final = sql.SQL(
     "pg_catalog.pg_my_temp_schema(), "
-    "(SELECT pg_catalog.count(*) FROM pg_catalog.pg_prepared_statements)"
+    "(SELECT pg_catalog.count(*) FROM pg_catalog.pg_prepared_statements), "
+    "pg_catalog.current_setting('standard_conforming_strings')"
 )
 _SESSION_STATE: Final = sql.SQL("SELECT {}").format(_SESSION_COLUMNS).as_bytes(None)
 _PREPARED_STATEMENTS: Final = (
@@ -1900,7 +1976,7 @@ _EXECUTED: Final = re.compile(
 
 def _executed(text: str) -> list[str]:
     """Names of the prepared statements a statement executes (SQL EXECUTE)."""
-    code = _LITERAL.sub(" ", _COMMENT.sub(" ", text))
+    code = lex(text).bare
     return [
         name[1:-1].replace('""', '"') if name.startswith('"') else name.lower()
         for name in _EXECUTED.findall(code)

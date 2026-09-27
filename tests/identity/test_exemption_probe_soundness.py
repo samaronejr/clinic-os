@@ -35,6 +35,7 @@ from database_urls import database_url_for_name
 from identity import actor_channels, exemption_probes, probe_states
 from identity import permission_gate_census as census
 from identity.permission_inputs import decision_inputs
+from identity.test_certifier_boundary import R9_S4_DDL, R9_S5_DDL
 from identity.test_permission_parity import _SYNTHETIC, INVENTORY, _probe_world
 from patient_service_support import runtime_role
 
@@ -1300,3 +1301,233 @@ def test_actor_rule_refuses_every_r8_shape(
         name for name, channel in _R8_CHANNELS.items() if channel not in observed[name]
     ]
     assert not unseen, ("R8 shapes refused by another channel", unseen)
+
+
+# R9-1: a literal holding ``--`` or ``/*``, a dollar-quoted comment marker, a
+# nested comment, an escape string holding a quote: the reads behind them,
+# in statements and plpgsql bodies, and dynamic SQL behind them in a body.
+_R9_DDL = """
+CREATE FUNCTION clinic_app.zz_r9_desync(p text) RETURNS boolean
+LANGUAGE plpgsql STABLE
+AS $f$ BEGIN RETURN '--' <> '' AND pg_catalog.current_setting('app.current_user_id', true) = p; END $f$;
+CREATE FUNCTION clinic_app.zz_r9_dollar(p text) RETURNS boolean
+LANGUAGE plpgsql STABLE
+AS $f$ BEGIN RETURN $x$--$x$ <> '' AND pg_catalog.current_setting('app.current_user_id', true) = p; END $f$;
+GRANT EXECUTE ON FUNCTION clinic_app.zz_r9_desync(text),
+  clinic_app.zz_r9_dollar(text) TO clinic_app;
+"""  # noqa: E501 - each body stays on one line, as the review planted it
+_R9_DROP = """
+DROP FUNCTION IF EXISTS clinic_app.zz_r9_desync(text);
+DROP FUNCTION IF EXISTS clinic_app.zz_r9_dollar(text);
+"""
+
+
+def _r9_statement(sql_text: str) -> str:
+    """A probe body that reads the actor through one statement."""
+    return (
+        "    with connection.cursor() as probe_cursor:\n"
+        f"        probe_cursor.execute({sql_text!r}, [_ALLOW])\n"
+        "        (allowed,) = probe_cursor.fetchone()\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n"
+    )
+
+
+_R9_READ = "pg_catalog.current_setting('app.current_user_id', true) = %s"
+_R9_VARIANTS: dict[str, tuple[str, str, str, str]] = {
+    "r9-s1 comment marker in a literal": (
+        _RETURN,
+        _r9_statement(f"SELECT '--' <> '' AND {_R9_READ}"),
+        "",
+        "rule",
+    ),
+    "r9-s2 block-comment markers in literals": (
+        _RETURN,
+        _r9_statement(f"SELECT '/*' <> '' AND {_R9_READ} AND '*/' <> ''"),
+        "",
+        "rule",
+    ),
+    "r9-s3 comment marker in a literal in a plpgsql body": (
+        _RETURN,
+        _r9_statement("SELECT clinic_app.zz_r9_desync(%s)"),
+        "",
+        "rule",
+    ),
+    "own: dollar-quoted comment marker": (
+        _RETURN,
+        _r9_statement(f"SELECT $x$--$x$ <> '' AND {_R9_READ}"),
+        "",
+        "rule",
+    ),
+    "own: dollar-quoted comment marker in a plpgsql body": (
+        _RETURN,
+        _r9_statement("SELECT clinic_app.zz_r9_dollar(%s)"),
+        "",
+        "rule",
+    ),
+    "own: nested comment": (
+        _RETURN,
+        _r9_statement(f"SELECT /* /* */ -- */ {_R9_READ}"),
+        "",
+        "rule",
+    ),
+    "own: standard_conforming_strings off by a bound name": (
+        _RETURN,
+        "    with connection.cursor() as probe_cursor:\n"
+        "        probe_cursor.execute(\n"
+        "            \"SELECT pg_catalog.set_config(%s, 'off', false)\", [_SCS]\n"
+        "        )\n"
+        "        try:\n"
+        "            probe_cursor.execute(_HIDDEN, [_KEY, _ALLOW])\n"
+        "            (allowed,) = probe_cursor.fetchone()\n"
+        "        finally:\n"
+        "            probe_cursor.execute(\n"
+        "                \"SELECT pg_catalog.set_config(%s, 'on', false)\", [_SCS]\n"
+        "            )\n"
+        "    if allowed:\n"
+        "        return None\n"
+        "    return int(row[0])\n",
+        "_SCS = 'standard_conforming_' + 'strings'\n"
+        "_KEY = 'app.current_' + 'user_id'\n"
+        # With the setting off, the backslash escapes the quote and the read
+        # is code; with it on, the whole tail is one literal.
+        "_HIDDEN = (\"SELECT 'x\" + chr(92) + \"'' <> '' AND \"\n"
+        "    'pg_catalog.current_setting(%s, true) = %s --' + chr(39))\n",
+        "rule",
+    ),
+}
+_R9_CHANNELS = {
+    "r9-s1 comment marker in a literal": (
+        "statement reads an actor or unresolvable setting via current_setting"
+    ),
+    "r9-s2 block-comment markers in literals": (
+        "statement reads an actor or unresolvable setting via current_setting"
+    ),
+    "r9-s3 comment marker in a literal in a plpgsql body": (
+        "calls clinic_app.zz_r9_desync"
+    ),
+    "own: dollar-quoted comment marker": (
+        "statement reads an actor or unresolvable setting via current_setting"
+    ),
+    "own: dollar-quoted comment marker in a plpgsql body": (
+        "calls clinic_app.zz_r9_dollar"
+    ),
+    "own: nested comment": (
+        "statement reads an actor or unresolvable setting via current_setting"
+    ),
+    "own: standard_conforming_strings off by a bound name": (
+        "statement sets standard_conforming_strings"
+    ),
+}
+
+
+@contextlib.contextmanager
+def _r9_schema() -> Iterator[None]:
+    url = database_url_for_name(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"],
+        str(connection.settings_dict["NAME"]),
+    )
+    with psycopg.connect(url, autocommit=True) as superuser:
+        superuser.execute(_R9_DROP)
+        superuser.execute(_R9_DDL)
+    try:
+        yield
+    finally:
+        with psycopg.connect(url, autocommit=True) as superuser:
+            superuser.execute(_R9_DROP)
+
+
+def test_actor_rule_refuses_every_r9_shape(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R9-1: each shape flips the allowlisted user's outcome only, and hides
+    its read behind text a comment-first classifier misreads. The rule reads
+    every text through the one lexer and refuses each by the channel that
+    sees it; the unmutated function stays certified in the same run."""
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        with _r9_schema():
+            probe_world = dataclasses.replace(
+                probe_world, observer=exemption_probes.actor_observer(probe_world.w)
+            )
+            probes = _variant_probes(probe_world, _R9_VARIANTS)
+            runs = exemption_probes.run_matrix(
+                probes, probe_world, probe_world.matrix.states[:1]
+            )
+    for probe in probes:
+        print("R9", probe.symbol, runs[probe.symbol].observed)  # noqa: T201 - receipt
+    assert exemption_probes.actor_problems(runs[_SYMBOL]) == []
+    observed = {
+        probe.symbol.split("#")[1]: " ".join(
+            runs[probe.symbol].observed.get("none", [])
+        )
+        for probe in probes[1:]
+    }
+    accepted = [
+        name
+        for name in _R9_VARIANTS
+        if not exemption_probes.actor_problems(runs[f"{_SYMBOL}#{name}"])
+    ]
+    assert not accepted, ("R9 shapes the actor rule accepted", accepted)
+    unseen = [
+        name for name, channel in _R9_CHANNELS.items() if channel not in observed[name]
+    ]
+    assert not unseen, ("R9 shapes refused by another channel", unseen)
+
+
+_R9_UNSETTLED_BODY = (
+    "CREATE FUNCTION clinic_app.zz_r9_unsettled() RETURNS text "
+    "LANGUAGE plpgsql AS $f$ BEGIN RETURN $x$/*$x$; END $f$"
+)
+_R9_CONFIGURED = (
+    "CREATE FUNCTION clinic_app.zz_r9_configured() RETURNS boolean "
+    "LANGUAGE plpgsql SET standard_conforming_strings = off "
+    "AS $f$ BEGIN RETURN true; END $f$"
+)
+
+
+@pytest.mark.parametrize(
+    ("ddl", "message"),
+    [
+        (R9_S4_DDL, "clinic_app.zz_r9_s4 uses dynamic SQL"),
+        (R9_S5_DDL, "clinic_app.zz_r9_s5 uses dynamic SQL"),
+        (_R9_UNSETTLED_BODY, "zz_r9_unsettled has a body the lexer cannot settle"),
+        (_R9_CONFIGURED, "zz_r9_configured sets standard_conforming_strings"),
+    ],
+    ids=["r9-s4", "r9-s5", "unsettled-body", "configured"],
+)
+def test_the_catalog_fails_closed_on_r9_bodies(ddl: str, message: str) -> None:
+    """R9-1 s4/s5: dynamic SQL behind a ``'--'`` literal or an ``E'\\''``
+    escape string in a plpgsql body fails the catalog closed, as any dynamic
+    SQL does; so does a body the lexer cannot settle and a function that
+    sets standard_conforming_strings (DDL rolled back)."""
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(ddl)
+            with pytest.raises(census.CensusError, match=re.escape(message)):
+                actor_channels.actor_catalog(cursor, frozenset({"app.current_user_id"}))
+        transaction.set_rollback(True)
+
+
+def test_a_session_left_with_nonstandard_strings_is_refused(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Session state made before the window: with standard_conforming_strings
+    off, no text the probe sends can be lexed, so the per-execution session
+    read refuses even the unmutated function (the setting is restored after)."""
+    with override_settings(**_SYNTHETIC):
+        probe_world = _probe_world(rbac_graph, monkeypatch)
+        probes = [exemption_probes.PROBES[_SYMBOL]]
+        with connection.cursor() as cursor:
+            cursor.execute("SET standard_conforming_strings = off")
+        try:
+            runs = exemption_probes.run_matrix(
+                probes, probe_world, probe_world.matrix.states[:1]
+            )
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("RESET standard_conforming_strings")
+    problems = exemption_probes.actor_problems(runs[_SYMBOL])
+    print("R9 session", problems)  # noqa: T201 - receipt
+    assert any("standard_conforming_strings 'off'" in problem for problem in problems)
