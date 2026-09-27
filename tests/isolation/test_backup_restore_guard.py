@@ -33,7 +33,7 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    assert len(restore_contract.DOMAIN_RELATIONS) == 69
+    assert len(restore_contract.DOMAIN_RELATIONS) == 75
     assert "clinic_app.identity_userpreference" in restore_contract.TABLE_DATA
     assert set(restore_contract.TARGET_SEEDED_RELATIONS) == {
         "providers_capabilityversion",
