@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 GRAMMAR = frozenset(
     {
         "raise",
+        "notice",
         "exception",
         "perform",
         "loop",
@@ -145,11 +146,15 @@ class Bindings:
     functions: frozenset[int]
     relations: frozenset[int]
     unresolved: tuple[str, ...]
+    types: frozenset[int]
 
 
 class Identifiers:
-    def __init__(self, functions: Mapping[str, set[int]]) -> None:
+    def __init__(
+        self, functions: Mapping[str, set[int]], types: Mapping[str, set[int]]
+    ) -> None:
         self.functions = functions
+        self.types = types
         self.relations: dict[str, set[int]] = defaultdict(set)
         self.fields: dict[int, set[str]] = defaultdict(set)
         self.parameters: dict[int, set[str]] = defaultdict(set)
@@ -172,12 +177,10 @@ class Identifiers:
             cursor.execute("SELECT tgfoid,tgrelid FROM pg_trigger")
             for function, relation in cursor.fetchall():
                 self.triggers[int(function)].add(int(relation))
-            cursor.execute(
-                "SELECT word FROM pg_get_keywords() "
-                "UNION SELECT typname FROM pg_type "
-                "UNION SELECT nspname FROM pg_namespace"
-            )
+            cursor.execute("SELECT word FROM pg_get_keywords()")
             self.keywords = {str(row[0]) for row in cursor.fetchall()} | GRAMMAR
+            cursor.execute("SELECT nspname FROM pg_namespace")
+            self.schemas = {str(row[0]) for row in cursor.fetchall()}
             cursor.execute("SELECT word FROM pg_get_keywords() WHERE catcode='R'")
             self.reserved = {str(row[0]) for row in cursor.fetchall()}
 
@@ -210,6 +213,7 @@ class Identifiers:
         relations = {
             relation for name in names for relation in self.relations.get(name, ())
         }
+        types = {type_oid for name in names for type_oid in self.types.get(name, ())}
         declared = _declarations(stream, self.reserved) | self.parameters[oid]
         for relation in relations | self.triggers[oid]:
             declared.update(self.fields[relation])
@@ -226,6 +230,10 @@ class Identifiers:
             if name not in self.functions
             and name not in self.relations
             and name not in declared
+            and name not in self.types
+            and name not in self.schemas
             and name not in self.keywords
         )
-        return Bindings(frozenset(calls), frozenset(relations), unknown)
+        return Bindings(
+            frozenset(calls), frozenset(relations), unknown, frozenset(types)
+        )

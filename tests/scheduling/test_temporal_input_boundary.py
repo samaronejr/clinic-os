@@ -45,7 +45,7 @@ def test_postgresql16_derives_the_exact_special_clock_values() -> None:
         "SELECT U&'!006eow' UESCAPE '!'",
         "SELECT 'to'\n'day'",
         "SELECT $literal$  YeStErDaY $literal$",
-        "SELECT '   NoWhErE'",
+        "SELECT '   NoW, then tomorrow'",
     ],
 )
 def test_decoded_values_not_type_adjacency(source: str) -> None:
@@ -54,11 +54,18 @@ def test_decoded_values_not_type_adjacency(source: str) -> None:
 
 def test_literal_exceptions_are_exact_and_limited_to_python_mapping_keys() -> None:
     boundary = LiteralInputs()
-    assert set(boundary.allowlist) == {"today_url"}
+    assert len(boundary.allowlist) == 1
+    value, entry = next(iter(boundary.allowlist.items()))
+    assert entry["scope"] == "python-docstring"
+    assert not boundary.python_risky(value, mapping_key=False, docstring=True)
+    assert boundary.python_risky(value, mapping_key=False)
+    assert boundary.risky(value)
     assert not boundary.python_risky("today_url", mapping_key=True)
-    assert boundary.python_risky("today_url", mapping_key=False)
-    assert boundary.risky("today_url")
-    assert boundary.python_risky("today_url_extra", mapping_key=True)
+    assert not boundary.python_risky("today_url", mapping_key=False)
+    assert not boundary.risky("today_url")
+    assert not boundary.python_risky("today_url_extra", mapping_key=True)
+    assert not boundary.risky("nowhere")
+    assert boundary.risky("snow, now")
     assert boundary.counts("SELECT 'now', ' NoW ', $$today$$") == {
         "unresolved-temporal-input": 3,
     }

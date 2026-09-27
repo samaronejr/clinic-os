@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.db import DatabaseError, connection, transaction
+from psycopg import sql
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,8 @@ class Dependencies:
     functions: frozenset[int] = frozenset()
     relations: frozenset[int] = frozenset()
     unresolved: bool = False
+    types: frozenset[int] = frozenset()
+    tree: str = ""
 
 
 def _edges(oid: int) -> Dependencies:
@@ -19,14 +22,55 @@ def _edges(oid: int) -> Dependencies:
         cursor.execute(
             "SELECT refclassid::regclass::text,refobjid FROM pg_depend "
             "WHERE classid='pg_proc'::regclass AND objid=%s "
-            "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass)",
+            "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,"
+            "'pg_type'::regclass)",
             [oid],
         )
         rows = cursor.fetchall()
+        cursor.execute(
+            "SELECT COALESCE(prosqlbody::text,'') FROM pg_proc WHERE oid=%s", [oid]
+        )
+        body = cursor.fetchone()
+        assert body is not None
     return Dependencies(
         frozenset(int(ref) for kind, ref in rows if kind == "pg_proc"),
         frozenset(int(ref) for kind, ref in rows if kind == "pg_class"),
+        types=frozenset(int(ref) for kind, ref in rows if kind == "pg_type"),
+        tree=str(body[0]),
     )
+
+
+def expression_tree(expression: str, arguments: dict[str, str]) -> str | None:
+    """Analyse a PL/pgSQL expression with typed parameters, never execute it."""
+    prototype = ",".join(
+        sql.Identifier(name).as_string() + " " + type_name
+        for name, type_name in arguments.items()
+    )
+    try:
+        with transaction.atomic():
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "CREATE TEMP TABLE clock_expression_anchor (unused integer) "
+                        "ON COMMIT DROP"
+                    )
+                    cursor.execute(
+                        f"CREATE FUNCTION pg_temp.clock_expression({prototype}) "
+                        "RETURNS record "
+                        f"LANGUAGE sql BEGIN ATOMIC SELECT {expression}; END"
+                    )
+                    cursor.execute(
+                        "SELECT prosqlbody::text FROM pg_proc "
+                        "WHERE pronamespace=pg_my_temp_schema() "
+                        "AND proname='clock_expression'"
+                    )
+                    row = cursor.fetchone()
+                    assert row is not None
+                    return str(row[0])
+            finally:
+                transaction.set_rollback(True)
+    except DatabaseError:
+        return None  # Caller emits an unresolved temporal-coercion risk marker.
 
 
 def sql_dependencies(oid: int) -> Dependencies:

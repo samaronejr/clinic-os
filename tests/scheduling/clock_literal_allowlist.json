@@ -1,6 +1,6 @@
 {
-  "today_url": {
-    "scope": "python-mapping-key",
-    "reason": "Agenda template-context navigation key, not a SQL value. This exception applies only to Python mapping keys; the same value in a SQL body or bound argument remains rejected."
+  "Return the neighbouring civil-date, view, today and page links.": {
+    "scope": "python-docstring",
+    "reason": "Agenda navigation documentation. This exact value is exempt only as a Python docstring, never as SQL or a bound argument."
   }
 }

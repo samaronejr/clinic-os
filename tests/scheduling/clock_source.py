@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from functools import lru_cache
 from string import Formatter
 
@@ -147,7 +148,12 @@ def _contexts(tree: ast.Module) -> dict[ast.AST, list[dict[str, str]]]:
         for name, value in _assignments(tree).items()
         if isinstance(value, ast.Constant) and isinstance(value.value, str)
     }
-    for function in ast.walk(tree):
+    nodes = tuple(ast.walk(tree))
+    local_calls: dict[str, list[ast.Call]] = defaultdict(list)
+    for node in nodes:
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            local_calls[node.func.id].append(node)
+    for function in nodes:
         if isinstance(function, ast.FunctionDef):
             returns = [
                 node.value
@@ -156,17 +162,11 @@ def _contexts(tree: ast.Module) -> dict[ast.AST, list[dict[str, str]]]:
             ]
             if len(returns) == 1:
                 constants[function.name + "()"] = _text(returns[0], constants)
-    contexts = {node: [constants] for node in ast.walk(tree)}
-    for function in ast.walk(tree):
+    contexts = {node: [constants] for node in nodes}
+    for function in nodes:
         if not isinstance(function, ast.FunctionDef):
             continue
-        calls = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == function.name
-        ]
+        calls = local_calls[function.name]
         bindings = [
             constants
             | {

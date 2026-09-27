@@ -128,6 +128,20 @@ def sql_boundary_violations(source: str) -> set[str]:
     return violations
 
 
+def _docstring_ids(tree: ast.Module) -> set[int]:
+    return {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+
+
 def application_boundary(root: Path) -> dict[str, list[str]]:
     """Scan every apps Python/SQL file, including migration helpers and new files."""
     found: dict[str, list[str]] = {}
@@ -158,10 +172,15 @@ def application_boundary(root: Path) -> dict[str, list[str]]:
                 for key in node.keys
                 if key is not None
             }
+            docstrings = _docstring_ids(tree)
             if any(
                 isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
-                and literals.python_risky(node.value, mapping_key=id(node) in keys)
+                and literals.python_risky(
+                    node.value,
+                    mapping_key=id(node) in keys,
+                    docstring=id(node) in docstrings,
+                )
                 for node in ast.walk(tree)
             ):
                 violations.add("scheduling-clock-literal")

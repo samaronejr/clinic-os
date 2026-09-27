@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -25,11 +26,18 @@ from django.utils import timezone
 from scheduling.clock_support import frozen_sql_clocks
 
 from .clock_catalog import live_clock_inventory
+from .worlds import Worlds
+
+WORLD_STACK = pytest.StashKey[ExitStack]()
+WORLD_FACTORY = pytest.StashKey[Worlds]()
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from pytest_django.plugin import DjangoDbBlocker
+
+    from rbac_fixtures import RbacGraph
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -57,9 +65,75 @@ def clock_catalog_session(
         live_clock_inventory()
 
 
+@pytest.fixture
+def _django_db_helper(
+    request: pytest.FixtureRequest,
+    django_db_setup: None,
+    django_db_blocker: DjangoDbBlocker,
+) -> Iterator[None]:
+    if "rbac_graph" in request.fixturenames:
+        # The verified database clone is the transaction boundary. Its DROP
+        # replaces Django's per-test flush/reseed, not an application assertion.
+        with django_db_blocker.unblock():
+            yield
+    else:
+        # Pytest's normal same-name override lookup delegates to the parent.
+        request.getfixturevalue("_django_db_helper")
+        yield
+
+
+@pytest.fixture(scope="session")
+def scheduling_worlds(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
+) -> Worlds:
+    worlds = Worlds(tmp_path_factory.mktemp("scheduling-worlds"))
+    request.config.stash[WORLD_FACTORY] = worlds
+    return worlds
+
+
+@pytest.fixture(autouse=True)
+def scheduling_world(
+    request: pytest.FixtureRequest,
+    scheduling_worlds: Worlds,
+    synthetic_secret_backend: Path,
+) -> RbacGraph | None:
+    if "rbac_graph" not in request.fixturenames:
+        return None
+    request.getfixturevalue("_django_db_helper")
+    stack = ExitStack()
+    request.node.stash[WORLD_STACK] = stack
+    return stack.enter_context(scheduling_worlds.world(synthetic_secret_backend))
+
+
+@pytest.fixture
+def rbac_graph(scheduling_world: RbacGraph | None) -> RbacGraph:
+    assert scheduling_world is not None
+    return scheduling_world
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_teardown(
+    item: pytest.Item, nextitem: pytest.Item | None
+) -> Iterator[None]:
+    try:
+        yield
+    finally:
+        stack = item.stash.get(WORLD_STACK, None)
+        if stack is not None:
+            stack.close()
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    factory = session.config.stash.get(WORLD_FACTORY, None)
+    if factory is not None:
+        factory.close()
+
+
 @pytest.fixture(autouse=True)
 def controlled_scheduling_clock(
-    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    scheduling_world: RbacGraph | None,
 ) -> Iterator[datetime | None]:
     """Keep fixed legacy/resource windows independent of ambient scheduling time.
 

@@ -38,6 +38,11 @@ def test_construction_probe_is_censused(
     before = live_clock_inventory()
     with installed_probe(superuser_database_url, PROBES[name], request):
         observed = live_clock_inventory()
+        if name == "text-variant-prefix-message":
+            # Round-7's whole-word rule intentionally permits the word "nowhere".
+            assert observed == before
+            request.node.stash[RESTORATION]["whole_word_negative_control"] = "true"
+            return
         assert observed != before
         if name.startswith("text-"):
             assert (
@@ -123,7 +128,10 @@ def test_python_scheduling_bound_literals_fail_closed(
     path.write_text(
         'cursor.execute("SELECT clinic_app.helper(%s)", [' + repr(value) + "])"
     )
-    assert application_boundary(apps)
+    if value == "nowhere":
+        assert application_boundary(apps) == {}
+    else:
+        assert application_boundary(apps)
 
 
 def test_additional_literals_change_controlled_inventory(

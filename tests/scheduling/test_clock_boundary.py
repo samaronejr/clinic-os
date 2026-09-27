@@ -1,6 +1,8 @@
 """Plant unsupported constructs outside scheduling; the repository guard must fail."""
 
+import ast
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,7 @@ from scheduling.clock_boundary import (
     repository_event_trigger_boundary,
 )
 from scheduling.clock_residual_probes import EVENTS
+from scheduling.clock_source import source_fragments
 
 APPS = Path(__file__).resolve().parents[2] / "apps"
 PROBES = {
@@ -109,6 +112,29 @@ pytestmark = [
     pytest.mark.django_db(transaction=True, available_apps=[]),
     pytest.mark.usefixtures("clock_catalog_session"),
 ]
+
+
+def test_template_contexts_do_not_rewalk_the_module_per_function(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tree = ast.parse(
+        "\n".join(
+            f'def query_{index}(value):\n    return f"SELECT {{value}}"\n'
+            f'query_{index}("{index}")'
+            for index in range(20)
+        )
+    )
+    original = ast.walk
+    whole_module_walks = []
+
+    def walk(node: ast.AST) -> Iterator[ast.AST]:
+        if node is tree:
+            whole_module_walks.append(node)
+        return original(node)
+
+    monkeypatch.setattr(ast, "walk", walk)
+    assert {f"SELECT {index}" for index in range(20)} <= set(source_fragments(tree))
+    assert len(whole_module_walks) <= 5
 
 
 def test_application_sql_stays_inside_clock_census_boundary() -> None:
