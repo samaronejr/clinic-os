@@ -216,7 +216,8 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
                 granted=granted,
                 view_name=view_name,
             )
-            if _targets_clinic(request, clinic)
+            if not getattr(request, DENIED_ATTRIBUTE, False)
+            and _targets_clinic(request, clinic)
             else None
         ),
     )

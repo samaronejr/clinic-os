@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import timedelta
 from difflib import unified_diff
 from itertools import chain, combinations
@@ -13,16 +14,19 @@ from uuid import uuid4
 import pytest
 from apps.audit.models import AuditEvent
 from apps.core.navigation import DESTINATIONS, destination_url
+from apps.core.patient_context import DEMOGRAPHICS_READ, SESSION_PREFIX
 from apps.identity.models import RoleGrant, SavedView, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.identity.saved_views import archive_saved_view, save_view
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
+from django.urls import reverse
 from django.utils import timezone
 
 from core.test_navigation import (
     PATIENT,
     RUN,
+    _api,
     _client_for,
     _get,
     _main,
@@ -32,9 +36,12 @@ from core.test_navigation import (
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
 from patient_http_support import seed_patients
+from renewal.test_clinical_history import begin
 
 if TYPE_CHECKING:
     from apps.core.navigation import Destination
+    from apps.identity.models import User
+    from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
 
     from rbac_fixtures import RbacGraph
@@ -97,6 +104,60 @@ def _normalized_denial(
     return body, headers
 
 
+def _pin_patient(client: Client, graph: RbacGraph, user: User, role: str) -> None:
+    if role == UserClinicRole.Role.PHYSICIAN:
+        # Physicians cannot use the manager-only patient search/create path.
+        # An assigned clinical record binds their patient through real HTTP.
+        encounter = begin(replace(graph, physician=user.pk))
+        with owner_context(graph.organization_a):
+            name = str(encounter.patient.full_name)
+        search = _api(client, {"q": name, "clinic_id": str(graph.clinic_a)})
+        assert search.status_code == 200
+        assert all(row["kind"] != "patient" for row in search.json())
+        response = _post(
+            client,
+            reverse("ehr:encounter", kwargs={"clinic_id": graph.clinic_a}),
+            {"action": "show", "encounter_id": str(encounter.pk)},
+        )
+        assert response.status_code == 200
+    else:
+        seed_patients(graph, user.pk, graph.clinic_a, (PATIENT,))
+        response = _post(client, RUN, {"token": _patient_token(client, graph)})
+        assert response.status_code == 302
+    assert f"{SESSION_PREFIX}{graph.clinic_a}" in client.session
+
+
+def _restore_session(client: Client, state: dict[str, object]) -> None:
+    session = client.session
+    session.clear()
+    session.update(state)
+    session.save()
+
+
+def _assert_identical_denials(
+    actual: _MonkeyPatchedWSGIResponse,
+    denied: _MonkeyPatchedWSGIResponse,
+    *,
+    pinned: bool,
+) -> None:
+    assert actual.status_code in (403, 404)
+    assert actual.status_code == denied.status_code
+    assert _main(actual) == _main(denied)
+    actual_body, actual_headers = _normalized_denial(actual)
+    denied_body, denied_headers = _normalized_denial(denied)
+    assert actual_body == denied_body, "\n".join(
+        unified_diff(
+            actual_body.decode().splitlines(),
+            denied_body.decode().splitlines(),
+            fromfile="permission-denied",
+            tofile="unknown-or-foreign",
+        )
+    )
+    # Compare every value, but never print session-cookie secrets on failure.
+    headers_equal = actual_headers == denied_headers
+    assert headers_equal, (pinned, actual_headers.keys() ^ denied_headers.keys())
+
+
 @pytest.mark.parametrize(("place", "role", "removed"), ROUTE_CASES)
 def test_every_destination_enforces_its_permission_over_http(
     rbac_graph: RbacGraph,
@@ -113,35 +174,41 @@ def test_every_destination_enforces_its_permission_over_http(
     monkeypatch.setattr(
         "django.http.response.time", SimpleNamespace(time=lambda: 2_000_000_000)
     )
-    client, _ = _client_for(rbac_graph, role)
+    client, user = _client_for(rbac_graph, role)
     url = destination_url(place, rbac_graph.clinic_a)
     assert _get(client, url).status_code == 200
+    states = [dict(client.session)]
+    if DEMOGRAPHICS_READ in BUNDLES_V1[role]:
+        _pin_patient(client, rbac_graph, user, role)
+        assert b"data-patient-banner" in _get(client, url).content
+        states.append(dict(client.session))
     permissions = set(place.permission) & BUNDLES_V1[role]
     for permission in removed:
         remove_permission(rbac_graph, role, permission)
-    actual = _get(client, url)
-    if permissions - set(removed):
-        assert actual.status_code == 200
-        for attribute in ("data-command-next", "data-combobox-context"):
-            assert f'{attribute}="{url}"' in actual.content.decode()
-    else:
-        assert actual.status_code in (403, 404)
-        actual_body, actual_headers = _normalized_denial(actual)
+    # Reuse the graph and login; restore each pre-revocation session exactly.
+    for state in states:
+        if permissions - set(removed):
+            _restore_session(client, state)
+            actual = _get(client, url)
+            assert actual.status_code == 200
+            for attribute in ("data-command-next", "data-combobox-context"):
+                assert f'{attribute}="{url}"' in actual.content.decode()
+            continue
         for clinic_id in (uuid4(), rbac_graph.clinic_b, rbac_graph.clinic_c):
             # Unknown, same-org without membership, and other-org destinations.
-            denied = _get(client, destination_url(place, clinic_id))
-            assert actual.status_code == denied.status_code
-            assert _main(actual) == _main(denied)
-            denied_body, denied_headers = _normalized_denial(denied)
-            assert actual_body == denied_body, "\n".join(
-                unified_diff(
-                    actual_body.decode().splitlines(),
-                    denied_body.decode().splitlines(),
-                    fromfile="permission-denied",
-                    tofile="unknown-or-foreign",
+            other_url = destination_url(place, clinic_id)
+            for own_first in (True, False):
+                _restore_session(client, state)
+                paths = (url, other_url) if own_first else (other_url, url)
+                first, second = (_get(client, path) for path in paths)
+                actual, denied = (first, second) if own_first else (second, first)
+                _assert_identical_denials(
+                    actual,
+                    denied,
+                    pinned=f"{SESSION_PREFIX}{rbac_graph.clinic_a}" in state,
                 )
-            )
-            assert actual_headers == denied_headers
+                session_unchanged = dict(client.session) == state
+                assert session_unchanged
 
 
 def test_revoked_patient_cannot_be_reopened_or_repinned(rbac_graph: RbacGraph) -> None:
