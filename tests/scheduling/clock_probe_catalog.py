@@ -1,4 +1,4 @@
-"""Canonical, OID-independent catalog bytes for round-5 restoration proofs."""
+"""Canonical, OID-independent catalog bytes for restoration proofs."""
 
 import hashlib
 import json
@@ -20,7 +20,8 @@ WITH namespaces AS (
  UNION ALL
  SELECT 'relation',n.nspname || '.' || c.relname,
  jsonb_build_array(c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,
- c.relowner::regrole::text,c.relacl::text)
+ c.relowner::regrole::text,c.relacl::text,c.relispartition,
+ pg_get_expr(c.relpartbound,c.oid))
  FROM pg_class c JOIN namespaces n ON n.oid=c.relnamespace
  UNION ALL
  SELECT 'attribute',n.nspname || '.' || c.relname || '.' || a.attname,
@@ -58,8 +59,21 @@ WITH namespaces AS (
  UNION ALL
  SELECT 'type',n.nspname || '.' || t.typname,
  jsonb_build_array(t.typtype,t.typbasetype::regtype::text,t.typinput::regproc::text,
- t.typtypmod,t.typdefault,t.typnotnull)
+ t.typtypmod,t.typdefault,t.typnotnull,t.typelem::regtype::text,
+ t.typrelid::regclass::text,pg_get_expr(t.typdefaultbin,0))
  FROM pg_type t JOIN namespaces n ON n.oid=t.typnamespace
+ UNION ALL
+ SELECT 'range',r.rngtypid::regtype::text,
+ jsonb_build_array(r.rngsubtype::regtype::text,r.rngmultitypid::regtype::text,
+ r.rngcollation::regcollation::text,o.opcnamespace::regnamespace::text,o.opcname,
+ r.rngcanonical::regprocedure::text,r.rngsubdiff::regprocedure::text)
+ FROM pg_range r JOIN pg_opclass o ON o.oid=r.rngsubopc
+ JOIN pg_type t ON t.oid=r.rngtypid JOIN namespaces n ON n.oid=t.typnamespace
+ UNION ALL
+ SELECT 'inheritance',i.inhrelid::regclass::text,
+ jsonb_build_array(i.inhparent::regclass::text,i.inhseqno,i.inhdetachpending)
+ FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid
+ JOIN namespaces n ON n.oid=c.relnamespace
  UNION ALL
  SELECT 'namespace',n.nspname,
  jsonb_build_array(p.nspowner::regrole::text,p.nspacl::text)

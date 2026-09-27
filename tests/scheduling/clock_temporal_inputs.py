@@ -1,8 +1,9 @@
-"""Count literal values with server-derived clock prefixes, irrespective of type."""
+"""Count literals containing server-derived clock words, irrespective of type."""
 
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,9 @@ from .clock_literals import literal_values
 class LiteralInputs:
     def __init__(self) -> None:
         self.tokens = special_datetime_tokens()
+        self.words = re.compile(
+            r"(?<!\w)(?:" + "|".join(map(re.escape, sorted(self.tokens))) + r")(?!\w)"
+        )
         with connection.cursor() as cursor:
             cursor.execute("SELECT current_setting('standard_conforming_strings')")
             row = cursor.fetchone()
@@ -28,15 +32,22 @@ class LiteralInputs:
             ),
         )
         assert all(
-            entry.get("reason") and entry.get("scope") == "python-mapping-key"
+            entry.get("reason")
+            and entry.get("scope") in {"python-mapping-key", "python-docstring"}
             for entry in self.allowlist.values()
         ), "literal exceptions need exact scope and reason"
 
     def risky(self, value: str) -> bool:
-        return value.strip().casefold().startswith(tuple(self.tokens))
+        return self.words.search(value.casefold()) is not None
 
-    def python_risky(self, value: str, *, mapping_key: bool) -> bool:
-        return self.risky(value) and not (mapping_key and value in self.allowlist)
+    def python_risky(
+        self, value: str, *, mapping_key: bool, docstring: bool = False
+    ) -> bool:
+        scope = self.allowlist.get(value, {}).get("scope")
+        exempt = (mapping_key and scope == "python-mapping-key") or (
+            docstring and scope == "python-docstring"
+        )
+        return self.risky(value) and not exempt
 
     def counts(self, source: str) -> Counter[str]:
         count = sum(

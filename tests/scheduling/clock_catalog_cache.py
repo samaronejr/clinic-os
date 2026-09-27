@@ -18,9 +18,7 @@ if TYPE_CHECKING:
 
     from .clock_catalog import ClockNode
 
-_CACHE: OrderedDict[tuple[str, str, str, bytes, str], dict[str, ClockNode]] = (
-    OrderedDict()
-)
+_CACHE: OrderedDict[tuple[str, str, bytes, str], dict[str, ClockNode]] = OrderedDict()
 CACHE_STATS = {"builds": 0, "hits": 0}
 
 # Hash all rows/edges used by the classifier, not a sample. Physical storage and
@@ -53,16 +51,24 @@ WITH ns AS (
  UNION ALL SELECT 'trigger',ROW(x.*)::text FROM pg_trigger x
  UNION ALL SELECT 'event-trigger',ROW(x.*)::text FROM pg_event_trigger x
  UNION ALL SELECT 'type',ROW(x.*)::text FROM pg_type x JOIN ns ON ns.oid=x.typnamespace
+ UNION ALL SELECT 'range',ROW(x.*)::text FROM pg_range x
  UNION ALL SELECT 'namespace',ROW(x.*)::text FROM pg_namespace x JOIN ns ON ns.oid=x.oid
  UNION ALL SELECT 'dependency',ROW(x.*)::text FROM pg_depend x
  WHERE x.classid IN ('pg_proc'::regclass,'pg_rewrite'::regclass)
- AND x.refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,'pg_extension'::regclass)
+ AND x.refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,
+ 'pg_type'::regclass,'pg_extension'::regclass)
  UNION ALL SELECT 'operator',ROW(x.*)::text FROM pg_operator x
  UNION ALL SELECT 'cast',ROW(x.*)::text FROM pg_cast x
  UNION ALL SELECT 'inheritance',ROW(x.*)::text FROM pg_inherits x
  UNION ALL SELECT 'partition',ROW(x.*)::text FROM pg_partitioned_table x
  UNION ALL SELECT 'extension',ROW(x.*)::text FROM pg_extension x
  UNION ALL SELECT 'language',ROW(x.*)::text FROM pg_language x
+ UNION ALL SELECT 'database-environment',
+ ROW(d.datdba,d.datacl,d.datcollate,d.datctype)::text
+ FROM pg_database d WHERE d.datname=current_database()
+ UNION ALL SELECT 'database-settings',ROW(s.setrole,s.setconfig)::text
+ FROM pg_db_role_setting s JOIN pg_database d ON d.oid=s.setdatabase
+ WHERE d.datname=current_database()
  UNION ALL SELECT 'prepared',ROW(x.*)::text FROM pg_prepared_statements x
  UNION ALL SELECT 'session',ROW(current_user,current_role,session_user,
  current_setting('search_path'),
@@ -97,7 +103,6 @@ def shared_inventory(
     key = (
         str(connection.settings_dict["HOST"]),
         str(connection.settings_dict["PORT"]),
-        str(connection.settings_dict["NAME"]),
         catalog_version(),
         policy,
     )

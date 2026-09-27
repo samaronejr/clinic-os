@@ -15,10 +15,13 @@ from sqlparse import tokens
 
 from .clock_boundary import sql_boundary_violations
 from .clock_catalog_cache import shared_inventory
+from .clock_coercions import Coercions
 from .clock_dependencies import sql_dependencies
 from .clock_identifiers import Identifiers
+from .clock_plpgsql_coercions import PLCoercions
 from .clock_temporal_inputs import LiteralInputs
 from .clock_tokens import sql_tokens
+from .clock_types import Types
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -77,6 +80,10 @@ class Surface:
     relations: frozenset[int] = frozenset()
     opaque: str = ""
     unresolved: tuple[str, ...] = ()
+    types: frozenset[int] = frozenset()
+    owner_oid: int = 0
+    coercion_tree: str = ""
+    temporal_coercions: int = 0
 
 
 def functions() -> dict[int, Function]:
@@ -148,7 +155,7 @@ def surfaces(relations: list[int] | None = None) -> list[Surface]:
         (
             "SELECT CASE WHEN a.attgenerated='' THEN 'default:' ELSE 'generated:' END "
             "|| c.oid::regclass::text || '.' || a.attname, "
-            "pg_get_expr(d.adbin,d.adrelid),d.adbin::text "
+            "pg_get_expr(d.adbin,d.adrelid),d.adbin::text,c.oid "
             "FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid "
             "AND a.attnum=d.adnum JOIN pg_class c ON c.oid=d.adrelid "
             "WHERE c.oid=ANY(%s)"
@@ -157,77 +164,71 @@ def surfaces(relations: list[int] | None = None) -> list[Surface]:
             "SELECT 'policy:' || polrelid::regclass::text || '.' || polname, "
             "COALESCE(pg_get_expr(polqual,polrelid),'') || ' ' || "
             "COALESCE(pg_get_expr(polwithcheck,polrelid),''), "
-            "COALESCE(polqual::text,'') || ' ' || COALESCE(polwithcheck::text,'') "
+            "COALESCE(polqual::text,'') || ' ' || "
+            "COALESCE(polwithcheck::text,''),polrelid "
             "FROM pg_policy WHERE polrelid=ANY(%s)"
         ),
         (
-            "SELECT 'view:' || oid::regclass::text,pg_get_viewdef(oid),'' "
+            "SELECT 'view:' || oid::regclass::text,pg_get_viewdef(oid),'',oid "
             "FROM pg_class WHERE oid=ANY(%s) AND relkind IN ('v','m')"
         ),
         (
             "SELECT 'rule:' || ev_class::regclass::text || '.' || rulename, "
-            "pg_get_ruledef(oid),ev_qual::text || ' ' || ev_action::text "
+            "pg_get_ruledef(oid),ev_qual::text || ' ' || ev_action::text,ev_class "
             "FROM pg_rewrite WHERE ev_class=ANY(%s)"
         ),
         (
             "SELECT 'index:' || indexrelid::regclass::text, "
             "pg_get_indexdef(indexrelid),COALESCE(indexprs::text,'') || ' ' || "
-            "COALESCE(indpred::text,'') FROM pg_index WHERE indrelid=ANY(%s)"
+            "COALESCE(indpred::text,''),indrelid FROM pg_index WHERE indrelid=ANY(%s)"
         ),
         (
             "SELECT 'partition:' || partrelid::regclass::text, "
-            "pg_get_partkeydef(partrelid),COALESCE(partexprs::text,'') "
+            "pg_get_partkeydef(partrelid),COALESCE(partexprs::text,''),partrelid "
             "FROM pg_partitioned_table WHERE partrelid=ANY(%s)"
         ),
     )
     result: list[Surface] = []
     with connection.cursor() as cursor:
-        cursor.execute(
-            "WITH RECURSIVE types(oid) AS ("
-            "SELECT atttypid FROM pg_attribute WHERE attrelid=ANY(%s) "
-            "AND attnum>0 AND NOT attisdropped UNION "
-            "SELECT t.typbasetype FROM types JOIN pg_type t ON t.oid=types.oid "
-            "WHERE t.typbasetype<>0) SELECT 'domain-default:' || t.oid::regtype::text, "
-            "pg_get_expr(t.typdefaultbin,0),t.typdefaultbin::text "
-            "FROM types JOIN pg_type t ON t.oid=types.oid WHERE t.typtype='d' "
-            "AND t.typdefaultbin IS NOT NULL UNION ALL "
-            "SELECT 'domain-constraint:' || c.contypid::regtype::text "
-            "|| '.' || c.conname, "
-            "pg_get_constraintdef(c.oid),COALESCE(c.conbin::text,'') "
-            "FROM pg_constraint c JOIN types ON c.contypid=types.oid",
-            [relations],
-        )
-        result.extend(
-            Surface(str(key), str(source), str(tree))
-            for key, source, tree in cursor.fetchall()
-        )
         for query in queries:
             cursor.execute(query, [relations])
             result.extend(
-                Surface(str(key), str(source), str(tree))
-                for key, source, tree in cursor.fetchall()
+                Surface(str(key), str(source), str(tree), owner_oid=int(owner))
+                for key, source, tree, owner in cursor.fetchall()
             )
         cursor.execute(
             "SELECT 'constraint:' || c.conrelid::regclass::text || '.' || c.conname, "
             "pg_get_constraintdef(c.oid),COALESCE(c.conbin::text,''), "
             "ARRAY(SELECT o.oprcode::oid FROM unnest(c.conexclop) op(oid) "
-            "JOIN pg_operator o ON o.oid=op.oid) "
+            "JOIN pg_operator o ON o.oid=op.oid),c.conrelid "
             "FROM pg_constraint c WHERE c.conrelid=ANY(%s)",
             [relations],
         )
         result.extend(
-            Surface(str(key), str(source), str(tree), frozenset(map(int, calls)))
-            for key, source, tree, calls in cursor.fetchall()
+            Surface(
+                str(key),
+                str(source),
+                str(tree),
+                frozenset(map(int, calls)),
+                owner_oid=int(owner),
+            )
+            for key, source, tree, calls, owner in cursor.fetchall()
         )
         cursor.execute(
             "SELECT 'trigger:' || tgrelid::regclass::text || '.' || tgname, "
-            "pg_get_triggerdef(oid),COALESCE(tgqual::text,''),tgfoid "
+            "pg_get_triggerdef(oid),COALESCE(tgqual::text,''),tgfoid,tgrelid "
             "FROM pg_trigger WHERE tgrelid=ANY(%s) AND NOT tgisinternal",
             [relations],
         )
         result.extend(
-            Surface(str(key), str(source), str(tree), frozenset({int(oid)}))
-            for key, source, tree, oid in cursor.fetchall()
+            Surface(
+                str(key),
+                str(source),
+                str(tree),
+                frozenset({int(oid)}),
+                owner_oid=int(owner),
+            )
+            for key, source, tree, oid, owner in cursor.fetchall()
         )
     return result
 
@@ -283,8 +284,21 @@ class Census:
         self.by_name: dict[str, set[int]] = defaultdict(set)
         for oid, procedure in procedures.items():
             self.by_name[procedure.name].add(oid)
-        self.identifiers = Identifiers(self.by_name)
+        self.types = Types(readers)
+        self.coercions = Coercions(self.types)
+        self.pl_coercions = PLCoercions(self.types, self.coercions)
+        self.identifiers = Identifiers(self.by_name, self.types.names)
+        self.batched_surfaces: dict[int, list[Surface]] = defaultdict(list)
+        relation_ids = sorted(
+            {oid for group in self.identifiers.relations.values() for oid in group}
+        )
+        for surface in surfaces(relation_ids):
+            self.batched_surfaces[surface.owner_oid].append(surface)
+        self.children: dict[int, set[int]] = defaultdict(set)
         with connection.cursor() as cursor:
+            cursor.execute("SELECT inhparent,inhrelid FROM pg_inherits")
+            for parent, child in cursor.fetchall():
+                self.children[int(parent)].add(int(child))
             cursor.execute("SELECT oid,oprcode::oid FROM pg_operator WHERE oprcode<>0")
             self.operators = {
                 int(oid): int(function) for oid, function in cursor.fetchall()
@@ -317,12 +331,18 @@ class Census:
             cursor.execute(
                 "SELECT objid,refclassid::regclass::text,refobjid FROM pg_depend "
                 "WHERE classid='pg_rewrite'::regclass "
-                "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass)"
+                "AND refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,"
+                "'pg_type'::regclass)"
             )
             view_functions: dict[int, set[int]] = defaultdict(set)
             view_relations: dict[int, set[int]] = defaultdict(set)
+            view_types: dict[int, set[int]] = defaultdict(set)
             for rule, kind, reference in cursor.fetchall():
-                target = view_functions if kind == "pg_proc" else view_relations
+                target = {
+                    "pg_proc": view_functions,
+                    "pg_class": view_relations,
+                    "pg_type": view_types,
+                }[kind]
                 target[int(rule)].add(int(reference))
             self.views = {
                 int(oid): Surface(
@@ -331,6 +351,7 @@ class Census:
                     str(tree),
                     frozenset(view_functions[int(rule)]),
                     frozenset(view_relations[int(rule)]),
+                    types=frozenset(view_types[int(rule)]),
                 )
                 for oid, key, source, tree, rule, _ in view_rows
             }
@@ -347,15 +368,26 @@ class Census:
         calls = set(self.dependencies[procedure.oid])
         relations: frozenset[int] = frozenset()
         unresolved: tuple[str, ...] = ()
+        types = set(self.types.functions[procedure.oid])
+        coercion_tree = ""
+        temporal_coercions = 0
         if procedure.language == "plpgsql":
             bindings = self.identifiers.bind(procedure.oid, procedure.implementation)
             calls.update(bindings.functions)
             relations = bindings.relations
             unresolved = bindings.unresolved
+            types.update(bindings.types)
+            temporal_coercions = self.pl_coercions.count(
+                procedure.oid,
+                procedure.implementation,
+                self.identifiers.triggers[procedure.oid],
+            )
         if procedure.language == "sql":
             dependencies = sql_dependencies(procedure.oid)
             calls.update(dependencies.functions)
             relations = dependencies.relations
+            types.update(dependencies.types)
+            coercion_tree = dependencies.tree
             if dependencies.unresolved:
                 marker = f"unresolved-sql:{procedure.identity}"
         return Surface(
@@ -366,6 +398,9 @@ class Census:
             relations,
             marker,
             unresolved,
+            frozenset(types),
+            coercion_tree=coercion_tree,
+            temporal_coercions=temporal_coercions,
         )
 
     def operator_calls(self, source: str) -> Counter[int]:
@@ -378,10 +413,60 @@ class Census:
 
     def related_surfaces(self, oid: int) -> list[Surface]:
         if oid not in self.relation_surfaces:
-            self.relation_surfaces[oid] = (
-                [self.views[oid]] if oid in self.views else surfaces([oid])
-            )
+            descendants: set[int] = set()
+            pending = [oid]
+            while pending:
+                child = pending.pop()
+                if child not in descendants:
+                    descendants.add(child)
+                    pending.extend(self.children[child] - descendants)
+            self.relation_surfaces[oid] = [
+                surface
+                for child in sorted(descendants)
+                for surface in (
+                    [self.views[child]]
+                    if child in self.views
+                    else self.batched_surfaces[child]
+                )
+            ] + [
+                Surface(key, source, tree)
+                for key, source, tree in self.types.surfaces(
+                    type_oid
+                    for child in descendants
+                    for type_oid in self.types.relations[child]
+                )
+            ]
         return self.relation_surfaces[oid]
+
+    def value_risks(self, surface: Surface) -> Counter[str]:
+        result = self.literal_inputs.counts(surface.source)
+        count = surface.temporal_coercions + self.coercions.count(
+            surface.tree + " " + surface.coercion_tree
+        )
+        if count:
+            result["unresolved-temporal-coercion"] = count
+        result.update("unresolved-identifier:" + name for name in surface.unresolved)
+        return result
+
+    def related(self, surface: Surface) -> list[Surface]:
+        expression_types = frozenset(
+            int(value)
+            for value in re.findall(
+                r":(?:resulttype|consttype|vartype|paramtype|funcresulttype|typeId) "
+                r"(\d+)",
+                surface.tree,
+            )
+        )
+        return [
+            Surface(key, source, tree)
+            for key, source, tree in self.types.surfaces(
+                surface.types | expression_types
+            )
+        ] + [
+            related
+            for oid in surface.relations
+            for related in self.related_surfaces(oid)
+        ]
 
     def inspect(self, surface: Surface) -> tuple[Counter[str], set[int]]:
         calls = set(surface.calls)
@@ -390,8 +475,7 @@ class Census:
             textual[surface.opaque] = 1
             if surface.opaque.startswith("opaque:"):
                 return textual, calls
-        textual.update(self.literal_inputs.counts(surface.source))
-        textual.update("unresolved-identifier:" + name for name in surface.unresolved)
+        textual.update(self.value_risks(surface))
         for match in CALL.finditer(surface.source):
             schema = match.group("schema")
             for oid in self.by_name.get(_identifier(match.group("name")), ()):
@@ -444,10 +528,9 @@ class Census:
                 continue
             direct[surface.key], calls = self.inspect(surface)
             edges[surface.key] = set()
-            for oid in surface.relations:
-                for related in self.related_surfaces(oid):
-                    edges[surface.key].add(related.key)
-                    pending.append(related)
+            for related in self.related(surface):
+                edges[surface.key].add(related.key)
+                pending.append(related)
             for oid in calls:
                 procedure = self.procedures.get(oid)
                 if procedure is None or oid in self.readers:
@@ -492,7 +575,11 @@ def live_clock_inventory() -> dict[str, ClockNode]:
 def _build_inventory() -> dict[str, ClockNode]:
     procedures = functions()
     census = Census(procedures, catalog_readers())
-    roots = surfaces()
+    roots = [
+        surface
+        for oid in _scheduling_relations()
+        for surface in census.related_surfaces(oid)
+    ]
     with connection.cursor() as cursor:
         cursor.execute("SELECT name,statement,from_sql FROM pg_prepared_statements")
         roots.extend(
