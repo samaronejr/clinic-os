@@ -191,6 +191,20 @@ def test_streaming_rejection_clears_poisoned_session_gucs(
 
 
 @override_settings(ROOT_URLCONF=__name__)
+def test_inactive_session_cleanup_never_exposes_a_staff_tenant(
+    tenant_graph: TenantGraph,
+) -> None:
+    client = Client()
+    _seed_session(client, tenant_graph, tenant_graph.organization_a)
+    User.objects.filter(pk=tenant_graph.user_a).update(is_active=False)
+    with _poisoned_runtime_connection():
+        response = client.get("/authorized/")
+        _assert_gucs_empty()
+    # Even an unprotected handler gets only the anonymous, unscoped surface.
+    assert response.json() == {"user": "None", "probe_count": 0}
+
+
+@override_settings(ROOT_URLCONF=__name__)
 def test_health_bypass_clears_an_open_poisoned_connection() -> None:
     with _poisoned_runtime_connection():
         reused_connection = connection.connection

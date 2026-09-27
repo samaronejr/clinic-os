@@ -2898,6 +2898,7 @@
     {
       "symbol": "apps.tenancy.middleware.TenantMiddleware.__call__",
       "signals": [
+        "resolver",
         "tenant_boundary"
       ],
       "kind": "direct",
