@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from django.db import connection
 
+from .clock_catalog_rows import PHYSICAL_COLUMNS
 from .clock_datetime_tokens import special_datetime_tokens
 from .clock_support import SQL_CLOCK_DEFINITIONS
 
@@ -23,6 +24,8 @@ CACHE_STATS = {"builds": 0, "hits": 0}
 
 # Hash all rows/edges used by the classifier, not a sample. Physical storage and
 # ANALYZE counters are not SQL expression semantics and change during test flush.
+# Uncontrolled procedures need no record reconstruction. Canonical byte ordering
+# avoids locale comparisons of long expression trees without omitting any row.
 CATALOG_VERSION = """
 WITH ns AS (
  SELECT oid FROM pg_namespace
@@ -30,22 +33,18 @@ WITH ns AS (
 ), overrides AS (
  SELECT key::regprocedure::oid AS oid,value FROM jsonb_each(%s::jsonb)
 ), rows(kind, value) AS (
- SELECT 'proc',ROW(p.oid,p.proname,p.pronamespace,p.prolang,p.prokind,
- p.prorettype,p.pronargs,p.proargtypes,p.proargnames,p.proargmodes,p.proallargtypes,
- p.provolatile,p.proconfig,p.prosecdef,p.proowner,p.proacl,p.probin,
- p.proargdefaults,p.prosqlbody,
- CASE WHEN o.oid IS NOT NULL AND pg_get_functiondef(p.oid)=o.value->>'expected'
- THEN o.value->>'shape' ELSE p.prosrc END)::text
+ SELECT 'proc',CASE
+ WHEN o.oid IS NOT NULL AND pg_get_functiondef(p.oid)=o.value->>'expected'
+ THEN jsonb_populate_record(p,jsonb_build_object('prosrc',o.value->>'shape'))::text
+ ELSE ROW(p.*)::text END
  FROM pg_proc p JOIN ns ON ns.oid=p.pronamespace LEFT JOIN overrides o ON o.oid=p.oid
- UNION ALL SELECT 'class',ROW(c.oid,c.relname,c.relnamespace,c.relkind,
- c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity)::text
+ UNION ALL SELECT 'class',ROW(whole.*)::text
  FROM pg_class c JOIN ns ON ns.oid=c.relnamespace
- UNION ALL SELECT 'attribute',ROW(a.attrelid,a.attnum,a.attname,a.atttypid,
- a.atttypmod,a.attgenerated)::text FROM pg_attribute a
+ CROSS JOIN LATERAL jsonb_populate_record(c,'__CLASS_PHYSICAL__'::jsonb) whole
+ UNION ALL SELECT 'attribute',ROW(whole.*)::text FROM pg_attribute a
  JOIN pg_class c ON c.oid=a.attrelid JOIN ns ON ns.oid=c.relnamespace
- WHERE a.attnum>0 AND NOT a.attisdropped
- UNION ALL SELECT 'column-acl',ROW(a.attrelid,a.attnum,
- NULLIF(a.attacl,'{}'::aclitem[]))::text FROM pg_attribute a
+ CROSS JOIN LATERAL jsonb_populate_record(a,'__ATTRIBUTE_PHYSICAL__'::jsonb ||
+ jsonb_build_object('attacl',NULLIF(a.attacl,'{}'::aclitem[]))) whole
  WHERE a.attnum>0 AND NOT a.attisdropped
  UNION ALL SELECT 'default-acl',ROW(x.*)::text FROM pg_default_acl x
  UNION ALL SELECT 'sequence',ROW(x.*)::text FROM pg_sequence x
@@ -60,9 +59,6 @@ WITH ns AS (
  UNION ALL SELECT 'range',ROW(x.*)::text FROM pg_range x
  UNION ALL SELECT 'namespace',ROW(x.*)::text FROM pg_namespace x JOIN ns ON ns.oid=x.oid
  UNION ALL SELECT 'dependency',ROW(x.*)::text FROM pg_depend x
- WHERE x.classid IN ('pg_proc'::regclass,'pg_rewrite'::regclass)
- AND x.refclassid IN ('pg_proc'::regclass,'pg_class'::regclass,
- 'pg_type'::regclass,'pg_extension'::regclass)
  UNION ALL SELECT 'operator',ROW(x.*)::text FROM pg_operator x
  UNION ALL SELECT 'cast',ROW(x.*)::text FROM pg_cast x
  UNION ALL SELECT 'inheritance',ROW(x.*)::text FROM pg_inherits x
@@ -82,9 +78,15 @@ WITH ns AS (
  current_setting('DateStyle'),pg_my_temp_schema())::text
 )
 SELECT sha256(convert_to(
- string_agg(kind||':'||value,E'\\n' ORDER BY kind,value),'UTF8'))
+ string_agg(kind||':'||value,E'\\n'
+ ORDER BY kind COLLATE "C",value COLLATE "C"),'UTF8'))
 FROM rows
-"""
+""".replace(
+    "__CLASS_PHYSICAL__", json.dumps(dict.fromkeys(PHYSICAL_COLUMNS["pg_class"]))
+).replace(
+    "__ATTRIBUTE_PHYSICAL__",
+    json.dumps(dict.fromkeys(PHYSICAL_COLUMNS["pg_attribute"])),
+)
 
 
 def catalog_version() -> bytes:

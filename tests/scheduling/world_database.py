@@ -99,7 +99,9 @@ def content_digest(database: str) -> str:
                     sql.Literal(f"{schema}.{name}"), sql.Identifier(schema, name)
                 )
             )
-        rows = admin.execute(sql.SQL(" UNION ALL ").join(queries)).fetchall()
+        # UNION ALL does not promise branch order; ANALYZE can change a
+        # parallel append plan without changing a single table's contents.
+        rows = sorted(admin.execute(sql.SQL(" UNION ALL ").join(queries)).fetchall())
         environment = admin.execute(
             "SELECT current_setting('server_version_num'), "
             "(SELECT pg_get_userbyid(datdba) FROM pg_database "
