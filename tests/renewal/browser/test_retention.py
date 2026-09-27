@@ -22,6 +22,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code, new_totp_key
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     failed_responses_logged,
@@ -301,7 +302,7 @@ def seed_manager(staff: dict[str, str]) -> dict[str, str]:
     manager = {
         "username": f"gestora-{secrets.token_hex(4)}",
         "id": str(uuid4()),
-        "totp_key": secrets.token_hex(20),
+        "totp_key": new_totp_key(),
     }
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
@@ -366,7 +367,7 @@ def sign_in_manager(
 
 def grant_records(staff: dict[str, str], data: dict[str, str]) -> str:
     """Issue one records-capable invitation directly; return its code."""
-    code = secrets.token_urlsafe(32)
+    code = new_access_code()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)",

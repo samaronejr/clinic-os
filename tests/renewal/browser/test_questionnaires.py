@@ -13,6 +13,7 @@ import pytest
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
+from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._page_wait import click_when_hittable, evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
@@ -81,7 +82,7 @@ def _seed(
         key: str(uuid4())
         for key in ("patient", "enrollment", "template", "response", "grant")
     }
-    values["code"] = secrets.token_urlsafe(32)
+    values["code"] = new_access_code()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]

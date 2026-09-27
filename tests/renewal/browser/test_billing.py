@@ -28,6 +28,7 @@ import psycopg
 import pytest
 from playwright.sync_api import ViewportSize, expect
 
+from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._page_wait import click_when_hittable
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -95,7 +96,7 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 def seed_patient(staff: dict[str, str], name: str) -> dict[str, str]:
     """Create one synthetic enrolled patient with a billing invitation code."""
     data = {key: str(uuid4()) for key in ("patient", "enrollment", "grant")}
-    data["code"] = secrets.token_urlsafe(32)
+    data["code"] = new_access_code()
     data["name"] = name
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(

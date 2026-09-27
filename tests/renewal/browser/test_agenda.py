@@ -39,6 +39,7 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
 from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -139,7 +140,7 @@ def agenda_staff(renewal_base_url: str) -> dict[str, str]:
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     suffix = uuid4().hex[:4]
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "clinic_c": str(uuid4()),
@@ -154,8 +155,8 @@ def agenda_staff(renewal_base_url: str) -> dict[str, str]:
         "physician_long_id": str(uuid4()),
         "physician_c": f"dr-carlos-sintetico-{suffix}",
         "physician_c_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
-        "totp_key": secrets.token_hex(20),
+        "password": new_password(),
+        "totp_key": new_totp_key(),
     }
     people = (
         (values["receptionist_id"], values["receptionist"]),
@@ -312,7 +313,7 @@ def _sign_in_receptionist(page: Page, base_url: str, staff: dict[str, str]) -> N
 
 def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None:
     # Independent scenes get fresh authenticator fixtures, not timing waits.
-    staff["totp_key"] = secrets.token_hex(20)
+    staff["totp_key"] = new_totp_key()
     with psycopg.connect(staff["dsn"]) as connection:
         connection.execute("SET ROLE clinic_app")
         connection.execute(

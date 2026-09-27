@@ -15,6 +15,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import worker_dsn
 from renewal.browser._page_wait import evaluate_all_js, evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -105,7 +106,7 @@ def _book(page: Page, base: str, staff: dict[str, str], data: dict[str, str]) ->
 def _worker(operation: str, outcome: str, root: Path) -> None:
     env = {
         **os.environ,
-        "APP_DATABASE_URL": os.environ["CLINIC_RENEWAL_WORKER_DATABASE_URL"],
+        "APP_DATABASE_URL": worker_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "PYTHONPATH": str(Path.cwd()) + os.pathsep + str(Path.cwd() / "tests"),

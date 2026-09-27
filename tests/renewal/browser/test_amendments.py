@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import secrets
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -12,6 +11,7 @@ import pytest
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._page_wait import click_when_hittable, evaluate_js
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import element_box, full_page_screenshot
@@ -116,7 +116,7 @@ def stored_encounter(staff: dict[str, str], encounter: str) -> str:
 
 def swap_totp_device(staff: dict[str, str]) -> str:
     """Replace the physician's device row; the session binding goes stale."""
-    key = secrets.token_hex(20)
+    key = new_totp_key()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute("SET ROLE clinic_app")
         conn.execute(

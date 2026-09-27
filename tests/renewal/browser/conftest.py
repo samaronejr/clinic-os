@@ -27,6 +27,12 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
+from renewal.browser._fixture_secrets import (
+    OWNER_PASSWORD,
+    FixtureSecret,
+    pytest_make_collect_report,
+    pytest_runtest_makereport,
+)
 from renewal.browser.engines import launch, selected_engine
 
 if TYPE_CHECKING:
@@ -34,6 +40,9 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import ConsoleMessage, Response
 
+# The failure-report backstop (_fixture_secrets), re-exported so pytest runs
+# it for every suite in this directory.
+__all__ = ("pytest_make_collect_report", "pytest_runtest_makereport")
 NAVIGATION_TIMEOUT_MS = 20_000
 # Every engine reports a refused script/style/connection/eval as a console
 # error naming the policy: Chromium and WebKit write "Content Security
@@ -270,7 +279,7 @@ def renewal_owner() -> dict[str, str]:
     """Return the seeded owner credentials for the login journey."""
     return {
         "username": _required("CLINIC_RENEWAL_USERNAME"),
-        "password": _required("CLINIC_RENEWAL_PASSWORD"),
+        "password": FixtureSecret(_required(OWNER_PASSWORD)),
     }
 
 

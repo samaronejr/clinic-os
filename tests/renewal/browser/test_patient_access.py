@@ -32,6 +32,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_access_code, new_password
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
@@ -74,14 +75,14 @@ def access_staff(renewal_base_url: str) -> dict[str, str]:
     """Seed a clinic-A receptionist, enrolled patients and an expired grant."""
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
         "receptionist": f"recepcao-{uuid4().hex[:8]}",
         "receptionist_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
-        "expired_code": secrets.token_urlsafe(32),
+        "password": new_password(),
+        "expired_code": new_access_code(),
     }
     registry = [
         (values["clinic_a"], PATIENT_A, "1990-05-17"),

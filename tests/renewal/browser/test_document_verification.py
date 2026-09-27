@@ -20,6 +20,7 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code, worker_dsn
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
@@ -58,7 +59,7 @@ def _capture(page: Page, root: Path, name: str) -> None:
 
 def _seed_patient_access(staff: dict[str, str], patient: str) -> str:
     """Seed a verified email contact and a live invitation; return its code."""
-    code = secrets.token_urlsafe(32)
+    code = new_access_code()
     enrollment = str(uuid4())
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
@@ -248,7 +249,7 @@ def _worker(operation: str, root: Path) -> dict[str, object]:
     """Run the real clinic_app worker boundary for one delivery operation."""
     env = {
         **os.environ,
-        "APP_DATABASE_URL": os.environ["CLINIC_RENEWAL_WORKER_DATABASE_URL"],
+        "APP_DATABASE_URL": worker_dsn(),
         "DJANGO_SETTINGS_MODULE": "config.settings.base",
         "CLINIC_DATA_MODE": "synthetic",
         "COMMS_SYNTHETIC_CHANNELS": "email",

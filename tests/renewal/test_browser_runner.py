@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import inspect
 import json
 import os
+import secrets
 import signal
 import subprocess
 import sys
+import textwrap
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +20,7 @@ from ops.testing.browser_server_supervisor import SupervisedMaster
 from ops.testing.isolation_common import IsolationError, JsonObject
 from playwright.sync_api import sync_playwright
 
+from renewal.browser import _fixture_secrets as fixture_secrets
 from renewal.browser import a11y_support, engines
 
 if TYPE_CHECKING:
@@ -1056,3 +1060,210 @@ def test_excluded_predicate_matches_the_snapshot_contract() -> None:
         "README.md",
     ):
         assert runner._excluded(path) is False, path
+
+
+SECRETS_MODULE = BROWSER_SUITES / "_fixture_secrets.py"
+# Reviewed exemptions: file -> reason. The report backstop still redacts
+# these values; only the construction layer is missing there.
+SECRET_READER_EXEMPTIONS: dict[Path, str] = {
+    BROWSER_SUITES / "test_workspace.py": (
+        "todo 13 owns the workspace suites and adopts fixture_dsn() at rebase"
+    ),
+}
+# A suite whose fixture dict holds every kind of credential and whose tests
+# fail in each way pytest can render one: the argument line, --showlocals,
+# a derived plain str, an assertion diff, captured output, an exception
+# message and a fixture setup error.
+LEAKY_SUITE = """
+import json
+import os
+
+import pytest
+
+from renewal.browser._fixture_secrets import (
+    fixture_dsn, new_access_code, new_password, new_totp_key,
+)
+
+
+@pytest.fixture
+def staff():
+    values = {
+        "dsn": fixture_dsn(),
+        "password": new_password(),
+        "totp_key": new_totp_key(),
+        "code": new_access_code(),
+        "clinic": "clinica-sintetica",
+    }
+    with open(os.environ["LEAK_PROBE_OUT"], "a") as sink:
+        sink.write(json.dumps({k: str(v) for k, v in values.items()}) + "\\n")
+    return values
+
+
+def test_argument_line(staff):
+    assert staff["clinic"] == "outra"
+
+
+def test_locals_and_derived_values(staff):
+    derived = staff["dsn"].removesuffix("/clinic") + "/other"
+    seed = staff["totp_key"][:]
+    raise RuntimeError(f"cannot reach {derived} with {seed}")
+
+
+def test_assertion_diff(staff):
+    assert staff["password"] == "typed-" + staff["code"]
+
+
+def test_captured_output(staff):
+    print(staff["dsn"], staff["password"], staff["code"])
+    assert staff["totp_key"] in "no seed here"
+
+
+@pytest.fixture
+def broken(staff):
+    raise RuntimeError(staff["totp_key"] + staff["password"])
+
+
+def test_setup_error(broken):
+    pass
+"""
+
+
+def _leaky_run(
+    tmp_path: Path, name: str, *, plugin: bool
+) -> tuple[str, str, list[str]]:
+    """Run LEAKY_SUITE; return (terminal output, junit xml, secret values)."""
+    root = _private(tmp_path / name)
+    (root / "test_leaky.py").write_text(LEAKY_SUITE, encoding="utf-8")
+    (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    probe = root / "secrets.jsonl"
+    owner_password = secrets.token_urlsafe(24)
+    environment = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PYTHONPATH": f"{REPOSITORY / 'tests'}{os.pathsep}{REPOSITORY}",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "LEAK_PROBE_OUT": str(probe),
+        "CLINIC_RENEWAL_FIXTURE_DATABASE_URL": (
+            f"postgresql://clinic_owner:{owner_password}@127.0.0.1:5/clinic"
+        ),
+    }
+    junit = root / "junit.xml"
+    completed = subprocess.run(  # noqa: S603 - fixed interpreter, closed argv.
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(root / "pytest.ini"),
+            "--rootdir",
+            str(root),
+            "-p",
+            "no:cacheprovider",
+            *(["-p", "renewal.browser._fixture_secrets"] if plugin else []),
+            "--showlocals",
+            "-rA",
+            f"--junitxml={junit}",
+            str(root / "test_leaky.py"),
+        ],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    # Only the summary line: the inner output may carry its synthetic secrets.
+    summary = (completed.stdout.strip().splitlines() or [""])[-1]
+    assert completed.returncode == 1, summary
+    assert "4 failed, 1 error" in summary, summary
+    values = [owner_password]
+    for line in probe.read_text(encoding="utf-8").splitlines():
+        values.extend(v for k, v in json.loads(line).items() if k != "clinic")
+    return (
+        completed.stdout + completed.stderr,
+        junit.read_text(encoding="utf-8"),
+        values,
+    )
+
+
+def test_fixture_secrets_never_reach_a_failure_report(tmp_path: Path) -> None:
+    # Hosted retention@firefox 36349167980 printed availability_staff's owner
+    # DSN, password included, into pytest.log and the uploaded JUnit file.
+    # Construction alone: the argument line and --showlocals show the
+    # placeholder, but derived values, diffs and output still leak.
+    bare, bare_junit, bare_values = _leaky_run(tmp_path, "bare", plugin=False)
+    argument_lines = [line for line in bare.splitlines() if line.startswith("staff = ")]
+    assert argument_lines
+    # Failure messages name positions only, never a (synthetic) value.
+    assert all(
+        "'dsn': <fixture secret>" in line and "'password': <fixture secret>" in line
+        for line in argument_lines
+    ), "argument line renders a fixture secret"
+    assert all(value not in "\n".join(argument_lines) for value in bare_values)
+    assert any(value in bare or value in bare_junit for value in bare_values)
+
+    # With the report backstop: no value in any rendering, and the placeholder
+    # shows where each one was.
+    output, junit, values = _leaky_run(tmp_path, "scrubbed", plugin=True)
+    rendered = (("terminal", output), ("junit", junit))
+    assert [
+        index
+        for index, value in enumerate(values)
+        if any(value in text for _, text in rendered)
+    ] == []
+    # No piece of FRAGMENT characters of a password, seed or code either:
+    # pytest truncates long reprs to head...tail. (A DSN's scheme, user and
+    # host are not secret; its password is values[0].)
+    pieces = [
+        (index, where, start)
+        for index, value in enumerate(values)
+        if "://" not in value
+        for where, text in rendered
+        for start in range(len(value) - fixture_secrets.FRAGMENT + 1)
+        if value[start : start + fixture_secrets.FRAGMENT] in text
+    ]
+    assert pieces == []
+    assert "clinic_owner:<fixture secret>@127.0.0.1:5/other" in output
+    assert "clinic_owner:&lt;fixture secret&gt;@127.0.0.1:5/other" in junit
+
+
+def test_secret_runner_inputs_are_the_redacted_environment() -> None:
+    # Derived from the runner: the suite input carrying the owner password,
+    # and every fixture input the runner fills from a DSN.
+    sentinel = f"sentinel-{secrets.token_hex(8)}"
+    exported = runner._pytest_environment(
+        base_url="http://127.0.0.1:1",
+        artifact_root=REPOSITORY,
+        browser="/usr/bin/true",
+        engine="chromium",
+        username="user",
+        password=sentinel,
+    )
+    derived = {name for name, value in exported.items() if value == sentinel}
+    tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values, strict=True):
+                if (
+                    isinstance(key, ast.Constant)
+                    and str(key.value).startswith("CLINIC_RENEWAL_")
+                    and "dsn" in ast.unparse(value).lower()
+                ):
+                    derived.add(str(key.value))
+    assert derived == set(fixture_secrets.SECRET_ENVIRONMENT)
+    # Suites read them only through _fixture_secrets (FixtureSecret values).
+    readers = {
+        path: [
+            node.lineno
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Constant) and node.value in derived
+        ]
+        for path in sorted(BROWSER_SUITES.rglob("*.py"))
+        if path != SECRETS_MODULE
+    }
+    # Every exemption is still load-bearing.
+    assert all(readers[path] for path in SECRET_READER_EXEMPTIONS)
+    assert {
+        path: lines
+        for path, lines in readers.items()
+        if lines and path not in SECRET_READER_EXEMPTIONS
+    } == {}

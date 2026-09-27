@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -20,6 +19,7 @@ from django.template.loader import render_to_string
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_password
 from renewal.browser._page_wait import await_autofocus
 from renewal.browser.engines import full_page_screenshot
 
@@ -36,11 +36,11 @@ DAY = "2031-01-02"
 def locale_staff(renewal_base_url: str) -> dict[str, str]:
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
         "username": f"locale-{uuid4().hex}",
-        "password": secrets.token_urlsafe(24),
+        "password": new_password(),
         "physician": str(uuid4()),
     }
     with psycopg.connect(values["dsn"]) as connection:

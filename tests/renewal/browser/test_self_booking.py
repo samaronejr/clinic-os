@@ -12,6 +12,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -31,7 +32,7 @@ def _seed(staff: dict[str, str], day: str) -> dict[str, str]:
     data = {
         key: str(uuid4()) for key in ("patient", "enrollment", "grant", "availability")
     }
-    data["code"] = secrets.token_urlsafe(32)
+    data["code"] = new_access_code()
     data["day"] = day
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(

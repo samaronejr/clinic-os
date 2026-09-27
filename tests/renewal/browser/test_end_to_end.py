@@ -30,12 +30,10 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
@@ -46,6 +44,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
+from renewal.browser._protected import kek as protected_kek
 from renewal.browser.engines import (
     element_box,
     full_page_screenshot,
@@ -99,6 +98,7 @@ from renewal.browser.test_teleconsult import _worker as room_worker
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from playwright.sync_api import Browser, BrowserContext, Locator, Page, Route
 
@@ -431,8 +431,7 @@ def document_pdf(staff: dict[str, str], document: str) -> bytes:
     ``pdf_bytes`` is a tenant envelope; the fixture boundary decrypts it with
     the run's synthetic KEK, the same material the runtime reads.
     """
-    secret_dir = Path(os.environ["CLINIC_SECRET_DIR"])
-    kek = (secret_dir / "tenant-kek.secret").read_text().strip()
+    kek = protected_kek()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)",

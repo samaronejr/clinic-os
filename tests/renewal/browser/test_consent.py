@@ -12,6 +12,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot, zoom_200
@@ -41,7 +42,7 @@ TEXT = (
 def seed_patient(staff: dict[str, str]) -> dict[str, str]:
     """Create only synthetic invitation fixtures; redemption uses the real portal."""
     data = {key: str(uuid4()) for key in ("patient", "enrollment", "grant")}
-    data["code"] = secrets.token_urlsafe(32)
+    data["code"] = new_access_code()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]
