@@ -13,16 +13,23 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+import psycopg
 import pytest
+from apps.billing.services import create_invoice, issue_invoice
 from apps.identity.models import User, UserClinicRole
-from django.db import IntegrityError, ProgrammingError, connection, transaction
-from psycopg.errors import CheckViolation, InsufficientPrivilege
+from apps.tenancy.db import tenant_context
+from django.db import DatabaseError, ProgrammingError, connection, transaction
+from psycopg.errors import InsufficientPrivilege
 
 from identity.authority_sql import references
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
+from renewal.test_teleconsult_sessions import _create as teleconsult_create
+from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -171,8 +178,8 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     own, delegating = _checked(readers)
     assert own == set(PROBES)
     assert set(readers) - own - delegating == set(JUSTIFIED)
-    # The executed delegation anchor below must stay in the derived set.
-    assert "clinic_app.configuration_guard()" in delegating
+    # Every derived delegator is executed below; a new one needs a probe.
+    assert set(DELEGATE_PROBES) | set(GUARD_PROBES) == delegating
 
 
 def _staff_actor(graph: RbacGraph) -> UUID:
@@ -187,12 +194,14 @@ def _staff_actor(graph: RbacGraph) -> UUID:
     return actor.pk
 
 
-def _decide(graph: RbacGraph, actor: UUID, probe: Probe) -> bool:
-    params = {
-        "clinic": graph.clinic_a,
-        "organization": graph.organization_a,
-        "physician": graph.physician,
-    }
+def _decide(
+    graph: RbacGraph,
+    actor: UUID,
+    statement: str,
+    params: Mapping[str, UUID | int],
+    *,
+    raises: bool = False,
+) -> bool:
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
             "SELECT set_config('app.current_tenant', %s, true), "
@@ -201,10 +210,10 @@ def _decide(graph: RbacGraph, actor: UUID, probe: Probe) -> bool:
         )
         try:
             with transaction.atomic():
-                cursor.execute(probe.statement, params)
+                cursor.execute(statement, params)
                 (row,) = cursor.fetchall()
         except ProgrammingError as error:
-            if probe.raises and type(error.__cause__) is InsufficientPrivilege:
+            if raises and type(error.__cause__) is InsufficientPrivilege:
                 return False
             raise
         (decision,) = row
@@ -225,31 +234,101 @@ def _set_active(actor: UUID, *, active: bool) -> None:
 def test_sql_clause_refuses_inactive_actor(rbac_graph: RbacGraph) -> None:
     # One graph and one flush for all gates; a fresh actor per gate. The exact
     # map names every gate whose decision does not follow is_active alone.
+    params = {
+        "clinic": rbac_graph.clinic_a,
+        "organization": rbac_graph.organization_a,
+        "physician": rbac_graph.physician,
+    }
     decisions = {}
     for function, probe in PROBES.items():
         actor = _staff_actor(rbac_graph)
-        active = _decide(rbac_graph, actor, probe)
-        _set_active(actor, active=False)
-        inactive = _decide(rbac_graph, actor, probe)
-        _set_active(actor, active=True)
-        decisions[function] = (active, inactive, _decide(rbac_graph, actor, probe))
+        phases = []
+        for active in (True, False, True):
+            _set_active(actor, active=active)
+            phases.append(
+                _decide(rbac_graph, actor, probe.statement, params, raises=probe.raises)
+            )
+        decisions[function] = tuple(phases)
     assert decisions == dict.fromkeys(PROBES, (True, False, True))
 
 
-CONFIGURATION_INSERT = """
-    INSERT INTO clinic_app.identity_clinicconfiguration
-        (id, version, display_name, contact_email, contact_phone, brand_token,
-         reminder_hours, logo_png, created_at, clinic_id, organization_id,
-         published_by_id, queue_quotas)
-    VALUES (%s, %s, 'Sintetico', '', '', 'navy', 24, ''::bytea, now(), %s, %s,
-            %s, '{}'::jsonb)
-"""
+# Boolean delegators, executed as the assigned physician of one seeded
+# appointment, encounter, enrollment and teleconsult session.
+DELEGATE_PROBES = {
+    "clinic_app.ehr_assigned(uuid)": "SELECT clinic_app.ehr_assigned(%(encounter)s)",
+    "clinic_app.ehr_care(uuid)": "SELECT clinic_app.ehr_care(%(encounter)s)",
+    "clinic_app.ehr_history_care(uuid)": (
+        "SELECT clinic_app.ehr_history_care(%(encounter)s)"
+    ),
+    "clinic_app.retention_care(uuid,uuid)": (
+        "SELECT clinic_app.retention_care(%(clinic)s, %(patient)s)"
+    ),
+    "clinic_app.teleconsult_assigned(uuid)": (
+        "SELECT clinic_app.teleconsult_assigned(%(session)s)"
+    ),
+}
+
+
+@dataclass(frozen=True)
+class GuardProbe:
+    insert: str
+    # The guard's own RAISE message; RLS or another trigger raises differently.
+    refusal: str
+    # Owner query for the latest version the insert must follow, if versioned.
+    latest: str | None = None
+
+
+GUARD_PROBES = {
+    "clinic_app.configuration_guard()": GuardProbe(
+        "INSERT INTO clinic_app.identity_clinicconfiguration (id, version, "
+        "display_name, contact_email, contact_phone, brand_token, reminder_hours, "
+        "logo_png, created_at, clinic_id, organization_id, published_by_id, "
+        "queue_quotas) VALUES (%(id)s, %(version)s, 'Sintetico', '', '', 'navy', "
+        "24, ''::bytea, now(), %(clinic)s, %(organization)s, %(actor)s, "
+        "'{}'::jsonb)",
+        "invalid configuration",
+        "SELECT coalesce(max(version), 0) FROM clinic_app.identity_clinicconfiguration"
+        " WHERE clinic_id = %(clinic)s",
+    ),
+    "clinic_app.consent_guard()": GuardProbe(
+        "INSERT INTO clinic_app.consent_consenttext (id, purpose, version, "
+        "language, digest, created_at, clinic_id, organization_id, "
+        "published_by_id, text) VALUES (%(id)s, 'teleconsultation', %(version)s, "
+        "'pt-BR', repeat('0', 64), now(), %(clinic)s, %(organization)s, "
+        "%(actor)s, convert_to('Sintetico', 'UTF8'))",
+        "invalid consent publication",
+        "SELECT coalesce(max(version), 0) FROM clinic_app.consent_consenttext"
+        " WHERE clinic_id = %(clinic)s AND purpose = 'teleconsultation'",
+    ),
+    "clinic_app.retention_guard()": GuardProbe(
+        "INSERT INTO clinic_app.retention_retentionpolicy (id, record_class, "
+        "version, state, retention_days, created_at, clinic_id, organization_id, "
+        "proposed_by_id) VALUES (%(id)s, 'ehr.encounter', %(version)s, "
+        "'proposed', 365, now(), %(clinic)s, %(organization)s, %(actor)s)",
+        "invalid policy binding",
+        "SELECT coalesce(max(version), 0) FROM clinic_app.retention_retentionpolicy"
+        " WHERE clinic_id = %(clinic)s AND record_class = 'ehr.encounter'",
+    ),
+    "clinic_app.billing_settlement_guard()": GuardProbe(
+        "INSERT INTO clinic_app.billing_settlement (id, confirmation_reference, "
+        "amount_minor, currency, confirmed_by_id, confirmed_at, invoice_id, "
+        "organization_id) VALUES (%(id)s, %(id)s, %(amount)s, 'BRL', %(actor)s, "
+        "now(), %(invoice)s, %(organization)s)",
+        "invalid confirmed settlement",
+    ),
+}
 GUARD_RAISE = re.compile(
-    r"PL/pgSQL function (clinic_app\.)?configuration_guard\(\) line \d+ at RAISE"
+    r"PL/pgSQL function (?:clinic_app\.)?(\w+)\(\) line \d+ at RAISE"
 )
+AMOUNT = 12345
+
+type Outcome = str | tuple[str | None, str | None, str | None]
 
 
-def _publish(graph: RbacGraph, actor: UUID, version: int) -> CheckViolation | None:
+def _insert(
+    graph: RbacGraph, actor: UUID, probe: GuardProbe, params: Mapping[str, UUID | int]
+) -> Outcome:
+    """Return "inserted" or the refusal's sqlstate, message and raising guard."""
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
             "SELECT set_config('app.current_tenant', %s, true), "
@@ -258,29 +337,80 @@ def _publish(graph: RbacGraph, actor: UUID, version: int) -> CheckViolation | No
         )
         try:
             with transaction.atomic():
-                cursor.execute(
-                    CONFIGURATION_INSERT,
-                    [uuid4(), version, graph.clinic_a, graph.organization_a, actor],
-                )
-        except IntegrityError as error:
-            if type(error.__cause__) is CheckViolation:
-                return error.__cause__
-            raise
-    return None
+                cursor.execute(probe.insert, params)
+        except DatabaseError as error:
+            cause = error.__cause__
+            if not isinstance(cause, psycopg.Error):
+                raise
+            raised = GUARD_RAISE.search(cause.diag.context or "")
+            return (
+                cause.sqlstate,
+                cause.diag.message_primary,
+                f"clinic_app.{raised.group(1)}()" if raised else None,
+            )
+    return "inserted"
 
 
-def test_configuration_guard_refuses_inactive_publisher(rbac_graph: RbacGraph) -> None:
-    # Executed anchor for the delegating set: the BEFORE trigger's own
-    # questionnaire_staff call must refuse, ahead of configuration_insert RLS.
-    actor = _staff_actor(rbac_graph)
-    assert _publish(rbac_graph, actor, 1) is None
-    _set_active(actor, active=False)
-    refusal = _publish(rbac_graph, actor, 2)
-    _set_active(actor, active=True)
-    assert _publish(rbac_graph, actor, 2) is None
-    assert refusal is not None
-    assert (refusal.sqlstate, refusal.diag.message_primary) == (
-        "23514",
-        "invalid configuration",
-    )
-    assert GUARD_RAISE.fullmatch(refusal.diag.context or ""), refusal.diag.context
+def _open_invoices(graph: RbacGraph, patient: UUID) -> list[UUID]:
+    invoices = []
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        for _ in range(2):
+            invoice = create_invoice(
+                clinic_id=graph.clinic_a,
+                patient_id=patient,
+                amount_minor=AMOUNT,
+                idempotency_key=uuid4(),
+            )
+            issue_invoice(
+                clinic_id=graph.clinic_a, invoice_id=invoice.pk, expected_revision=1
+            )
+            invoices.append(invoice.pk)
+    return invoices
+
+
+def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
+    graph = rbac_graph
+    appointment, encounter, _consent, _patient, _manager = teleconsult_seed(graph)
+    session = teleconsult_create(graph, encounter)
+    scope: dict[str, UUID] = {
+        "clinic": graph.clinic_a,
+        "organization": graph.organization_a,
+        "encounter": encounter.pk,
+        "patient": appointment.patient_id,
+        "session": session.pk,
+    }
+    invoices = _open_invoices(graph, appointment.patient_id)
+    with owner_context(graph.organization_a), connection.cursor() as cursor:
+        latest = {}
+        for function, probe in GUARD_PROBES.items():
+            if probe.latest is not None:
+                cursor.execute(probe.latest, scope)
+                (latest[function],) = cursor.fetchone()
+    manager = _staff_actor(graph)
+    rows: dict[str, list[bool | Outcome]] = {
+        name: [] for name in [*DELEGATE_PROBES, *GUARD_PROBES]
+    }
+    # The inactive and reactivated attempts differ only in the new row id.
+    for phase, active in enumerate((True, False, True)):
+        _set_active(graph.physician, active=active)
+        _set_active(manager, active=active)
+        for function, statement in DELEGATE_PROBES.items():
+            rows[function].append(_decide(graph, graph.physician, statement, scope))
+        for function, probe in GUARD_PROBES.items():
+            params = {
+                **scope,
+                "id": uuid4(),
+                "actor": manager,
+                "amount": AMOUNT,
+                "invoice": invoices[min(phase, 1)],
+                "version": latest.get(function, 0) + min(phase, 1) + 1,
+            }
+            rows[function].append(_insert(graph, manager, probe, params))
+    # One exact map, so every gate that does not follow is_active is named.
+    assert {name: tuple(row) for name, row in rows.items()} == {
+        **dict.fromkeys(DELEGATE_PROBES, (True, False, True)),
+        **{
+            name: ("inserted", ("23514", probe.refusal, name), "inserted")
+            for name, probe in GUARD_PROBES.items()
+        },
+    }
