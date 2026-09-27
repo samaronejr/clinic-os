@@ -48,7 +48,8 @@ export POSTGRES_HOST_IP POSTGRES_HOST_PORT POSTGRES_IMAGE POSTGRES_DATA_VOLUME
 export POSTGRES_USER POSTGRES_PASSWORD
 export CLINIC_OWNER_PASSWORD CLINIC_APP_PASSWORD CLINIC_SUPER_PASSWORD
 export APP_DATABASE_URL MIGRATION_DATABASE_URL TEST_SUPERUSER_DATABASE_URL
-COVERAGE_TARGETS := $(shell grep -v '^\#' ops/testing/coverage-targets.txt | tr '\n' ' ')
+# Workers of the xdist phase of ops.testing.ci_pytest (hosted runners: 4 vCPUs).
+CI_PYTEST_WORKERS ?= 4
 
 .PHONY: bootstrap-clinic ci ci-browser-contract ci-image-contracts current-source-snapshot db-bootstrap db-inputs db-posture isolated-db-down isolated-db-status isolated-db-up migrate provision-staff restore-rehearsal revoke-staff-role set-clinic-timezone
 
@@ -240,7 +241,8 @@ ci:
 	@APP_DATABASE_URL="$${APP_DATABASE_URL}" \
 		MIGRATION_DATABASE_URL="$${MIGRATION_DATABASE_URL}" \
 		TEST_SUPERUSER_DATABASE_URL="$${TEST_SUPERUSER_DATABASE_URL}" \
-		$(UV) run pytest --reuse-db $(COVERAGE_TARGETS) --cov-report=term-missing --cov-fail-under=90 tests
+		$(UV) run python -m ops.testing.ci_pytest --workers "$(CI_PYTEST_WORKERS)" \
+		--work-root "$(CURDIR)/var/ci-pytest"
 	$(UV) run pip-audit --local
 	@$(MAKE) ci-image-contracts
 	@$(MAKE) ci-browser-contract

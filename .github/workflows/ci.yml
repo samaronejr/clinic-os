@@ -58,7 +58,7 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy .
-          CLINIC_PDF_TOOLS=required uv run pytest --reuse-db $(grep -v '^#' ops/testing/coverage-targets.txt | tr '\n' ' ') --cov-report=term-missing --cov-report=xml:"$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml" --cov-fail-under=90 tests
+          CLINIC_PDF_TOOLS=required uv run python -m ops.testing.ci_pytest --workers 4 --work-root "$RUNNER_TEMP/clinic-ci-pytest" --cov-xml "$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml"
           uv run pip-audit --local
       - name: Publish machine-readable coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
