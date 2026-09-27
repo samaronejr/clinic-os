@@ -22,7 +22,9 @@ from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import await_autofocus
 from renewal.browser._protected import encrypt, kek
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_encounter import press
 from renewal.browser.test_encounter import seed as seed_encounter
@@ -241,13 +243,16 @@ def _folder(root: Path) -> Path:
 
 def _capture(page: Page, root: Path, name: str, *, full_page: bool = True) -> str:
     destination = _folder(root) / f"{name}.png"
-    page.screenshot(path=str(destination), full_page=full_page)
+    if full_page:
+        return full_page_screenshot(page, destination)[0].name
+    page.screenshot(path=str(destination), full_page=False)
     destination.chmod(0o600)
     return destination.name
 
 
 def _sign_in(page: Page, base: str, staff: dict[str, str], role: str) -> None:
     page.goto(f"{base}/auth/login/")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff[role])
     page.locator("#id_password").fill(staff["password"])
     with page.expect_navigation():

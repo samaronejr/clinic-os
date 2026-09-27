@@ -51,6 +51,8 @@ DOMAIN_RELATIONS: Final = (
     "identity_physicianprofile",
     "identity_professionalregistration",
     "identity_rolegrant",
+    # User-owned view preferences, including terminal archival, are durable data.
+    "identity_savedview",
     # Machine principals and grants, revoked history included (todo 7).
     "identity_serviceprincipal",
     "identity_serviceprincipalgrant",
