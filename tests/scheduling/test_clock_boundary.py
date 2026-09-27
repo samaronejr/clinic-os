@@ -4,10 +4,22 @@ from pathlib import Path
 
 import pytest
 
-from scheduling.clock_boundary import application_boundary
+from scheduling.clock_boundary import (
+    application_boundary,
+    repository_event_trigger_boundary,
+)
+from scheduling.clock_residual_probes import EVENTS
 
 APPS = Path(__file__).resolve().parents[2] / "apps"
 PROBES = {
+    "event-trigger-exact": (
+        "SQL = " + repr(EVENTS["event-exact"]),
+        "event-trigger-ddl",
+    ),
+    "event-trigger-variant": (
+        "SQL = " + repr(EVENTS["event-variant-drop"]),
+        "event-trigger-ddl",
+    ),
     "dynamic-execute": (
         'SQL = "DO $$ BEGIN EXECUTE query_text; END $$"',
         "dynamic-or-prepared-execute",
@@ -94,6 +106,33 @@ SQL += "LANGUAGE internal AS 'now'"''',
 
 def test_application_sql_stays_inside_clock_census_boundary() -> None:
     assert application_boundary(APPS) == {}
+
+
+def test_repository_refuses_event_trigger_ddl() -> None:
+    assert repository_event_trigger_boundary(APPS.parent) == {}
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "apps/unlisted/migrations/event.py",
+        "ops/db/event.sql",
+        "config/event.py",
+        "hooks/event.sh",
+        "entry.py",
+        ".github/workflows/event.yml",
+    ],
+)
+def test_event_trigger_boundary_covers_repo_sources(
+    tmp_path: Path, relative: str
+) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    source = EVENTS["event-variant-drop"]
+    path.write_text("SQL = " + repr(source) if path.suffix == ".py" else source)
+    assert repository_event_trigger_boundary(tmp_path) == {
+        relative: ["event-trigger-ddl"]
+    }
 
 
 @pytest.mark.parametrize("name", PROBES)

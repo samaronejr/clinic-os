@@ -1,4 +1,61 @@
 {
+  "constraint:identity_clinic.identity_clinic_timezone_nonblank": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.btrim(bytea, bytea)",
+      "function:pg_catalog.btrim(text)",
+      "function:pg_catalog.btrim(text, text)",
+      "function:pg_catalog.textne(text, text)"
+    ]
+  },
+  "constraint:intake_patientaccessgrant.intake_grant_expiry_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)"
+    ]
+  },
+  "constraint:intake_patientaccessgrant.intake_grant_operations_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.array_length(anyarray, integer)",
+      "function:pg_catalog.arraycontained(anyarray, anyarray)",
+      "function:pg_catalog.int4gt(integer, integer)"
+    ]
+  },
+  "constraint:intake_patientaccessgrant.intake_grant_secret_hash_32_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4eq(integer, integer)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)"
+    ]
+  },
+  "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4eq(integer, integer)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)"
+    ]
+  },
+  "constraint:intake_patientsession.intake_session_expiry_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)"
+    ]
+  },
+  "constraint:intake_patientsession.intake_session_operations_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.array_length(anyarray, integer)",
+      "function:pg_catalog.arraycontained(anyarray, anyarray)",
+      "function:pg_catalog.int4gt(integer, integer)"
+    ]
+  },
   "constraint:scheduling_absence.scheduling_absence_reason": {
     "direct": {},
     "via": [
@@ -264,7 +321,11 @@
   "function:clinic_app.comms_schedule_reminders_v1()": {
     "direct": {
       "pg_catalog.statement_timestamp()": 4,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1
+      "pg_catalog.timestamptz(date)": 1,
+      "pg_catalog.timestamptz(date, time without time zone)": 1,
+      "pg_catalog.timestamptz(timestamp without time zone)": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1,
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
       "function:pg_catalog.hashtextextended(text, bigint)",
@@ -272,7 +333,21 @@
       "function:pg_catalog.md5(bytea)",
       "function:pg_catalog.md5(text)",
       "function:pg_catalog.pg_advisory_xact_lock(bigint)",
-      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)"
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timestamptz(date, time with time zone)",
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "function:pg_catalog.timezone(interval, time with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp without time zone)",
+      "function:pg_catalog.timezone(text, timestamp with time zone)",
+      "function:pg_catalog.timezone(text, timestamp without time zone)",
+      "function:pg_catalog.version()"
     ]
   },
   "function:clinic_app.gen_random_uuid()": {
@@ -283,11 +358,22 @@
   },
   "function:clinic_app.has_permission(text, uuid, uuid)": {
     "direct": {
-      "pg_catalog.statement_timestamp()": 1
+      "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.timestamptz(date)": 1,
+      "pg_catalog.timestamptz(date, time without time zone)": 1,
+      "pg_catalog.timestamptz(timestamp without time zone)": 1
     },
     "via": [
       "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)"
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timestamptz(date, time with time zone)",
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)"
     ]
   },
   "function:clinic_app.patient_booking_guard()": {
@@ -301,16 +387,27 @@
   "function:clinic_app.patient_booking_lock_availability(uuid[], timestamp with time zone[], timestamp with time zone[])": {
     "direct": {},
     "via": [
+      "constraint:scheduling_availabilityblock.scheduling_availability_active_practitioner_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_fingerprint_32_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_positive_minute_range_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_resource_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_retirement_check",
       "function:clinic_app.patient_booking_scope()",
       "function:pg_catalog.unnest(anyarray)",
       "function:pg_catalog.unnest(anymultirange)",
-      "function:pg_catalog.unnest(tsvector)"
+      "function:pg_catalog.unnest(tsvector)",
+      "index:scheduling_availability_active_practitioner_excl",
+      "index:scheduling_availability_resource_excl",
+      "policy:scheduling_availabilityblock.patient_booking_read",
+      "policy:scheduling_availabilityblock.tenant_isolation",
+      "trigger:scheduling_availabilityblock.scheduling_generated_block_guard"
     ]
   },
   "function:clinic_app.patient_booking_practitioner(uuid)": {
     "direct": {},
     "via": [
-      "function:clinic_app.patient_booking_scope()"
+      "function:clinic_app.patient_booking_scope()",
+      "policy:identity_userclinicrole.tenant_isolation"
     ]
   },
   "function:clinic_app.patient_booking_receipt()": {
@@ -328,8 +425,19 @@
       "pg_catalog.statement_timestamp()": 2
     },
     "via": [
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:intake_patientaccessgrant.intake_grant_expiry_check",
+      "constraint:intake_patientaccessgrant.intake_grant_operations_check",
+      "constraint:intake_patientaccessgrant.intake_grant_secret_hash_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientsession.intake_session_expiry_check",
+      "constraint:intake_patientsession.intake_session_operations_check",
       "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)"
+      "function:pg_catalog.current_setting(text, boolean)",
+      "policy:identity_clinic.tenant_isolation",
+      "policy:intake_patientaccessgrant.tenant_isolation",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "policy:intake_patientsession.tenant_isolation"
     ]
   },
   "function:clinic_app.patient_booking_slots(date, uuid)": {
@@ -341,6 +449,26 @@
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 7
     },
     "via": [
+      "constraint:scheduling_absence.scheduling_absence_reason",
+      "constraint:scheduling_absence.scheduling_absence_window",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_after_check",
+      "constraint:scheduling_appointment.scheduling_appointment_buffer_before_check",
+      "constraint:scheduling_appointment.scheduling_appointment_fingerprint_32_check",
+      "constraint:scheduling_appointment.scheduling_appointment_lifecycle_check",
+      "constraint:scheduling_appointment.scheduling_appointment_positive_minute_range_check",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_patient_excl",
+      "constraint:scheduling_appointment.scheduling_appointment_scheduled_practitioner_excl",
+      "constraint:scheduling_appointment.scheduling_z_buffer_practitioner_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_active_practitioner_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_fingerprint_32_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_positive_minute_range_check",
+      "constraint:scheduling_availabilityblock.scheduling_availability_resource_excl",
+      "constraint:scheduling_availabilityblock.scheduling_availability_retirement_check",
+      "constraint:scheduling_availabilitytemplate.scheduling_template_window",
+      "constraint:scheduling_holiday.scheduling_holiday_reason",
+      "constraint:scheduling_holiday.scheduling_holiday_window",
+      "default:scheduling_appointment.buffer_after",
+      "default:scheduling_appointment.buffer_before",
       "function:clinic_app.patient_booking_practitioner(uuid)",
       "function:clinic_app.patient_booking_scope()",
       "function:clinic_app.scheduling_effective_interval(timestamp with time zone, timestamp with time zone, integer, integer)",
@@ -353,17 +481,55 @@
       "function:pg_catalog.generate_series(timestamp with time zone, timestamp with time zone, interval, text)",
       "function:pg_catalog.generate_series(timestamp without time zone, timestamp without time zone, interval)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
-      "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)"
+      "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)",
+      "index:scheduling_appointment_scheduled_patient_excl",
+      "index:scheduling_appointment_scheduled_practitioner_excl",
+      "index:scheduling_availability_active_practitioner_excl",
+      "index:scheduling_availability_resource_excl",
+      "index:scheduling_z_buffer_practitioner_excl",
+      "policy:scheduling_absence.tenant_isolation",
+      "policy:scheduling_appointment.patient_booking_insert",
+      "policy:scheduling_appointment.patient_booking_read",
+      "policy:scheduling_appointment.patient_booking_update",
+      "policy:scheduling_appointment.tenant_isolation",
+      "policy:scheduling_availabilityblock.patient_booking_read",
+      "policy:scheduling_availabilityblock.tenant_isolation",
+      "policy:scheduling_availabilitytemplate.tenant_isolation",
+      "policy:scheduling_holiday.tenant_isolation",
+      "trigger:scheduling_absence.scheduling_definition_guard",
+      "trigger:scheduling_appointment.comms_schedule_reminders",
+      "trigger:scheduling_appointment.patient_booking_guard",
+      "trigger:scheduling_appointment.patient_booking_receipt",
+      "trigger:scheduling_appointment.scheduling_appointment_guard",
+      "trigger:scheduling_appointment.scheduling_capacity_after",
+      "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_availabilityblock.scheduling_generated_block_guard",
+      "trigger:scheduling_availabilitytemplate.scheduling_definition_guard",
+      "trigger:scheduling_holiday.scheduling_definition_guard"
     ]
   },
   "function:clinic_app.scheduling_appointment_guard_v1()": {
     "direct": {
+      "pg_catalog.date(timestamp with time zone)": 1,
+      "pg_catalog.timezone(text, time with time zone)": 1,
       "sql:current_timestamp": 1
     },
     "via": [
       "function:clinic_app.patient_booking_scope()",
       "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)"
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.date(timestamp without time zone)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timezone(interval, time with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp without time zone)",
+      "function:pg_catalog.timezone(text, timestamp with time zone)",
+      "function:pg_catalog.timezone(text, timestamp without time zone)"
     ]
   },
   "function:clinic_app.scheduling_capacity_guard()": {
@@ -392,6 +558,8 @@
       "function:pg_catalog.generate_series(numeric, numeric, numeric)",
       "function:pg_catalog.generate_series(timestamp with time zone, timestamp with time zone, interval, text)",
       "function:pg_catalog.generate_series(timestamp without time zone, timestamp without time zone, interval)",
+      "function:pg_catalog.interval(interval, integer)",
+      "function:pg_catalog.interval(time without time zone)",
       "function:pg_catalog.lower(anymultirange)",
       "function:pg_catalog.lower(anyrange)",
       "function:pg_catalog.lower(text)",
@@ -408,7 +576,8 @@
   "function:clinic_app.scheduling_definition_guard()": {
     "direct": {
       "pg_catalog.statement_timestamp()": 3,
-      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
       "function:clinic_app.has_permission(text, uuid, uuid)",
@@ -425,9 +594,22 @@
       "function:pg_catalog.hashtextextended(text, bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timezone(interval, time with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp without time zone)",
+      "function:pg_catalog.timezone(text, timestamp with time zone)",
+      "function:pg_catalog.timezone(text, timestamp without time zone)",
       "function:pg_catalog.to_jsonb(anyelement)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
-      "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)"
+      "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)",
+      "function:pg_catalog.varchar(character varying, integer, boolean)",
+      "function:pg_catalog.varchar(name)"
     ]
   },
   "function:clinic_app.scheduling_effective_interval(timestamp with time zone, timestamp with time zone, integer, integer)": {
@@ -446,7 +628,8 @@
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
       "pg_catalog.statement_timestamp()": 1,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2,
+      "pg_catalog.timezone(text, time with time zone)": 1
     },
     "via": [
       "function:clinic_app.has_permission(text, uuid, uuid)",
@@ -457,6 +640,11 @@
       "function:pg_catalog.extract(text, time without time zone)",
       "function:pg_catalog.extract(text, timestamp with time zone)",
       "function:pg_catalog.extract(text, timestamp without time zone)",
+      "function:pg_catalog.timezone(interval, time with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp with time zone)",
+      "function:pg_catalog.timezone(interval, timestamp without time zone)",
+      "function:pg_catalog.timezone(text, timestamp with time zone)",
+      "function:pg_catalog.timezone(text, timestamp without time zone)",
       "function:pg_catalog.to_jsonb(anyelement)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)"
@@ -467,15 +655,23 @@
     "via": [
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)"
+      "function:pg_catalog.current_setting(text, boolean)",
+      "policy:identity_userclinicrole.tenant_isolation"
     ]
   },
   "function:clinic_app.waitlist_staff(uuid)": {
     "direct": {},
     "via": [
       "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)"
+      "function:pg_catalog.current_setting(text, boolean)",
+      "policy:identity_userclinicrole.tenant_isolation"
     ]
+  },
+  "function:pg_catalog.array_length(anyarray, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.array_length(anyarray, integer)": 1
+    },
+    "via": []
   },
   "function:pg_catalog.array_position(anycompatiblearray, anycompatible)": {
     "direct": {
@@ -486,6 +682,30 @@
   "function:pg_catalog.array_position(anycompatiblearray, anycompatible, integer)": {
     "direct": {
       "opaque:reviewed:pg_catalog.array_position(anycompatiblearray, anycompatible, integer)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.arraycontained(anyarray, anyarray)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.arraycontained(anyarray, anyarray)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.btrim(bytea, bytea)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.btrim(bytea, bytea)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.btrim(text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.btrim(text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.btrim(text, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.btrim(text, text)": 1
     },
     "via": []
   },
@@ -516,6 +736,12 @@
   "function:pg_catalog.current_setting(text, boolean)": {
     "direct": {
       "opaque:reviewed:pg_catalog.current_setting(text, boolean)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.date(timestamp without time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.date(timestamp without time zone)": 1
     },
     "via": []
   },
@@ -675,9 +901,27 @@
     },
     "via": []
   },
+  "function:pg_catalog.int4gt(integer, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.int4gt(integer, integer)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.int8eq(bigint, bigint)": {
     "direct": {
       "opaque:reviewed:pg_catalog.int8eq(bigint, bigint)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.interval(interval, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.interval(interval, integer)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.interval(time without time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.interval(time without time zone)": 1
     },
     "via": []
   },
@@ -759,15 +1003,69 @@
     },
     "via": []
   },
+  "function:pg_catalog.text(\"char\")": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.text(\"char\")": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.text(boolean)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.text(boolean)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.text(character)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.text(character)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.text(inet)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.text(inet)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.text(name)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.text(name)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.text(xml)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.text(xml)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.texteq(text, text)": {
     "direct": {
       "opaque:reviewed:pg_catalog.texteq(text, text)": 1
     },
     "via": []
   },
+  "function:pg_catalog.textne(text, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.textne(text, text)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.time_gt(time without time zone, time without time zone)": {
     "direct": {
       "opaque:reviewed:pg_catalog.time_gt(time without time zone, time without time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timestamptz(date, time with time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timestamptz(date, time with time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timestamptz(timestamp with time zone, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timestamptz(timestamp with time zone, integer)": 1
     },
     "via": []
   },
@@ -786,6 +1084,36 @@
   "function:pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)": {
     "direct": {
       "opaque:reviewed:pg_catalog.timestamptz_gt(timestamp with time zone, timestamp with time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timezone(interval, time with time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timezone(interval, time with time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timezone(interval, timestamp with time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timezone(interval, timestamp with time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timezone(interval, timestamp without time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timezone(interval, timestamp without time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timezone(text, timestamp with time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timezone(text, timestamp with time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.timezone(text, timestamp without time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.timezone(text, timestamp without time zone)": 1
     },
     "via": []
   },
@@ -849,6 +1177,24 @@
     },
     "via": []
   },
+  "function:pg_catalog.varchar(character varying, integer, boolean)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.varchar(character varying, integer, boolean)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.varchar(name)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.varchar(name)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.version()": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.version()": 1
+    },
+    "via": []
+  },
   "index:scheduling_appointment_scheduled_patient_excl": {
     "direct": {},
     "via": [
@@ -906,6 +1252,51 @@
       "function:pg_catalog.texteq(text, text)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)",
       "function:pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)"
+    ]
+  },
+  "policy:identity_clinic.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:identity_userclinicrole.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:intake_patientaccessgrant.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:intake_patientclinicenrollment.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:intake_patientsession.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
   "policy:scheduling_absence.tenant_isolation": {

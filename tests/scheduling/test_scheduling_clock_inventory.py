@@ -9,7 +9,12 @@ import pytest
 from django.db import connection
 
 from scheduling.clock_catalog import catalog_readers, functions, live_clock_inventory
-from scheduling.clock_support import SOURCE_CLOCKS, SQL_CLOCKS, clock_counts
+from scheduling.clock_support import (
+    SOURCE_CLOCKS,
+    SQL_CLOCKS,
+    SQL_CLOCKS_CONTROLLED,
+    clock_counts,
+)
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -41,6 +46,15 @@ def test_all_live_scheduling_sql_time_reads_are_controlled() -> None:
     expected = json.loads(
         Path(__file__).with_name("clock_catalog_inventory.json").read_text()
     )
+    if SQL_CLOCKS_CONTROLLED.get():
+        controlled = json.loads(
+            Path(__file__).with_name("clock_controlled_inventory.json").read_text()
+        )
+        assert set(controlled) == {
+            "function:clinic_app." + signature.replace(",", ", ")
+            for signature in SQL_CLOCKS
+        }
+        expected.update(controlled)
     assert live_clock_inventory() == expected
 
 

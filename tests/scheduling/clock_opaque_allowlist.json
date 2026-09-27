@@ -8,6 +8,15 @@
     "returns": "uuid",
     "volatility": "v"
   },
+  "pg_catalog.array_length(anyarray, integer)": {
+    "extension": "",
+    "implementation": "array_length",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached validity/calendar-array shape checks; retain the exact array-length implementation as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
   "pg_catalog.array_position(anycompatiblearray, anycompatible)": {
     "extension": "",
     "implementation": "array_position",
@@ -24,6 +33,42 @@
     "library": "",
     "reason": "Required lookup of values within supplied arrays; admits this exact array-search implementation.",
     "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.arraycontained(anyarray, anyarray)": {
+    "extension": "",
+    "implementation": "arraycontained",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached required-role containment constraints; retain the exact array-containment implementation as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.btrim(bytea, bytea)": {
+    "extension": "",
+    "implementation": "byteatrim",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached relation string-domain constraints; conservative overload resolution retains this exact trimming implementation as opaque risk.",
+    "returns": "bytea",
+    "volatility": "i"
+  },
+  "pg_catalog.btrim(text)": {
+    "extension": "",
+    "implementation": "btrim1",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached relation string-domain constraints; conservative overload resolution retains this exact trimming implementation as opaque risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.btrim(text, text)": {
+    "extension": "",
+    "implementation": "btrim",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached relation string-domain constraints; conservative overload resolution retains this exact trimming implementation as opaque risk.",
+    "returns": "text",
     "volatility": "i"
   },
   "pg_catalog.cardinality(anyarray)": {
@@ -70,6 +115,15 @@
     "reason": "Required literal tenant/actor/configuration lookups. Dynamic names are forbidden by the repo guard; this is not a claim that arbitrary GUCs are clock independent.",
     "returns": "text",
     "volatility": "s"
+  },
+  "pg_catalog.date(timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_date",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL date type/name is also a function identifier; retain this exact timestamp-to-date conversion candidate as opaque risk.",
+    "returns": "date",
+    "volatility": "i"
   },
   "pg_catalog.date_ge(date, date)": {
     "extension": "",
@@ -305,6 +359,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.int4gt(integer, integer)": {
+    "extension": "",
+    "implementation": "int4gt",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached relation integer-bound constraints; retain this exact comparison implementation as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.int8eq(bigint, bigint)": {
     "extension": "",
     "implementation": "int8eq",
@@ -312,6 +375,24 @@
     "library": "",
     "reason": "Required bigint equality comparison.",
     "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.interval(interval, integer)": {
+    "extension": "",
+    "implementation": "interval_scale",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL interval declarations also match callable identifiers; retain this exact conversion/precision candidate as opaque risk.",
+    "returns": "interval",
+    "volatility": "i"
+  },
+  "pg_catalog.interval(time without time zone)": {
+    "extension": "",
+    "implementation": "time_interval",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL interval declarations also match callable identifiers; retain this exact conversion/precision candidate as opaque risk.",
+    "returns": "interval",
     "volatility": "i"
   },
   "pg_catalog.lower(anymultirange)": {
@@ -431,12 +512,75 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.text(\"char\")": {
+    "extension": "",
+    "implementation": "char_text",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL text declarations also match callable identifiers; retain this exact conversion overload as opaque risk, not a clock-free exemption.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.text(boolean)": {
+    "extension": "",
+    "implementation": "booltext",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL text declarations also match callable identifiers; retain this exact conversion overload as opaque risk, not a clock-free exemption.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.text(character)": {
+    "extension": "",
+    "implementation": "rtrim1",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL text declarations also match callable identifiers; retain this exact conversion overload as opaque risk, not a clock-free exemption.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.text(inet)": {
+    "extension": "",
+    "implementation": "network_show",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL text declarations also match callable identifiers; retain this exact conversion overload as opaque risk, not a clock-free exemption.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.text(name)": {
+    "extension": "",
+    "implementation": "name_text",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL text declarations also match callable identifiers; retain this exact conversion overload as opaque risk, not a clock-free exemption.",
+    "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.text(xml)": {
+    "extension": "",
+    "implementation": "xmltotext",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL text declarations also match callable identifiers; retain this exact conversion overload as opaque risk, not a clock-free exemption.",
+    "returns": "text",
+    "volatility": "i"
+  },
   "pg_catalog.texteq(text, text)": {
     "extension": "",
     "implementation": "texteq",
     "language": "internal",
     "library": "",
     "reason": "Required equality comparison of supplied text.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.textne(text, text)": {
+    "extension": "",
+    "implementation": "textne",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached relation text inequalities; retain this exact comparison implementation as opaque risk.",
     "returns": "boolean",
     "volatility": "i"
   },
@@ -447,6 +591,24 @@
     "library": "",
     "reason": "Required comparison of supplied local times.",
     "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz(date, time with time zone)": {
+    "extension": "",
+    "implementation": "datetimetz_timestamptz",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL temporal declarations also match callable identifiers; retain this exact construction/precision overload as opaque risk.",
+    "returns": "timestamp with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz(timestamp with time zone, integer)": {
+    "extension": "",
+    "implementation": "timestamptz_scale",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL temporal declarations also match callable identifiers; retain this exact construction/precision overload as opaque risk.",
+    "returns": "timestamp with time zone",
     "volatility": "i"
   },
   "pg_catalog.timestamptz_eq(timestamp with time zone, timestamp with time zone)": {
@@ -474,6 +636,51 @@
     "library": "",
     "reason": "Required ordering of supplied instants.",
     "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.timezone(interval, time with time zone)": {
+    "extension": "",
+    "implementation": "timetz_izone",
+    "language": "internal",
+    "library": "",
+    "reason": "The calendar timezone identifier matches overloaded catalog routines; retain this exact timezone conversion candidate as opaque risk.",
+    "returns": "time with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.timezone(interval, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamptz_izone",
+    "language": "internal",
+    "library": "",
+    "reason": "The calendar timezone identifier matches overloaded catalog routines; retain this exact timezone conversion candidate as opaque risk.",
+    "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.timezone(interval, timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_izone",
+    "language": "internal",
+    "library": "",
+    "reason": "The calendar timezone identifier matches overloaded catalog routines; retain this exact timezone conversion candidate as opaque risk.",
+    "returns": "timestamp with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.timezone(text, timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamptz_zone",
+    "language": "internal",
+    "library": "",
+    "reason": "The calendar timezone identifier matches overloaded catalog routines; retain this exact timezone conversion candidate as opaque risk.",
+    "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.timezone(text, timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_zone",
+    "language": "internal",
+    "library": "",
+    "reason": "The calendar timezone identifier matches overloaded catalog routines; retain this exact timezone conversion candidate as opaque risk.",
+    "returns": "timestamp with time zone",
     "volatility": "i"
   },
   "pg_catalog.to_jsonb(anyelement)": {
@@ -565,5 +772,32 @@
     "reason": "Required equality comparison of supplied identity keys.",
     "returns": "boolean",
     "volatility": "i"
+  },
+  "pg_catalog.varchar(character varying, integer, boolean)": {
+    "extension": "",
+    "implementation": "varchar",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL character-type identifiers also match callable routines; retain this exact conversion/precision overload as opaque risk.",
+    "returns": "character varying",
+    "volatility": "i"
+  },
+  "pg_catalog.varchar(name)": {
+    "extension": "",
+    "implementation": "name_text",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL character-type identifiers also match callable routines; retain this exact conversion/precision overload as opaque risk.",
+    "returns": "character varying",
+    "volatility": "i"
+  },
+  "pg_catalog.version()": {
+    "extension": "",
+    "implementation": "pgsql_version",
+    "language": "internal",
+    "library": "",
+    "reason": "The PL/pgSQL version identifier matches the catalog version routine; retain that conservative native candidate as opaque risk.",
+    "returns": "text",
+    "volatility": "s"
   }
 }

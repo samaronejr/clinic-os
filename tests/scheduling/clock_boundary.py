@@ -94,6 +94,7 @@ def sql_boundary_violations(source: str) -> set[str]:
         "runtime-code-generation": r"__clock_runtime_code__",
         "unresolved-statement": r"__clock_unresolved_statement__",
         "operator-ddl": r"\bCREATE\s+(?:OR\s+REPLACE\s+)?OPERATOR\b",
+        "event-trigger-ddl": r"\bCREATE\s+EVENT\s+TRIGGER\b",
         "server-prepare": r"\bPREPARE\s+.+?\s+AS\b|\bDEALLOCATE\s+\w+",
         "temporary-ddl": r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\b",
         "temporary-search-path": (
@@ -137,4 +138,32 @@ def application_boundary(root: Path) -> dict[str, list[str]]:
         violations = set().union(*(sql_boundary_violations(text) for text in fragments))
         if violations:
             found[str(path.relative_to(root))] = sorted(violations)
+    return found
+
+
+def repository_event_trigger_boundary(root: Path) -> dict[str, list[str]]:
+    """Refuse event-trigger DDL in executable repo sources, not probe fixtures."""
+    found: dict[str, list[str]] = {}
+    for directory, folders, names in root.walk():
+        folders[:] = [
+            name
+            for name in folders
+            if name not in {"tests", "node_modules", "__pycache__"}
+            and (not name.startswith(".") or name == ".github")
+        ]
+        for name in names:
+            path = directory / name
+            if path.suffix not in {".py", ".sql", ".sh", ".yml", ".yaml"}:
+                continue
+            source = path.read_text()
+            fragments = (
+                source_fragments(ast.parse(source))
+                if path.suffix == ".py"
+                else [source]
+            )
+            if any(
+                "event-trigger-ddl" in sql_boundary_violations(text)
+                for text in fragments
+            ):
+                found[str(path.relative_to(root))] = ["event-trigger-ddl"]
     return found
