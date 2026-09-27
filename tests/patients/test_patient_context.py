@@ -70,8 +70,9 @@ def test_create_denies_inactive_missing_and_malformed_actors(
         pass
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
-            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
-            [str(rbac_graph.shared_user)],
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.shared_user), str(rbac_graph.organization_a)],
         )
         with pytest.raises(access_error, match="patient access denied"):
             create_patient(

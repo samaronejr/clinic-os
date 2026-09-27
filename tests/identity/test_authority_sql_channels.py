@@ -13,7 +13,13 @@ from django.db import connection, transaction
 
 from identity.authority_catalog import Catalog, Reads
 from identity.authority_observer import AuthorityObservedError, AuthorityObserver
-from identity.nonstaff_differential import DifferentialProbe, _invoke
+from identity.authority_sql import references
+from identity.nonstaff_differential import (
+    DifferentialProbe,
+    _invoke,
+    assert_behavioral_classifications,
+)
+from identity.nonstaff_states import ReplayScope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,6 +70,78 @@ def _observe(graph: RbacGraph, query: str) -> AuthorityObserver:
     with pytest.raises(AuthorityObservedError):
         observer.assert_nonstaff(probe.symbol)
     return observer
+
+
+@pytest.mark.parametrize(
+    ("statement", "setting"),
+    [
+        ("SHOW app.current_user_id", "app.current_user_id"),
+        ("SHOW app.current_tenant", "app.current_tenant"),
+        ('sHoW /* probe */ app."current_user_id";', "app.current_user_id"),
+        ('SHOW "APP.CURRENT_USER_ID"', "app.current_user_id"),
+        ("SELECT current_setting('app.current_user_id', true)", "app.current_user_id"),
+        ("SELECT current_setting('APP.CURRENT_USER_ID', true)", "app.current_user_id"),
+        ("SELECT set_config('app.current_user_id', NULL, true)", "app.current_user_id"),
+        ("SELECT set_config('APP.CURRENT_USER_ID', NULL, true)", "app.current_user_id"),
+        (
+            "SELECT set_config('app.observer_copy', "
+            "current_setting('app.current_user_id'), true)",
+            "app.current_user_id",
+        ),
+    ],
+)
+def test_setting_reader_forms_are_observed(
+    rbac_graph: RbacGraph, statement: str, setting: str
+) -> None:
+    observer = _observe(rbac_graph, statement)
+    assert ("guc", setting) in observer.touches
+
+
+@pytest.mark.parametrize(
+    ("statement", "reason"),
+    [
+        ("SHOW ALL", "unresolved SHOW setting"),
+        (
+            "SELECT current_setting(concat('app.current_', 'user_id'), true)",
+            "computed setting name",
+        ),
+        (
+            "SELECT set_config(concat('app.current_', 'user_id'), NULL, true)",
+            "computed setting name",
+        ),
+    ],
+)
+def test_unresolved_setting_reads_are_opaque(
+    rbac_graph: RbacGraph, statement: str, reason: str
+) -> None:
+    observer = _observe(rbac_graph, statement)
+    assert ("opaque", reason) in observer.touches
+
+
+@pytest.mark.parametrize("statement", ["SHOW %s", "SHOW app.", "SHOW 'setting'"])
+def test_unresolved_show_name_fails_closed(statement: str) -> None:
+    assert "unresolved SHOW setting" in references(statement).opaque
+
+
+def test_literal_nonactor_setting_is_resolved() -> None:
+    parsed = references("SHOW statement_timeout;")
+    assert parsed.settings == {"statement_timeout"}
+    assert not parsed.opaque
+
+
+def test_show_guard_cannot_claim_nonstaff(rbac_graph: RbacGraph) -> None:
+    actor = User.objects.create(username="synthetic-show-guard-" + uuid4().hex)
+    probe = DifferentialProbe(
+        __name__ + "._query", lambda: _query("SHOW app.current_user_id"), bool
+    )
+    with pytest.raises(AuthorityObservedError) as refused:
+        assert_behavioral_classifications(
+            [{"symbol": probe.symbol, "kind": "nonstaff", "signals": []}],
+            {probe.symbol: [probe]},
+            actor=actor,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
+        )
+    assert ("guc", "app.current_user_id") in refused.value.args[1]
 
 
 def test_empty_relation_is_observed_by_counters_without_text_classifier(

@@ -103,9 +103,11 @@ def references(text: str) -> SqlReferences:
         if kind not in tokens.Whitespace and kind not in tokens.Comment
     ]
     result = SqlReferences(operators=_operators(raw))
-    for kind, value in items:
+    for index, (kind, value) in enumerate(items):
         if kind in tokens.Keyword:
             keyword = value.lower().split()[0]
+            if keyword == "show":
+                _show_setting(items, index + 1, result)
             if keyword in DYNAMIC | DDL:
                 result.opaque.add(keyword)
             if keyword in {"insert", "update", "delete", "truncate"}:
@@ -116,9 +118,22 @@ def references(text: str) -> SqlReferences:
             continue
         if quoted or len(name) > 1 or name[-1] not in SYNTAX_CALLS:
             result.calls.add(name)
-        if name[-1] == "current_setting":
+        # set_config returns the effective setting value, not just a write count.
+        if name[-1] in {"current_setting", "set_config"}:
             _setting(items, end + 1, result)
     return result
+
+
+def _show_setting(items: Sequence[Token], index: int, result: SqlReferences) -> None:
+    if index < len(items) and _identifier(*items[index]):
+        name, end, _quoted = next(_qualified(items[index:]))
+        setting = ".".join(name).lower()
+        end += index
+        if setting != "all" and (end == len(items) or items[end][1] == ";"):
+            result.settings.add(setting)
+            return
+    # SHOW ALL and unresolved syntax cannot establish absence of actor access.
+    result.opaque.add("unresolved SHOW setting")
 
 
 def _operators(items: Sequence[Token]) -> set[str]:
@@ -143,7 +158,7 @@ def _setting(items: Sequence[Token], index: int, result: SqlReferences) -> None:
     if index >= len(items) or items[index][0] not in tokens.Literal.String.Single:
         result.opaque.add("computed setting name")
         return
-    result.settings.add(items[index][1][1:-1].replace("''", "'"))
+    result.settings.add(items[index][1][1:-1].replace("''", "'").lower())
     end = index + 1
     # pg_get_functiondef adds this built-in text coercion to SQL-standard bodies.
     if [value for _kind, value in items[end : end + 2]] == ["::", "text"]:

@@ -214,8 +214,9 @@ def _assert_authorized_input_and_scope_denials(
         pass
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
-            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
-            [str(setup.actor_id)],
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(setup.actor_id), str(setup.organization_id)],
         )
         with pytest.raises(AvailabilityAccessDeniedError) as inactive_error:
             view_agenda(

@@ -252,8 +252,9 @@ def test_inactive_missing_and_malformed_current_actors_fail_closed(
         pass
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
-            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
-            [str(rbac_graph.shared_user)],
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.shared_user), str(rbac_graph.organization_a)],
         )
         with pytest.raises(AvailabilityAccessDeniedError):
             view_availability(clinic_id=rbac_graph.clinic_a)
