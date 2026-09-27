@@ -8,10 +8,14 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING
 
+import psycopg
 import pytest
 from django.conf import settings
 from django.db import connection, connections
+from ops.db.posture import PINNED_ROLES
+from psycopg.conninfo import conninfo_to_dict
 
+from database_urls import database_url_for_name
 from infra.test_database_options import _ca, _url
 from infra.test_production_settings import VALID_HOSTS, VALID_RUNTIME_TOKEN
 
@@ -19,16 +23,46 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+# Plan-pinned runtime defaults (todo 8 item 5), written out independently of
+# ops/db/posture.py; only the pinned role names are shared with posture.
+RUNTIME_DEFAULTS = [
+    "idle_in_transaction_session_timeout=15s",
+    "search_path=clinic_app, public",
+]
+APPLICABLE_SETTINGS = """
+WITH RECURSIVE assumable(oid) AS (
+    SELECT oid FROM pg_roles WHERE rolname = ANY(%s)
+    UNION
+    SELECT m.roleid FROM pg_auth_members AS m JOIN assumable ON m.member = assumable.oid
+)
+SELECT COALESCE(r.rolname, ''), s.setdatabase <> 0, s.setconfig
+FROM pg_db_role_setting AS s
+LEFT JOIN pg_roles AS r ON r.oid = s.setrole
+WHERE s.setdatabase IN (
+    0, (SELECT oid FROM pg_database WHERE datname = current_database())
+)
+  AND (s.setrole = 0 OR s.setrole IN (SELECT oid FROM assumable))
+"""
+
+
 @pytest.mark.django_db(transaction=True)
 def test_runtime_role_defaults_are_pinned_for_transaction_pooling() -> None:
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT rolconfig FROM pg_roles WHERE rolname = 'clinic_app'")
-        row = cursor.fetchone()
-    assert row is not None
-    assert set(row[0]) == {
-        "search_path=clinic_app, public",
-        "idle_in_transaction_session_timeout=15s",
-    }
+    # Both the configured application database and the active test database:
+    # a role-in-database or database-wide row would override the role default.
+    runtime_url = os.environ["APP_DATABASE_URL"]
+    for name in sorted(
+        {conninfo_to_dict(runtime_url)["dbname"], connection.settings_dict["NAME"]}
+    ):
+        with psycopg.connect(database_url_for_name(runtime_url, str(name))) as fresh:
+            effective = fresh.execute(
+                "SELECT current_user, current_setting('search_path'), "
+                "current_setting('idle_in_transaction_session_timeout')"
+            ).fetchone()
+            rows = fresh.execute(APPLICABLE_SETTINGS, (list(PINNED_ROLES),)).fetchall()
+        assert effective == ("clinic_app", "clinic_app, public", "15s"), name
+        assert sorted(
+            (role, scoped, sorted(values)) for role, scoped, values in rows
+        ) == [("clinic_app", False, RUNTIME_DEFAULTS)], name
 
 
 def test_runtime_aliases_disable_prepared_statements_and_implicit_transactions() -> (
