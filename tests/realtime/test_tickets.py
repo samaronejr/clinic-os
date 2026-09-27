@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from typing import TYPE_CHECKING
@@ -105,6 +106,27 @@ def test_ticket_http_denials_csrf_and_private_headers(rbac_graph: RbacGraph) -> 
     assert len(set(bodies)) == 1
 
 
+def session_tickets(session_key: str) -> set[bytes]:
+    """Ticket keys bound to one session, never a shared-keyspace snapshot.
+
+    The Redis keyspace is shared across tests and other tests' tickets expire
+    on their own 60-second TTL. Only a key whose stored binding is this
+    session can come from a refusal of this session's request.
+    """
+    digest = hashlib.sha256(session_key.encode()).hexdigest()
+    bound: set[bytes] = set()
+    with redis_client() as redis:
+        for name in redis.scan_iter("rt-ticket:*"):
+            raw = redis.get(name)
+            try:
+                payload = json.loads(raw) if isinstance(raw, bytes) else None
+            except ValueError:
+                continue
+            if isinstance(payload, dict) and payload.get("session") == digest:
+                bound.add(name)
+    return bound
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("state", ["inactive", "revoked"])
 def test_inactive_or_revoked_actor_cannot_obtain_a_ticket(
@@ -143,13 +165,11 @@ def test_inactive_or_revoked_actor_cannot_obtain_a_ticket(
                 user_id=rbac_graph.shared_user, clinic_id=rbac_graph.clinic_a
             ).delete()
     stored = Session.objects.values_list("session_data", "expire_date").get(pk=key)
-    with redis_client() as redis:
-        tickets = set(redis.scan_iter("rt-ticket:*"))
+    tickets = session_tickets(key)
     # Byte-identical to the unknown-topic refusal; no ticket, cookie or session
     # write accompanies the refusal (SC-1).
     assert request(rbac_graph.clinic_a) == unknown
-    with redis_client() as redis:
-        assert set(redis.scan_iter("rt-ticket:*")) == tickets
+    assert not session_tickets(key) - tickets
     assert (
         Session.objects.values_list("session_data", "expire_date").get(pk=key) == stored
     )
