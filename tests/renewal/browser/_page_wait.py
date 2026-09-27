@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any, Final, cast
 from playwright._impl._sync_base import mapping
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import expect
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -277,3 +278,27 @@ def click_when_hittable(locator: Locator, *, timeout: float | None = None) -> No
     finally:
         handle.dispose()
     locator.click(timeout=timeout)
+
+
+def await_autofocus(locator: Locator, *, timeout: float | None = None) -> None:
+    """Wait until the page has moved its own ``autofocus`` onto ``locator``.
+
+    Call it after a navigation and before typing into any control of a page
+    that renders ``locator`` with ``autofocus`` (the clean login form's
+    username field). WebKit applies autofocus at the document's first
+    rendering update, which can come after ``load``, and it does so even when
+    another control already has focus. ``goto`` returns at ``load``, so a
+    ``fill`` of the next field can run first: focus then jumps back to the
+    autofocused field and the typed text lands there (fix-a7: the password
+    went into the username field, the empty required password blocked the
+    submit, and no request left the page). Once the autofocus has landed it
+    is spent, so later typing stays where it is sent.
+
+    The wait is bounded by Playwright's ``expect`` default of 5000 ms (this
+    repository never changes it), not by the page's default timeout, unless
+    ``timeout`` (milliseconds) is given. 5 s is the right bound: the autofocus
+    lands at the first rendering update, milliseconds after ``load``, and 5 s
+    is shorter than the suites' 20 s page default, so this wait can never
+    outlive the page operations around it.
+    """
+    expect(locator).to_be_focused(timeout=timeout)

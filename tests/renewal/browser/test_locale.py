@@ -20,6 +20,8 @@ from django.template.loader import render_to_string
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import await_autofocus
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -92,6 +94,7 @@ def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
     assert response.json() == {"status": "ok"}
     page.goto(f"{base_url}/auth/login/")
     expect(page.locator("html")).to_have_attribute("lang", "pt-br")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["username"])
     page.locator("#id_password").fill(staff["password"])
     _submit(page, "button[type=submit]")

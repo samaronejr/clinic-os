@@ -19,7 +19,7 @@ import pytest
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from renewal.browser._page_wait import click_when_hittable, wait_for_js
+from renewal.browser._page_wait import await_autofocus, click_when_hittable, wait_for_js
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import MOBILE_PROFILES, element_box, mobile_context
 
@@ -152,6 +152,7 @@ def test_owner_login_establishes_a_session_and_enters_the_totp_flow(  # noqa: PL
     browser_report: dict[str, object],
 ) -> None:
     renewal_page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
+    await_autofocus(renewal_page.locator("#id_username"))
     renewal_page.fill("#id_username", renewal_owner["username"])
     renewal_page.fill("#id_password", renewal_owner["password"])
     with renewal_page.expect_navigation(wait_until="load"):

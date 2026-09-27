@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import os
 import secrets
+from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -21,16 +23,21 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import await_autofocus, wait_for_js
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
     navigations_are_worker_controlled,
     offline_navigation_error,
     worker_answers_offline,
 )
+from renewal.browser.test_retention import (
+    POINTER_WATCH_JS,
+    _first_line,
+    _StepRecorder,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from playwright.sync_api import Browser, BrowserContext, Page
 
@@ -155,18 +162,128 @@ def _capture(page: Page, root: Path, name: str) -> str:
     return destination.name
 
 
+# Page state around a workspace submit, for the hosted WebKit stall where the
+# sign-in click returned and no POST reached the server (fix-a7). Structure
+# only: paths, states and validity flags, never field values or headers.
+SUBMIT_STATE_JS = """(selector) => {
+  const sw = navigator.serviceWorker;
+  const button = document.querySelector(selector);
+  let target = null;
+  if (button) {
+    const r = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    target = {
+      box: [r.left, r.top, r.width, r.height],
+      hit: hit === button ? 'button'
+        : hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : null,
+      disabled: button.disabled,
+    };
+  }
+  const form = button && button.form;
+  return {
+    path: location.pathname,
+    readyState: document.readyState,
+    visibility: document.visibilityState,
+    hasFocus: document.hasFocus(),
+    active: document.activeElement
+      ? document.activeElement.tagName.toLowerCase()
+        + (document.activeElement.id ? '#' + document.activeElement.id : '')
+      : null,
+    htmx: typeof htmx,
+    serviceWorker: sw ? {
+      controlled: Boolean(sw.controller),
+      controller: sw.controller ? sw.controller.state : null,
+      registration: window.__disposalRegistration || null,
+    } : null,
+    button: target,
+    pointer: window.__disposalPointer || null,
+    fields: window.__submitFields || null,
+    busy: form ? form.getAttribute('aria-busy') : null,
+    form: form ? Array.from(form.elements).filter((e) => e.name).map((e) => ({
+      name: e.name, type: e.type, filled: e.value !== '', valid: e.validity.valid,
+    })) : null,
+  };
+}"""
+
+
+# Which control each focus change and text input reached, in order: target
+# tag#id and input type only, never the inserted text.
+FIELD_WATCH_JS = """() => {
+  const seen = [];
+  window.__submitFields = seen;
+  const name = (t) => (t && t.tagName
+    ? t.tagName.toLowerCase() + (t.id ? '#' + t.id : '') : null);
+  for (const type of ['focusin', 'input']) {
+    document.addEventListener(type, (event) => {
+      seen.push({type, target: name(event.target),
+        inputType: event.inputType || null, t: Math.round(performance.now())});
+    }, {capture: true});
+  }
+  return true;
+}"""
+
+
+def _submit_state(page: Page, selector: str) -> object:
+    """Read the submit's page state under wait_for_js's driver-side deadline."""
+    return wait_for_js(page, SUBMIT_STATE_JS, arg=selector).json_value()
+
+
+@contextmanager
+def _submit_diagnostics(page: Page, selector: str) -> Iterator[None]:
+    """Record one submit's events and page state; write them only on failure.
+
+    The report lands in ``<artifact root>/workspace/`` (0o600) under the
+    failing test's name, and the step's own error propagates unchanged.
+    """
+    recorder = _StepRecorder(page)
+    recorder.attach()
+    try:
+        wait_for_js(page, POINTER_WATCH_JS)
+        before = _submit_state(page, selector)
+        try:
+            yield
+        except BaseException as error:
+            try:
+                after = _submit_state(page, selector)
+            except PlaywrightError as problem:
+                # A closed or crashed page must not mask the step's own error.
+                after = {"unavailable": _first_line(problem)}
+            test = os.environ["PYTEST_CURRENT_TEST"].split("::")[-1].split(" ")[0]
+            folder = Path(os.environ["CLINIC_RENEWAL_ARTIFACT_ROOT"]) / "workspace"
+            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+            destination = folder / f"submit-diagnostics-{test}.json"
+            report = {
+                "error": _first_line(error),
+                "selector": selector,
+                "elapsed": recorder.elapsed(),
+                "before": before,
+                "after": after,
+                "events": recorder.events,
+            }
+            destination.write_text(json.dumps(report, indent=2) + "\n")
+            destination.chmod(0o600)
+            raise
+    finally:
+        recorder.detach()
+
+
 def _submit(page: Page, selector: str) -> None:
-    with page.expect_response(
-        lambda response: response.request.method == "POST"
-    ) as received:
+    with (
+        _submit_diagnostics(page, selector),
+        page.expect_response(
+            lambda response: response.request.method == "POST"
+        ) as received,
+    ):
         page.locator(selector).click()
     assert received.value.status in {200, 204, 302, 303}
 
 
 def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
     page.goto(f"{base_url}/auth/login/")
+    wait_for_js(page, FIELD_WATCH_JS)
     expect(page.locator(".nav-list")).to_have_count(0)  # authentication stays focused
     expect(page.locator(".nav-brand .nav-wordmark")).to_have_text("Clinic Ops")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(username)
     page.locator("#id_password").fill(password)
     _submit(page, "button[type=submit]")

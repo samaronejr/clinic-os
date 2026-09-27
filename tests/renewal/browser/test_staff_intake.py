@@ -27,7 +27,7 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext, ngettext
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import wait_for_js
+from renewal.browser._page_wait import await_autofocus, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import assert_only_refused_document_logged, new_context
 
@@ -339,6 +339,7 @@ def _search_in_flight(
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
     page.goto(f"{base_url}/auth/login/")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
     with page.expect_navigation():
@@ -616,6 +617,8 @@ def test_native_post_completes_find_and_register_without_javascript(
         # Without scripts the browser owns the focus move: the status is the
         # document's only autofocus candidate and is programmatically focusable.
         _assert_autofocus_target(page, "patient-results-status")
+        # WebKit may apply it only after load; the next fill must not race it.
+        await_autofocus(page.locator(STATUS))
         assert _no_overflow(page)
         _capture(page, renewal_artifact_root, "native-results-768", full_page=False)
 
