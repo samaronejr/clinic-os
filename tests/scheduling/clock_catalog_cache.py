@@ -26,6 +26,8 @@ CACHE_STATS = {"builds": 0, "hits": 0}
 # ANALYZE counters are not SQL expression semantics and change during test flush.
 # Uncontrolled procedures need no record reconstruction. Canonical byte ordering
 # avoids locale comparisons of long expression trees without omitting any row.
+# A stale true hint is harmless; false must not hide existing objects. PostgreSQL
+# 16 also needs relhasrules for a view's _RETURN rule to expand a SELECT.
 CATALOG_VERSION = """
 WITH ns AS (
  SELECT oid FROM pg_namespace
@@ -40,7 +42,17 @@ WITH ns AS (
  FROM pg_proc p JOIN ns ON ns.oid=p.pronamespace LEFT JOIN overrides o ON o.oid=p.oid
  UNION ALL SELECT 'class',ROW(whole.*)::text
  FROM pg_class c JOIN ns ON ns.oid=c.relnamespace
- CROSS JOIN LATERAL jsonb_populate_record(c,'__CLASS_PHYSICAL__'::jsonb) whole
+ CROSS JOIN LATERAL jsonb_populate_record(c,'__CLASS_PHYSICAL__'::jsonb ||
+ jsonb_build_object(
+ 'relhastriggers',
+ c.relhastriggers OR NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid=c.oid),
+ 'relhasindex',
+ c.relhasindex OR NOT EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid=c.oid),
+ 'relhasrules',
+ c.relhasrules OR NOT EXISTS (SELECT 1 FROM pg_rewrite r WHERE r.ev_class=c.oid),
+ 'relhassubclass',
+ c.relhassubclass OR NOT EXISTS (SELECT 1 FROM pg_inherits h WHERE h.inhparent=c.oid)
+ )) whole
  UNION ALL SELECT 'attribute',ROW(whole.*)::text FROM pg_attribute a
  JOIN pg_class c ON c.oid=a.attrelid JOIN ns ON ns.oid=c.relnamespace
  CROSS JOIN LATERAL jsonb_populate_record(a,'__ATTRIBUTE_PHYSICAL__'::jsonb ||
