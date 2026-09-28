@@ -9,6 +9,7 @@ import psycopg
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import expect_document, goto_settled
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_agenda import (
@@ -81,7 +82,7 @@ def _ticket_replay(page: Page) -> None:
 
 
 def _degraded(page: Page, base_url: str, clinic_id: str, root: Path) -> None:
-    page.goto(base_url + f"/scheduling/clinics/{clinic_id}/agenda/")
+    goto_settled(page, base_url + f"/scheduling/clinics/{clinic_id}/agenda/")
     _connected(page)
     page.clock.install()
     assert page.request.post(base_url + "/_realtime-test/stop").status == 204
@@ -130,7 +131,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             _seed_enrollment(agenda_staff, name)
             b.set_viewport_size({"width": width, "height": 900})
             url = renewal_base_url + _agenda_path(agenda_staff, "day", day)
-            b.goto(url)
+            goto_settled(b, url)
             _connected(b)
             _open_booking(a, renewal_base_url, agenda_staff, name)
             _fill_booking(
@@ -139,7 +140,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             b.evaluate("window.rtStarted = performance.now()")
             with (
                 b.expect_response(url) as refetch,
-                a.expect_navigation(),
+                expect_document(a),
             ):
                 a.locator(BOOKING_SUBMIT).click()
             assert refetch.value.status == 200
@@ -166,7 +167,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
                 "WHERE clinic_id = %s AND user_id = %s",
                 [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
             )
-        a.goto(renewal_base_url + "/auth/logout/")
+        goto_settled(a, renewal_base_url + "/auth/logout/")
         with (
             b.expect_response(
                 lambda response: (
@@ -174,7 +175,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
                     and response.url.endswith("/rt/stream")
                 )
             ) as denied,
-            a.expect_navigation(),
+            expect_document(a),
         ):
             a.locator("form button[type=submit]").click()
         assert denied.value.status == 403

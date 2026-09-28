@@ -32,6 +32,13 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_access_code, new_password
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
@@ -74,14 +81,14 @@ def access_staff(renewal_base_url: str) -> dict[str, str]:
     """Seed a clinic-A receptionist, enrolled patients and an expired grant."""
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
         "receptionist": f"recepcao-{uuid4().hex[:8]}",
         "receptionist_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
-        "expired_code": secrets.token_urlsafe(32),
+        "password": new_password(),
+        "expired_code": new_access_code(),
     }
     registry = [
         (values["clinic_a"], PATIENT_A, "1990-05-17"),
@@ -282,19 +289,18 @@ def _ring(page: Page) -> dict[str, str]:
 
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
-    page.wait_for_url("**/auth/protected/")
+    click_to_navigate(page.locator("button[type=submit]"))
+    wait_for_signed_in(page)
 
 
 def _open_access(page: Page, base_url: str, staff: dict[str, str], name: str) -> None:
     """Search the patient and open the access screen through the row action."""
     patients = f"/intake/clinics/{staff['clinic_a']}/patients/"
-    page.goto(f"{base_url}{patients}")
+    goto_settled(page, f"{base_url}{patients}")
     page.locator("#id_q").fill(name)
     with page.expect_response(
         lambda response: response.request.method == "POST"
@@ -303,15 +309,15 @@ def _open_access(page: Page, base_url: str, staff: dict[str, str], name: str) ->
     assert received.value.status == OK
     wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
-    with page.expect_navigation():
-        row.locator("button", has_text=gettext("Access")).click()
+    click_to_navigate(row.locator("button", has_text=gettext("Access")))
     expect(page.locator("h1")).to_have_text(gettext("Patient access"))
 
 
 def _issue_code(page: Page) -> str:
     """Issue one invitation through the staff screen and read the code."""
-    with page.expect_navigation():
-        page.locator("button", has_text=gettext("Issue a new invitation")).click()
+    click_to_navigate(
+        page.locator("button", has_text=gettext("Issue a new invitation"))
+    )
     code = page.locator("#issued-code").inner_text()
     assert code
     return code
@@ -319,10 +325,9 @@ def _issue_code(page: Page) -> str:
 
 def _redeem(page: Page, base_url: str, clinic_id: str, code: str) -> None:
     """Submit one code through the real redemption form."""
-    page.goto(f"{base_url}/patient/access/{clinic_id}/")
+    goto_settled(page, f"{base_url}/patient/access/{clinic_id}/")
     page.locator("#id_code").fill(code)
-    with page.expect_navigation():
-        page.locator("button", has_text=gettext("Continue")).click()
+    click_to_navigate(page.locator("button", has_text=gettext("Continue")))
 
 
 def _patient_journey(  # noqa: PLR0913 - the journey needs its full context
@@ -354,12 +359,11 @@ def _patient_journey(  # noqa: PLR0913 - the journey needs its full context
     _capture(patient, root, f"patient-home-{width}")
 
     # Sign out ends the session server-side and shows the gate.
-    with patient.expect_navigation():
-        patient.locator("button", has_text=gettext("Sign out")).click()
+    click_to_navigate(patient.locator("button", has_text=gettext("Sign out")))
     expect(patient.locator("h1")).to_have_text(gettext("You are signed out"))
     _capture(patient, root, f"patient-signed-out-{width}")
 
-    denied = patient.goto(f"{base_url}/patient/")
+    denied = goto_settled(patient, f"{base_url}/patient/")
     assert denied is not None
     assert denied.status == FORBIDDEN
     expect(patient.locator("h1")).to_have_text(gettext("Access required"))
@@ -437,7 +441,7 @@ def _forged_context_binds_the_grant(  # noqa: PLR0913 - full scene context
     root: Path,
 ) -> None:
     """Post forged context fields; the session still binds the grant."""
-    patient.goto(f"{base_url}/patient/access/{staff['clinic_a']}/")
+    goto_settled(patient, f"{base_url}/patient/access/{staff['clinic_a']}/")
     token = patient.locator("input[name=csrfmiddlewaretoken]").get_attribute("value")
     assert token
     forged = patient.request.post(
@@ -452,7 +456,7 @@ def _forged_context_binds_the_grant(  # noqa: PLR0913 - full scene context
         },
     )
     assert forged.status == FOUND
-    home = patient.goto(f"{base_url}/patient/")
+    home = goto_settled(patient, f"{base_url}/patient/")
     assert home is not None
     assert home.status == OK
     expect(patient.locator("#patient-name")).to_have_text(PATIENT_A)
@@ -461,8 +465,8 @@ def _forged_context_binds_the_grant(  # noqa: PLR0913 - full scene context
     _capture(patient, root, f"patient-bound-enrollment-{width}")
 
     # The patient session cannot open staff surfaces.
-    staff_denied = patient.goto(
-        f"{base_url}/intake/clinics/{staff['clinic_a']}/patients/"
+    staff_denied = goto_settled(
+        patient, f"{base_url}/intake/clinics/{staff['clinic_a']}/patients/"
     )
     assert staff_denied is not None
     assert staff_denied.status == FORBIDDEN
@@ -526,8 +530,9 @@ def test_failure_states_reject_and_stay_generic(
 
         # Staff revocation ends the live session immediately.
         _open_access(page, renewal_base_url, access_staff, PATIENT_A)
-        with page.expect_navigation():
-            page.locator("button", has_text=gettext("Revoke access")).first.click()
+        click_to_navigate(
+            page.locator("button", has_text=gettext("Revoke access")).first
+        )
         expect(page.locator(".feedback--success")).to_contain_text(
             gettext(
                 "Patient access revoked. The invitation and its sessions no "
@@ -536,7 +541,7 @@ def test_failure_states_reject_and_stay_generic(
         )
         _capture(page, root, f"access-revoked-{width}")
 
-        revoked = patient.goto(f"{renewal_base_url}/patient/")
+        revoked = goto_settled(patient, f"{renewal_base_url}/patient/")
         assert revoked is not None
         assert revoked.status == FORBIDDEN
         expect(patient.locator("h1")).to_have_text(gettext("Access required"))
@@ -598,8 +603,7 @@ def test_native_post_completes_the_journey_without_javascript(
             _redeem(patient, renewal_base_url, access_staff["clinic_a"], code)
             patient.wait_for_url("**/patient/")
             expect(patient.locator("#patient-name")).to_have_text(PATIENT_A)
-            with patient.expect_navigation():
-                patient.locator("button", has_text=gettext("Sign out")).click()
+            click_to_navigate(patient.locator("button", has_text=gettext("Sign out")))
             expect(patient.locator("h1")).to_have_text(gettext("You are signed out"))
             assert _no_overflow(patient)
             _capture(patient, renewal_artifact_root, "native-journey-768")
@@ -666,7 +670,7 @@ def test_keyboard_reaches_and_activates_issue_redeem_and_sign_out(
         )
         focused: list[str] = []
         _tab_until(page, issue_button, focused)
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator(".access-issued")).to_contain_text(
             gettext("Invitation code")
@@ -683,22 +687,23 @@ def test_keyboard_reaches_and_activates_issue_redeem_and_sign_out(
         patient.set_default_timeout(20_000)
         patient_errors = _watch_errors(patient)
         try:
-            patient.goto(
-                f"{renewal_base_url}/patient/access/{access_staff['clinic_a']}/"
+            goto_settled(
+                patient,
+                f"{renewal_base_url}/patient/access/{access_staff['clinic_a']}/",
             )
             focused = []
             _tab_until(patient, patient.locator("#id_code"), focused)
             patient.keyboard.type(code)
             continue_button = patient.locator("button", has_text=gettext("Continue"))
             _tab_until(patient, continue_button, focused)
-            with patient.expect_navigation():
+            with expect_document(patient):
                 patient.keyboard.press("Enter")
             patient.wait_for_url("**/patient/")
             expect(patient.locator("#patient-name")).to_have_text(PATIENT_A)
 
             sign_out = patient.locator("button", has_text=gettext("Sign out"))
             _tab_until(patient, sign_out, focused)
-            with patient.expect_navigation():
+            with expect_document(patient):
                 patient.keyboard.press("Enter")
             expect(patient.locator("h1")).to_have_text(gettext("You are signed out"))
             _capture(patient, renewal_artifact_root, "keyboard-signed-out-1280")

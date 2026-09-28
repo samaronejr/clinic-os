@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from renewal.browser._fixture_secrets import FixtureSecret
+
 if TYPE_CHECKING:
     import psycopg
 
@@ -25,7 +27,9 @@ KEK_SECRET_FILE = "tenant-kek.secret"  # noqa: S105 - a file name, not a secret
 def kek() -> str:
     """Return the run's synthetic tenant KEK from the runner secret store."""
     secret_dir = Path(os.environ["CLINIC_SECRET_DIR"])
-    return (secret_dir / KEK_SECRET_FILE).read_text(encoding="ascii").strip()
+    return FixtureSecret(
+        (secret_dir / KEK_SECRET_FILE).read_text(encoding="ascii").strip()
+    )
 
 
 def encrypt(conn: psycopg.Connection[Any], purpose: str, plaintext: bytes) -> bytes:

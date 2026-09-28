@@ -24,6 +24,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -212,7 +213,7 @@ def _fail_room(case: _Case, session_id: str) -> None:
 
 def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     session_id = _create_session(physician, case.staff_url)
     _worker(_room_operation(case.staff, session_id), "sent", case.root)
     return session_id
@@ -231,9 +232,10 @@ def _htmx(page: Page, selector: str, status: int = OK) -> None:
 
 def _enter(physician: Page, case: _Case, session_id: str, name: str) -> None:
     """Join from the session list and land in the workspace for this patient."""
-    physician.goto(case.staff_url)
-    with physician.expect_navigation():
-        physician.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    goto_settled(physician, case.staff_url)
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
     assert physician.url == case.staff_url
     root = physician.locator("[data-teleconsult='clinician']")
     expect(root).to_have_attribute("data-session", session_id)
@@ -394,14 +396,14 @@ def _finalize_with_step_up(
 ) -> None:
     """A stale session device denies finalize until the real challenge passes."""
     key = swap_totp_device(case.staff)
-    with physician.expect_navigation(url=re.compile(r"/auth/verify/")):
-        physician.locator("[data-finalize]").click()
+    click_to_navigate(
+        physician.locator("[data-finalize]"), url=re.compile(r"/auth/verify/")
+    )
     assert stored_versions(case.staff, encounter)[0][1] == "draft"
     _capture(physician, case, "finalize-step-up")
     token = TOTP(bytes.fromhex(key), 30, 0, 6, 0).token()
     physician.locator("#id_otp_token").fill(f"{token:06d}")
-    with physician.expect_navigation():
-        physician.locator("button[type=submit]").click()
+    click_to_navigate(physician.locator("button[type=submit]"))
     physician.wait_for_url(case.staff_url)
     _enter(physician, case, session_id, name)
     _show(physician, case, "notes")
@@ -555,8 +557,7 @@ def _leave_guard(physician: Page, case: _Case, version: str) -> None:
     expect(guard).to_be_hidden()
     expect(physician.locator("#id_subjective")).to_be_focused()
     physician.locator("[data-leave-room]").click()
-    with physician.expect_navigation():
-        physician.locator("[data-leave-discard]").click()
+    click_to_navigate(physician.locator("[data-leave-discard]"))
     expect(physician.locator("#teleconsult-title")).to_have_text("Teleconsulta")
     assert stored(case.staff, version) == (3, "Relato retificado offline")
 
@@ -656,8 +657,7 @@ def _close_with_unsaved(physician: Page, case: _Case, version: str) -> None:
         dialog.accept()
 
     physician.once("dialog", accept)
-    with physician.expect_navigation():
-        physician.locator(".nav-brand").click()
+    click_to_navigate(physician.locator(".nav-brand"))
     assert seen == ["beforeunload"]
     assert stored(case.staff, version) == (2, "Segundo paciente, texto não salvo")
 
@@ -688,9 +688,10 @@ def _reflow(physician: Page, case: _Case, session_id: str, name: str) -> None:
 def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) -> None:
     """The clinician room connects and follows the session while the prompt is open."""
     _sign_in_physician(prompted, case.base, case.staff)
-    prompted.goto(case.staff_url)
-    with prompted.expect_navigation():
-        prompted.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    goto_settled(prompted, case.staff_url)
+    click_to_navigate(
+        prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
     expect(prompted.locator("[data-teleconsult='clinician']")).to_have_attribute(
         "data-session", session_id
     )
@@ -723,11 +724,10 @@ def _journey(  # noqa: PLR0913 - the journey needs its full context
     second_session = _provision(physician, case, second)
     first_encounter = _encounter_of(case, first_session)
     second_encounter = _encounter_of(case, second_session)
-    patient.goto(case.patient_url)
-    with patient.expect_navigation():
-        patient.locator(
-            f'[data-session="{first_session}"] button[value="join"]'
-        ).click()
+    goto_settled(patient, case.patient_url)
+    click_to_navigate(
+        patient.locator(f'[data-session="{first_session}"] button[value="join"]')
+    )
     expect(patient.locator("#room-panel")).to_have_attribute("data-role", "patient")
     _enter(physician, case, first_session, first["name"])
     _capture(physician, case, "joined")
@@ -1045,8 +1045,7 @@ def _guarded_record(
     expect(physician.locator("#id_subjective")).to_be_focused()
     physician.locator("[data-open-record]").click()
     expect(guard).to_be_visible()
-    with physician.expect_navigation(url=_record_url(case)):
-        physician.locator("[data-leave-discard]").click()
+    click_to_navigate(physician.locator("[data-leave-discard]"), url=_record_url(case))
     _expect_record(physician, first["name"], second)
     expect(physician.locator("#id_subjective")).to_have_value(REJECTED_LATE)
     assert PENDING_PLAN not in physician.content()
@@ -1075,15 +1074,13 @@ def _interleaved_record(
             return
         response = route.fetch(max_redirects=0)
         held.append(response.status)
-        with other.expect_navigation(url=record_url):
-            other.locator("[data-open-record]").click()
+        click_to_navigate(other.locator("[data-open-record]"), url=record_url)
         _expect_record(other, second, first)
         route.fulfill(response=response)
 
     physician.route(record_url, hold)
     try:
-        with physician.expect_navigation(url=record_url):
-            physician.locator("[data-open-record]").click()
+        click_to_navigate(physician.locator("[data-open-record]"), url=record_url)
     finally:
         physician.unroute(record_url, hold)
     assert held == [OK]
@@ -1142,13 +1139,13 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
     encounter: str,
 ) -> None:
     """Without JavaScript, start and end carry the typed draft back as unsaved."""
-    native.goto(case.staff_url)
-    with native.expect_navigation():
-        native.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    goto_settled(native, case.staff_url)
+    click_to_navigate(
+        native.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
     expect(native.locator("h1")).to_have_text(name)
     native.locator("#template-id").select_option(template)
-    with native.expect_navigation():
-        native.locator('button[value="note-template"]').click()
+    click_to_navigate(native.locator('button[value="note-template"]'))
     notes = native.locator("#notes-panel")
     expect(notes).to_have_attribute("data-state", "draft")
     version = notes.get_attribute("data-version")
@@ -1157,15 +1154,13 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
         "form", "soap-form"
     )
     native.locator("#id_subjective").fill(NATIVE["subjective"])
-    with native.expect_navigation():
-        native.locator('button[value="start"]').click()
+    click_to_navigate(native.locator('button[value="start"]'))
     expect(native.locator("#video-session")).to_have_attribute("data-state", "active")
     expect(native.locator("#id_subjective")).to_have_value(NATIVE["subjective"])
     expect(native.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     assert stored(case.staff, version) == (1, "")
     native.locator("#id_objective").fill(NATIVE["objective"])
-    with native.expect_navigation():
-        native.locator('button[value="end"]').click()
+    click_to_navigate(native.locator('button[value="end"]'))
     expect(native.locator("#video-session")).to_have_attribute("data-state", "ended")
     expect(native.locator("[data-session-notice]")).to_be_visible()
     expect(native.locator("#id_subjective")).to_have_value(NATIVE["subjective"])
@@ -1175,8 +1170,7 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
     assert stored(case.staff, version) == (1, "")
     assert stored_encounter(case.staff, encounter) == "open"
     _capture(native, case, "native-end-unsaved")
-    with native.expect_navigation():
-        native.locator('button[value="note-save"]').click()
+    click_to_navigate(native.locator('button[value="note-save"]'))
     expect(native.locator("#save-state")).to_have_attribute("data-state", "saved")
     assert stored(case.staff, version) == (2, NATIVE["subjective"])
     _capture(native, case, "native-end-saved")

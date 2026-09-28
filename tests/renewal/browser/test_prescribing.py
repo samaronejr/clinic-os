@@ -29,6 +29,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
@@ -146,10 +147,11 @@ def post_callback(
 
 def author_and_render(page: Page, base: str, staff: dict[str, str], day: str) -> str:
     """Author one draft from the encounter and freeze it into a document."""
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
-    with page.expect_navigation():
-        page.get_by_role("button", name="Prescrição sintética").click()
+    click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
     press(page, "create")
     for field, value in ITEM.items():
         page.locator(f"#id_items-0-{field}").fill(value)
@@ -187,7 +189,7 @@ def press_once(page: Page, form: str, action: str, root: Path, width: int) -> No
     expect(page.locator(f"{form} [data-once-status]")).to_be_visible()
     capture(page, root, "submit-feedback", width)
     # The disabled look is feedback only; the page reloads and still signs.
-    page.reload()
+    reload_settled(page)
     expect(page.locator(f"{form} button[value='{action}']")).to_be_enabled()
 
 
@@ -269,7 +271,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
     draft_url = f"{base}/prescription/clinics/{staff['clinic_a']}/draft/"
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(draft_url)
+        goto_settled(page, draft_url)
         capture(page, root, "author-empty", width)
         document = author_and_render(page, base, staff, DAYS[width])
         review_url = page.url
@@ -306,7 +308,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
 
         # Result: verified rehearsal, named as synthetic, with its evidence.
         post_callback(page, base, staff, document)
-        page.goto(signing_url)
+        goto_settled(page, signing_url)
         expect(page.locator("[data-state]")).to_have_attribute(
             "data-state", "rehearsal_complete"
         )
@@ -322,8 +324,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         # Follow the actual result return link to the document's workspace.
         encounter = page.locator("[data-subject]").get_attribute("data-subject")
         assert encounter
-        with page.expect_navigation():
-            page.locator('a[href$="/draft/"]').click()
+        click_to_navigate(page.locator('a[href$="/draft/"]'))
         expect(page.locator("[data-subject]")).to_have_attribute(
             "data-subject", encounter
         )
@@ -340,8 +341,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
             "data-encounter", encounter
         )
         capture(page, root, "returned-encounter", width)
-        with page.expect_navigation():
-            page.get_by_role("button", name="Prescrição sintética").click()
+        click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
         expect(page.locator("[data-subject]")).to_have_attribute(
             "data-subject", encounter
         )
@@ -353,8 +353,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         assert page.locator('button[value="render_document"]').count() == 0
         expect(row.locator('button[value="release_document"]')).to_be_visible()
         capture(page, root, "history-discarded", width)
-        with page.expect_navigation():
-            row.locator('a[href*="/signing/"]').click()
+        click_to_navigate(row.locator('a[href*="/signing/"]'))
         assert page.url == signing_url
         expect(page.locator('[data-evidence="content_digest"]')).to_contain_text(digest)
         with page.expect_download() as download:
@@ -369,7 +368,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         )
         try:
             public = anonymous.new_page()
-            response = public.goto(f"{base}/prescription/verify/{handle}/")
+            response = goto_settled(public, f"{base}/prescription/verify/{handle}/")
             assert response is not None
             assert response.status == 200
             # ``rehearsal_complete`` is the synthetic verdict; ``issued`` is
@@ -383,7 +382,7 @@ def test_prescribing_journey(  # noqa: PLR0915 - one linear clinician journey
         finally:
             anonymous.close()
 
-        page.goto(review_url)
+        goto_settled(page, review_url)
         expect(page.locator("[data-signature]")).to_have_attribute(
             "data-signature", "complete"
         )
@@ -442,13 +441,13 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         assert len({location for _, location in results}) == 1
         assert operations(staff, document) == [("signing", "")]
         signing_url = f"{base}{results[0][1]}"
-        page.goto(signing_url)
+        goto_settled(page, signing_url)
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "signing")
         capture(page, root, "double-submit-single-operation", 1280)
 
         # A provider-reported failure is terminal, named, and recoverable.
         post_callback(page, base, staff, document, signed=False)
-        page.goto(signing_url)
+        goto_settled(page, signing_url)
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "failed")
         expect(page.locator("[data-failure]")).to_have_attribute(
             "data-failure", "provider_reported"
@@ -473,14 +472,14 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         ]
 
         post_callback(page, base, staff, document)
-        page.goto(retry_url)
+        goto_settled(page, retry_url)
         expect(page.locator("[data-state]")).to_have_attribute(
             "data-state", "rehearsal_complete"
         )
         # The failed attempt is retained verbatim next to the completed one,
         # and its stale page points at the current attempt instead of offering
         # a restart that could only fail.
-        page.goto(signing_url)
+        goto_settled(page, signing_url)
         expect(page.locator("[data-state]")).to_have_attribute("data-state", "failed")
         expect(page.locator('[data-evidence="content_digest"]')).to_contain_text(digest)
         expect(page.locator('button[value="restart_signature"]')).to_have_count(0)
@@ -501,8 +500,8 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
 
         # A draft that moved on never rewrites the frozen document.
         stale = context.new_page()
-        stale.goto(draft_url)
-        page.goto(draft_url)
+        goto_settled(stale, draft_url)
+        goto_settled(page, draft_url)
         page.locator("#id_items-0-dose").fill("Dose alterada depois da renderização")
         press_in_view(page, "save")
         expect(page.locator("[data-draft]")).to_have_attribute("data-version", "3")
@@ -519,7 +518,7 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
         capture(stale, root, "stale-render-conflict", 1280)
         stale.close()
 
-        page.goto(review_url)
+        goto_settled(page, review_url)
         expect(page.locator("[data-stale]")).to_have_attribute("data-stale", "true")
         assert page.locator('[data-field="dose"]').first.text_content() == ITEM["dose"]
         expect(page.locator("[data-digest]")).to_have_attribute("data-digest", digest)
@@ -527,7 +526,7 @@ def test_prescribing_recovery_double_submit_and_stale_draft(  # noqa: PLR0915 - 
 
         # A precondition the physician can act on is named, not refused: the
         # released document has no verified patient destination yet.
-        page.goto(draft_url)
+        goto_settled(page, draft_url)
         press_in_view(page, "release_document")
         with page.expect_response(
             lambda response: response.request.method == "POST"

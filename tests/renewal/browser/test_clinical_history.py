@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import click_when_hittable, evaluate_js
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    reload_settled,
+)
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import (
     browser_zoom_200,
     element_box,
@@ -39,10 +45,10 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 
 
 def edit(page: Page, kind: str, action: str) -> None:
-    with page.expect_navigation():
-        click_when_hittable(
-            page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first
-        )
+    click_to_navigate(
+        page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first,
+        hittable=True,
+    )
 
 
 def save(page: Page, expected_status: int = 302) -> None:
@@ -76,7 +82,7 @@ def record_and_revise(page: Page, root: Path, kind: str, width: int) -> None:
     edit(page, kind, "edit")
     stale = page.context.new_page()
     # A second editor submits its own bound revision, not mutable session selection.
-    stale.goto(page.url)
+    goto_settled(stale, page.url)
     edit(stale, kind, "edit")
     page.locator("#id_description").fill(f"{kind} sintético corrigido")
     page.locator("#id_reason").fill("Correção sintética")
@@ -94,7 +100,7 @@ def record_and_revise(page: Page, root: Path, kind: str, width: int) -> None:
     page.locator("#id_status").select_option("resolved")
     page.locator("#id_reason").fill("Resolução sintética")
     save(page)
-    page.reload()
+    reload_settled(page)
     expect(section.locator("[data-entry]")).to_have_attribute("data-status", "resolved")
     expect(section).to_have_attribute("data-state", "documented")
     section.locator("summary").click()
@@ -120,7 +126,7 @@ def denied(
     try:
         other = context.new_page()
         _sign_in_receptionist(other, base, staff)
-        response = other.goto(page.url)
+        response = goto_settled(other, page.url)
         assert response is not None
         assert response.status == 403
         assert "sintético corrigido" not in other.content()
@@ -138,7 +144,9 @@ def denied(
         assert post_response.status == 403
         assert "sintético corrigido" not in post_response.text()
         # Render the actual denied navigation, not a mocked response.
-        response_page = page.goto(f"{base}/ehr/clinics/{staff['clinic_b']}/history/")
+        response_page = goto_settled(
+            page, f"{base}/ehr/clinics/{staff['clinic_b']}/history/"
+        )
         assert response_page is not None
         assert response_page.status == 403
         capture(page, root, "other-clinic-denied", width)
@@ -166,7 +174,7 @@ def reflow(page: Page, root: Path) -> None:
     )
     try:
         native = context.new_page()
-        native.goto(page.url)
+        goto_settled(native, page.url)
         edit(native, "problem", "new")
         native.locator("#id_description").fill("L" * 1000)
         native.locator("#id_reason").fill("Registro sem JavaScript")
@@ -260,7 +268,7 @@ def zoom_journey(page: Page, root: Path) -> None:
                 else None
             ),
         )
-        zoomed.goto(page.url)
+        goto_settled(zoomed, page.url)
         metrics = zoom_metrics(zoomed)
         assert baseline["inner_width"] == 1280
         assert baseline["device_pixel_ratio"] == 1
@@ -276,10 +284,10 @@ def zoom_journey(page: Page, root: Path) -> None:
             zoomed.locator("#id_reason").fill("Correção com zoom do navegador")
             checks[kind] = accessibility_checks(zoomed)
             capture_zoom(zoomed, root, f"zoom-200-{kind}-editor")
-            with zoomed.expect_navigation():
+            with expect_document(zoomed):
                 zoomed.keyboard.press("Enter")
             expect(zoomed.locator('[data-save-state="saved"]')).to_be_visible()
-            zoomed.reload()
+            reload_settled(zoomed)
             section = zoomed.locator(f'[data-kind="{kind}"]')
             expect(section.locator("[data-entry] h3")).to_have_text(
                 f"{kind} corrigido em zoom 200%"
@@ -334,14 +342,14 @@ def test_clinical_history_journey(
     page.on("pageerror", lambda error: errors.append(str(error)))
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(f"{base}/ehr/clinics/{staff['clinic_a']}/history/")
+        goto_settled(page, f"{base}/ehr/clinics/{staff['clinic_a']}/history/")
         capture(page, root, "empty", width)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/",
         )
         press(page, "open")
-        with page.expect_navigation():
-            page.get_by_role("button", name="Problemas e alergias").click()
+        click_to_navigate(page.get_by_role("button", name="Problemas e alergias"))
         capture(page, root, "not-assessed", width)
         for kind in ("problem", "allergy"):
             record_and_revise(page, root, kind, width)

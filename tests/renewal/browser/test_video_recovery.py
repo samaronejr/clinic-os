@@ -14,6 +14,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import (
     full_page_screenshot,
@@ -271,17 +272,17 @@ def begin(
     _accept_consent(patient, case.base)
     capture(patient, case, "consent-accepted")
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     session = _create_session(physician, case.staff_url)
     _worker(_room_operation(case.staff, session), "sent", case.root)
     template = _seed_template(case)
-    patient.goto(case.patient_url)
+    goto_settled(patient, case.patient_url)
     device_recovery(patient, case)
-    with patient.expect_navigation():
-        patient.locator('button[value="join"]').click()
-    physician.goto(case.staff_url)
-    with physician.expect_navigation():
-        physician.locator(f'[data-session="{session}"] button[value="join"]').click()
+    click_to_navigate(patient.locator('button[value="join"]'))
+    goto_settled(physician, case.staff_url)
+    click_to_navigate(
+        physician.locator(f'[data-session="{session}"] button[value="join"]')
+    )
     for page in (patient, physician):
         expect(page.locator("#room-panel")).to_have_attribute(
             "data-connection", "connected"
