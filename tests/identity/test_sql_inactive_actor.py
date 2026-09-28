@@ -27,6 +27,7 @@ from sqlparse import tokens
 
 from identity.authority_sql import _tokenize, references
 from identity.permission_support import owner_context
+from identity.test_sql_inactive_scheduling import BRANCH_CERTIFIED
 from patient_service_support import runtime_role
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
@@ -331,7 +332,11 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
 def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
-    assert own == set(PROBES)
+    # Own-clause readers are executed either by one probe here or, where the
+    # is_active clause filters the listed or booked professional rather than
+    # the actor, per derived OR branch in test_sql_inactive_scheduling.
+    assert not set(PROBES) & BRANCH_CERTIFIED
+    assert own == set(PROBES) | BRANCH_CERTIFIED
     assert set(readers) - own - delegating == set(JUSTIFIED)
     # Every derived delegator is executed below; a new one needs a probe.
     assert set(DELEGATE_PROBES) | set(GUARD_PROBES) == delegating
