@@ -41,6 +41,10 @@ REFUSAL_OBSERVER: pytest.StashKey[RefusalObserver] = pytest.StashKey()
 REFUSAL_INTEGRITY: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
 REFUSAL_SESSION_ERRORS: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
 REFUSAL_BEFORE: pytest.StashKey[int] = pytest.StashKey()
+REFUSAL_COUNTS: pytest.StashKey[tuple[int, int, int]] = pytest.StashKey()
+REFUSAL_SEAL: pytest.StashKey[tuple[tuple[str, object, str, object], ...]] = (
+    pytest.StashKey()
+)
 TAMPERING_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 REFUSAL_ISSUES: pytest.StashKey[list[str]] = pytest.StashKey()
 REFUSAL_FAILED: pytest.StashKey[bool] = pytest.StashKey()
@@ -84,12 +88,16 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     # Bound before tests run: later class patches cannot replace the checks.
     session.config.stash[REFUSAL_INTEGRITY] = observer.integrity_errors
     session.config.stash[REFUSAL_SESSION_ERRORS] = observer.session_errors
+    # The verifier's own code and recorded state are held here, outside the
+    # observer, so rewriting or emptying them cannot make it report nothing.
+    session.config.stash[REFUSAL_SEAL] = observer.seal()
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item: pytest.Item) -> None:
     observer = item.config.stash[REFUSAL_OBSERVER]
     item.stash[REFUSAL_BEFORE] = observer.stats.violations
+    item.stash[REFUSAL_COUNTS] = observer.counters()
     item.stash[TAMPERING_BEFORE] = len(observer.tampering)
     item.stash[REFUSAL_ISSUES] = []
     item.stash[REFUSAL_FAILED] = False
@@ -97,7 +105,13 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 def _check_observer(item: pytest.Item) -> None:
     observer = item.config.stash[REFUSAL_OBSERVER]
-    errors = item.config.stash[REFUSAL_INTEGRITY]()
+    errors = [
+        f"Refusal guard root changed: {label}"
+        for label, holder, name, value in item.config.stash[REFUSAL_SEAL]
+        if getattr(holder, name, None) is not value
+    ]
+    errors.extend(item.config.stash[REFUSAL_INTEGRITY]())
+    errors.extend(observer.count_errors(item.stash[REFUSAL_COUNTS]))
     item.stash[REFUSAL_ISSUES].extend(errors)
     observer.tampering.extend(errors)
 

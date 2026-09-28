@@ -113,7 +113,12 @@ def _function_globals(function: object) -> frozenset[str]:
 
 
 def bind_refusal_check() -> tuple[RefusalCheck, dict[str, tuple[object, str, object]]]:
-    """Freeze the guard's code and every module global it reads at install time."""
+    """Freeze the guard's code and every module global it reads at install time.
+
+    The namespace is a plain dict (CPython requires one for ``__globals__``);
+    the observer records its content and the functions' code, defaults and
+    closures, and fails any test that rewrites them.
+    """
     module = sys.modules[__name__]
     names = _function_globals(check_refusal) | _function_globals(workspace_scope)
     namespace: dict[str, object] = {"__builtins__": __builtins__}

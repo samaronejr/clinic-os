@@ -22,7 +22,86 @@ DEPENDENCY_PATCHES = {
     "scope-off": ("workspace_refusal_support", "workspace_scope", "lambda *a: False"),
     "resolve-off": ("workspace_refusal_support", "resolve", "lambda *a, **k: None"),
 }
-FAILING = {"write", "swallow", "unwrap", "disabled", "restored", *DEPENDENCY_PATCHES}
+# In-place rewrites of the frozen guard (round-8 reviewer), then ones that
+# reach the observer and name attributes dynamically, or also erase the record
+# or the verifier. These plugins live outside tests/, so the static guard
+# (test_workspace_guard_static.py) never sees them: the runtime check must.
+# Each maps to the fixture body and the guard failures it must name.
+_REACH = (
+    "    from conftest import REFUSAL_OBSERVER\n"
+    "    observer = request.config.stash[REFUSAL_OBSERVER]\n"
+)
+_DYNAMIC_REACH = (
+    "    import gc\n"
+    "    observer = next(o for o in gc.get_objects() "
+    "if type(o).__name__ == 'Refusal' + 'Observer')\n"
+)
+_DYNAMIC_CHECK_CODE = (
+    "    monkeypatch.setattr(getattr(observer, 'ch' + 'eck'), '__co' + 'de__', "
+    "(lambda *a: None).__code__)\n"
+)
+_REWRITTEN = "Refusal guard function rewritten: "
+_ROOT = "Refusal guard root changed: "
+_UNCHECKED = (
+    "Test client requests, evaluated and checked responses differ: "
+    "requests=1 evaluated=1 checked=0"
+)
+REWRITES = {
+    "frozen-check-code": (
+        _REACH + "    monkeypatch.setattr(observer.check, '__code__', "
+        "(lambda *a: None).__code__)\n",
+        (_REWRITTEN + "check_refusal.__code__", _UNCHECKED),
+    ),
+    "frozen-scope-code": (
+        _REACH
+        + "    monkeypatch.setattr(observer.check.__globals__['workspace_scope'], "
+        "'__code__', (lambda *a: False).__code__)\n",
+        (_REWRITTEN + "workspace_scope.__code__",),
+    ),
+    "frozen-namespace": (
+        _REACH + "    monkeypatch.setitem(observer.check.__globals__, "
+        "'workspace_scope', lambda *a: False)\n",
+        (
+            _REWRITTEN + "check_refusal.__globals__",
+            _REWRITTEN + "workspace_scope.__globals__",
+        ),
+    ),
+    "frozen-builtin": (
+        _REACH + "    monkeypatch.setitem(observer.check.__globals__, "
+        "'getattr', lambda *a: None)\n",
+        (
+            _REWRITTEN + "check_refusal.__globals__",
+            _REWRITTEN + "check_refusal.__builtins__",
+            _REWRITTEN + "workspace_scope.__globals__",
+        ),
+    ),
+    "dynamic-name": (
+        _DYNAMIC_REACH + _DYNAMIC_CHECK_CODE,
+        (_REWRITTEN + "check_refusal.__code__", _UNCHECKED),
+    ),
+    "erase-record": (
+        _DYNAMIC_REACH
+        + "    monkeypatch.setattr(observer, 'function_' + 'states', ())\n"
+        + _DYNAMIC_CHECK_CODE,
+        (_ROOT + "RefusalObserver.function_states", _UNCHECKED),
+    ),
+    "rewrite-verifier": (
+        _DYNAMIC_REACH
+        + "    states = getattr(observer, 'function_' + 'states')\n"
+        + "    monkeypatch.setattr(type(states[0]).changed, '__co' + 'de__', "
+        "(lambda self: []).__code__)\n" + _DYNAMIC_CHECK_CODE,
+        (_ROOT + "_FunctionState.changed.__code__", _UNCHECKED),
+    ),
+}
+FAILING = {
+    "write",
+    "swallow",
+    "unwrap",
+    "disabled",
+    "restored",
+    *DEPENDENCY_PATCHES,
+    *REWRITES,
+}
 
 
 @override_settings(
@@ -48,7 +127,7 @@ def test_guard_canary() -> None:
             with pytest.raises(pytest.fail.Exception):
                 client.get(root + "404/")
         return
-    if mode in {"write", "swallow", *DEPENDENCY_PATCHES}:
+    if mode in {"write", "swallow", *DEPENDENCY_PATCHES, *REWRITES}:
         if mode == "swallow":
             # An adversarial caller catches the immediate failure. The report
             # and session still have to fail from the latched violation.
@@ -65,6 +144,31 @@ def test_guard_canary() -> None:
         assert client.get(root + "404/").status_code == 404
 
 
+def _plant(mode: str) -> str:
+    """The plugin a mode loads; its autouse fixture is the planted bypass."""
+    fixture = "@pytest.fixture(autouse=True)\ndef bypass(monkeypatch, request):\n"
+    if mode == "unwrap":
+        return (
+            "from django.test import Client\n" + fixture + "    "
+            "monkeypatch.setattr(Client, 'request', Client.request.__wrapped__)\n"
+        )
+    if mode == "disabled":
+        return fixture + (
+            "    from workspace_refusal_observer import RefusalMiddleware\n"
+            "    monkeypatch.setattr(RefusalMiddleware, 'process_response', "
+            "lambda self, request, response: response)\n"
+        )
+    if mode in DEPENDENCY_PATCHES:
+        module, name, value = DEPENDENCY_PATCHES[mode]
+        return fixture + (
+            f"    import {module}\n"
+            f"    monkeypatch.setattr({module}, {name!r}, {value})\n"
+        )
+    if mode in REWRITES:
+        return fixture + REWRITES[mode][0]
+    return ""
+
+
 @pytest.mark.parametrize(
     "mode",
     [
@@ -75,6 +179,7 @@ def test_guard_canary() -> None:
         "disabled",
         "restored",
         *DEPENDENCY_PATCHES,
+        *REWRITES,
         "success-only",
         "no-client",
     ],
@@ -82,32 +187,7 @@ def test_guard_canary() -> None:
 def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -> None:
     with runtime_directory(tmp_path, purpose="observer") as directory:
         plugin = directory / "observer_plant.py"
-        source = "import pytest\n"
-        if mode == "unwrap":
-            source += (
-                "from django.test import Client\n"
-                "@pytest.fixture(autouse=True)\n"
-                "def bypass(monkeypatch):\n"
-                "    monkeypatch.setattr(Client, 'request', "
-                "Client.request.__wrapped__)\n"
-            )
-        if mode == "disabled":
-            source += (
-                "@pytest.fixture(autouse=True)\n"
-                "def bypass(monkeypatch):\n"
-                "    from workspace_refusal_observer import RefusalMiddleware\n"
-                "    monkeypatch.setattr(RefusalMiddleware, 'process_response', "
-                "lambda self, request, response: response)\n"
-            )
-        if mode in DEPENDENCY_PATCHES:
-            module, name, value = DEPENDENCY_PATCHES[mode]
-            source += (
-                "@pytest.fixture(autouse=True)\n"
-                "def bypass(monkeypatch):\n"
-                f"    import {module}\n"
-                f"    monkeypatch.setattr({module}, {name!r}, {value})\n"
-            )
-        plugin.write_text(source)
+        plugin.write_text("import pytest\n" + _plant(mode))
         with pytest.MonkeyPatch.context() as environment:
             environment.setenv("DJANGO_SETTINGS_MODULE", "config.settings.test")
             environment.setenv("WORKSPACE_GUARD_PROBE", mode)
@@ -160,6 +240,16 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
                 f"REFUSAL_GUARD_FAILURE Refusal guard dependency replaced: "
                 f"{module}.{name}"
             ) in lines
+    elif mode in REWRITES:
+        # The rewrite silences the check itself (a shadowed builtin leaves the
+        # cookie test standing); content integrity, the root seal and the
+        # per-test count still fail this test and name the cause.
+        assert stats["violations"] == int(mode == "frozen-builtin")
+        assert stats["client_requests"] == stats["evaluated_requests"] == 1
+        messages = REWRITES[mode][1]
+        assert stats["responses"] == int(_UNCHECKED not in messages)
+        for message in messages:
+            assert f"REFUSAL_GUARD_FAILURE {message}" in lines
     elif mode == "unwrap":
         # The wrapper was removed, but the actual response observer still ran.
         assert stats["responses"] == 2
