@@ -38,6 +38,7 @@ dev = [
   "pytest",
   "pytest-cov",
   "pytest-django",
+  "pytest-xdist>=3.8.0",
   "ruff",
   "basedpyright==1.39.9",
   "jsonschema>=4.26.0",

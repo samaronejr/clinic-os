@@ -1,0 +1,50 @@
+# Tests that `python -m ops.testing.ci_pytest` runs in its single-process
+# serial phase, after the xdist phase, on the unsuffixed test database.
+# Grammar: "<category> <node-id prefix>"; a prefix matches the node, its
+# children and its parametrizations, and must match at least one collected
+# test. Categories:
+#   server-state        commits cluster-global PostgreSQL state that other
+#                       workers' sessions see: roles, memberships,
+#                       role/database settings, databases, ALTER SYSTEM.
+#                       The parallel phase's server-state guard fails the run
+#                       when an unclassified test does this.
+#   worker-environment  depends on the single-process environment that an
+#                       xdist worker does not provide.
+#
+# Migrations that step back through tenancy.0006_runtime_pooling RESET and
+# re-SET clinic_app's cluster-wide role defaults (pg_db_role_setting), which
+# every fresh clinic_app session reads (serial guard audit, fix-a11).
+server-state tests/identity/test_active_tenant_actor.py::test_active_actor_migration_reverses_without_changing_membership_or_posture
+server-state tests/identity/test_identity_acl_migration.py::test_canonicalization_failure_aborts_before_any_update
+server-state tests/identity/test_identity_acl_migration.py::test_foundation_upgrade_canonicalizes_all_users_and_keeps_lowest_role
+server-state tests/identity/test_identity_acl_migration.py::test_identity_migration_reverses_and_reapplies
+server-state tests/infra/test_clinic_timezone_migration.py::test_failed_backfill_restores_role_and_gucs
+server-state tests/infra/test_clinic_timezone_migration.py::test_timezone_migration_reverses_reapplies_and_installs_named_check
+server-state tests/infra/test_clinic_timezone_migration.py::test_two_tenant_backfill_restores_role_and_gucs
+server-state tests/patients/test_intake_rls.py::test_intake_tables_are_fail_closed_with_exact_runtime_acls
+server-state tests/scheduling/test_scheduling_migrations.py::test_availability_migration_reverses_and_reapplies
+# Commits ALTER ROLE clinic_app BYPASSRLS / NOBYPASSRLS (pg_authid): every
+# worker's runtime role would bypass RLS in between.
+server-state tests/renewal/test_recovery.py::test_posture_rejects_role_and_acl_drift
+# Create and drop a scratch database (patients.test_intake_migrations
+# ._scratch_database, pg_database) that other workers observe mid-test.
+server-state tests/audit/test_audit_boundary_migration.py::test_boundary_migration_catalog_and_reverse_are_exact
+server-state tests/audit/test_phase1_audit_migration.py::test_v2_append_contract_is_reversible_metadata_only_and_chain_safe
+server-state tests/ehr/test_ehr_migrations.py::test_migrated_accented_soap_note_amends_and_finalizes
+server-state tests/patients/test_intake_migrations.py::test_populated_protected_migration_runs_on_real_schema
+# The guard's own positive probe commits a value-identical ALTER ROLE.
+server-state tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write
+# Asserts settings.DATABASES["locks"]["TEST"]["NAME"] is None; pytest-django's
+# xdist suffix sets it to test_<db>_gw<N> in a worker.
+worker-environment tests/realtime/test_pooling.py::test_runtime_aliases_disable_prepared_statements_and_implicit_transactions
+# Send SIGTERM to their own process and assert where the handler interrupted
+# the code under test. An xdist worker has execnet threads, so the kernel may
+# deliver the signal to another thread and the handler runs bytecodes later
+# (two failed in the fix-a11 xdist run; all seven share the mechanism).
+worker-environment tests/browser/test_browser_server_supervisor.py::test_start_master_reaps_the_spawn_when_the_handoff_is_interrupted
+worker-environment tests/browser/test_browser_server_supervisor.py::test_start_master_reaps_when_signaled_after_ownership_is_published
+worker-environment tests/browser/test_browser_server_supervisor.py::test_start_master_reaps_when_signaled_before_the_spawn_returns
+worker-environment tests/browser/test_browser_server_supervisor.py::test_start_master_without_cleanup_leaves_the_spawn_alive
+worker-environment tests/renewal/test_browser_runner.py::test_ci_interruption_stops_later_gates_and_exits_130
+worker-environment tests/renewal/test_browser_runner.py::test_provision_teardown_completes_through_a_second_interrupt
+worker-environment tests/renewal/test_browser_runner.py::test_teardown_interrupt_is_reaped_then_propagated

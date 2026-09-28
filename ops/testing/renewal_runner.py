@@ -44,6 +44,7 @@ from ops.testing.browser_server_supervisor import (
     start_master,
     supervised_argv,
 )
+from ops.testing.ci_pytest import coverage_targets
 from ops.testing.current_source_snapshot import (
     capture_current_source,
     verify_current_source_record,
@@ -157,14 +158,7 @@ CI_GATES: Final = (
     "image-tls",
     "browser",
 )
-COVERAGE_TARGETS_FILE: Final = (
-    Path(__file__).resolve().with_name("coverage-targets.txt")
-)
-COVERAGE_TARGETS: Final = tuple(
-    line
-    for line in COVERAGE_TARGETS_FILE.read_text(encoding="utf-8").splitlines()
-    if line and not line.startswith("#")
-)
+COVERAGE_TARGETS: Final = coverage_targets()
 POSTGRES_IMAGE: Final = "postgres:16"
 POSTGRES_CONTAINER_PORT: Final = 5432
 PROTECTED_DATABASE_PORT: Final = 5432
@@ -215,6 +209,8 @@ PYTEST_TIMEOUT_SECONDS: Final = 900
 COMMAND_TIMEOUT_SECONDS: Final = 60
 STATIC_GATE_TIMEOUT_SECONDS: Final = 900
 COVERAGE_TIMEOUT_SECONDS: Final = 3600
+# Same worker count as the hosted job and ``make ci``.
+CI_PYTEST_WORKERS: Final = 4
 DEPENDENCY_TIMEOUT_SECONDS: Final = 900
 IMAGE_TLS_TIMEOUT_SECONDS: Final = 3600
 BUILD_TIMEOUT_SECONDS: Final = 3600
@@ -1167,17 +1163,17 @@ def _gate_coverage(
                 "TEST_SUPERUSER_DATABASE_URL": database.super_dsn,
             }
         )
+        # The hosted job's own command: coverage-targets.txt, the 90% floor
+        # and the parallel + serial phases live in ops.testing.ci_pytest.
         code = _run_bounded(
             [
                 sys.executable,
                 "-m",
-                "pytest",
-                "--reuse-db",
+                "ops.testing.ci_pytest",
+                f"--workers={CI_PYTEST_WORKERS}",
+                f"--work-root={logs / 'ci-pytest'}",
+                "--",
                 "-q",
-                *COVERAGE_TARGETS,
-                "--cov-report=term-missing",
-                "--cov-fail-under=90",
-                "tests",
             ],
             environment,
             logs / "gate-coverage.log",
