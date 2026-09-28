@@ -1194,11 +1194,37 @@ def test_unscheduled_start_through_the_workspace(rbac_graph: RbacGraph) -> None:
             },
         )
         assert opened.status_code == 302
-        html = client.get(url).content.decode()
+        page = client.get(url)
+        html = page.content.decode()
         assert 'data-unscheduled-reason="phone_follow_up"' in html
         assert "/prescription/" not in html
         assert "data-teleconsult-link" not in html
+        # Episodes from the workspace: bounded title, open with this visit,
+        # an idempotent re-link, then closure.
+        encounter = str(page.context["encounter"].pk)
+        episode = {"encounter_id": encounter, "action": "episode_open"}
+        blank = client.post(url, {**episode, "title": "  "})
+        assert blank.status_code == 400
+        assert blank.context["episode_error"]
+        assert client.post(url, {**episode, "title": "Dor lombar"}).status_code == 302
+        linked = client.get(url).content.decode()
+        assert 'data-episode-state="open"' in linked
+        episode_id = re.search(r'data-linked-episode="([0-9a-f-]+)"', linked)
+        assert episode_id is not None
+        for action in ("episode_link", "episode_close"):
+            done = client.post(
+                url,
+                {
+                    "encounter_id": encounter,
+                    "episode_id": episode_id.group(1),
+                    "action": action,
+                },
+            )
+            assert done.status_code == 302
+        assert 'data-episode-state="closed"' in client.get(url).content.decode()
     assert count(rbac_graph, Encounter, appointment__isnull=True) == 1
+    assert count(rbac_graph, Episode, state="closed") == 1
+    assert count(rbac_graph, EpisodeEncounter) == 1
 
 
 # --------------------------------------------------------------------------
