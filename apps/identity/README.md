@@ -148,8 +148,10 @@ exact-clinic grant before setting `app.current_principal` and
 `app.current_tenant`. It never sets `app.current_user_id`. Nesting, mixed
 staff/patient context and repeatable-read snapshots are refused. The
 `clinic_app.principal_has(permission, clinic)` RLS helper checks the stored
-identity and active grants at every statement, so committed revocation is
-visible even within an existing READ COMMITTED transaction. All four context
+identity and active grants for every row it guards. It and `principal_scope`
+are VOLATILE, like staff `has_permission`, so each call takes a fresh READ
+COMMITTED snapshot: a committed revocation stops the next row of an open
+cursor or a running statement, not only the next statement. All four context
 GUCs are cleared on exit. Staff guards reject an active machine context and
 non-staff database roles even when a physician GUC has been forged.
 
@@ -159,6 +161,14 @@ agent-only restrictive policy in addition to the unchanged tenant policy.
 Clinical, financial, staff-management and wildcard grants are not supported;
 future domains must add reviewed grant versions, explicit `AGENT_GRANTS` and
 RLS, not silently reinterpret a v1 scope. Audit/key tables have no agent SELECT.
+
+Follow-up when widening the v1 grant CHECK: today `principal_scope` and
+`principal_has` read the same principal row and the same `appointment.read`
+grant, so a fresh snapshot in either one enforces revocation, and one gate
+turned STABLE is caught only by its definition and posture pins. If the CHECK
+ever allows a permission other than `appointment.read`, add a revocation test
+that revokes that non-read grant while `appointment.read` stays live: only
+`principal_has`'s own snapshot can refuse it.
 Machine action approvals and execution receipts remain owned by the later
 action gateway, not a fabricated human outbox actor.
 

@@ -50,7 +50,8 @@ staff actor GUC. Each owner-provisioned principal binds uniquely to its database
 `session_user` and one clinic. `principal_scope` and `principal_has` are fixed
 resolver-owned SECURITY DEFINER functions with a trusted search path and no
 PUBLIC execute. Registrations and grants are owner-only FORCE-RLS tables;
-revocation is irreversible and effective on the next READ COMMITTED statement.
+revocation is irreversible, and both functions are VOLATILE, so it stops the
+next row of an open cursor or a running READ COMMITTED statement.
 `service_principal_context` refuses mixed human/patient contexts and nested or
 repeatable-read transactions. Staff services reject a machine connection even
 if it forges `app.current_user_id`.
