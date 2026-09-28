@@ -9,9 +9,8 @@ handler chain or internals, must not rewrite function state (``__code__``,
 ``__dict__``), and must not patch the guard modules or ``request_started``. A
 mutation primitive whose target cannot be resolved statically fails too.
 Deliberately aliased or introspective chains (names built at run time, aliases
-of the objects, reflection) are outside what a syntactic scan can see: the
-runtime check catches their effect on what it records, and only code review
-covers the rest.
+of the objects, reflection) are outside what a syntactic scan can see, and
+outside the runtime observer's boundary: only code review covers them.
 """
 
 from __future__ import annotations
