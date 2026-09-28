@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -39,7 +39,7 @@ __all__: Final = (
 
 REFUSAL_OBSERVER: pytest.StashKey[RefusalObserver] = pytest.StashKey()
 REFUSAL_INTEGRITY: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
-REFUSAL_SESSION_ERRORS: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
+REFUSAL_SESSION_ERRORS: pytest.StashKey[Callable[..., list[str]]] = pytest.StashKey()
 REFUSAL_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 REFUSAL_COUNTS: pytest.StashKey[tuple[int, int, int]] = pytest.StashKey()
 REFUSAL_SEAL: pytest.StashKey[tuple[tuple[str, object, str, object], ...]] = (
@@ -48,6 +48,9 @@ REFUSAL_SEAL: pytest.StashKey[tuple[tuple[str, object, str, object], ...]] = (
 TAMPERING_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 REFUSAL_ISSUES: pytest.StashKey[list[str]] = pytest.StashKey()
 REFUSAL_FAILED: pytest.StashKey[bool] = pytest.StashKey()
+REFUSAL_RECEIPTS: pytest.StashKey[list[object]] = pytest.StashKey()
+EXIT_GATE: Final = "test_all_workspace_refusal_exits_are_executed"
+WORKER_RECEIPT: Final = "workspace_refusal_receipt"
 
 
 @pytest.hookimpl(trylast=True)
@@ -75,14 +78,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 pytest.mark.django_db(*marker.args, **options), append=False
             )
     # Preserve every existing scenario's order; only the aggregate oracle is last.
-    items.sort(
-        key=lambda item: item.name == "test_all_workspace_refusal_exits_are_executed"
-    )
+    items.sort(key=lambda item: item.name == EXIT_GATE)
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     observer = RefusalObserver()
     session.config.stash[REFUSAL_OBSERVER] = observer
+    session.config.stash[REFUSAL_RECEIPTS] = []
     session.config.stash[GUARD_STATS] = observer.stats
     observer.start()
     # Bound before tests run: later class patches cannot replace the checks.
@@ -145,14 +147,40 @@ def pytest_runtest_makereport(
     return report
 
 
+class _XdistWorker(Protocol):
+    """The parts of xdist's worker config and controller node used here."""
+
+    config: pytest.Config
+    workeroutput: dict[str, object]
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node: object, error: object | None) -> None:
+    """xdist controller: keep each worker's receipt (None when it sent none)."""
+    output = getattr(node, "workeroutput", {})
+    receipts = cast("_XdistWorker", node).config.stash[REFUSAL_RECEIPTS]
+    receipts.append(output.get(WORKER_RECEIPT))
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    observer = session.config.stash[REFUSAL_OBSERVER]
-    errors = session.config.stash[REFUSAL_SESSION_ERRORS]()
+    config = session.config
+    observer = config.stash[REFUSAL_OBSERVER]
+    worker = hasattr(config, "workerinput")
+    if config.pluginmanager.hasplugin("dsession"):
+        # xdist drops a worker's session exit status: merge every receipt here.
+        observer.tampering.extend(observer.merge(config.stash[REFUSAL_RECEIPTS]))
+    errors = config.stash[REFUSAL_SESSION_ERRORS](totals=not worker)
     observer.tampering.extend(errors)
     if errors:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
     observer.stop()
-    observer.stats.trace_ns = observer.trace.elapsed_ns
+    # Added: an xdist controller already holds its workers' merged time.
+    observer.stats.trace_ns += observer.trace.elapsed_ns
+    if worker:
+        gate = any(item.name == EXIT_GATE for item in session.items)
+        cast("_XdistWorker", config).workeroutput[WORKER_RECEIPT] = observer.receipt(
+            errors, gate_selected=gate
+        )
 
 
 def pytest_terminal_summary(

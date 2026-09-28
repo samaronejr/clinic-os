@@ -24,5 +24,13 @@ def test_all_workspace_refusal_exits_are_executed(
     record_property(
         "executed_refusal_exits", json.dumps(sorted(x.location for x in trace.seen))
     )
+    if hasattr(request.config, "workerinput"):
+        # An xdist worker runs only its share of the corpus. Its conftest sends
+        # the exits it executed to the controller, which requires every derived
+        # exit in the union (RefusalObserver.merge); here the gate only checks
+        # that there are exits to require and a channel to send them.
+        assert trace.exits
+        assert isinstance(getattr(request.config, "workeroutput", None), dict)
+        return
     missing = trace.missing()
     assert not missing, "Unreached refusal exits:\n" + "\n".join(missing)

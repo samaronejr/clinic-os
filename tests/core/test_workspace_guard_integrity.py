@@ -267,3 +267,50 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
         assert stats["refusals"] == 0
     else:
         assert stats["client_requests"] == stats["responses"] == 0
+
+
+@pytest.mark.parametrize("mode", ["normal", "success-only"])
+def test_distributed_sessions_check_the_merged_worker_receipts(
+    tmp_path: Path, mode: str
+) -> None:
+    # xdist drops a worker's session exit status (the hosted job's parallel
+    # phase); the controller must merge every worker's receipt and apply the
+    # session checks to the totals. success-only is vacuous: no refusal ran.
+    with (
+        runtime_directory(tmp_path, purpose="observer") as directory,
+        pytest.MonkeyPatch.context() as environment,
+    ):
+        environment.setenv("DJANGO_SETTINGS_MODULE", "config.settings.test")
+        environment.setenv("WORKSPACE_GUARD_PROBE", mode)
+        environment.setenv("PYTHONPATH", str(Path.cwd() / "tests"))
+        completed = run_process(
+            (
+                sys.executable,
+                "-m",
+                "pytest",
+                "--reuse-db",
+                "-q",
+                "--numprocesses=1",
+                "--basetemp=" + str(directory / "b"),
+                "tests/core/test_workspace_guard_integrity.py::test_guard_canary",
+            ),
+            timeout_seconds=120,
+        )
+    lines = completed.stdout.splitlines()
+    stats = json.loads(
+        next(
+            line.removeprefix("REFUSAL_GUARD ")
+            for line in lines
+            if line.startswith("REFUSAL_GUARD ")
+        )
+    )
+    requests = 2 if mode == "normal" else 1
+    assert stats["client_requests"] == stats["evaluated_requests"] == requests
+    assert stats["responses"] == requests
+    assert stats["refusals"] == int(mode == "normal")
+    expected = 0 if mode == "normal" else 1
+    assert completed.returncode == expected, completed.stdout + completed.stderr
+    vacuous = (
+        "REFUSAL_GUARD_FAILURE Django client ran but refusal observer saw zero refusals"
+    )
+    assert (vacuous in lines) == (mode == "success-only")

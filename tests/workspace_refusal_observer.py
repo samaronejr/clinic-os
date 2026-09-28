@@ -6,16 +6,19 @@ rewriting what it installed (its methods, the frozen check and scope, their
 code, defaults, closures, namespaces and the builtins they resolve), bypassing
 its middleware, or a test whose client requests were not all checked, fails
 the test that did it. Deliberately adversarial in-process code is outside that
-boundary, because any Python in the process can rewrite any Python object; it
-is covered by the fail-closed static guard over ``tests/``
-(``tests/core/test_workspace_guard_static.py``) plus code review.
+boundary, because any Python in the process can rewrite any Python object. The
+fail-closed static scan over ``tests/``
+(``tests/core/test_workspace_guard_static.py``) rejects the plainly written
+forms (stash keys, handler chain, guard internals, function-state writes,
+patching the guard or ``request_started``); deliberately aliased or
+introspective chains are covered only by code review.
 """
 
 from __future__ import annotations
 
 import sys
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import wraps
 from itertools import count
 from time import perf_counter_ns
@@ -466,8 +469,59 @@ class RefusalObserver:
                 errors.append("Refusal middleware check replaced")
         return errors
 
-    def session_errors(self) -> list[str]:
+    def receipt(self, errors: list[str], *, gate_selected: bool) -> dict[str, object]:
+        """What an xdist worker sends its controller at session finish.
+
+        A worker sees only its share of the collection, and xdist drops its
+        session exit status, so session-level checks over the totals (and the
+        exit gate over every worker's executed exits) run in the controller.
+        """
+        return {
+            "errors": errors,
+            "stats": asdict(self.stats),
+            "seen": sorted(site.location for site in self.trace.seen),
+            "gate": gate_selected,
+        }
+
+    def merge(self, receipts: list[object]) -> list[str]:
+        """xdist controller: fold every worker's receipt into this session.
+
+        Fails closed on a worker without a receipt. When the exit gate was
+        selected, every derived refusal exit must have run in some worker.
+        """
+        errors: list[str] = []
+        if not receipts:
+            errors.append("Distributed session returned no refusal guard receipt")
+        seen: set[str] = set()
+        gate = False
+        for receipt in receipts:
+            if not isinstance(receipt, dict):
+                errors.append(
+                    "An xdist worker finished without a refusal guard receipt"
+                )
+                continue
+            errors.extend(receipt["errors"])
+            for field, value in receipt["stats"].items():
+                setattr(self.stats, field, getattr(self.stats, field) + value)
+            seen.update(receipt["seen"])
+            gate = gate or bool(receipt["gate"])
+        if gate:
+            missing = sorted(
+                site.location for site in self.trace.exits if site.location not in seen
+            )
+            if missing:
+                errors.append("Unreached refusal exits:\n" + "\n".join(missing))
+        return errors
+
+    def session_errors(self, *, totals: bool = True) -> list[str]:
+        """Tampering and integrity; with ``totals``, also the count checks.
+
+        An xdist worker passes ``totals=False``: its controller checks the
+        summed counts once every worker's receipt has arrived.
+        """
         errors = [*self.tampering, *self.integrity_errors()]
+        if not totals:
+            return errors
         if self.stats.violations:
             errors.append(f"Refusal session violations: {self.stats.violations}")
         if self.stats.client_requests != self.stats.evaluated_requests:

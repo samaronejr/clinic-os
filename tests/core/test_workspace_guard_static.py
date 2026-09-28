@@ -2,13 +2,16 @@
 
 The runtime observer (tests/workspace_refusal_observer.py) catches fixture
 level disablement by content; in-process code can still rewrite anything, so
-this scan bounds that residual. Outside the guard's own modules, a test must
-not reference the observer's stash keys, handler chain or internals, must not
-rewrite function state (``__code__``, ``__globals__``, ``__defaults__``,
-``__kwdefaults__``, ``__closure__`` cells, ``__dict__``), and must not patch
-the guard modules or ``request_started``. A mutation primitive whose target
-cannot be resolved statically fails too. Names built at run time (``getattr``
-with computed strings, dynamic imports) are the runtime check's job.
+this scan rejects the plainly written forms of that residual. Outside the
+guard's own modules, a test must not reference the observer's stash keys,
+handler chain or internals, must not rewrite function state (``__code__``,
+``__globals__``, ``__defaults__``, ``__kwdefaults__``, ``__closure__`` cells,
+``__dict__``), and must not patch the guard modules or ``request_started``. A
+mutation primitive whose target cannot be resolved statically fails too.
+Deliberately aliased or introspective chains (names built at run time, aliases
+of the objects, reflection) are outside what a syntactic scan can see: the
+runtime check catches their effect on what it records, and only code review
+covers the rest.
 """
 
 from __future__ import annotations
@@ -62,6 +65,7 @@ _CONFTEST_KEYS = (
     ("REFUSAL_INTEGRITY", 1, 2),
     ("REFUSAL_ISSUES", 1, 3),
     ("REFUSAL_OBSERVER", 1, 6),
+    ("REFUSAL_RECEIPTS", 1, 3),
     ("REFUSAL_SEAL", 1, 2),
     ("REFUSAL_SESSION_ERRORS", 1, 2),
     ("TAMPERING_BEFORE", 1, 2),
@@ -106,6 +110,11 @@ ALLOWED = Counter(
         (_INTEGRITY, "names guard module workspace_refusal_support"): 2,
         # Sets OTP state on an unsaved synthetic User (no model attributes).
         ("auth/test_stepup.py", "mutates __dict__"): 2,
+        # Seed a freshly loaded synthetic guard module's globals (todo 6 census).
+        ("identity/test_guard_classification.py", "mutates __dict__"): 1,
+        ("identity/test_nonstaff_differential.py", "mutates __dict__"): 1,
+        # Records every current_context function it wraps (todo 6 census).
+        ("identity/authority_observer.py", "setattr with dynamic name"): 1,
         # Patch a module attribute named by the test parameter or module name.
         ("core/test_workspace_late_refusals.py", "setattr with dynamic name"): 2,
         ("renewal/test_runtime_paths.py", "setattr with dynamic name"): 1,
