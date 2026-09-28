@@ -37,7 +37,7 @@ from apps.tenancy.db import (
 from django.db import IntegrityError, connections, transaction
 
 from identity.permission_support import owner_context
-from identity.test_service_principals import agent_login
+from identity.test_service_principals import agent_password
 from patient_service_support import runtime_role
 from renewal.test_integration_boundary import (
     CHANNEL,
@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
     from conftest import TenantGraph
 
-__all__ = ("agent_login", "harness", "recorded_dispatch")
+__all__ = ("agent_password", "harness", "recorded_dispatch")
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -371,6 +371,7 @@ def test_inactive_or_removed_actor_cancels_queued_action(
 
 
 @pytest.mark.django_db(transaction=True, databases={"default", "agent"})
+@pytest.mark.usefixtures("agent_password")
 def test_service_principal_cannot_run_a_queued_action(
     tenant_graph: TenantGraph,
     harness: Harness,

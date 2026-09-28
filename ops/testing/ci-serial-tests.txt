@@ -32,14 +32,14 @@ server-state tests/audit/test_audit_boundary_migration.py::test_boundary_migrati
 server-state tests/audit/test_phase1_audit_migration.py::test_v2_append_contract_is_reversible_metadata_only_and_chain_safe
 server-state tests/ehr/test_ehr_migrations.py::test_migrated_accented_soap_note_amends_and_finalizes
 server-state tests/patients/test_intake_migrations.py::test_populated_protected_migration_runs_on_real_schema
-# Todo 7's session fixture identity.test_service_principals.agent_login (autouse
-# in every module that imports it) commits ALTER ROLE clinic_agent PASSWORD to a
-# per-session secret and restores the old one at session end (pg_authid): a real
-# clinic_agent login even where no agent password is provisioned. Any test of
-# these modules may be the one that sets it, so each module runs serially.
-server-state tests/identity/test_permission_parity.py
+# Todo 7's session fixture identity.test_service_principals.agent_password
+# commits ALTER ROLE clinic_agent PASSWORD to a per-session secret and restores
+# the old one at session end (pg_authid): a real clinic_agent login even where no
+# agent password is provisioned. Every test of test_service_principals uses it
+# (autouse there); elsewhere exactly the tests that request it.
+server-state tests/identity/test_permission_parity.py::test_every_authorization_candidate_is_accounted_for
 server-state tests/identity/test_service_principals.py
-server-state tests/renewal/test_action_operations.py
+server-state tests/renewal/test_action_operations.py::test_service_principal_cannot_run_a_queued_action
 # The guard's own positive probe commits a value-identical ALTER ROLE.
 server-state tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write
 # Asserts settings.DATABASES["locks"]["TEST"]["NAME"] is None; pytest-django's

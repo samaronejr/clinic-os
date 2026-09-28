@@ -229,11 +229,17 @@ def _assert_every_member_executed(
         ), (name, "no executed decisions")
 
 
-@pytest.fixture(scope="session", autouse=True)
-def agent_login(
+@pytest.fixture(scope="session")
+def agent_password(
     django_db_setup: None, django_db_blocker: DjangoDbBlocker
 ) -> Iterator[None]:
-    """Use a real isolated agent login even when the optional runtime alias is off."""
+    """Use a real isolated agent login even when the optional runtime alias is off.
+
+    This commits ALTER ROLE clinic_agent (pg_authid) and restores it at session
+    end, so every test that requests it is classified server-state in
+    ops/testing/ci-serial-tests.txt. Other modules request it only on the tests
+    that open the agent login; it is not autouse outside this module.
+    """
     secret = secrets.token_urlsafe(32)
     with psycopg.connect(
         os.environ["TEST_SUPERUSER_DATABASE_URL"], autocommit=True
@@ -259,6 +265,11 @@ def agent_login(
                     sql.Literal(old[0])
                 )
             )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def agent_login(agent_password: None) -> None:
+    """Every test in this module runs with the real agent login."""
 
 
 @pytest.fixture

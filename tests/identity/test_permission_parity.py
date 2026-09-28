@@ -34,7 +34,7 @@ from identity.nonstaff_census import run_nonstaff_census
 from identity.permission_support import owner_context
 from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
-from identity.test_service_principals import agent_login
+from identity.test_service_principals import agent_password
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -43,8 +43,9 @@ if TYPE_CHECKING:
     from identity.nonstaff_differential import DifferentialReport
     from rbac_fixtures import RbacGraph
 
-__all__ = ("agent_login",)
-# The census drives the machine-principal boundary through a real agent login.
+__all__ = ("agent_password",)
+# The census drives the machine-principal boundary through a real agent login
+# (nonstaff_differential_census requests agent_password).
 pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
 CORE = (
     *IDENTITY_BOUNDARIES,
@@ -70,6 +71,7 @@ INVENTORY = cast(
 
 @pytest.fixture
 def nonstaff_differential_census(
+    agent_password: None,
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     record_property: Callable[[str, object], None],
