@@ -236,7 +236,8 @@ def test_unresolved_set_forms_are_opaque(statement: str) -> None:
         "INSERT INTO t VALUES (1)",
         "UPDATE t SET a = 1",
         "DELETE FROM t",
-        "MERGE INTO t USING u ON true WHEN MATCHED THEN DELETE",
+        # No other write word: MERGE itself must count.
+        "MERGE INTO t USING u ON true WHEN MATCHED THEN DO NOTHING",
         "TRUNCATE t",
         "COPY t FROM STDIN",
         "SELECT 1 FROM t FOR UPDATE",
