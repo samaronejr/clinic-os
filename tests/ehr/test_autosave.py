@@ -1140,8 +1140,12 @@ def test_explicit_stale_save_shows_the_compare_and_merges_explicitly(
             **SECTIONS,
         }
         assert client.post(url, payload).status_code == 302
-        stale = client.post(url, {**payload, "plan": "Plano da aba antiga"})
+        injected = '<script src="/x.js"></script> Plano da aba antiga'
+        stale = client.post(url, {**payload, "plan": injected})
         assert stale.status_code == 409
+        # Typed markup is data: the compare renders it inert.
+        assert "<script" not in stale.content.decode().split("</header>", 1)[-1]
+        assert "&lt;script src=&quot;/x.js&quot;&gt;" in stale.content.decode()
         conflict = stale.context["conflict"]
         assert conflict["current_revision"] == 2
         assert [section["key"] for section in conflict["sections"]] == ["plan"]

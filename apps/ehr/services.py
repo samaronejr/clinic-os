@@ -111,20 +111,20 @@ def _encounter_actor(clinic_id: UUID, encounter: Encounter) -> UUID:
     """
     if encounter.appointment_id is not None:
         return _assigned(_appointment(clinic_id, encounter.appointment_id))
+    actor = current_actor_id()
     if (
         encounter.clinic_id != clinic_id
         or not UserClinicRole.objects.filter(
-            clinic_id=clinic_id, user_id=current_actor_id()
+            clinic_id=clinic_id, user_id=actor
         ).exists()
     ):
         raise ClinicalAccessDeniedError
-    try:
-        actor = require_current_actor_clinic_roles(
-            clinic_id, (UserClinicRole.Role.PHYSICIAN,)
-        )
-    except CurrentActorError:
-        _denied(clinic_id, encounter.pk, "role_denied")
-    if actor != encounter.physician_id:
+    # The database predicate every clinical policy uses decides: an active
+    # physician of the clinic who opened this unscheduled encounter.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.ehr_assigned(%s)", [encounter.pk])
+        assigned = cursor.fetchone() == (True,)
+    if not assigned:
         _denied(clinic_id, encounter.pk, "not_assigned")
     return actor
 
