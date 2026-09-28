@@ -70,9 +70,9 @@ def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
             ),
         ),
         DifferentialProbe(
-            "apps.consent.services.record_consent",
-            lambda: consent.record_consent(
-                offer=d.consent_offer, purpose="teleconsultation", accepted=True
+            "apps.consent.services._resolve_offer",
+            lambda: consent._resolve_offer(
+                d.consent_offer, "teleconsultation", d.authority
             ),
         ),
         DifferentialProbe(

@@ -75,11 +75,11 @@ def test_inventory_enumerates_every_current_actor_guard() -> None:
                 and node.func.id == "require_current_actor_clinic_roles"
             )
     assert observed == [(g["path"], g["function"], g["roles"]) for g in GUARDS]
-    assert len(observed) == 52
+    assert len(observed) == 43
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)
-def test_all_52_guards_keep_legacy_role_decisions(
+def test_all_43_guards_keep_legacy_role_decisions(
     rbac_graph: RbacGraph, legacy_role: str
 ) -> None:
     actor, _ = permission_actor(rbac_graph, legacy_role)

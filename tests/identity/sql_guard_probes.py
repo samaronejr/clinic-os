@@ -20,6 +20,15 @@ from identity.legacy_owner_boundaries import _owner_call
 from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
+from identity.sql_consent_probes import (
+    CLINICAL,
+    PUBLISH,
+    insert_disclosure,
+    insert_notice,
+    insert_participant,
+    insert_text,
+    permitted,
+)
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -99,6 +108,8 @@ class SqlProbe:
     arguments: Callable[[SqlWorld, bool], list[SqlArgument]]
     result: str = "rows"
     refusal_state: str | None = None
+    # Trigger guards cannot be called; the executor fires the guarded statement.
+    execute: Callable[[SqlWorld, bool], bool] | None = None
 
 
 def _bound_actor(w: SqlWorld, valid: bool) -> list[SqlArgument]:
@@ -133,6 +144,8 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
 
 
 def call(probe: SqlProbe, w: SqlWorld, valid: bool) -> bool:
+    if probe.execute is not None:
+        return probe.execute(w, valid)
     arguments = probe.arguments(w, valid)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -302,6 +315,34 @@ PROBES = {
     ),
     "waitlist_staff": SqlProbe(
         "waitlist_staff", MANAGERS, lambda w, ok: [w.actor.clinic_for(ok)], "boolean"
+    ),
+    "consent_guard": SqlProbe(
+        "consent_guard",
+        permitted(*PUBLISH),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=insert_text,
+    ),
+    "consent_guard#notice": SqlProbe(
+        "consent_guard",
+        permitted(*PUBLISH),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=insert_notice,
+    ),
+    "consent_guard#participant": SqlProbe(
+        "consent_guard",
+        permitted(*CLINICAL),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=insert_participant,
+    ),
+    "consent_guard#disclosure": SqlProbe(
+        "consent_guard",
+        permitted(*CLINICAL),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=insert_disclosure,
     ),
     "has_permission": SqlProbe(
         "has_permission",

@@ -10,8 +10,8 @@ inferred from this consent. Care records and explicit record releases do
 not depend on consent, and refusing or revoking any purpose never blocks
 care.
 
-- Clinic owners/admins publish the complete clinic text as a new immutable
-  version per purpose, through the staff consent screen or bounded clinic
+- Holders of `configuration.clinic` or `configuration.organization` publish
+  the complete clinic text as a new immutable version per purpose, through the staff consent screen or bounded clinic
   settings. Both use the same publisher and reject HTML, scripts and CSS at
   the service/database boundaries. Publication and acceptance serialize on
   the same clinic/purpose lock. A text changed after presentation causes a
@@ -44,8 +44,10 @@ care.
   interpreter) present in a clinical session, without creating a patient
   record for them. `AIUseDisclosure` is the per-encounter physician
   attestation that the patient was informed about AI assistance, plus the
-  recorded refusal; one immutable row per encounter. Both writes are
-  physician-only at the service and the DB insert guard.
+  recorded refusal; one immutable row per encounter. Both writes require
+  `clinical.write` for the encounter patient's enrollment (current
+  professional registration plus care team or the open encounter's own
+  physician), at the service and the DB insert guard alike.
 - `consent_for_future_use(*, clinic_id, enrollment_id, purpose)` returns
   the exact current, unrevoked acceptance for any purpose under authorized
   clinic scope, or `None`; a purpose outside the taxonomy is rejected.
@@ -54,8 +56,19 @@ care.
   or refused as unavailable. Both must be checked at the point of use,
   never cached. Publishing a new version requires fresh acceptance for
   future use, while prior receipts remain readable.
-- FORCE RLS and binding triggers independently check roles and patient
-  provenance. Runtime UPDATE/DELETE privileges are absent; triggers reject
+- Authorization (todo 6 bundles, `BUNDLES_V1`): every staff guard calls
+  `require_permission`, which is `clinic_app.has_permission`, and the RLS
+  policies and `consent_guard` check the same names. Publish texts/notices:
+  `configuration.clinic`, else `configuration.organization`. Read receipts,
+  refusals, future-use and disclosure status: `demographics.read`, else
+  `configuration.organization`. Record disclosures/acknowledgments:
+  `clinical.write` with the enrollment. The staff page opens for any of
+  `demographics.read`, `configuration.clinic`, `configuration.organization`,
+  and each action rechecks its own. Clinic narrowing (`RoleGrant` remove),
+  an inactive actor or another clinic refuse identically; the SQL guard
+  raises 42501.
+- FORCE RLS and binding triggers independently check permissions and
+  patient provenance. Runtime UPDATE/DELETE privileges are absent; triggers reject
   maintenance-role edits/deletes too. All record classes have indefinite
   retention and no disposal path, including on revocation or refusal; no
   automatic purge or legal approval is implied.

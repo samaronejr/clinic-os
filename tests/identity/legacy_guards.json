@@ -172,7 +172,7 @@
     {
       "symbol": "apps.consent.services.publish_text",
       "signals": [
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -182,7 +182,7 @@
     {
       "symbol": "apps.consent.services.publish_notice",
       "signals": [
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -222,7 +222,7 @@
       "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
       "observe": true,
       "probes": [
-        "apps.consent.services.record_consent#observed"
+        "apps.consent.services._resolve_offer#observed"
       ]
     },
     {
@@ -240,7 +240,7 @@
     {
       "symbol": "apps.consent.services.staff_receipts",
       "signals": [
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -250,7 +250,7 @@
     {
       "symbol": "apps.consent.services.staff_refusals",
       "signals": [
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -260,7 +260,7 @@
     {
       "symbol": "apps.consent.services.consent_for_future_use",
       "signals": [
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -271,7 +271,7 @@
       "symbol": "apps.consent.services.record_ai_disclosure",
       "signals": [
         "denial",
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -281,7 +281,7 @@
     {
       "symbol": "apps.consent.services.ai_disclosure_status",
       "signals": [
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -292,7 +292,7 @@
       "symbol": "apps.consent.services.acknowledge_participant",
       "signals": [
         "denial",
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -303,7 +303,7 @@
       "symbol": "apps.consent.views.staff_consent",
       "signals": [
         "decorator",
-        "role_helper"
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -927,6 +927,7 @@
       "signals": [
         "actor",
         "membership",
+        "permission_helper",
         "role_helper",
         "scope_name"
       ],
@@ -939,6 +940,7 @@
       "symbol": "apps.identity.current_context.require_permission",
       "signals": [
         "actor",
+        "permission_helper",
         "resolver",
         "scope_name"
       ],
@@ -1201,7 +1203,8 @@
     {
       "symbol": "apps.identity.scope_provisioning._owner_clinic",
       "signals": [
-        "denial"
+        "denial",
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -2162,6 +2165,7 @@
       "signals": [
         "actor",
         "denial",
+        "permission_helper",
         "scope_name"
       ],
       "kind": "delegated",
@@ -2174,7 +2178,8 @@
       "symbol": "apps.realtime.scopes.grant_clinic_topic",
       "signals": [
         "denial",
-        "membership"
+        "membership",
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -2185,7 +2190,19 @@
     {
       "symbol": "apps.realtime.scopes.revoke_clinic_topic",
       "signals": [
-        "denial"
+        "denial",
+        "permission_helper"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.scopes.register_job_topic",
+      "signals": [
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -2209,6 +2226,17 @@
       "symbol": "apps.realtime.authorization.authorize_topics_sync",
       "signals": [
         "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization._staff_topics",
+      "signals": [
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -3235,6 +3263,7 @@
     "apps.billing.views.invoice_status",
     "apps.comms.views.reminders_view",
     "apps.consent.services._patient_audit#observed",
+    "apps.consent.services._resolve_offer#observed",
     "apps.consent.services.acknowledge_participant",
     "apps.consent.services.ai_disclosure_status",
     "apps.consent.services.consent_for_future_use",
@@ -3243,7 +3272,6 @@
     "apps.consent.services.publish_notice",
     "apps.consent.services.publish_text",
     "apps.consent.services.record_ai_disclosure",
-    "apps.consent.services.record_consent#observed",
     "apps.consent.services.revoke_consent#observed",
     "apps.consent.services.staff_receipts",
     "apps.consent.services.staff_refusals",
@@ -3480,95 +3508,6 @@
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "publish_text",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
-      "legacy_allowed": [
-        "owner",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "publish_notice",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
-      "legacy_allowed": [
-        "owner",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "staff_receipts",
-      "roles": "STAFF_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "physician",
-        "receptionist",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "staff_refusals",
-      "roles": "STAFF_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "physician",
-        "receptionist",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "consent_for_future_use",
-      "roles": "STAFF_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "physician",
-        "receptionist",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "record_ai_disclosure",
-      "roles": "CLINICIAN_ROLES",
-      "legacy_allowed": [
-        "physician"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "ai_disclosure_status",
-      "roles": "STAFF_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "physician",
-        "receptionist",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/consent/services.py",
-      "function": "acknowledge_participant",
-      "roles": "CLINICIAN_ROLES",
-      "legacy_allowed": [
-        "physician"
-      ]
-    },
-    {
-      "path": "apps/consent/views.py",
-      "function": "staff_consent",
-      "roles": "STAFF_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "physician",
-        "receptionist",
-        "clinic_admin"
       ]
     },
     {
@@ -4661,7 +4600,8 @@
           }
         ],
         "migrations": [
-          "apps/consent/migrations/_consent_sql.py"
+          "apps/consent/migrations/_consent_sql.py",
+          "apps/consent/migrations/_taxonomy_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -4681,7 +4621,8 @@
           }
         ],
         "migrations": [
-          "apps/consent/migrations/_consent_sql.py"
+          "apps/consent/migrations/_consent_sql.py",
+          "apps/consent/migrations/_taxonomy_sql.py"
         ],
         "policies": [],
         "resolvers": [
@@ -4704,14 +4645,20 @@
         ],
         "migrations": [
           "apps/consent/migrations/0003_protected_fields.py",
-          "apps/consent/migrations/_consent_sql.py"
+          "apps/consent/migrations/_consent_sql.py",
+          "apps/consent/migrations/_taxonomy_sql.py"
         ],
         "policies": [],
         "resolvers": []
       },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+      "kind": "staff_guard",
+      "probes": [
+        "consent_guard",
+        "consent_guard#disclosure",
+        "consent_guard#notice",
+        "consent_guard#participant"
+      ],
+      "reason": "Staff branches check clinic_app.has_permission (configuration.clinic/organization for texts and notices, clinical.write with the encounter patient's enrollment for attestations); patient branches bind the consent session. Trigger oracles fire each guarded INSERT under every stored role."
     },
     "clinic_app.consent_immutable": {
       "discovery": {
@@ -4747,11 +4694,15 @@
           "apps/consent/migrations/_consent_sql.py"
         ],
         "policies": [
+          "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
           "clinic_app.consent_consentacceptance:consent_acceptance_insert",
           "clinic_app.consent_consentacceptance:consent_acceptance_read",
           "clinic_app.consent_consentrevocation:consent_revocation_insert",
           "clinic_app.consent_consentrevocation:consent_revocation_read",
-          "clinic_app.consent_consenttext:consent_text_read"
+          "clinic_app.consent_consenttext:consent_text_read",
+          "clinic_app.consent_noticeversion:consent_notice_read",
+          "clinic_app.consent_refusalrecord:consent_refusal_insert",
+          "clinic_app.consent_refusalrecord:consent_refusal_read"
         ],
         "resolvers": [
           "clinic_app.consent_audit_scope",
@@ -5107,11 +5058,24 @@
           "apps/identity/migrations/_permission_sql.py"
         ],
         "policies": [
+          "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_insert",
+          "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
+          "clinic_app.consent_consentacceptance:consent_acceptance_read",
+          "clinic_app.consent_consentrevocation:consent_revocation_read",
+          "clinic_app.consent_consenttext:consent_text_insert",
+          "clinic_app.consent_consenttext:consent_text_read",
+          "clinic_app.consent_noticeversion:consent_notice_insert",
+          "clinic_app.consent_noticeversion:consent_notice_read",
+          "clinic_app.consent_participantacknowledgment:consent_participant_insert",
+          "clinic_app.consent_participantacknowledgment:consent_participant_read",
+          "clinic_app.consent_refusalrecord:consent_refusal_read",
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read"
         ],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.consent_guard"
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -6242,10 +6206,6 @@
         ],
         "policies": [
           "clinic_app.billing_invoice:billing_staff",
-          "clinic_app.consent_consentacceptance:consent_acceptance_read",
-          "clinic_app.consent_consentrevocation:consent_revocation_read",
-          "clinic_app.consent_consenttext:consent_text_insert",
-          "clinic_app.consent_consenttext:consent_text_read",
           "clinic_app.ehr_encounter:clinical_insert",
           "clinic_app.ehr_encounter:clinical_read",
           "clinic_app.ehr_specialtytemplate:clinical_insert",
@@ -6278,7 +6238,6 @@
           "clinic_app.billing_settlement_guard",
           "clinic_app.billing_staff_invoice",
           "clinic_app.configuration_guard",
-          "clinic_app.consent_guard",
           "clinic_app.ehr_assigned",
           "clinic_app.ehr_care",
           "clinic_app.ehr_history_care",
