@@ -12,10 +12,16 @@ fail-closed static scan over ``tests/``
 forms (stash keys, handler chain, guard internals, function-state writes,
 patching the guard or ``request_started``); deliberately aliased or
 introspective chains are covered only by code review.
+
+Liveness is proved once per process at session start by a positive control
+(``RefusalObserver.positive_control``): one synthetic refusal through the real
+client, handler, middleware and check must be recorded. It never depends on
+what the collection requests, so subsets without refusals pass.
 """
 
 from __future__ import annotations
 
+import logging
 import sys
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -23,12 +29,13 @@ from functools import wraps
 from itertools import count
 from time import perf_counter_ns
 from types import CodeType, FunctionType, MappingProxyType, ModuleType
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Final, Protocol, cast
+from uuid import uuid4
 from weakref import WeakKeyDictionary, ref
 
 import pytest
 from django.core import signals
-from django.test import AsyncClient, Client
+from django.test import AsyncClient, Client, override_settings
 from django.test.client import AsyncClientHandler, ClientHandler
 from django.utils.deprecation import MiddlewareMixin
 
@@ -176,6 +183,37 @@ class _FunctionState:
 OBSERVED_ATTRIBUTE = "_workspace_refusal_observation"
 STARTED_UID = "workspace-refusal-client-started"
 RECEIPT_KEY = "clinic.workspace_refusal_receipt"
+# The positive control's endpoint: a clinic-scoped 404 behind Django's session
+# middleware with signed-cookie sessions, so it needs no database.
+CONTROL_SETTINGS: Final = {
+    "ROOT_URLCONF": "workspace_guard_probe_urls",
+    "MIDDLEWARE": ["django.contrib.sessions.middleware.SessionMiddleware"],
+    "SESSION_ENGINE": "django.contrib.sessions.backends.signed_cookies",
+    "ALLOWED_HOSTS": ["testserver"],
+}
+CONTROL_STATUS: Final = 404
+# Counters the control moves and exactly how: started, evaluated, checked,
+# refused, violations.
+CONTROL_COUNTS: Final = (
+    "client_requests",
+    "evaluated_requests",
+    "responses",
+    "refusals",
+    "violations",
+)
+CONTROL_EXPECTED: Final = (1, 1, 1, 1, 0)
+
+
+def _drop_record(record: logging.LogRecord) -> bool:
+    del record
+    return False
+
+
+@dataclass(frozen=True)
+class PositiveControl:
+    """The session-start liveness proof; no errors means it was recorded."""
+
+    errors: tuple[str, ...]
 
 
 class RefusalMiddleware(MiddlewareMixin):
@@ -226,6 +264,7 @@ class RefusalObserver:
         self.check: RefusalCheck | None = None
         self.dependencies: Mapping[str, tuple[object, str, object]] = {}
         self.function_states: tuple[_FunctionState, ...] = ()
+        self.control: PositiveControl | None = None
 
     def _install(self, owner: type[object], name: str, value: object) -> None:
         self.patch.setattr(owner, name, value)
@@ -302,7 +341,7 @@ class RefusalObserver:
             _builtins,
             _cell,
         )
-        attributes = ("__class__", "check", "dependencies", "expected")
+        attributes = ("__class__", "check", "control", "dependencies", "expected")
         return (
             *(
                 (f"RefusalObserver.{name}", self, name, getattr(self, name))
@@ -386,6 +425,69 @@ class RefusalObserver:
         self._install(ClientHandler, "__call__", call)
         self._install(AsyncClientHandler, "__call__", async_call)
         self._freeze()
+
+    def positive_control(self) -> None:
+        """Prove, before any test runs, that this process records a refusal.
+
+        One synthetic GET of a clinic-scoped 404 goes through the test client,
+        the patched handler, the outermost refusal middleware, Django's session
+        middleware and the frozen check. It must add exactly one started,
+        evaluated, checked and refused request, no violation, no cookie, and a
+        receipt accounted once. Its counts are then taken back out, so the
+        statistics describe the collection alone; the result is sealed.
+
+        This replaces "a client ran, so some response must be a refusal",
+        which depended on what a subset happens to request (the broker gate
+        makes only non-refusal requests). A vacuous scope, an observer that
+        was never connected or one that skips responses all fail here, in
+        every process, whatever the collection contains.
+        """
+        stats = self.stats
+        before = tuple(getattr(stats, name) for name in CONTROL_COUNTS)
+        errors: list[str] = []
+        # Django logs every 4xx; the control's own refusal is not news.
+        request_log = logging.getLogger("django.request")
+        request_log.addFilter(_drop_record)
+        try:
+            with override_settings(**CONTROL_SETTINGS):
+                client = Client()
+                response = client.get(f"/observer/{uuid4()}/{CONTROL_STATUS}/")
+        except pytest.fail.Exception as error:
+            errors.append(
+                "Refusal guard positive control request failed: "
+                + str(error).splitlines()[0]
+            )
+        else:
+            if response.status_code != CONTROL_STATUS:
+                errors.append(
+                    "Refusal guard positive control returned "
+                    f"status={response.status_code}"
+                )
+            if response.cookies or client.cookies:
+                errors.append("Refusal guard positive control emitted a cookie")
+        finally:
+            request_log.removeFilter(_drop_record)
+        delta = tuple(
+            getattr(stats, name) - value
+            for name, value in zip(CONTROL_COUNTS, before, strict=True)
+        )
+        if delta != CONTROL_EXPECTED:
+            started, evaluated, checked, refused, violations = delta
+            errors.append(
+                "Refusal guard positive control was not recorded: "
+                f"started={started} evaluated={evaluated} checked={checked} "
+                f"refused={refused} violations={violations}"
+            )
+        errors.extend(self.accounting_errors())
+        for name, value in zip(CONTROL_COUNTS, before, strict=True):
+            setattr(stats, name, value)
+        self.control = PositiveControl(tuple(errors))
+
+    def control_errors(self) -> list[str]:
+        control = self.control
+        if not isinstance(control, PositiveControl):
+            return ["Refusal guard positive control did not run"]
+        return list(control.errors)
 
     def started(self, sender: type[object], **kwargs: object) -> None:
         if isinstance(sender, type) and issubclass(
@@ -478,6 +580,7 @@ class RefusalObserver:
         """
         return {
             "errors": errors,
+            "control": not self.control_errors(),
             "stats": asdict(self.stats),
             "seen": sorted(site.location for site in self.trace.seen),
             "gate": gate_selected,
@@ -501,6 +604,10 @@ class RefusalObserver:
                 )
                 continue
             errors.extend(receipt["errors"])
+            if receipt.get("control") is not True:
+                errors.append(
+                    "An xdist worker did not record the refusal guard positive control"
+                )
             for field, value in receipt["stats"].items():
                 setattr(self.stats, field, getattr(self.stats, field) + value)
             seen.update(receipt["seen"])
@@ -514,12 +621,14 @@ class RefusalObserver:
         return errors
 
     def session_errors(self, *, totals: bool = True) -> list[str]:
-        """Tampering and integrity; with ``totals``, also the count checks.
+        """Tampering, integrity and the positive control; with ``totals``, counts.
 
         An xdist worker passes ``totals=False``: its controller checks the
-        summed counts once every worker's receipt has arrived.
+        summed counts once every worker's receipt has arrived. Liveness comes
+        from the positive control, never from what the collection requested,
+        so a subset whose client requests are all non-refusals passes.
         """
-        errors = [*self.tampering, *self.integrity_errors()]
+        errors = [*self.tampering, *self.integrity_errors(), *self.control_errors()]
         if not totals:
             return errors
         if self.stats.violations:
@@ -530,15 +639,12 @@ class RefusalObserver:
                 f"requests={self.stats.client_requests} "
                 f"evaluated={self.stats.evaluated_requests}"
             )
-        if self.stats.client_requests:
-            if not self.stats.responses:
-                errors.append(
-                    "Django client ran but refusal observer saw zero responses"
-                )
-            if not self.stats.refusals:
-                errors.append(
-                    "Django client ran but refusal observer saw zero refusals"
-                )
+        if self.stats.evaluated_requests != self.stats.responses:
+            errors.append(
+                "Evaluated responses differ from checked responses: "
+                f"evaluated={self.stats.evaluated_requests} "
+                f"checked={self.stats.responses}"
+            )
         return errors
 
     def stop(self) -> None:

@@ -51,6 +51,8 @@ REFUSAL_FAILED: pytest.StashKey[bool] = pytest.StashKey()
 REFUSAL_RECEIPTS: pytest.StashKey[list[object]] = pytest.StashKey()
 EXIT_GATE: Final = "test_all_workspace_refusal_exits_are_executed"
 WORKER_RECEIPT: Final = "workspace_refusal_receipt"
+# The summary-line category for session-level guard failures.
+GUARD_FAILED: Final = "refusal guard failed"
 
 
 @pytest.hookimpl(trylast=True)
@@ -87,6 +89,8 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     session.config.stash[REFUSAL_RECEIPTS] = []
     session.config.stash[GUARD_STATS] = observer.stats
     observer.start()
+    # Liveness: one synthetic refusal through the real stack must be recorded.
+    observer.positive_control()
     # Bound before tests run: later class patches cannot replace the checks.
     session.config.stash[REFUSAL_INTEGRITY] = observer.integrity_errors
     session.config.stash[REFUSAL_SESSION_ERRORS] = observer.session_errors
@@ -191,8 +195,19 @@ def pytest_terminal_summary(
             "REFUSAL_GUARD "
             + json.dumps(asdict(config.stash[GUARD_STATS]), sort_keys=True)
         )
-        for error in sorted(set(config.stash[REFUSAL_OBSERVER].tampering)):
-            terminalreporter.write_line(f"REFUSAL_GUARD_FAILURE {error}")
+        errors = sorted(set(config.stash[REFUSAL_OBSERVER].tampering))
+        if not errors:
+            return
+        # A controller-only failure has no failed test to show, so the block
+        # is marked and counted in pytest's final line, which follows it.
+        terminalreporter.section(
+            "REFUSAL GUARD FAILED: this session exits 1", sep="!", red=True, bold=True
+        )
+        for error in errors:
+            terminalreporter.write_line(
+                f"REFUSAL_GUARD_FAILURE {error}", red=True, bold=True
+            )
+        terminalreporter.stats.setdefault(GUARD_FAILED, []).extend(errors)
 
 
 @dataclass(frozen=True, slots=True)

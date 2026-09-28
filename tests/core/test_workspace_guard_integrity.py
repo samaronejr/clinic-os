@@ -93,6 +93,46 @@ REWRITES = {
         (_ROOT + "_FunctionState.changed.__code__", _UNCHECKED),
     ),
 }
+# Pre-install drift that only the session-start positive control can see: the
+# observer binds whatever it finds when it starts, so these leave integrity
+# intact. Each maps to the control's recorded counts (started, evaluated,
+# checked, refused, violations).
+_SESSION_START = "@pytest.hookimpl(tryfirst=True)\ndef pytest_sessionstart(session):\n"
+# A check that still counts responses but never classifies a refusal.
+_VACUOUS_CHECK = (
+    "    import workspace_refusal_support\n"
+    "    def counts_only(request, response, stats):\n"
+    "        stats.responses += 1\n"
+    "    workspace_refusal_support.check_refusal = counts_only\n"
+)
+CONTROL_LOSSES = {
+    "vacuous-check": (
+        _SESSION_START + _VACUOUS_CHECK,
+        "started=1 evaluated=1 checked=1 refused=0 violations=0",
+    ),
+    "skip-from-start": (
+        _SESSION_START
+        + "    from workspace_refusal_observer import RefusalMiddleware\n"
+        "    RefusalMiddleware.process_response = "
+        "lambda self, request, response: response\n",
+        "started=1 evaluated=0 checked=0 refused=0 violations=0",
+    ),
+    "disconnected-from-start": (
+        _SESSION_START + "    from workspace_refusal_observer import RefusalObserver\n"
+        "    RefusalObserver.started = lambda self, sender, **kwargs: None\n",
+        "started=0 evaluated=1 checked=1 refused=1 violations=0",
+    ),
+}
+# Only xdist workers drift: the controller must fail from their receipts.
+WORKER_CONTROL_LOST = (
+    _SESSION_START
+    + "    if not hasattr(session.config, 'workerinput'):\n        return\n"
+    + _VACUOUS_CHECK
+)
+_NOT_RECORDED = "Refusal guard positive control was not recorded: "
+# Sessions that must exit 0: success-only is the shape of the hosted broker
+# gate (client requests, none of them a refusal).
+PASSING_SESSIONS = {"normal", "no-client", "success-only"}
 FAILING = {
     "write",
     "swallow",
@@ -111,7 +151,7 @@ FAILING = {
 )
 def test_guard_canary() -> None:
     mode = os.environ.get("WORKSPACE_GUARD_PROBE", "normal")
-    if mode == "no-client":
+    if mode in {"no-client", "skip-from-start", "disconnected-from-start"}:
         return
     client = Client()
     root = f"/observer/{uuid4()}/"
@@ -166,7 +206,9 @@ def _plant(mode: str) -> str:
         )
     if mode in REWRITES:
         return fixture + REWRITES[mode][0]
-    return ""
+    session_start = {name: plant for name, (plant, _) in CONTROL_LOSSES.items()}
+    session_start["worker-control-lost"] = WORKER_CONTROL_LOST
+    return session_start.get(mode, "")
 
 
 @pytest.mark.parametrize(
@@ -180,6 +222,7 @@ def _plant(mode: str) -> str:
         "restored",
         *DEPENDENCY_PATCHES,
         *REWRITES,
+        *CONTROL_LOSSES,
         "success-only",
         "no-client",
     ],
@@ -225,8 +268,18 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
             if line.startswith("REFUSAL_GUARD ")
         )
     )
-    expected = 0 if mode in {"normal", "no-client"} else 1
+    expected = int(mode not in PASSING_SESSIONS)
     assert completed.returncode == expected, completed.stdout + completed.stderr
+    failures_reported = [line for line in lines if line.startswith("REFUSAL_GUARD_F")]
+    assert bool(failures_reported) == bool(expected)
+    if expected and not failures:
+        # A controller-only failure: pytest's final line must not read green.
+        assert "REFUSAL GUARD FAILED: this session exits 1" in completed.stdout
+        assert "refusal guard failed" in lines[-1], lines[-1]
+    _assert_session_stats(mode, stats, lines)
+
+
+def _assert_session_stats(mode: str, stats: dict[str, int], lines: list[str]) -> None:
     if mode == "normal":
         assert stats["responses"] == stats["client_requests"] == 2
         assert stats["refusals"] == 1
@@ -265,24 +318,37 @@ def test_guard_is_mandatory_in_real_pytest_sessions(tmp_path: Path, mode: str) -
     elif mode == "success-only":
         assert stats["client_requests"] == stats["responses"] == 1
         assert stats["refusals"] == 0
+    elif mode in CONTROL_LOSSES:
+        # The control's counts are never left in the collection's statistics.
+        requests = 2 if mode == "vacuous-check" else 0
+        assert stats["client_requests"] == stats["responses"] == requests
+        assert stats["refusals"] == stats["violations"] == 0
+        counts = CONTROL_LOSSES[mode][1]
+        assert f"REFUSAL_GUARD_FAILURE {_NOT_RECORDED}{counts}" in lines
     else:
         assert stats["client_requests"] == stats["responses"] == 0
 
 
-@pytest.mark.parametrize("mode", ["normal", "success-only"])
+@pytest.mark.parametrize("mode", ["normal", "success-only", "worker-control-lost"])
 def test_distributed_sessions_check_the_merged_worker_receipts(
     tmp_path: Path, mode: str
 ) -> None:
     # xdist drops a worker's session exit status (the hosted job's parallel
     # phase); the controller must merge every worker's receipt and apply the
-    # session checks to the totals. success-only is vacuous: no refusal ran.
+    # session checks to the totals. success-only (no refusal among the client
+    # requests) passes; a worker whose positive control failed does not.
     with (
         runtime_directory(tmp_path, purpose="observer") as directory,
         pytest.MonkeyPatch.context() as environment,
     ):
+        plugin = directory / "observer_plant.py"
+        plugin.write_text("import pytest\n" + _plant(mode))
         environment.setenv("DJANGO_SETTINGS_MODULE", "config.settings.test")
         environment.setenv("WORKSPACE_GUARD_PROBE", mode)
-        environment.setenv("PYTHONPATH", str(Path.cwd() / "tests"))
+        environment.setenv(
+            "PYTHONPATH",
+            os.pathsep.join((str(directory), str(Path.cwd() / "tests"))),
+        )
         completed = run_process(
             (
                 sys.executable,
@@ -290,6 +356,8 @@ def test_distributed_sessions_check_the_merged_worker_receipts(
                 "pytest",
                 "--reuse-db",
                 "-q",
+                "-p",
+                "observer_plant",
                 "--numprocesses=1",
                 "--basetemp=" + str(directory / "b"),
                 "tests/core/test_workspace_guard_integrity.py::test_guard_canary",
@@ -304,13 +372,20 @@ def test_distributed_sessions_check_the_merged_worker_receipts(
             if line.startswith("REFUSAL_GUARD ")
         )
     )
-    requests = 2 if mode == "normal" else 1
+    requests = 1 if mode == "success-only" else 2
     assert stats["client_requests"] == stats["evaluated_requests"] == requests
     assert stats["responses"] == requests
     assert stats["refusals"] == int(mode == "normal")
-    expected = 0 if mode == "normal" else 1
+    expected = int(mode == "worker-control-lost")
     assert completed.returncode == expected, completed.stdout + completed.stderr
-    vacuous = (
-        "REFUSAL_GUARD_FAILURE Django client ran but refusal observer saw zero refusals"
-    )
-    assert (vacuous in lines) == (mode == "success-only")
+    failures = {line for line in lines if line.startswith("REFUSAL_GUARD_F")}
+    if expected:
+        counts = CONTROL_LOSSES["vacuous-check"][1]
+        assert failures == {
+            f"REFUSAL_GUARD_FAILURE {_NOT_RECORDED}{counts}",
+            "REFUSAL_GUARD_FAILURE An xdist worker did not record the refusal "
+            "guard positive control",
+        }
+        assert "refusal guard failed" in lines[-1], lines[-1]
+    else:
+        assert not failures
