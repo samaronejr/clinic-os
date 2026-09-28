@@ -2594,6 +2594,19 @@
       ]
     },
     {
+      "symbol": "apps.scheduling.appointment_view.authorize_transition_view",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Transition-page view scope decided before a scheduling write (worker-contract amendment 2026-09-28); consumer of the named executable manager boundary. tests/scheduling/test_resource_write_scope.py executes every stored role against it for legacy and service bookings, with no write or audit row on refusal.",
+      "enforced_by": [
+        "apps.identity.current_context.require_current_actor_clinic_roles",
+        "apps.scheduling.access.authorized_appointment_manager_clinic"
+      ]
+    },
+    {
       "symbol": "apps.scheduling.availability_presenter.authorized_screen",
       "signals": [
         "denial",

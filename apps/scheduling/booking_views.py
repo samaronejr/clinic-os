@@ -19,6 +19,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
+from apps.scheduling.access import authorized_view_scope
 from apps.scheduling.agenda_presenter import (
     DAY_VIEW,
     agenda_screen,
@@ -254,6 +255,8 @@ def _booked_response(
 
 
 def _created(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
+    # Authorize the agenda this POST redirects to before anything is written.
+    authorized_view_scope(clinic_id)
     if request.POST.get("service_type_id"):
         _authorize_service_practitioner(request, clinic_id)
         choices = tuple(

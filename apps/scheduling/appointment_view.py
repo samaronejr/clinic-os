@@ -35,6 +35,24 @@ class AppointmentTransitionView:
     cancellation_reason: str | None
 
 
+def authorize_transition_view(*, appointment_id: UUID) -> None:
+    """Decide the transition page's view scope, appending no view event.
+
+    Transition writes re-render or redirect into this page. The tenant
+    transaction commits any response below 500, so this scope is decided
+    before the write: a refusal after it would keep the write.
+    """
+    if type(appointment_id) is not UUID:
+        raise AppointmentAccessDeniedError
+    try:
+        appointment = Appointment.objects.get(pk=appointment_id)
+        clinic = authorized_appointment_manager_clinic(appointment.clinic_id)
+    except (CurrentActorError, Appointment.DoesNotExist, DataError) as error:
+        raise AppointmentAccessDeniedError from error
+    if clinic.organization_id != appointment.organization_id:
+        raise AppointmentAccessDeniedError
+
+
 def view_appointment_for_transition(
     *,
     appointment_id: UUID,
