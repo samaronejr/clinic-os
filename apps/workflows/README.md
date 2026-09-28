@@ -92,6 +92,11 @@ All five domain models inherit `TenantScopedModel`. Initial DDL installs FORCE
 RLS, exact per-app posture declarations, composite clinic/organization bindings,
 immutable identities and no-delete triggers, and revokes bootstrap default DML
 in the same migration. No machine-role table access is granted implicitly.
+Row visibility is decided by the SELECT/UPDATE policies (owner, role owner,
+creator, run starter); insert authority is decided once, by the BEFORE trigger,
+which PostgreSQL runs before any INSERT `WITH CHECK`. Every actor-reading SQL
+decision is derived from the catalog and exercised both ways in
+`tests/workflows/test_sql_decisions.py`.
 Every new table is classified as restored tenant data in the recovery manifest;
 UUID primary keys introduce no sequences. Protected comment bytes ship encrypted
 from their first version; no plaintext conversion or backfill exists.

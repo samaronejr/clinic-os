@@ -25,6 +25,7 @@ from apps.workflows.access import (
     owner_matches,
     require_clinic_access,
     require_manager,
+    require_task_access,
 )
 from apps.workflows.forms import (
     KIND_CHOICES,
@@ -164,6 +165,15 @@ def _submitted_evidence(request: HttpRequest) -> dict[str, object]:
     return {"checked": request.POST.get("checked") == "on"}
 
 
+def _assignment_owner(
+    request: HttpRequest, clinic_id: UUID, task_id: UUID, actor: UUID
+) -> TaskOwner:
+    # Authority before input: an actor who may not assign this task gets the
+    # identical denial, never a validation response about the owner field.
+    require_task_access(clinic_id=clinic_id, task_id=task_id, permission="tasks.assign")
+    return _owner(request.POST.get("owner", "me"), actor)
+
+
 def _action(
     request: HttpRequest, clinic_id: UUID, actor: UUID
 ) -> ReassignmentPreview | None:
@@ -185,7 +195,7 @@ def _action(
         assign_task(
             clinic_id=clinic_id,
             task_id=task_id,
-            owner=_owner(request.POST.get("owner", "me"), actor),
+            owner=_assignment_owner(request, clinic_id, task_id, actor),
             expected_revision=revision,
         )
     elif action == "start":

@@ -416,13 +416,8 @@ _READ = {
         "EXISTS (SELECT 1 FROM clinic_app.workflows_workflowrun r WHERE r.id=run_id)"
     ),
 }
-_INSERT = {
-    "workflows_task": "tasks.assign",
-    "workflows_taskcomment": "tasks.view",
-    "workflows_workflowdefinitionversion": "tasks.reassign",
-    "workflows_workflowrun": "tasks.reassign",
-    "workflows_workflowstep": "tasks.reassign",
-}
+# Insert authority is decided once, by the BEFORE trigger: PostgreSQL runs it
+# before WITH CHECK, so a permission repeated here could never be observed.
 for _table in TABLES:
     SQL += f"""
 ALTER TABLE clinic_app.{_table} ENABLE ROW LEVEL SECURITY;
@@ -435,8 +430,7 @@ CREATE POLICY workflow_owner ON clinic_app.{_table} TO clinic_owner
 CREATE POLICY workflow_read ON clinic_app.{_table} FOR SELECT TO clinic_app
  USING ({_SCOPE} AND ({_READ[_table]}));
 CREATE POLICY workflow_insert ON clinic_app.{_table} FOR INSERT TO clinic_app
- WITH CHECK ({_SCOPE} AND
- clinic_app.has_permission('{_INSERT[_table]}',clinic_id,NULL));
+ WITH CHECK ({_SCOPE});
 CREATE TRIGGER workflow_guard BEFORE INSERT OR UPDATE OR DELETE ON clinic_app.{_table}
  FOR EACH ROW EXECUTE FUNCTION clinic_app.workflows_guard();
 """

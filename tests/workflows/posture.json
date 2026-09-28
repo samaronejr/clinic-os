@@ -48,7 +48,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.assign'::text, clinic_id, NULL::uuid))"
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
     ],
     [
       "workflows_task",
@@ -92,7 +92,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.view'::text, clinic_id, NULL::uuid))"
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
     ],
     [
       "workflows_taskcomment",
@@ -125,7 +125,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))"
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
     ],
     [
       "workflows_workflowdefinitionversion",
@@ -158,7 +158,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))"
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
     ],
     [
       "workflows_workflowrun",
@@ -202,7 +202,7 @@
       ],
       "INSERT",
       null,
-      "((organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid) AND has_permission('tasks.reassign'::text, clinic_id, NULL::uuid))"
+      "(organization_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)"
     ],
     [
       "workflows_workflowstep",

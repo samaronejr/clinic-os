@@ -21,7 +21,7 @@ from apps.workflows.services import (
     create_task,
     start_task,
 )
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
 
 from identity.permission_support import (
@@ -223,3 +223,23 @@ def test_command_replay_is_bound_to_actor_and_terms(rbac_graph: RbacGraph) -> No
                 expected_revision=1,
             )
         assert Task.objects.get(pk=task.pk).revision == 2
+
+
+def test_only_the_replay_key_constraint_becomes_a_conflict(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Any other integrity rejection surfaces instead of posing as a replay."""
+    graph = rbac_graph
+    rejection = IntegrityError()
+    rejection.__cause__ = DatabaseError()
+
+    def reject(**_fields: object) -> tuple[Task, bool]:
+        raise rejection
+
+    monkeypatch.setattr(Task.objects, "get_or_create", reject)
+    with (
+        runtime_role(),
+        tenant_context(graph.physician, graph.organization_a),
+        pytest.raises(IntegrityError),
+    ):
+        create_task(clinic_id=graph.clinic_a, spec=spec(graph), idempotency_key=uuid4())

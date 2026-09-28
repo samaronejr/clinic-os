@@ -1,4 +1,4 @@
-"""Opt-in decision mutant for the whole workflow collection (proof harness)."""
+"""Opt-in decision mutant hook; inert unless CLINIC_WORKFLOW_DECISION_MUTANT is set."""
 
 from __future__ import annotations
 

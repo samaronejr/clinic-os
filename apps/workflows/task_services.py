@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
 MAX_COMMENT_LENGTH = 2000
 TERMINAL = frozenset({"done", "cancelled"})
+REPLAY_KEY_CONSTRAINT = "workflows_task_command_uniq"
 
 
 def _event(task: Task, verb: str) -> None:
@@ -117,8 +118,12 @@ def create_task(*, clinic_id: UUID, spec: TaskSpec, idempotency_key: UUID) -> Ta
             },
         )
     except IntegrityError as error:
-        # The key exists outside this actor's visibility: a conflicting replay,
-        # never a server error and never a disclosure of the other request.
+        # Only the replay key existing outside this actor's visibility is a
+        # conflict; every other rejection stays a visible fault.
+        if getattr(getattr(error.__cause__, "diag", None), "constraint_name", None) != (
+            REPLAY_KEY_CONSTRAINT
+        ):
+            raise
         raise WorkflowConflictError from error
     if task.fingerprint != fingerprint:
         raise WorkflowConflictError

@@ -3758,6 +3758,18 @@
       "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
     },
     {
+      "symbol": "apps.workflows.views._assignment_owner",
+      "signals": [
+        "permission_delegation"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.workflows.views._assignment_owner#observed"
+      ],
+      "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
       "symbol": "apps.workflows.views._authorized_tasks",
       "signals": [
         "decorator",
@@ -4106,6 +4118,7 @@
     "apps.workflows.tasks.escalate#observed",
     "apps.workflows.tasks.execute_step#observed",
     "apps.workflows.views._action#observed",
+    "apps.workflows.views._assignment_owner#observed",
     "apps.workflows.views._authorized_tasks#observed",
     "apps.workflows.views._bulk_action#observed",
     "apps.workflows.views._manager#observed",
@@ -5760,16 +5773,11 @@
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
-          "clinic_app.workflows_task:workflow_insert",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update",
-          "clinic_app.workflows_taskcomment:workflow_insert",
-          "clinic_app.workflows_workflowdefinitionversion:workflow_insert",
           "clinic_app.workflows_workflowdefinitionversion:workflow_read",
-          "clinic_app.workflows_workflowrun:workflow_insert",
           "clinic_app.workflows_workflowrun:workflow_read",
           "clinic_app.workflows_workflowrun:workflow_update",
-          "clinic_app.workflows_workflowstep:workflow_insert",
           "clinic_app.workflows_workflowstep:workflow_update"
         ],
         "resolvers": [

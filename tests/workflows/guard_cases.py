@@ -32,7 +32,12 @@ from apps.workflows.models import (
     WorkflowRun,
     WorkflowStep,
 )
-from apps.workflows.validation import TaskOwner, TaskSpec, WorkflowConflictError
+from apps.workflows.validation import (
+    TaskOwner,
+    TaskSpec,
+    WorkflowConflictError,
+    WorkflowInputError,
+)
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.test import RequestFactory
@@ -661,6 +666,13 @@ def _base_cases() -> tuple[GuardCase, ...]:
             ),
         ),
         GuardCase(
+            "apps.workflows.views._assignment_owner",
+            "tasks.assign",
+            lambda w: views._assignment_owner(
+                w.post(action="assign", owner="me"), w.clinic, w.open_task.pk, w.actor
+            ),
+        ),
+        GuardCase(
             "apps.workflows.views._authorized_tasks",
             "tasks.view",
             lambda w: inspect.unwrap(views._authorized_tasks)(w.request, w.clinic),
@@ -1006,6 +1018,32 @@ def _extras() -> dict[str, CaseRelations]:
                     lambda w: narrow(w, "nurse", "tasks.assign"),
                 ),
             ),
+        },
+        "apps.workflows.views._assignment_owner": {
+            "cells": (
+                Cell(
+                    "malformed-owner-is-validated-after-authority",
+                    lambda w, _p: views._assignment_owner(
+                        w.post(action="assign", owner="user:not-a-uuid"),
+                        w.clinic,
+                        w.open_task.pk,
+                        w.actor,
+                    ),
+                    (False, WorkflowInputError),
+                ),
+                Cell(
+                    "malformed-owner-from-an-unpermitted-actor-is-denied",
+                    lambda w, _p: views._assignment_owner(
+                        w.post(action="assign", owner="user:not-a-uuid"),
+                        w.clinic,
+                        w.open_task.pk,
+                        w.actor,
+                    ),
+                    UNAUTHORIZED,
+                    "nurse",
+                    lambda w: narrow(w, "nurse", "tasks.assign"),
+                ),
+            )
         },
         "apps.workflows.views._task_row": {
             "check": lambda row, _p: isinstance(row, dict) and row["owned"] is True,
