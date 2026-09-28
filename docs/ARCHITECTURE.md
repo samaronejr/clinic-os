@@ -217,7 +217,7 @@ are indexed in [SECURITY.md](SECURITY.md#adr-index).
 | ADR | Decision | Owning todos |
 | --- | --- | --- |
 | [ADR-000](adr/ADR-000-successor-product-contract.md) | Successor product contract supersedes renewal scope bans | 1 |
-| [ADR-001](adr/ADR-001-frontend-htmx-first-islands.md) | HTMX first; bounded React + TypeScript islands only if the agenda slice selects them | 23 |
+| [ADR-001](adr/ADR-001-frontend-htmx-first-islands.md) | HTMX first; the agenda slice measured both models and selected no island (HTMX grid) | 23 |
 | [ADR-002](adr/ADR-002-realtime-sse.md) | Realtime over SSE from a separate ASGI process | 8 |
 | [ADR-003](adr/ADR-003-authorization-permission-bundles.md) | One permission-bundle authorization model | 6 |
 | [ADR-004](adr/ADR-004-server-side-drafts.md) | Server-side durable drafts with compare-and-swap | 27 |

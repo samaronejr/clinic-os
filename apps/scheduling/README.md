@@ -168,6 +168,24 @@ encounter once the patient has arrived. Migration `0006_appointment_lifecycle_v2
 is one rehearsed transaction; reverse refuses once v2 states exist
 (rollback = restore).
 
+## Multi-resource day grid (todo 23)
+
+`view_day_grid(*, clinic_id, date)` returns one clinic-local day as practitioner
+columns (every active physician for managers, only themself for a physician)
+followed by active room columns, with the agenda's scope, statuses and
+`scheduling.agenda.viewed` audit event. An appointment appears in its
+practitioner's column and in every room it occupies. `move_appointment(*,
+clinic_id, appointment_id, expected_revision, local_range)` is
+`reschedule_appointment` with the same locks, authority and audit, plus two
+refusals: a revision other than the stored one raises
+`AppointmentLifecycleError("revision_conflict")` and writes nothing (no lost
+update), and an appointment of another clinic shares the unknown-appointment
+denial. The HTMX grid (`/scheduling/clinics/<clinic>/agenda/grid/<day>/`, move
+POST `.../agenda/grid/move/` with every selector in the body) answers a lost
+race or a taken time with 409 and the current grid; with JavaScript off each
+appointment links to its own reschedule page. ADR-001 records why this HTMX
+variant, not a React island, was selected.
+
 ## Appointment reminders
 
 Booking (including patient and waitlist booking) atomically schedules eligible
