@@ -167,6 +167,30 @@ def test_view_reader_uses_pg_rewrite_dependencies(rbac_graph: RbacGraph) -> None
     assert ("relation", "clinic_app.identity_rolegrant") in observer.touches
 
 
+def test_view_setting_read_is_parsed_from_the_view_definition(
+    rbac_graph: RbacGraph,
+) -> None:
+    # pg_rewrite dependencies name current_setting but not the setting; only
+    # the view's definition text shows which GUC it reads.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE TEMP VIEW t6_actor_view AS "
+            "SELECT current_setting('app.current_user_id', true) AS actor"
+        )
+        cursor.execute("GRANT SELECT ON t6_actor_view TO clinic_app")
+    observer = _observe(rbac_graph, "SELECT actor FROM pg_temp.t6_actor_view")
+    assert ("guc", "app.current_user_id") in observer.touches
+
+
+@pytest.mark.parametrize("relation", ["pg_settings", "pg_catalog.pg_settings"])
+def test_setting_enumeration_is_opaque(rbac_graph: RbacGraph, relation: str) -> None:
+    observer = _observe(
+        rbac_graph,
+        f"SELECT setting FROM {relation} WHERE name = 'app.current_user_id'",  # noqa: S608 - fixed test identifiers.
+    )
+    assert ("opaque", "setting enumeration pg_settings") in observer.touches
+
+
 def test_dynamic_sql_is_not_certified_even_when_it_returns_no_authority_rows(
     rbac_graph: RbacGraph,
 ) -> None:

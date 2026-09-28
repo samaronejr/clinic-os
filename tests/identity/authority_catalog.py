@@ -70,6 +70,12 @@ CRYPTO_PRIMITIVES = {
 }
 
 
+# Catalog relations that list server settings (and so every session GUC).
+SETTING_CATALOGS = frozenset(
+    {"pg_settings", "pg_file_settings", "pg_db_role_setting", "pg_show_all_settings"}
+)
+
+
 @dataclass(frozen=True)
 class Function:
     oid: int
@@ -174,6 +180,16 @@ class Catalog:
                 )
                 for row in cursor.fetchall()
             }
+            # pg_rewrite dependencies carry a view's relations and functions but
+            # not the setting names it reads, so view text is parsed as well.
+            cursor.execute("""
+                SELECT c.oid, pg_get_viewdef(c.oid) FROM pg_class c
+                JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE c.relkind IN ('v','m')
+                  AND n.nspname NOT IN ('pg_catalog','information_schema')
+                  AND n.nspname NOT LIKE 'pg_toast%'
+            """)
+            self.view_definitions: dict[int, str] = dict(cursor.fetchall())
             cursor.execute("""
                 SELECT objid, refclassid::regclass::text, refobjid FROM pg_depend
                 WHERE classid='pg_proc'::regclass
@@ -267,6 +283,9 @@ class Catalog:
         functions = self._function_references(parsed, result)
         relations = set()
         for name in parsed.names:
+            if name[-1] in SETTING_CATALOGS:
+                # Server settings enumerated as rows expose every session GUC.
+                result.opaque.add("setting enumeration " + name[-1])
             if name in self.opaque_types:
                 result.opaque.add("uninspectable type " + ".".join(name))
             relations.update(self.relation_names.get(name, set()))
@@ -315,6 +334,9 @@ class Catalog:
         for parent, kind, target in self.view_edges:
             if parent == oid:
                 result.merge(self._edge(kind, target, bypass=bypass, seen=seen))
+        definition = self.view_definitions.get(oid)
+        if definition is not None:
+            result.merge(self._statement(definition, bypass=bypass, seen=seen))
         if not bypass:
             for table, using, check in self.policies:
                 if table == oid:

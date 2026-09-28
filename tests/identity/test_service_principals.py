@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import re
 import secrets
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from apps.comms.tasks import execute_operation as execute_operation_task
 from apps.core.integration import (
     IntegrationContextError,
     OperationRequest,
@@ -78,15 +79,29 @@ REGISTRY = json.loads(Path(__file__).with_name("legacy_guards.json").read_text()
 # helper refuses any non-empty actor GUC; no other member may read the actor.
 REFUSAL_HELPER = "clinic_app.principal_scope"
 ACTOR_GUC = "app.current_user_id"
-REFUSAL_CONJUNCT = "AND NULLIF(current_setting('app.current_user_id',true),'') IS NULL"
-BYPASS_KEYWORDS = re.compile(
-    r"\b(?:OR|NOT|CASE|UNION|EXCEPT|INTERSECT|COALESCE)\b", re.IGNORECASE
+# The reviewed helper is pinned exactly: sha256 of pg_get_functiondef plus
+# owner and ACL. The only normalization is pg_get_functiondef's own: it renders
+# the header (signature, language, volatility, SECURITY DEFINER, SET
+# search_path, strictness, cost) canonically from pg_proc, so the pin does not
+# depend on how a migration spelled it. The body is prosrc verbatim and no text
+# is rewritten, so every byte, including whitespace inside literals, counts.
+# Changing principal_scope means re-reviewing it and updating this pin.
+REFUSAL_HELPER_DIGEST = (
+    "5d1317b75f31ab4987abf387194cced1b4c9a2d1f866baef1d9152a3aea2a28a"
 )
-SETTING_ENUMERATORS = re.compile(
-    r"\bpg_(?:settings|show_all_settings)\b", re.IGNORECASE
+# Everything the pinned helper's closure may read; any view is refused.
+REFUSAL_HELPER_RELATIONS = frozenset(
+    {
+        "clinic_app.identity_serviceprincipal",
+        "clinic_app.identity_serviceprincipalgrant",
+    }
 )
-# Reviewed opaque callee: pg_has_role(session_user, 'clinic_agent', 'USAGE')
-# inspects the database login role graph, never application staff rows.
+REFUSAL_HELPER_SETTINGS = frozenset(
+    {"app.current_patient_session", "app.current_user_id", "transaction_isolation"}
+)
+# The only settings any other member may read, with the helper sealed: its own
+# machine scope. Actor, patient and invented settings all fail closed.
+MEMBER_SETTINGS = frozenset({"app.current_principal", "app.current_tenant"})
 MACHINE_SQL_OPAQUE = {"opaque function pg_catalog.pg_has_role"}
 # Cross-check only (the rule is machine_violations). Actor GUC cells: cleared;
 # the matrix actor; other staff; every pooled uuid ("pooled"); non-uuid values
@@ -747,30 +762,47 @@ class SealedCatalog(Catalog):
         return super()._function(oid, bypass=bypass, seen=seen)
 
 
+def refusal_helper_digest() -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_get_functiondef(p.oid) || ' --owner ' || "
+            "pg_get_userbyid(p.proowner) || ' --acl ' || p.proacl::text "
+            "FROM pg_proc p WHERE p.oid = %s::regprocedure",
+            [REFUSAL_HELPER + "(uuid,uuid)"],
+        )
+        row = cursor.fetchone()
+    assert row is not None
+    return hashlib.sha256(str(row[0]).encode()).hexdigest()
+
+
+def _views(catalog: SealedCatalog, reads: Reads) -> list[str]:
+    return sorted(
+        catalog.relations[oid].name
+        for oid in reads.relations
+        if catalog.relations[oid].kind in {"v", "m"}
+    )
+
+
 def _helper_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
-    (oid,) = catalog.sealed
-    helper = catalog.functions[oid]
-    body = " ".join(helper.source.split())
     problems = []
-    if helper.language != "sql":
-        problems.append("refusal helper is not a plain SQL body")
-    if BYPASS_KEYWORDS.search(body):
-        problems.append("refusal helper can bypass its refusal conjunct")
-    if body.count(ACTOR_GUC) != 1 or REFUSAL_CONJUNCT not in body:
-        problems.append("refusal helper lost its single actor refusal conjunct")
-    if reads.settings & catalog.channels.settings - {ACTOR_GUC}:
-        problems.append("refusal helper reads another authority setting")
+    if refusal_helper_digest() != REFUSAL_HELPER_DIGEST:
+        problems.append("refusal helper differs from the reviewed definition")
+    relations = {catalog.relations[oid].name for oid in reads.relations}
+    if relations != REFUSAL_HELPER_RELATIONS:
+        problems.append("refusal helper reads: " + ", ".join(sorted(relations)))
+    if reads.settings != REFUSAL_HELPER_SETTINGS:
+        problems.append("refusal helper settings: " + ", ".join(sorted(reads.settings)))
     return problems
 
 
 def _member_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     problems = []
     if not reads.functions & catalog.sealed:
-        problems.append("does not reach the refusal helper")
-    if ACTOR_GUC in reads.settings:
-        problems.append("reads the actor GUC outside the refusal helper")
-    if reads.settings & catalog.channels.settings - {"app.current_tenant", ACTOR_GUC}:
-        problems.append("reads another authority setting")
+        problems.append(UNREACHED)
+    if extra := reads.settings - MEMBER_SETTINGS:
+        problems.append(
+            "reads settings outside the allowlist: " + ", ".join(sorted(extra))
+        )
     return problems
 
 
@@ -782,12 +814,9 @@ def _closure_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
         problems.append("calls a staff authority function")
     if reads.opaque - MACHINE_SQL_OPAQUE:
         problems.append("uninspectable read: " + ", ".join(sorted(reads.opaque)))
-    for oid in reads.functions - catalog.sealed:
-        function = catalog.functions[oid]
-        if SETTING_ENUMERATORS.search(
-            f"{function.name} {function.source} {function.definition}"
-        ):
-            problems.append("enumerates settings: " + function.name)
+    if views := _views(catalog, reads):
+        # View text is parsed by the catalog; the helper may read none at all.
+        problems.append("reads views: " + ", ".join(views))
     return problems
 
 
@@ -796,11 +825,12 @@ def machine_violations(
 ) -> dict[str, list[str]]:
     """Structural rule for every registry member, independent of actor values.
 
-    The refusal helper is a plain AND-only query whose single actor read is the
-    refusal conjunct, so any non-empty actor GUC refuses. Every other member
-    must reach the helper and, with the helper sealed, never read the actor GUC
-    or any staff authority channel at all, directly, through views, policies,
-    triggers or helper functions. Uninspectable reads fail closed.
+    The refusal helper is the reviewed definition pinned by digest, reading
+    exactly its principal tables and settings and no view. Every other member
+    must reach the helper and, with the helper sealed, read no setting outside
+    MEMBER_SETTINGS, no view, and no staff authority channel, directly or
+    through policies, triggers or helper functions. Uninspectable reads,
+    including settings catalogs, fail closed.
     """
     assert REFUSAL_HELPER in members, "refusal helper is not a registry member"
     result: dict[str, list[str]] = {}
@@ -826,6 +856,16 @@ def test_machine_sql_closure_reads_no_staff_authority() -> None:
     assert machine_violations(SealedCatalog(), members) == {m: [] for m in members}
 
 
+# Planted views: an actor reader and a settings enumerator.
+PLANTED_VIEWS = """
+    CREATE VIEW clinic_app.principal_actor_v AS
+      SELECT current_setting('app.current_user_id', true) AS actor;
+    CREATE VIEW clinic_app.principal_settings_v AS
+      SELECT name, setting FROM pg_catalog.pg_settings;
+    CREATE FUNCTION clinic_app.principal_actor_hint() RETURNS text
+      LANGUAGE sql STABLE SET search_path=pg_catalog,clinic_app,pg_temp
+      AS $f$ SELECT current_setting('app.current_user_id', true) $f$;
+"""
 PLANTED_MEMBERS = {
     # Grants when the actor names a practitioner (review round 3, MY2).
     "practitioner_join": """
@@ -842,35 +882,58 @@ PLANTED_MEMBERS = {
         END AND pg_has_role(session_user,'clinic_agent','USAGE')""",
     # Reaches the helper, but reads the actor through a new helper function.
     "actor_helper": """
-        SELECT clinic_app.principal_scope(clinic, clinic) IS NULL
-          AND clinic_app.principal_actor_hint() = clinic::text""",
-    # Reaches the helper, but reads the actor through the settings view.
-    "settings_view": """
-        SELECT clinic_app.principal_scope(clinic, clinic) IS NULL
-          AND EXISTS (SELECT 1 FROM pg_catalog.pg_settings
+        SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
+          OR clinic_app.principal_actor_hint() = clinic::text""",
+    # Reaches the helper, but enumerates settings.
+    "settings_catalog": """
+        SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
+          OR EXISTS (SELECT 1 FROM pg_catalog.pg_settings
             WHERE name = 'app.current_user_id' AND setting = clinic::text)""",
+    # Actor read through a view, joined to practitioners (review round 4, MZ6).
+    "view_practitioner": """
+        SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
+          OR EXISTS (SELECT 1 FROM clinic_app.principal_actor_v v
+            JOIN clinic_app.scheduling_availabilityblock b
+              ON b.practitioner_id::text = v.actor)""",
+    # The patient actor setting (review round 4, MZ1).
+    "patient_session": """
+        SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
+          OR current_setting('app.current_patient_session', true) = clinic::text""",
+    # An invented caller-set setting (review round 4, MZ2).
+    "on_behalf_of": """
+        SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
+          OR current_setting('app.on_behalf_of', true) = clinic::text""",
+    # Settings enumerated through a view.
+    "settings_view": """
+        SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
+          OR EXISTS (SELECT 1 FROM clinic_app.principal_settings_v s
+            WHERE s.name = 'app.current_user_id' AND s.setting = clinic::text)""",
 }
-
-
-ACTOR_READ = "reads the actor GUC outside the refusal helper"
 UNREACHED = "does not reach the refusal helper"
+SETTINGS = "reads settings outside the allowlist"
+OPAQUE = "uninspectable read"
+VIEWS = "reads views"
 PLANT_VIOLATIONS = {
-    "practitioner_join": {UNREACHED, ACTOR_READ},
-    "non_uuid": {UNREACHED, ACTOR_READ},
-    "actor_helper": {ACTOR_READ},
-    "settings_view": {"enumerates settings: clinic_app.principal_extra"},
+    "practitioner_join": {UNREACHED, SETTINGS},
+    "non_uuid": {UNREACHED, SETTINGS},
+    "actor_helper": {SETTINGS},
+    "settings_catalog": {OPAQUE},
+    "view_practitioner": {SETTINGS, VIEWS},
+    "patient_session": {SETTINGS},
+    "on_behalf_of": {SETTINGS},
+    "settings_view": {OPAQUE, VIEWS},
 }
+
+
+def _kinds(problems: list[str]) -> set[str]:
+    return {problem.split(":", 1)[0] for problem in problems}
 
 
 @pytest.mark.parametrize("plant", sorted(PLANTED_MEMBERS))
 def test_planted_actor_reader_is_refused_by_construction(plant: str) -> None:
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
-        cursor.execute("""
-            CREATE FUNCTION clinic_app.principal_actor_hint() RETURNS text
-            LANGUAGE sql STABLE SET search_path=pg_catalog,clinic_app,pg_temp
-            AS $f$ SELECT current_setting('app.current_user_id', true) $f$
-        """)
+        cursor.execute(PLANTED_VIEWS)
         cursor.execute(
             "CREATE FUNCTION clinic_app.principal_extra(clinic uuid) RETURNS boolean"
             " LANGUAGE sql VOLATILE SECURITY DEFINER"
@@ -881,19 +944,32 @@ def test_planted_actor_reader_is_refused_by_construction(plant: str) -> None:
             SealedCatalog(), [*machine_members(), "clinic_app.principal_extra"]
         )
         transaction.set_rollback(True)
-    assert set(violations.pop("clinic_app.principal_extra")) == PLANT_VIOLATIONS[plant]
+    assert (
+        _kinds(violations.pop("clinic_app.principal_extra"))
+        == (PLANT_VIOLATIONS[plant])
+    ), plant
     assert violations == {member: [] for member in machine_members()}
 
 
-@pytest.mark.parametrize(
-    "helper",
-    [
-        # The refusal conjunct is OR-ed away.
-        "OR NULLIF(current_setting('app.current_user_id',true),'') IS NOT NULL",
-        # The conjunct is dropped.
-        "",
-    ],
-)
+WEAKENED_HELPERS = {
+    # The refusal conjunct is OR-ed away.
+    "or": "OR NULLIF(current_setting('app.current_user_id',true),'') IS NOT NULL",
+    # The conjunct is dropped.
+    "dropped": "",
+    # Review round 4 (W3): the conjunct is kept but inert, and a view admits
+    # any actor with outbox history.
+    "inert_view": """
+        AND (SELECT count(*) WHERE true
+          AND NULLIF(current_setting('app.current_user_id',true),'') IS NULL) >= 0
+        AND (SELECT count(*) FROM clinic_app.principal_actor_v v
+          WHERE NULLIF(v.actor,'') IS NULL)
+          + (SELECT count(*) FROM clinic_app.principal_actor_v v
+            JOIN clinic_app.comms_integrationoperation o
+              ON o.actor_id::text = v.actor) > 0""",
+}
+
+
+@pytest.mark.parametrize("helper", sorted(WEAKENED_HELPERS))
 def test_weakened_refusal_helper_is_refused(helper: str) -> None:
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
@@ -904,14 +980,89 @@ def test_weakened_refusal_helper_is_refused(helper: str) -> None:
         assert row is not None
         weakened = str(row[0]).replace(
             "AND NULLIF(current_setting('app.current_user_id',true),'') IS NULL",
-            helper,
+            WEAKENED_HELPERS[helper],
         )
         assert weakened != row[0]
         cursor.execute("SET LOCAL ROLE clinic_resolver")
+        cursor.execute(PLANTED_VIEWS)
         cursor.execute(weakened)
         violations = machine_violations(SealedCatalog(), machine_members())
         transaction.set_rollback(True)
-    assert violations[REFUSAL_HELPER], helper
+    assert (
+        "refusal helper differs from the reviewed definition"
+        in (violations[REFUSAL_HELPER])
+    ), helper
+
+
+def test_refusal_helper_pin_is_the_live_definition() -> None:
+    assert refusal_helper_digest() == REFUSAL_HELPER_DIGEST
+
+
+def test_forged_actor_with_domain_history_is_refused_on_the_agent_login(
+    principal: ServicePrincipal,
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real staff actor with availability and outbox history is still refused."""
+    monkeypatch.setattr(execute_operation_task, "apply_async", lambda **_kwargs: None)
+    actor = rbac_graph.physician
+    assert _seed_availability(rbac_graph)
+    with runtime_role(), tenant_context(actor, rbac_graph.organization_a):
+        enqueue_operation(
+            OperationRequest(
+                channel="email",
+                provider="synthetic",
+                clinic_id=principal.clinic_id,
+                subject_type="synthetic.action",
+                subject_id=uuid4(),
+                idempotency_key=uuid4(),
+            )
+        )
+    members = machine_members()
+    types = _argument_types(members)
+    vectors = _machine_vectors(
+        types,
+        {
+            "uuid": [principal.pk, principal.clinic_id, actor, uuid4()],
+            "text": ["appointment.read"],
+        },
+    )
+    calls = {name: (_call(name, types[name]), vectors[name]) for name in members}
+    # The staff actor with history, plus non-uuid values: any non-empty GUC.
+    forged: list[object] = [actor, "x", " "]
+    decisions = _machine_decisions(
+        principal,
+        {"cleared": [None], "forged": forged},
+        {"own": principal.organization_id},
+        calls,
+    )
+    assert {name for name, _t, _a in decisions} == set(members)
+    for name in members:
+        # Anti-vacuity: the same vectors grant with the actor GUC cleared.
+        assert any(map(_granted, decisions[name, "own", "cleared"])), name
+        assert len(decisions[name, "own", "forged"]) == len(forged) * len(
+            vectors[name]
+        ), name
+        # The forged actors, and the actor equal to each argument, never grant.
+        for cell in ("forged", "own_argument"):
+            assert decisions[name, "own", cell], (name, cell)
+            assert not any(map(_granted, decisions[name, "own", cell])), (name, cell)
+    agent = connections["agent"]
+    with agent.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_user_id', %s, false)", [str(actor)]
+        )
+    try:
+        with (
+            pytest.raises(ServicePrincipalAccessDeniedError),
+            service_principal_context(
+                principal_id=principal.pk, clinic_id=principal.clinic_id
+            ),
+        ):
+            pytest.fail("forged staff actor entered the machine context")
+    finally:
+        with agent.cursor() as cursor:
+            cursor.execute("RESET app.current_user_id")
 
 
 def test_planted_staff_read_in_machine_sql_is_detected() -> None:
