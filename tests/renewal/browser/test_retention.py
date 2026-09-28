@@ -23,7 +23,12 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, new_totp_key
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     failed_responses_logged,
@@ -362,7 +367,7 @@ def sign_in_manager(
     token = TOTP(bytes.fromhex(manager["totp_key"]), 30, 0, 6, 1).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
     click_to_navigate(page.locator("button[type=submit]"))
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def grant_records(staff: dict[str, str], data: dict[str, str]) -> str:
@@ -484,7 +489,9 @@ def open_finalized(  # noqa: PLR0913 - the journey needs its full context
 ) -> str:
     """Reach one finalized version through the real agenda journey."""
     _sign_in_physician(page, base, staff)
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
     page.locator("#template-id").select_option(specialty)
     press(page, "template")
@@ -530,7 +537,7 @@ def _physician_scene(  # noqa: PLR0913 - the scene needs its full context
 ) -> str:
     """Finalize, release and export one record as the assigned physician."""
     version = open_finalized(page, staff, base, DAYS[width], data["specialty"])
-    page.goto(url)
+    goto_settled(page, url)
     expect(page.locator("#policy-form")).to_have_count(0)
     expect(page.locator("#hold-form")).to_have_count(0)
     expect(page.locator("#releasable-list")).to_be_visible()
@@ -580,7 +587,7 @@ def _policy_scene(
     policy_id = proposed[0][3]
     row = page.locator(f'#policy-list li[data-policy="{policy_id}"]')
     expect(row).to_have_attribute("data-state", "proposed")
-    row.locator('button[value="approve_policy"]').click()
+    click_to_navigate(row.locator('button[value="approve_policy"]'))
     page.wait_for_url("**/retention/**")
     expect(
         page.locator(f'#policy-list li[data-policy="{policy_id}"]')
@@ -646,7 +653,7 @@ def _reception_scene(  # noqa: PLR0913 - the scene needs its full context
 ) -> None:
     """Reception reads the status page but every write is denied."""
     _sign_in_receptionist(page, base, staff)
-    response = page.goto(url)
+    response = goto_settled(page, url)
     assert response is not None
     assert response.status == 200
     expect(page.locator("#policy-form")).to_have_count(0)
@@ -680,7 +687,7 @@ def _patient_scene(  # noqa: PLR0913 - the scene needs its full context
     code = grant_records(staff, data)
     _redeem(page, base, staff["clinic_a"], code)
     page.wait_for_url("**/patient/")
-    page.goto(f"{base}/patient/records/")
+    goto_settled(page, f"{base}/patient/records/")
     expect(page.locator("h1")).to_have_text("Seus registros")
     assert FIRST["subjective"] in page.content()
     capture(page, root, "patient-records", width)
@@ -723,7 +730,7 @@ def test_retention_journey(
             manager_page = manager_context.new_page()
             persona_errors["manager"] = _watch_errors(manager_page)
             sign_in_manager(manager_page, base, staff, manager)
-            manager_page.goto(url)
+            goto_settled(manager_page, url)
             expect(manager_page.locator("#policy-form")).to_be_visible()
             _policy_scene(manager_page, staff, manager, root, width)
             _hold_scene(
@@ -794,7 +801,7 @@ class _ForcedStepFailureError(Exception):
 
 def _failing_step(page: Page, destination: Path, url: str) -> None:
     with disposal_diagnostics(page, destination):
-        page.goto(url)
+        goto_settled(page, url)
         raise _ForcedStepFailureError
 
 
@@ -805,10 +812,10 @@ def test_disposal_diagnostics_are_written_only_on_failure(
 ) -> None:
     folder = renewal_artifact_root / "retention" / "diagnostics-self-test"
     login = f"{renewal_base_url}/auth/login/"
-    renewal_page.goto(login)
+    goto_settled(renewal_page, login)
     passed = folder / "passed.json"
     with disposal_diagnostics(renewal_page, passed):
-        renewal_page.goto(login)
+        goto_settled(renewal_page, login)
     assert not passed.exists()
     assert not folder.exists()
     failed = folder / "failed.json"
@@ -897,7 +904,7 @@ def _matrix_patient(
     code = grant_records(staff, data)
     _redeem(page, base, staff["clinic_a"], code)
     page.wait_for_url("**/patient/")
-    page.goto(f"{base}/patient/records/")
+    goto_settled(page, f"{base}/patient/records/")
     return page, errors, context
 
 
@@ -996,7 +1003,7 @@ def _matrix_denied(  # noqa: PLR0913 - the scene needs its full context
         page.set_default_timeout(20_000)
         errors = _watch_errors(page)
         _sign_in_receptionist(page, base, staff)
-        response = page.goto(url)
+        response = goto_settled(page, url)
         assert response is not None
         assert response.status == 200
         expect(page.locator("#policy-form")).to_have_count(0)
@@ -1092,7 +1099,7 @@ def _matrix_conflict(  # noqa: PLR0913 - the scene needs its full context
     errors: list[str],
 ) -> dict[str, object]:
     """Releasing a draft through a forged id renders the fixed 409 surface."""
-    page.goto(url)
+    goto_settled(page, url)
     row = page.locator(f'#releasable-list li[data-version="{second_version}"]')
     row.locator('input[name="version_id"]').evaluate(
         "(element, value) => { element.value = value; }", draft
@@ -1123,7 +1130,7 @@ def _matrix_setup(  # noqa: PLR0913 - the scene needs its full context
         first = open_finalized(
             page, staff, base, "2035-06-05", data["specialty"], LONG_SOAP
         )
-        page.goto(url)
+        goto_settled(page, url)
         # Release the first version; the second stays releasable for the
         # forged conflict below.
         click_to_navigate(
@@ -1169,7 +1176,7 @@ def _matrix_scene(  # noqa: PLR0913 - the scene needs its full context
         page.set_default_timeout(20_000)
         errors = _watch_errors(page)
         sign_in_manager(page, base, staff, manager)
-        page.goto(url)
+        goto_settled(page, url)
         patient, patient_errors, patient_context = _matrix_patient(
             browser, options, staff, base, data
         )
@@ -1283,7 +1290,7 @@ def test_retention_native_form_fallback(
         page = context.new_page()
         version = open_finalized(page, staff, base, "2035-06-07", data["specialty"])
         url = f"{base}/retention/clinics/{staff['clinic_a']}/"
-        page.goto(url)
+        goto_settled(page, url)
         click_to_navigate(
             page.locator(
                 f'#releasable-list li[data-version="{version}"] button[value="release"]'
@@ -1294,7 +1301,7 @@ def test_retention_native_form_fallback(
         code = grant_records(staff, data)
         _redeem(page, base, staff["clinic_a"], code)
         page.wait_for_url("**/patient/")
-        page.goto(f"{base}/patient/records/")
+        goto_settled(page, f"{base}/patient/records/")
         expect(page.locator("h1")).to_have_text("Seus registros")
         assert FIRST["subjective"] in page.content()
         with page.expect_download() as received:

@@ -12,7 +12,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_totp_key
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import element_box, full_page_screenshot
@@ -141,7 +141,7 @@ def swap_totp_device(staff: dict[str, str]) -> str:
 
 def reverify(page: Page, base: str, key: str) -> None:
     """Complete the real re-verification challenge the denial redirected to."""
-    page.goto(f"{base}/auth/verify/")
+    goto_settled(page, f"{base}/auth/verify/")
     token = TOTP(bytes.fromhex(key), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
     click_to_navigate(page.locator("button[type=submit]"))
@@ -178,7 +178,9 @@ def open_draft(
 ) -> str:
     """Reach a saved draft through the real agenda journey."""
     _sign_in_physician(page, base, staff)
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
     page.locator("#template-id").select_option(specialty)
     press(page, "template")
@@ -236,7 +238,7 @@ def step_up_denial(
         [3, "draft"],
     ]
     reverify(page, base, key)
-    page.goto(url)
+    goto_settled(page, url)
     finalize_current(page)
     assert lineage(staff, encounter) == [
         [1, "superseded"],
@@ -288,7 +290,7 @@ def denied_read(
     try:
         denied = denied_context.new_page()
         _sign_in_receptionist(denied, base, staff)
-        response = denied.goto(url)
+        response = goto_settled(denied, url)
         assert response is not None
         assert response.status == 403
         assert FIRST["subjective"] not in denied.content()

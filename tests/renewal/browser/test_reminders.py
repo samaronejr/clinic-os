@@ -16,7 +16,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import worker_dsn
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_all_js, evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -85,7 +85,7 @@ def _seed_contact(
 
 def _book(page: Page, base: str, staff: dict[str, str], data: dict[str, str]) -> str:
     _redeem(page, base, staff["clinic_a"], data["code"])
-    page.goto(base + "/patient/appointments/")
+    goto_settled(page, base + "/patient/appointments/")
     _choose_day(page, data["day"])
     click_to_navigate(page.locator("[data-slot] button").first)
     expect(page.locator('[data-status="scheduled"]')).to_have_count(1)
@@ -187,7 +187,7 @@ def test_reminder_journey(
     url = f"{base}/scheduling/clinics/{staff['clinic_a']}/reminders/"
     try:
         _sign_in_receptionist(manager, base, staff)
-        manager.goto(url)
+        goto_settled(manager, url)
         _capture(manager, root, "default", width)
         _journey_states((manager, patient), (staff, base, channel, url), (root, width))
         manager.set_viewport_size({"width": 320, "height": 900})
@@ -224,7 +224,7 @@ def test_reminder_journey(
 
 
 def _open_contacts(page: Page, base: str, staff: dict[str, str], name: str) -> None:
-    page.goto(f"{base}/intake/clinics/{staff['clinic_a']}/patients/")
+    goto_settled(page, f"{base}/intake/clinics/{staff['clinic_a']}/patients/")
     page.locator("#id_q").fill(name)
     with page.expect_response(
         lambda response: response.request.method == "POST"
@@ -249,7 +249,7 @@ def _journey_states(
         name = f"Paciente Sintético Lembrete {channel} {outcome}"
         data = _seed_contact(staff, day, channel, name)
         operation = _book(patient, base, staff, data)
-        manager.goto(url)
+        goto_settled(manager, url)
         row = manager.locator(f'[data-operation="{operation}"]')
         expect(row).to_have_attribute("data-state", "pending")
         _capture(manager, root, f"queued-{outcome}", width)
@@ -265,7 +265,7 @@ def _journey_states(
             click_to_navigate(patient.get_by_role("button", name="Cancelar consulta"))
             expect(patient.locator('[data-status="cancelled"]')).to_have_count(1)
         _worker(operation, outcome, root)
-        manager.goto(url)
+        goto_settled(manager, url)
         expect(row).to_have_attribute(
             "data-state",
             {
@@ -278,7 +278,7 @@ def _journey_states(
         _capture(manager, root, outcome, width)
         if outcome == "sent":
             _worker(operation, "delivered", root)
-            manager.goto(url)
+            goto_settled(manager, url)
             expect(row).to_have_attribute("data-state", "delivered")
             expect(row.locator("[data-receipt]")).to_have_attribute(
                 "data-receipt", f"synthetic:{channel}:{operation}"
@@ -316,7 +316,9 @@ def test_native_long_content_and_denied_scope(
         )
         operation = _book(patient, base, staff, data)
         _sign_in_receptionist(manager, base, staff)
-        manager.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/reminders/")
+        goto_settled(
+            manager, f"{base}/scheduling/clinics/{staff['clinic_a']}/reminders/"
+        )
         expect(manager.locator(f'[data-operation="{operation}"]')).to_have_attribute(
             "data-state", "pending"
         )
@@ -326,8 +328,8 @@ def test_native_long_content_and_denied_scope(
             manager.keyboard.press("Enter")
         manager.set_viewport_size({"width": 320, "height": 900})
         _capture(manager, root, "native-long-reflow", 320)
-        response = manager.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_b']}/reminders/"
+        response = goto_settled(
+            manager, f"{base}/scheduling/clinics/{staff['clinic_b']}/reminders/"
         )
         assert response is not None
         assert response.status == 404

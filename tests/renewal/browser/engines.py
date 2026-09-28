@@ -183,7 +183,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from renewal.browser._navigation import expect_document
+from renewal.browser._navigation import expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
 
 if TYPE_CHECKING:
@@ -696,7 +696,7 @@ def zoom_200(
         storage_state=page.context.storage_state(),
     )
     zoomed = context.new_page()
-    zoomed.goto(page.url)
+    goto_settled(zoomed, page.url)
     zoomed.set_viewport_size({"width": 640, "height": 450})
     return context, zoomed
 
@@ -767,6 +767,7 @@ def browser_zoom_200(page: Page, profile_root: Path) -> Iterator[tuple[Page, str
         try:
             context.set_storage_state(page.context.storage_state())
             settings = context.new_page()
+            # Browser-internal page: no app worker to settle (guard allowlist).
             settings.goto("chrome://settings/appearance")
             settings.evaluate(CHROME_SET_ZOOM_JS, ZOOM_200_SCALE)
             assert settings.evaluate(CHROME_GET_ZOOM_JS) == ZOOM_200_SCALE

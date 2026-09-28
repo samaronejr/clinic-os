@@ -43,7 +43,12 @@ import rfc8785
 from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    reload_settled,
+)
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
 from renewal.browser.engines import (
@@ -556,7 +561,7 @@ def configure_clinic(case: Day, admin: Page, manager: dict[str, str]) -> None:
 
 def open_patient_row(case: Day, page: Page, button: str) -> None:
     """Search the registry and press one named action on the patient's row."""
-    page.goto(case.url(f"/intake/clinics/{case.clinic}/patients/"))
+    goto_settled(page, case.url(f"/intake/clinics/{case.clinic}/patients/"))
     page.locator("#id_q").fill(case.patient_name)
     with page.expect_response(lambda response: response.request.method == "POST"):
         page.locator("#patient-search-form button[type=submit]").click()
@@ -570,13 +575,13 @@ def reception_prepares(case: Day, reception: Page) -> str:
     staff = case.staff
     _sign_in_receptionist(reception, case.base, staff)
     listing = f"/scheduling/clinics/{case.clinic}/availability/"
-    reception.goto(case.url(listing))
+    goto_settled(reception, case.url(listing))
     fill_availability(reception, staff["physician_a"], case.day, "08:00", "12:00")
     _submit_expecting_success(reception, listing)
     capture(case, reception, "reception-availability")
 
     # Registration from the empty search, the way the agenda points to it.
-    reception.goto(case.url(f"/intake/clinics/{case.clinic}/patients/"))
+    goto_settled(reception, case.url(f"/intake/clinics/{case.clinic}/patients/"))
     reception.locator("#id_q").fill(case.patient_name)
     with reception.expect_response(lambda r: r.request.method == "POST"):
         reception.locator("#patient-search-form button[type=submit]").click()
@@ -669,7 +674,7 @@ def verified_contact(case: Day, reception: Page) -> None:
 
 
 def agenda_row(case: Day, physician: Page) -> Locator:
-    physician.goto(case.agenda)
+    goto_settled(physician, case.agenda)
     return physician.locator(".agenda-row", has_text=case.patient_name)
 
 
@@ -732,7 +737,7 @@ def patient_arrives(case: Day, patient: Page, code: str) -> None:
     )
     capture(case, patient, "patient-questionnaire-submitted")
 
-    patient.goto(case.url("/patient/consent/"))
+    goto_settled(patient, case.url("/patient/consent/"))
     form = patient.locator("form", has_text="Teleconsulta").first
     click_to_navigate(form.locator('button[value="read"]'))
     patient.locator("#id_accepted").focus()
@@ -776,7 +781,7 @@ def write_notes(case: Day, physician: Page) -> str:
         commit_then_drop(
             physician, f"/ehr/clinics/{case.clinic}/encounter/", save.click
         )
-        physician.goto(encounter_url)
+        goto_settled(physician, encounter_url)
         # Nothing typed was lost: the committed save is what reloads.
         for name, value in NOTES.items():
             expect(physician.locator(f"#id_{name}")).to_have_value(value)
@@ -799,7 +804,7 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
     """Create, provision, join, start and end the teleconsult session."""
     staff_url = case.url(f"/teleconsult/clinics/{case.clinic}/")
     patient_url = case.url("/patient/teleconsult/")
-    physician.goto(case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
+    goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
     click_to_navigate(physician.locator("[data-teleconsult-link]"))
     assert physician.url == staff_url
     expect(physician.locator("[data-synthetic-room]")).to_be_visible()
@@ -819,7 +824,7 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
     session_id = str(session[0][0])
     case.facts["session_id"] = session_id
     room_worker(_room_operation(case.staff, session_id), "sent", case.root)
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     card = physician.locator(f'[data-session="{session_id}"]')
     expect(card).to_have_attribute("data-state", "waiting")
     capture(case, physician, "physician-session-waiting")
@@ -829,9 +834,9 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
         connection_recovers(case, patient, panel)
 
     for action in ("join", "start"):
-        physician.goto(staff_url)
+        goto_settled(physician, staff_url)
         click_to_navigate(card.locator(f'button[value="{action}"]'))
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     expect(card).to_have_attribute("data-state", "active")
     patient.locator("[data-refresh-status]").click()
     expect(panel).to_have_attribute("data-state", "active")
@@ -858,7 +863,7 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
 
 def patient_enters_room(case: Day, patient: Page, session_id: str) -> Locator:
     """Waiting room, explicit device test, then the synthetic room."""
-    patient.goto(case.url("/patient/teleconsult/"))
+    goto_settled(patient, case.url("/patient/teleconsult/"))
     expect(patient.locator("[data-synthetic-room]")).to_be_visible()
     expect(patient.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "waiting"
@@ -895,7 +900,7 @@ def connection_recovers(case: Day, patient: Page, panel: Locator) -> None:
 
 
 def finalize_notes(case: Day, physician: Page) -> None:
-    physician.goto(case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
+    goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
     press_stepped(physician, case.staff, "finalize")
     expect(physician.locator("[data-version]")).to_have_attribute(
         "data-state", "finalized"
@@ -909,7 +914,7 @@ def finalize_notes(case: Day, physician: Page) -> None:
 def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     """Author, review, sign (synthetic provider), verify publicly, release."""
     base = case.base
-    physician.goto(case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
+    goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
     click_to_navigate(physician.get_by_role("button", name="Prescrição sintética"))
     press(physician, "create")
     for name, value in ITEM.items():
@@ -932,7 +937,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     signing_url = physician.url
     expect(physician.locator("[data-state]")).to_have_attribute("data-state", "signing")
     provider_signs(physician, case, document)
-    physician.goto(signing_url)
+    goto_settled(physician, signing_url)
     expect(physician.locator("[data-state]")).to_have_attribute(
         "data-state", "rehearsal_complete"
     )
@@ -940,7 +945,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     capture(case, physician, "physician-signed-rehearsal")
 
     handle = str(_document_row(case.staff, document)["handle"])
-    verified = anonymous.goto(f"{base}/prescription/verify/{handle}/")
+    verified = goto_settled(anonymous, f"{base}/prescription/verify/{handle}/")
     assert verified is not None
     assert verified.status == 200
     expect(anonymous.locator("#verify-status")).to_have_attribute(
@@ -960,7 +965,7 @@ def signature_recovers(
     results = concurrent_sign(physician, review_url)
     assert len({location for _, location in results}) == 1, results
     if "/auth/" in results[0][1]:
-        physician.goto(f"{case.base}{results[0][1]}")
+        goto_settled(physician, f"{case.base}{results[0][1]}")
         answer_challenge(physician, case.staff)
         results = concurrent_sign(physician, review_url)
     assert [status for status, _ in results] == [302, 302], results
@@ -972,7 +977,7 @@ def signature_recovers(
         headers={"Content-Type": "application/json", **headers},
     )
     assert response.status == 200
-    physician.goto(f"{case.base}{results[0][1]}")
+    goto_settled(physician, f"{case.base}{results[0][1]}")
     expect(physician.locator("[data-state]")).to_have_attribute("data-state", "failed")
     capture(case, physician, "signature-provider-failed")
     press_stepped(physician, case.staff, "restart_signature")
@@ -984,7 +989,7 @@ def signature_recovers(
 
 def release_and_deliver(case: Day, physician: Page, document: str) -> None:
     """Release to the patient and deliver the link through the real outbox."""
-    physician.goto(case.url(f"/prescription/clinics/{case.clinic}/draft/"))
+    goto_settled(physician, case.url(f"/prescription/clinics/{case.clinic}/draft/"))
     row = physician.locator(f'[data-document="{document}"]')
     click_to_navigate(row.locator('button[value="release_document"]'), hittable=True)
     click_to_navigate(
@@ -1007,7 +1012,7 @@ def release_and_deliver(case: Day, physician: Page, document: str) -> None:
 
 
 def patient_downloads_document(case: Day, patient: Page, document: str) -> None:
-    patient.goto(case.url("/patient/"))
+    goto_settled(patient, case.url("/patient/"))
     click_to_navigate(patient.locator("#documents-link"))
     row = patient.locator(f'[data-document="{document}"]')
     expect(row).to_be_visible()
@@ -1035,7 +1040,7 @@ def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
         commit_then_drop(
             reception, f"/billing/clinics/{case.clinic}/charges/", create_button.click
         )
-        reception.goto(ledger)
+        goto_settled(reception, ledger)
         create()
     press(reception, "create")
     expect_state(reception, "draft")
@@ -1058,7 +1063,7 @@ def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     press_in_view(reception, "release")
     capture(case, reception, "reception-charge-pending")
 
-    patient.goto(case.url("/patient/"))
+    goto_settled(patient, case.url("/patient/"))
     click_to_navigate(patient.locator("#charges-link"))
     expect(patient.locator("[data-amount]")).to_have_text(AMOUNT_TEXT)
     click_to_navigate(patient.locator("[data-charge] a"))
@@ -1070,7 +1075,7 @@ def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     settle(case, reception, invoice)
     receipt = reception.locator("[data-receipt]").get_attribute("data-receipt")
     assert receipt
-    patient.goto(case.url(f"/patient/charges/{invoice}/"))
+    goto_settled(patient, case.url(f"/patient/charges/{invoice}/"))
     expect_state(patient, "paid")
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-receipt", receipt)
     expect_synthetic_receipt(patient)
@@ -1081,14 +1086,14 @@ def expect_synthetic_receipt(page: Page) -> None:
     """A rehearsal receipt never reads as real money, on visit or refresh."""
     disclosure = page.locator("[data-receipt] [data-synthetic-receipt]")
     expect(disclosure).to_be_visible()
-    page.reload()
+    reload_settled(page)
     expect(disclosure).to_be_visible()
 
 
 def settle(case: Day, reception: Page, invoice: str) -> None:
     """Attest one settlement; the recovery run drops the reply and replays."""
     invoice_url = case.url(f"/billing/clinics/{case.clinic}/charges/{invoice}/")
-    reception.goto(invoice_url)
+    goto_settled(reception, invoice_url)
     reference = str(uuid4())
     if case.recovery:
         reception.locator("#id_confirmation_reference").fill(reference)
@@ -1100,7 +1105,7 @@ def settle(case: Day, reception: Page, invoice: str) -> None:
             reception.locator('button[value="confirm"]').click,
         )
         # The settlement committed; reloading shows it instead of a retry form.
-        reception.goto(invoice_url)
+        goto_settled(reception, invoice_url)
         expect_state(reception, "paid")
         # Replaying the same attested reference converges on the one receipt.
         status = post_action(
@@ -1114,7 +1119,7 @@ def settle(case: Day, reception: Page, invoice: str) -> None:
             },
         )
         assert status == 302, status
-        reception.goto(invoice_url)
+        goto_settled(reception, invoice_url)
     else:
         confirm_settlement(reception, AMOUNT)
     expect_state(reception, "paid")
@@ -1135,7 +1140,7 @@ def export_records(case: Day, physician: Page, patient: Page) -> None:
     """Release the finalized version and verify both export packages."""
     version = str(case.facts["version_id"])
     patient_id = str(case.facts["patient_id"])
-    physician.goto(case.url(f"/retention/clinics/{case.clinic}/"))
+    goto_settled(physician, case.url(f"/retention/clinics/{case.clinic}/"))
     click_to_navigate(
         physician.locator(
             f'#releasable-list li[data-version="{version}"] button[value="release"]'
@@ -1152,7 +1157,7 @@ def export_records(case: Day, physician: Page, patient: Page) -> None:
     assert staff_manifest["kind"] == "staff"
     capture(case, physician, "physician-export")
 
-    patient.goto(case.url("/patient/"))
+    goto_settled(patient, case.url("/patient/"))
     click_to_navigate(patient.locator("#records-link"))
     expect(patient.locator("main")).to_contain_text(NOTES["subjective"])
     export = patient.locator("#export-button")
@@ -1176,7 +1181,7 @@ def denials(case: Day, reception: Page, physician: Page, patient: Page) -> None:
     click_to_navigate(reception.get_by_role("button", name="Revogar acesso").first)
     capture(case, reception, "reception-access-revoked")
     for path in ("/patient/", "/patient/documents/", "/patient/charges/"):
-        response = patient.goto(case.url(path))
+        response = goto_settled(patient, case.url(path))
         assert response is not None
         assert response.status == FORBIDDEN, path
     capture(case, patient, "patient-revoked")
@@ -1187,7 +1192,7 @@ def denials(case: Day, reception: Page, physician: Page, patient: Page) -> None:
         (physician, f"/retention/clinics/{other}/"),
         (physician, f"/teleconsult/clinics/{other}/"),
     ):
-        response = page.goto(case.url(path))
+        response = goto_settled(page, case.url(path))
         assert response is not None
         assert response.status in (FORBIDDEN, 404), (path, response.status)
         body = page.content()
@@ -1198,10 +1203,10 @@ def denials(case: Day, reception: Page, physician: Page, patient: Page) -> None:
 def reflow_scenes(case: Day, patient: Page) -> None:
     """320 px reflow, forced colors and reduced motion on the patient portal."""
     patient.set_viewport_size({"width": 320, "height": 900})
-    patient.goto(case.url("/patient/"))
+    goto_settled(patient, case.url("/patient/"))
     capture(case, patient, "patient-home-reflow")
     patient.emulate_media(forced_colors="active", reduced_motion="reduce")
-    patient.goto(case.url(f"/patient/charges/{case.facts['invoice_id']}/"))
+    goto_settled(patient, case.url(f"/patient/charges/{case.facts['invoice_id']}/"))
     capture(case, patient, "patient-receipt-forced-colors")
     patient.emulate_media(forced_colors="none", reduced_motion="no-preference")
 

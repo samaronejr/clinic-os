@@ -17,7 +17,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, worker_dsn
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -147,7 +147,7 @@ def _press(page: Page, action: str) -> None:
 
 
 def _publish_consent(page: Page, url: str) -> None:
-    page.goto(url)
+    goto_settled(page, url)
     page.locator("#id_text").fill(TEXT)
     page.locator("#id_purpose").select_option("teleconsultation")
     _press(page, "publish")
@@ -155,7 +155,7 @@ def _publish_consent(page: Page, url: str) -> None:
 
 
 def _accept_consent(patient: Page, base: str) -> None:
-    patient.goto(f"{base}/patient/consent/")
+    goto_settled(patient, f"{base}/patient/consent/")
     form = patient.locator("form", has_text="Teleconsulta").first
     click_to_navigate(form.locator('button[value="read"]'))
     patient.locator("#id_accepted").check()
@@ -170,7 +170,9 @@ def _open_encounter(
     day: str,
     appointment_id: str,
 ) -> None:
-    physician.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        physician, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     button = physician.locator(
         'form:has(input[name="appointment_id"][value="'
         + appointment_id
@@ -251,18 +253,18 @@ def _happy_path(  # noqa: PLR0913 - the journey needs its full context
     width: int,
 ) -> str:
     """Create, provision, join, start and end one session; return its id."""
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     _capture(physician, root, "staff-empty", width)
     session_id = _create_session(physician, staff_url)
     # Room creation is a committed outbox operation; the worker runs it
     # through the real clinic_app boundary, never inside the request.
     _worker(_room_operation(staff, session_id), "sent", root)
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     expect(physician.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "waiting"
     )
     # Patient enters the waiting room first; the physician joins after.
-    patient.goto(patient_url)
+    goto_settled(patient, patient_url)
     _capture(patient, root, "patient-waiting", width)
     _join_patient(patient, root, width)
     click_to_navigate(
@@ -271,7 +273,7 @@ def _happy_path(  # noqa: PLR0913 - the journey needs its full context
     expect(physician.locator("#room-name")).to_contain_text(f"tc-{session_id}")
     expect(physician.locator("#room-panel")).to_have_attribute("data-role", "physician")
     _capture(physician, root, "physician-room", width)
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     click_to_navigate(
         physician.locator(f'[data-session="{session_id}"] button[value="start"]')
     )
@@ -313,10 +315,10 @@ def _failure_path(  # noqa: PLR0913 - the journey needs its full context
     _redeem(failing_patient, base, staff["clinic_a"], failing["code"])
     _accept_consent(failing_patient, base)
     _open_encounter(physician, base, staff, day, failing["appointment"])
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     failed_session = _create_session(physician, staff_url)
     _worker(_room_operation(staff, failed_session), "fail", root)
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     expect(physician.locator(f'[data-session="{failed_session}"]')).to_have_attribute(
         "data-state", "failed"
     )
@@ -328,12 +330,12 @@ def _failure_path(  # noqa: PLR0913 - the journey needs its full context
         )
         == 409
     )
-    physician.goto(staff_url)
+    goto_settled(physician, staff_url)
     expect(
         physician.locator(f'[data-session="{failed_session}"] [data-event="failed"]')
     ).to_contain_text("room_unavailable")
     _capture(physician, root, "staff-failed", width)
-    failing_patient.goto(patient_url)
+    goto_settled(failing_patient, patient_url)
     expect(
         failing_patient.locator(f'[data-session="{failed_session}"]')
     ).to_have_attribute("data-state", "failed")
@@ -405,7 +407,7 @@ def test_teleconsult_journey(
         ) as other_context:
             other_page = other_context.new_page()
             _redeem(other_page, base, staff["clinic_a"], other["code"])
-            other_page.goto(patient_url)
+            goto_settled(other_page, patient_url)
             assert (
                 post_action(
                     other_page,
@@ -417,7 +419,7 @@ def test_teleconsult_journey(
             _capture(other_page, root, "cross-patient-denied", width)
         # Staff without the physician role cannot reach the surface at all.
         _sign_in_receptionist(denied, base, staff)
-        response = denied.goto(staff_url)
+        response = goto_settled(denied, staff_url)
         assert response is not None
         assert response.status == 403
         _capture(denied, root, "reception-denied", width)

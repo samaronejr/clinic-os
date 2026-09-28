@@ -14,12 +14,27 @@ with that signature on the ``open`` press right after the physician's first
 signed-in page, while the agenda load raced the worker's precache (its
 worker state was not recorded there).
 
-So ``expect_document`` first waits, through the registration's own
-``statechange``/``updatefound`` events, until no worker is installing,
-waiting or activating, and only then subscribes to the navigation and hands
-control to the caller. A worker that never settles fails that precondition at
-the timeout with nothing clicked, instead of inside a click whose request
-never left the browser.
+Every navigation the suites start therefore goes through this module, and
+each helper settles the worker (``settle_service_worker``: wait, through the
+registration's own ``statechange``/``updatefound`` events, until nothing is
+installing, waiting or activating) before it starts the navigation and again
+once the new document has loaded:
+
+* ``expect_document`` / ``click_to_navigate``: presses, submits, keys;
+* ``goto_settled``, ``reload_settled``, ``go_back_settled``,
+  ``go_forward_settled``: the browser-initiated ones (a ``goto`` into scope
+  is held exactly like a POST; gate review B1);
+* ``wait_for_signed_in``: every sign-in ends on the first signed-in page,
+  where the context's worker first registers, and settles there.
+
+After the first settle in a context no later navigation can meet an
+installing or activating worker: the worker script is content-versioned and
+does not change during a run, so update checks never install. What the
+settle removes is the race between a navigation and a normal (milliseconds
+long) activation. It cannot shorten an activation: one that genuinely stalls
+for the whole timeout now fails loudly at the precondition
+(``EvaluateTimeoutError``, nothing clicked or navigated) instead of hanging
+inside a click or ``goto`` whose request never left the browser.
 
 The click keeps Playwright's own post-action wait. It does not deadlock with
 ``expect_navigation``: that is a client-side subscription to the frame's
@@ -33,9 +48,14 @@ retried. With it, clinic-settings@firefox [768]/[375] and
 prescription-draft@firefox [768] lost their submit and timed out waiting for
 the navigation (fix-a12 all-suites run).
 
-Only this module may call ``expect_navigation``, and no pointer or key action
-inside ``expect_document`` may pass ``no_wait_after``
-(tests/renewal/test_browser_runner.py guards both).
+tests/renewal/test_browser_runner.py guards the suites, failing closed:
+only this module may reach a navigating Page/Frame method, however it is
+spelled or looked up; Enter, typed newlines, ``dispatch_event`` and in-page
+submits, clicks or ``location``/``history`` moves belong inside
+``expect_document``; nothing may pass ``no_wait_after``; and a URL wait must
+directly follow a settled navigation. Its boundary: a navigating click whose
+navigation nothing waits for is indistinguishable from any other click. That
+is safe once the context has settled (above).
 """
 
 from __future__ import annotations
@@ -117,6 +137,62 @@ def expect_document(
         url=url, wait_until=wait_until, timeout=timeout
     ) as navigation:
         yield navigation
+    settle_service_worker(page, timeout=timeout)
+
+
+def goto_settled(
+    page: Page,
+    url: str,
+    *,
+    wait_until: LoadState | None = None,
+    timeout: float | None = None,
+) -> Response | None:
+    """``page.goto`` between two worker settles (see the module docstring)."""
+    settle_service_worker(page, timeout=timeout)
+    response = page.goto(url, wait_until=wait_until, timeout=timeout)
+    settle_service_worker(page, timeout=timeout)
+    return response
+
+
+def reload_settled(
+    page: Page,
+    *,
+    wait_until: LoadState | None = None,
+    timeout: float | None = None,
+) -> Response | None:
+    """``page.reload`` between two worker settles."""
+    settle_service_worker(page, timeout=timeout)
+    response = page.reload(wait_until=wait_until, timeout=timeout)
+    settle_service_worker(page, timeout=timeout)
+    return response
+
+
+def go_back_settled(page: Page, *, timeout: float | None = None) -> Response | None:
+    """``page.go_back`` between two worker settles."""
+    settle_service_worker(page, timeout=timeout)
+    response = page.go_back(timeout=timeout)
+    settle_service_worker(page, timeout=timeout)
+    return response
+
+
+def go_forward_settled(page: Page, *, timeout: float | None = None) -> Response | None:
+    """``page.go_forward`` between two worker settles."""
+    settle_service_worker(page, timeout=timeout)
+    response = page.go_forward(timeout=timeout)
+    settle_service_worker(page, timeout=timeout)
+    return response
+
+
+def wait_for_signed_in(page: Page, url: UrlMatch = "**/auth/protected/") -> None:
+    """End a sign-in: the first signed-in page, with its new worker settled.
+
+    That page is where the worker first registers in a context; after this no
+    later navigation of the context can meet an installing or activating
+    worker, because the worker script is content-versioned and constant for
+    the run (apps/core/views.py ``shell_static_version``).
+    """
+    page.wait_for_url(url)
+    settle_service_worker(page)
 
 
 def click_to_navigate(

@@ -21,7 +21,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, worker_dsn
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
@@ -131,7 +131,7 @@ def _seed_patient_access(staff: dict[str, str], patient: str) -> str:
 
 
 def _redeem(page: Page, base_url: str, clinic_id: str, code: str) -> None:
-    page.goto(f"{base_url}/patient/access/{clinic_id}/")
+    goto_settled(page, f"{base_url}/patient/access/{clinic_id}/")
     page.locator("#id_code").fill(code)
     click_to_navigate(page.locator("button[type=submit]"))
 
@@ -329,7 +329,9 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
     draft_url = f"{base}/prescription/clinics/{staff['clinic_a']}/draft/"
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAY}/1/")
+        goto_settled(
+            page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAY}/1/"
+        )
         press(page, "open")
         click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
         press(page, "create")
@@ -342,7 +344,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         assert document
         _press_sign(page, staff)
         _post_callback(page, base, document, staff)
-        page.goto(draft_url)
+        goto_settled(page, draft_url)
         expect(page.locator("[data-document]").first).to_contain_text("Ensaio")
         _capture(page, root, "signed")
 
@@ -353,7 +355,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
 
         # Anonymous verification: minimal status, no patient content.
         anon = browser.new_context().new_page()
-        verified = anon.goto(verify_url)
+        verified = goto_settled(anon, verify_url)
         assert verified is not None
         assert verified.status == 200
         expect(anon.locator("#verify-status")).to_have_attribute(
@@ -368,7 +370,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         code = _seed_patient_access(staff, patient_id)
         patient = browser.new_context().new_page()
         _redeem(patient, base, staff["clinic_a"], code)
-        patient.goto(f"{base}/patient/documents/")
+        goto_settled(patient, f"{base}/patient/documents/")
         expect(patient.locator(f'[data-document="{document}"]')).to_be_visible()
         _capture(patient, root, "patient-documents")
         with patient.expect_download() as download_info:
@@ -427,16 +429,16 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         assert newer != document
         _press_sign(page, staff)
         _post_callback(page, base, newer, staff)
-        page.goto(draft_url)
-        superseded = anon.goto(verify_url)
+        goto_settled(page, draft_url)
+        superseded = goto_settled(anon, verify_url)
         assert superseded is not None
         assert superseded.status == 200
         expect(anon.locator("#verify-status")).to_have_attribute(
             "data-status", "superseded"
         )
         _capture(anon, root, "public-superseded")
-        verified_new = anon.goto(
-            f"{base}/prescription/verify/{_document_row(staff, newer)['handle']}/"
+        verified_new = goto_settled(
+            anon, f"{base}/prescription/verify/{_document_row(staff, newer)['handle']}/"
         )
         assert verified_new is not None
         assert verified_new.status == 200
@@ -446,7 +448,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
 
         # Revocation publishes immediately; the patient download closes.
         press_in_view(page, "revoke_document")
-        revoked = anon.goto(verify_url)
+        revoked = goto_settled(anon, verify_url)
         assert revoked is not None
         assert revoked.status == 200
         expect(anon.locator("#verify-status")).to_have_attribute(
@@ -460,7 +462,9 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         assert denied.status == 403
 
         # Unknown handles are indistinguishable and bounded per probe.
-        unknown = anon.goto(f"{base}/prescription/verify/{uuid4().hex}{'a' * 11}/")
+        unknown = goto_settled(
+            anon, f"{base}/prescription/verify/{uuid4().hex}{'a' * 11}/"
+        )
         assert unknown is not None
         assert unknown.status == 200
         expect(anon.locator("#verify-status")).to_have_attribute(

@@ -14,7 +14,7 @@ from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
 from renewal.browser._fixture_secrets import new_access_code
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot, new_context
@@ -185,7 +185,7 @@ def _other_patient_denial(
 ) -> None:
     other = _seed(staff)
     _redeem(page, base_url, staff["clinic_a"], other["code"])
-    page.goto(f"{base_url}/patient/questionnaires/")
+    goto_settled(page, f"{base_url}/patient/questionnaires/")
     page.locator('input[name="response_id"]').evaluate(
         "(el, value) => el.value = value", data["response"]
     )
@@ -206,7 +206,7 @@ def _staff_journey(
     width = _width(page)
     _sign_in_receptionist(page, base_url, staff)
     staff_url = f"{base_url}/intake/clinics/{staff['clinic_a']}/questionnaires/"
-    page.goto(f"{base_url}/intake/clinics/{staff['clinic_a']}/patients/")
+    goto_settled(page, f"{base_url}/intake/clinics/{staff['clinic_a']}/patients/")
     page.locator("#id_q").fill("Paciente Sintético Questionário")
     with page.expect_response(lambda r: r.request.method == "POST"):
         page.locator("#patient-search-form button[type=submit]").click()
@@ -225,7 +225,7 @@ def _staff_journey(
     assert PRIVATE not in page.content()
     _capture(page, root, "reception-denied", width)
     _sign_in_physician(page, base_url, staff)
-    page.goto(staff_url)
+    goto_settled(page, staff_url)
     page.locator("#enrollment-id").fill(data["enrollment"])
     _press(page, "status")
     _press(page, "inspect")
@@ -270,7 +270,7 @@ def _publish_and_resume(
     data: dict[str, str],
 ) -> None:
     _publish_version_two(staff, data)
-    page.goto(f"{base_url}/patient/questionnaires/")
+    goto_settled(page, f"{base_url}/patient/questionnaires/")
     _press(page, "open")
     expect(page.locator("#id_q_text")).to_have_value(PRIVATE)
     expect(page.locator("[data-template-version]")).to_have_attribute(
@@ -377,7 +377,7 @@ def _stale_editor_conflict(
 ) -> str:
     saved_answer = "Resposta salva na outra aba"
     rejected_answer = "Edição antiga não deve substituir a resposta salva"
-    other.goto(f"{base_url}/patient/questionnaires/")
+    goto_settled(other, f"{base_url}/patient/questionnaires/")
     _press(other, "open")
     expect(other.locator("[data-template-version]")).to_have_attribute(
         "data-template-version", "1"
@@ -475,7 +475,7 @@ def test_long_content_and_stale_editor_matrix(
         page = context.new_page()
         watch(page)
         _redeem(page, renewal_base_url, staff["clinic_a"], data["code"])
-        page.goto(f"{renewal_base_url}/patient/questionnaires/")
+        goto_settled(page, f"{renewal_base_url}/patient/questionnaires/")
         _press(page, "open")
         for index in range(40):
             page.locator(f"#id_q_long_{index}").fill(
@@ -494,8 +494,9 @@ def test_long_content_and_stale_editor_matrix(
         saved_answer = _stale_editor_conflict(page, other, renewal_base_url, capture)
 
         _sign_in_physician(page, renewal_base_url, staff)
-        page.goto(
-            f"{renewal_base_url}/intake/clinics/{staff['clinic_a']}/questionnaires/"
+        goto_settled(
+            page,
+            f"{renewal_base_url}/intake/clinics/{staff['clinic_a']}/questionnaires/",
         )
         page.locator("#enrollment-id").fill(data["enrollment"])
         _press(page, "status")
@@ -558,7 +559,7 @@ def test_native_questionnaire_without_javascript(
         page.locator("#id_q_text").fill(PRIVATE)
         _press(page, "save")
         expect(page.locator('[name="revision"]')).to_have_value("2")
-        page.goto(f"{renewal_base_url}/patient/questionnaires/")
+        goto_settled(page, f"{renewal_base_url}/patient/questionnaires/")
         _press(page, "open")
         expect(page.locator("#id_q_text")).to_have_value(PRIVATE)
         page.locator("#id_q_choice").select_option("Telefone")

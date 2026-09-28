@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import functools
 import inspect
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -358,35 +360,91 @@ def test_browser_suites_capture_full_pages_only_through_the_engines_splitter() -
 
 
 NAVIGATION_MODULE = BROWSER_SUITES / "_navigation.py"
-NAVIGATION_WAIT = "expect_navigation"
+NAVIGATION_IMPORT = "renewal.browser._navigation"
 NAVIGATION_HELPER = "expect_document"
-# Reviewed exemptions, per file: function -> reason.
+# Events whose wait cannot stand in for a document navigation.
+SAFE_EVENTS = frozenset({"requestfailed", "download", "console", "pageerror", "dialog"})
+ENTER_KEYS = frozenset({"Enter", "Return", "NumpadEnter"})
+URL_WAITS = frozenset({"wait_for_url", "wait_for_load_state", "to_have_url"})
+DYNAMIC_ATTRIBUTE = frozenset({"getattr", "setattr", "delattr", "hasattr"})
+DYNAMIC_ACCESSORS = frozenset(
+    {"attrgetter", "methodcaller", "__getattribute__", "__getattr__"}
+)
+# In-page ways to start a navigation, as the suites write JavaScript.
+NAVIGATING_JS = re.compile(
+    r"requestSubmit|\.submit\s*\(|\.click\s*\(\s*\)"
+    r"|dispatchEvent\s*\(\s*new\s+\w*Event\s*\(\s*['\"](?:submit|click)"
+    r"|location\s*\.\s*(?:assign|replace|reload)\b|location(?:\s*\.\s*href)?\s*=[^=]"
+    r"|history\s*\.\s*(?:back|forward|go)\s*\(|window\s*\.\s*open\s*\("
+)
+WHOLE_FILE = "*"
+# Reviewed exemptions, per file: scope (function, or module-level constant)
+# -> reason. Each must still be load-bearing (see the guard test).
 NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
     NAVIGATION_MODULE: {
-        NAVIGATION_HELPER: "the helper: subscribes only after the worker settled",
+        "expect_document": "the helper: expect_navigation between two settles",
+        "goto_settled": "the helper: goto between two settles",
+        "reload_settled": "the helper: reload between two settles",
+        "go_back_settled": "the helper: go_back between two settles",
+        "go_forward_settled": "the helper: go_forward between two settles",
+        "wait_for_signed_in": "the helper: sign-in landing, then a settle",
+    },
+    BROWSER_SUITES / "engines.py": {
+        "browser_zoom_200": (
+            "chrome://settings is browser-internal: no app worker to settle,"
+            " and a settle there cannot read a registration"
+        ),
     },
     BROWSER_SUITES / "test_smoke.py": {
-        "_unsafe_press": (
-            "the deterministic reproduction of the unsafe shape against a held"
-            " worker activation (fix-a12)"
+        "_unsafe_press": "reproduces the pre-fix press against a held activation",
+        "_unsafe_goto": "reproduces an unsettled goto against a held activation",
+        "test_navigation_helper_waits_out_a_held_worker_activation": (
+            "waits for the held POST that _unsafe_press left pending"
+        ),
+        "test_owner_login_establishes_a_session_and_enters_the_totp_flow": (
+            "asserts the session cookie between the press and the URL wait"
         ),
     },
-    BROWSER_SUITES / "test_workspace.py": dict.fromkeys(
-        (
-            "test_receptionist_reaches_every_module_and_switches_clinic",
-            "test_keyboard_order_and_reflow_hold_at_every_width",
+    BROWSER_SUITES / "test_billing.py": {
+        "test_preferences_keyboard_and_reflow_hold_on_the_payment_screen": (
+            "Enter on the copy button copies the code; no document"
         ),
-        "todo 13 owns the workspace suites and adopts click_to_navigate at rebase",
+    },
+    BROWSER_SUITES / "test_clinical_history.py": {
+        "zoom_journey": "Enter on a <summary> toggles <details>; no document",
+    },
+    BROWSER_SUITES / "test_primitives.py": dict.fromkeys(
+        (
+            "test_calendar_days_and_combobox_hold_at_320",
+            "test_combobox_filters_moves_and_chooses",
+            "test_date_picker_moves_by_day_and_month_and_respects_bounds",
+            "test_dialog_opens_modally_and_returns_focus",
+            "test_drawer_is_non_modal_and_escape_returns_focus",
+        ),
+        "Enter on showcase dialogs, drawers, pickers and comboboxes; no document",
     ),
+    BROWSER_SUITES / "test_retention.py": {
+        "_matrix_widths": "Enter on the export button starts a download",
+    },
+    BROWSER_SUITES / "test_staff_intake.py": {
+        "_find_across_pages": "Enter on the htmx pagination button; no document",
+    },
+    BROWSER_SUITES / "test_patient_access.py": {
+        "_patient_journey": (
+            "asserts the redeem POST's 302 between the press and the URL wait"
+        ),
+    },
+    BROWSER_SUITES / "test_workspace.py": {
+        WHOLE_FILE: (
+            "todo 13 owns the workspace suites and adopts the helpers at rebase"
+        ),
+    },
 }
 
 
+@functools.cache
 def _waiting_methods() -> frozenset[str]:
-    """Playwright actions that take ``no_wait_after``.
-
-    Derived from the pinned sync API: every public method of the objects a
-    suite acts on that has the parameter.
-    """
+    """Playwright actions that take ``no_wait_after`` (derived, pinned API)."""
     return frozenset(
         name
         for owner in (Locator, Page, Frame, ElementHandle)
@@ -397,145 +455,530 @@ def _waiting_methods() -> frozenset[str]:
     )
 
 
-def _unsafe_navigation_waits(
-    source: str, label: str, exempt: tuple[str, ...]
-) -> list[str]:
-    """Navigation waits in ``source`` that bypass ``_navigation``.
+@functools.cache
+def _navigating_methods() -> frozenset[str]:
+    """Page/Frame methods that start or await a document navigation.
 
-    Counted: any ``expect_navigation`` reference (attribute or name string,
-    so ``getattr`` lookups count too); and, inside ``with expect_document``,
-    an action (``_waiting_methods`` on any receiver but ``.keyboard``/
-    ``.mouse``, or ``click_when_hittable``) that passes ``no_wait_after``
-    other than a literal ``False``, or a ``**`` splat that could. In
-    Playwright 1.61 that flag also drops the hit-target recheck, so an
-    intercepted click is lost instead of retried. Sites inside the ``exempt``
-    functions do not count.
+    Derived from the pinned sync API: a navigation returns its main resource
+    (``Optional[Response]``); a navigation subscription is the ``expect_*``
+    that yields a Response for a navigation; the generic event waits take an
+    ``event`` (``on``/``once`` only register listeners).
     """
-    tree = ast.parse(source, filename=label)
-    exempt_lines = {
+    found: set[str] = set()
+    for owner in (Page, Frame):
+        for name, member in vars(owner).items():
+            if name.startswith("_") or not callable(member):
+                continue
+            signature = inspect.signature(member)
+            returned = str(signature.return_annotation)
+            main_resource = returned.startswith("typing.Optional")
+            if "'Response'" in returned and (main_resource or "navigation" in name):
+                found.add(name)
+            if "event" in signature.parameters and name not in {"on", "once"}:
+                found.add(name)
+    return frozenset(found)
+
+
+@functools.cache
+def _settling_helpers() -> frozenset[str]:
+    """Public functions of ``_navigation`` that settle the worker."""
+    tree = ast.parse(NAVIGATION_MODULE.read_text(encoding="utf-8"))
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    settling = {"settle_service_worker"}
+    changed = True
+    while changed:
+        changed = False
+        for name, node in functions.items():
+            calls = {
+                call.func.id
+                for call in ast.walk(node)
+                if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+            }
+            if name not in settling and calls & settling:
+                settling.add(name)
+                changed = True
+    return frozenset(name for name in settling if not name.startswith("_"))
+
+
+def _call_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Call):
+        func = node.func
+        if isinstance(func, ast.Name):
+            return func.id
+        if isinstance(func, ast.Attribute):
+            return func.attr
+    return None
+
+
+def _settles(statement: ast.stmt, settling: frozenset[str]) -> bool:
+    """A statement that ends in a settled document (or subscribes to one)."""
+    if isinstance(statement, ast.With):
+        return any(
+            _call_name(item.context_expr) == NAVIGATION_HELPER
+            for item in statement.items
+        )
+    if not isinstance(statement, ast.Expr | ast.Assign):
+        return False
+    return _call_name(statement.value) in settling - {None}
+
+
+def _derived_settling(sources: dict[Path, str]) -> dict[Path, frozenset[str]]:
+    """Per suite file: the helpers plus every function that reaches one.
+
+    A suite function settles if its body calls a settling name; a name is
+    resolved in its own file, or in the suite module it is imported from.
+    Fixed point over all files.
+    """
+    helpers = _settling_helpers()
+    trees = {path: ast.parse(source) for path, source in sources.items()}
+    module_of = {f"renewal.browser.{path.stem}": path for path in trees}
+    imports: dict[Path, dict[str, tuple[Path, str]]] = {}
+    for path, tree in trees.items():
+        imports[path] = {
+            alias.asname or alias.name: (module_of[node.module], alias.name)
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.module in module_of
+            for alias in node.names
+        }
+    local: dict[Path, set[str]] = {path: set() for path in trees}
+    changed = True
+    while changed:
+        changed = False
+        for path, tree in trees.items():
+            known = (
+                helpers
+                | local[path]
+                | {
+                    name
+                    for name, (origin, original) in imports[path].items()
+                    if original in local[origin]
+                }
+            )
+            for node in tree.body:
+                if not isinstance(node, ast.FunctionDef) or node.name in local[path]:
+                    continue
+                if any(
+                    _call_name(call) in known
+                    for call in ast.walk(node)
+                    if isinstance(call, ast.Call)
+                ):
+                    local[path].add(node.name)
+                    changed = True
+    return {
+        path: helpers
+        | frozenset(local[path])
+        | frozenset(
+            name
+            for name, (origin, original) in imports[path].items()
+            if original in local[origin]
+        )
+        for path in trees
+    }
+
+
+def _is_url_wait(statement: ast.stmt) -> bool:
+    return any(
+        _call_name(node) in URL_WAITS
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Call)
+    ) and isinstance(statement, ast.Expr)
+
+
+def _scopes(tree: ast.Module) -> dict[int, str]:
+    """Line -> exemption scope: innermost function, else module-level target."""
+    scope: dict[int, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign | ast.AnnAssign):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names = [t.id for t in targets if isinstance(t, ast.Name)]
+            if names:
+                for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
+                    scope[line] = names[0]
+    functions = sorted(
+        (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)),
+        key=lambda n: (n.end_lineno or n.lineno) - n.lineno,
+        reverse=True,
+    )
+    for function in functions:  # outermost first, innermost wins
+        for line in range(
+            function.lineno, (function.end_lineno or function.lineno) + 1
+        ):
+            scope[line] = function.name
+    return scope
+
+
+def _helper_zone(tree: ast.Module) -> set[int]:
+    """Lines inside a ``with expect_document(...)`` body."""
+    return {
         line
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name in exempt
-        for line in range(node.lineno, (node.end_lineno or node.lineno) + 1)
+        if isinstance(node, ast.With)
+        and any(
+            _call_name(item.context_expr) == NAVIGATION_HELPER for item in node.items
+        )
+        for statement in node.body
+        for line in range(statement.lineno, (statement.end_lineno or 0) + 1)
     }
-    waiting = _waiting_methods()
-    found: list[int] = []
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Attribute) and node.attr == NAVIGATION_WAIT) or (
-            isinstance(node, ast.Constant) and node.value == NAVIGATION_WAIT
+
+
+def _key_rule(node: ast.Call, name: str | None) -> str | None:
+    """Enter pressed, or a newline typed, outside ``expect_document``."""
+    if name in {"press", "down"}:
+        key = node.args[0] if node.args else None
+        if not isinstance(key, ast.Constant) or (
+            str(key.value).split("+")[-1] in ENTER_KEYS
         ):
-            found.append(node.lineno)
-        if not isinstance(node, ast.With) or not any(
-            isinstance(item.context_expr, ast.Call)
-            and isinstance(item.context_expr.func, ast.Name)
-            and item.context_expr.func.id == NAVIGATION_HELPER
-            for item in node.items
-        ):
+            return "Enter key outside expect_document"
+    if name in {"type", "press_sequentially", "insert_text"} and node.args:
+        text = node.args[0]
+        if isinstance(text, ast.Constant) and any(c in str(text.value) for c in "\n\r"):
+            return "newline typed outside expect_document"
+    if name == "dispatch_event":
+        return "dispatch_event outside expect_document"
+    return None
+
+
+def _call_rules(node: ast.Call, *, in_zone: bool, waiting: frozenset[str]) -> list[str]:
+    name = _call_name(node)
+    keys = [keyword.arg for keyword in node.keywords]
+    rules: list[str] = []
+    dynamic = len(node.args) < 2 or not isinstance(node.args[1], ast.Constant)
+    if name in DYNAMIC_ATTRIBUTE and isinstance(node.func, ast.Name) and dynamic:
+        rules.append(f"dynamic {name}")
+    if "no_wait_after" in keys:
+        rules.append("no_wait_after")
+    if None in keys and (name in waiting or name == "click_when_hittable"):
+        rules.append(f"splat into {name}")
+    func = node.func
+    keyed = isinstance(func, ast.Attribute) and not (
+        isinstance(func.value, ast.Attribute) and func.value.attr == "mouse"
+    )
+    key = None if in_zone or not keyed else _key_rule(node, name)
+    if key:
+        rules.append(key)
+    return rules
+
+
+def _import_rules(node: ast.Import | ast.ImportFrom) -> list[str]:
+    if isinstance(node, ast.Import):
+        return [
+            "module-qualified _navigation"
+            for alias in node.names
+            if alias.name == NAVIGATION_IMPORT
+        ]
+    module = node.module or ""
+    rules: list[str] = []
+    for alias in node.names:
+        if module == "functools" and alias.name in {"partial", "partialmethod"}:
+            rules.append(f"import {alias.name}")
+        if module == NAVIGATION_IMPORT and alias.asname not in {None, alias.name}:
+            rules.append(f"aliased {alias.name}")
+        if module == "renewal.browser" and alias.name == "_navigation":
+            rules.append("module-qualified _navigation")
+    return rules
+
+
+def _event_is_safe(tree: ast.Module, node: ast.Attribute) -> bool:
+    """An ``expect_event``/``wait_for_event`` on a literal non-navigation event."""
+    if node.attr not in {"expect_event", "wait_for_event"}:
+        return False
+    call = next(
+        (c for c in ast.walk(tree) if isinstance(c, ast.Call) and c.func is node),
+        None,
+    )
+    if call is None:
+        return False
+    event = call.args[0] if call.args else None
+    event = event or next((k.value for k in call.keywords if k.arg == "event"), None)
+    return isinstance(event, ast.Constant) and event.value in SAFE_EVENTS
+
+
+def _url_wait_rules(node: ast.AST, settling: frozenset[str]) -> list[int]:
+    """URL waits that do not directly follow a settled navigation."""
+    lines: list[int] = []
+    for field in ("body", "orelse", "finalbody"):
+        block = getattr(node, field, None)
+        if not isinstance(block, list):
             continue
-        for statement in node.body:
-            for call in ast.walk(statement):
-                if not isinstance(call, ast.Call):
-                    continue
-                func = call.func
-                acts = (
-                    isinstance(func, ast.Attribute)
-                    and func.attr in waiting
-                    and not (
-                        isinstance(func.value, ast.Attribute)
-                        and func.value.attr in {"keyboard", "mouse"}
-                    )
-                ) or (isinstance(func, ast.Name) and func.id == "click_when_hittable")
-                skips_recheck = any(
-                    keyword.arg is None
-                    or (
-                        keyword.arg == "no_wait_after"
-                        and not (
-                            isinstance(keyword.value, ast.Constant)
-                            and keyword.value.value is False
-                        )
-                    )
-                    for keyword in call.keywords
+        for index, statement in enumerate(block):
+            if not _is_url_wait(statement):
+                continue
+            previous = block[index - 1] if index > 0 else None
+            before = block[index - 2] if index > 1 else None
+            settled = previous is not None and (
+                _settles(previous, settling)
+                or (
+                    _is_url_wait(previous)
+                    and before is not None
+                    and _settles(before, settling)
                 )
-                if acts and skips_recheck:
-                    found.append(call.lineno)
-    return sorted(f"{label}:{line}" for line in found if line not in exempt_lines)
+            )
+            if not settled:
+                lines.append(statement.lineno)
+    return lines
 
 
-def _navigation_offenders(path: Path, exempt: tuple[str, ...]) -> list[str]:
-    return _unsafe_navigation_waits(
-        path.read_text(encoding="utf-8"), str(path.relative_to(REPOSITORY)), exempt
+def _reference_rules(
+    tree: ast.Module,
+    node: ast.Attribute | ast.Name | ast.Constant,
+    navigating: frozenset[str],
+    *,
+    in_zone: bool,
+    docstrings: set[int],
+) -> list[str]:
+    """Rules on a name, attribute or string: how a navigation is reached."""
+    if isinstance(node, ast.Constant):
+        text = node.value if isinstance(node.value, str) else ""
+        rules: list[str] = []
+        if id(node) not in docstrings and text in navigating:
+            rules.append(f"navigation method named {text!r}")
+        elif id(node) not in docstrings and NAVIGATING_JS.search(text) and not in_zone:
+            rules.append("navigating JavaScript")
+        return rules
+    name = node.attr if isinstance(node, ast.Attribute) else node.id
+    if isinstance(node, ast.Attribute) and name in navigating:
+        return [] if _event_is_safe(tree, node) else [f"navigation method {name}"]
+    partial = isinstance(node, ast.Attribute) and name in {"partial", "partialmethod"}
+    if name in DYNAMIC_ACCESSORS or partial:
+        return [f"indirect access via {name}"]
+    return []
+
+
+def _unsafe_navigation_waits(
+    source: str,
+    label: str,
+    exempt: tuple[str, ...],
+    settling: frozenset[str] | None = None,
+) -> list[str]:
+    """Navigations in ``source`` that can bypass ``_navigation``'s worker settle.
+
+    Fails closed: a navigating Page/Frame method used directly or named in a
+    string (``getattr``, ``attrgetter``, ``methodcaller``); ``getattr`` and
+    friends with a non-literal name; ``partial``; an event wait on anything
+    but a literal non-navigation event; Enter pressed, a newline typed or
+    ``dispatch_event``; in-page JavaScript that submits, clicks or moves
+    ``location``/``history``; ``no_wait_after`` or a splat into an action; an
+    aliased or module-qualified ``_navigation`` import; and a URL wait that
+    does not directly follow a settled navigation (the shape of a bare
+    navigating click). Keys, ``dispatch_event`` and JavaScript are allowed
+    inside ``with expect_document``. Docstrings are not code. Sites in
+    ``exempt`` scopes do not count.
+    """
+    tree = ast.parse(source, filename=label)
+    scopes = _scopes(tree)
+    zone = _helper_zone(tree)
+    docstrings = {
+        id(owner.body[0].value)
+        for owner in ast.walk(tree)
+        if isinstance(owner, ast.Module | ast.FunctionDef | ast.ClassDef)
+        and owner.body
+        and isinstance(owner.body[0], ast.Expr)
+        and isinstance(owner.body[0].value, ast.Constant)
+    }
+    navigating = _navigating_methods()
+    waiting = _waiting_methods()
+    settling = settling if settling is not None else _settling_helpers()
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        line = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Attribute | ast.Name | ast.Constant):
+            found.extend(
+                (line, rule)
+                for rule in _reference_rules(
+                    tree, node, navigating, in_zone=line in zone, docstrings=docstrings
+                )
+            )
+        elif isinstance(node, ast.Call):
+            found.extend(
+                (line, rule)
+                for rule in _call_rules(node, in_zone=line in zone, waiting=waiting)
+            )
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            found.extend((line, rule) for rule in _import_rules(node))
+        found.extend(
+            (wait, "URL wait after an unsettled step")
+            for wait in _url_wait_rules(node, settling)
+        )
+    if WHOLE_FILE in exempt:
+        return []
+    return sorted(
+        f"{label}:{line}: {rule}"
+        for line, rule in set(found)
+        if scopes.get(line) not in exempt
     )
 
 
+@functools.cache
+def _suite_sources() -> dict[Path, str]:
+    return {
+        path: path.read_text(encoding="utf-8")
+        for path in sorted(BROWSER_SUITES.rglob("*.py"))
+    }
+
+
+@functools.cache
+def _suite_settling() -> dict[Path, frozenset[str]]:
+    return _derived_settling(_suite_sources())
+
+
+def _navigation_offenders(
+    path: Path, source: str, exempt: tuple[str, ...], settling: frozenset[str]
+) -> list[str]:
+    return _unsafe_navigation_waits(
+        source, str(path.relative_to(REPOSITORY)), exempt, settling
+    )
+
+
+# Each shape the gate review used to slip past the spelling-only guard (plus
+# the earlier ones), planted as a new function in a real suite file.
+EVASIONS = {
+    "concatenated getattr": (
+        "    with getattr(page, 'expect_' + 'navigation')():\n"
+        "        page.locator('a').click()\n"
+    ),
+    "literal getattr": "    getattr(page, 'goto')('/')\n",
+    "attrgetter": "    operator.attrgetter('go' + 'to')(page)('/')\n",
+    "expect_event framenavigated": (
+        "    with page.expect_event('framenavigated'):\n"
+        "        page.locator('a').click()\n"
+    ),
+    "wait_for_event load": (
+        "    page.locator('a').click()\n    page.wait_for_event('load')\n"
+    ),
+    "bare navigating click + wait_for_url": (
+        "    page.locator('a').click()\n    page.wait_for_url('**/x')\n"
+    ),
+    "bare click + to_have_url": (
+        "    page.locator('a').click()\n    expect(page).to_have_url('/x')\n"
+    ),
+    "press Enter + wait_for_url": (
+        "    page.keyboard.press('Enter')\n    page.wait_for_url('**/x')\n"
+    ),
+    "locator press Return": "    page.locator('#q').press('Return')\n",
+    "non-literal key": "    page.keyboard.press(key)\n",
+    "typed newline": "    page.locator('#q').type('text\\n')\n",
+    "requestSubmit via evaluate": (
+        "    page.evaluate(\"document.querySelector('form').requestSubmit()\")\n"
+    ),
+    "form.submit via evaluate": "    page.evaluate('f => f.submit()')\n",
+    "location via evaluate": "    page.evaluate('location.href = \"/x\"')\n",
+    "dispatch_event submit": "    page.locator('form').dispatch_event('submit')\n",
+    "aliased helper + no_wait_after": (
+        "    from renewal.browser._navigation import expect_document as ed\n"
+        "    with ed(page):\n"
+        "        page.locator('a').click(no_wait_after=True)\n"
+    ),
+    "module-qualified helper + no_wait_after": (
+        "    from renewal.browser import _navigation\n"
+        "    with _navigation.expect_document(page):\n"
+        "        page.locator('a').click(no_wait_after=True)\n"
+    ),
+    "partial no_wait_after": (
+        "    import functools\n"
+        "    functools.partial(page.locator('a').click, no_wait_after=True)()\n"
+    ),
+    "imported partial": (
+        "    from functools import partial\n"
+        "    partial(page.locator('a').click, no_wait_after=True)()\n"
+    ),
+    "splat into click": "    page.locator('a').click(**options)\n",
+    "raw expect_navigation": (
+        "    with page.expect_navigation():\n        page.locator('a').click()\n"
+    ),
+    "raw goto": "    page.goto('/x')\n",
+    "bound goto": "    go = page.goto\n    go('/x')\n",
+    "raw reload": "    page.reload()\n",
+    "raw go_back": "    page.go_back()\n",
+    "lambda goto": "    run = lambda: page.goto('/x')\n    run()\n",
+}
+SAFE_SHAPES = {
+    "click_to_navigate + wait_for_url": (
+        "    click_to_navigate(page.locator('a'))\n    page.wait_for_url('**/x')\n"
+    ),
+    "Enter inside expect_document": (
+        "    with expect_document(page):\n        page.keyboard.press('Enter')\n"
+    ),
+    "history.back inside expect_document": (
+        "    with expect_document(page):\n        page.evaluate('history.back()')\n"
+    ),
+    "goto_settled": "    goto_settled(page, '/x')\n",
+    "Tab key": "    page.keyboard.press('Tab')\n",
+    "requestfailed event": (
+        "    with page.expect_event('requestfailed'):\n        page.evaluate('1')\n"
+    ),
+    "sign-in landing": "    wait_for_signed_in(page)\n",
+}
+
+
+def _planted(host: str, body: str) -> str:
+    return f"{host}\n\ndef _planted_fa12(page, key, options, expect):\n{body}"
+
+
 @pytest.mark.parametrize(
-    ("source", "unsafe"),
-    [
-        ("with page.expect_navigation():\n    page.locator('a').click()\n", True),
-        (
-            "with page.expect_navigation(url=u):\n    page.keyboard.press('Enter')\n",
-            True,
-        ),
-        ("with getattr(page, 'expect_navigation')():\n    b.click()\n", True),
-        ("wait = page.expect_navigation\n", True),
-        (
-            "with expect_document(page):\n    b.click(no_wait_after=True)\n",
-            True,
-        ),
-        ("with expect_document(page):\n    b.click(no_wait_after=flag)\n", True),
-        ("with expect_document(page):\n    b.click(**options)\n", True),
-        (
-            "with expect_document(page):\n    b.press('Enter', no_wait_after=True)\n",
-            True,
-        ),
-        ("with expect_document(page):\n    b.check(no_wait_after=True)\n", True),
-        (
-            "with expect_document(page):\n"
-            "    click_when_hittable(b, no_wait_after=True)\n",
-            True,
-        ),
-        ("with (x(), expect_document(page)):\n    page.click('a', **o)\n", True),
-        ("with expect_document(page):\n    page.locator('a').click()\n", False),
-        ("with expect_document(page):\n    b.click(no_wait_after=False)\n", False),
-        ("with expect_document(page):\n    page.keyboard.press('Enter')\n", False),
-        ("with expect_document(page):\n    page.evaluate('history.back()')\n", False),
-        ("with expect_document(page):\n    click_when_hittable(b)\n", False),
-        ("click_to_navigate(page.locator('a'), url=u)\n", False),
-    ],
+    ("shape", "body", "unsafe"),
+    [(name, body, True) for name, body in EVASIONS.items()]
+    + [(name, body, False) for name, body in SAFE_SHAPES.items()],
 )
-def test_navigation_detector_flags_each_unsafe_shape(
-    source: str, *, unsafe: bool
+def test_navigation_guard_catches_each_evasion_planted_in_a_suite(
+    shape: str, body: str, *, unsafe: bool
 ) -> None:
-    assert bool(_unsafe_navigation_waits(source, "planted.py", ())) is unsafe
+    host_path = BROWSER_SUITES / "test_encounter.py"
+    sources = _suite_sources()
+    settling = _suite_settling()[host_path]
+    exempt = tuple(NAVIGATION_EXEMPTIONS.get(host_path, {}))
+    before = _navigation_offenders(host_path, sources[host_path], exempt, settling)
+    planted = _planted(sources[host_path], body)
+    after = _navigation_offenders(host_path, planted, exempt, settling)
+    assert (len(after) > len(before)) is unsafe, (shape, after[len(before) :])
 
 
-def test_browser_suites_await_navigations_only_through_the_navigation_helper() -> None:
+def test_browser_suites_navigate_only_through_the_navigation_helpers() -> None:
     # Hosted retention@firefox 36349167980: a press whose POST never left the
     # browser, the signature of a navigation held behind an activating worker.
-    scanned = sorted(BROWSER_SUITES.rglob("*.py"))
+    sources = _suite_sources()
     registered = {
         REPOSITORY / relpath for paths in runner.SUITES.values() for relpath in paths
     }
-    assert registered <= set(scanned)
+    assert registered <= set(sources)
+    assert {"goto", "reload", "go_back", "go_forward", "expect_navigation"} <= (
+        _navigating_methods()
+    )
+    assert {"expect_event", "wait_for_event"} <= _navigating_methods()
     assert {"click", "press", "check"} <= _waiting_methods()
     assert not {
         name
         for name, member in vars(Keyboard).items()
         if callable(member) and "no_wait_after" in inspect.signature(member).parameters
     }
-    # Every exemption names a function that exists and that the detector
-    # flags once its exemption is lifted.
-    for path, functions in NAVIGATION_EXEMPTIONS.items():
-        for function in functions:
-            others = tuple(name for name in functions if name != function)
-            assert len(_navigation_offenders(path, exempt=others)) > len(
-                _navigation_offenders(path, exempt=tuple(functions))
-            ), (path, function)
+    assert {
+        "click_to_navigate",
+        "expect_document",
+        "goto_settled",
+        "reload_settled",
+        "go_back_settled",
+        "go_forward_settled",
+        "wait_for_signed_in",
+    } <= _settling_helpers()
+    settling = _suite_settling()
+    # Every exemption names a scope the detector flags once it is lifted.
+    for path, scopes in NAVIGATION_EXEMPTIONS.items():
+        for scope in scopes:
+            others = tuple(name for name in scopes if name != scope)
+            assert len(
+                _navigation_offenders(path, sources[path], others, settling[path])
+            ) > len(
+                _navigation_offenders(
+                    path, sources[path], tuple(scopes), settling[path]
+                )
+            ), (path, scope)
 
     offenders = [
         site
-        for path in scanned
+        for path, source in sources.items()
         for site in _navigation_offenders(
-            path, exempt=tuple(NAVIGATION_EXEMPTIONS.get(path, {}))
+            path, source, tuple(NAVIGATION_EXEMPTIONS.get(path, {})), settling[path]
         )
     ]
 

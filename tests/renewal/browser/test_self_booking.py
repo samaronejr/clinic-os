@@ -13,7 +13,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import full_page_screenshot
@@ -226,7 +226,7 @@ def _failure_journey(
     url = page.url
     assert _post(page, tampered) == 403
     _capture(page, root, "scope-denied", width)
-    page.goto(url)
+    goto_settled(page, url)
     stale = {**_body(page), "action": "book"}
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
@@ -246,7 +246,7 @@ def _prepare_staff(
     manager: Page, base_url: str, staff: dict[str, str], data: dict[str, str]
 ) -> dict[str, str]:
     _sign_in_receptionist(manager, base_url, staff)
-    manager.goto(f"{base_url}/intake/clinics/{staff['clinic_a']}/patients/")
+    goto_settled(manager, f"{base_url}/intake/clinics/{staff['clinic_a']}/patients/")
     manager.locator("#id_q").fill("Paciente Sintético Agendamento")
     with manager.expect_response(lambda response: response.request.method == "POST"):
         manager.locator("#patient-search-form button[type=submit]").click()
@@ -287,7 +287,7 @@ def test_staff_patient_race(
     manager = staff_context.new_page()
     try:
         _redeem(patient, renewal_base_url, staff["clinic_a"], data["code"])
-        patient.goto(renewal_base_url + PATH + "?day=" + data["day"])
+        goto_settled(patient, renewal_base_url + PATH + "?day=" + data["day"])
         patient_body = {**_body(patient), "action": "book"}
         staff_body = _prepare_staff(manager, renewal_base_url, staff, data)
         booking_url = (

@@ -33,7 +33,13 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    reload_settled,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import (
     await_autofocus,
     click_when_hittable,
@@ -272,7 +278,7 @@ def _list_path(staff: dict[str, str], clinic: str = "clinic_a") -> str:
 
 
 def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(username)
     page.locator("#id_password").fill(password)
@@ -281,7 +287,7 @@ def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
 
 def _sign_in_receptionist(page: Page, base_url: str, staff: dict[str, str]) -> None:
     _sign_in(page, base_url, staff["receptionist"], staff["password"])
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None:
@@ -303,7 +309,7 @@ def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
     click_to_navigate(page.locator("button[type=submit]"))
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def _clear_clinic(staff: dict[str, str]) -> None:
@@ -576,7 +582,7 @@ def _assert_autofocus_target(page: Page, element_id: str) -> None:
 
 
 def _open_blank(page: Page, base_url: str, list_path: str, root: Path) -> None:
-    page.goto(f"{base_url}{list_path}")
+    goto_settled(page, f"{base_url}{list_path}")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator("h1")).to_have_text(gettext("Physician availability"))
     expect(page.locator(".eyebrow")).to_have_count(0)
@@ -618,7 +624,7 @@ def _create_first_period(
     assert _no_overflow(page)
     _capture(page, root, f"created-{width}")
     # Reload: the notice is consumed once and the row stays.
-    page.reload()
+    reload_settled(page)
     expect(page.locator("#availability-created")).to_have_count(0)
     assert _ranges(page, 0) == ["08:00-09:00"]
     return busy
@@ -743,7 +749,7 @@ def _retire_first_period(
     assert "retire" not in page.url
     assert _no_overflow(page)
     _capture(page, root, f"retired-{width}")
-    page.reload()
+    reload_settled(page)
     expect(page.locator("#availability-retired")).to_have_count(0)
     del staff
     return busy
@@ -828,7 +834,7 @@ def test_native_post_creates_and_retires_without_javascript(
     try:
         _clear_clinic(staff)
         _sign_in_receptionist(page, renewal_base_url, staff)
-        page.goto(f"{renewal_base_url}{list_path}")
+        goto_settled(page, f"{renewal_base_url}{list_path}")
         _fill(page, staff["physician_a"], day, "08:00", "09:00")
         click_to_navigate(page.locator(SUBMIT))
         assert page.url == f"{renewal_base_url}{list_path}"
@@ -959,7 +965,7 @@ def _stale(
     )
     assert _no_overflow(page)
     _capture(page, root, f"conflict-{width}")
-    page.reload()
+    reload_settled(page)
     _fill(page, staff["physician_b"], day, "14:00", "15:00")
     _submit_expecting_success(page, list_path)
     ledger_b = _ledger_of(page, staff["physician_b"])
@@ -1035,7 +1041,7 @@ def _physician_view(
     list_path = _list_path(staff)
     try:
         _sign_in_physician(page, base_url, staff)
-        page.goto(f"{base_url}{list_path}")
+        goto_settled(page, f"{base_url}{list_path}")
         expect(page.locator("h1")).to_have_text(gettext("Physician availability"))
         expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
         expect(page.locator("form")).to_have_count(0)
@@ -1078,7 +1084,7 @@ def _foreign_clinic(
 ) -> None:
     """No role in clinic B: its availability is refused on GET and POST, never named."""
     list_b = _list_path(staff, "clinic_b")
-    response = page.goto(f"{base_url}{list_b}")
+    response = goto_settled(page, f"{base_url}{list_b}")
     assert response is not None
     assert response.status == NOT_FOUND
     expect(page.locator("h1")).to_have_text(gettext("Page unavailable"))
@@ -1086,7 +1092,7 @@ def _foreign_clinic(
     assert CLINIC_B not in page.content()
     assert _no_overflow(page)
     _capture(page, root, f"foreign-clinic-denied-{_width(page)}")
-    page.goto(f"{base_url}{_list_path(staff)}")
+    goto_settled(page, f"{base_url}{_list_path(staff)}")
     refused = page.request.post(
         f"{base_url}{list_b}",
         form={
@@ -1119,7 +1125,7 @@ def test_failures_show_actionable_errors_and_keep_permission_boundaries(
     day = DAYS[width][0].replace("-03-", "-04-")  # April days keep runs apart
     _clear_clinic(staff)
     _sign_in_receptionist(page, renewal_base_url, staff)
-    page.goto(f"{renewal_base_url}{list_path}")
+    goto_settled(page, f"{renewal_base_url}{list_path}")
     _fill(page, staff["physician_a"], day, "08:00", "09:00")
     _submit_expecting_success(page, list_path)
     _overlapping(page, list_path, staff, day, root)
@@ -1298,7 +1304,7 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_availability_usable(
         page.set_default_timeout(20_000)
         try:
             _sign_in_receptionist(page, renewal_base_url, staff)
-            page.goto(f"{renewal_base_url}{list_path}")
+            goto_settled(page, f"{renewal_base_url}{list_path}")
             if scene == "widths":
                 _seed_for_reflow(page, list_path, staff)
                 report[scene] = _reflow(page, root)

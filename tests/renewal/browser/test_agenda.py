@@ -40,7 +40,15 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    go_back_settled,
+    go_forward_settled,
+    goto_settled,
+    reload_settled,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import await_autofocus, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -299,7 +307,7 @@ def _book_path(staff: dict[str, str], clinic: str = "clinic_a") -> str:
 
 
 def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(username)
     page.locator("#id_password").fill(password)
@@ -308,7 +316,7 @@ def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
 
 def _sign_in_receptionist(page: Page, base_url: str, staff: dict[str, str]) -> None:
     _sign_in(page, base_url, staff["receptionist"], staff["password"])
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None:
@@ -330,7 +338,7 @@ def _sign_in_physician(page: Page, base_url: str, staff: dict[str, str]) -> None
     token = TOTP(bytes.fromhex(staff["totp_key"]), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
     click_to_navigate(page.locator("button[type=submit]"))
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def _utc(day: str, hhmm: str) -> datetime:
@@ -648,7 +656,7 @@ def _register_patient(
 ) -> None:
     """Register ``name`` through the intake screens and land back on the search."""
     patients = _patients_path(staff)
-    page.goto(f"{base_url}{patients}")
+    goto_settled(page, f"{base_url}{patients}")
     page.locator("#id_q").fill(name)
     _submit_expecting_error(page, "#patient-search-form button[type=submit]")
     expect(page.locator(".intake-empty")).to_be_visible()
@@ -665,7 +673,7 @@ def _register_patient(
 
 def _open_booking(page: Page, base_url: str, staff: dict[str, str], name: str) -> None:
     """Find ``name`` in the registry and open the booking screen for that row."""
-    page.goto(f"{base_url}{_patients_path(staff)}")
+    goto_settled(page, f"{base_url}{_patients_path(staff)}")
     page.locator("#id_q").fill(name)
     _submit_expecting_error(page, "#patient-search-form button[type=submit]")
     click_to_navigate(
@@ -714,7 +722,7 @@ def _select_clinic_and_open_today(
 def _open_empty_day(
     page: Page, base_url: str, staff: dict[str, str], day: str, root: Path
 ) -> None:
-    page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
+    goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
     expect(page.locator(".agenda-period time")).to_have_text(_day_label(day))
     expect(page.locator(".agenda-period .badge")).to_have_count(0)
     expect(page.locator(STATUS)).to_have_text(_day_status(0))
@@ -793,7 +801,7 @@ def _register_find_and_book(
     assert _no_overflow(page)
     _capture(page, root, f"booked-{width}")
     # Reload: the notice is consumed once and the row stays.
-    page.reload()
+    reload_settled(page)
     expect(page.locator("#appointment-booked")).to_have_count(0)
     assert len(_rows(page)) == 1
     return busy
@@ -811,7 +819,7 @@ def _rows_with_long_content(
             (UNBROKEN_PATIENT, staff["physician_long_id"], day, "08:00", "08:45"),
         ],
     )
-    page.reload()
+    reload_settled(page)
     expect(page.locator(STATUS)).to_have_text(_day_status(3))
     rows = _rows(page)
     assert [row["time"] for row in rows] == [
@@ -947,7 +955,7 @@ def _reschedule(
     assert _no_overflow(page)
     _capture(page, root, f"rescheduled-{width}")
     # Reload: the notice is consumed once; nothing is replayed.
-    page.reload()
+    reload_settled(page)
     expect(page.locator("#appointment-rescheduled")).to_have_count(0)
     expect(summary).to_contain_text(f"{_short_date(day)} {_range('10:00', '10:30')}")
     # The return link opens the appointment's own day; history stays safe.
@@ -955,11 +963,11 @@ def _reschedule(
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
     row = _row_of(page, name)
     expect(row.locator(".agenda-time")).to_have_text(_range("10:00", "10:30"))
-    page.go_back()
+    go_back_settled(page)
     page.wait_for_url(appointment_url)
     expect(summary).to_contain_text(f"{_short_date(day)} {_range('10:00', '10:30')}")
     expect(page.locator(TRANSITION_FORM)).to_have_count(1)
-    page.go_forward()
+    go_forward_settled(page)
     page.wait_for_url(f"**{_agenda_path(staff, 'day', day)}")
     expect(_row_of(page, name).locator(".agenda-time")).to_have_text(
         _range("10:00", "10:30")
@@ -1014,7 +1022,7 @@ def _cancel(
     assert _no_overflow(page)
     _capture(page, root, f"cancelled-{width}")
     # The same object's reschedule screen is terminal too: nothing to submit.
-    page.goto(appointment_url.replace("/cancel/", "/reschedule/"))
+    goto_settled(page, appointment_url.replace("/cancel/", "/reschedule/"))
     expect(page.locator("form")).to_have_count(0)
     expect(page.locator("#transition-status")).to_contain_text(
         gettext("This appointment is cancelled, so it can no longer be changed.")
@@ -1057,7 +1065,7 @@ def _paginated(
             for index in range(PAGE_SIZE + 1)
         ],
     )
-    page.goto(f"{base_url}{_agenda_path(staff, 'day', busy_day)}")
+    goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', busy_day)}")
     expect(page.locator(STATUS)).to_have_text(
         f"{_day_status(PAGE_SIZE + 1)} "
         + gettext("Page %(page)s of %(pages)s.") % {"page": 1, "pages": 2}
@@ -1206,7 +1214,7 @@ def _native_transitions(
     )
     _capture(page, root, "native-rescheduled-768", full_page=False)
     # Native cancel: the reason travels in the body; the state is terminal.
-    page.goto(appointment_url.replace("/reschedule/", "/cancel/"))
+    goto_settled(page, appointment_url.replace("/reschedule/", "/cancel/"))
     page.locator("#id_reason").select_option("clinic_request")
     click_to_navigate(page.locator(TRANSITION_SUBMIT))
     expect(page.locator("#appointment-cancelled")).to_be_visible()
@@ -1264,7 +1272,7 @@ def _race_two_bookings(
     """Two concurrent bookings of one window: exactly one appointment exists."""
     third = _seed_enrollment(staff, "Paciente Sintético Corrida Um")
     fourth = _seed_enrollment(staff, "Paciente Sintético Corrida Dois")
-    page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
+    goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
     session = _cookie(page, "sessionid")
     csrf = _cookie(page, "csrftoken")
     parts = urlsplit(base_url)
@@ -1316,7 +1324,7 @@ def _race_two_bookings(
     assert sorted(statuses.values()) == [OK, SEE_OTHER], statuses
     at_ten = [row for row in _stored(staff, day) if row[0] == _utc(day, "10:00")]
     assert at_ten == [(_utc(day, "10:00"), _utc(day, "10:30"), "scheduled")]
-    page.reload()
+    reload_settled(page)
     assert [row["time"] for row in _rows(page)].count(_range("10:00", "10:30")) == 1
     return {"statuses": statuses, "stored_at_10": len(at_ten)}
 
@@ -1359,7 +1367,7 @@ def _stale_reschedule_and_replayed_cancel(
     """A reschedule page left open after a cancel is refused; cancel replays no-op."""
     width = _width(page)
     first = _failure_names(page)[0]
-    page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
+    goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
     click_to_navigate(
         _row_of(page, first).locator("a").filter(has_text=gettext("Reschedule"))
     )
@@ -1391,11 +1399,11 @@ def _stale_reschedule_and_replayed_cancel(
     expect(page.locator(TRANSITION_FORM)).to_have_count(0)
     assert _no_overflow(page)
     _capture(page, root, f"stale-{width}")
-    page.reload()
+    reload_settled(page)
     expect(page.locator("form")).to_have_count(0)
     expect(page.locator("#transition-status")).to_have_attribute("role", "status")
     # Replays: the same reason is a quiet no-op; another reason is refused.
-    page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
+    goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
     same = page.request.post(
         cancel_url,
         form={
@@ -1441,7 +1449,7 @@ def _stale_reschedule_and_replayed_cancel(
         "cancelled",
         "scheduled",
     ]
-    page.reload()
+    reload_settled(page)
     at_nine = [row for row in _rows(page) if row["time"] == _range("09:00", "09:30")]
     assert sorted(row["muted"] for row in at_nine) == ["", "muted"], at_nine
     return {"same_reason": same.status, "other_reason": other.status}
@@ -1512,7 +1520,7 @@ def _physician_view(
     errors = _watch_errors(page)
     try:
         _sign_in_physician(page, base_url, staff)
-        page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
+        goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
         expect(page.locator("h1")).to_have_text(gettext("Clinic agenda"))
         expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
         # The only write controls are the physician's own encounter and
@@ -1552,7 +1560,7 @@ def _cross_clinic(
     """Clinic C (no role) is refused on agenda, booking and transitions, never named."""
     width = _width(page)
     agenda_c = f"/scheduling/clinics/{staff['clinic_c']}/agenda/"
-    response = page.goto(f"{base_url}{agenda_c}")
+    response = goto_settled(page, f"{base_url}{agenda_c}")
     assert response is not None
     assert response.status == NOT_FOUND
     expect(page.locator("h1")).to_have_text(gettext("Page unavailable"))
@@ -1570,7 +1578,7 @@ def _cross_clinic(
     foreign_enrollment = _seed_enrollment(
         staff, "Paciente Sintético Alheio 2", "clinic_c"
     )
-    page.goto(f"{base_url}{_agenda_path(staff, 'day', day)}")
+    goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
     csrf = _cookie(page, "csrftoken")
     referer = f"{base_url}{_agenda_path(staff, 'day', day)}"
     reschedule = page.request.get(
@@ -1607,7 +1615,9 @@ def _cross_clinic(
     assert smuggled.status == NOT_FOUND
     assert "Alheio" not in page.content()
     # Clinic B, where the receptionist also works, shows none of clinic A's rows.
-    page.goto(f"{base_url}/scheduling/clinics/{staff['clinic_b']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base_url}/scheduling/clinics/{staff['clinic_b']}/agenda/day/{day}/1/"
+    )
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_B)
     expect(page.locator(STATUS)).to_have_text(_day_status(0))
     assert "Sintético" not in page.content()
@@ -1826,7 +1836,7 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_agenda_usable(
         page.set_default_timeout(20_000)
         try:
             _sign_in_receptionist(page, renewal_base_url, staff)
-            page.goto(f"{renewal_base_url}{agenda}")
+            goto_settled(page, f"{renewal_base_url}{agenda}")
             if scene == "widths":
                 report[scene] = _reflow(page, root)
             elif scene == "forced_colors":

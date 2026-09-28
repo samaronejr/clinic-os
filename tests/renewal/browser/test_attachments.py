@@ -11,7 +11,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
@@ -66,7 +66,9 @@ def _open_workspace(
 ) -> tuple[str, str]:
     """Sign in and reach the attachment workspace through the real journey."""
     _sign_in_physician(page, base, staff)
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
     click_to_navigate(page.get_by_role("button", name="Anexos"))
     expect(page.locator("#attachments-title")).to_be_visible()
@@ -225,7 +227,7 @@ def denied_journeys(
     try:
         other = context.new_page()
         _sign_in_receptionist(other, base, staff)
-        response = other.goto(url)
+        response = goto_settled(other, url)
         assert response is not None
         assert response.status == 403
         refused = other.request.post(
@@ -280,8 +282,9 @@ def test_attachment_journey(
     url = f"{base}/ehr/clinics/{staff['clinic_a']}/attachments/"
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/",
         )
         press(page, "open")
         click_to_navigate(page.get_by_role("button", name="Anexos"))
@@ -438,7 +441,7 @@ def _stale_scene(
     """A stale tab cannot double-transition or serve quarantined bytes."""
     attachment = _uploaded(page)
     stale = page.context.new_page()
-    stale.goto(url)
+    goto_settled(stale, url)
     expect(stale.locator(f'[data-attachment="{attachment}"]')).to_have_attribute(
         "data-state", "quarantined"
     )

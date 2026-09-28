@@ -24,7 +24,11 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import ViewportSize
 
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import (
+    click_to_navigate,
+    goto_settled,
+    settle_service_worker,
+)
 from renewal.browser._page_wait import (
     EvaluateTimeoutError,
     await_autofocus,
@@ -69,7 +73,9 @@ def test_readiness_reports_the_migrated_app_role(
     browser = renewal_page.context.browser
     assert browser is not None
     assert browser.browser_type.name == renewal_engine
-    response = renewal_page.goto(f"{renewal_base_url}/readyz", wait_until="load")
+    response = goto_settled(
+        renewal_page, f"{renewal_base_url}/readyz", wait_until="load"
+    )
     assert response is not None
     assert response.status == OK_STATUS
     body = json.loads(response.body())
@@ -93,7 +99,9 @@ def test_login_surface_renders_the_real_csrf_form(
     renewal_engine: str,
     browser_report: dict[str, object],
 ) -> None:
-    response = renewal_page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
+    response = goto_settled(
+        renewal_page, f"{renewal_base_url}/auth/login/", wait_until="load"
+    )
     assert response is not None
     assert response.status == OK_STATUS
     renewal_page.wait_for_selector("input[name=csrfmiddlewaretoken]", state="attached")
@@ -127,7 +135,9 @@ def test_login_surface_by_touch_on_mobile_profiles(  # noqa: PLR0913 - fixtures
     context = mobile_context(browser, profile)
     try:
         page = context.new_page()
-        response = page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
+        response = goto_settled(
+            page, f"{renewal_base_url}/auth/login/", wait_until="load"
+        )
         assert response is not None
         assert response.status == OK_STATUS
         device = MOBILE_PROFILES[profile]
@@ -169,7 +179,7 @@ def test_owner_login_establishes_a_session_and_enters_the_totp_flow(  # noqa: PL
     renewal_engine: str,
     browser_report: dict[str, object],
 ) -> None:
-    renewal_page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
+    goto_settled(renewal_page, f"{renewal_base_url}/auth/login/", wait_until="load")
     await_autofocus(renewal_page.locator("#id_username"))
     renewal_page.fill("#id_username", renewal_owner["username"])
     renewal_page.fill("#id_password", renewal_owner["password"])
@@ -233,7 +243,7 @@ def csp_page(renewal_page: Page, renewal_base_url: str) -> Iterator[Page]:
     assert browser is not None
     context = browser.new_context()
     page = context.new_page()
-    response = page.goto(f"{renewal_base_url}/auth/login/", wait_until="load")
+    response = goto_settled(page, f"{renewal_base_url}/auth/login/", wait_until="load")
     assert response is not None
     assert "script-src 'self'" in response.headers["content-security-policy"]
     yield page
@@ -632,6 +642,11 @@ def _unsafe_press(page: Page) -> None:
         page.locator("#press").click(timeout=HELD_PROBE_TIMEOUT_MS)
 
 
+def _unsafe_goto(page: Page, url: str) -> None:
+    """A ``goto`` with no worker precondition; kept only to reproduce the hold."""
+    page.goto(url, timeout=HELD_PROBE_TIMEOUT_MS)
+
+
 def test_navigation_helper_waits_out_a_held_worker_activation(
     renewal_page: Page, held_origin: _HeldOrigin
 ) -> None:
@@ -640,14 +655,28 @@ def test_navigation_helper_waits_out_a_held_worker_activation(
     context = browser.new_context()
     try:
         page = context.new_page()
+        # The origin's own page registers the gated worker (it cannot settle).
         page.goto(held_origin.url, wait_until="load")
         assert held_origin.activating.wait(HELD_GATE_BOUND_S)
 
-        # The helper refuses to press while the worker activates: its
-        # precondition times out and no click is sent.
+        # The helpers refuse to press or navigate while the worker activates:
+        # their precondition times out, no click is sent and no goto starts.
         with pytest.raises(EvaluateTimeoutError):
             click_to_navigate(page.locator("#press"), timeout=HELD_PROBE_TIMEOUT_MS)
         assert evaluate_js(page, "window.pressProbeClicks") == 0
+        with pytest.raises(EvaluateTimeoutError):
+            goto_settled(
+                page, f"{held_origin.url}second", timeout=HELD_PROBE_TIMEOUT_MS
+            )
+        assert "GET /second" not in held_origin.requests
+        assert page.url == held_origin.url
+
+        # An unsettled goto into the scope is held too (gate review B1): it
+        # times out in Page.goto.
+        second = context.new_page()
+        with pytest.raises(PlaywrightTimeoutError, match=r"Page\.goto"):
+            _unsafe_goto(second, f"{held_origin.url}second")
+        second.close()
 
         # The pre-fix shape reproduces hosted retention@firefox 36349167980:
         # the click is dispatched, the POST is held and never sent, and the
@@ -667,5 +696,35 @@ def test_navigation_helper_waits_out_a_held_worker_activation(
         assert response is not None
         assert response.status == OK_STATUS
         assert held_origin.posts() == ["POST /submit", "POST /submit"]
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize(
+    ("mode", "settled"),
+    [
+        ("js-off", "not applicable"),
+        ("blocked", "not applicable"),
+        ("default", "unregistered"),
+    ],
+)
+def test_settle_reads_the_context_options_it_depends_on(
+    renewal_page: Page, renewal_base_url: str, mode: str, settled: str
+) -> None:
+    # settle_service_worker reads Playwright 1.61's private context options
+    # (_impl_obj._options): an upgrade that moves them fails here, not as a
+    # hang in a JS-disabled page.
+    browser = renewal_page.context.browser
+    assert browser is not None
+    if mode == "js-off":
+        context = browser.new_context(java_script_enabled=False)
+    elif mode == "blocked":
+        context = browser.new_context(service_workers="block")
+    else:
+        context = browser.new_context()
+    try:
+        page = context.new_page()
+        goto_settled(page, f"{renewal_base_url}/auth/login/")
+        assert settle_service_worker(page) == settled
     finally:
         context.close()

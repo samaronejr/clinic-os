@@ -24,7 +24,7 @@ from django.utils.translation import gettext
 from PIL import Image
 from playwright.sync_api import expect
 
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import (
     await_autofocus,
     click_when_hittable,
@@ -374,7 +374,7 @@ def _open_showcase(
     page = context.new_page()
     page.set_default_timeout(20_000)
     with page.expect_response(f"{showcase.base_url}/static/css/clinic-os.css") as css:
-        page.goto(f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
+        goto_settled(page, f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
     assert css.value.status == OK_STATUS
     # The served stylesheet painted the page: brand tokens resolve even when
     # forced colors replace the rendered colors.
@@ -417,7 +417,7 @@ def test_showcase_is_absent_from_the_served_runtime_and_css_is_served(
     anonymous = renewal_page.request.get(f"{showcase.base_url}{SHOWCASE_PATH}")
     assert anonymous.status == FORBIDDEN_STATUS
     # Signed in: the production resolver has no showcase route at all.
-    renewal_page.goto(f"{showcase.base_url}/auth/login/", wait_until="load")
+    goto_settled(renewal_page, f"{showcase.base_url}/auth/login/", wait_until="load")
     await_autofocus(renewal_page.locator("#id_username"))
     renewal_page.fill("#id_username", renewal_owner["username"])
     renewal_page.fill("#id_password", renewal_owner["password"])
@@ -1212,7 +1212,7 @@ def test_zoom_200_with_pt_br_strings_never_overlaps_text(
     context.route(f"{showcase.base_url}{SHOWCASE_PATH}", fulfil)
     page = context.new_page()
     try:
-        page.goto(f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
+        goto_settled(page, f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
         assert page.evaluate("document.documentElement.dataset.theme") == theme
         assert page.evaluate("document.scrollingElement.scrollWidth") <= 640
         overlaps: dict[str, Any] = {}
@@ -1532,7 +1532,7 @@ def test_components_keep_their_native_baseline_without_javascript(
     context.route(f"{showcase.base_url}{SHOWCASE_PATH}", fulfil)
     page = context.new_page()
     try:
-        page.goto(f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
+        goto_settled(page, f"{showcase.base_url}{SHOWCASE_PATH}", wait_until="load")
         expect(page.locator("#live-drawer")).to_be_visible()
         expect(page.locator("[data-datetime-toggle]").first).to_be_hidden()
         expect(page.locator("#live-datetime-date")).to_be_editable()

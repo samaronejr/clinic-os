@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 from playwright.sync_api import expect
 
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser.engines import full_page_screenshot, zoom_200
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
@@ -149,24 +149,24 @@ def test_settings_native_publication_isolation_and_rejection(
     sign_in_manager(page, renewal_base_url, staff, manager)
     url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/"
     other = f"{renewal_base_url}/clinics/{staff['clinic_b']}/settings/"
-    page.goto(other)
+    goto_settled(page, other)
     other_name = page.locator("#id_display_name").input_value()
     expect(page.locator("[data-configuration-version]")).to_have_text("0")
-    page.goto(url)
+    goto_settled(page, url)
     version = publish_brand(page, width)
     capture(page, renewal_artifact_root, "published", width)
-    page.reload()
+    reload_settled(page)
     expect(page.locator("[data-configuration-version]")).to_have_text(str(version))
     publish_overlays(page, width)
     capture(page, renewal_artifact_root, "overlays", width)
     rejected_changes(page, url, version)
     capture(page, renewal_artifact_root, "rejected", width)
-    page.goto(other)
+    goto_settled(page, other)
     expect(page.locator("#id_display_name")).to_have_value(other_name)
     expect(page.locator("[data-configuration-version]")).to_have_text("0")
     expect(page.locator("[data-clinic-brand]")).to_have_count(0)
     capture(page, renewal_artifact_root, "other-clinic-unchanged", width)
-    page.goto(url)
+    goto_settled(page, url)
     if width == 375:
         page.set_viewport_size({"width": 320, "height": 900})
         capture(page, renewal_artifact_root, "reflow", 320)
@@ -174,7 +174,7 @@ def test_settings_native_publication_isolation_and_rejection(
         capture(page, renewal_artifact_root, "forced-colors", 320)
         page.emulate_media(forced_colors="none")
         zoom_context, zoomed = zoom_200(page)
-        zoomed.goto(url)
+        goto_settled(zoomed, url)
         assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
         capture(zoomed, renewal_artifact_root, "zoom-200-layout", 640)
         zoom_context.close()
@@ -182,7 +182,7 @@ def test_settings_native_publication_isolation_and_rejection(
     physician_context = browser.new_context(viewport={"width": width, "height": 900})
     physician = physician_context.new_page()
     _sign_in_physician(physician, renewal_base_url, staff)
-    response = physician.goto(url)
+    response = goto_settled(physician, url)
     assert response is not None
     assert response.status == 403
     expect(physician.locator('[data-module="settings"]')).to_have_count(0)

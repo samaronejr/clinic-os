@@ -13,7 +13,7 @@ import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code
-from renewal.browser._navigation import expect_document
+from renewal.browser._navigation import expect_document, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import full_page_screenshot, zoom_200
@@ -104,7 +104,7 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 
 
 def publish(page: Page, url: str, text: str) -> None:
-    page.goto(url)
+    goto_settled(page, url)
     page.locator("#id_text").fill(text)
     press(page, "publish")
     expect(page.locator('[role="status"]')).to_be_visible()
@@ -147,7 +147,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
     patient.locator("summary").click()
     capture(patient, root, "revoked-retained-receipt", width)
-    patient.reload()
+    reload_settled(patient)
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
     return receipt_id
 
@@ -192,7 +192,7 @@ def accessibility_scenes(patient: Page, root: Path) -> None:
     capture(patient, root, "forced-colors-reduced-motion", 320)
     patient.emulate_media(forced_colors="none")
     zoom_context, zoomed = zoom_200(patient, java_script_enabled=False)
-    zoomed.goto(patient.url)
+    goto_settled(zoomed, patient.url)
     zoomed.locator("summary").click()
     assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
     capture(zoomed, root, "zoom-200-layout", 640)
@@ -316,10 +316,10 @@ def test_accept_revoke_receipt_and_replay_denials(
         ) as other_context:
             other_page = other_context.new_page()
             _redeem(other_page, base, staff["clinic_a"], other["code"])
-            other_page.goto(f"{base}/patient/consent/")
+            goto_settled(other_page, f"{base}/patient/consent/")
             replay_denied(other_page, token, root, width)
         receipt_id = accept_revoke(patient, root, width)
-        admin.goto(staff_url)
+        goto_settled(admin, staff_url)
         admin.locator("#enrollment-id").fill(data["enrollment"])
         press(admin, "receipts")
         expect(admin.locator("[data-receipt]")).to_have_attribute(

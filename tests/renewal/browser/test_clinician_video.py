@@ -24,7 +24,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -213,7 +213,7 @@ def _fail_room(case: _Case, session_id: str) -> None:
 
 def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     session_id = _create_session(physician, case.staff_url)
     _worker(_room_operation(case.staff, session_id), "sent", case.root)
     return session_id
@@ -232,7 +232,7 @@ def _htmx(page: Page, selector: str, status: int = OK) -> None:
 
 def _enter(physician: Page, case: _Case, session_id: str, name: str) -> None:
     """Join from the session list and land in the workspace for this patient."""
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     click_to_navigate(
         physician.locator(f'[data-session="{session_id}"] button[value="join"]')
     )
@@ -688,7 +688,7 @@ def _reflow(physician: Page, case: _Case, session_id: str, name: str) -> None:
 def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) -> None:
     """The clinician room connects and follows the session while the prompt is open."""
     _sign_in_physician(prompted, case.base, case.staff)
-    prompted.goto(case.staff_url)
+    goto_settled(prompted, case.staff_url)
     click_to_navigate(
         prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
     )
@@ -724,7 +724,7 @@ def _journey(  # noqa: PLR0913 - the journey needs its full context
     second_session = _provision(physician, case, second)
     first_encounter = _encounter_of(case, first_session)
     second_encounter = _encounter_of(case, second_session)
-    patient.goto(case.patient_url)
+    goto_settled(patient, case.patient_url)
     click_to_navigate(
         patient.locator(f'[data-session="{first_session}"] button[value="join"]')
     )
@@ -1139,7 +1139,7 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
     encounter: str,
 ) -> None:
     """Without JavaScript, start and end carry the typed draft back as unsaved."""
-    native.goto(case.staff_url)
+    goto_settled(native, case.staff_url)
     click_to_navigate(
         native.locator(f'[data-session="{session_id}"] button[value="join"]')
     )

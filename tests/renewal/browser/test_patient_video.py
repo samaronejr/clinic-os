@@ -20,7 +20,7 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._navigation import click_to_navigate
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser.engines import (
     END_TRACK_JS,
@@ -144,14 +144,14 @@ def _page(context: BrowserContext, errors: list[str], console: list[str]) -> Pag
 def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
     """Open the encounter, create the session and provision its room."""
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     session_id = _create_session(physician, case.staff_url)
     _worker(_room_operation(case.staff, session_id), "sent", case.root)
     return session_id
 
 
 def _staff_action(physician: Page, case: _Case, session_id: str, action: str) -> None:
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     click_to_navigate(
         physician.locator(f'[data-session="{session_id}"] button[value="{action}"]')
     )
@@ -411,7 +411,7 @@ def _happy_path(
             else None
         ),
     )
-    patient.goto(case.patient_url)
+    goto_settled(patient, case.patient_url)
     expect(patient.locator("h1")).to_have_text("Sala de espera")
     expect(patient.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "waiting"
@@ -458,7 +458,7 @@ def _reconnect_while_denied(denied: Page, case: _Case) -> None:
 
 def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) -> None:
     """Denied devices are explained, recoverable, then the session expires."""
-    denied.goto(case.patient_url)
+    goto_settled(denied, case.patient_url)
     panel = denied.locator("[data-device-check]")
     denied.locator("[data-device-test]").click()
     expect(panel).to_have_attribute("data-device-state", "denied")
@@ -513,7 +513,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
 
 def _unanswered_prompt(patient: Page, case: _Case, session_id: str) -> None:
     """The room connects and follows the session while the prompt is open."""
-    patient.goto(case.patient_url)
+    goto_settled(patient, case.patient_url)
     click_to_navigate(
         patient.locator(
             f'form:has(input[name="session_id"][value="{session_id}"]) '
@@ -602,7 +602,7 @@ def test_patient_video_journey(
             if width == 375:
                 patient.set_viewport_size({"width": 320, "height": 900})
                 patient.emulate_media(forced_colors="active", reduced_motion="reduce")
-                patient.goto(case.patient_url)
+                goto_settled(patient, case.patient_url)
                 _capture(patient, case, "waiting-reflow-forced-colors")
             assert not errors, errors
             unexpected = [

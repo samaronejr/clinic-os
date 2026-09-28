@@ -26,7 +26,12 @@ from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import fixture_dsn, new_password
-from renewal.browser._navigation import click_to_navigate, expect_document
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
@@ -298,18 +303,18 @@ def _ring(page: Page) -> dict[str, str]:
 
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
     click_to_navigate(page.locator("button[type=submit]"))
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def _open_contacts(page: Page, base_url: str, staff: dict[str, str], name: str) -> None:
     """Search the patient and open the contacts screen through the row action."""
     patients = f"/intake/clinics/{staff['clinic_a']}/patients/"
-    page.goto(f"{base_url}{patients}")
+    goto_settled(page, f"{base_url}{patients}")
     page.locator("#id_q").fill(name)
     with page.expect_response(
         lambda response: response.request.method == "POST"
@@ -467,15 +472,16 @@ def _foreign_clinic_denied(
 ) -> None:
     """Another clinic's contacts endpoint is denied on GET and POST."""
     foreign = f"/intake/clinics/{contacts_staff['clinic_b']}/contacts/"
-    response = page.goto(f"{renewal_base_url}{foreign}")
+    response = goto_settled(page, f"{renewal_base_url}{foreign}")
     assert response is not None
     assert response.status == NOT_FOUND
     body = page.content()
     assert CLINIC_B not in body
     assert FOREIGN_NAME not in body
     _capture(page, root, f"foreign-clinic-denied-{width}")
-    page.goto(
-        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/patients/"
+    goto_settled(
+        page,
+        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/patients/",
     )
     token = page.locator("input[name=csrfmiddlewaretoken]").first.get_attribute("value")
     assert token
@@ -539,8 +545,9 @@ def test_failures_mask_deny_and_never_cross_patients(
     _foreign_clinic_denied(page, renewal_base_url, contacts_staff, width, root)
 
     # The blank GET state carries no patient data.
-    response = page.goto(
-        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/contacts/"
+    response = goto_settled(
+        page,
+        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/contacts/",
     )
     assert response is not None
     assert response.status == OK
