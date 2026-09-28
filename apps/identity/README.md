@@ -120,3 +120,59 @@ protected-field conversion migrations remain non-atomic and irreversible.
 Reversing this additive migration removes only the new tables/helper; role
 values already stored in UserClinicRole are not rewritten. Once new authority
 history exists, use an additive forward correction rather than dropping it.
+
+## Service principals (ADR-019, task 7)
+
+`ServicePrincipal` is a machine identity, never a UserClinicRole or a clinician.
+Its organization, exact clinic, machine slug name/purpose, database login and
+version are immutable; only `active=True -> False` is allowed. `db_identity` is
+unique across organizations: sharing a credential between caller-selectable
+principals would defeat the boundary. The initial login is `clinic_agent`;
+separate owner-provisioned `clinic_agent_*` logins can inherit that role's narrow
+privileges, never staff/resolver privileges. Bootstrap creates no such child
+logins and supplies no default machine password.
+
+`service_principals` exposes keyword-only `register_principal`, `grant_principal`,
+`revoke_principal` and `revoke_principal_grant`. Like `scope_provisioning`, these
+require an authenticated owner lifecycle transaction and the current operator's
+exact-clinic `staff.organization` permission. Every transition records a fixed
+metadata-only audit event atomically; revocation retries do not duplicate events.
+Names/purposes are machine slugs, not personal names or free-text instructions.
+Neither clinic_app nor clinic_agent can read or write the underlying authority
+tables. Resolver-owned fixed functions expose only the authorization decision.
+
+`service_principal_context(*, principal_id, clinic_id)` owns an outermost
+transaction on `DATABASES['agent']`; consumers explicitly use `.using('agent')`.
+It verifies `session_user == db_identity`, an active registration and active
+exact-clinic grant before setting `app.current_principal` and
+`app.current_tenant`. It never sets `app.current_user_id`. Nesting, mixed
+staff/patient context and repeatable-read snapshots are refused. The
+`clinic_app.principal_has(permission, clinic)` RLS helper checks the stored
+identity and active grants for every row it guards. It and `principal_scope`
+are VOLATILE, like staff `has_permission`, so each call takes a fresh READ
+COMMITTED snapshot: a committed revocation stops the next row of an open
+cursor or a running statement, not only the next statement. All four context
+GUCs are cleared on exit. Staff guards reject an active machine context and
+non-staff database roles even when a physician GUC has been forged.
+
+V1 grants intentionally permit only `appointment.read`, with `subject_scope`
+exactly `clinic`. Availability is the sole initial table exposed, under an
+agent-only restrictive policy in addition to the unchanged tenant policy.
+Clinical, financial, staff-management and wildcard grants are not supported;
+future domains must add reviewed grant versions, explicit `AGENT_GRANTS` and
+RLS, not silently reinterpret a v1 scope. Audit/key tables have no agent SELECT.
+
+Follow-up when widening the v1 grant CHECK: today `principal_scope` and
+`principal_has` read the same principal row and the same `appointment.read`
+grant, so a fresh snapshot in either one enforces revocation, and one gate
+turned STABLE is caught only by its definition and posture pins. If the CHECK
+ever allows a permission other than `appointment.read`, add a revocation test
+that revokes that non-read grant while `appointment.read` stays live: only
+`principal_has`'s own snapshot can refuse it.
+Machine action approvals and execution receipts remain owned by the later
+action gateway, not a fabricated human outbox actor.
+
+Migration `0014_service_principals` is additive and installs FORCE RLS, exact
+ACLs, immutable history triggers and composite organization foreign keys in
+one DDL transaction. Rehearsal reversal is for an empty synthetic database;
+after authority history exists, retain the tables and use forward corrections.

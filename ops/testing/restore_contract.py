@@ -51,6 +51,9 @@ DOMAIN_RELATIONS: Final = (
     "identity_physicianprofile",
     "identity_professionalregistration",
     "identity_rolegrant",
+    # Machine principals and grants, revoked history included (todo 7).
+    "identity_serviceprincipal",
+    "identity_serviceprincipalgrant",
     "identity_user",
     "identity_userclinicrole",
     "identity_userpreference",

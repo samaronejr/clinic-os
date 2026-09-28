@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from dataclasses import replace
 from types import ModuleType
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 import pytest
+from apps.identity import service_principals
 from apps.identity.current_context import CurrentActorError, current_actor_id
 from apps.identity.models import Clinic, User, UserClinicRole
 from django.db import connection
@@ -237,3 +239,51 @@ def test_broken_invocation_cannot_be_counted_as_authorization_denial(
             actor=actor,
             scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
         )
+
+
+def test_delegated_label_without_the_named_call_fails_statically() -> None:
+    # A symbol with no staff read cannot keep a delegation it does not make.
+    analysis = python_staff_analysis(ROOT)
+    add_sql_staff_analysis(analysis)
+    symbol = "apps.ehr.finalization._next_version"
+    assert not analysis.evidence(symbol)
+    row: Candidate = {
+        "symbol": symbol,
+        "kind": "delegated",
+        "signals": [],
+        "enforced_by": ["clinic_app.has_permission"],
+    }
+    with pytest.raises(AssertionError) as rejected:
+        assert_staff_coverage([row], analysis, {"clinic_app.has_permission"})
+    assert rejected.value.args[0][:2] == (symbol, "unresolved delegation")
+
+
+def test_root_delegation_must_be_reached_when_executed(rbac_graph: RbacGraph) -> None:
+    # On the runtime role the owner-connection check refuses first, so the
+    # named has_permission root never runs: the label is refused.
+    symbol = "apps.identity.service_principals.revoke_principal"
+    actor = User.objects.create(username="synthetic-delegation-" + uuid4().hex)
+    row: Candidate = {
+        "symbol": symbol,
+        "kind": "delegated",
+        "signals": ["denial"],
+        "enforced_by": ["clinic_app.has_permission"],
+    }
+    probe = DifferentialProbe(
+        symbol,
+        lambda: service_principals.revoke_principal(
+            clinic_id=rbac_graph.clinic_a, principal_id=uuid4()
+        ),
+        expected=False,
+    )
+    scope = ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a)
+    with pytest.raises(AssertionError) as rejected:
+        assert_behavioral_classifications(
+            [row], {symbol: [probe]}, actor=actor, scope=scope
+        )
+    assert rejected.value.args[0][:2] == (symbol, "delegation_not_observed")
+    owner_probe = replace(probe, database_role="clinic_owner")
+    report = assert_behavioral_classifications(
+        [row], {symbol: [owner_probe]}, actor=actor, scope=scope
+    )
+    assert ("function", "clinic_app.has_permission") in report.observations[symbol]

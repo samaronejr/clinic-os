@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlsplit
 import environ
 
 from . import base
+from .database import agent_database_config
 
 env = environ.Env()
 
@@ -46,6 +47,7 @@ DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
 DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
 DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 DATABASES["locks"] = deepcopy(DATABASES["default"])
+DATABASES.update(agent_database_config(os.environ, primary=DATABASES["default"]))
 
 DEBUG = False
 SECURE_SSL_REDIRECT = False

@@ -7,12 +7,13 @@ are in [RUNBOOK.md](RUNBOOK.md); architectural context is in
 
 ## Database roles and posture
 
-The bootstrap creates four roles with distinct duties:
+The bootstrap creates five roles with distinct duties (including ADR-019's machine role):
 
 | Role | Login | Superuser | `rolbypassrls` | Intended use |
 | --- | --- | --- | --- | --- |
 | `clinic_owner` | yes | no | no | database/schema owner and Django migration connection |
 | `clinic_app` | yes | no | **no** | ordinary runtime connection; it is not the database or schema owner |
+| `clinic_agent` | yes (no default password) | no | **no** | NOINHERIT machine role; no ownership, staff membership, default DML, audit or key-table reads |
 | `clinic_resolver` | no | no | yes | narrowly privileged owner of fixed resolver/auth `SECURITY DEFINER` functions |
 | `clinic_super` | yes | yes | no (superuser still bypasses RLS) | local/CI database administration and test setup only, never application runtime |
 
@@ -41,6 +42,26 @@ post-login lookup and not a gate. Its only caller chooses the session's initial
 and `user_has_org` rechecks `is_active` before any tenant work.
 `load_current_user` returns the row including `is_active`, and every caller
 refuses an inactive row.
+
+### Machine authority (ADR-019)
+
+Service principals use a separate optional `AGENT_DATABASE_URL` alias, never a
+staff actor GUC. Each owner-provisioned principal binds uniquely to its database
+`session_user` and one clinic. `principal_scope` and `principal_has` are fixed
+resolver-owned SECURITY DEFINER functions with a trusted search path and no
+PUBLIC execute. Registrations and grants are owner-only FORCE-RLS tables;
+revocation is irreversible, and both functions are VOLATILE, so it stops the
+next row of an open cursor or a running READ COMMITTED statement.
+`service_principal_context` refuses mixed human/patient contexts and nested or
+repeatable-read transactions. Staff services reject a machine connection even
+if it forges `app.current_user_id`.
+
+V1 allows only clinic-scoped availability reads. Each exposed table needs an
+explicit per-app `AGENT_GRANTS` declaration and a grant-aware restrictive policy,
+so the existing permissive tenant policy cannot authorize an ungranted machine.
+There is no agent clinical/fiscal execution authority or generic tool surface.
+See [identity's contract](../apps/identity/README.md#service-principals-adr-019-task-7)
+for owner provisioning, unique login mapping and future grant-version rules.
 
 ## Tenant boundary and fail-closed order
 
@@ -77,8 +98,8 @@ boundary.
 ## Session authentication and identity writes
 
 Phase 1A screens use Django session authentication and require authentication by
-default. There are no token or service-account authentication modes. The
-custom backend calls `auth_lookup` before session creation and
+default. There is no service-account web login or token mode; machine database
+principals use the separate boundary above. The custom backend calls `auth_lookup` before session creation and
 `load_current_user` for GUC-bound session rehydration; runtime SQL cannot read
 `identity_user` directly.
 

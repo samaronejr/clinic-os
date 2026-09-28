@@ -45,6 +45,9 @@ ACTOR_SETTING = "app.current_user_id"
 PARSEABLE_OPAQUE = frozenset({"do"})
 _ATTRIBUTION = "attribution: stamps the actor id on the written row; decides nothing"
 _PATIENT_ONLY = "patient-only: requires the actor setting to be absent"
+# Executed for an inactive staff actor on the agent login in
+# test_service_principals (the forged-actor-with-domain-history test).
+_MACHINE_ONLY = "machine-only: refuses any non-empty actor setting"
 # Actor readers that neither carry an is_active clause nor delegate to a
 # checked helper. Every other actor reader must do one of the two.
 JUSTIFIED = {
@@ -60,6 +63,7 @@ JUSTIFIED = {
     "clinic_app.questionnaire_receipt()": _ATTRIBUTION,
     "clinic_app.consent_session()": _PATIENT_ONLY,
     "clinic_app.teleconsult_patient_match(uuid)": _PATIENT_ONLY,
+    "clinic_app.principal_scope(uuid,uuid)": _MACHINE_ONLY,
     "clinic_app.load_current_user()": (
         "loader: returns is_active and every caller refuses an inactive row"
     ),

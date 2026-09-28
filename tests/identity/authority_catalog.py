@@ -70,6 +70,13 @@ CRYPTO_PRIMITIVES = {
 }
 
 
+UNRESOLVED_WRITE = "unresolved write target"
+# Catalog relations that list server settings (and so every session GUC).
+SETTING_CATALOGS = frozenset(
+    {"pg_settings", "pg_file_settings", "pg_db_role_setting", "pg_show_all_settings"}
+)
+
+
 @dataclass(frozen=True)
 class Function:
     oid: int
@@ -83,6 +90,7 @@ class Function:
     extension: str | None
     library: str | None
     native_types: bool
+    defaults: str | None
 
 
 @dataclass(frozen=True)
@@ -100,12 +108,17 @@ class Reads:
     functions: set[int] = field(default_factory=set)
     settings: set[str] = field(default_factory=set)
     opaque: set[str] = field(default_factory=set)
+    # Relations named by a writing statement (INSERT, UPDATE, DELETE, MERGE,
+    # TRUNCATE, COPY, SELECT ... FOR UPDATE); an unresolved target is kept
+    # as a marker so a write never disappears.
+    writes: set[str] = field(default_factory=set)
 
     def merge(self, other: Reads) -> None:
         self.relations.update(other.relations)
         self.functions.update(other.functions)
         self.settings.update(other.settings)
         self.opaque.update(other.opaque)
+        self.writes.update(other.writes)
 
 
 @dataclass(frozen=True)
@@ -143,7 +156,8 @@ class Catalog:
                          JOIN pg_type t ON t.oid=arg.oid
                          JOIN pg_namespace tn ON tn.oid=t.typnamespace
                          WHERE tn.nspname<>'pg_catalog'
-                       )
+                       ),
+                       pg_get_expr(p.proargdefaults, 0)
                 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                 JOIN pg_language l ON l.oid=p.prolang
                 JOIN pg_roles r ON r.oid=p.proowner
@@ -174,6 +188,16 @@ class Catalog:
                 )
                 for row in cursor.fetchall()
             }
+            # pg_rewrite dependencies carry a view's relations and functions but
+            # not the setting names it reads, so view text is parsed as well.
+            cursor.execute("""
+                SELECT c.oid, pg_get_viewdef(c.oid) FROM pg_class c
+                JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE c.relkind IN ('v','m')
+                  AND n.nspname NOT IN ('pg_catalog','information_schema')
+                  AND n.nspname NOT LIKE 'pg_toast%'
+            """)
+            self.view_definitions: dict[int, str] = dict(cursor.fetchall())
             cursor.execute("""
                 SELECT objid, refclassid::regclass::text, refobjid FROM pg_depend
                 WHERE classid='pg_proc'::regclass
@@ -267,6 +291,9 @@ class Catalog:
         functions = self._function_references(parsed, result)
         relations = set()
         for name in parsed.names:
+            if name[-1] in SETTING_CATALOGS:
+                # Server settings enumerated as rows expose every session GUC.
+                result.opaque.add("setting enumeration " + name[-1])
             if name in self.opaque_types:
                 result.opaque.add("uninspectable type " + ".".join(name))
             relations.update(self.relation_names.get(name, set()))
@@ -275,6 +302,9 @@ class Catalog:
         for oid in relations:
             result.merge(self._relation(oid, bypass=bypass, seen=seen))
         if parsed.writes:
+            result.writes.update(
+                {self.relations[oid].name for oid in relations} or {UNRESOLVED_WRITE}
+            )
             for oid in tuple(result.relations):
                 result.merge(self._write(oid, bypass=bypass, seen=seen))
         for oid in functions:
@@ -315,6 +345,9 @@ class Catalog:
         for parent, kind, target in self.view_edges:
             if parent == oid:
                 result.merge(self._edge(kind, target, bypass=bypass, seen=seen))
+        definition = self.view_definitions.get(oid)
+        if definition is not None:
+            result.merge(self._statement(definition, bypass=bypass, seen=seen))
         if not bypass:
             for table, using, check in self.policies:
                 if table == oid:
@@ -351,14 +384,23 @@ class Catalog:
             return self._relation(oid, bypass=bypass, seen=seen)
         return Reads()
 
+    def _defaults(self, function: Function, *, bypass: bool, seen: set[Node]) -> Reads:
+        # Parameter defaults are evaluated in the caller's query, so their
+        # reads count with the caller's RLS context, not the definer's.
+        if not function.defaults:
+            return Reads()
+        return self._statement("SELECT " + function.defaults, bypass=bypass, seen=seen)
+
     def _function(self, oid: int, *, bypass: bool, seen: set[Node]) -> Reads:
         function = self.functions[oid]
+        caller_bypass = bypass
         bypass = function.bypass_rls if function.security_definer else bypass
         node = ("function", oid, bypass)
         if node in seen:
             return Reads()
         seen.add(node)
         result = Reads(functions={oid})
+        result.merge(self._defaults(function, bypass=caller_bypass, seen=seen))
         if not function.native_types:
             result.opaque.add("uninspectable function signature " + function.name)
         if function.language in {"c", "internal"}:

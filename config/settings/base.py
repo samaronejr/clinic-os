@@ -11,7 +11,7 @@ from .contracts import (
     resolve_csp_report_only,
     validate_secret_store_env,
 )
-from .database import DEFAULT_APP_DATABASE_URL
+from .database import DEFAULT_APP_DATABASE_URL, agent_database_config
 from .telemetry import configure_sentry, configure_tracing
 
 enforce_wheel_timezone()
@@ -154,6 +154,11 @@ REALTIME_REDIS_URL: str = env.str(
     "REALTIME_REDIS_URL", default="redis://localhost:6379/1"
 )
 REALTIME_TOPIC_SECRET: str = env.str("REALTIME_TOPIC_SECRET", default=SECRET_KEY)
+DATABASES.update(
+    agent_database_config(
+        os.environ, primary=DATABASES["default"], strict_tls=CLINIC_DATA_MODE == "live"
+    )
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

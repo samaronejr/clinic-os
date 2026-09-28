@@ -10,7 +10,7 @@ from .contracts import (
     validate_runtime_secret,
     validate_secure_ssl_host,
 )
-from .database import parse_database_url
+from .database import agent_database_config, parse_database_url
 
 base.export_settings(globals())
 
@@ -36,6 +36,9 @@ if base.env.bool("DATABASE_TRANSACTION_POOLING", default=False) and not os.envir
 ):
     message = "transaction pooling requires a direct/session LOCKS_DATABASE_URL"
     raise ImproperlyConfigured(message)
+DATABASES.update(
+    agent_database_config(os.environ, primary=DATABASES["default"], strict_tls=True)
+)
 # Protected fields decrypt only through the managed-secret boundary; a
 # production deployment without a configured backend must fail at startup,
 # not at the first clinical read.

@@ -16,13 +16,15 @@ import pytest
 from apps.identity import current_context
 from apps.identity.models import User
 from django.apps import apps
-from django.db import connection
+from django.db import connection, connections
 from django.db.models import Model
 from psycopg.pq import TransactionStatus
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import CodeType, FrameType
+
+    from psycopg.rows import TupleRow
 
     from identity.authority_catalog import Catalog, Channels
 
@@ -40,7 +42,9 @@ class AuthorityObserver:
         self.touches: set[Touch] = set()
         self.raw = connection.connection
         assert self.raw is not None
-        self._pending: dict[int, dict[int, tuple[int, ...]]] = {}
+        self._pending: dict[
+            int, tuple[psycopg.Connection[TupleRow], dict[int, tuple[int, ...]]]
+        ] = {}
         self._transactions: set[int] = set()
         self._busy = False
         self._monitor_id: int | None = None
@@ -94,8 +98,17 @@ class AuthorityObserver:
         self._original_getattribute = Model.__getattribute__
         self._patch = pytest.MonkeyPatch()
 
-    def _stats(self) -> dict[int, tuple[int, ...]]:
-        with self.raw.cursor() as cursor:
+    def _observed(self, raw: object) -> psycopg.Connection[TupleRow] | None:
+        # The staff backend and the registered machine-login alias are both
+        # observed backends; any other connection stays opaque.
+        if raw is self.raw or (
+            "agent" in connections and raw is connections["agent"].connection
+        ):
+            return cast("psycopg.Connection[TupleRow]", raw)
+        return None
+
+    def _stats(self, raw: psycopg.Connection[TupleRow]) -> dict[int, tuple[int, ...]]:
+        with raw.cursor() as cursor:
             cursor.execute(
                 "SELECT relid, seq_scan, COALESCE(idx_scan,0), "
                 "seq_tup_read, COALESCE(idx_tup_fetch,0) "
@@ -106,11 +119,12 @@ class AuthorityObserver:
 
     def _sql(self, frame: FrameType) -> None:
         cursor = frame.f_locals["self"]
-        if cursor.connection is not self.raw:
+        raw = self._observed(cursor.connection)
+        if raw is None:
             self.touches.add(("opaque", "SQL on an unobserved connection"))
             return
         try:
-            with psycopg.ClientCursor(self.raw) as renderer:
+            with psycopg.ClientCursor(raw) as renderer:
                 text = renderer.mogrify(
                     frame.f_locals["query"], frame.f_locals.get("params")
                 )
@@ -130,19 +144,20 @@ class AuthorityObserver:
             for oid in reads.functions & self.channels.functions
         )
         self.touches.update(("opaque", reason) for reason in reads.opaque)
-        if self.raw.info.transaction_status != TransactionStatus.INERROR:
-            self._pending[id(frame)] = self._stats()
+        if raw.info.transaction_status != TransactionStatus.INERROR:
+            self._pending[id(frame)] = (raw, self._stats(raw))
 
     def _after_sql(self, frame: FrameType) -> None:
-        before = self._pending.pop(id(frame), None)
-        if before is None:
+        pending = self._pending.pop(id(frame), None)
+        if pending is None:
             return
-        if self.raw.info.transaction_status == TransactionStatus.INERROR:
+        raw, before = pending
+        if raw.info.transaction_status == TransactionStatus.INERROR:
             self.touches.add(
                 ("opaque", "aborted SQL has no readable transaction counters")
             )
             return
-        after = self._stats()
+        after = self._stats(raw)
         self.touches.update(
             ("relation", self.catalog.relations[oid].name)
             for oid, counts in after.items()

@@ -11,7 +11,7 @@ import pytest
 from apps.identity.models import User
 from django.db import connection, transaction
 
-from identity.authority_catalog import Catalog, Reads
+from identity.authority_catalog import UNRESOLVED_WRITE, Catalog, Reads
 from identity.authority_observer import AuthorityObservedError, AuthorityObserver
 from identity.authority_sql import references
 from identity.nonstaff_differential import (
@@ -165,6 +165,141 @@ def test_view_reader_uses_pg_rewrite_dependencies(rbac_graph: RbacGraph) -> None
         cursor.execute("GRANT SELECT ON t6_authority_view TO clinic_app")
     observer = _observe(rbac_graph, "SELECT count(*) FROM pg_temp.t6_authority_view")
     assert ("relation", "clinic_app.identity_rolegrant") in observer.touches
+
+
+def test_view_setting_read_is_parsed_from_the_view_definition(
+    rbac_graph: RbacGraph,
+) -> None:
+    # pg_rewrite dependencies name current_setting but not the setting; only
+    # the view's definition text shows which GUC it reads.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE TEMP VIEW t6_actor_view AS "
+            "SELECT current_setting('app.current_user_id', true) AS actor"
+        )
+        cursor.execute("GRANT SELECT ON t6_actor_view TO clinic_app")
+    observer = _observe(rbac_graph, "SELECT actor FROM pg_temp.t6_actor_view")
+    assert ("guc", "app.current_user_id") in observer.touches
+
+
+# Pure parser cases touch no rows: the closest mark overrides the module's
+# transaction=True, so each case rolls back instead of flushing the database.
+PARSER_ONLY = pytest.mark.django_db
+
+
+@PARSER_ONLY
+@pytest.mark.parametrize(
+    ("statement", "setting"),
+    [
+        ("SET LOCAL app.current_user_id = ''", "app.current_user_id"),
+        ("SET app.current_user_id TO DEFAULT", "app.current_user_id"),
+        ("SET SESSION app.current_tenant = 'x'", "app.current_tenant"),
+        ("RESET app.current_user_id", "app.current_user_id"),
+        ("SET app.current_user_id FROM CURRENT", "app.current_user_id"),
+        ('SET "app"."current_user_id" = 1', "app.current_user_id"),
+        (
+            "BEGIN IF a THEN SET LOCAL app.current_user_id = ''; END IF; END",
+            "app.current_user_id",
+        ),
+        ("BEGIN <<l>> RESET app.current_user_id; END", "app.current_user_id"),
+    ],
+)
+def test_set_and_reset_statements_record_the_setting(
+    statement: str, setting: str
+) -> None:
+    parsed = references(statement)
+    assert setting in parsed.settings
+    assert not parsed.opaque
+
+
+@PARSER_ONLY
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "RESET ALL",
+        "RESET ROLE",
+        "SET ROLE clinic_owner",
+        "SET SESSION AUTHORIZATION clinic_owner",
+        "SET TIME ZONE 'UTC'",
+        "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+        "SET",
+    ],
+)
+def test_unresolved_set_forms_are_opaque(statement: str) -> None:
+    assert "unresolved SET setting" in references(statement).opaque
+
+
+@PARSER_ONLY
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "INSERT INTO t VALUES (1)",
+        "UPDATE t SET a = 1",
+        "DELETE FROM t",
+        # No other write word: MERGE itself must count.
+        "MERGE INTO t USING u ON true WHEN MATCHED THEN DO NOTHING",
+        "TRUNCATE t",
+        "COPY t FROM STDIN",
+        "SELECT 1 FROM t FOR UPDATE",
+        "WITH x AS (DELETE FROM t RETURNING 1) SELECT 1",
+    ],
+)
+def test_writing_statements_are_writes(statement: str) -> None:
+    assert references(statement).writes
+
+
+@PARSER_ONLY
+def test_catalog_records_written_relations() -> None:
+    catalog = Catalog()
+    written = catalog.statement(
+        "INSERT INTO clinic_app.prescription_verificationprobe"
+        " (probe_key, window_start, lookups) VALUES ('', now(), 1)"
+    )
+    assert written.writes == {"clinic_app.prescription_verificationprobe"}
+    # A target the catalog cannot resolve is still a write.
+    assert catalog.statement("DELETE FROM t6_nowhere").writes == {UNRESOLVED_WRITE}
+    assert not catalog.statement(
+        "SELECT 1 FROM clinic_app.prescription_verificationprobe"
+    ).writes
+
+
+@PARSER_ONLY
+def test_update_set_clause_is_not_a_setting() -> None:
+    parsed = references("UPDATE t SET a = 1")
+    assert not parsed.settings
+    assert not parsed.opaque
+
+
+def test_function_body_set_statement_is_in_the_closure() -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE FUNCTION pg_temp.t6_set_writer() RETURNS void LANGUAGE plpgsql"
+            " AS $f$ BEGIN SET LOCAL app.current_user_id = ''; END $f$"
+        )
+        reads = Catalog().statement("SELECT pg_temp.t6_set_writer()")
+        transaction.set_rollback(True)
+    assert "app.current_user_id" in reads.settings
+
+
+def test_default_argument_setting_read_is_in_the_closure(rbac_graph: RbacGraph) -> None:
+    # A parameter DEFAULT is evaluated in the caller, outside the body text.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE FUNCTION pg_temp.t6_default_reader("
+            "actor text DEFAULT current_setting('app.current_user_id', true))"
+            " RETURNS text LANGUAGE sql STABLE AS $f$ SELECT actor $f$"
+        )
+    observer = _observe(rbac_graph, "SELECT pg_temp.t6_default_reader()")
+    assert ("guc", "app.current_user_id") in observer.touches
+
+
+@pytest.mark.parametrize("relation", ["pg_settings", "pg_catalog.pg_settings"])
+def test_setting_enumeration_is_opaque(rbac_graph: RbacGraph, relation: str) -> None:
+    observer = _observe(
+        rbac_graph,
+        f"SELECT setting FROM {relation} WHERE name = 'app.current_user_id'",  # noqa: S608 - fixed test identifiers.
+    )
+    assert ("opaque", "setting enumeration pg_settings") in observer.touches
 
 
 def test_dynamic_sql_is_not_certified_even_when_it_returns_no_authority_rows(

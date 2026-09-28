@@ -14,6 +14,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW
+from identity.delegation_probes import delegation_probes
 from identity.nonstaff_differential import (
     DifferentialProbe,
     DifferentialReport,
@@ -24,6 +25,7 @@ from identity.nonstaff_infrastructure_probes import (
     metrics_probes,
 )
 from identity.nonstaff_patient_probes import patient_probes
+from identity.nonstaff_principal_probes import principal_probes
 from identity.nonstaff_realtime_probes import realtime_probes
 from identity.nonstaff_states import CareScope, ReplayScope
 from identity.nonstaff_subjects import seed_nonstaff
@@ -86,6 +88,8 @@ def run_nonstaff_census(
             *infrastructure_probes(data, patch),
             *metrics_probes(data, patch),
             *realtime_probes(data),
+            *principal_probes(graph),
+            *delegation_probes(graph, data.actor.pk),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(
