@@ -273,7 +273,9 @@ def accessibility_scenes(patient: Page, root: Path) -> None:
     patient.emulate_media(forced_colors="none")
     zoom_context, zoomed = zoom_200(patient, java_script_enabled=False)
     goto_settled(zoomed, patient.url)
-    zoomed.locator("summary").click()
+    # The taxonomy page also lists notices and other receipts: open the same
+    # revoked receipt the 320px scenes show.
+    zoomed.locator("[data-receipt][data-state='revoked'] summary").click()
     assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
     capture(zoomed, root, "zoom-200-layout", 640)
     zoom_context.close()
