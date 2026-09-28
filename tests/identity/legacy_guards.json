@@ -699,16 +699,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.record_clinical_note",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services.record_clinical_note"
-      ]
-    },
-    {
       "symbol": "apps.ehr.views._close",
       "signals": [
         "denial"
@@ -3447,30 +3437,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.autosave.autosave_draft",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ehr.services._encounter_actor",
-        "apps.ehr.services.view_version"
-      ],
-      "reason": "Plan item 27 autosave. Authority is exactly the explicit save's: view_version, then _encounter_actor. tests/ehr/test_autosave.py::test_autosave_refuses_every_non_author_and_writes_nothing executes it for all 10 catalog roles as non-authors, a foreign clinic claim, an unknown draft, no membership and an inactive author. It asks no permission name of its own."
-    },
-    {
-      "symbol": "apps.ehr.autosave.section_edit_epochs",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ehr.services._encounter_actor",
-        "apps.ehr.services.view_version"
-      ],
-      "reason": "Plan item 27: reads the author's epoch counters through view_version and _encounter_actor. Tests execute it only for the assigned author; its refusals are those of the two delegates."
-    },
-    {
       "symbol": "apps.ehr.episodes._require",
       "signals": [
         "denial"
@@ -3553,18 +3519,6 @@
       "reason": "Plan item 27: rechecks an encounter's assignment. Scheduled encounters go through open_encounter and unscheduled ones through _encounter_actor. Executed for the assignee and a refused colleague on an unscheduled encounter (test_unscheduled_encounter_carries_the_draft_lifecycle), and for the assignee by every encounter page test."
     },
     {
-      "symbol": "apps.ehr.views._episode",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ehr.services._encounter_actor",
-        "clinic_app.has_permission"
-      ],
-      "reason": "Plan item 27 workspace route for episode actions. It resolves the encounter through resume_encounter (_encounter_actor) and calls the episode services (has_permission). Executed only for the permitted physician (test_unscheduled_start_through_the_workspace)."
-    },
-    {
       "symbol": "apps.ehr.addenda._authorized",
       "signals": [
         "denial"
@@ -3585,6 +3539,32 @@
         "clinic_app.has_permission"
       ],
       "reason": "Plan item 27 addendum: clinical.write through has_permission for the encounter's patient in its own clinic; the assignee is sent to the main draft. test_addendum_open_is_decided_by_clinical_write runs all 10 catalog roles with a statement spy. test_addendum_refusals_cover_actor_states_scope_and_the_assignee adds inactive, foreign-clinic, unregistered and no-membership actors, clinic B and C claims, an unknown encounter, the assignee and a closed encounter."
+    },
+    {
+      "symbol": "apps.ehr.services.author_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.ehr_version_scope"
+      ],
+      "reason": "Plan item 27 write-ordering gate shared by record_clinical_note, autosave_draft and section_edit_epochs. With reads only, it decides the version's clinic scope (ehr_version_scope), the encounter's assignee (_encounter_actor) and authorship before any write, the read audit included. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused here. test_autosave_refuses_every_non_author_and_writes_nothing executes all 10 catalog roles, foreign and unknown scope, and no-membership and inactive actors."
+    },
+    {
+      "symbol": "apps.ehr.episodes.open_episode_for_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27: the workspace's open-with-this-encounter path. It decides the assignee (_encounter_actor), clinical.write through has_permission, the title and an unlinked encounter before writing both rows in one savepoint. tests/ehr/test_write_ordering.py executes the assignee without clinical.write, a non-assignee colleague with it, and the already-linked conflict through the service and the HTTP route; each asserts no episode row and no episode audit row."
     }
   ],
   "probes": [

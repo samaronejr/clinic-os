@@ -389,12 +389,30 @@ SQL = _render(
     "RESET ROLE;\n"
 )
 
+
+def restore_required(table: str) -> str:
+    """Refuse a reverse that would drop rows (rollback is a restore).
+
+    Validating ``CHECK (false)`` fails on the first row, so an empty table
+    reverses and a populated one refuses; the probe constraint is dropped
+    again at once when the table is empty.
+    """
+    return (
+        f"ALTER TABLE clinic_app.{table} ADD CONSTRAINT "
+        f"{table}_rollback_is_restore CHECK (false);\n"
+        f"ALTER TABLE clinic_app.{table} DROP CONSTRAINT "
+        f"{table}_rollback_is_restore;\n"
+    )
+
+
 # Rollback refuses once an unscheduled encounter exists (the column cannot
-# become NOT NULL again); recovery is then a restore, never a data rewrite.
+# become NOT NULL again) or any new table holds a row; recovery is then a
+# restore, never a data rewrite or a silent drop.
 # The model operations drop the new tables after this SQL removes the triggers
 # that depend on the guard function.
 REVERSE_SQL = _render(
-    "".join(
+    "".join(restore_required(table) for table in NEW_TABLES)
+    + "".join(
         f"DROP TRIGGER ehr_autosave_binding ON clinic_app.{table};\n"
         f"DROP TRIGGER ehr_autosave_immutable ON clinic_app.{table};\n"
         for table in NEW_TABLES

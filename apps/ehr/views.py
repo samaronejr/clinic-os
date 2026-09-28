@@ -22,7 +22,7 @@ from apps.ehr.episodes import (
     close_episode,
     encounter_episodes,
     link_encounter,
-    open_episode,
+    open_episode_for_encounter,
 )
 from apps.ehr.finalization import (
     amend_document,
@@ -352,18 +352,11 @@ def _episode(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     action = request.POST.get("action")
     try:
         if action == "episode_open":
-            enrollment = PatientClinicEnrollment.objects.filter(
-                clinic_id=clinic_id, patient_id=encounter.patient_id
-            ).first()
-            if enrollment is None:
-                raise ClinicalAccessDeniedError
-            episode = open_episode(
+            # One service decides everything before its first write (B1).
+            open_episode_for_encounter(
                 clinic_id=clinic_id,
-                enrollment_id=enrollment.pk,
+                encounter_id=encounter.pk,
                 title=request.POST.get("title", ""),
-            )
-            link_encounter(
-                clinic_id=clinic_id, encounter_id=encounter.pk, episode_id=episode.pk
             )
         elif action == "episode_link":
             link_encounter(

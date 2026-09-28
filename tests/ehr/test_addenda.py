@@ -388,6 +388,65 @@ def test_two_tabs_racing_one_addendum_revision_save_once(
 # --------------------------------------------------------------------------
 
 
+def colleague_direct_writes_refused(  # noqa: PLR0913 - one scene's actors and rows
+    graph: RbacGraph,
+    colleague: UUID,
+    other: UUID,
+    base: dict[str, UUID],
+    stranger: UUID,
+    ids: tuple[UUID, UUID],
+) -> None:
+    """Direct ``clinic_app`` writes by the addendum's own author stay bounded."""
+    addendum_pk, version_pk = ids
+    with permission_context(graph, colleague):
+        for change in (
+            {"author_id": other},
+            {"clinic_id": graph.clinic_b},
+            {"patient_id": stranger},
+        ):
+            with pytest.raises(DatabaseError), transaction.atomic():
+                EncounterAddendum.objects.create(
+                    **{**base, "author_id": colleague, **change}
+                )
+        # The main draft is outside every addendum author's write path.
+        assert (
+            ClinicalDocumentVersion.objects.filter(pk=version_pk).update(revision=9)
+            == 0
+        )
+        for change in ({"author_id": other}, {"encounter_id": uuid4()}):
+            with pytest.raises(DatabaseError), transaction.atomic():
+                EncounterAddendum.objects.filter(pk=addendum_pk).update(**change)
+        with pytest.raises(DatabaseError), transaction.atomic():
+            EncounterAddendum.objects.filter(pk=addendum_pk).update(revision=5)
+        with pytest.raises(DatabaseError), transaction.atomic():
+            AddendumSaveReceipt.objects.create(
+                organization_id=graph.organization_a,
+                addendum_id=addendum_pk,
+                command_id=uuid4(),
+                request_sha256="0" * 64,
+                base_revision=2,
+                revision=3,
+                saved_at=timezone.now(),
+            )
+        receipt = AddendumSaveReceipt.objects.get(addendum_id=addendum_pk)
+        with pytest.raises(DatabaseError), transaction.atomic():
+            AddendumSaveReceipt.objects.filter(pk=receipt.pk).update(revision=7)
+        with pytest.raises(DatabaseError), transaction.atomic():
+            EncounterAddendum.objects.filter(pk=addendum_pk).delete()
+
+
+def owner_inserts_refused(
+    graph: RbacGraph, row: dict[str, object], changes: tuple[dict[str, object], ...]
+) -> None:
+    for change in changes:
+        with (
+            owner_context(graph.organization_a),
+            pytest.raises(DatabaseError),
+            transaction.atomic(),
+        ):
+            EncounterAddendum.objects.create(**{**row, **change})
+
+
 def test_addendum_scope_holds_in_python_and_sql(rbac_graph: RbacGraph) -> None:
     version = draft_world(rbac_graph)
     encounter = version.document.encounter
@@ -404,6 +463,8 @@ def test_addendum_scope_holds_in_python_and_sql(rbac_graph: RbacGraph) -> None:
             clinic_id=rbac_graph.clinic_a, encounter_id=encounter.pk
         )
         write(rbac_graph, addendum.pk, 1)
+    audit_before = audit_count(rbac_graph)
+    with as_actor(rbac_graph, colleague):
         with pytest.raises(ClinicalAccessDeniedError):
             open_addendum(clinic_id=rbac_graph.clinic_b, encounter_id=encounter.pk)
         with pytest.raises(ClinicalAccessDeniedError):
@@ -415,6 +476,8 @@ def test_addendum_scope_holds_in_python_and_sql(rbac_graph: RbacGraph) -> None:
         assert not EncounterAddendum.objects.filter(pk=addendum.pk).exists()
         with pytest.raises(ClinicalAccessDeniedError):
             write(rbac_graph, addendum.pk, 2, "Intruso")
+    # Addendum refusals write nothing, not even an audit row.
+    assert audit_count(rbac_graph) == audit_before
     base = {
         "organization_id": rbac_graph.organization_a,
         "clinic_id": rbac_graph.clinic_a,
@@ -428,41 +491,9 @@ def test_addendum_scope_holds_in_python_and_sql(rbac_graph: RbacGraph) -> None:
             birth_date=timezone.now().date() - timedelta(days=9000),
         ).pk
     enrollment_of(rbac_graph, stranger, rbac_graph.clinic_a)
-    with permission_context(rbac_graph, colleague):
-        for change in (
-            {"author_id": other},
-            {"clinic_id": rbac_graph.clinic_b},
-            {"patient_id": stranger},
-        ):
-            with pytest.raises(DatabaseError), transaction.atomic():
-                EncounterAddendum.objects.create(
-                    **{**base, "author_id": colleague, **change}
-                )
-        # The main draft is outside every addendum author's write path.
-        assert (
-            ClinicalDocumentVersion.objects.filter(pk=version.pk).update(revision=9)
-            == 0
-        )
-        for change in ({"author_id": other}, {"encounter_id": uuid4()}):
-            with pytest.raises(DatabaseError), transaction.atomic():
-                EncounterAddendum.objects.filter(pk=addendum.pk).update(**change)
-        with pytest.raises(DatabaseError), transaction.atomic():
-            EncounterAddendum.objects.filter(pk=addendum.pk).update(revision=5)
-        with pytest.raises(DatabaseError), transaction.atomic():
-            AddendumSaveReceipt.objects.create(
-                organization_id=rbac_graph.organization_a,
-                addendum_id=addendum.pk,
-                command_id=uuid4(),
-                request_sha256="0" * 64,
-                base_revision=2,
-                revision=3,
-                saved_at=timezone.now(),
-            )
-        receipt = AddendumSaveReceipt.objects.get(addendum_id=addendum.pk)
-        with pytest.raises(DatabaseError), transaction.atomic():
-            AddendumSaveReceipt.objects.filter(pk=receipt.pk).update(revision=7)
-        with pytest.raises(DatabaseError), transaction.atomic():
-            EncounterAddendum.objects.filter(pk=addendum.pk).delete()
+    colleague_direct_writes_refused(
+        rbac_graph, colleague, other, base, stranger, (addendum.pk, version.pk)
+    )
     with (
         permission_context(rbac_graph, receptionist),
         pytest.raises(DatabaseError),
@@ -478,17 +509,15 @@ def test_addendum_scope_holds_in_python_and_sql(rbac_graph: RbacGraph) -> None:
         EncounterAddendum.objects.create(**base, author_id=rbac_graph.physician)
     # The binding trigger alone (owner writes skip runtime policies) keeps the
     # encounter's clinic and patient and refuses the assignee.
-    for change in (
-        {"clinic_id": rbac_graph.clinic_b},
-        {"patient_id": stranger},
-        {"author_id": rbac_graph.physician},
-    ):
-        with (
-            owner_context(rbac_graph.organization_a),
-            pytest.raises(DatabaseError),
-            transaction.atomic(),
-        ):
-            EncounterAddendum.objects.create(**{**base, "author_id": other, **change})
+    owner_inserts_refused(
+        rbac_graph,
+        {**base, "author_id": other},
+        (
+            {"clinic_id": rbac_graph.clinic_b},
+            {"patient_id": stranger},
+            {"author_id": rbac_graph.physician},
+        ),
+    )
     assert count(rbac_graph, EncounterAddendum) == 1
     assert main_draft(rbac_graph, version.pk)[0] == 1
 

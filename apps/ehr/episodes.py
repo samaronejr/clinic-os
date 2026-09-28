@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
@@ -143,6 +143,60 @@ def link_encounter(
             "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
         )
         return link
+
+
+def open_episode_for_encounter(
+    *, clinic_id: UUID, encounter_id: UUID, title: str
+) -> EpisodeEncounter:
+    """Open a titled episode and group this encounter under it, atomically.
+
+    Every decision the result depends on (assignee, ``clinical.write``, title,
+    an unlinked open encounter) is made before the first write, and both rows
+    commit together or not at all. Opening first and linking second would
+    leave an orphan episode committed behind a later refusal (todo 23 B1).
+    """
+    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+    if encounter is None:
+        raise ClinicalAccessDeniedError
+    actor = _encounter_actor(clinic_id, encounter)
+    enrollment_id = _enrollment_id(clinic_id, encounter.patient_id)
+    _require("clinical.write", clinic_id, enrollment_id)
+    title = title.strip() if isinstance(title, str) else ""
+    if not title or len(title) > MAX_EPISODE_TITLE:
+        raise ValidationError(INVALID_TITLE)
+    validate_overlay_text(title)
+    if EpisodeEncounter.objects.filter(encounter=encounter).exists():
+        msg = "already_linked"
+        raise ClinicalConflictError(msg)
+    try:
+        with transaction.atomic():
+            episode = Episode.objects.create(
+                organization_id=encounter.organization_id,
+                clinic_id=clinic_id,
+                patient_id=encounter.patient_id,
+                title=title,
+                opened_by_id=actor,
+            )
+            link = EpisodeEncounter.objects.create(
+                organization_id=encounter.organization_id,
+                episode=episode,
+                encounter=encounter,
+                linked_by_id=actor,
+            )
+            record_phase1_event(
+                "ehr.episode.opened", clinic_id=clinic_id, affected_record_id=episode.pk
+            )
+            record_phase1_event(
+                "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
+            )
+    except IntegrityError:
+        # A parallel link won the one-episode-per-encounter unique; both of
+        # this request's rows rolled back with the savepoint.
+        if not EpisodeEncounter.objects.filter(encounter=encounter).exists():
+            raise
+        msg = "already_linked"
+        raise ClinicalConflictError(msg) from None
+    return link
 
 
 def encounter_episodes(*, clinic_id: UUID, encounter_id: UUID) -> EncounterEpisodes:

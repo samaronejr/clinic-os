@@ -163,6 +163,7 @@ class DraftAutosaveView(UiApiView):
         body = DraftAutosaveRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
+        zone = _clinic_zone(data["clinic_id"])
         try:
             result = autosave_draft(
                 clinic_id=data["clinic_id"],
@@ -190,16 +191,22 @@ class DraftAutosaveView(UiApiView):
         return Response(
             {
                 "revision": result.revision,
-                "saved_at": _clinic_time(data["clinic_id"], result),
+                "saved_at": _clinic_time(zone, result),
                 "lock": "handed_over" if result.handed_over else "held",
             }
         )
 
 
-def _clinic_time(clinic_id: UUID, result: AutosaveResult) -> str:
-    clinic = Clinic.objects.get(pk=clinic_id)
-    saved_at = timezone.localtime(result.saved_at, ZoneInfo(str(clinic.timezone)))
-    return saved_at.isoformat(timespec="seconds")
+def _clinic_zone(clinic_id: UUID) -> ZoneInfo:
+    """Resolve the response's clinic before any write; unknown ones are denied."""
+    clinic = Clinic.objects.filter(pk=clinic_id).first()
+    if clinic is None:
+        raise UiApiError(ACCESS_DENIED)
+    return ZoneInfo(str(clinic.timezone))
+
+
+def _clinic_time(zone: ZoneInfo, result: AutosaveResult) -> str:
+    return timezone.localtime(result.saved_at, zone).isoformat(timespec="seconds")
 
 
 class AddendumOpenView(UiApiView):
@@ -253,6 +260,7 @@ class AddendumAutosaveView(UiApiView):
         body = AddendumAutosaveRequestSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         data = body.validated_data
+        zone = _clinic_zone(data["clinic_id"])
         try:
             result = autosave_addendum(
                 clinic_id=data["clinic_id"],
@@ -274,7 +282,7 @@ class AddendumAutosaveView(UiApiView):
         return Response(
             {
                 "revision": result.revision,
-                "saved_at": _clinic_time(data["clinic_id"], result),
+                "saved_at": _clinic_time(zone, result),
             }
         )
 

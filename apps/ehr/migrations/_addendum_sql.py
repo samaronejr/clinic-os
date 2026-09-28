@@ -8,7 +8,7 @@ keeps identity columns immutable and moves revisions forward by exactly one.
 The guard reads no actor setting; the policies decide who may write.
 """
 
-from apps.ehr.migrations._autosave_sql import _render
+from apps.ehr.migrations._autosave_sql import _render, restore_required
 
 TABLES = ("ehr_encounteraddendum", "ehr_addendumsavereceipt")
 
@@ -157,9 +157,11 @@ SQL = _render(
     "RESET ROLE;\n"
 )
 
-# The model operations drop both tables (and their policies) afterwards.
+# The model operations drop both tables (and their policies) afterwards; a
+# populated table refuses the reverse first (rollback is a restore).
 REVERSE_SQL = (
-    "".join(
+    "".join(restore_required(table) for table in TABLES)
+    + "".join(
         f"DROP TRIGGER ehr_addendum_binding ON clinic_app.{table};\n"
         f"DROP TRIGGER ehr_addendum_immutable ON clinic_app.{table};\n"
         for table in TABLES

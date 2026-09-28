@@ -42,8 +42,7 @@ from apps.ehr.services import (
     MAX_CONTENT,
     SOAP_FIELDS,
     ClinicalConflictError,
-    _denied,
-    _encounter_actor,
+    author_scope,
     draft_edit_state,
     record_clinical_note,
     view_version,
@@ -294,10 +293,9 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
     content = _validated(
         expected_revision, editor_command_id, editor_session_id, sections
     )
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _encounter_actor(clinic_id, authorized.document.encounter)
-    if authorized.author_id != actor:
-        _denied(clinic_id, version_id, "not_assigned")
+    author_scope(clinic_id=clinic_id, version_id=version_id)
+    # The read audit is the first write: every refusal was decided above.
+    view_version(clinic_id=clinic_id, version_id=version_id)
     digest = request_digest(
         version_id=version_id, expected_revision=expected_revision, sections=content
     )
@@ -344,10 +342,8 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
 
 def section_edit_epochs(*, clinic_id: UUID, version_id: UUID) -> dict[str, int]:
     """Return the draft's acknowledged per-section edit counters (todo 42)."""
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _encounter_actor(clinic_id, authorized.document.encounter)
-    if authorized.author_id != actor:
-        _denied(clinic_id, version_id, "not_assigned")
+    author_scope(clinic_id=clinic_id, version_id=version_id)
+    view_version(clinic_id=clinic_id, version_id=version_id)
     state = DraftEditState.objects.filter(version_id=version_id).first()
     if state is None:
         return dict.fromkeys(SOAP_FIELDS, 0)

@@ -162,6 +162,11 @@ def audit_types(graph: RbacGraph) -> list[str]:
         )
 
 
+def episode_audit(graph: RbacGraph) -> tuple[int, int]:
+    types = audit_types(graph)
+    return types.count("ehr.episode.opened"), types.count("ehr.episode.linked")
+
+
 def assert_no_phi_in_audit(graph: RbacGraph) -> None:
     with owner_context(graph.organization_a):
         payloads = list(AuditEvent.objects.values_list("payload", flat=True))
@@ -509,6 +514,7 @@ def test_autosave_refuses_every_non_author_and_writes_nothing(
     rbac_graph: RbacGraph,
 ) -> None:
     version = draft_world(rbac_graph)
+    audit_before = len(audit_types(rbac_graph))
     for role in ROLES:
         actor, _ = permission_actor(rbac_graph, role)
         with (
@@ -546,6 +552,9 @@ def test_autosave_refuses_every_non_author_and_writes_nothing(
     assert stored(rbac_graph, version.pk)[0] == 1
     assert count(rbac_graph, DraftSaveReceipt) == 0
     assert count(rbac_graph, DraftEditState) == 0
+    # Refusals leave only the fixed metadata-only denial record; never a read
+    # audit or any other row ahead of the refusal.
+    assert set(audit_types(rbac_graph)[audit_before:]) <= {"ehr.access.denied"}
 
 
 def test_runtime_writes_to_draft_state_and_receipts_fail_closed(
@@ -685,6 +694,7 @@ def test_unscheduled_refusals_cover_actor_states_and_record_scope(
         )
     registration(rbac_graph, foreign.pk, rbac_graph.clinic_b)
     outsider = User.objects.create(username=f"sintetico-none-{uuid4().hex}")
+    audit_before = audit_types(rbac_graph)
     for actor in (unregistered.pk, inactive, foreign.pk, outsider.pk):
         with (
             permission_context(rbac_graph, actor),
@@ -699,6 +709,8 @@ def test_unscheduled_refusals_cover_actor_states_and_record_scope(
         with pytest.raises(ValidationError):
             open_walk_in(rbac_graph, enrolled, reason="scheduled")
     assert count(rbac_graph, Encounter) == 0
+    # The permission refusals append no audit row at all.
+    assert audit_types(rbac_graph) == audit_before
     # A clinic subtraction of the v2 permission refuses it while the same
     # actor keeps clinical.write: the guard asks for exactly this permission.
     with owner_context(rbac_graph.organization_a):
@@ -1063,6 +1075,8 @@ def test_episode_links_decide_patient_clinic_assignee_and_state(
         assert not Episode.objects.exists()
         assert not EpisodeEncounter.objects.exists()
     assert count(rbac_graph, EpisodeEncounter) == 1
+    # Refused links and opens appended no episode audit rows.
+    assert episode_audit(rbac_graph) == (3, 1)
 
 
 # --------------------------------------------------------------------------

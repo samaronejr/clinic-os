@@ -411,6 +411,38 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     return version
 
 
+def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
+    """Decide clinic scope, assignee and authorship with reads only.
+
+    Every writer of a draft calls this before its first write (the read audit
+    included), so a refusal can never follow a committed row: the request
+    transaction commits any response below 500. Unknown and foreign versions
+    share the undistinguished denial; in-clinic refusals keep the fixed
+    metadata-only ``ehr.access.denied`` record.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ehr_version_scope(%s, %s)", [clinic_id, version_id]
+        )
+        scope = cursor.fetchone()
+    if scope is None or scope[0] is None:
+        raise ClinicalAccessDeniedError
+    encounter = Encounter.objects.filter(pk=scope[0], clinic_id=clinic_id).first()
+    if encounter is None:
+        raise ClinicalAccessDeniedError
+    actor = _encounter_actor(clinic_id, encounter)
+    version = (
+        ClinicalDocumentVersion.objects.filter(
+            pk=version_id, document__encounter=encounter
+        )
+        .only("author_id")
+        .first()
+    )
+    if version is None or version.author_id != actor:
+        _denied(clinic_id, version_id, "not_assigned")
+    return actor
+
+
 def record_clinical_note(
     *,
     clinic_id: UUID,
@@ -419,15 +451,14 @@ def record_clinical_note(
     content: dict[str, str],
 ) -> ClinicalDocumentVersion:
     """Save explicitly; stale editors and failed transactions retain prior data."""
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _encounter_actor(clinic_id, authorized.document.encounter)
-    if authorized.author_id != actor:
-        _denied(clinic_id, version_id, "not_assigned")
+    author_scope(clinic_id=clinic_id, version_id=version_id)
     if set(content) != set(SOAP_FIELDS) or any(
         not isinstance(v, str) or len(v) > MAX_CONTENT for v in content.values()
     ):
         msg = "Preencha somente os campos SOAP, com até 20.000 caracteres cada."
         raise ValidationError(msg)
+    # The read audit is the first write: every refusal was decided above.
+    view_version(clinic_id=clinic_id, version_id=version_id)
     with transaction.atomic():
         # A finalized/superseded row is readable but outside the UPDATE
         # policy, so select_for_update filters it out; that non-draft path
