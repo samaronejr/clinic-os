@@ -20,6 +20,12 @@ runner's coverage gate::
    ``--cov-fail-under=90`` to the combined total.
 5. Checks: parallel executed + serial executed == reference, disjointly, each
    phase ran exactly its share, and the guard saw no cluster-global write.
+
+Both test phases measure coverage with coverage.py's ``sys.monitoring`` core
+(``COVERAGE_CORE=sysmon``, Python >= 3.12, line coverage): the same targets
+and the same measured lines as the default C tracer, at a fraction of its
+per-call overhead. coverage.py warns and falls back to its default core if
+sysmon ever becomes unusable (branch coverage before 3.14, dynamic contexts).
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ REPOSITORY: Final = Path(__file__).resolve().parents[2]
 COVERAGE_TARGETS_FILE: Final = REPOSITORY / "ops/testing/coverage-targets.txt"
 PLUGIN: Final = ("-p", "ops.testing.ci_pytest_plugin")
 COVERAGE_FLOOR: Final = "--cov-fail-under=90"
+PYTEST_ENVIRONMENT: Final = {"COVERAGE_CORE": "sysmon"}
 MAX_WORKERS: Final = 32
 # Every pg_database column except identity, vacuum horizons and the ACL
 # (compared separately), so a clone differing in owner, encoding, locale,
@@ -358,7 +365,11 @@ def _rebind(url: str, database: str) -> str:
 
 
 def _run(pytest_args: list[str], *, quiet: bool = False) -> int:
-    return _run_command([sys.executable, "-m", "pytest", *pytest_args], {}, quiet=quiet)
+    return _run_command(
+        [sys.executable, "-m", "pytest", *pytest_args],
+        PYTEST_ENVIRONMENT,
+        quiet=quiet,
+    )
 
 
 def _run_command(

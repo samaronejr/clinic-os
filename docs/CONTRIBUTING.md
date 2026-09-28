@@ -58,7 +58,8 @@ the hosted Python job and the renewal runner. It runs the default collection as 
 `pytest-xdist` phase (one cloned test database per worker) plus a
 single-process phase for the tests classified in
 `ops/testing/ci-serial-tests.txt`, combines coverage for the unchanged
-`--cov-fail-under=90`, and fails when the executed population differs from
+`--cov-fail-under=90` (measured with coverage.py's `sys.monitoring` core,
+`COVERAGE_CORE=sysmon`), and fails when the executed population differs from
 the collected one. A test that commits cluster-global PostgreSQL state (roles,
 role or database settings, databases, `ALTER SYSTEM`, migrations through
 `tenancy.0006`) belongs in that file: the parallel phase's server-state guard

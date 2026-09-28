@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -12,6 +13,9 @@ from uuid import uuid4
 import psycopg
 import pytest
 import yaml
+from coverage.config import read_coverage_config
+from coverage.core import Core
+from coverage.sysmon import SysMonitor
 from ops.testing import ci_pytest
 from ops.testing import renewal_runner as runner
 from ops.testing.ci_pytest_plugin import (
@@ -198,6 +202,47 @@ def test_driver_passes_extra_pytest_arguments_to_both_phases(
     assert "-q" in phases.calls["parallel"]
     assert "-q" in phases.calls["serial"]
     assert "-q" not in phases.calls["collect"]
+
+
+def test_pytest_phases_measure_with_the_sysmon_core(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[list[str], dict[str, str]]] = []
+
+    def run_command(
+        argv: list[str], overrides: dict[str, str], *, quiet: bool = False
+    ) -> int:
+        captured.append((argv, overrides))
+        return 0
+
+    monkeypatch.setattr(ci_pytest, "_run_command", run_command)
+    assert ci_pytest._run(["--collect-only"]) == 0
+    assert captured == [
+        (
+            [sys.executable, "-m", "pytest", "--collect-only"],
+            {"COVERAGE_CORE": "sysmon"},
+        )
+    ]
+    # The project's coverage configuration keeps sysmon usable: coverage.py
+    # would warn and fall back to the C tracer (branch coverage before 3.14,
+    # dynamic contexts, gevent-style concurrency).
+    monkeypatch.setenv("COVERAGE_CORE", "sysmon")
+    warnings: list[str] = []
+
+    def warn(msg: str, *_: object, **__: object) -> None:
+        warnings.append(msg)
+
+    config = read_coverage_config(
+        config_file=str(PROJECT_ROOT / "pyproject.toml"), warn=warn
+    )
+    core = Core(
+        warn=warn,
+        debug=None,
+        config=config,
+        dynamic_contexts=bool(config.dynamic_context),
+    )
+    assert core.tracer_class is SysMonitor
+    assert warnings == []
 
 
 @pytest.mark.parametrize(
