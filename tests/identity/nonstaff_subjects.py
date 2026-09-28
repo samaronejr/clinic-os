@@ -128,7 +128,11 @@ def seed_nonstaff(
     assert offered is not None
     with runtime_role(), patient_session_context(op.patient_session):
         authority = consent.patient_authority()
-        text = consent.available_texts()[0]
+        # The operational seed publishes several purposes; bind the offer to
+        # the teleconsultation text the patient probes name.
+        text = next(
+            t for t in consent.available_texts() if t.purpose == "teleconsultation"
+        )
         _, offer = consent.prepare_acceptance(text_id=text.pk)
         acceptance = consent.record_consent(
             offer=offer, purpose=text.purpose, accepted=True

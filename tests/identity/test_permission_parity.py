@@ -134,6 +134,12 @@ def test_every_authorization_candidate_is_accounted_for(
     for row in candidates:
         if "role_helper" in row["signals"]:
             assert row["kind"] in {"direct", "polymorphic"}, row["symbol"]
+        # Every require_permission caller is an authority site: executed
+        # directly, or delegated to the has_permission oracle it reaches.
+        if "permission_helper" in row["signals"]:
+            assert row["kind"] in {"direct", "polymorphic", "delegated"}, row["symbol"]
+            if row["kind"] == "delegated":
+                assert "clinic_app.has_permission" in row["enforced_by"], row["symbol"]
     assert_sql_inventory(INVENTORY["sql_guards"])
     analysis = python_staff_analysis(legacy_guard_inventory.ROOT)
     add_sql_staff_analysis(analysis)

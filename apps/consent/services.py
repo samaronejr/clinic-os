@@ -28,21 +28,23 @@ from apps.consent.models import (
     RefusalRecord,
 )
 from apps.ehr.models import Encounter
-from apps.identity.current_context import require_current_actor_clinic_roles
-from apps.identity.models import Clinic, UserClinicRole
+from apps.identity.current_context import CurrentActorError, require_permission
+from apps.identity.models import Clinic
 from apps.identity.overlay_content import validate_overlay_text
 from apps.intake.access import PatientAccessDeniedError
+from apps.intake.models import PatientClinicEnrollment
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
 MAX_TEXT = 20000
 OFFER_MAX_AGE = 1800
-STAFF_ROLES = tuple(UserClinicRole.Role)
-# Clinical attestations on an encounter are physician-scoped in this codebase:
-# the ehr_encounter read policy admits only physicians, and the DB insert
-# guard enforces the same set. Keep both in lockstep.
-CLINICIAN_ROLES = (UserClinicRole.Role.PHYSICIAN,)
+# Staff authority is todo 6's BUNDLES_V1 through clinic_app.has_permission;
+# PostgreSQL policies and the consent_guard trigger check the same names.
+# Texts and notices are clinic templates (RP Config/templates); receipts and
+# refusals are read by demographics holders and by organization-wide consent
+# governance; a per-encounter attestation is patient-scoped clinical writing
+# (professional registration plus the assigned encounter or care team).
 
 
 @dataclass(frozen=True)
@@ -78,9 +80,10 @@ def publish_text(
     *, clinic_id: UUID, purpose: str, text: str, language: str = "pt-BR"
 ) -> ConsentText:
     """Publish an authorized clinic overlay as a new immutable version."""
-    actor = require_current_actor_clinic_roles(
-        clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
-    )
+    try:
+        actor = require_permission("configuration.clinic", clinic_id=clinic_id)
+    except CurrentActorError:
+        actor = require_permission("configuration.organization", clinic_id=clinic_id)
     if (
         purpose not in ConsentPurpose.values
         or language != "pt-BR"
@@ -120,9 +123,10 @@ def publish_notice(
     *, clinic_id: UUID, topic: str, text: str, language: str = "pt-BR"
 ) -> NoticeVersion:
     """Publish an information-only notice version; it never authorizes use."""
-    actor = require_current_actor_clinic_roles(
-        clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
-    )
+    try:
+        actor = require_permission("configuration.clinic", clinic_id=clinic_id)
+    except CurrentActorError:
+        actor = require_permission("configuration.organization", clinic_id=clinic_id)
     if (
         topic not in NoticeTopic.values
         or language != "pt-BR"
@@ -354,7 +358,10 @@ def revoke_consent(*, acceptance_id: UUID) -> ConsentRevocation:
 
 def staff_receipts(*, clinic_id: UUID, enrollment_id: UUID) -> list[ConsentAcceptance]:
     """Staff may inspect consent provenance, never act on the patient's behalf."""
-    require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
     results = list(_receipts().filter(clinic_id=clinic_id, enrollment_id=enrollment_id))
     record_phase1_event(
         "consent.receipts.viewed", clinic_id=clinic_id, affected_record_id=enrollment_id
@@ -364,7 +371,10 @@ def staff_receipts(*, clinic_id: UUID, enrollment_id: UUID) -> list[ConsentAccep
 
 def staff_refusals(*, clinic_id: UUID, enrollment_id: UUID) -> list[RefusalRecord]:
     """Staff may inspect retained refusals for one enrollment."""
-    require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
     return list(
         RefusalRecord.objects.select_related("text")
         .filter(clinic_id=clinic_id, enrollment_id=enrollment_id)
@@ -380,7 +390,10 @@ def consent_for_future_use(
     Consumers must recheck at the point of use, not cache this decision. This
     gate never governs care records, releases or message preferences.
     """
-    require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
     if purpose not in ConsentPurpose.values:
         msg = gettext("Purpose outside the consent taxonomy.")
         raise ValidationError(msg)
@@ -399,6 +412,21 @@ def consent_for_future_use(
     ).first()
 
 
+def _encounter_enrollment(encounter: Encounter | None) -> UUID | None:
+    """Return the subject patient's enrollment in the encounter's clinic."""
+    if encounter is None:
+        return None
+    return (
+        PatientClinicEnrollment.objects.filter(
+            organization_id=encounter.organization_id,
+            clinic_id=encounter.clinic_id,
+            patient_id=encounter.patient_id,
+        )
+        .values_list("pk", flat=True)
+        .first()
+    )
+
+
 def record_ai_disclosure(
     *, clinic_id: UUID, encounter_id: UUID, informed: bool, refused: bool
 ) -> AIUseDisclosure:
@@ -406,7 +434,15 @@ def record_ai_disclosure(
 
     A refusal is preserved alongside the attestation and never blocks care.
     """
-    actor = require_current_actor_clinic_roles(clinic_id, CLINICIAN_ROLES)
+    encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=encounter_id).first()
+    actor = require_permission(
+        "clinical.write",
+        clinic_id=clinic_id,
+        patient_enrollment_id=_encounter_enrollment(encounter),
+    )
+    if encounter is None:
+        # has_permission already refuses the missing enrollment; stay closed.
+        raise PatientAccessDeniedError
     if (
         type(informed) is not bool
         or type(refused) is not bool
@@ -414,9 +450,6 @@ def record_ai_disclosure(
     ):
         msg = gettext("Invalid AI-use disclosure.")
         raise ValidationError(msg)
-    encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=encounter_id).first()
-    if encounter is None:
-        raise PatientAccessDeniedError
     with transaction.atomic():
         result, created = AIUseDisclosure.objects.get_or_create(
             encounter=encounter,
@@ -451,7 +484,10 @@ def ai_disclosure_status(
     Consumers (todos 40/44/46) must treat ``None``, ``informed=False`` and
     ``refused=True`` as a refusal of AI assistance for that encounter.
     """
-    require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
     return AIUseDisclosure.objects.filter(
         clinic_id=clinic_id, encounter_id=encounter_id
     ).first()
@@ -461,13 +497,18 @@ def acknowledge_participant(
     *, clinic_id: UUID, session_id: UUID, participant_kind: str
 ) -> ParticipantAcknowledgment:
     """Record that the recording notice reached one non-patient voice."""
-    actor = require_current_actor_clinic_roles(clinic_id, CLINICIAN_ROLES)
+    encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=session_id).first()
+    actor = require_permission(
+        "clinical.write",
+        clinic_id=clinic_id,
+        patient_enrollment_id=_encounter_enrollment(encounter),
+    )
+    if encounter is None:
+        # has_permission already refuses the missing enrollment; stay closed.
+        raise PatientAccessDeniedError
     if participant_kind not in ParticipantKind.values:
         msg = gettext("Invalid participant kind.")
         raise ValidationError(msg)
-    encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=session_id).first()
-    if encounter is None:
-        raise PatientAccessDeniedError
     with transaction.atomic():
         result, created = ParticipantAcknowledgment.objects.get_or_create(
             session=encounter,

@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[2]
 SIGNALS = {
+    # The v2 authority check (has_permission): every caller is an authority site.
+    "permission_helper": r"\brequire_permission\(",
     "role_helper": (
         r"\b(?:require_current_actor_(?:clinic_roles|org_admin)|has_clinic_role|"
         r"clinics_for_user_roles)\("

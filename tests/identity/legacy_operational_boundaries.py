@@ -11,6 +11,7 @@ from apps.billing import pix
 from apps.billing import services as billing
 from apps.consent import services as consent
 from apps.ehr.finalization import finalize_version
+from apps.ehr.services import open_encounter
 from apps.identity.clinic_configuration import (
     DEFAULT_BRAND,
     ConfigurationContent,
@@ -32,7 +33,11 @@ from apps.intake.patient_access import (
 )
 from apps.retention import services as retention
 from apps.scheduling import appointment_values, availability_retirement, booking_queries
-from apps.scheduling.services import create_availability
+from apps.scheduling.services import (
+    AppointmentLocalRange,
+    create_appointment,
+    create_availability,
+)
 from apps.tenancy.db import tenant_context
 from django.db import connection
 from PIL import Image
@@ -46,6 +51,7 @@ from identity.legacy_parity_support import (
     Boundary,
     has_rows,
 )
+from identity.sql_consent_probes import grant_registration
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
 
@@ -76,6 +82,8 @@ class OperationalSubjects:
     availability_id: UUID
     patient_session: UUID
     grant_id: UUID
+    # An open encounter of the same patient for per-encounter attestations.
+    open_encounter: UUID
 
 
 def seed_operational(w: LegacyWorld) -> OperationalSubjects:
@@ -137,19 +145,37 @@ def seed_operational(w: LegacyWorld) -> OperationalSubjects:
             idempotency_key=uuid4(),
         )
     doctor_request = verified_request(w.graph.physician, verified_at=STEP_UP_NOW)
-    with runtime_role(), tenant_context(w.graph.physician, w.graph.organization_a):
-        finalized = finalize_version(
-            clinic_id=w.clinic,
-            version_id=w.version.pk,
-            expected_revision=w.version.revision,
-            request=doctor_request,
+    with setup_context(w.graph.organization_a):
+        # AI-use attestations are clinical.write: the assigned physician of an
+        # open encounter needs a professional registration (todo 6 scope). No
+        # care-team row: the nonstaff census owns every care-team membership.
+        grant_registration(
+            w.graph.organization_a, w.clinic, w.graph.physician, "physician"
         )
+    with runtime_role(), tenant_context(w.graph.shared_user, w.graph.organization_a):
+        attestation = create_appointment(
+            clinic_id=w.clinic,
+            enrollment_id=enrollment,
+            practitioner_id=w.graph.physician,
+            local_range=AppointmentLocalRange("2035-06-02T11:00", "2035-06-02T11:30"),
+            idempotency_key=uuid4(),
+        )
+    with runtime_role(), tenant_context(w.graph.physician, w.graph.organization_a):
         consent.record_ai_disclosure(
             clinic_id=w.clinic,
             encounter_id=w.version.document.encounter_id,
             informed=True,
             refused=False,
         )
+        finalized = finalize_version(
+            clinic_id=w.clinic,
+            version_id=w.version.pk,
+            expected_revision=w.version.revision,
+            request=doctor_request,
+        )
+        open_attestation = open_encounter(
+            clinic_id=w.clinic, appointment_id=attestation.pk
+        ).pk
         retention.release_version(clinic_id=w.clinic, version_id=finalized.pk)
         response = questionnaires.assign_questionnaire(
             clinic_id=w.clinic,
@@ -163,7 +189,14 @@ def seed_operational(w: LegacyWorld) -> OperationalSubjects:
     with setup_context(w.graph.organization_a):
         grant_id = PatientSession.objects.get(pk=session).grant_id
     return OperationalSubjects(
-        enrollment, response, invoice, export, availability.pk, session, grant_id
+        enrollment,
+        response,
+        invoice,
+        export,
+        availability.pk,
+        session,
+        grant_id,
+        open_attestation,
     )
 
 
@@ -308,7 +341,7 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
             PHYSICIAN,
             lambda w, ok: consent.record_ai_disclosure(
                 clinic_id=w.clinic_for(ok),
-                encounter_id=w.encounter_for(ok),
+                encounter_id=subject.open_encounter if ok else uuid4(),
                 informed=True,
                 refused=False,
             ),
@@ -328,7 +361,7 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
             PHYSICIAN,
             lambda w, ok: consent.acknowledge_participant(
                 clinic_id=w.clinic_for(ok),
-                session_id=w.encounter_for(ok),
+                session_id=subject.open_encounter if ok else uuid4(),
                 participant_kind="companion",
             ),
         ),

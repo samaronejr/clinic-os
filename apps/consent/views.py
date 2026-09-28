@@ -22,7 +22,6 @@ from apps.consent.forms import (
     TextForm,
 )
 from apps.consent.services import (
-    STAFF_ROLES,
     acknowledge_participant,
     available_notices,
     available_texts,
@@ -38,10 +37,7 @@ from apps.consent.services import (
     staff_receipts,
     staff_refusals,
 )
-from apps.identity.current_context import (
-    CurrentActorError,
-    require_current_actor_clinic_roles,
-)
+from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import PatientAccessDeniedError
 
@@ -231,7 +227,14 @@ def staff_consent(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
     context: dict[str, object] = {**_staff_forms(), "clinic_id": clinic_id}
     status = HTTPStatus.OK
     try:
-        require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+        # Any consent permission opens the page; each action rechecks its own.
+        try:
+            require_permission("demographics.read", clinic_id=clinic_id)
+        except CurrentActorError:
+            try:
+                require_permission("configuration.clinic", clinic_id=clinic_id)
+            except CurrentActorError:
+                require_permission("configuration.organization", clinic_id=clinic_id)
         if request.method == "POST":
             status = _staff_action(request, context, clinic_id)
             if status == HTTPStatus.FORBIDDEN:

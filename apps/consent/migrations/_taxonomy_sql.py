@@ -2,8 +2,12 @@
 
 The same ``consent_guard`` trigger gains branches for the four new tables;
 ``consent_audit_scope`` and ``consent_audit`` learn the ``consent.refused``
-patient-actor event. ``CREATE OR REPLACE`` keeps owner, volatility and ACLs;
-the reverse SQL restores the exact prior function bodies.
+patient-actor event. Every staff branch and staff policy, including the
+upstream consent text/acceptance/revocation policies, checks todo 6's
+``clinic_app.has_permission`` with the same permission names as
+``apps/consent/services.py``; a refused permission raises 42501.
+``CREATE OR REPLACE`` keeps owner, volatility and ACLs; the reverse SQL
+restores the exact prior function bodies and policy expressions.
 """
 
 _sql = """
@@ -16,8 +20,11 @@ SET search_path = pg_catalog, clinic_app, pg_temp AS $f$
 DECLARE s RECORD; t RECORD; a RECORD; e RECORD; last_version integer;
 BEGIN
  IF TG_TABLE_NAME='consent_consenttext' THEN
-   IF NOT clinic_app.questionnaire_staff(NEW.clinic_id,ARRAY['owner','clinic_admin'])
-      OR NEW.published_by_id IS DISTINCT FROM
+   IF NOT (clinic_app.has_permission('configuration.clinic',NEW.clinic_id,NULL)
+      OR clinic_app.has_permission('configuration.organization',NEW.clinic_id,NULL))
+   THEN RAISE EXCEPTION 'consent staff authority required' USING ERRCODE='42501';
+   END IF;
+   IF NEW.published_by_id IS DISTINCT FROM
         NULLIF(current_setting('app.current_user_id',true),'')::uuid
       OR NOT EXISTS (SELECT 1 FROM clinic_app.identity_clinic c
         WHERE c.id=NEW.clinic_id AND c.organization_id=NEW.organization_id)
@@ -35,8 +42,11 @@ BEGIN
    RETURN NEW;
  END IF;
  IF TG_TABLE_NAME='consent_noticeversion' THEN
-   IF NOT clinic_app.questionnaire_staff(NEW.clinic_id,ARRAY['owner','clinic_admin'])
-      OR NEW.published_by_id IS DISTINCT FROM
+   IF NOT (clinic_app.has_permission('configuration.clinic',NEW.clinic_id,NULL)
+      OR clinic_app.has_permission('configuration.organization',NEW.clinic_id,NULL))
+   THEN RAISE EXCEPTION 'consent staff authority required' USING ERRCODE='42501';
+   END IF;
+   IF NEW.published_by_id IS DISTINCT FROM
         NULLIF(current_setting('app.current_user_id',true),'')::uuid
       OR NOT EXISTS (SELECT 1 FROM clinic_app.identity_clinic c
         WHERE c.id=NEW.clinic_id AND c.organization_id=NEW.organization_id)
@@ -55,9 +65,14 @@ BEGIN
  END IF;
  IF TG_TABLE_NAME='consent_participantacknowledgment' THEN
    SELECT * INTO e FROM clinic_app.ehr_encounter WHERE id=NEW.session_id;
+   IF NOT clinic_app.has_permission('clinical.write',NEW.clinic_id,
+     (SELECT en.id FROM clinic_app.intake_patientclinicenrollment en
+       WHERE en.organization_id=e.organization_id AND en.clinic_id=e.clinic_id
+         AND en.patient_id=e.patient_id))
+   THEN RAISE EXCEPTION 'consent staff authority required' USING ERRCODE='42501';
+   END IF;
    IF e.id IS NULL OR e.clinic_id IS DISTINCT FROM NEW.clinic_id
       OR e.organization_id IS DISTINCT FROM NEW.organization_id
-      OR NOT clinic_app.questionnaire_staff(NEW.clinic_id,ARRAY['physician'])
       OR NEW.acknowledged_by_clinician_id IS DISTINCT FROM
         NULLIF(current_setting('app.current_user_id',true),'')::uuid
    THEN RAISE EXCEPTION 'invalid participant acknowledgment'
@@ -67,10 +82,15 @@ BEGIN
  END IF;
  IF TG_TABLE_NAME='consent_aiusedisclosure' THEN
    SELECT * INTO e FROM clinic_app.ehr_encounter WHERE id=NEW.encounter_id;
+   IF NOT clinic_app.has_permission('clinical.write',NEW.clinic_id,
+     (SELECT en.id FROM clinic_app.intake_patientclinicenrollment en
+       WHERE en.organization_id=e.organization_id AND en.clinic_id=e.clinic_id
+         AND en.patient_id=e.patient_id))
+   THEN RAISE EXCEPTION 'consent staff authority required' USING ERRCODE='42501';
+   END IF;
    IF e.id IS NULL OR e.clinic_id IS DISTINCT FROM NEW.clinic_id
       OR e.organization_id IS DISTINCT FROM NEW.organization_id
       OR e.patient_id IS DISTINCT FROM NEW.patient_id
-      OR NOT clinic_app.questionnaire_staff(NEW.clinic_id,ARRAY['physician'])
       OR NEW.recorded_by_id IS DISTINCT FROM
         NULLIF(current_setting('app.current_user_id',true),'')::uuid
       OR (NEW.refused AND NOT NEW.informed)
@@ -216,18 +236,39 @@ CREATE TRIGGER consent_binding BEFORE INSERT ON clinic_app.consent_{table}
 """
 
 _sql += """
+-- Upstream consent tables move to the same bundle permissions.
+ALTER POLICY consent_text_read ON clinic_app.consent_consenttext
+ USING ((clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.clinic',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL))
+ OR clinic_id=(SELECT s.clinic_id FROM clinic_app.consent_session() s));
+ALTER POLICY consent_text_insert ON clinic_app.consent_consenttext
+ WITH CHECK ((clinic_app.has_permission('configuration.clinic',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL)));
+ALTER POLICY consent_acceptance_read ON clinic_app.consent_consentacceptance
+ USING ((clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL))
+ OR enrollment_id=(SELECT s.enrollment_id FROM clinic_app.consent_session() s));
+ALTER POLICY consent_revocation_read ON clinic_app.consent_consentrevocation
+ USING ((clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL))
+ OR EXISTS (SELECT 1 FROM clinic_app.consent_consentacceptance a
+ WHERE a.id=acceptance_id
+ AND a.enrollment_id=(SELECT s.enrollment_id FROM clinic_app.consent_session() s)));
 CREATE POLICY consent_notice_read ON clinic_app.consent_noticeversion
  FOR SELECT TO clinic_app
- USING (clinic_app.questionnaire_staff(clinic_id,
-   ARRAY['owner','clinic_admin','receptionist','physician'])
+ USING ((clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.clinic',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL))
  OR clinic_id=(SELECT s.clinic_id FROM clinic_app.consent_session() s));
 CREATE POLICY consent_notice_insert ON clinic_app.consent_noticeversion
  FOR INSERT TO clinic_app
- WITH CHECK (clinic_app.questionnaire_staff(clinic_id,ARRAY['owner','clinic_admin']));
+ WITH CHECK (clinic_app.has_permission('configuration.clinic',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL));
 CREATE POLICY consent_refusal_read ON clinic_app.consent_refusalrecord
  FOR SELECT TO clinic_app
- USING (clinic_app.questionnaire_staff(clinic_id,
-   ARRAY['owner','clinic_admin','receptionist','physician'])
+ USING ((clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL))
  OR enrollment_id=(SELECT s.enrollment_id FROM clinic_app.consent_session() s));
 CREATE POLICY consent_refusal_insert ON clinic_app.consent_refusalrecord
  FOR INSERT TO clinic_app
@@ -235,22 +276,32 @@ CREATE POLICY consent_refusal_insert ON clinic_app.consent_refusalrecord
    (SELECT s.enrollment_id FROM clinic_app.consent_session() s));
 CREATE POLICY consent_participant_read ON clinic_app.consent_participantacknowledgment
  FOR SELECT TO clinic_app
- USING (clinic_app.questionnaire_staff(clinic_id,
-   ARRAY['owner','clinic_admin','receptionist','physician']));
+ USING (clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL));
 CREATE POLICY consent_participant_insert
  ON clinic_app.consent_participantacknowledgment
  FOR INSERT TO clinic_app
- WITH CHECK (clinic_app.questionnaire_staff(clinic_id,ARRAY['physician']));
+ WITH CHECK (clinic_app.has_permission('clinical.write',clinic_id,
+   (SELECT en.id FROM clinic_app.ehr_encounter e
+    JOIN clinic_app.intake_patientclinicenrollment en
+      ON en.organization_id=e.organization_id AND en.clinic_id=e.clinic_id
+     AND en.patient_id=e.patient_id
+    WHERE e.id=consent_participantacknowledgment.session_id)));
 CREATE POLICY consent_ai_disclosure_read ON clinic_app.consent_aiusedisclosure
  FOR SELECT TO clinic_app
- USING (clinic_app.questionnaire_staff(clinic_id,
-   ARRAY['owner','clinic_admin','receptionist','physician'])
+ USING ((clinic_app.has_permission('demographics.read',clinic_id,NULL)
+ OR clinic_app.has_permission('configuration.organization',clinic_id,NULL))
  OR EXISTS (SELECT 1 FROM clinic_app.consent_session() s
    WHERE consent_aiusedisclosure.patient_id=s.patient_id
    AND consent_aiusedisclosure.clinic_id=s.clinic_id));
 CREATE POLICY consent_ai_disclosure_insert ON clinic_app.consent_aiusedisclosure
  FOR INSERT TO clinic_app
- WITH CHECK (clinic_app.questionnaire_staff(clinic_id,ARRAY['physician']));
+ WITH CHECK (clinic_app.has_permission('clinical.write',clinic_id,
+   (SELECT en.id FROM clinic_app.ehr_encounter e
+    JOIN clinic_app.intake_patientclinicenrollment en
+      ON en.organization_id=e.organization_id AND en.clinic_id=e.clinic_id
+     AND en.patient_id=e.patient_id
+    WHERE e.id=consent_aiusedisclosure.encounter_id)));
 SET LOCAL ROLE clinic_resolver;
 REVOKE EXECUTE ON FUNCTION clinic_app.consent_immutable(),
  clinic_app.consent_guard() FROM clinic_owner;
@@ -261,7 +312,24 @@ SQL = _sql
 
 # Reverse restores the exact trigger and audit bodies installed by
 # 0002_consent_policy + 0003_protected_fields and drops everything added here.
-_reverse_sql = ""
+_reverse_sql = """
+ALTER POLICY consent_text_read ON clinic_app.consent_consenttext
+ USING (clinic_app.questionnaire_staff(clinic_id,
+   ARRAY['owner','clinic_admin','receptionist','physician'])
+ OR clinic_id=(SELECT s.clinic_id FROM clinic_app.consent_session() s));
+ALTER POLICY consent_text_insert ON clinic_app.consent_consenttext
+ WITH CHECK (clinic_app.questionnaire_staff(clinic_id,ARRAY['owner','clinic_admin']));
+ALTER POLICY consent_acceptance_read ON clinic_app.consent_consentacceptance
+ USING (clinic_app.questionnaire_staff(clinic_id,
+   ARRAY['owner','clinic_admin','receptionist','physician'])
+ OR enrollment_id=(SELECT s.enrollment_id FROM clinic_app.consent_session() s));
+ALTER POLICY consent_revocation_read ON clinic_app.consent_consentrevocation
+ USING (clinic_app.questionnaire_staff(clinic_id,
+   ARRAY['owner','clinic_admin','receptionist','physician'])
+ OR EXISTS (SELECT 1 FROM clinic_app.consent_consentacceptance a
+ WHERE a.id=acceptance_id
+ AND a.enrollment_id=(SELECT s.enrollment_id FROM clinic_app.consent_session() s)));
+"""
 for table, label in (
     ("noticeversion", "notice"),
     ("refusalrecord", "refusal"),

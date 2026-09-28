@@ -427,6 +427,9 @@ class GuardProbe:
     refusal: str
     # Owner query for the latest version the insert must follow, if versioned.
     latest: str | None = None
+    # The refusal's SQLSTATE: 42501 where the guard's permission check refuses
+    # the inactive actor first, 23514 where its binding check does.
+    sqlstate: str = "23514"
 
 
 GUARD_PROBES = {
@@ -447,9 +450,12 @@ GUARD_PROBES = {
         "published_by_id, text) VALUES (%(id)s, 'teleconsultation', %(version)s, "
         "'pt-BR', repeat('0', 64), now(), %(clinic)s, %(organization)s, "
         "%(actor)s, convert_to('Sintetico', 'UTF8'))",
-        "invalid consent publication",
+        # Consent bundles: has_permission refuses the inactive publisher before the
+        # publication binding check.
+        "consent staff authority required",
         "SELECT coalesce(max(version), 0) FROM clinic_app.consent_consenttext"
         " WHERE clinic_id = %(clinic)s AND purpose = 'teleconsultation'",
+        sqlstate="42501",
     ),
     "clinic_app.retention_guard()": GuardProbe(
         "INSERT INTO clinic_app.retention_retentionpolicy (id, record_class, "
@@ -584,7 +590,7 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
     assert {name: tuple(row) for name, row in rows.items()} == {
         **dict.fromkeys(DELEGATE_PROBES, (True, False, True)),
         **{
-            name: ("inserted", ("23514", probe.refusal, name), "inserted")
+            name: ("inserted", (probe.sqlstate, probe.refusal, name), "inserted")
             for name, probe in GUARD_PROBES.items()
         },
     }

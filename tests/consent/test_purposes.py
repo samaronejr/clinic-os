@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -37,7 +37,7 @@ from apps.consent.services import (
 from apps.ehr.models import Encounter
 from apps.ehr.services import SOAP_FIELDS, open_encounter, record_clinical_note
 from apps.identity.current_context import CurrentActorError
-from apps.identity.models import User, UserClinicRole
+from apps.identity.models import ProfessionalRegistration, User, UserClinicRole
 from apps.intake.access import PatientAccessDeniedError
 from apps.intake.models import PatientClinicEnrollment
 from apps.intake.patient_access import (
@@ -333,8 +333,33 @@ def test_notices_inform_without_authorizing(rbac_graph: RbacGraph) -> None:
         assert published.count() == 2
 
 
+def register_physician(graph: RbacGraph) -> None:
+    """Give the clinic A physician the todo 6 professional scope, once."""
+    with setup_context(graph.organization_a):
+        ProfessionalRegistration.objects.get_or_create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=graph.physician,
+            role="physician",
+            defaults={
+                "council": "CRM",
+                "number": "SINTETICO-020",
+                "jurisdiction": "SP",
+                "specialty": "Sintetico",
+                "status": "regular",
+                "valid_from": timezone.now() - timedelta(days=1),
+                "valid_to": timezone.now() + timedelta(days=1),
+            },
+        )
+
+
 def _encounter(graph: RbacGraph, appointment: Appointment) -> UUID:
-    """Open one scheduled appointment as an encounter under the physician."""
+    """Open one scheduled appointment as an encounter under the physician.
+
+    Attestations are ``clinical.write``: the encounter's own physician needs a
+    current professional registration (todo 6 professional scope).
+    """
+    register_physician(graph)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         return open_encounter(
             clinic_id=graph.clinic_a, appointment_id=appointment.pk
@@ -459,7 +484,9 @@ def test_participant_acknowledgment_for_non_patient_voices(
                 session_id=encounter_id,
                 participant_kind="driver",
             )
-        with pytest.raises(PatientAccessDeniedError):
+        # An unknown session has no patient enrollment: has_permission refuses
+        # it exactly like an unpermitted actor (SC-1 identical denial).
+        with pytest.raises(CurrentActorError):
             acknowledge_participant(
                 clinic_id=graph.clinic_a,
                 session_id=uuid4(),
