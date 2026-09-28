@@ -118,7 +118,10 @@ PY_SITES: dict[str, str | tuple[str, str]] = {
         "test_patient_sessions_see_only_their_clinic pins the combined result",
     ),
     "_resolve_offer:ConsentText.filter:clinic_id": (
-        "test_patient_sessions_see_only_their_clinic"
+        "equivalent",
+        "runs in the patient context, where consent_text_read's patient branch "
+        "binds the session clinic; test_patient_sessions_see_only_their_clinic "
+        "pins that clinic B resolves B's version while A holds a newer one",
     ),
     "record_consent:ConsentAcceptance.get_or_create:defaults.organization_id": (
         "test_writes_store_the_exact_scope"
@@ -799,6 +802,12 @@ def test_patient_sessions_see_only_their_clinic(rbac_graph: RbacGraph) -> None:
             offer=offer, purpose="teleconsultation", accepted=True
         )
         assert again.pk == w.acceptance_b
+    # Refusal path: Q refuses clinic B's teleconsultation version 1 while
+    # clinic A holds version 2; the stale-text check compares within B.
+    q_refusal = _refuse(w.other_session_b, w.text_b, "teleconsultation")
+    with owner_context(w.organization):
+        stored = RefusalRecord.objects.get(pk=q_refusal)
+        assert (stored.clinic_id, stored.text_id) == (w.clinic_b, w.text_b)
     with runtime_role(), patient_session_context(w.session_a):
         assert {t.pk for t in consent.available_texts()} == {
             w.text_a,
@@ -1139,17 +1148,22 @@ def test_consent_audit_chains_within_its_organization(rbac_graph: RbacGraph) -> 
     """A patient consent event links to its own organization's previous hash."""
     w = seed_scope_world(rbac_graph)
     graph = w.graph
-    # Another organization appends after organization A's last event.
+    research = _publish(graph, w.clinic_b, "research_model_improvement", "Sintetico")
+    with runtime_role(), patient_session_context(w.session_b):
+        _, offer = consent.prepare_acceptance(text_id=research)
+    # Another organization appends right before the patient event, so its row
+    # is the newest in the whole table when consent_audit picks the previous
+    # hash; verification fails if the event linked to that row.
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_b):
         record_phase1_event(
             "consent.receipts.viewed",
             clinic_id=graph.clinic_c,
             affected_record_id=uuid4(),
         )
-    # The patient event goes through consent_audit, which picks the previous
-    # hash; verification fails if it linked to the other organization's row.
-    research = _publish(graph, w.clinic_b, "research_model_improvement", "Sintetico")
-    refusal = _refuse(w.session_b, research, "research_model_improvement")
+    with runtime_role(), patient_session_context(w.session_b):
+        refusal = consent.record_refusal(
+            offer=offer, purpose="research_model_improvement"
+        ).pk
     with runtime_role(), tenant_context(w.reader, graph.organization_a):
         chain = verify_chain(graph.organization_a)
     assert chain.valid

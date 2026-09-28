@@ -67,6 +67,13 @@ care.
   and each action rechecks its own. Clinic narrowing (`RoleGrant` remove),
   an inactive actor or another clinic refuse identically; the SQL guard
   raises 42501.
+- Deliberate deviation from the plan's RP cell "Demographics / Org admin:
+  none by default" (owner decision, 2026-09-28): owner and org_admin read
+  receipts, refusals, future-use and disclosure status through the
+  `configuration.organization` fallback. Owner and org_admin share one
+  bundle, and legacy parity requires owners to keep the receipt access they
+  had, so no bundle name can grant one without the other. A clinic can
+  narrow it with a `RoleGrant` remove.
 - FORCE RLS and binding triggers independently check permissions and
   patient provenance. Runtime UPDATE/DELETE privileges are absent; triggers reject
   maintenance-role edits/deletes too. All record classes have indefinite
