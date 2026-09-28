@@ -182,6 +182,12 @@ def test_view_setting_read_is_parsed_from_the_view_definition(
     assert ("guc", "app.current_user_id") in observer.touches
 
 
+# Pure parser cases touch no rows: the closest mark overrides the module's
+# transaction=True, so each case rolls back instead of flushing the database.
+PARSER_ONLY = pytest.mark.django_db
+
+
+@PARSER_ONLY
 @pytest.mark.parametrize(
     ("statement", "setting"),
     [
@@ -206,6 +212,7 @@ def test_set_and_reset_statements_record_the_setting(
     assert not parsed.opaque
 
 
+@PARSER_ONLY
 @pytest.mark.parametrize(
     "statement",
     [
@@ -222,6 +229,7 @@ def test_unresolved_set_forms_are_opaque(statement: str) -> None:
     assert "unresolved SET setting" in references(statement).opaque
 
 
+@PARSER_ONLY
 def test_update_set_clause_is_not_a_setting() -> None:
     parsed = references("UPDATE t SET a = 1")
     assert not parsed.settings
