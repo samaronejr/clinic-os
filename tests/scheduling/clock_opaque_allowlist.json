@@ -800,6 +800,60 @@
     "returns": "void",
     "volatility": "v"
   },
+  "pg_catalog.pg_has_role(name, name, text)": {
+    "extension": "",
+    "implementation": "pg_has_role_name_name",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached through todo 7's principal_scope gate (agent_grant RLS policies on scheduling tables); native role-membership check over the role catalogs, retained as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "boolean",
+    "volatility": "s"
+  },
+  "pg_catalog.pg_has_role(name, oid, text)": {
+    "extension": "",
+    "implementation": "pg_has_role_name_id",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached through todo 7's principal_scope gate (agent_grant RLS policies on scheduling tables); native role-membership check over the role catalogs, retained as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "boolean",
+    "volatility": "s"
+  },
+  "pg_catalog.pg_has_role(name, text)": {
+    "extension": "",
+    "implementation": "pg_has_role_name",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached through todo 7's principal_scope gate (agent_grant RLS policies on scheduling tables); native role-membership check over the role catalogs, retained as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "boolean",
+    "volatility": "s"
+  },
+  "pg_catalog.pg_has_role(oid, name, text)": {
+    "extension": "",
+    "implementation": "pg_has_role_id_name",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached through todo 7's principal_scope gate (agent_grant RLS policies on scheduling tables); native role-membership check over the role catalogs, retained as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "boolean",
+    "volatility": "s"
+  },
+  "pg_catalog.pg_has_role(oid, oid, text)": {
+    "extension": "",
+    "implementation": "pg_has_role_id_id",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached through todo 7's principal_scope gate (agent_grant RLS policies on scheduling tables); native role-membership check over the role catalogs, retained as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "boolean",
+    "volatility": "s"
+  },
+  "pg_catalog.pg_has_role(oid, text)": {
+    "extension": "",
+    "implementation": "pg_has_role_id",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached through todo 7's principal_scope gate (agent_grant RLS policies on scheduling tables); native role-membership check over the role catalogs, retained as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "boolean",
+    "volatility": "s"
+  },
   "pg_catalog.range_overlaps(anyrange, anyrange)": {
     "extension": "",
     "implementation": "range_overlaps",

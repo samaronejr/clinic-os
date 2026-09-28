@@ -137,6 +137,7 @@
       "policy:scheduling_appointment.patient_booking_read",
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
+      "policy:scheduling_availabilityblock.agent_grant",
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
@@ -202,6 +203,7 @@
       "index:scheduling_availability_active_practitioner_excl",
       "index:scheduling_availability_resource_excl",
       "policy:identity_clinic.tenant_isolation",
+      "policy:scheduling_availabilityblock.agent_grant",
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
       "trigger:scheduling_availabilityblock.scheduling_generated_block_guard"
@@ -300,6 +302,7 @@
       "policy:scheduling_appointment.patient_booking_read",
       "policy:scheduling_appointment.patient_booking_update",
       "policy:scheduling_appointment.tenant_isolation",
+      "policy:scheduling_availabilityblock.agent_grant",
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
       "policy:scheduling_resource.tenant_isolation",
