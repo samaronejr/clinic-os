@@ -60,6 +60,11 @@ def _accessibility(page: Page, root: Path, width: int) -> None:
 
 def _ticket_replay(page: Page) -> None:
     # Keep the credential in page memory; never in reports or logs.
+    # cache:'no-store' on both GETs: Firefox queues a same-URL request behind
+    # an open HTTP-cache entry writer, so a default-mode replay waits until the
+    # stream ends (on the server's 600 s cap, or a network-change abort that
+    # also drops the page's EventSource; fix-a16). The replay must reach the
+    # server while the first stream is still open.
     status = page.evaluate("""async () => {
       const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
       const topic = document.querySelector('[data-realtime-topic]')
@@ -72,9 +77,10 @@ def _ticket_replay(page: Page) -> None:
       const ticket = (await response.json()).ticket;
       const endpoint = '/rt/stream?t=' + ticket;
       const controller = new AbortController();
-      const stream = await fetch(endpoint, {signal:controller.signal});
+      const stream = await fetch(endpoint,
+        {signal:controller.signal, cache:'no-store'});
       await stream.body.getReader().read();
-      const replay = await fetch(endpoint);
+      const replay = await fetch(endpoint, {cache:'no-store'});
       controller.abort();
       return [stream.status, replay.status];
     }""")
@@ -153,32 +159,38 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             _accessibility(b, root, width)
 
         _ticket_replay(b)
+        _connected(b)
 
         # Owner SQL fixture revokes the clinic assignment. Logout is the real
         # immediate control event; unit tests independently prove role-delete
         # signals and periodic reauth when an event is lost.
-        with psycopg.connect(agenda_staff["dsn"]) as owner:
-            owner.execute(
-                "SELECT set_config('app.current_tenant', %s, true)",
-                [agenda_staff["organization"]],
+        # The refusal wait is armed before the revocation: b's stream can also
+        # close for other reasons (a transport drop and its backoff retry, the
+        # periodic reauthorization), and a refused POST that lands before the
+        # wait exists is lost, leaving b denied with no further POST (hosted
+        # run 36475967514; fix-a16). Every b ticket request after the delete is
+        # refused, so the wait is for the refused one: a reconnect that
+        # lands before the delete returns 200 and cannot satisfy it.
+        with b.expect_response(
+            lambda response: (
+                response.request.method == "POST"
+                and response.url.endswith("/rt/stream")
+                and response.status == 403
             )
-            owner.execute(
-                "DELETE FROM clinic_app.identity_userclinicrole "
-                "WHERE clinic_id = %s AND user_id = %s",
-                [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
-            )
-        goto_settled(a, renewal_base_url + "/auth/logout/")
-        with (
-            b.expect_response(
-                lambda response: (
-                    response.request.method == "POST"
-                    and response.url.endswith("/rt/stream")
-                )
-            ) as denied,
-            expect_document(a),
         ):
-            a.locator("form button[type=submit]").click()
-        assert denied.value.status == 403
+            with psycopg.connect(agenda_staff["dsn"]) as owner:
+                owner.execute(
+                    "SELECT set_config('app.current_tenant', %s, true)",
+                    [agenda_staff["organization"]],
+                )
+                owner.execute(
+                    "DELETE FROM clinic_app.identity_userclinicrole "
+                    "WHERE clinic_id = %s AND user_id = %s",
+                    [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
+                )
+            goto_settled(a, renewal_base_url + "/auth/logout/")
+            with expect_document(a):
+                a.locator("form button[type=submit]").click()
         expect(b.locator("#agenda-shell")).to_have_attribute(
             "data-realtime-state", "denied"
         )
