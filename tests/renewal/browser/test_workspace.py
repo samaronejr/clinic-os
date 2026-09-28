@@ -823,30 +823,30 @@ def _settle_offline_navigation(page: Page) -> Page:
     return fresh
 
 
-def test_offline_settle_discards_a_retrying_document(
+def test_offline_settle_does_not_reuse_the_refused_page(
     desktop: Page, renewal_base_url: str
 ) -> None:
+    """Same-page-reuse regression check for ``_settle_offline_navigation``.
+
+    It does not reproduce the engine's reconnect retry: that needs a real
+    refused navigation and waiting for a navigation that must never start.
+    It pins what the fix relies on instead: while offline, the page that held
+    the navigation is closed and recovery continues in a new page of the same
+    context. test_offline_reload_reveals_no_patient_content runs the real
+    refused navigation through this helper.
+    """
     page = desktop
     login = f"{renewal_base_url}/auth/login/"
     page.goto(login)
-    # Simulate the engine's pending retry: a reconnect listener owned by the
-    # refused document that would start a navigation the test did not request.
-    evaluate_js(
-        page,
-        """url => {
-          window.__retryPending = true;
-          addEventListener('online', () => location.assign(url));
-          return true;
-        }""",
-        login,
-    )
     page.context.set_offline(offline=True)
     try:
-        page = _settle_offline_navigation(page)
-        assert evaluate_js(page, "() => window.__retryPending === undefined")
+        fresh = _settle_offline_navigation(page)
     finally:
         page.context.set_offline(offline=False)
-    response = page.goto(login)
+    assert page.is_closed()
+    assert fresh is not page
+    assert fresh.context is page.context
+    response = fresh.goto(login)
     assert response is not None
     assert response.status == OK
 
