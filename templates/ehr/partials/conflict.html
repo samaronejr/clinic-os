@@ -5,15 +5,15 @@ after a stale autosave. Saved section text sits in hidden text areas (never in
 data attributes) so the author can take it back explicitly; the merge saves
 the editor's text over the compared revision and conflicts again if that
 revision moved meanwhile.
-{% endcomment %}<section class="panel" id="conflict-panel" aria-labelledby="conflict-title"{% if not conflict %} hidden{% endif %} data-text-title="{% trans "__SECTION__: saved revision __N__ compared with your text" %}" data-text-use-saved="{% trans "Use the saved text in __SECTION__" %}" data-text-added="{% trans "Added:" %}" data-text-removed="{% trans "Removed:" %}" data-text-summary="{% trans "__ADDED__ added · __REMOVED__ removed" %}" data-label-subjective="Subjetivo" data-label-objective="Objetivo" data-label-assessment="Avaliação" data-label-plan="Plano">
+{% endcomment %}<section class="ehr-conflict" id="conflict-panel" aria-labelledby="conflict-title"{% if not conflict %} hidden{% endif %} data-text-title="{% trans "__SECTION__: saved revision __N__ compared with your text" %}" data-text-use-saved="{% trans "Use the saved text in __SECTION__" %}" data-text-added="{% trans "Added:" %}" data-text-removed="{% trans "Removed:" %}" data-text-summary="{% trans "__ADDED__ added · __REMOVED__ removed" %}" data-label-subjective="Subjetivo" data-label-objective="Objetivo" data-label-assessment="Avaliação" data-label-plan="Plano">
   <h2 id="conflict-title" tabindex="-1">{% trans "Compare before saving" %}</h2>
   <p>{% trans "Another tab saved this draft after you started editing. Nothing was overwritten. Removed lines exist only in the saved revision; added lines exist only in your text. Keep or replace each section, then save the combined version." %}</p>
-  <div data-conflict-sections>
-    {% for section in conflict.sections %}<div data-conflict-section="{{ section.key }}">
+  <div class="ehr-conflict-sections" data-conflict-sections>
+    {% for section in conflict.sections %}<div class="ehr-conflict-section" data-conflict-section="{{ section.key }}">
       {% blocktrans with section=section.label revision=conflict.current_revision asvar diff_title %}{{ section }}: saved revision {{ revision }} compared with your text{% endblocktrans %}
       {% include "includes/components/diff.html" with id="conflict-"|add:section.key title=diff_title lines=section.lines state="default" %}
       <textarea hidden aria-hidden="true" tabindex="-1" data-theirs="{{ section.key }}">{{ section.theirs }}</textarea>
-      <button class="button button--secondary" type="button" data-use-saved="{{ section.key }}" hidden>{% blocktrans with section=section.label %}Use the saved text in {{ section }}{% endblocktrans %}</button>
+      <div class="actions"><button class="button button--secondary" type="button" data-use-saved="{{ section.key }}" hidden>{% blocktrans with section=section.label %}Use the saved text in {{ section }}{% endblocktrans %}</button></div>
     </div>{% endfor %}
   </div>
   <input type="hidden" form="soap-form" name="merge_revision" value="{{ conflict.current_revision|default:'' }}" data-merge-revision>

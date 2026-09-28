@@ -640,3 +640,5 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
         context.close()
     first_video.save_as(folder / "autosave.webm")
     second_video.save_as(folder / "autosave-second-tab.webm")
+    first_video.delete()
+    second_video.delete()

@@ -164,10 +164,22 @@
       retryTimer = window.setTimeout(send, retryDelay);
     }
 
-    function acknowledged(data) {
+    function showRevision(revision) {
       revisionInputs().forEach(function (input) {
-        input.value = String(data.revision);
+        input.value = String(revision);
       });
+      var header = document.querySelector("[data-saved-revision]");
+      if (header) {
+        header.textContent = String(revision);
+      }
+      var panel = form.closest("[data-revision]");
+      if (panel) {
+        panel.setAttribute("data-revision", String(revision));
+      }
+    }
+
+    function acknowledged(data) {
+      showRevision(data.revision);
       var time = String(data.saved_at || "").slice(11, 16);
       setState("saved", text("saved").replace("__TIME__", time).replace("__N__", String(data.revision)));
       if (data.lock === "handed_over") {
@@ -229,11 +241,11 @@
     }
 
     function showLock(message) {
+      // The status line carries the message; the panel only offers the
+      // handover request, once, while another tab holds the lock.
       setState("locked-by-other", message);
       if (lockPanel) {
-        lockPanel.querySelector("[data-lock-text]").textContent = message;
-        lockPanel.querySelector("[data-request-handover]").hidden = blocked !== "locked";
-        lockPanel.hidden = false;
+        lockPanel.hidden = blocked !== "locked" || handoverWanted;
       }
     }
 
@@ -289,11 +301,15 @@
     function showConflict(data) {
       blocked = "conflict";
       dirty = true;
+      handoverWanted = false;
+      if (lockPanel) {
+        lockPanel.hidden = true;
+      }
       var container = conflictPanel.querySelector("[data-conflict-sections]");
       container.textContent = "";
       data.diff.forEach(function (section) {
         var label = conflictPanel.getAttribute("data-label-" + section.section) || section.section;
-        var wrap = element("div");
+        var wrap = element("div", "ehr-conflict-section");
         wrap.setAttribute("data-conflict-section", section.section);
         wrap.appendChild(diffFigure(section, data.current_revision));
         var theirs = element("textarea");
@@ -307,7 +323,9 @@
           conflictPanel.getAttribute("data-text-use-saved").replace("__SECTION__", label));
         use.type = "button";
         use.setAttribute("data-use-saved", section.section);
-        wrap.appendChild(use);
+        var actions = element("div", "actions");
+        actions.appendChild(use);
+        wrap.appendChild(actions);
         container.appendChild(wrap);
       });
       conflictPanel.querySelector("[data-merge-revision]").value = String(data.current_revision);
@@ -331,9 +349,7 @@
 
     function merge() {
       var revision = conflictPanel.querySelector("[data-merge-revision]").value;
-      revisionInputs().forEach(function (input) {
-        input.value = revision;
-      });
+      showRevision(revision);
       conflictPanel.hidden = true;
       blocked = null;
       dirty = true;
@@ -362,7 +378,9 @@
       }
       if (target.hasAttribute("data-request-handover")) {
         handoverWanted = true;
-        target.hidden = true;
+        if (lockPanel) {
+          lockPanel.hidden = true;
+        }
         window.clearTimeout(lockTimer);
         flush();
         return;
