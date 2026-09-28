@@ -270,6 +270,13 @@ def build_world(
             row.refresh_from_db()
             assert row.status == state, (state, row.status)
     world = LifecycleWorld(graph, setup, reference, rows, patient_session=session_id)
+    add_actors(world, session_id)
+    return world
+
+
+def add_actors(world: LifecycleWorld, session_id: UUID) -> None:
+    """Every catalog role plus own/other physician and patient, inactive, foreign, W."""
+    graph = world.graph
     for role in UserClinicRole.Role.values:
         world.actors[role] = Actor("staff", role, permission_actor(graph, role)[0])
     world.actors.update(_special_actors(graph))
@@ -277,9 +284,8 @@ def build_world(
         "patient", session_id=session_id, own_patient=True
     )
     world.actors["other_patient"] = Actor(
-        "patient", session_id=_other_patient_session(setup)
+        "patient", session_id=_other_patient_session(world.setup)
     )
-    return world
 
 
 @contextmanager

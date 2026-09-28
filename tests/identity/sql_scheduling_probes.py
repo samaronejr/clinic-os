@@ -244,3 +244,16 @@ def insert_held_booking(subjects: SchedulingSubjects, valid: bool) -> bool:
         }
     )
     return True
+
+
+def cancel_service_booking(appointment: UUID, valid: bool) -> bool:
+    """Cancel a booked service appointment in raw SQL (review B1 oracle)."""
+    if not valid:
+        _foreign_actor()
+    return (
+        # The lifecycle trigger stamps cancelled_at with DB time.
+        Appointment.objects.filter(pk=appointment).update(
+            status="cancelled", cancellation_reason="clinic_request"
+        )
+        == 1
+    )

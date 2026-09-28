@@ -14,9 +14,11 @@ equality, the no-show deadline) run under pinned DB clocks.
 
 from __future__ import annotations
 
+import ast
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 from uuid import uuid4
 
@@ -41,6 +43,7 @@ from django.db import DatabaseError, connection, transaction
 
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
+from scheduling.appointment_service_support import seed_appointment_setup
 from scheduling.lifecycle_races import race_expiry_and_booking, race_two_holds
 from scheduling.lifecycle_world import (
     STATES,
@@ -754,6 +757,15 @@ def test_expiry_is_machine_only_and_the_job_expires_due_holds(
         assert early.value.code == "illegal_transition"
     assert held.hold_expires_at is not None
     with pinned_clock(_database_url(), held.hold_expires_at), runtime_role():
+        # A due hold named under another clinic is refused like an unknown id
+        # (the resolver bypasses RLS, so its clinic predicate is the binding).
+        with pytest.raises(AppointmentAccessDeniedError):
+            services.expire(
+                clinic_id=world.graph.clinic_b,
+                appointment_id=held.pk,
+                expected_revision=held.revision,
+                command_id=uuid4(),
+            )
         assert expire_holds() == 1
         assert services.expire_due_holds() == ()
     _fresh(world, held)
@@ -865,10 +877,83 @@ def test_expiry_and_rebooking_race_writes_one_expiry(world: LifecycleWorld) -> N
     assert (expired_receipts, booked) == (1, 1)
 
 
-def test_lifecycle_services_read_no_python_clock() -> None:
-    # Hold deadlines, expiry and the no-show deadline are DB time only.
-    assert not hasattr(appointment_lifecycle, "timezone")
-    assert not hasattr(appointment_lifecycle, "datetime")
+CLOCK_MODULES = ("datetime", "time", "django.utils.timezone", "calendar")
+CLOCK_CALLS = frozenset({"now", "today", "utcnow", "time", "monotonic", "localtime"})
+
+
+def _python_clock_reads(path: Path) -> list[str]:
+    """Every import of a clock module and every call named like a clock read."""
+    found = []
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Import):
+            found += [a.name for a in node.names if a.name in CLOCK_MODULES]
+        elif isinstance(node, ast.ImportFrom) and node.module in CLOCK_MODULES:
+            found.append(f"from {node.module}")
+        elif isinstance(node, ast.Call):
+            callee = node.func
+            name = (
+                callee.attr
+                if isinstance(callee, ast.Attribute)
+                else getattr(callee, "id", "")
+            )
+            if name in CLOCK_CALLS:
+                found.append(f"call {name}()")
+    return found
+
+
+def test_lifecycle_services_read_no_python_clock(tmp_path: Path) -> None:
+    """Hold deadlines, expiry and the no-show deadline come from DB time only."""
+    root = Path(appointment_lifecycle.__file__).parent
+    for module in ("appointment_lifecycle.py", "tasks.py", "lifecycle_views.py"):
+        assert _python_clock_reads(root / module) == [], module
+    # The detector recognizes each spelling it must reject.
+    planted = tmp_path / "planted.py"
+    planted.write_text(
+        "import time\nfrom django.utils.timezone import now\n"
+        "from datetime import datetime\nnow()\ntime.time()\ndatetime.today()\n"
+    )
+    assert _python_clock_reads(planted) == [
+        "time",
+        "from django.utils.timezone",
+        "from datetime",
+        "call now()",
+        "call time()",
+        "call today()",
+    ]
+
+
+def test_db_time_alone_sets_hold_deadline_and_transition_time(
+    rbac_graph: RbacGraph,
+) -> None:
+    """With Python pinned to the fixture reference, DB time decides every stamp."""
+    setup = seed_appointment_setup(rbac_graph)
+    instant = datetime(2035, 6, 1, 7, 13, 29, 123456, tzinfo=UTC)
+    with (
+        pinned_clock(_database_url(), instant),
+        runtime_role(),
+        tenant_context(setup.actor_id, setup.organization_id),
+    ):
+        held = services.create_hold(
+            clinic_id=setup.clinic_id,
+            enrollment_id=setup.enrollment_id,
+            practitioner_id=setup.practitioner_id,
+            local_range=AppointmentLocalRange("2035-06-02T09:00", "2035-06-02T09:30"),
+            idempotency_key=uuid4(),
+        )
+        booked = services.book(
+            clinic_id=setup.clinic_id,
+            appointment_id=held.pk,
+            expected_revision=held.revision,
+            command_id=uuid4(),
+        )
+        receipts = list(
+            AppointmentTransition.objects.filter(appointment=held).values_list(
+                "occurred_at", flat=True
+            )
+        )
+    assert held.hold_expires_at == instant + timedelta(minutes=10)
+    assert booked.transitioned_at == instant
+    assert receipts == [instant, instant]
 
 
 def test_hold_is_due_exactly_at_its_deadline(rbac_graph: RbacGraph) -> None:

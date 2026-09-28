@@ -7,11 +7,15 @@ exists the reverse refuses (rollback = restore, never a history rewrite).
 
 from __future__ import annotations
 
+from difflib import SequenceMatcher
+from importlib import import_module
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
 import pytest
+from apps.ehr.migrations import _arrival_sql as arrival
+from apps.scheduling.migrations import _lifecycle_sql as lifecycle
 from apps.scheduling.services import arrive
 from apps.tenancy.db import tenant_context
 from django.db import IntegrityError, connection
@@ -104,3 +108,37 @@ def test_populated_upgrade_and_rollback_refusal(
             "AND name='0006_appointment_lifecycle_v2'"
         )
         assert cursor.fetchone() == (1,)
+
+
+def _hunks(source: str, derived: str) -> int:
+    matcher = SequenceMatcher(None, source.splitlines(), derived.splitlines())
+    return sum(1 for tag, *_ in matcher.get_opcodes() if tag != "equal")
+
+
+def test_every_derived_sql_edit_actually_matched() -> None:
+    """A drifted source makes a .replace() a silent no-op; this fails instead."""
+    patient_booking = import_module("apps.scheduling.migrations.0003_patient_booking")
+    assert lifecycle._GUARD_V1 == patient_booking.PATIENT_GUARD  # live 0003 body
+    pairs = {
+        # (source, derived): exact number of edited hunks
+        "guard_v1": (lifecycle._GUARD_V1, lifecycle._GUARD_V1_V2, 1),
+        "patient_guard": (lifecycle._PATIENT_GUARD, lifecycle._PATIENT_GUARD_V2, 1),
+        "patient_receipt": (
+            lifecycle._PATIENT_RECEIPT,
+            lifecycle._PATIENT_RECEIPT_V2,
+            1,
+        ),
+        "capacity": (lifecycle._CAPACITY, lifecycle._CAPACITY_V2, 3),
+    }
+    for name, (source, derived, hunks) in pairs.items():
+        assert source.startswith("CREATE OR REPLACE FUNCTION clinic_app."), name
+        assert _hunks(source, derived) == hunks, name
+    assert "__ENCOUNTER_STATUSES__" not in arrival.SQL + arrival.REVERSE_SQL
+    assert _hunks(arrival.REVERSE_SQL, arrival.SQL) == 1
+    assert "IN ('arrived', 'in_progress')" in arrival.SQL
+    protected = import_module("apps.ehr.migrations.0009_protected_fields")
+    body = arrival.REVERSE_SQL.removeprefix("SET LOCAL ROLE clinic_resolver;\n")
+    assert body.removesuffix("RESET ROLE;\n").strip() in protected._GUARD_SQL
+    # No empty separator parts remain in the assembled statements.
+    for order in (lifecycle._GUARD_SQL_ORDER, lifecycle._REVERSE_GUARD_SQL_ORDER):
+        assert all(part.strip() for part in order)

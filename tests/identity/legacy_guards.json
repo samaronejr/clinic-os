@@ -6815,9 +6815,10 @@
       "kind": "staff_guard",
       "probes": [
         "scheduling_capacity_guard",
+        "scheduling_capacity_guard#cancel",
         "scheduling_capacity_guard#insert"
       ],
-      "reason": "Trigger staff gate on service bookings; the oracles fire its UPDATE and INSERT branches under every stored staff role, expecting 42501 exactly where the bundle lacks the permission."
+      "reason": "Trigger staff gate on service bookings; the oracles fire its UPDATE (same-status and status-changing cancel) and INSERT branches under every stored staff role, expecting 42501 exactly where the bundle lacks the permission."
     },
     "clinic_app.scheduling_clock": {
       "discovery": {

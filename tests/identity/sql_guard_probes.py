@@ -23,6 +23,7 @@ from identity.permission_support import owner_context
 from identity.sql_scheduling_probes import (
     PRACTITIONER_ROLE,
     SchedulingSubjects,
+    cancel_service_booking,
     insert_definition,
     insert_held_booking,
     insert_resource_block,
@@ -361,6 +362,15 @@ PROBES = {
         lambda w, ok: [],
         refusal_state="42501",
         execute=lambda w, ok: update_service_booking(w.scheduling, ok),
+    ),
+    # Review B1: a status change of a service booking stays behind the same
+    # move permission as any other update (the lifecycle edge admits everyone).
+    "scheduling_capacity_guard#cancel": SqlProbe(
+        "scheduling_capacity_guard",
+        own_permitted("appointment.move", "appointment.move_own"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: cancel_service_booking(w.scheduling.appointment, ok),
     ),
     "scheduling_capacity_guard#insert": SqlProbe(
         "scheduling_capacity_guard",

@@ -72,8 +72,12 @@ _PATIENT_RECEIPT_V2 = _PATIENT_RECEIPT.replace(
     1,
 )
 
-# Status transitions are authorized by the lifecycle guard; capacity keeps the
-# move permission for range and other same-status updates, and never re-derives
+# The plan-item-21 move permission (move / own move_own / the patient's own booking)
+# still gates EVERY update of a service booking, status transitions included:
+# the lifecycle guard adds its own edge rules on top and never replaces this
+# check. The one exemption is the machine (W) held -> expired edge, which has
+# no human actor by definition; the lifecycle guard (fired first on the same
+# row) admits it only once the hold is due by DB time. Capacity never re-derives
 # units or rules when a row only moves between two occupying states.
 _CAPACITY = RESOURCE_SQL[
     RESOURCE_SQL.index(
@@ -85,8 +89,12 @@ _CAPACITY = RESOURCE_SQL[
 _CAPACITY_V2 = (
     _CAPACITY.replace(
         "  IF TG_OP='UPDATE' AND NEW.service_type_id IS NOT NULL AND NOT (",
-        "  IF TG_OP='UPDATE' AND NEW.status IS NOT DISTINCT FROM OLD.status\n"
-        "   AND NEW.service_type_id IS NOT NULL AND NOT (",
+        "  IF TG_OP='UPDATE' AND NEW.service_type_id IS NOT NULL\n"
+        "   AND NOT (OLD.status='held' AND NEW.status='expired'\n"
+        "    AND NULLIF(current_setting('app.current_user_id',true),'') IS NULL\n"
+        "    AND NULLIF(current_setting('app.current_patient_session',true),'')\n"
+        "     IS NULL)\n"
+        "   AND NOT (",
         1,
     )
     .replace(
@@ -238,10 +246,6 @@ GRANT UPDATE (status, last_command_id) ON clinic_app.scheduling_appointment
 _GUARD_SQL_PART_2 = """
 SET LOCAL ROLE clinic_resolver;
 """
-_GUARD_SQL_PART_4 = """
-"""
-_GUARD_SQL_PART_6 = """
-"""
 _GUARD_SQL_PART_8 = """
 CREATE FUNCTION clinic_app.scheduling_release_due_holds(
  booking uuid, org uuid, practitioner uuid, patient uuid, resources uuid[],
@@ -307,6 +311,10 @@ BEGIN
    IF NOT EXISTS (SELECT 1 FROM clinic_app.patient_booking_scope() s
     WHERE s.organization_id=NEW.organization_id AND s.clinic_id=NEW.clinic_id
      AND s.patient_id=NEW.patient_id) THEN
+    RAISE EXCEPTION 'scheduling access denied' USING ERRCODE='42501';
+   END IF;
+   -- Patients never create service bookings (no todo 21 book authority).
+   IF NEW.service_type_id IS NOT NULL THEN
     RAISE EXCEPTION 'scheduling access denied' USING ERRCODE='42501';
    END IF;
    IF (NEW.status='requested') <> approval THEN
@@ -548,9 +556,7 @@ _GUARD_SQL_ORDER = (
     _GUARD_V1_V2,
     _GUARD_SQL_PART_2,
     _PATIENT_GUARD_V2,
-    _GUARD_SQL_PART_4,
     _PATIENT_RECEIPT_V2,
-    _GUARD_SQL_PART_6,
     _CAPACITY_V2,
     _GUARD_SQL_PART_8,
 )
@@ -576,10 +582,6 @@ DROP FUNCTION clinic_app.scheduling_lifecycle_guard();
 DROP FUNCTION clinic_app.scheduling_release_due_holds(uuid,uuid,uuid,uuid,uuid[],
  timestamptz,timestamptz);
 """
-_REVERSE_GUARD_SQL_PART_4 = """
-"""
-_REVERSE_GUARD_SQL_PART_6 = """
-"""
 _REVERSE_GUARD_SQL_PART_8 = """
 RESET ROLE;
 REVOKE UPDATE (status, last_command_id) ON clinic_app.scheduling_appointment
@@ -594,9 +596,7 @@ _REVERSE_GUARD_SQL_ORDER = (
     _GUARD_V1,
     _REVERSE_GUARD_SQL_PART_2,
     _CAPACITY,
-    _REVERSE_GUARD_SQL_PART_4,
     _PATIENT_RECEIPT,
-    _REVERSE_GUARD_SQL_PART_6,
     _PATIENT_GUARD,
     _REVERSE_GUARD_SQL_PART_8,
 )
