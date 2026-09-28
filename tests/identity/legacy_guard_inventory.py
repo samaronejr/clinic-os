@@ -14,14 +14,16 @@ from typing import TYPE_CHECKING
 
 from identity.legacy_sql_inventory import discover_sql
 
-__all__ = ["declared_probes", "discover", "discover_sql"]
+__all__ = ["declared_probes", "discover", "discover_sql", "permission_aliases"]
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 ROOT = Path(__file__).resolve().parents[2]
+PERMISSION_HELPER = "require_permission"
 SIGNALS = {
     # The v2 authority check (has_permission): every caller is an authority site.
+    # discover() widens this per module to every alias permission_aliases finds.
     "permission_helper": r"\brequire_permission\(",
     "role_helper": (
         r"\b(?:require_current_actor_(?:clinic_roles|org_admin)|has_clinic_role|"
@@ -69,6 +71,63 @@ def _functions(
             yield prefix + node.name, node
 
 
+def _mentions(node: ast.AST, names: set[str]) -> bool:
+    """A value holds the helper unless every mention is a call's callee.
+
+    ``x = require_permission(...)`` stores a result; ``x = require_permission``,
+    ``partial(require_permission)`` or ``getattr(m, "require_permission")`` can
+    hold the function itself and count as a new spelling.
+    """
+    callees = {id(item.func) for item in ast.walk(node) if isinstance(item, ast.Call)}
+    return any(
+        id(item) not in callees
+        and (
+            (isinstance(item, ast.Name) and item.id in names)
+            or (isinstance(item, ast.Attribute) and item.attr in names)
+            or (isinstance(item, ast.Constant) and item.value in names)
+        )
+        for item in ast.walk(node)
+    )
+
+
+def permission_aliases(tree: ast.Module) -> frozenset[str]:
+    """Every local spelling that can hold require_permission in one module.
+
+    Fails closed rather than following values: an import alias, any assignment
+    or walrus whose value mentions a known spelling (including a getattr string
+    constant), and a star import from the defining module all widen the set,
+    to a fixed point. discover() then treats any reference, called or not, as
+    the permission_helper signal.
+    """
+    names = {PERMISSION_HELPER}
+    while True:
+        before = set(names)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name in names:
+                        names.add(alias.asname or alias.name)
+                    elif (
+                        alias.name == "*"
+                        and node.module == "apps.identity.current_context"
+                    ):
+                        names.add(PERMISSION_HELPER)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                value = node.value
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                if value is not None and _mentions(value, names):
+                    names.update(
+                        item.id
+                        for target in targets
+                        for item in ast.walk(target)
+                        if isinstance(item, ast.Name)
+                    )
+        if names == before:
+            return frozenset(names)
+
+
 def discover() -> dict[str, list[str]]:
     found: dict[str, list[str]] = {}
     for path in sorted((ROOT / "apps").rglob("*.py")):
@@ -77,11 +136,17 @@ def discover() -> dict[str, list[str]]:
             # SQL definitions here and deployed policy/resolver dependencies.
             continue
         module = str(path.relative_to(ROOT))[:-3].replace("/", ".")
-        for name, node in _functions(ast.parse(path.read_text()).body):
+        tree = ast.parse(path.read_text())
+        aliases = permission_aliases(tree)
+        patterns = dict(SIGNALS)
+        patterns["permission_helper"] = (
+            r"\b(?:" + "|".join(map(re.escape, sorted(aliases))) + r")\b"
+        )
+        for name, node in _functions(tree.body):
             body = ast.unparse(node)
             signals = sorted(
                 key
-                for key, pattern in SIGNALS.items()
+                for key, pattern in patterns.items()
                 if re.search(pattern, body, re.MULTILINE)
             )
             if signals:
