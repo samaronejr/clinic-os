@@ -122,6 +122,27 @@ non-enumerating: they return the same response as "does not exist".
 - Failure: stale revision is a conflict (`stale_revision`) and writes nothing;
   a non-draft version is a conflict (`precondition_failed`).
 
+### Autosave draft
+
+- Principal and preconditions: as Save draft; the command also names one
+  editor session and an idempotency key (`editor_command_id`).
+- Transition: the same revision increment as Save draft, plus an append-only
+  receipt; replaying the key returns the receipt and writes nothing.
+- Audit: `ehr.document.saved`; `ehr.draft.handed_over` when the draft lock
+  moves to another editor session.
+- Failure: a stale revision returns the current revision and a section
+  comparison and writes nothing; another live editor session is
+  `locked_by_other`; a reused key with different content is refused.
+
+### Open unscheduled encounter
+
+- Principal: a physician holding `encounter.open_unscheduled`.
+- Preconditions: the patient is enrolled in the clinic; the reason is one of
+  `walk_in`, `phone_follow_up`, `documentation_only`.
+- Transition: new `open` encounter with no appointment; retries converge on the
+  physician's open unscheduled encounter with that patient.
+- Audit: `ehr.encounter.opened_unscheduled`.
+
 ### Finalize document version
 
 - Principal: the draft's author, who must still satisfy the assigned-physician
@@ -257,6 +278,7 @@ non-enumerating: they return the same response as "does not exist".
 | Open encounter on a cancelled appointment | conflict `precondition_failed`; no encounter; nothing deleted |
 | Appointment cancelled after the encounter opened | appointment `cancelled`; encounter and documents unchanged; assigned physician may still finalize, amend and close |
 | Stale revision on save or amend | conflict `stale_revision`; nothing written; client reloads |
+| Stale revision on autosave | conflict with current revision and section comparison; nothing written; explicit merge |
 | Storage failure during save or finalize | prior state retained; edits shown as unsaved |
 | Finalize without step-up | denied `step_up_required` |
 | Finalize with missing required content | conflict `missing_required_content`; version stays `draft` |

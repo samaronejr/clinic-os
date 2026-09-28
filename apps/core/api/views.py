@@ -9,7 +9,10 @@ service's own role checks; refusals use the ``{code, message_key}`` contract.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema
 from rest_framework.parsers import JSONParser
@@ -21,7 +24,11 @@ from rest_framework.views import APIView
 from apps.core.api.authentication import StepUpVerified, UiSessionAuthentication
 from apps.core.api.errors import (
     ACCESS_DENIED,
+    DRAFT_NOT_EDITABLE,
+    HANDOVER_REQUESTED,
+    IDEMPOTENCY_MISMATCH,
     INVALID_INPUT,
+    LOCKED_BY_OTHER,
     UiApiError,
     ui_api_exception_handler,
     ui_api_not_found_response,
@@ -29,8 +36,20 @@ from apps.core.api.errors import (
 from apps.core.api.serializers import (
     AgendaPageSerializer,
     AgendaQueryRequestSerializer,
+    DraftAutosaveConflictSerializer,
+    DraftAutosaveRequestSerializer,
+    DraftAutosaveSavedSerializer,
     ErrorSerializer,
 )
+from apps.ehr.autosave import (
+    AutosaveIdempotencyError,
+    AutosaveResult,
+    AutosaveStatus,
+    autosave_draft,
+)
+from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.current_context import CurrentActorError
+from apps.identity.models import Clinic
 from apps.scheduling.services import (
     AgendaInputError,
     AvailabilityAccessDeniedError,
@@ -96,6 +115,81 @@ class AgendaQueryView(UiApiView):
         except AgendaInputError as error:
             raise UiApiError(INVALID_INPUT) from error
         return Response(AgendaPageSerializer(page).data)
+
+
+AUTOSAVE_RESPONSES: dict[int, object] = {
+    200: DraftAutosaveSavedSerializer,
+    409: DraftAutosaveConflictSerializer,
+    412: ErrorSerializer,
+    422: ErrorSerializer,
+    423: ErrorSerializer,
+    **ERROR_RESPONSES,
+}
+
+
+def _conflict_body(result: AutosaveResult) -> dict[str, object]:
+    return {
+        "current_revision": result.revision,
+        "diff": [
+            {
+                "section": section.section,
+                "theirs": section.theirs,
+                "lines": [
+                    {"kind": line.kind, "text": line.text} for line in section.lines
+                ],
+            }
+            for section in result.diff
+        ],
+    }
+
+
+class DraftAutosaveView(UiApiView):
+    """Autosave one SOAP draft revision; see ``apps.ehr.autosave``."""
+
+    @extend_schema(
+        operation_id="ehr_draft_autosave",
+        tags=["ehr"],
+        request=DraftAutosaveRequestSerializer,
+        responses=AUTOSAVE_RESPONSES,
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``ehr.autosave_draft``; unknown and foreign drafts match."""
+        body = DraftAutosaveRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            result = autosave_draft(
+                clinic_id=data["clinic_id"],
+                version_id=data["version_id"],
+                expected_revision=data["expected_revision"],
+                editor_command_id=data["editor_command_id"],
+                editor_session_id=data["editor_session"],
+                sections=dict(data["sections"]),
+                request_handover=data["handover"],
+            )
+        except (ClinicalAccessDeniedError, CurrentActorError) as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except ClinicalConflictError as error:
+            raise UiApiError(DRAFT_NOT_EDITABLE) from error
+        except AutosaveIdempotencyError as error:
+            raise UiApiError(IDEMPOTENCY_MISMATCH) from error
+        except ValidationError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        if result.status == AutosaveStatus.LOCKED_BY_OTHER:
+            raise UiApiError(LOCKED_BY_OTHER)
+        if result.status == AutosaveStatus.HANDOVER_REQUESTED:
+            raise UiApiError(HANDOVER_REQUESTED)
+        if result.status == AutosaveStatus.CONFLICT:
+            return Response(_conflict_body(result), status=409)
+        clinic = Clinic.objects.get(pk=data["clinic_id"])
+        saved_at = timezone.localtime(result.saved_at, ZoneInfo(str(clinic.timezone)))
+        return Response(
+            {
+                "revision": result.revision,
+                "saved_at": saved_at.isoformat(timespec="seconds"),
+                "lock": "handed_over" if result.handed_over else "held",
+            }
+        )
 
 
 @csrf_exempt

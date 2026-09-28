@@ -112,6 +112,21 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.encounter.closed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.encounter", "closed"
         ),
+        "ehr.encounter.opened_unscheduled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter", "opened_unscheduled"
+        ),
+        "ehr.episode.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.episode", "opened"
+        ),
+        "ehr.episode.closed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.episode", "closed"
+        ),
+        "ehr.episode.linked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.episode_encounter", "linked"
+        ),
+        "ehr.draft.handed_over": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.document_version", "handed_over"
+        ),
         "ehr.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.record", "denied"
         ),

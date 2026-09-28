@@ -98,6 +98,27 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "discarded",
     ),
     "ehr.encounter.closed": ("tenant", "clinic-os-web", "ehr.encounter", "closed"),
+    # Plan item 27: unscheduled encounters, episodes and the draft lock handover.
+    "ehr.encounter.opened_unscheduled": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.encounter",
+        "opened_unscheduled",
+    ),
+    "ehr.episode.opened": ("tenant", "clinic-os-web", "ehr.episode", "opened"),
+    "ehr.episode.closed": ("tenant", "clinic-os-web", "ehr.episode", "closed"),
+    "ehr.episode.linked": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.episode_encounter",
+        "linked",
+    ),
+    "ehr.draft.handed_over": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.document_version",
+        "handed_over",
+    ),
     "ehr.access.denied": ("tenant", "clinic-os-web", "ehr.record", "denied"),
     "ehr.attachment.uploaded": (
         "tenant",

@@ -176,6 +176,10 @@ def test_migrated_accented_soap_note_amends_and_finalizes(
                 # digest assertion intact, but give runtime calls their actual
                 # schema (0006 also upgrades this populated legacy booking).
                 ("scheduling", "0006_appointment_lifecycle_v2"),
+                # Plan item 27 adds the unscheduled-reason column every
+                # encounter read selects; applying it here also upgrades this
+                # populated legacy record through the rewritten guards.
+                ("ehr", "0010_autosave_episodes_unscheduled"),
             ]
         )
 

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% load static tz %}
+{% load static tz i18n components %}
 {% block title %}Atendimento · Clinic OS{% endblock %}
-{% block extra_head %}<script src="{% static 'js/ehr-draft.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><script src="{% static 'js/ehr-autosave.js' %}" defer></script>{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="encounter-title">
   <p class="eyebrow">Registro clínico</p>
   <h1 id="encounter-title">Atendimento</h1>
-  <p class="lede">Registre a consulta no seu ritmo. As alterações só são guardadas ao salvar o rascunho.</p>
+  <p class="lede">{% trans "Record the visit at your own pace. With JavaScript on, the draft is saved to the server while you type; the status says it is saved only after the server confirms." %}</p>
   <p><a href="{% url 'scheduling:agenda' clinic_id %}">Voltar à agenda</a></p>
   {% if error %}<div class="feedback feedback--error" role="alert">{{ error }}</div>{% endif %}
   {% if encounter %}
@@ -14,9 +14,13 @@
     <h2>{{ encounter.patient.full_name }}</h2>
     <form method="post" action="{% url 'ehr:history' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Problemas e alergias</button></form>
     <form method="post" action="{% url 'ehr:attachments' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Anexos</button></form>
+    {% if encounter.appointment_id %}
     <form method="post" action="{% url 'prescription:draft' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Prescrição sintética</button></form>
     {% if encounter.state == "open" %}<p><a class="button button--secondary" href="{% url 'teleconsult:staff' clinic_id %}" data-teleconsult-link>Teleconsulta</a></p>{% endif %}
     <p>Consulta de {{ encounter.appointment.start_at|date:"d/m/Y H:i" }} · Horário da clínica</p>
+    {% else %}
+    <p data-unscheduled-reason="{{ encounter.unscheduled_reason }}">{% trans "Encounter without an appointment" %} · {% trans encounter.get_unscheduled_reason_display %}</p>
+    {% endif %}
     <p data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}">Atendimento {{ encounter.get_state_display|lower }}{% if encounter.closed_at %} em {{ encounter.closed_at|date:"d/m/Y H:i" }}{% endif %} · Iniciado em {{ encounter.created_at|date:"d/m/Y H:i" }}</p>
     {% if version %}
     <section class="panel" data-version="{{ version.pk }}" data-revision="{{ version.revision }}" data-template-version="{{ version.template.version }}" data-state="{{ version.state }}"{% if version.content_digest %} data-digest="{{ version.content_digest }}"{% endif %}{% if version.amendment_of_id %} data-amendment-of="{{ version.amendment_of_id }}"{% endif %}>
@@ -25,14 +29,16 @@
       <p>Autoria: você · Criado em {{ version.created_at|date:"d/m/Y H:i" }} · Última gravação: {{ version.updated_at|date:"d/m/Y H:i" }}</p>
       {% if version.state == "draft" %}
       {% if version.amendment_of_id %}<p class="feedback">Retificação da versão {{ version.amendment_of.version }} · Motivo: {{ version.amendment_reason }}</p>{% endif %}
-      <p class="feedback {% if unsaved %}feedback--error{% endif %}" id="save-state" role="status" aria-live="polite" data-state="{% if unsaved %}unsaved{% else %}saved{% endif %}">{% if unsaved %}Alterações não salvas.{% else %}Versão salva carregada. Novas alterações precisam ser salvas.{% endif %}</p>
+      <p class="feedback {% if unsaved %}feedback--error{% endif %}" id="save-state" role="status" aria-live="polite" data-state="{% if conflict %}conflict{% elif unsaved %}unsaved{% else %}saved{% endif %}" data-text-saved="{% trans "Saved at __TIME__ (revision __N__)" %}" data-text-saving="{% trans "Saving… Changes are not confirmed until the server acknowledges them." %}" data-text-unsaved="{% trans "Unsaved changes." %}" data-text-retrying="{% trans "Not saved - retrying" %}" data-text-conflict="{% trans "Changed in another tab. Nothing was overwritten: compare below." %}" data-text-locked="{% trans "Another tab is editing this draft. Changes here are not saved." %}" data-text-handover="{% trans "Editing requested. The other tab hands over on its next save, or within two minutes." %}" data-text-handed-over="{% trans "Editing moved to another tab. Reload this page to continue here." %}" data-text-unconfirmed="{% trans "Changes not confirmed. Reopen the saved version to check." %}" data-text-closed="{% trans "Not saved. This draft can no longer be edited." %}" data-text-error="{% trans "Not saved. Reload the page to continue." %}">{% if conflict %}{% trans "Changed in another tab. Nothing was overwritten: compare below." %}{% elif unsaved %}Alterações não salvas.{% else %}{% blocktrans with revision=version.revision %}Saved version loaded (revision {{ revision }}).{% endblocktrans %}{% endif %}</p>
+      <div class="feedback" id="lock-panel" role="status" hidden><p data-lock-text></p><button class="button button--secondary" type="button" data-request-handover>{% trans "Request editing in this tab" %}</button></div>
+      {% include "ehr/partials/conflict.html" %}
       {% for message in messages %}{% if 'ehr.saved' in message.tags %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endif %}{% endfor %}
-      <form method="post" id="soap-form">{% csrf_token %}
-        {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+      <form method="post" id="soap-form" data-autosave="{% url 'ui_api:ehr-autosave' %}" data-clinic="{{ clinic_id }}">{% csrf_token %}
+        {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}<input type="hidden" name="editor_session" value="{{ editor_session }}">
         {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}<p>Alterações não salvas. Revise os campos abaixo.</p></div>{% endif %}
         {% for field in form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text %}<p id="{{ field.auto_id }}_helptext" class="help-text">{{ field.help_text }}</p>{% endif %}{{ field }}{{ field.errors }}</div>{% endfor %}
         <div class="actions"><button class="button" name="action" value="save" type="submit">Salvar rascunho</button><a class="button button--secondary" href="{% url 'ehr:encounter' clinic_id %}">Reabrir versão salva</a></div>
-        <p class="help-text">O rascunho não é um documento finalizado. Sem salvamento automático.</p>
+        <p class="help-text">{% trans "The draft is not a finalized document. Nothing is kept in this browser: without a server confirmation the text is not saved." %}</p>
       </form>
       <form method="post" id="finalize-form">{% csrf_token %}
         <input type="hidden" name="version_id" value="{{ version.pk }}"><input type="hidden" name="revision" value="{{ version.revision }}">
@@ -89,6 +95,7 @@
       <p class="help-text">O encerramento é definitivo. Retificações em documentos finalizados continuam possíveis.</p>
     </form>
     {% endif %}
+    {% if episodes %}{% include "ehr/partials/episodes.html" %}{% endif %}
     {% if versions %}
     <section class="panel" aria-labelledby="versions-title">
       <h2 id="versions-title">Versões do documento</h2>
@@ -119,6 +126,7 @@
     {% endif %}
     {% if intake_references %}<section class="panel"><h2>Pré-consulta vinculada</h2><p>Referências aos envios preservados na abertura deste atendimento. Reabrir um questionário não altera estes registros.</p>{% for reference in intake_references %}<p data-submission="{{ reference.submission_id }}">{{ reference.submission.response.template.title }} · Modelo versão {{ reference.submission.response.template.version }} · Envio revisão {{ reference.submission.revision }} · {{ reference.submission.created_at|date:"d/m/Y H:i" }}</p>{% endfor %}</section>{% endif %}
   {% endtimezone %}
-  {% else %}<section class="panel"><h2>Abra uma consulta pela agenda</h2><p>Somente o médico responsável pode iniciar ou continuar este atendimento.</p></section>{% endif %}
+  {% else %}<section class="panel"><h2>Abra uma consulta pela agenda</h2><p>Somente o médico responsável pode iniciar ou continuar este atendimento.</p></section>
+  {% if unscheduled_patients is not None %}{% include "ehr/partials/unscheduled.html" %}{% endif %}{% endif %}
 </section>
 {% endblock %}

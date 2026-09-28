@@ -537,8 +537,7 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ehr.services._appointment",
-        "apps.ehr.services._assigned"
+        "apps.ehr.services._encounter_actor"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -732,16 +731,6 @@
         "apps.ehr.services.view_version"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.ehr.views._selected",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.views._selected"
-      ]
     },
     {
       "symbol": "apps.ehr.views._show",
@@ -3456,6 +3445,124 @@
       "enforced_by": [
         "apps.scheduling.patient_authority.require_patient_booking_scope"
       ]
+    },
+    {
+      "symbol": "apps.ehr.autosave.autosave_draft",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "apps.ehr.services.view_version"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.autosave.section_edit_epochs",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "apps.ehr.services.view_version"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.episodes._require",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.episodes.close_episode",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.episodes.encounter_episodes",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.episodes.link_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.services._encounter_actor",
+      "signals": [
+        "actor",
+        "denial",
+        "membership",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services._encounter_actor"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.open_unscheduled_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.services.resume_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "apps.ehr.services.open_encounter"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+    },
+    {
+      "symbol": "apps.ehr.views._episode",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
     }
   ],
   "probes": [
@@ -3502,6 +3609,7 @@
     "apps.ehr.services._appointment",
     "apps.ehr.services._assigned",
     "apps.ehr.services._denied",
+    "apps.ehr.services._encounter_actor",
     "apps.ehr.services.create_draft",
     "apps.ehr.services.open_encounter",
     "apps.ehr.services.publish_template",
@@ -4994,6 +5102,7 @@
           }
         ],
         "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_clinical_sql.py"
         ],
         "policies": [
@@ -5005,9 +5114,13 @@
           "clinic_app.ehr_clinicaldocumentversion:clinical_insert",
           "clinic_app.ehr_clinicaldocumentversion:clinical_read",
           "clinic_app.ehr_clinicaldocumentversion:clinical_update",
+          "clinic_app.ehr_drafteditstate:draft_state_author",
+          "clinic_app.ehr_draftsavereceipt:draft_receipt_insert",
+          "clinic_app.ehr_draftsavereceipt:draft_receipt_read",
           "clinic_app.ehr_encounter:clinical_lock",
           "clinic_app.ehr_encounterintakereference:clinical_insert",
           "clinic_app.ehr_encounterintakereference:clinical_read",
+          "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.ehr_historyassessment:history_insert",
           "clinic_app.ehr_problem:history_insert",
           "clinic_app.identity_physicianevidence:physician_evidence_assigned",
@@ -5049,6 +5162,26 @@
         ],
         "migrations": [
           "apps/ehr/migrations/_attachment_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.ehr_autosave_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -5121,6 +5254,7 @@
           }
         ],
         "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_finalization_sql.py"
         ],
         "policies": [],
@@ -5206,6 +5340,7 @@
           }
         ],
         "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_clinical_sql.py"
         ],
         "policies": [],
@@ -5293,9 +5428,15 @@
           }
         ],
         "migrations": [
+          "apps/identity/migrations/_encounter_permission_sql.py",
           "apps/identity/migrations/_permission_sql.py"
         ],
         "policies": [
+          "clinic_app.ehr_encounter:clinical_insert",
+          "clinic_app.ehr_episode:episode_close",
+          "clinic_app.ehr_episode:episode_insert",
+          "clinic_app.ehr_episode:episode_read",
+          "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read"

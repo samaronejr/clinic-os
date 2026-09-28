@@ -1,0 +1,12 @@
+{% load i18n %}<section class="panel" id="episode-panel" aria-labelledby="episode-title">
+  <h2 id="episode-title">{% trans "Episode" %}</h2>
+  {% if episode_error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ episode_error }}</p>{% endif %}
+  {% if episodes.linked %}
+  <p data-linked-episode="{{ episodes.linked.pk }}" data-episode-state="{{ episodes.linked.state }}">{% blocktrans with title=episodes.linked.title %}This encounter belongs to the episode “{{ title }}”.{% endblocktrans %}{% if episodes.linked.state == "closed" %} {% trans "The episode is closed." %}{% endif %}</p>
+  {% if episodes.linked.state == "open" %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="episode_id" value="{{ episodes.linked.pk }}"><button class="button button--secondary" type="submit" name="action" value="episode_close">{% trans "Close episode" %}</button></form>{% endif %}
+  {% elif encounter.state == "open" %}
+  <p>{% trans "Group this encounter with the patient's related visits." %}</p>
+  {% if episodes.open_episodes %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><div class="field"><label for="episode-id">{% trans "Open episode" %}</label><select name="episode_id" id="episode-id" required>{% for episode in episodes.open_episodes %}<option value="{{ episode.pk }}">{{ episode.title }}</option>{% endfor %}</select></div><div class="actions"><button class="button button--secondary" type="submit" name="action" value="episode_link">{% trans "Add to this episode" %}</button></div></form>{% endif %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><div class="field"><label for="episode-new-title">{% trans "New episode title" %}</label><input type="text" name="title" id="episode-new-title" maxlength="160" required></div><div class="actions"><button class="button button--secondary" type="submit" name="action" value="episode_open">{% trans "Open an episode with this encounter" %}</button></div></form>
+  {% else %}<p>{% trans "This encounter is not part of an episode." %}</p>{% endif %}
+</section>

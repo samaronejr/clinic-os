@@ -44,7 +44,12 @@ class SpecialtyTemplate(TenantScopedModel):
 
 
 class Encounter(TenantScopedModel):
-    """One retained clinical identity per appointment, independent of cancellation."""
+    """One retained clinical identity per appointment, or one unscheduled visit.
+
+    A scheduled-bound encounter keeps exactly one appointment. An unscheduled
+    encounter (todo 27) has no appointment and records why it exists instead;
+    the database binding guard admits exactly one of the two shapes.
+    """
 
     class State(models.TextChoices):
         """Closed encounters cannot be reopened."""
@@ -52,10 +57,20 @@ class Encounter(TenantScopedModel):
         OPEN = "open", "Aberto"
         CLOSED = "closed", "Encerrado"
 
+    class UnscheduledReason(models.TextChoices):
+        """Closed vocabulary: why an encounter exists without an appointment."""
+
+        WALK_IN = "walk_in", "Walk-in visit"
+        PHONE_FOLLOW_UP = "phone_follow_up", "Phone follow-up"
+        DOCUMENTATION_ONLY = "documentation_only", "Documentation only"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
     appointment = models.OneToOneField(
-        "scheduling.Appointment", on_delete=models.PROTECT
+        "scheduling.Appointment", on_delete=models.PROTECT, null=True, blank=True
+    )
+    unscheduled_reason = models.CharField(
+        max_length=24, choices=UnscheduledReason, blank=True, default=""
     )
     patient = models.ForeignKey("intake.Patient", on_delete=models.PROTECT)
     physician = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -65,7 +80,7 @@ class Encounter(TenantScopedModel):
     closed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        """Keep closure and timestamps coherent."""
+        """Keep closure, timestamps and the scheduled/unscheduled shape coherent."""
 
         constraints: ClassVar = [
             models.CheckConstraint(
@@ -73,7 +88,82 @@ class Encounter(TenantScopedModel):
                 | models.Q(state="closed", closed_at__isnull=False),
                 name="ehr_encounter_state_check",
             ),
+            models.CheckConstraint(
+                condition=models.Q(appointment__isnull=False, unscheduled_reason="")
+                | models.Q(
+                    appointment__isnull=True,
+                    unscheduled_reason__in=[
+                        "walk_in",
+                        "phone_follow_up",
+                        "documentation_only",
+                    ],
+                ),
+                name="ehr_encounter_binding_shape",
+            ),
+            # Parallel or repeated unscheduled starts converge on one open visit
+            # per physician and patient, like parallel scheduled starts.
+            models.UniqueConstraint(
+                fields=("clinic", "patient", "physician"),
+                condition=models.Q(appointment__isnull=True, state="open"),
+                name="ehr_encounter_one_open_unscheduled",
+            ),
         ]
+
+
+class Episode(TenantScopedModel):
+    """A clinician-named grouping of one patient's encounters in one clinic."""
+
+    class State(models.TextChoices):
+        """Closed episodes accept no new encounters and never reopen."""
+
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
+    patient = models.ForeignKey("intake.Patient", on_delete=models.PROTECT)
+    # The title names a clinical problem, so it is PHI and stays enveloped.
+    title = EncryptedTextField(purpose="ehr.episode.title")
+    state = models.CharField(max_length=16, choices=State, default=State.OPEN)
+    opened_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
+    )
+    opened_at = models.DateTimeField(auto_now_add=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Closure fields move together."""
+
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    state="open", closed_at__isnull=True, closed_by__isnull=True
+                )
+                | models.Q(
+                    state="closed", closed_at__isnull=False, closed_by__isnull=False
+                ),
+                name="ehr_episode_state_check",
+            ),
+        ]
+
+
+class EpisodeEncounter(TenantScopedModel):
+    """Append-only membership: an encounter belongs to at most one episode."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    episode = models.ForeignKey(Episode, on_delete=models.PROTECT)
+    encounter = models.OneToOneField(Encounter, on_delete=models.PROTECT)
+    linked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
 
 class ClinicalDocument(TenantScopedModel):
@@ -238,6 +328,80 @@ class ClinicalDocumentVersion(TenantScopedModel):
         """Store the SOAP body as one envelope plus its plaintext digest."""
         self.content = {key: content[key] for key in SOAP_FIELD_NAMES}
         self.content_sha256 = sha256(rfc8785.dumps(self.content)).hexdigest()
+
+
+class DraftEditState(TenantScopedModel):
+    """Per-draft autosave coordination: section epochs and the author lock.
+
+    ``section_edit_epochs`` counts acknowledged edits per SOAP section so a
+    later AI merge (todo 42) can tell which sections changed after a model
+    result. The lock names one editor session (a browser tab), never a user:
+    the draft's single author may hold it from one tab at a time, it expires
+    two minutes after that tab's last autosave, and another tab may request
+    a handover. Nothing here stores clinical text.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    version = models.OneToOneField(ClinicalDocumentVersion, on_delete=models.PROTECT)
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    section_edit_epochs = models.JSONField(default=dict)
+    lock_holder = models.UUIDField(null=True, blank=True)
+    lock_expires_at = models.DateTimeField(null=True, blank=True)
+    handover_requested_by = models.UUIDField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """A lock always has an expiry; a handover needs a live holder."""
+
+        constraints: ClassVar = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    lock_holder__isnull=True, lock_expires_at__isnull=True
+                )
+                | models.Q(lock_holder__isnull=False, lock_expires_at__isnull=False),
+                name="ehr_draftstate_lock_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(handover_requested_by__isnull=True)
+                | models.Q(lock_holder__isnull=False),
+                name="ehr_draftstate_handover_check",
+            ),
+        ]
+
+
+class DraftSaveReceipt(TenantScopedModel):
+    """Append-only acknowledgement of one autosave command (idempotency key).
+
+    Replaying ``command_id`` returns this receipt instead of writing again;
+    ``request_sha256`` binds the key to the exact request so a reused key with
+    different content is refused rather than silently acknowledged.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    version = models.ForeignKey(ClinicalDocumentVersion, on_delete=models.PROTECT)
+    command_id = models.UUIDField()
+    request_sha256 = models.CharField(max_length=64)
+    base_revision = models.PositiveIntegerField()
+    revision = models.PositiveIntegerField()
+    saved_at = models.DateTimeField()
+
+    class Meta:
+        """One receipt per command and draft; revisions move forward by one."""
+
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("version", "command_id"), name="ehr_draftreceipt_command_uniq"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(request_sha256__regex=r"^[0-9a-f]{64}$"),
+                name="ehr_draftreceipt_digest_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(revision=models.F("base_revision"))
+                | models.Q(revision=models.F("base_revision") + 1),
+                name="ehr_draftreceipt_revision_check",
+            ),
+        ]
 
 
 class ClinicalAttachment(TenantScopedModel):

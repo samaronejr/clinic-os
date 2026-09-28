@@ -1,0 +1,11 @@
+{% load i18n %}<section class="panel" id="unscheduled-panel" aria-labelledby="unscheduled-title">
+  <h2 id="unscheduled-title">{% trans "Encounter without an appointment" %}</h2>
+  <p>{% trans "For a walk-in visit, a phone follow-up or documentation only. The reason is recorded with the encounter." %}</p>
+  {% if unscheduled_patients %}
+  <form method="post" id="unscheduled-form">{% csrf_token %}
+    <div class="field"><label for="unscheduled-patient">{% trans "Patient" %}</label><select name="enrollment_id" id="unscheduled-patient" required><option value="">{% trans "Select a patient" %}</option>{% for enrollment in unscheduled_patients %}<option value="{{ enrollment.pk }}">{{ enrollment.patient.full_name }}</option>{% endfor %}</select></div>
+    {% trans "Reason" as reason_legend %}{% include "includes/components/segmented.html" with name="reason" legend=reason_legend options=unscheduled_reasons value="walk_in" id="unscheduled-reason" %}
+    <div class="actions"><button class="button" type="submit" name="action" value="open_unscheduled">{% trans "Start encounter" %}</button></div>
+  </form>
+  {% else %}<p>{% trans "No enrolled patient is available in this clinic." %}</p>{% endif %}
+</section>

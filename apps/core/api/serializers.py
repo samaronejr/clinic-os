@@ -71,3 +71,90 @@ class AgendaPageSerializer(serializers.Serializer[AgendaPage]):
     page_count = serializers.IntegerField(read_only=True)
     start_at = serializers.DateTimeField(read_only=True)
     end_at = serializers.DateTimeField(read_only=True)
+
+
+# Plan item 27 autosave: every body scalar is bounded before the service sees it.
+AUTOSAVE_MAX_REVISION: Final = 2_147_483_647
+AUTOSAVE_MAX_SECTION: Final = 20_000
+
+
+class SoapSectionsSerializer(serializers.Serializer[None]):
+    """Exactly the four SOAP sections as plain text; never trimmed."""
+
+    subjective = serializers.CharField(
+        allow_blank=True, trim_whitespace=False, max_length=AUTOSAVE_MAX_SECTION
+    )
+    objective = serializers.CharField(
+        allow_blank=True, trim_whitespace=False, max_length=AUTOSAVE_MAX_SECTION
+    )
+    assessment = serializers.CharField(
+        allow_blank=True, trim_whitespace=False, max_length=AUTOSAVE_MAX_SECTION
+    )
+    plan = serializers.CharField(
+        allow_blank=True, trim_whitespace=False, max_length=AUTOSAVE_MAX_SECTION
+    )
+
+    def to_internal_value(self, data: Any) -> dict[str, Any]:  # noqa: ANN401 - DRF hook
+        """Refuse any key outside the four SOAP sections."""
+        if isinstance(data, dict) and set(data) - set(self.fields):
+            message = "unknown section"
+            raise serializers.ValidationError(message)
+        return dict(super().to_internal_value(data))
+
+
+class DraftAutosaveRequestSerializer(serializers.Serializer[None]):
+    """POST body of ``ehr/autosave``; record selectors stay in the body."""
+
+    clinic_id = serializers.UUIDField()
+    version_id = serializers.UUIDField()
+    expected_revision = serializers.IntegerField(
+        min_value=1, max_value=AUTOSAVE_MAX_REVISION
+    )
+    editor_command_id = serializers.UUIDField(
+        help_text="Idempotency key: a retry of the same save reuses it."
+    )
+    editor_session = serializers.UUIDField(
+        help_text="The editing tab; one tab holds the draft lock at a time."
+    )
+    sections = SoapSectionsSerializer()
+    handover = serializers.BooleanField(
+        default=False,
+        help_text="Ask the tab holding the lock to hand it over after its next save.",
+    )
+
+
+class DraftAutosaveSavedSerializer(serializers.Serializer[Any]):
+    """The acknowledged save: shown as saved only after this response."""
+
+    revision = serializers.IntegerField(read_only=True)
+    saved_at = serializers.CharField(
+        read_only=True, help_text="ISO 8601 in the clinic's UTC offset."
+    )
+    lock = serializers.ChoiceField(
+        choices=(("held", "held"), ("handed_over", "handed_over")), read_only=True
+    )
+
+
+class DraftDiffLineSerializer(serializers.Serializer[Any]):
+    """One compared line; ``removed`` exists only in the saved text."""
+
+    kind = serializers.ChoiceField(
+        choices=(("same", "same"), ("added", "added"), ("removed", "removed")),
+        read_only=True,
+    )
+    text = serializers.CharField(read_only=True)
+
+
+class DraftSectionDiffSerializer(serializers.Serializer[Any]):
+    """The saved text of one changed section and its comparison."""
+
+    section = serializers.CharField(read_only=True)
+    theirs = serializers.CharField(read_only=True)
+    lines = DraftDiffLineSerializer(many=True, read_only=True)
+
+
+class DraftAutosaveConflictSerializer(serializers.Serializer[Any]):
+    """A stale revision: nothing was written; merge explicitly."""
+
+    current_revision = serializers.IntegerField(read_only=True)
+    diff = DraftSectionDiffSerializer(many=True, read_only=True)

@@ -271,7 +271,11 @@ def _subject(encounter: Encounter) -> Subject:
         issuer_synthetic=profile.synthetic if profile is not None else True,
         clinic_name=clinic.name,
         clinic_timezone=str(clinic.timezone),
-        encounter_at=encounter.appointment.start_at,
+        encounter_at=(
+            encounter.appointment.start_at
+            if encounter.appointment is not None
+            else encounter.created_at
+        ),
         encounter_id=encounter.pk,
     )
 

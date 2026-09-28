@@ -51,6 +51,11 @@ NOT_ACCEPTABLE: Final = ApiError(406, "not_acceptable")
 UNSUPPORTED_MEDIA_TYPE: Final = ApiError(415, "unsupported_media_type")
 THROTTLED: Final = ApiError(429, "throttled")
 NOT_FOUND: Final = ApiError(404, "not_found")
+# Plan item 27 autosave outcomes that write nothing.
+DRAFT_NOT_EDITABLE: Final = ApiError(412, "precondition_failed")
+LOCKED_BY_OTHER: Final = ApiError(423, "locked_by_other")
+HANDOVER_REQUESTED: Final = ApiError(423, "handover_requested")
+IDEMPOTENCY_MISMATCH: Final = ApiError(422, "idempotency_mismatch")
 INTERNAL_ERROR: Final = ApiError(500, "internal_error")
 ERROR_CODES: Final = tuple(
     error.code
@@ -65,6 +70,10 @@ ERROR_CODES: Final = tuple(
         UNSUPPORTED_MEDIA_TYPE,
         THROTTLED,
         NOT_FOUND,
+        DRAFT_NOT_EDITABLE,
+        LOCKED_BY_OTHER,
+        HANDOVER_REQUESTED,
+        IDEMPOTENCY_MISMATCH,
         INTERNAL_ERROR,
     )
 )

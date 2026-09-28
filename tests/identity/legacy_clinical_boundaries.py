@@ -82,6 +82,14 @@ BOUNDARIES = (
     ),
     Boundary("apps.ehr.services._assigned", "assignment", PHYSICIAN, _assignment),
     Boundary(
+        "apps.ehr.services._encounter_actor",
+        "assignment",
+        PHYSICIAN,
+        lambda w, ok: services._encounter_actor(
+            w.clinic_for(ok), w.version.document.encounter
+        ),
+    ),
+    Boundary(
         "apps.ehr.services.publish_template",
         "service",
         ADMINS,

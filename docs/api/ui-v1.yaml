@@ -70,6 +70,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/ui/v1/ehr/autosave/:
+    post:
+      operationId: ehr_draft_autosave
+      description: Adapt ``ehr.autosave_draft``; unknown and foreign drafts match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftAutosaveRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveSaved'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveConflict'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '423':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
     AgendaItem:
@@ -186,6 +274,10 @@ components:
       - unsupported_media_type
       - throttled
       - not_found
+      - precondition_failed
+      - locked_by_other
+      - handover_requested
+      - idempotency_mismatch
       - internal_error
       type: string
       description: |-
@@ -199,7 +291,114 @@ components:
         * `unsupported_media_type` - unsupported_media_type
         * `throttled` - throttled
         * `not_found` - not_found
+        * `precondition_failed` - precondition_failed
+        * `locked_by_other` - locked_by_other
+        * `handover_requested` - handover_requested
+        * `idempotency_mismatch` - idempotency_mismatch
         * `internal_error` - internal_error
+    DraftAutosaveConflict:
+      type: object
+      description: 'A stale revision: nothing was written; merge explicitly.'
+      properties:
+        current_revision:
+          type: integer
+          readOnly: true
+        diff:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftSectionDiff'
+          readOnly: true
+      required:
+      - current_revision
+      - diff
+    DraftAutosaveRequest:
+      type: object
+      description: POST body of ``ehr/autosave``; record selectors stay in the body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        version_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        editor_command_id:
+          type: string
+          format: uuid
+          description: 'Idempotency key: a retry of the same save reuses it.'
+        editor_session:
+          type: string
+          format: uuid
+          description: The editing tab; one tab holds the draft lock at a time.
+        sections:
+          $ref: '#/components/schemas/SoapSections'
+        handover:
+          type: boolean
+          default: false
+          description: Ask the tab holding the lock to hand it over after its next
+            save.
+      required:
+      - clinic_id
+      - editor_command_id
+      - editor_session
+      - expected_revision
+      - sections
+      - version_id
+    DraftAutosaveSaved:
+      type: object
+      description: 'The acknowledged save: shown as saved only after this response.'
+      properties:
+        revision:
+          type: integer
+          readOnly: true
+        saved_at:
+          type: string
+          readOnly: true
+          description: ISO 8601 in the clinic's UTC offset.
+        lock:
+          allOf:
+          - $ref: '#/components/schemas/LockEnum'
+          readOnly: true
+      required:
+      - lock
+      - revision
+      - saved_at
+    DraftDiffLine:
+      type: object
+      description: One compared line; ``removed`` exists only in the saved text.
+      properties:
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+      required:
+      - kind
+      - text
+    DraftSectionDiff:
+      type: object
+      description: The saved text of one changed section and its comparison.
+      properties:
+        section:
+          type: string
+          readOnly: true
+        theirs:
+          type: string
+          readOnly: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftDiffLine'
+          readOnly: true
+      required:
+      - lines
+      - section
+      - theirs
     Error:
       type: object
       description: The ``{code, message_key}`` refusal body shared by every endpoint.
@@ -211,6 +410,45 @@ components:
       required:
       - code
       - message_key
+    KindEnum:
+      enum:
+      - same
+      - added
+      - removed
+      type: string
+      description: |-
+        * `same` - same
+        * `added` - added
+        * `removed` - removed
+    LockEnum:
+      enum:
+      - held
+      - handed_over
+      type: string
+      description: |-
+        * `held` - held
+        * `handed_over` - handed_over
+    SoapSections:
+      type: object
+      description: Exactly the four SOAP sections as plain text; never trimmed.
+      properties:
+        subjective:
+          type: string
+          maxLength: 20000
+        objective:
+          type: string
+          maxLength: 20000
+        assessment:
+          type: string
+          maxLength: 20000
+        plan:
+          type: string
+          maxLength: 20000
+      required:
+      - assessment
+      - objective
+      - plan
+      - subjective
     ViewEnum:
       enum:
       - day

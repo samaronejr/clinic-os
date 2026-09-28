@@ -82,6 +82,12 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ehr_encounterintakereference",
         # Exact quarantine policies and ACLs are checked in test_attachments.
         "ehr_clinicalattachment",
+        # Plan item 27 episodes and autosave state: exact policies, grants and
+        # triggers are checked in tests/ehr/test_autosave.py.
+        "ehr_episode",
+        "ehr_episodeencounter",
+        "ehr_drafteditstate",
+        "ehr_draftsavereceipt",
         # Task-32 author-only drafts and snapshots: test_prescription_drafts.
         "prescription_prescriptiondraft",
         "prescription_prescriptionitem",

@@ -124,8 +124,19 @@ BUNDLES_V1: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
         "owner": _ORG_ADMIN,
     }
 )
+# Plan item 27 adds encounter authority in a successor bundle, never by editing v1.
+# Opening an encounter without an appointment is the registered physician's
+# clinical act (RP: clinical narrative); every other catalog role lacks it.
+ENCOUNTER_PERMISSIONS_V2: Final = frozenset({"encounter.open_unscheduled"})
+BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        role: permissions
+        | (ENCOUNTER_PERMISSIONS_V2 if role == "physician" else frozenset())
+        for role, permissions in BUNDLES_V1.items()
+    }
+)
 PERMISSIONS: Final[frozenset[str]] = frozenset().union(
-    *BUNDLES_V1.values(), {"restricted.read"}
+    *BUNDLES_V2.values(), {"restricted.read"}
 )
 # Patient-specific clinical actions require a current professional registration
 # and assigned/care-team scope. Break-glass here only requests a future grant.
@@ -153,6 +164,10 @@ PATIENT_SCOPED_PERMISSIONS_V1: Final = PROFESSIONAL_PERMISSIONS_V1 - {
     "break_glass.request",
     "break_glass.request_scoped",
 }
+# v2 encounter authority needs a current registration but no patient scope.
+PROFESSIONAL_PERMISSIONS_V2: Final = (
+    PROFESSIONAL_PERMISSIONS_V1 | ENCOUNTER_PERMISSIONS_V2
+)
 
 
 def _parse_uuid(raw_value: str | UUID | None) -> UUID | None:

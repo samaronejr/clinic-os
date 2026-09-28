@@ -23,9 +23,8 @@ from apps.ehr.services import (
     SOAP_FIELDS,
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _appointment,
-    _assigned,
     _denied,
+    _encounter_actor,
     record_denial,
     view_version,
 )
@@ -85,9 +84,7 @@ def _author_version(clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     )
     if version is None:
         _denied(clinic_id, version_id, "no_care_relationship")
-    actor = _assigned(
-        _appointment(clinic_id, version.document.encounter.appointment_id)
-    )
+    actor = _encounter_actor(clinic_id, version.document.encounter)
     if version.author_id != actor:
         _denied(clinic_id, version_id, "not_assigned")
     return version
@@ -168,9 +165,7 @@ def amend_document(
 ) -> ClinicalDocumentVersion:
     """Open one linked amendment draft on the document's current version."""
     authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _assigned(
-        _appointment(clinic_id, authorized.document.encounter.appointment_id)
-    )
+    actor = _encounter_actor(clinic_id, authorized.document.encounter)
     reason = reason.strip()
     if not reason or len(reason) > MAX_REASON:
         msg = "Informe o motivo da retificação."
@@ -246,7 +241,7 @@ def close_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:
     encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    _assigned(_appointment(clinic_id, encounter.appointment_id))
+    _encounter_actor(clinic_id, encounter)
     with transaction.atomic():
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         if encounter.state == Encounter.State.CLOSED:

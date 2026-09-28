@@ -2616,3 +2616,127 @@ msgstr "A reserva deste horário expirou. Escolha o horário novamente."
 
 msgid "This appointment changed meanwhile. Reload before trying again."
 msgstr "Esta consulta mudou enquanto isso. Recarregue antes de tentar novamente."
+
+# Plan item 27: EHR autosave, conflict compare, episodes and unscheduled encounters.
+msgid "__ADDED__ added · __REMOVED__ removed"
+msgstr "__ADDED__ adicionada(s) · __REMOVED__ removida(s)"
+
+msgid "Add to this episode"
+msgstr "Incluir neste episódio"
+
+msgid "Another tab is editing this draft. Changes here are not saved."
+msgstr "Outra aba está editando este rascunho. As alterações feitas aqui não foram salvas."
+
+msgid "Another tab saved this draft after you started editing. Nothing was overwritten. Removed lines exist only in the saved revision; added lines exist only in your text. Keep or replace each section, then save the combined version."
+msgstr "Outra aba salvou este rascunho depois que você começou a editar. Nada foi sobrescrito. Linhas removidas existem só na revisão salva; linhas adicionadas existem só no seu texto. Mantenha ou substitua cada seção e salve a versão combinada."
+
+msgid "Changed in another tab. Nothing was overwritten: compare below."
+msgstr "Alterado em outra aba. Nada foi sobrescrito: compare abaixo."
+
+msgid "Changes not confirmed. Reopen the saved version to check."
+msgstr "Alterações não confirmadas. Reabra a versão salva para conferir."
+
+msgid "Close episode"
+msgstr "Encerrar episódio"
+
+msgid "Compare before saving"
+msgstr "Compare antes de salvar"
+
+msgid "Editing moved to another tab. Reload this page to continue here."
+msgstr "A edição passou para outra aba. Recarregue esta página para continuar aqui."
+
+msgid "Editing requested. The other tab hands over on its next save, or within two minutes."
+msgstr "Edição solicitada. A outra aba libera no próximo salvamento ou em até dois minutos."
+
+msgid "Encounter without an appointment"
+msgstr "Atendimento sem agendamento"
+
+msgid "Episode"
+msgstr "Episódio"
+
+msgid "For a walk-in visit, a phone follow-up or documentation only. The reason is recorded with the encounter."
+msgstr "Para atendimento sem hora marcada, retorno por telefone ou somente registro. O motivo fica registrado no atendimento."
+
+msgid "Group this encounter with the patient's related visits."
+msgstr "Agrupe este atendimento com os atendimentos relacionados do paciente."
+
+msgid "New episode title"
+msgstr "Título do novo episódio"
+
+msgid "No enrolled patient is available in this clinic."
+msgstr "Nenhum paciente matriculado nesta clínica."
+
+msgid "Not saved. Reload the page to continue."
+msgstr "Não salvo. Recarregue a página para continuar."
+
+msgid "Not saved - retrying"
+msgstr "Não salvo - tentando novamente"
+
+msgid "Not saved. This draft can no longer be edited."
+msgstr "Não salvo. Este rascunho não pode mais ser editado."
+
+msgid "Open an episode with this encounter"
+msgstr "Abrir episódio com este atendimento"
+
+msgid "Open episode"
+msgstr "Episódio aberto"
+
+msgid "Record the visit at your own pace. With JavaScript on, the draft is saved to the server while you type; the status says it is saved only after the server confirms."
+msgstr "Registre a consulta no seu ritmo. Com JavaScript ativo, o rascunho é salvo no servidor enquanto você escreve; o status só indica salvo depois da confirmação do servidor."
+
+msgid "Request editing in this tab"
+msgstr "Solicitar edição nesta aba"
+
+msgid "Saved at __TIME__ (revision __N__)"
+msgstr "Salvo às __TIME__ (revisão __N__)"
+
+msgid "Save the combined version"
+msgstr "Salvar a versão combinada"
+
+msgid "Saving… Changes are not confirmed until the server acknowledges them."
+msgstr "Salvando… As alterações só ficam confirmadas quando o servidor responder."
+
+msgid "__SECTION__: saved revision __N__ compared with your text"
+msgstr "__SECTION__: revisão salva __N__ comparada ao seu texto"
+
+msgid "Select a patient"
+msgstr "Selecione um paciente"
+
+msgid "Start encounter"
+msgstr "Iniciar atendimento"
+
+msgid "The draft is not a finalized document. Nothing is kept in this browser: without a server confirmation the text is not saved."
+msgstr "O rascunho não é um documento finalizado. Nada fica guardado neste navegador: sem confirmação do servidor, o texto não está salvo."
+
+msgid "The episode is closed."
+msgstr "O episódio está encerrado."
+
+msgid "This encounter is not part of an episode."
+msgstr "Este atendimento não pertence a um episódio."
+
+msgid "Unsaved changes."
+msgstr "Alterações não salvas."
+
+msgid "Use the saved text in __SECTION__"
+msgstr "Usar o texto salvo em __SECTION__"
+
+msgid "Saved version loaded (revision %(revision)s)."
+msgstr "Versão salva carregada (revisão %(revision)s)."
+
+msgid "Use the saved text in %(section)s"
+msgstr "Usar o texto salvo em %(section)s"
+
+msgid "%(section)s: saved revision %(revision)s compared with your text"
+msgstr "%(section)s: revisão salva %(revision)s comparada ao seu texto"
+
+msgid "This encounter belongs to the episode “%(title)s”."
+msgstr "Este atendimento pertence ao episódio “%(title)s”."
+
+msgid "Walk-in visit"
+msgstr "Sem hora marcada"
+
+msgid "Phone follow-up"
+msgstr "Retorno por telefone"
+
+msgid "Documentation only"
+msgstr "Somente registro"

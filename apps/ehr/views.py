@@ -4,24 +4,33 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.ehr.autosave import section_diff
+from apps.ehr.episodes import (
+    EncounterEpisodes,
+    close_episode,
+    encounter_episodes,
+    link_encounter,
+    open_episode,
+)
 from apps.ehr.finalization import (
     amend_document,
     close_encounter,
     discard_draft,
     finalize_version,
 )
-from apps.ehr.forms import AmendmentForm, DraftForm
+from apps.ehr.forms import SECTION_LABELS, AmendmentForm, DraftForm
 from apps.ehr.models import (
     ClinicalDocumentVersion,
     Encounter,
@@ -33,16 +42,20 @@ from apps.ehr.services import (
     ClinicalConflictError,
     create_draft,
     open_encounter,
+    open_unscheduled_encounter,
     record_clinical_note,
+    resume_encounter,
     view_version,
 )
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
+    require_permission,
 )
 from apps.identity.models import UserClinicRole
 from apps.identity.otp import flow_redirect, privileged_totp_required, safe_next_url
 from apps.identity.stepup import StepUpRequired
+from apps.intake.models import PatientClinicEnrollment
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse, HttpResponseBase
@@ -54,6 +67,30 @@ OK = 200
 def continuation(clinic_id: UUID) -> str:
     """Continue authentication without record identifiers or note text in the URL."""
     return reverse("ehr:encounter", kwargs={"clinic_id": clinic_id})
+
+
+MAX_UNSCHEDULED_PATIENTS = 100
+
+
+def _episodes(clinic_id: UUID, encounter: Encounter) -> EncounterEpisodes | None:
+    """Episodes need ``clinical.read`` scope; without it the panel stays hidden."""
+    try:
+        return encounter_episodes(clinic_id=clinic_id, encounter_id=encounter.pk)
+    except ClinicalAccessDeniedError:
+        return None
+
+
+def _unscheduled_options(clinic_id: UUID) -> list[PatientClinicEnrollment] | None:
+    """Offer the unscheduled start only to actors holding its permission."""
+    try:
+        require_permission("encounter.open_unscheduled", clinic_id=clinic_id)
+    except CurrentActorError:
+        return None
+    return list(
+        PatientClinicEnrollment.objects.filter(clinic_id=clinic_id)
+        .select_related("patient")
+        .order_by("-created_at", "pk")[:MAX_UNSCHEDULED_PATIENTS]
+    )
 
 
 def _context(
@@ -79,6 +116,8 @@ def _context(
                 review = candidate
     context: dict[str, object] = {
         "clinic_id": clinic_id,
+        "editor_session": uuid4(),
+        "episodes": _episodes(clinic_id, encounter),
         "encounter": encounter,
         "versions": versions,
         "draft": draft,
@@ -111,6 +150,8 @@ def _conflict(
     messages_by_reason = {
         "stale_revision": "A versão salva mudou. Reabra a versão atual antes de "
         "alterar ou retificar.",
+        "episode_closed": "O episódio está encerrado e não aceita atendimentos.",
+        "already_linked": "Este atendimento já pertence a outro episódio.",
         "draft_in_progress": "Já existe um rascunho em andamento neste documento.",
         "encounter_closed": "O atendimento está encerrado; novos documentos não "
         "podem ser criados.",
@@ -130,7 +171,13 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     version = view_version(
         clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
     )
-    form = DraftForm(version, request.POST)
+    data = request.POST.copy()
+    if data.get("action") == "merge":
+        # Explicit merge after a compare: the author saves the combined text
+        # over the revision they compared against; a newer save conflicts again.
+        data["revision"] = data.get("merge_revision", "")
+    form = DraftForm(version, data)
+    conflict: dict[str, object] | None = None
     status = 400
     if form.is_valid():
         try:
@@ -144,8 +191,25 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
             form.add_error(
                 None,
                 "A versão salva mudou. Suas alterações não foram salvas. "
-                "Copie o que deseja manter e reabra a versão salva.",
+                "Compare abaixo e salve a versão combinada.",
             )
+            current = view_version(clinic_id=clinic_id, version_id=version.pk)
+            if current.state == "draft":
+                conflict = {
+                    "current_revision": current.revision,
+                    "sections": [
+                        {
+                            "key": section.section,
+                            "label": SECTION_LABELS[section.section],
+                            "lines": [
+                                {"kind": line.kind, "text": line.text}
+                                for line in section.lines
+                            ],
+                            "theirs": section.theirs,
+                        }
+                        for section in section_diff(current.soap, form.content())
+                    ],
+                }
             status = 409
         except DatabaseError:
             # Database exception text may contain SOAP; never include exc_info.
@@ -161,7 +225,7 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
             messages.success(request, "Rascunho salvo.", extra_tags="ehr.saved")
             return redirect(continuation(clinic_id))
     context = _context(request, clinic_id, version.document.encounter)
-    context.update(version=version, form=form, unsaved=True)
+    context.update(version=version, form=form, unsaved=True, conflict=conflict)
     return render(request, "ehr/encounter.html", context, status=status)
 
 
@@ -267,11 +331,58 @@ def _review(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
 
 def _selected(clinic_id: UUID, encounter_id: UUID) -> Encounter:
     """Resolve one clinic encounter and recheck the actor's current assignment."""
-    found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if found is None:
-        raise ClinicalAccessDeniedError
     # Recheck current assignment, including when the appointment was cancelled.
-    return open_encounter(clinic_id=clinic_id, appointment_id=found.appointment_id)
+    return resume_encounter(clinic_id=clinic_id, encounter_id=encounter_id)
+
+
+def _open_unscheduled(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
+    """Start a walk-in, phone follow-up or documentation-only encounter."""
+    encounter = open_unscheduled_encounter(
+        clinic_id=clinic_id,
+        enrollment_id=UUID(request.POST.get("enrollment_id", "")),
+        reason=request.POST.get("reason", ""),
+    )
+    request.session[key] = str(encounter.pk)
+    return redirect(continuation(clinic_id))
+
+
+def _episode(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
+    """Open, link or close an episode for the posted encounter's patient."""
+    encounter = _selected(clinic_id, UUID(request.POST.get("encounter_id", "")))
+    action = request.POST.get("action")
+    try:
+        if action == "episode_open":
+            enrollment = PatientClinicEnrollment.objects.filter(
+                clinic_id=clinic_id, patient_id=encounter.patient_id
+            ).first()
+            if enrollment is None:
+                raise ClinicalAccessDeniedError
+            episode = open_episode(
+                clinic_id=clinic_id,
+                enrollment_id=enrollment.pk,
+                title=request.POST.get("title", ""),
+            )
+            link_encounter(
+                clinic_id=clinic_id, encounter_id=encounter.pk, episode_id=episode.pk
+            )
+        elif action == "episode_link":
+            link_encounter(
+                clinic_id=clinic_id,
+                encounter_id=encounter.pk,
+                episode_id=UUID(request.POST.get("episode_id", "")),
+            )
+        else:
+            close_episode(
+                clinic_id=clinic_id, episode_id=UUID(request.POST.get("episode_id", ""))
+            )
+    except ValidationError as error:
+        context = _context(request, clinic_id, encounter)
+        context["episode_error"] = " ".join(error.messages)
+        return render(request, "ehr/encounter.html", context, status=400)
+    except ClinicalConflictError as error:
+        return _conflict(request, clinic_id, encounter, error)
+    request.session[key] = str(encounter.pk)
+    return redirect(continuation(clinic_id))
 
 
 def _show(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
@@ -307,7 +418,18 @@ def _resume(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     if not selected:
         if request.method == "POST":
             raise ClinicalAccessDeniedError
-        return render(request, "ehr/encounter.html", {"clinic_id": clinic_id})
+        return render(
+            request,
+            "ehr/encounter.html",
+            {
+                "clinic_id": clinic_id,
+                "unscheduled_patients": _unscheduled_options(clinic_id),
+                "unscheduled_reasons": [
+                    {"value": value, "label": _(label)}
+                    for value, label in Encounter.UnscheduledReason.choices
+                ],
+            },
+        )
     encounter = _selected(clinic_id, UUID(selected))
     if request.method == "POST":
         if request.POST.get("action") != "template":
@@ -340,6 +462,11 @@ def _dispatch_post(
         return redirect(continuation(clinic_id))
     handlers = {
         "save": _save,
+        "merge": _save,
+        "open_unscheduled": _open_unscheduled,
+        "episode_open": _episode,
+        "episode_link": _episode,
+        "episode_close": _episode,
         "finalize": _finalize,
         "amend": _amend,
         "discard": _discard,

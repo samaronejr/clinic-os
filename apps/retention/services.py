@@ -37,8 +37,7 @@ from apps.ehr.models import ClinicalDocumentVersion
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _appointment,
-    _assigned,
+    _encounter_actor,
     record_denial,
 )
 from apps.identity.current_context import (
@@ -519,7 +518,7 @@ def release_version(*, clinic_id: UUID, version_id: UUID) -> RecordRelease:
     if version is None:
         raise ClinicalAccessDeniedError
     encounter = version.document.encounter
-    actor = _assigned(_appointment(clinic_id, encounter.appointment_id))
+    actor = _encounter_actor(clinic_id, encounter)
     if version.state not in ("finalized", "superseded"):
         msg = "precondition_failed"
         raise ClinicalConflictError(msg)
@@ -567,7 +566,7 @@ def revoke_release(*, clinic_id: UUID, release_id: UUID) -> RecordRelease:
     )
     if version is None:
         raise ClinicalAccessDeniedError
-    _assigned(_appointment(clinic_id, version.document.encounter.appointment_id))
+    _encounter_actor(clinic_id, version.document.encounter)
     with transaction.atomic():
         locked = (
             RecordRelease.objects.select_for_update()
