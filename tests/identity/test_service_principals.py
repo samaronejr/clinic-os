@@ -1550,8 +1550,13 @@ def test_forged_actor_with_domain_history_is_refused_on_the_agent_login(
         },
     )
     calls = {name: (_call(name, types[name]), vectors[name]) for name in members}
-    # The staff actor with history, plus non-uuid values: any non-empty GUC.
-    forged: list[object] = [actor, "x", " "]
+    # The staff actor with history, an inactive staff user (the machine-only
+    # justification in test_sql_inactive_actor), plus non-uuid values: any
+    # non-empty GUC.
+    inactive = User.objects.create(
+        username="synthetic-inactive-machine-" + uuid4().hex, is_active=False
+    )
+    forged: list[object] = [actor, inactive.pk, "x", " "]
     decisions = _machine_decisions(
         principal,
         {"cleared": [None], "forged": forged},
