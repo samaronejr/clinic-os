@@ -1008,6 +1008,13 @@ PLANTED_MEMBERS = {
     # Positive control: a gated SQL member is accepted.
     "sql_gated": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
     "two_uuid": f"SELECT {MACHINE_GATE} IS NOT NULL AND target_clinic IS NOT NULL",
+    # The gate checks clinic; the member decides for an array of clinics.
+    "uuid_array": f"SELECT {MACHINE_GATE} IS NOT NULL AND targets IS NOT NULL",
+    # Function-level configuration other than search_path changes what the
+    # whole call, gate included, observes. (A header SET of an app.* setting
+    # needs a superuser or a GRANT SET ON PARAMETER; PostgreSQL refuses it to
+    # clinic_resolver.)
+    "header_set": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
     # Gated, but a helper resets the actor for later calls in the transaction.
     "helper_reset": f"""
         SELECT {MACHINE_GATE} IS NOT NULL
@@ -1074,7 +1081,10 @@ PLANT_SIGNATURES = {
     # The gate checks clinic; the member decides for target_clinic (round 7).
     "two_uuid": "clinic uuid, target_clinic uuid",
     "two_uuid_gated": "clinic uuid, target_clinic uuid",
+    "uuid_array": "clinic uuid, targets uuid[]",
 }
+# Plants with extra function-level configuration (default: search_path only).
+PLANT_HEADERS = {"header_set": " SET TimeZone = 'UTC'"}
 UNREACHED = "does not reach the refusal helper"
 SETTINGS = "reads settings outside the allowlist"
 OPAQUE = "uninspectable read"
@@ -1101,6 +1111,8 @@ PLANT_VIOLATIONS = {
     "plpgsql_declare_set_config": {NOT_GATED, SETTING_WRITE, SETTINGS},
     "plpgsql_reset_after": {SETTING_WRITE, SETTINGS},
     "two_uuid": {UNGATED_UUID},
+    "uuid_array": {UNGATED_UUID},
+    "header_set": {SETTING_WRITE},
     "two_uuid_gated": set(),
     "helper_reset": {SETTING_WRITE, SETTINGS},
 }
@@ -1122,7 +1134,7 @@ def test_planted_actor_reader_is_refused_by_construction(plant: str) -> None:
             f"CREATE FUNCTION clinic_app.principal_extra({signature}) RETURNS boolean"
             f" LANGUAGE {language} VOLATILE SECURITY DEFINER"
             " SET search_path=pg_catalog,clinic_app,pg_temp"
-            f" AS $f$ {body} $f$"
+            f"{PLANT_HEADERS.get(plant, '')} AS $f$ {body} $f$"
         )
         violations = machine_violations(
             SealedCatalog(), [*machine_members(), "clinic_app.principal_extra"]

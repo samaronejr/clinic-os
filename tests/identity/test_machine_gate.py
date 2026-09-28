@@ -313,6 +313,21 @@ def test_plpgsql_control_flow_is_proven_or_refused(
             ("uuid", "uuid"),
             [],
         ),
+        # A clinic can hide in an array or a domain over uuid: fail closed.
+        (
+            "sql",
+            f"SELECT {GATE} IS NOT NULL AND targets IS NOT NULL",
+            ("perm", "clinic", "targets"),
+            ("text", "uuid", "uuid[]"),
+            [UNGATED_UUID],
+        ),
+        (
+            "plpgsql",
+            MINIMAL.format(gate=_gate("clinic")),
+            ("clinic", "target"),
+            ("uuid", "clinic_app.clinic_ref"),
+            [UNGATED_UUID],
+        ),
         # Unnamed or partly named parameters cannot be bound.
         ("sql", f"SELECT {GATE} IS NOT NULL", ("",), ("uuid",), [UNBOUND_CLINIC]),
         (

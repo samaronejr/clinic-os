@@ -17,7 +17,9 @@ before the gate.
   never read as a grant and every value leaves through RETURN.
 - Every uuid parameter is bound to a gate: each gate's clinic (second)
   argument is a bare reference to a named parameter, and the set of gated
-  parameters is exactly the member's uuid parameters. The first argument is
+  parameters is exactly the member's uuid parameters. Parameters are uuid or
+  text only: any other type (an array, a domain, a composite) could carry a
+  clinic past the binding, so it fails closed. The first argument is
   free: principal_scope requires ``db_identity = session_user`` and each login
   binds at most one principal, so it can only name the login's own principal.
 
@@ -73,6 +75,9 @@ BARRIERS = frozenset(
 # would run (or bind) code before the gate.
 DECLARE_FORBIDDEN = frozenset({":=", "=", "default", "constant", "cursor", "("})
 SETTING_WRITERS = frozenset({"set", "reset", "set_config"})
+# Parameter types the binding can account for: uuid parameters are bound to
+# gates, and the executed check passes foreign clinic ids through text ones.
+PARAMETER_TYPES = frozenset({"uuid", "text"})
 CLOSERS = {"end": {"begin", "case"}, "end if": {"if"}, "end loop": {"loop"}}
 CLOSERS["end case"] = {"case"}
 UNBALANCED_EXPRESSION = "unbalanced expression"
@@ -315,6 +320,9 @@ def _prove(
         raise _RefusedError(NOT_GATED + ": does not return a single boolean")
     if len(parameters) != len(types):
         raise _RefusedError(UNGATED_UUID + ": parameters are not all named")
+    if unprovable := sorted(set(types) - PARAMETER_TYPES):
+        detail = ", ".join(unprovable)
+        raise _RefusedError(UNGATED_UUID + ": unprovable parameter type " + detail)
     gates = _gates(language, source)
     bound = {clinic for gate in gates if (clinic := _bound_clinic(gate, parameters))}
     uuids = {
