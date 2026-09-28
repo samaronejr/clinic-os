@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from apps.ehr import services as ehr
-from apps.identity import current_context, otp, preferences
+from apps.identity import current_context, otp, preferences, saved_views
 from apps.identity.auth_backends import ClinicBackend
 from apps.identity.models import User, UserClinicRole
 from apps.intake import contacts, patient_access, questionnaire_views
@@ -81,10 +81,26 @@ def _preferences(_w: LegacyWorld, valid: bool) -> object:
     return preferences.save_ui_preferences(theme="dark", density="compact")
 
 
+def _saved_view(w: LegacyWorld, valid: bool) -> object:
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
+            )
+    try:
+        return saved_views.save_view(
+            clinic_id=w.graph.clinic_a, destination="agenda", params={"view": "week"}
+        )
+    except saved_views.SavedViewError:
+        # Row security hides the clinic from an actor holding no role in it.
+        return False
+
+
 BOUNDARIES = (
     Boundary(
         "apps.identity.preferences.save_ui_preferences", "actor", LEGACY, _preferences
     ),
+    Boundary("apps.identity.saved_views.save_view", "actor", LEGACY, _saved_view),
     Boundary(
         "apps.identity.models.User._has_role",
         "membership",

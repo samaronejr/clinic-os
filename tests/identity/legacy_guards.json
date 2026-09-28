@@ -428,48 +428,74 @@
       "signals": [
         "decorator"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required",
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.core.command_views.command_options",
       "signals": [
         "authentication"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.is_privileged_user",
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.core.command_views.command_run",
       "signals": [
         "decorator"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required",
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.core.command_views.patient_close",
       "signals": [
         "decorator"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required",
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.core.navigation.granted_permissions",
       "signals": [
         "resolver"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.core.workspace.current_clinic",
       "signals": [
         "authentication"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 workspace shell (v2): permission-bundle filtered navigation, palette and patient context; exercised by tests/core/test_navigation.py and the workspace browser suite, not a pre-v2 parity oracle."
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics"
+      ]
     },
     {
       "symbol": "apps.ehr.attachment_views._workspace",
@@ -1199,8 +1225,10 @@
       "signals": [
         "actor"
       ],
-      "kind": "v2",
-      "reason": "Todo 13 per-user saved views (v2): row security binds rows to the actor GUC, tenant and a held clinic role; exercised by tests/core/test_saved_views.py, not a pre-v2 parity oracle."
+      "kind": "direct",
+      "probes": [
+        "apps.identity.saved_views.save_view"
+      ]
     },
     {
       "symbol": "apps.identity.scope_provisioning._owner_clinic",
@@ -1488,9 +1516,15 @@
     },
     {
       "symbol": "apps.intake.patient_search.search_patients_exact",
-      "signals": ["denial"],
-      "kind": "v2",
-      "reason": "Todo 13 exact HMAC lookup: manager and demographics permissions are exercised through all three real search adapters in tests/core/test_command_blind_index.py and tests/core/test_navigation.py. This is a new boundary, not a legacy parity exemption."
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.intake.access.authorized_manager_clinic",
+        "clinic_app.has_permission"
+      ]
     },
     {
       "symbol": "apps.intake.patient_search.search_patients",
@@ -3210,9 +3244,15 @@
     },
     {
       "symbol": "apps.tenancy.envelope.blind_indexes",
-      "signals": ["resolver"],
-      "kind": "v2",
-      "reason": "Todo 13 purpose-bound tenant-DEK HMAC boundary. tests/core/test_command_blind_index.py executes tenant separation, rotation and lookup through the real database; no staff-independence or absence-of-gate claim is made."
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes#observed"
+      ]
     },
     {
       "symbol": "apps.tenancy.envelope.reveal",
@@ -3373,6 +3413,7 @@
     "apps.identity.physician_verification.verify_physician_for_signing",
     "apps.identity.preferences.save_ui_preferences",
     "apps.identity.preferences_views.preferences_view",
+    "apps.identity.saved_views.save_view",
     "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
     "apps.identity.services.clinics_for_user_roles",
     "apps.identity.services.has_clinic_role",
@@ -3486,6 +3527,7 @@
     "apps.teleconsult.workspace._session_version",
     "apps.tenancy.db.service_principal_context#observed",
     "apps.tenancy.db.tenant_context",
+    "apps.tenancy.envelope.blind_indexes#observed",
     "apps.tenancy.envelope.decrypt#observed",
     "apps.tenancy.envelope.encrypt#observed",
     "apps.tenancy.envelope.issue_tenant_key#observed",
@@ -5169,7 +5211,8 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
-          "clinic_app.prescription_verify_synthetic"
+          "clinic_app.prescription_verify_synthetic",
+          "clinic_app.protected_blind_index"
         ]
       },
       "kind": "crypto_protocol",
@@ -5215,6 +5258,26 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.identity_savedview_transition": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/0015_saved_views.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
     "clinic_app.identity_scope_guard": {
       "discovery": {
@@ -6012,6 +6075,26 @@
       ],
       "reason": "Machine-principal authority for the clinic_agent login (todo 7), not staff membership. EXECUTE is granted only to clinic_agent; a set actor GUC refuses. The derived catalog closure reads no staff relation and the staff-state differential over every backstop state never grants; both oracles are in test_service_principals."
     },
+    "clinic_app.protected_blind_index": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, plaintext bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0007_blind_indexes.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
     "clinic_app.protected_decrypt": {
       "discovery": {
         "signatures": [
@@ -6071,6 +6154,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.protected_blind_index",
           "clinic_app.protected_decrypt",
           "clinic_app.protected_encrypt"
         ]
@@ -6959,6 +7043,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.protected_blind_index",
           "clinic_app.tenant_decrypt",
           "clinic_app.tenant_encrypt"
         ]
