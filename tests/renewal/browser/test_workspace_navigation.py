@@ -22,6 +22,13 @@ from django.utils.translation import gettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import await_autofocus, evaluate_all_js, evaluate_js
 from renewal.browser._protected import encrypt, kek
 from renewal.browser.engines import full_page_screenshot
@@ -33,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from playwright.sync_api import Browser, Error, Page, Response
+    from playwright.sync_api import Browser, Error, Locator, Page, Response
 
 __all__ = ("availability_staff",)
 
@@ -113,7 +120,7 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
-        "password": secrets.token_urlsafe(24),
+        "password": new_password(),
         "patient": str(uuid4()),
         "enrollment": str(uuid4()),
         "foreign_patient": str(uuid4()),
@@ -125,9 +132,7 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
     surname = "".join(chr(ord("a") + int(char, 16)) for char in suffix).title()
     values["patient_name"] = f"{PATIENT_BASE} {surname}"
     values["foreign_name"] = f"{FOREIGN_BASE} {surname}"
-    with psycopg.connect(
-        os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
-    ) as connection:
+    with psycopg.connect(fixture_dsn()) as connection:
         connection.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
             [values["organization"]],
@@ -212,7 +217,7 @@ def nav_staff(renewal_base_url: str) -> dict[str, str]:
             )
         connection.execute("SET ROLE clinic_app")
         for role in PRIVILEGED:
-            key = secrets.token_hex(20)
+            key = new_totp_key()
             values[f"{role}_totp"] = key
             connection.execute(
                 "SELECT set_config('app.current_user_id', %s, true)",
@@ -252,17 +257,18 @@ def _capture(page: Page, root: Path, name: str, *, full_page: bool = True) -> st
 
 
 def _sign_in(page: Page, base: str, staff: dict[str, str], role: str) -> None:
-    page.goto(f"{base}/auth/login/")
+    goto_settled(page, f"{base}/auth/login/")
     await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff[role])
     page.locator("#id_password").fill(staff["password"])
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
-    if role in PRIVILEGED:
-        page.wait_for_url("**/auth/verify/**")
-        with psycopg.connect(
-            os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"]
-        ) as connection:
+    # Privileged roles land on the TOTP step first; the others are signed in.
+    privileged = role in PRIVILEGED
+    click_to_navigate(
+        page.locator("button[type=submit]"),
+        url="**/auth/verify/**" if privileged else None,
+    )
+    if privileged:
+        with psycopg.connect(fixture_dsn()) as connection:
             connection.execute("SET ROLE clinic_app")
             connection.execute(
                 "SELECT set_config('app.current_user_id', %s, true)",
@@ -275,9 +281,14 @@ def _sign_in(page: Page, base: str, staff: dict[str, str], role: str) -> None:
             )
         key = bytes.fromhex(staff[f"{role}_totp"])
         page.locator("#id_otp_token").fill(f"{TOTP(key, 30, 0, 6, 0).token():06d}")
-        with page.expect_navigation():
-            page.locator("button[type=submit]").click()
-    page.wait_for_url("**/auth/protected/")
+        click_to_navigate(page.locator("button[type=submit]"))
+    wait_for_signed_in(page)
+
+
+def _open_by_keyboard(trigger: Locator) -> None:
+    """Focus a dialog trigger and press Enter: it opens a dialog, no document."""
+    trigger.focus()
+    trigger.page.keyboard.press("Enter")
 
 
 def _modules(page: Page) -> list[str]:
@@ -398,7 +409,7 @@ def test_physician_reaches_the_agenda_by_keyboard(
         expect(page.locator("#command-palette-input")).to_have_attribute(
             "aria-activedescendant", re.compile(r"command-palette-input-opt-")
         )
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         assert page.url == f"{renewal_base_url}{agenda}"
         expect(page.locator('a[data-module="agenda"]')).to_have_attribute(
@@ -407,8 +418,7 @@ def test_physician_reaches_the_agenda_by_keyboard(
         agenda_capture = _capture(page, renewal_artifact_root, "keyboard-agenda-1280")
         # Escape closes and returns focus to the element that opened it.
         trigger = page.locator(".nav-command")
-        trigger.focus()
-        page.keyboard.press("Enter")
+        _open_by_keyboard(trigger)
         expect(palette).to_have_attribute("open", "")
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
@@ -457,8 +467,7 @@ def test_reception_pins_a_patient_from_the_palette_at_every_width(
             assert _targets(page)["small"] == [], width
             assert _axe(page, renewal_base_url) == [], width
             _capture(page, renewal_artifact_root, f"palette-patient-{width}")
-            with page.expect_navigation():
-                option.click()
+            click_to_navigate(option)
             banner = page.locator("[data-patient-banner]")
             expect(banner).to_contain_text(nav_staff["patient_name"])
             expect(banner.locator(".patient-banner-meta")).to_contain_text(
@@ -509,8 +518,9 @@ def test_unsaved_note_holds_the_patient_until_discarded(
     base = renewal_base_url
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{ENCOUNTER_DAY}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{ENCOUNTER_DAY}/1/",
         )
         press(page, "open")
         page.locator("#template-id").select_option(data["specialty"])
@@ -537,8 +547,9 @@ def test_unsaved_note_holds_the_patient_until_discarded(
 
         page.locator(".patient-banner-close").click()
         expect(dialog).to_have_attribute("open", "")
-        with page.expect_navigation(url=re.compile(r"/agenda/")):
-            dialog.locator("[data-context-discard]").click()
+        click_to_navigate(
+            dialog.locator("[data-context-discard]"), url=re.compile(r"/agenda/")
+        )
         expect(page.locator("[data-patient-banner]")).to_have_count(0)
         _capture(page, renewal_artifact_root, "after-discard-1280")
     finally:
@@ -641,18 +652,15 @@ def test_palette_page_works_without_javascript(
     page = context.new_page()
     try:
         _sign_in(page, renewal_base_url, nav_staff, "receptionist")
-        with page.expect_navigation():
-            page.locator(".nav-command").click()
+        click_to_navigate(page.locator(".nav-command"))
         page.locator("#command-q").fill(nav_staff["patient_name"])
-        with page.expect_navigation():
-            page.locator(".command-page-form button[type=submit]").click()
+        click_to_navigate(page.locator(".command-page-form button[type=submit]"))
         choice = page.locator(
             ".command-page-list button", has_text=nav_staff["patient_name"]
         )
         expect(choice).to_have_count(1)
         _capture(page, renewal_artifact_root, "no-js-results-375")
-        with page.expect_navigation():
-            choice.click()
+        click_to_navigate(choice)
         expect(page.locator("[data-patient-banner]")).to_contain_text(
             nav_staff["patient_name"]
         )

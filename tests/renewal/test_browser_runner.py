@@ -432,14 +432,17 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
     BROWSER_SUITES / "test_staff_intake.py": {
         "_find_across_pages": "Enter on the htmx pagination button; no document",
     },
+    BROWSER_SUITES / "test_workspace.py": {
+        "_open_clinic_switcher": (
+            "Enter on the clinic switcher <summary> toggles <details>; no document"
+        ),
+    },
+    BROWSER_SUITES / "test_workspace_navigation.py": {
+        "_open_by_keyboard": "Enter on the palette trigger opens a dialog; no document",
+    },
     BROWSER_SUITES / "test_patient_access.py": {
         "_patient_journey": (
             "asserts the redeem POST's 302 between the press and the URL wait"
-        ),
-    },
-    BROWSER_SUITES / "test_workspace.py": {
-        WHOLE_FILE: (
-            "todo 13 owns the workspace suites and adopts the helpers at rebase"
         ),
     },
 }
@@ -1705,11 +1708,7 @@ def test_excluded_predicate_matches_the_snapshot_contract() -> None:
 SECRETS_MODULE = BROWSER_SUITES / "_fixture_secrets.py"
 # Reviewed exemptions: file -> reason. The report backstop still redacts
 # these values; only the construction layer is missing there.
-SECRET_READER_EXEMPTIONS: dict[Path, str] = {
-    BROWSER_SUITES / "test_workspace.py": (
-        "todo 13 owns the workspace suites and adopts fixture_dsn() at rebase"
-    ),
-}
+SECRET_READER_EXEMPTIONS: dict[Path, str] = {}
 # A suite whose fixture dict holds every kind of credential and whose tests
 # fail in each way pytest can render one: the argument line, --showlocals,
 # a derived plain str, an assertion diff, captured output, an exception
