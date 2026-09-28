@@ -246,11 +246,10 @@ def test_resource_settings_native_generation_and_accessibility(
     )
     page = context.new_page()
     sign_in_manager(page, renewal_base_url, staff, manager)
-    page.goto(f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/")
-    with page.expect_navigation():
-        page.locator(
-            f'a[href="/scheduling/clinics/{staff["clinic_a"]}/settings/"]'
-        ).click()
+    goto_settled(page, f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/")
+    click_to_navigate(
+        page.locator(f'a[href="/scheduling/clinics/{staff["clinic_a"]}/settings/"]')
+    )
     room = _publish_scheduling_resource(page, width)
     form = page.locator('[data-resource-form="template"]')
     form.locator("#id_template-resource_id").select_option(room)
@@ -291,6 +290,8 @@ def test_resource_settings_without_javascript(
     page = context.new_page()
     staff = availability_staff
     sign_in_manager(page, renewal_base_url, staff, seed_settings_manager(staff))
-    page.goto(f"{renewal_base_url}/scheduling/clinics/{staff['clinic_a']}/settings/")
+    goto_settled(
+        page, f"{renewal_base_url}/scheduling/clinics/{staff['clinic_a']}/settings/"
+    )
     _publish_scheduling_resource(page, 376)
     context.close()
