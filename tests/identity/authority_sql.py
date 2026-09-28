@@ -44,6 +44,25 @@ SYNTAX_CALLS = frozenset(
     }
 )
 DYNAMIC = frozenset({"execute", "prepare", "do", "call"})
+# A SET statement starts a statement; UPDATE ... SET follows a table name.
+STATEMENT_STARTS = frozenset({";", "begin", "then", "else", "loop", ">>"})
+SET_SCOPES = frozenset({"session", "local"})
+# SET/RESET forms that change role, session or transaction state rather than
+# one named setting: they cannot establish what the statement touches.
+SET_SPECIAL = frozenset(
+    {
+        "all",
+        "authorization",
+        "characteristics",
+        "constraints",
+        "names",
+        "role",
+        "schema",
+        "time",
+        "transaction",
+        "xml",
+    }
+)
 DDL = frozenset({"create", "alter", "drop", "grant", "revoke", "copy"})
 
 
@@ -105,13 +124,7 @@ def references(text: str) -> SqlReferences:
     result = SqlReferences(operators=_operators(raw))
     for index, (kind, value) in enumerate(items):
         if kind in tokens.Keyword:
-            keyword = value.lower().split()[0]
-            if keyword == "show":
-                _show_setting(items, index + 1, result)
-            if keyword in DYNAMIC | DDL:
-                result.opaque.add(keyword)
-            if keyword in {"insert", "update", "delete", "truncate"}:
-                result.writes = True
+            _keyword(items, index, value.lower().split()[0], result)
     for name, end, quoted in _qualified(items):
         result.names.add(name)
         if end >= len(items) or items[end][1] != "(":
@@ -124,6 +137,23 @@ def references(text: str) -> SqlReferences:
     return result
 
 
+def _keyword(
+    items: Sequence[Token], index: int, keyword: str, result: SqlReferences
+) -> None:
+    if keyword == "show":
+        _show_setting(items, index + 1, result)
+    if keyword == "reset" or (
+        keyword == "set"
+        and (index == 0 or items[index - 1][1].lower() in STATEMENT_STARTS)
+    ):
+        # SET/RESET change a setting that later reads observe.
+        _set_setting(items, index + 1, result)
+    if keyword in DYNAMIC | DDL:
+        result.opaque.add(keyword)
+    if keyword in {"insert", "update", "delete", "truncate"}:
+        result.writes = True
+
+
 def _show_setting(items: Sequence[Token], index: int, result: SqlReferences) -> None:
     if index < len(items) and _identifier(*items[index]):
         name, end, _quoted = next(_qualified(items[index:]))
@@ -134,6 +164,20 @@ def _show_setting(items: Sequence[Token], index: int, result: SqlReferences) -> 
             return
     # SHOW ALL and unresolved syntax cannot establish absence of actor access.
     result.opaque.add("unresolved SHOW setting")
+
+
+def _set_setting(items: Sequence[Token], index: int, result: SqlReferences) -> None:
+    while index < len(items) and items[index][1].lower() in SET_SCOPES:
+        index += 1
+    if (
+        index < len(items)
+        and _identifier(*items[index])
+        and items[index][1].lower() not in SET_SPECIAL
+    ):
+        name, _end, _quoted = next(_qualified(items[index:]))
+        result.settings.add(".".join(name).lower())
+        return
+    result.opaque.add("unresolved SET setting")
 
 
 def _operators(items: Sequence[Token]) -> set[str]:

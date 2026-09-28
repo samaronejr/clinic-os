@@ -182,6 +182,63 @@ def test_view_setting_read_is_parsed_from_the_view_definition(
     assert ("guc", "app.current_user_id") in observer.touches
 
 
+@pytest.mark.parametrize(
+    ("statement", "setting"),
+    [
+        ("SET LOCAL app.current_user_id = ''", "app.current_user_id"),
+        ("SET app.current_user_id TO DEFAULT", "app.current_user_id"),
+        ("SET SESSION app.current_tenant = 'x'", "app.current_tenant"),
+        ("RESET app.current_user_id", "app.current_user_id"),
+        ("SET app.current_user_id FROM CURRENT", "app.current_user_id"),
+        ('SET "app"."current_user_id" = 1', "app.current_user_id"),
+        (
+            "BEGIN IF a THEN SET LOCAL app.current_user_id = ''; END IF; END",
+            "app.current_user_id",
+        ),
+        ("BEGIN <<l>> RESET app.current_user_id; END", "app.current_user_id"),
+    ],
+)
+def test_set_and_reset_statements_record_the_setting(
+    statement: str, setting: str
+) -> None:
+    parsed = references(statement)
+    assert setting in parsed.settings
+    assert not parsed.opaque
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "RESET ALL",
+        "RESET ROLE",
+        "SET ROLE clinic_owner",
+        "SET SESSION AUTHORIZATION clinic_owner",
+        "SET TIME ZONE 'UTC'",
+        "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+        "SET",
+    ],
+)
+def test_unresolved_set_forms_are_opaque(statement: str) -> None:
+    assert "unresolved SET setting" in references(statement).opaque
+
+
+def test_update_set_clause_is_not_a_setting() -> None:
+    parsed = references("UPDATE t SET a = 1")
+    assert not parsed.settings
+    assert not parsed.opaque
+
+
+def test_function_body_set_statement_is_in_the_closure() -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE FUNCTION pg_temp.t6_set_writer() RETURNS void LANGUAGE plpgsql"
+            " AS $f$ BEGIN SET LOCAL app.current_user_id = ''; END $f$"
+        )
+        reads = Catalog().statement("SELECT pg_temp.t6_set_writer()")
+        transaction.set_rollback(True)
+    assert "app.current_user_id" in reads.settings
+
+
 def test_default_argument_setting_read_is_in_the_closure(rbac_graph: RbacGraph) -> None:
     # A parameter DEFAULT is evaluated in the caller, outside the body text.
     with connection.cursor() as cursor:

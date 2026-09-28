@@ -70,19 +70,20 @@ GRANT EXECUTE ON FUNCTION clinic_app.principal_scope(uuid,uuid) TO clinic_agent;
 CREATE FUNCTION clinic_app.principal_has(perm text, clinic uuid)
 RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
-DECLARE principal uuid; tenant uuid; registered_tenant uuid;
+DECLARE registered_tenant uuid; principal uuid; tenant uuid;
 BEGIN
- BEGIN
-  principal := NULLIF(current_setting('app.current_principal',true),'')::uuid;
-  tenant := NULLIF(current_setting('app.current_tenant',true),'')::uuid;
- EXCEPTION WHEN invalid_text_representation THEN RETURN false;
- END;
- registered_tenant := clinic_app.principal_scope(principal,clinic);
- IF tenant IS NULL OR registered_tenant IS NULL OR tenant<>registered_tenant
- THEN RETURN false; END IF;
+ -- The principal_scope gate runs first, on the clinic asked about; a malformed
+ -- GUC raises into the refusal-only handler below.
+ registered_tenant := clinic_app.principal_scope(
+  NULLIF(current_setting('app.current_principal',true),'')::uuid,clinic);
+ IF registered_tenant IS NULL THEN RETURN false; END IF;
+ principal := NULLIF(current_setting('app.current_principal',true),'')::uuid;
+ tenant := NULLIF(current_setting('app.current_tenant',true),'')::uuid;
+ IF tenant IS NULL OR tenant<>registered_tenant THEN RETURN false; END IF;
  RETURN EXISTS (SELECT 1 FROM clinic_app.identity_serviceprincipalgrant g
   WHERE g.principal_id=principal AND g.organization_id=tenant AND g.active
   AND g.permission=perm AND g.subject_scope='clinic');
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
 END $f$;
 REVOKE ALL ON FUNCTION clinic_app.principal_has(text,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION clinic_app.principal_has(text,uuid) TO clinic_agent;

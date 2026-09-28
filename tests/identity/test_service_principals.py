@@ -49,11 +49,12 @@ from psycopg import sql
 
 from identity.authority_catalog import Catalog, Reads
 from identity.machine_gate import (
-    EARLY_RETURN,
     NOT_GATED,
+    SETTING_WRITE,
     UNBOUND_CLINIC,
-    gate_clinic,
+    UNGATED_UUID,
     member_gate,
+    setting_writes,
 )
 from identity.nonstaff_states import (
     ReplayScope,
@@ -815,32 +816,57 @@ def _member_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     return problems
 
 
-def _member_source(name: str) -> tuple[str, str, bool, list[str]]:
-    """Language, body, single-boolean return and parameter names of a member."""
+def _member_source(name: str) -> tuple[str, str, bool, list[str], list[str]]:
+    """Language, body, single-boolean return, parameter names and types."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT l.lanname, p.prosrc, p.prorettype = 'boolean'::regtype"
             " AND NOT p.proretset AND p.proargmodes IS NULL,"
-            " COALESCE(p.proargnames, ARRAY[]::text[])"
+            " COALESCE(p.proargnames, ARRAY[]::text[]),"
+            " ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes) t)"
             " FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
             " JOIN pg_language l ON l.oid = p.prolang"
             " WHERE n.nspname || '.' || p.proname = %s",
             [name],
         )
-        ((language, source, returns_boolean, parameters),) = cursor.fetchall()
-    return language, source, returns_boolean, list(parameters)
+        ((language, source, returns_boolean, parameters, types),) = cursor.fetchall()
+    return language, source, returns_boolean, list(parameters), list(types)
 
 
 def _gate_violations(name: str) -> list[str]:
-    """The member's result must be gated by principal_scope for its own clinic
-    parameter (machine_gate)."""
-    language, source, returns_boolean, parameters = _member_source(name)
+    """The member's result must be gated by principal_scope for every uuid
+    parameter, first thing, with no setting writes (machine_gate)."""
+    language, source, returns_boolean, parameters, types = _member_source(name)
     return member_gate(
         language=language,
         source=source,
         returns_boolean=returns_boolean,
         parameters=parameters,
+        types=types,
     )
+
+
+def _setting_writes(catalog: SealedCatalog, reads: Reads) -> list[str]:
+    """Setting writes anywhere in a closure: set_config calls, SET/RESET in
+    function bodies, and function-level SET configuration other than
+    search_path."""
+    writers: set[str] = set()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT oid, config FROM pg_proc, unnest(proconfig) config"
+            " WHERE oid = ANY(%s) AND config NOT LIKE 'search\\_path=%%'",
+            [sorted(reads.functions)],
+        )
+        writers.update(
+            catalog.functions[oid].name for oid, _config in cursor.fetchall()
+        )
+    for oid in reads.functions:
+        function = catalog.functions[oid]
+        if function.name == "pg_catalog.set_config" or (
+            function.language in {"sql", "plpgsql"} and setting_writes(function.source)
+        ):
+            writers.add(function.name)
+    return sorted(writers)
 
 
 def _closure_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
@@ -854,6 +880,8 @@ def _closure_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     if views := _views(catalog, reads):
         # View text is parsed by the catalog; the helper may read none at all.
         problems.append("reads views: " + ", ".join(views))
+    if writers := _setting_writes(catalog, reads):
+        problems.append(SETTING_WRITE + ": " + ", ".join(writers))
     return problems
 
 
@@ -908,6 +936,9 @@ PLANTED_VIEWS = """
       actor text DEFAULT current_setting('app.current_user_id', true))
       RETURNS text LANGUAGE sql STABLE
       SET search_path=pg_catalog,clinic_app,pg_temp AS $f$ SELECT actor $f$;
+    CREATE FUNCTION clinic_app.principal_reset_hint() RETURNS text
+      LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,clinic_app,pg_temp
+      AS $f$ BEGIN RESET app.current_user_id; RETURN ''; END $f$;
 """
 MACHINE_PRINCIPAL = "NULLIF(current_setting('app.current_principal',true),'')::uuid"
 MACHINE_GATE = f"clinic_app.principal_scope({MACHINE_PRINCIPAL}, clinic)"
@@ -976,6 +1007,16 @@ PLANTED_MEMBERS = {
           AND clinic_app.principal_default_hint() = clinic::text""",
     # Positive control: a gated SQL member is accepted.
     "sql_gated": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
+    "two_uuid": f"SELECT {MACHINE_GATE} IS NOT NULL AND target_clinic IS NOT NULL",
+    # Gated, but a helper resets the actor for later calls in the transaction.
+    "helper_reset": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          AND clinic_app.principal_reset_hint() = ''""",
+    # Positive control: each uuid parameter behind its own gate.
+    "two_uuid_gated": (
+        f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic_app.principal_scope("
+        f"{MACHINE_PRINCIPAL}, target_clinic) IS NOT NULL"
+    ),
     # Gated on the principal's own clinic, ignoring the clinic asked about
     # (review round 6, G1): grants any clinic, in any organization.
     "own_clinic_gate": f"""
@@ -1009,6 +1050,30 @@ PLANTED_PLPGSQL_MEMBERS = {
        WHERE s.id = {MACHINE_PRINCIPAL});""",  # noqa: S608 - fixed plant SQL.
         gate=MACHINE_GATE,
     ),
+    # A data-conditional SET LOCAL clearing the actor before the gate
+    # (review round 7, T4b).
+    "plpgsql_set_local": PLPGSQL_MEMBER.format(
+        early="""
+     IF (SELECT count(*) FROM clinic_app.scheduling_appointment) > 0
+     THEN SET LOCAL app.current_user_id = ''; END IF;""",
+        gate=MACHINE_GATE,
+    ),
+    # A DECLARE initialiser that clears the actor before the gate.
+    "plpgsql_declare_set_config": PLPGSQL_MEMBER.replace(
+        "DECLARE registered uuid;",
+        "DECLARE registered uuid;"
+        " cleared text := set_config('app.current_user_id', '', true);",
+    ).format(early="", gate=MACHINE_GATE),
+    # A RESET after the gate, which later calls in the transaction observe.
+    "plpgsql_reset_after": PLPGSQL_MEMBER.replace(
+        "RETURN true;", "RESET app.current_user_id; RETURN true;"
+    ).format(early="", gate=MACHINE_GATE),
+}
+# Plants with their own signature (default: clinic uuid).
+PLANT_SIGNATURES = {
+    # The gate checks clinic; the member decides for target_clinic (round 7).
+    "two_uuid": "clinic uuid, target_clinic uuid",
+    "two_uuid_gated": "clinic uuid, target_clinic uuid",
 }
 UNREACHED = "does not reach the refusal helper"
 SETTINGS = "reads settings outside the allowlist"
@@ -1028,10 +1093,16 @@ PLANT_VIOLATIONS = {
     "default_or": {SETTINGS, NOT_GATED},
     "default_gated": {SETTINGS},
     "sql_gated": set(),
-    "plpgsql_early_return": {EARLY_RETURN},
+    "plpgsql_early_return": {NOT_GATED},
     "plpgsql_gated": set(),
     "own_clinic_gate": {UNBOUND_CLINIC},
-    "plpgsql_reassigned_clinic": {UNBOUND_CLINIC},
+    "plpgsql_reassigned_clinic": {NOT_GATED},
+    "plpgsql_set_local": {NOT_GATED, SETTING_WRITE, SETTINGS},
+    "plpgsql_declare_set_config": {NOT_GATED, SETTING_WRITE, SETTINGS},
+    "plpgsql_reset_after": {SETTING_WRITE, SETTINGS},
+    "two_uuid": {UNGATED_UUID},
+    "two_uuid_gated": set(),
+    "helper_reset": {SETTING_WRITE, SETTINGS},
 }
 
 
@@ -1046,8 +1117,9 @@ def test_planted_actor_reader_is_refused_by_construction(plant: str) -> None:
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
         cursor.execute(PLANTED_VIEWS)
+        signature = PLANT_SIGNATURES.get(plant, "clinic uuid")
         cursor.execute(
-            "CREATE FUNCTION clinic_app.principal_extra(clinic uuid) RETURNS boolean"
+            f"CREATE FUNCTION clinic_app.principal_extra({signature}) RETURNS boolean"
             f" LANGUAGE {language} VOLATILE SECURITY DEFINER"
             " SET search_path=pg_catalog,clinic_app,pg_temp"
             f" AS $f$ {body} $f$"
@@ -1275,78 +1347,52 @@ def _runtime_refusals(
     return refusals
 
 
-def _clinic_positions(name: str, types: list[str]) -> list[int]:
-    """Argument positions to treat as the clinic the member decides about.
-
-    A proven member's gate names its clinic parameter; the pinned helper's is
-    requested_clinic. An unproven member has every uuid argument treated as
-    the clinic, so this executed check stays independent of the prover.
-    """
-    language, source, returns_boolean, parameters = _member_source(name)
-    if name == REFUSAL_HELPER:
-        return [parameters.index("requested_clinic")]
-    if not member_gate(
-        language=language,
-        source=source,
-        returns_boolean=returns_boolean,
-        parameters=parameters,
-    ):
-        clinic = gate_clinic(language=language, source=source, parameters=parameters)
-        return [parameters.index(clinic)]
-    return [index for index, kind in enumerate(types) if kind == "uuid"]
-
-
-def test_every_member_grants_only_its_own_clinic_on_the_agent_login(
+def test_every_uuid_argument_refuses_foreign_clinics_on_the_agent_login(
     principal: ServicePrincipal, rbac_graph: RbacGraph
 ) -> None:
-    """Actor cleared: foreign clinics (same and other org) never grant."""
+    """Actor cleared: each uuid argument independently takes the own, a
+    same-org and an other-org clinic, under both tenants; any grant with a
+    foreign clinic argument fails. Text arguments also carry the foreign
+    clinic ids, so a clinic smuggled as text is refused too."""
     members = machine_members()
     types = _argument_types(members)
+    foreign = [rbac_graph.clinic_b, rbac_graph.clinic_c]
     pools: dict[str, list[UUID | str]] = {
-        "uuid": [
-            principal.pk,
-            principal.clinic_id,
-            principal.organization_id,
-            rbac_graph.clinic_b,
-            rbac_graph.clinic_c,
-            uuid4(),
-        ],
-        "text": ["appointment.read", "clinical.finalize"],
+        "uuid": [principal.clinic_id, *foreign],
+        "text": ["appointment.read", "clinical.finalize", *map(str, foreign)],
     }
-    clinics = {
-        "own": principal.clinic_id,
-        "same_org": rbac_graph.clinic_b,
-        "other_org": rbac_graph.clinic_c,
-    }
-    tenants = {"own": principal.organization_id, "foreign": rbac_graph.organization_b}
-    positions = {name: _clinic_positions(name, types[name]) for name in members}
-    assert all(positions.values()), positions
-    granted = {}
-    for label, clinic in clinics.items():
-        calls = {}
-        for name in members:
-            vectors = _machine_vectors({name: types[name]}, pools)[name]
-            for position in positions[name]:
-                # The clinic argument is fixed; every other argument is pooled.
-                fixed = {(*v[:position], clinic, *v[position + 1 :]) for v in vectors}
-                calls[f"{name}#{position}"] = (
-                    _call(name, types[name]),
-                    sorted(fixed, key=str),
-                )
-        decisions = _machine_decisions(principal, {"cleared": [None]}, tenants, calls)
-        for key in calls:
-            for tenant in tenants:
-                values = decisions[key, tenant, "cleared"]
-                assert values, (key, tenant)
-                granted[key, label, tenant] = any(map(_granted, values))
+    foreign_values: set[object] = {*foreign, *map(str, foreign)}
+    calls = {}
     for name in members:
-        keys = [f"{name}#{position}" for position in positions[name]]
-        # Anti-vacuity: the own clinic grants under the own tenant.
-        assert any(granted[key, "own", "own"] for key in keys), (name, "never grants")
-        for key in keys:
-            for label in ("same_org", "other_org"):
-                for tenant in tenants:
-                    assert not granted[key, label, tenant], (key, label, tenant)
+        if name == REFUSAL_HELPER:
+            # The pinned helper's first parameter is the principal, not a clinic.
+            assert _member_source(name)[3] == [
+                "requested_principal",
+                "requested_clinic",
+            ]
+            vectors: list[tuple[UUID | str, ...]] = [
+                (principal.pk, clinic) for clinic in pools["uuid"]
+            ]
+        else:
+            vectors = _machine_vectors({name: types[name]}, pools)[name]
+        calls[name] = (_call(name, types[name]), vectors)
+    tenants = {"own": principal.organization_id, "foreign": rbac_graph.organization_b}
+    decisions = _machine_decisions(principal, {"cleared": [None]}, tenants, calls)
+    for name, (_statement, vectors) in calls.items():
+        for tenant in tenants:
+            values = decisions[name, tenant, "cleared"]
+            assert len(values) == len(vectors), (name, tenant)
+            for vector, value in zip(vectors, values, strict=True):
+                if foreign_values.intersection(vector):
+                    assert not _granted(value), (name, tenant, vector)
+        # Anti-vacuity: an all-own vector grants under the own tenant.
+        assert any(
+            _granted(value)
+            for vector, value in zip(
+                vectors, decisions[name, "own", "cleared"], strict=True
+            )
+            if not foreign_values.intersection(vector)
+        ), (name, "never grants")
 
 
 def test_staff_state_never_grants_machine_authority(

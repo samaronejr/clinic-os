@@ -1,29 +1,28 @@
 """Prove a machine_principal member's result is gated by principal_scope.
 
 Token-level and fail closed: any shape the analyzer cannot prove is a
-violation. The accepted shapes are deliberately narrow.
+violation. The accepted shapes are deliberately narrow, and nothing runs
+before the gate.
 
 - SQL body: exactly one ``SELECT <c1> AND ... AND <cn>`` with no FROM, WHERE,
-  set operation or top-level OR, where one conjunct is exactly
+  set operation or top-level OR, where a conjunct is exactly
   ``clinic_app.principal_scope(...) IS NOT NULL``.
-- plpgsql body: in the outer block, before any RETURN that is not
-  ``RETURN false``/``RETURN NULL``, a top-level statement pair
-  ``v := clinic_app.principal_scope(...);`` immediately followed by
-  ``IF ... OR v IS NULL OR ... THEN RETURN false; END IF;``. A top-level
-  ``RETURN <gated conjunction>;`` also counts, in the SQL sense.
+- plpgsql body: a DECLARE section without initialisers or cursors, then an
+  outer block whose first statement is ``v := clinic_app.principal_scope(...);``
+  and whose second is exactly ``IF v IS NULL THEN RETURN false|NULL; END IF;``.
   Outer EXCEPTION handlers may only refuse.
-- The member must return a single boolean with no OUT parameters, so a
-  refusal can never be read as a grant and every value leaves through RETURN.
-- The gate's clinic (second) argument must be a bare reference to one of the
-  member's named parameters, not mentioned anywhere before the gate (by name
-  or as ``$n``), so the gate checks the clinic the caller asked about. The
-  first argument is free: principal_scope requires ``db_identity =
-  session_user`` and each login binds at most one principal, so it can only
-  name the login's own principal.
+- No setting writes anywhere in the body: SET, SET LOCAL, RESET, set_config
+  and SET ... FROM CURRENT are refused.
+- The member returns a single boolean with no OUT parameters, so a refusal is
+  never read as a grant and every value leaves through RETURN.
+- Every uuid parameter is bound to a gate: each gate's clinic (second)
+  argument is a bare reference to a named parameter, and the set of gated
+  parameters is exactly the member's uuid parameters. The first argument is
+  free: principal_scope requires ``db_identity = session_user`` and each login
+  binds at most one principal, so it can only name the login's own principal.
 
-Inside the gate everything else can only narrow a grant principal_scope
-already validated for that clinic, whatever settings, arguments or data it
-reads.
+Behind the gate everything else can only narrow a grant principal_scope
+already validated for every clinic the member was asked about.
 """
 
 from __future__ import annotations
@@ -43,6 +42,8 @@ _tokenize = cast("Callable[[str], Iterable[Token]]", lexer.tokenize)
 NOT_GATED = "result is not gated by principal_scope"
 EARLY_RETURN = "returns before the principal_scope gate"
 UNBOUND_CLINIC = "principal_scope gate does not check a clinic parameter"
+UNGATED_UUID = "a uuid parameter is not gated by principal_scope"
+SETTING_WRITE = "writes a setting"
 REFUSALS = frozenset({"false", "null"})
 # Top-level words that end or widen an expression: the gate cannot be proven
 # a conjunct of the returned value across them.
@@ -68,6 +69,10 @@ BARRIERS = frozenset(
         ";",
     }
 )
+# DECLARE entries may only name variables: an initialiser, constant or cursor
+# would run (or bind) code before the gate.
+DECLARE_FORBIDDEN = frozenset({":=", "=", "default", "constant", "cursor", "("})
+SETTING_WRITERS = frozenset({"set", "reset", "set_config"})
 CLOSERS = {"end": {"begin", "case"}, "end if": {"if"}, "end loop": {"loop"}}
 CLOSERS["end case"] = {"case"}
 UNBALANCED_EXPRESSION = "unbalanced expression"
@@ -76,6 +81,10 @@ UNBALANCED_BLOCK = "unbalanced block"
 
 class _UnprovableError(Exception):
     pass
+
+
+class _RefusedError(Exception):
+    """A complete violation (kind and detail) ending the proof."""
 
 
 def _word(token: Token) -> str:
@@ -91,6 +100,17 @@ def _items(text: str) -> list[Token]:
         for kind, value in _tokenize(text)
         if kind not in tokens.Whitespace and kind not in tokens.Comment
     ]
+
+
+def setting_writes(source: str) -> list[str]:
+    """SET/RESET words and set_config calls anywhere in a body."""
+    words = {
+        # A quoted identifier ("set_config") still names the function.
+        value[1:-1].lower() if kind is tokens.Literal.String.Symbol else _word(item)
+        for item in _items(source)
+        for kind, value in [item]
+    }
+    return sorted(word for word in words if word.split(" ", 1)[0] in SETTING_WRITERS)
 
 
 def _split(items: Sequence[Token], separator: str) -> list[list[Token]]:
@@ -139,14 +159,6 @@ def _test_call(items: Sequence[Token], suffix: list[str]) -> list[Token] | None:
     return None
 
 
-def _gated_conjunction(items: Sequence[Token]) -> list[list[Token]]:
-    return [
-        call
-        for conjunct in _split(items, "and")
-        if (call := _test_call(conjunct, ["is", "not null"]))
-    ]
-
-
 def _sql_gates(body: str) -> tuple[list[str], list[Gate]]:
     items = _items(body)
     if items and items[-1][1] == ";":
@@ -154,7 +166,11 @@ def _sql_gates(body: str) -> tuple[list[str], list[Gate]]:
     if not items or _word(items[0]) != "select":
         return [NOT_GATED + ": body is not a single SELECT"], []
     try:
-        calls = _gated_conjunction(items[1:])
+        calls = [
+            call
+            for conjunct in _split(items[1:], "and")
+            if (call := _test_call(conjunct, ["is", "not null"]))
+        ]
     except _UnprovableError as error:
         return [f"{NOT_GATED}: {error}"], []
     if not calls:
@@ -221,65 +237,38 @@ def _assigned_gate(
     return value.lower(), (list(statement[2:]), [*before, statement[0]])
 
 
-def _gate_if(
-    statement: Sequence[Token],
-    assignment: tuple[str, Gate] | None,
-    before: list[Token],
-) -> list[Gate]:
-    words = [_word(item) for item in statement]
-    if (
-        len(words) < 7
-        or words[0] != "if"
-        or words[-5:-3] != ["then", "return"]
-        or words[-3] not in REFUSALS
-        or words[-2:] != [";", "end if"]
-    ):
-        return []
-    condition = statement[1:-5]
-    if "then" in (_word(item) for item in condition):
-        return []
-    gates = []
-    for disjunct in _split(condition, "or"):
-        if call := _test_call(disjunct, ["is", "null"]):
-            gates.append((call, before))
-        elif assignment and [_word(item) for item in disjunct] == [
-            assignment[0],
-            "is",
-            "null",
-        ]:
-            gates.append(assignment[1])
-    return gates
-
-
-def _plpgsql_gates(body: str) -> tuple[list[str], list[Gate]]:
+def _plpgsql_gate(body: str) -> Gate:
     items = _items(body)
     words = [_word(item) for item in items]
     if items and words[-1] == ";":
         items.pop()
         words.pop()
     if "begin" not in words or words[-1] != "end":
-        return [NOT_GATED + ": no outer block"], []
+        raise _RefusedError(NOT_GATED + ": no outer block")
     begin = words.index("begin")
+    if forbidden := DECLARE_FORBIDDEN.intersection(words[:begin]):
+        detail = " ".join(sorted(forbidden))
+        raise _RefusedError(NOT_GATED + ": DECLARE runs code: " + detail)
     try:
         statements, handlers = _statements(items[begin + 1 : -1])
-        if not _returns_only_refusals(handlers):
-            return [EARLY_RETURN + ": an outer handler returns a value"], []
-        # Everything that runs before the gate, starting with DECLARE.
-        before = list(items[:begin])
-        assignment = None
-        for statement in statements:
-            gates = _gate_if(statement, assignment, before)
-            if not gates and _word(statement[0]) == "return":
-                gates = [(call, before) for call in _gated_conjunction(statement[1:])]
-            if gates:
-                return [], gates
-            if not _returns_only_refusals(statement):
-                return [EARLY_RETURN], []
-            assignment = _assigned_gate(statement, before)
-            before = [*before, *statement]
     except _UnprovableError as error:
-        return [f"{NOT_GATED}: {error}"], []
-    return [NOT_GATED + ": no principal_scope gate in the outer block"], []
+        problem = f"{NOT_GATED}: {error}"
+        raise _RefusedError(problem) from error
+    if not _returns_only_refusals(handlers):
+        raise _RefusedError(EARLY_RETURN + ": an outer handler returns a value")
+    assignment = (
+        _assigned_gate(statements[0], list(items[:begin])) if statements else None
+    )
+    if assignment is None:
+        raise _RefusedError(NOT_GATED + ": the first statement is not the gate")
+    variable, gate = assignment
+    refusal = [_word(item) for item in statements[1]] if len(statements) > 1 else []
+    expected = ["if", variable, "is", "null", "then", "return"]
+    if refusal[:6] != expected or refusal[6:] not in (
+        [word, ";", "end if"] for word in REFUSALS
+    ):
+        raise _RefusedError(NOT_GATED + ": the gate is not followed by its refusal")
+    return gate
 
 
 def _bound_clinic(gate: Gate, parameters: Sequence[str]) -> str | None:
@@ -295,46 +284,67 @@ def _bound_clinic(gate: Gate, parameters: Sequence[str]) -> str | None:
     name = value.lower()
     if kind not in tokens.Name or name not in parameters:
         return None
-    # Any earlier mention (assignment, INTO, FOR, DECLARE shadowing, or an
-    # ALIAS FOR $n) could rebind it; only an untouched parameter is proven.
+    # Any earlier mention (DECLARE shadowing or ALIAS FOR $n, or the gate
+    # variable itself) could rebind it; only an untouched parameter is proven.
     position = f"${parameters.index(name) + 1}"
     if {name, position} & {_word(item) for item in before}:
         return None
     return name
 
 
-def _prove(
-    language: str, source: str, *, returns_boolean: bool, parameters: Sequence[str]
-) -> tuple[list[str], str | None]:
-    if not returns_boolean:
-        return [NOT_GATED + ": does not return a single boolean through RETURN"], None
+def _gates(language: str, source: str) -> list[Gate]:
     if language == "sql":
         problems, gates = _sql_gates(source)
-    elif language == "plpgsql":
-        problems, gates = _plpgsql_gates(source)
-    else:
-        return [NOT_GATED + ": language " + language], None
-    if problems:
-        return problems, None
-    for gate in gates:
-        if clinic := _bound_clinic(gate, parameters):
-            return [], clinic
-    return [UNBOUND_CLINIC + ": not a bare parameter untouched before the gate"], None
+        if problems:
+            raise _RefusedError(problems[0])
+        return gates
+    if language == "plpgsql":
+        return [_plpgsql_gate(source)]
+    raise _RefusedError(NOT_GATED + ": language " + language)
+
+
+def _prove(
+    language: str,
+    source: str,
+    *,
+    returns_boolean: bool,
+    parameters: Sequence[str],
+    types: Sequence[str],
+) -> None:
+    if not returns_boolean:
+        raise _RefusedError(NOT_GATED + ": does not return a single boolean")
+    if len(parameters) != len(types):
+        raise _RefusedError(UNGATED_UUID + ": parameters are not all named")
+    gates = _gates(language, source)
+    bound = {clinic for gate in gates if (clinic := _bound_clinic(gate, parameters))}
+    uuids = {
+        name for name, kind in zip(parameters, types, strict=True) if kind == "uuid"
+    }
+    if not bound or not bound <= uuids:
+        raise _RefusedError(UNBOUND_CLINIC + ": not a bare uuid parameter")
+    if uuids - bound:
+        raise _RefusedError(UNGATED_UUID + ": " + ", ".join(sorted(uuids - bound)))
 
 
 def member_gate(
-    *, language: str, source: str, returns_boolean: bool, parameters: Sequence[str]
+    *,
+    language: str,
+    source: str,
+    returns_boolean: bool,
+    parameters: Sequence[str],
+    types: Sequence[str],
 ) -> list[str]:
     """Violations proving (or failing to prove) the principal_scope gate."""
-    return _prove(
-        language, source, returns_boolean=returns_boolean, parameters=parameters
-    )[0]
-
-
-def gate_clinic(*, language: str, source: str, parameters: Sequence[str]) -> str:
-    """The parameter a proven member's gate checks; unproven members fail."""
-    problems, clinic = _prove(
-        language, source, returns_boolean=True, parameters=parameters
-    )
-    assert clinic is not None, problems
-    return clinic
+    writes = setting_writes(source)
+    problems = [SETTING_WRITE + ": " + ", ".join(writes)] if writes else []
+    try:
+        _prove(
+            language,
+            source,
+            returns_boolean=returns_boolean,
+            parameters=parameters,
+            types=types,
+        )
+    except _RefusedError as error:
+        problems.append(str(error))
+    return problems
