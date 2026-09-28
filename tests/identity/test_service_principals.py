@@ -48,7 +48,13 @@ from django.db import (
 from psycopg import sql
 
 from identity.authority_catalog import Catalog, Reads
-from identity.machine_gate import EARLY_RETURN, NOT_GATED, member_gate
+from identity.machine_gate import (
+    EARLY_RETURN,
+    NOT_GATED,
+    UNBOUND_CLINIC,
+    gate_clinic,
+    member_gate,
+)
 from identity.nonstaff_states import (
     ReplayScope,
     StaffState,
@@ -809,20 +815,31 @@ def _member_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     return problems
 
 
-def _gate_violations(name: str) -> list[str]:
-    """The member's own result must be gated by principal_scope (machine_gate)."""
+def _member_source(name: str) -> tuple[str, str, bool, list[str]]:
+    """Language, body, single-boolean return and parameter names of a member."""
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT l.lanname, p.prosrc, p.prorettype = 'boolean'::regtype"
-            " AND NOT p.proretset AND p.proargmodes IS NULL"
+            " AND NOT p.proretset AND p.proargmodes IS NULL,"
+            " COALESCE(p.proargnames, ARRAY[]::text[])"
             " FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
             " JOIN pg_language l ON l.oid = p.prolang"
             " WHERE n.nspname || '.' || p.proname = %s",
             [name],
         )
-        ((language, source, returns_boolean),) = cursor.fetchall()
+        ((language, source, returns_boolean, parameters),) = cursor.fetchall()
+    return language, source, returns_boolean, list(parameters)
+
+
+def _gate_violations(name: str) -> list[str]:
+    """The member's result must be gated by principal_scope for its own clinic
+    parameter (machine_gate)."""
+    language, source, returns_boolean, parameters = _member_source(name)
     return member_gate(
-        language=language, source=source, returns_boolean=returns_boolean
+        language=language,
+        source=source,
+        returns_boolean=returns_boolean,
+        parameters=parameters,
     )
 
 
@@ -892,10 +909,8 @@ PLANTED_VIEWS = """
       RETURNS text LANGUAGE sql STABLE
       SET search_path=pg_catalog,clinic_app,pg_temp AS $f$ SELECT actor $f$;
 """
-MACHINE_GATE = (
-    "clinic_app.principal_scope(NULLIF(current_setting('app.current_principal',"
-    "true),'')::uuid, clinic)"
-)
+MACHINE_PRINCIPAL = "NULLIF(current_setting('app.current_principal',true),'')::uuid"
+MACHINE_GATE = f"clinic_app.principal_scope({MACHINE_PRINCIPAL}, clinic)"
 PLANTED_MEMBERS = {
     # Grants when the actor names a practitioner (review round 3, MY2).
     "practitioner_join": """
@@ -961,6 +976,12 @@ PLANTED_MEMBERS = {
           AND clinic_app.principal_default_hint() = clinic::text""",
     # Positive control: a gated SQL member is accepted.
     "sql_gated": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
+    # Gated on the principal's own clinic, ignoring the clinic asked about
+    # (review round 6, G1): grants any clinic, in any organization.
+    "own_clinic_gate": f"""
+        SELECT clinic_app.principal_scope({MACHINE_PRINCIPAL},
+          (SELECT s.clinic_id FROM clinic_app.identity_serviceprincipal s
+            WHERE s.id = {MACHINE_PRINCIPAL})) IS NOT NULL""",  # noqa: S608 - fixed plant SQL.
 }
 PLPGSQL_EARLY = """
     IF current_setting('app.current_principal', true) IN (
@@ -980,6 +1001,14 @@ PLANTED_PLPGSQL_MEMBERS = {
     ),
     # Positive control: the same member without the early return.
     "plpgsql_gated": PLPGSQL_MEMBER.format(early="", gate=MACHINE_GATE),
+    # The clinic parameter is rebound to the principal's own clinic before
+    # the gate (review round 6).
+    "plpgsql_reassigned_clinic": PLPGSQL_MEMBER.format(
+        early=f"""
+     clinic := (SELECT s.clinic_id FROM clinic_app.identity_serviceprincipal s
+       WHERE s.id = {MACHINE_PRINCIPAL});""",  # noqa: S608 - fixed plant SQL.
+        gate=MACHINE_GATE,
+    ),
 }
 UNREACHED = "does not reach the refusal helper"
 SETTINGS = "reads settings outside the allowlist"
@@ -1001,6 +1030,8 @@ PLANT_VIOLATIONS = {
     "sql_gated": set(),
     "plpgsql_early_return": {EARLY_RETURN},
     "plpgsql_gated": set(),
+    "own_clinic_gate": {UNBOUND_CLINIC},
+    "plpgsql_reassigned_clinic": {UNBOUND_CLINIC},
 }
 
 
@@ -1242,6 +1273,80 @@ def _runtime_refusals(
             transaction.set_rollback(True)
         refusals[name] = type(error.value.__cause__)
     return refusals
+
+
+def _clinic_positions(name: str, types: list[str]) -> list[int]:
+    """Argument positions to treat as the clinic the member decides about.
+
+    A proven member's gate names its clinic parameter; the pinned helper's is
+    requested_clinic. An unproven member has every uuid argument treated as
+    the clinic, so this executed check stays independent of the prover.
+    """
+    language, source, returns_boolean, parameters = _member_source(name)
+    if name == REFUSAL_HELPER:
+        return [parameters.index("requested_clinic")]
+    if not member_gate(
+        language=language,
+        source=source,
+        returns_boolean=returns_boolean,
+        parameters=parameters,
+    ):
+        clinic = gate_clinic(language=language, source=source, parameters=parameters)
+        return [parameters.index(clinic)]
+    return [index for index, kind in enumerate(types) if kind == "uuid"]
+
+
+def test_every_member_grants_only_its_own_clinic_on_the_agent_login(
+    principal: ServicePrincipal, rbac_graph: RbacGraph
+) -> None:
+    """Actor cleared: foreign clinics (same and other org) never grant."""
+    members = machine_members()
+    types = _argument_types(members)
+    pools: dict[str, list[UUID | str]] = {
+        "uuid": [
+            principal.pk,
+            principal.clinic_id,
+            principal.organization_id,
+            rbac_graph.clinic_b,
+            rbac_graph.clinic_c,
+            uuid4(),
+        ],
+        "text": ["appointment.read", "clinical.finalize"],
+    }
+    clinics = {
+        "own": principal.clinic_id,
+        "same_org": rbac_graph.clinic_b,
+        "other_org": rbac_graph.clinic_c,
+    }
+    tenants = {"own": principal.organization_id, "foreign": rbac_graph.organization_b}
+    positions = {name: _clinic_positions(name, types[name]) for name in members}
+    assert all(positions.values()), positions
+    granted = {}
+    for label, clinic in clinics.items():
+        calls = {}
+        for name in members:
+            vectors = _machine_vectors({name: types[name]}, pools)[name]
+            for position in positions[name]:
+                # The clinic argument is fixed; every other argument is pooled.
+                fixed = {(*v[:position], clinic, *v[position + 1 :]) for v in vectors}
+                calls[f"{name}#{position}"] = (
+                    _call(name, types[name]),
+                    sorted(fixed, key=str),
+                )
+        decisions = _machine_decisions(principal, {"cleared": [None]}, tenants, calls)
+        for key in calls:
+            for tenant in tenants:
+                values = decisions[key, tenant, "cleared"]
+                assert values, (key, tenant)
+                granted[key, label, tenant] = any(map(_granted, values))
+    for name in members:
+        keys = [f"{name}#{position}" for position in positions[name]]
+        # Anti-vacuity: the own clinic grants under the own tenant.
+        assert any(granted[key, "own", "own"] for key in keys), (name, "never grants")
+        for key in keys:
+            for label in ("same_org", "other_org"):
+                for tenant in tenants:
+                    assert not granted[key, label, tenant], (key, label, tenant)
 
 
 def test_staff_state_never_grants_machine_authority(
