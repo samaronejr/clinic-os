@@ -1,0 +1,61 @@
+{% load i18n %}{% comment %}
+Device check: camera and microphone (the page's own media code), speaker and
+network (teleconsult-devices.js). Only closed result codes are posted, with the
+session identifier in the body; no image, sound, device name or label leaves
+the device. Without JavaScript the participant reports the same codes by hand.
+Context: device_url, device_session, device_role ("patient" or "physician").
+{% endcomment %}
+<div class="tele-device-report" data-device-report-panel data-device-role="{{ device_role }}"
+  data-text-speaker-not_checked="{% trans 'Not tested' %}" data-text-speaker-ok="{% trans 'Working' %}" data-text-speaker-error="{% trans 'Not heard' %}" data-text-speaker-unsupported="{% trans 'Not supported' %}"
+  data-text-network-not_checked="{% trans 'Not tested' %}" data-text-network-good="{% trans 'Good' %}" data-text-network-degraded="{% trans 'Unstable' %}" data-text-network-offline="{% trans 'No connection' %}"
+  data-text-sending="{% trans 'Sending the result to the clinic…' %}" data-text-sent="{% trans 'Result sent to the clinic. Only whether each item worked was sent.' %}" data-text-failed="{% trans 'The result could not be sent. You can still enter the room.' %}"
+  data-text-audio-hint="{% trans 'Your camera or connection is limited. You can continue with audio only inside the room.' %}">
+  <dl class="tele-device-list" data-device-extra hidden>
+    <div class="tele-device">
+      <dt>{% trans "Speaker" %}</dt>
+      <dd><span class="badge badge--pending" data-result="speaker" data-result-state="not_checked">{% trans "Not tested" %}</span></dd>
+    </div>
+    <div class="tele-device">
+      <dt>{% trans "Connection" %}</dt>
+      <dd><span class="badge badge--pending" data-result="network" data-result-state="not_checked">{% trans "Not tested" %}</span></dd>
+    </div>
+  </dl>
+  <div class="tele-speaker" data-speaker-check hidden>
+    <p id="speaker-question-{{ device_role }}">{% trans "We played a short test sound. Did you hear it?" %}</p>
+    <div class="actions" role="group" aria-labelledby="speaker-question-{{ device_role }}">
+      <button class="button button--secondary" type="button" data-speaker-answer="ok">{% trans "Yes, I heard it" %}</button>
+      <button class="button button--secondary" type="button" data-speaker-answer="error">{% trans "No, I did not hear it" %}</button>
+    </div>
+  </div>
+  <p class="feedback feedback--muted" role="status" data-device-report hidden></p>
+  <p class="hint" data-audio-hint hidden></p>
+  <div class="actions" data-device-extra-actions hidden>
+    <button class="button button--quiet" type="button" data-speaker-test>{% trans "Play test sound" %}</button>
+  </div>
+  <form method="post" action="{{ device_url }}" class="tele-device-form" data-device-form>
+    {% csrf_token %}<input type="hidden" name="session_id" value="{{ device_session.pk }}"><input type="hidden" name="action" value="device_check">
+    <fieldset class="tele-device-manual" data-device-manual>
+      <legend>{% trans "Report how your devices worked" %}</legend>
+      {% for field, label in device_fields %}
+      <div class="field">
+        <label for="device-{{ device_role }}-{{ field }}">{{ label }}</label>
+        <select id="device-{{ device_role }}-{{ field }}" name="{{ field }}">
+          {% if field == "network" %}
+          <option value="not_checked">{% trans "Not tested" %}</option>
+          <option value="good">{% trans "Good" %}</option>
+          <option value="degraded">{% trans "Unstable" %}</option>
+          <option value="offline">{% trans "No connection" %}</option>
+          {% else %}
+          <option value="not_checked">{% trans "Not tested" %}</option>
+          <option value="ok">{% trans "Working" %}</option>
+          <option value="error">{% trans "Not working" %}</option>
+          {% endif %}
+        </select>
+      </div>
+      {% endfor %}
+      <div class="actions">
+        <button class="button button--secondary" type="submit">{% trans "Save device check" %}</button>
+      </div>
+    </fieldset>
+  </form>
+</div>

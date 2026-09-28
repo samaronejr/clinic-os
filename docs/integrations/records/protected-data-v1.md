@@ -57,7 +57,8 @@ plaintext shadow column, no unrestricted decrypt-all to the app.
 
 Deliberately plaintext (documented decisions):
 `teleconsult_teleconsultroom.room_name`
-is the deterministic operational identifier `tc-<session uuid>`; audit
+is an opaque operational identifier `tc-<32 random hex>` that never spells a
+stored identifier (rooms stored before todo 37 keep `tc-<session uuid>`); audit
 ledger rows stay canonical plaintext per the hash-chain contract; staff
 identity/OTP fields remain blocked on the unresolved identity-key-scope
 decision recorded below.

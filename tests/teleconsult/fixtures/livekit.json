@@ -1,0 +1,114 @@
+{
+  "provenance": "Synthetic recording shaped from the public LiveKit Cloud docs (RoomService Twirp API: https://docs.livekit.io/reference/server/server-apis/ and access tokens: https://docs.livekit.io/home/get-started/authentication/), accessed 2026-09-28. Never captured from a live provider; every credential, sid and host is synthetic (.invalid). BLOCKED-ON-EG: EG-1 spend, EG-5 contract.",
+  "clock": "2026-09-28T12:00:00+00:00",
+  "credentials": {
+    "host": "https://sintetico-video.livekit.invalid",
+    "api_key": "APIsintetico01",
+    "api_secret": "sintetico-livekit-secret-not-a-provider-key"
+  },
+  "room_name": "tc-0123456789abcdef0123456789abcdef",
+  "exchanges": [
+    {
+      "operation": "create_room",
+      "request": {
+        "method": "POST",
+        "url": "https://sintetico-video.livekit.invalid/twirp/livekit.RoomService/CreateRoom",
+        "headers": {"Content-Type": "application/json"},
+        "authorization": {
+          "scheme": "Bearer",
+          "jwt_header": {"alg": "HS256", "typ": "JWT"},
+          "claims": {
+            "iss": "APIsintetico01",
+            "nbf": 1790596800,
+            "exp": 1790596860,
+            "video": {"roomCreate": true}
+          }
+        },
+        "json": {
+          "name": "tc-0123456789abcdef0123456789abcdef",
+          "empty_timeout": 300,
+          "max_participants": 2
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "sid": "RM_sintetico01",
+          "name": "tc-0123456789abcdef0123456789abcdef",
+          "empty_timeout": 300,
+          "departure_timeout": 20,
+          "max_participants": 2,
+          "creation_time": "1790596800",
+          "turn_password": "",
+          "enabled_codecs": [{"mime": "audio/opus"}, {"mime": "video/VP8"}],
+          "metadata": "",
+          "num_participants": 0,
+          "num_publishers": 0,
+          "active_recording": false
+        }
+      }
+    },
+    {
+      "operation": "revoke",
+      "request": {
+        "method": "POST",
+        "url": "https://sintetico-video.livekit.invalid/twirp/livekit.RoomService/RemoveParticipant",
+        "headers": {"Content-Type": "application/json"},
+        "authorization": {
+          "scheme": "Bearer",
+          "jwt_header": {"alg": "HS256", "typ": "JWT"},
+          "claims": {
+            "iss": "APIsintetico01",
+            "nbf": 1790596800,
+            "exp": 1790596860,
+            "video": {"roomAdmin": true, "room": "tc-0123456789abcdef0123456789abcdef"}
+          }
+        },
+        "json": {"room": "tc-0123456789abcdef0123456789abcdef", "identity": "patient"}
+      },
+      "response": {"status": 200, "json": {}}
+    },
+    {
+      "operation": "create_room_denied",
+      "request": {
+        "method": "POST",
+        "url": "https://sintetico-video.livekit.invalid/twirp/livekit.RoomService/CreateRoom",
+        "headers": {"Content-Type": "application/json"},
+        "authorization": {
+          "scheme": "Bearer",
+          "jwt_header": {"alg": "HS256", "typ": "JWT"},
+          "claims": {
+            "iss": "APIsintetico01",
+            "nbf": 1790596800,
+            "exp": 1790596860,
+            "video": {"roomCreate": true}
+          }
+        },
+        "json": {
+          "name": "tc-0123456789abcdef0123456789abcdef",
+          "empty_timeout": 300,
+          "max_participants": 2
+        }
+      },
+      "response": {"status": 401, "json": {"code": "unauthenticated", "msg": "invalid token"}}
+    }
+  ],
+  "token": {
+    "identity": "patient",
+    "jwt_header": {"alg": "HS256", "typ": "JWT"},
+    "claims": {
+      "iss": "APIsintetico01",
+      "sub": "patient",
+      "nbf": 1790596800,
+      "exp": 1790597700,
+      "video": {
+        "room": "tc-0123456789abcdef0123456789abcdef",
+        "roomJoin": true,
+        "canPublish": true,
+        "canSubscribe": true,
+        "canPublishData": false,
+        "roomRecord": false
+      }
+    }
+  }
+}

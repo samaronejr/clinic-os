@@ -131,8 +131,10 @@ FIXTURE_SUITES: Final = frozenset(
     }
 )
 # Suites that exercise the synthetic room provider through the real outbox.
+# ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
 VIDEO_SUITES: Final = frozenset(
     {
+        "realtime",
         "teleconsult",
         "patient-video",
         "clinician-video",

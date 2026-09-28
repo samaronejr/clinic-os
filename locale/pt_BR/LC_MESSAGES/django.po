@@ -2551,3 +2551,162 @@ msgstr "Divulgação de uso de IA registrada para o atendimento."
 
 msgid "Recording notice recorded for the participant."
 msgstr "Aviso de gravação registrado para o participante."
+
+msgid "Audio only"
+msgstr "Somente áudio"
+
+msgid "Audio only: off"
+msgstr "Somente áudio: desligado"
+
+msgid "Audio only: on"
+msgstr "Somente áudio: ligado"
+
+msgid "Automatic updates are unavailable. Use “Check status now” to update the video state."
+msgstr "Atualizações automáticas indisponíveis. Use “Verificar estado agora” para atualizar o estado do vídeo."
+
+msgid "Automatic updates are unavailable. Use “Check status now” to update this page."
+msgstr "Atualizações automáticas indisponíveis. Use “Verificar estado agora” para atualizar esta página."
+
+msgid "Camera"
+msgstr "Câmera"
+
+msgid "Camera and microphone come from this room; test the speaker and see the connection here. Only whether each item worked is recorded."
+msgstr "Câmera e microfone vêm desta sala; aqui você testa o alto-falante e vê a conexão. Só fica registrado se cada item funcionou."
+
+msgid "Connection"
+msgstr "Conexão"
+
+msgid "Device check"
+msgstr "Verificação de dispositivos"
+
+msgid "Device check saved. Only whether each item worked was sent to the clinic."
+msgstr "Verificação registrada. Só foi enviado à clínica se cada item funcionou."
+
+msgid "Good"
+msgstr "Boa"
+
+msgid "Microphone"
+msgstr "Microfone"
+
+msgid "No, I did not hear it"
+msgstr "Não, não ouvi"
+
+msgid "Not checked yet"
+msgstr "Ainda não verificados"
+
+msgid "Not heard"
+msgstr "Não ouvido"
+
+msgid "Not supported"
+msgstr "Sem suporte"
+
+msgid "Not tested"
+msgstr "Não testado"
+
+msgid "Not working"
+msgstr "Não funcionou"
+
+msgid "Patient's devices"
+msgstr "Dispositivos do paciente"
+
+msgid "Patient's media"
+msgstr "Mídia do paciente"
+
+msgid "Physician's media"
+msgstr "Mídia do médico"
+
+msgid "Play test sound"
+msgstr "Tocar som de teste"
+
+msgid "Remove the patient from the room"
+msgstr "Retirar o paciente da sala"
+
+msgid "Removed from the room"
+msgstr "Retirado da sala"
+
+msgid "Removing disconnects the patient and revokes their access to this room; they can return only through the waiting room."
+msgstr "Retirar desconecta o paciente e revoga o acesso dele a esta sala; ele só volta pela sala de espera."
+
+msgid "Removing…"
+msgstr "Retirando…"
+
+msgid "Report how your devices worked"
+msgstr "Informe como seus dispositivos funcionaram"
+
+msgid "Result sent to the clinic. Only whether each item worked was sent."
+msgstr "Resultado enviado à clínica. Só foi enviado se cada item funcionou."
+
+msgid "Save device check"
+msgstr "Registrar verificação"
+
+msgid "Sending the result to the clinic…"
+msgstr "Enviando o resultado à clínica…"
+
+msgid "Speaker"
+msgstr "Alto-falante"
+
+msgid "Switching…"
+msgstr "Alternando…"
+
+msgid "Test your camera, microphone, speaker and connection before entering. The test runs on your device: only whether each item worked is sent to the clinic, never an image or a sound."
+msgstr "Teste câmera, microfone, alto-falante e conexão antes de entrar. O teste acontece no seu aparelho: só é enviado à clínica se cada item funcionou, nunca imagem ou som."
+
+msgid "The audio-only switch was not confirmed by the clinic. Try again."
+msgstr "A clínica não confirmou a troca para somente áudio. Tente de novo."
+
+msgid "The result could not be sent. You can still enter the room."
+msgstr "Não foi possível enviar o resultado. Você ainda pode entrar na sala."
+
+msgid "Unstable"
+msgstr "Instável"
+
+msgid "Video and audio"
+msgstr "Vídeo e áudio"
+
+msgid "We played a short test sound. Did you hear it?"
+msgstr "Tocamos um som curto de teste. Você ouviu?"
+
+msgid "Working"
+msgstr "Funcionando"
+
+msgid "Yes, I heard it"
+msgstr "Sim, ouvi"
+
+msgid "Your camera is unavailable, so the consultation continues with audio only."
+msgstr "Sua câmera está indisponível; a consulta continua somente com áudio."
+
+msgid "Your camera or connection is limited. You can continue with audio only inside the room."
+msgstr "Sua câmera ou conexão está limitada. Dentro da sala, você pode continuar somente com áudio."
+
+msgid "Your device check"
+msgstr "Sua verificação de dispositivos"
+
+msgid "good"
+msgstr "boa"
+
+msgid "in use by another app"
+msgstr "em uso por outro aplicativo"
+
+msgid "no connection"
+msgstr "sem conexão"
+
+msgid "not found"
+msgstr "não encontrado"
+
+msgid "not supported"
+msgstr "sem suporte"
+
+msgid "not tested"
+msgstr "não testado"
+
+msgid "not working"
+msgstr "não funcionou"
+
+msgid "permission denied"
+msgstr "permissão negada"
+
+msgid "unstable"
+msgstr "instável"
+
+msgid "working"
+msgstr "funcionando"

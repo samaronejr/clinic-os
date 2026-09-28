@@ -3,8 +3,10 @@
 Every predicate derives from stored rows inside the current tenant or patient
 transaction: the encounter binds appointment, patient, clinic and assigned
 physician; the consent acceptance binds the exact published text version;
-provider rooms exist only as committed outbox operations; join credentials
-are short-lived, role-scoped digests that never reopen ended sessions.
+provider rooms exist only as committed outbox operations bound to the
+provider capability version that serves them, under opaque room names; join
+credentials are short-lived, role-scoped digests that never reopen ended
+sessions.
 """
 
 from __future__ import annotations
@@ -33,12 +35,20 @@ from apps.identity.current_context import (
 from apps.identity.models import UserClinicRole
 from apps.intake.access import PatientAccessDeniedError
 from apps.intake.models import PatientClinicEnrollment
-from apps.teleconsult.adapters import PROVIDER
+from apps.teleconsult.hints import publish_session_hint
 from apps.teleconsult.models import (
     TeleconsultCredential,
     TeleconsultEvent,
     TeleconsultRoom,
     TeleconsultSession,
+)
+from apps.teleconsult.video_providers import (
+    MintedToken,
+    ProviderBlockedError,
+    ProviderUnavailableError,
+    TokenGrant,
+    provider_for_room,
+    select_room_provider,
 )
 
 if TYPE_CHECKING:
@@ -60,6 +70,8 @@ _SESSION_CLOSED = "session_closed"
 _ROOM_NOT_READY = "room_not_ready"
 _ENCOUNTER_CLOSED = "encounter_closed"
 _CONSENT_REQUIRED = "consent_required"
+_PROVIDER_UNAVAILABLE = "provider_unavailable"
+ROOM_NAME_BYTES: int = 16
 
 
 class TeleconsultAccessDeniedError(Exception):
@@ -85,12 +97,17 @@ class IssuedCredential:
 
 @dataclass(frozen=True, slots=True)
 class RoomEntry:
-    """The resolved room facts for one admitted participant."""
+    """The resolved room facts for one admitted participant.
+
+    ``provider_token`` is the provider join token minted for this entry; it
+    never outlives the credential and is ``None`` for legacy synthetic rooms.
+    """
 
     session: TeleconsultSession
     room_name: str
     role: str
     credential: TeleconsultCredential
+    provider_token: MintedToken | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,6 +283,32 @@ def _fail(session_id: UUID, reason: str) -> None:
             "SELECT clinic_app.teleconsult_fail(%s, %s)",
             [str(session_id), reason],
         )
+        row = cursor.fetchone()
+    if row == (True,):
+        session = TeleconsultSession.objects.filter(pk=session_id).first()
+        if session is not None:
+            publish_session_hint(session)
+
+
+def mint_provider_token(
+    room: TeleconsultRoom, credential: TeleconsultCredential
+) -> MintedToken | None:
+    """Mint the room provider's join token; never longer than the credential.
+
+    The identity is the role alone. Legacy rooms (no bound version, v1 names)
+    were synthetic by construction and receive no provider token.
+    """
+    if not room.provider:
+        return None
+    now = timezone.now()
+    ttl = min(CREDENTIAL_TTL, credential.expires_at - now)
+    try:
+        provider = provider_for_room(room.provider, room.provider_environment)
+        return provider.mint_token(
+            TokenGrant(room.room_name, credential.role, now, ttl)
+        )
+    except ProviderBlockedError as error:
+        raise TeleconsultConflictError(_PROVIDER_UNAVAILABLE) from error
 
 
 def refresh_session(session: TeleconsultSession) -> TeleconsultSession:
@@ -326,6 +369,10 @@ def create_session(*, clinic_id: UUID, encounter_id: UUID) -> TeleconsultSession
         )
         if consent is None:
             raise TeleconsultConflictError(_CONSENT_REQUIRED)
+        try:
+            provider = select_room_provider(clinic_id=clinic_id)
+        except ProviderUnavailableError as error:
+            raise TeleconsultConflictError(_PROVIDER_UNAVAILABLE) from error
         session = TeleconsultSession.objects.create(
             organization_id=encounter.organization_id,
             clinic_id=clinic_id,
@@ -338,7 +385,7 @@ def create_session(*, clinic_id: UUID, encounter_id: UUID) -> TeleconsultSession
         operation_id = enqueue_operation(
             OperationRequest(
                 channel=IntegrationOperation.Channel.VIDEO,
-                provider=PROVIDER,
+                provider=provider.provider,
                 clinic_id=clinic_id,
                 subject_type=SUBJECT_TYPE,
                 subject_id=session.pk,
@@ -348,11 +395,14 @@ def create_session(*, clinic_id: UUID, encounter_id: UUID) -> TeleconsultSession
                 max_attempts=3,
             )
         )
+        # Opaque: the provider never learns a session, encounter or patient id.
         TeleconsultRoom.objects.create(
             organization_id=session.organization_id,
             operation_id=operation_id,
             session=session,
-            room_name=f"tc-{session.pk}",
+            room_name=f"tc-{secrets.token_hex(ROOM_NAME_BYTES)}",
+            provider=provider.provider,
+            provider_environment=provider.environment,
         )
         _event(session, "created")
         record_phase1_event(
@@ -360,6 +410,7 @@ def create_session(*, clinic_id: UUID, encounter_id: UUID) -> TeleconsultSession
             clinic_id=clinic_id,
             affected_record_id=session.pk,
         )
+        publish_session_hint(session)
         return session
 
 
@@ -536,7 +587,9 @@ def enter_room(*, token: str, role: str) -> RoomEntry:
                 credential.first_used_at = timezone.now()
                 credential.save(update_fields=("first_used_at",))
                 _event(session, "joined", actor_role=role)
+                publish_session_hint(session)
             room = TeleconsultRoom.objects.get(session=session)
+            minted = mint_provider_token(room, credential)
     if denied:
         refresh_session(session)
         _event(session, "join_denied", actor_role=role)
@@ -546,6 +599,7 @@ def enter_room(*, token: str, role: str) -> RoomEntry:
         room_name=room.room_name,
         role=role,
         credential=credential,
+        provider_token=minted,
     )
 
 
@@ -578,6 +632,7 @@ def start_consultation(*, clinic_id: UUID, session_id: UUID) -> TeleconsultSessi
                 clinic_id=clinic_id,
                 affected_record_id=session.pk,
             )
+            publish_session_hint(session)
             return session
     refresh_session(session)
     raise TeleconsultConflictError(_SESSION_CLOSED)
@@ -613,6 +668,7 @@ def end_consultation(*, clinic_id: UUID, session_id: UUID) -> TeleconsultSession
                 clinic_id=clinic_id,
                 affected_record_id=session.pk,
             )
+            publish_session_hint(session)
             return session
     refresh_session(session)
     raise TeleconsultConflictError(_SESSION_CLOSED)

@@ -29,6 +29,7 @@ from identity.sql_consent_probes import (
     insert_text,
     permitted,
 )
+from identity.sql_teleconsult_probes import insert_device_check
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -296,6 +297,19 @@ PROBES = {
         PHYSICIAN,
         lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
         "boolean",
+    ),
+    "teleconsult_clinician": SqlProbe(
+        "teleconsult_clinician",
+        PHYSICIAN,
+        lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
+        "boolean",
+    ),
+    "teleconsult_binding_guard#device": SqlProbe(
+        "teleconsult_binding_guard",
+        PHYSICIAN,
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=insert_device_check,
     ),
     "teleconsult_fail": SqlProbe(
         "teleconsult_fail",

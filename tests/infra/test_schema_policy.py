@@ -120,6 +120,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "teleconsult_teleconsultroom",
         "teleconsult_teleconsultcredential",
         "teleconsult_teleconsultevent",
+        "teleconsult_teleconsultdevicecheck",
         # Exact clinic billing policies and ACLs are checked in test_invoices.
         "billing_invoice",
         "billing_invoicerevision",

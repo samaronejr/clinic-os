@@ -1,0 +1,99 @@
+{
+  "provenance": "Synthetic recording shaped from the public Twilio Programmable Video docs (Rooms: https://www.twilio.com/docs/video/api/rooms-resource, Participants: https://www.twilio.com/docs/video/api/participants, access tokens: https://www.twilio.com/docs/iam/access-tokens), accessed 2026-09-28. Never captured from a live provider; every sid and secret is synthetic. BLOCKED-ON-EG: EG-1 spend, EG-5 contract.",
+  "clock": "2026-09-28T12:00:00+00:00",
+  "credentials": {
+    "account_sid": "ACsintetico0000000000000000000001",
+    "api_key_sid": "SKsintetico0000000000000000000001",
+    "api_key_secret": "sintetico-twilio-secret-not-real"
+  },
+  "room_name": "tc-0123456789abcdef0123456789abcdef",
+  "exchanges": [
+    {
+      "operation": "create_room",
+      "request": {
+        "method": "POST",
+        "url": "https://video.twilio.com/v1/Rooms",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": "Basic U0tzaW50ZXRpY28wMDAwMDAwMDAwMDAwMDAwMDAwMDAxOnNpbnRldGljby10d2lsaW8tc2VjcmV0LW5vdC1yZWFs"
+        },
+        "form": {
+          "EmptyRoomTimeout": "5",
+          "MaxParticipants": "2",
+          "RecordParticipantsOnConnect": "false",
+          "Type": "group",
+          "UniqueName": "tc-0123456789abcdef0123456789abcdef"
+        }
+      },
+      "response": {
+        "status": 201,
+        "json": {
+          "sid": "RM0123456789abcdef0123456789abcdef",
+          "account_sid": "ACsintetico0000000000000000000001",
+          "status": "in-progress",
+          "type": "group",
+          "unique_name": "tc-0123456789abcdef0123456789abcdef",
+          "max_participants": 2,
+          "record_participants_on_connect": false,
+          "empty_room_timeout": 5,
+          "url": "https://video.twilio.com/v1/Rooms/RM0123456789abcdef0123456789abcdef"
+        }
+      }
+    },
+    {
+      "operation": "revoke",
+      "request": {
+        "method": "POST",
+        "url": "https://video.twilio.com/v1/Rooms/tc-0123456789abcdef0123456789abcdef/Participants/patient",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": "Basic U0tzaW50ZXRpY28wMDAwMDAwMDAwMDAwMDAwMDAwMDAxOnNpbnRldGljby10d2lsaW8tc2VjcmV0LW5vdC1yZWFs"
+        },
+        "form": {"Status": "disconnected"}
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "sid": "PA0123456789abcdef0123456789abcdef",
+          "room_sid": "RM0123456789abcdef0123456789abcdef",
+          "identity": "patient",
+          "status": "disconnected"
+        }
+      }
+    },
+    {
+      "operation": "create_room_denied",
+      "request": {
+        "method": "POST",
+        "url": "https://video.twilio.com/v1/Rooms",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": "Basic U0tzaW50ZXRpY28wMDAwMDAwMDAwMDAwMDAwMDAwMDAxOnNpbnRldGljby10d2lsaW8tc2VjcmV0LW5vdC1yZWFs"
+        },
+        "form": {
+          "EmptyRoomTimeout": "5",
+          "MaxParticipants": "2",
+          "RecordParticipantsOnConnect": "false",
+          "Type": "group",
+          "UniqueName": "tc-0123456789abcdef0123456789abcdef"
+        }
+      },
+      "response": {"status": 401, "json": {"code": 20003, "message": "Authenticate", "status": 401}}
+    }
+  ],
+  "token": {
+    "identity": "patient",
+    "jwt_header": {"alg": "HS256", "typ": "JWT", "cty": "twilio-fpa;v=1"},
+    "claims": {
+      "jti": "SKsintetico0000000000000000000001-1790596800",
+      "iss": "SKsintetico0000000000000000000001",
+      "sub": "ACsintetico0000000000000000000001",
+      "nbf": 1790596800,
+      "exp": 1790597700,
+      "grants": {
+        "identity": "patient",
+        "video": {"room": "tc-0123456789abcdef0123456789abcdef"}
+      }
+    }
+  }
+}

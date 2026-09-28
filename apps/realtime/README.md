@@ -67,6 +67,12 @@ is satisfied by this implementation.
   binding. Operations are `enrollment_view`, `questionnaires`, `booking`,
   `records`, `consent`, `teleconsult`, and `billing`. No staff GUC is installed,
   and patient sessions cannot subscribe to clinic-wide or staff job topics.
+- `teleconsult:<opaque room name>` (todo 37) admits only the room's bound
+  physician holding `clinical.write` for the session patient's enrollment
+  (`apps.teleconsult.participants.authorize_room_topic`), rerun per frame.
+  The room name is `tc-` plus 32 random hex and spells no stored identifier;
+  the patient side uses `patient:<enrollment>:teleconsult`. Their hints use
+  the `teleconsult` kind.
 - `authz:user:<uuid>` is an internal control channel, not client-selectable.
   `authz:halt` is the process-wide internal live-halt channel.
 

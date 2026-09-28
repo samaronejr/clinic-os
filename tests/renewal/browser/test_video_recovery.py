@@ -15,6 +15,7 @@ import pytest
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._page_wait import evaluate_js
+from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import (
     full_page_screenshot,
     grant_media,
@@ -239,8 +240,44 @@ def end_with_late_status(physician: Page, patient: Page, case: _Case) -> None:
             page.unroute_all(behavior="wait")
 
 
+DROP_PLAN = FIRST["plan"] + " (digitado durante a queda de 20 s)"
+DROP_MS = 20_000
+
+
+def long_drop(physician: Page, case: _Case, session: str) -> None:
+    """A 20 s network drop: typed notes survive, reconnect resumes, save stores.
+
+    Playwright's clock advances the page 20 s while offline, firing every
+    timer that falls due (no real wait); the server records the reconnection.
+    """
+    panel = physician.locator("#room-panel")
+    _show(physician, case, "notes")
+    physician.clock.install()
+    physician.context.set_offline(offline=True)
+    expect(panel).to_have_attribute("data-connection", "offline")
+    _fill(physician, {"plan": DROP_PLAN})
+    physician.clock.fast_forward(DROP_MS)
+    expect(physician.locator("#id_plan")).to_have_value(DROP_PLAN)
+    expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
+    capture(physician, case, "physician-drop-20s")
+    with physician.expect_response(
+        lambda r: (
+            r.request.method == "POST"
+            and 'name="action"\r\n\r\nresume' in (r.request.post_data or "")
+        )
+    ) as resumed:
+        physician.context.set_offline(offline=False)
+    assert resumed.value.status == 200
+    expect(panel).to_have_attribute("data-connection", "connected")
+    expect(physician.locator("#id_plan")).to_have_value(DROP_PLAN)
+    _save(physician)
+    expect(physician.locator("#notes-panel")).to_have_attribute("data-revision", "3")
+    _show(physician, case, "video")
+    capture(physician, case, "physician-drop-recovered")
+
+
 def preserved(case: _Case, version: str, session: str) -> None:
-    assert stored(case.staff, version) == (2, FIRST["subjective"])
+    assert stored(case.staff, version) == (3, FIRST["subjective"])
     rows = state_rows(case, session)
     assert rows["encounter"] == "open"
     assert rows["recording"] is False
@@ -359,12 +396,28 @@ def outage_and_expiry(
     )
 
 
+# Each transport recovery resumes twice (back online, then the explicit
+# Reconnect after a timed-out status), and the 20 s drop resumes once more.
+RECOVERED = [
+    ("created", ""),
+    ("joined", "patient"),
+    ("joined", "physician"),
+    ("started", "physician"),
+    ("reconnected", "patient"),
+    ("reconnected", "patient"),
+    ("reconnected", "physician"),
+    ("reconnected", "physician"),
+    ("reconnected", "physician"),
+]
+
+
 def journey(
     physician: Page, patient: Page, case: _Case, data: dict[str, str], ending: str
 ) -> dict[str, object]:
     session, version = begin(physician, patient, case, data)
     transport_recovery(patient, case, "patient")
     transport_recovery(physician, case, "physician")
+    long_drop(physician, case, session)
     preserved(case, version, session)
     if ending == "outage":
         outage_and_expiry(physician, patient, case, session)
@@ -376,10 +429,7 @@ def journey(
         assert rows["session"] == "failed"
         assert rows["live_credentials"] == 0
         assert rows["events"] == [
-            ("created", ""),
-            ("joined", "patient"),
-            ("joined", "physician"),
-            ("started", "physician"),
+            *RECOVERED,
             ("failed", ""),
         ]
         return rows
@@ -413,13 +463,7 @@ def journey(
     rows = state_rows(case, session)
     assert rows["session"] == "ended"
     assert rows["live_credentials"] == 0
-    assert rows["events"] == [
-        ("created", ""),
-        ("joined", "patient"),
-        ("joined", "physician"),
-        ("started", "physician"),
-        ("ended", "physician"),
-    ]
+    assert rows["events"] == [*RECOVERED, ("ended", "physician")]
     return rows
 
 
@@ -477,6 +521,8 @@ def test_video_recovery_journey(
             )
         try:
             _sign_in_physician(physician, base, staff)
+            # The v2 participant controls decide clinical.write (todo 6).
+            register_physician(staff)
             sign_in_manager(manager, base, staff, seed_manager(staff))
             _publish_consent(manager, f"{base}/clinics/{staff['clinic_a']}/consent/")
             rows = journey(physician, patient, case, _seed(staff, case.day, 12), ending)

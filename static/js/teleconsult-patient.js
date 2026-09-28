@@ -4,7 +4,10 @@
    Scope: only pages carrying `data-teleconsult="waiting"` or `"room"`. No
    provider SDK is loaded; media stays local (synthetic capability record).
    Nothing here touches storage, history state, the title or metadata, and
-   every stream is stopped when the patient leaves, retries or hides the page. */
+   every stream is stopped when the patient leaves, retries or hides the page.
+   The room refetches its status on realtime hints (`rt:teleconsult`, and
+   `rt:poll` from realtime.js's fallback), never on a timer of its own; a
+   dropped connection resumes with the server's stored room state. */
 (function () {
   "use strict";
 
@@ -13,7 +16,6 @@
     return;
   }
 
-  var POLL_MS = 5000;
   var FAILURES = {
     unsupported: {
       title: "Este navegador não permite vídeo",
@@ -77,6 +79,13 @@
       title: "A consulta não pôde continuar",
       text: "A sala foi fechada pela clínica ou pelo provedor.",
       help: "Fale com a clínica para combinar um novo horário.",
+    },
+    removed: {
+      tone: "error",
+      connection: true,
+      title: "Você saiu da sala",
+      text: "O médico retirou você da sala ou seu acesso a ela terminou. Câmera e microfone foram desligados.",
+      help: "Volte à sala de espera para entrar de novo, se o médico pedir.",
     },
   };
   var DEVICE_LABELS = {
@@ -253,6 +262,9 @@
         list.hidden = false;
         setBadge(cameraBadge, "camera", result.camera);
         setBadge(microphoneBadge, "microphone", result.microphone);
+        panel.dispatchEvent(
+          new CustomEvent("tc:devices", { detail: { camera: result.camera, microphone: result.microphone } })
+        );
         preview.hidden = false;
         if (stream && result.camera === "ready") {
           video.srcObject = stream;
@@ -331,9 +343,13 @@
     var refresh = root.querySelector("[data-refresh-status]");
     var stateBadge = root.querySelector("[data-state-badge]");
     var physician = root.querySelector("[data-physician]");
+    var physicianMedia = root.querySelector("[data-physician-media]");
+    var audioButton = panel.querySelector("[data-audio-only]");
     var stream = null;
-    var timer = null;
     var terminal = false;
+    /* Only the newest status reply may paint the room. */
+    var statusSeq = 0;
+    var audioOnly = false;
     /* Bumped on every release so an acquisition still pending when the room
        ends, expires or is left cannot install its stream afterwards. */
     var mediaToken = 0;
@@ -386,18 +402,11 @@
       }
     }
 
-    function stopTimer() {
-      if (timer !== null) {
-        window.clearTimeout(timer);
-        timer = null;
-      }
-    }
-
-    /* Terminal states: no more polling, no media, no further checks. */
+    /* Terminal states: no media, no further checks. */
     function finish(state) {
       terminal = true;
-      stopTimer();
       releaseMedia();
+      audioButton.disabled = true;
       setMedia("off");
       self.hidden = true;
       refresh.disabled = true;
@@ -427,12 +436,67 @@
       button.setAttribute("aria-pressed", available && on ? "true" : "false");
       button.textContent = !available ? noun + " indisponível" : on ? noun + " ligad" + (kind === "microphone" ? "o" : "a") : noun + " desligad" + (kind === "microphone" ? "o" : "a");
       tracks(kind).forEach(function (track) {
-        track.enabled = available && on;
+        track.enabled = available && on && !(kind === "camera" && audioOnly);
       });
       if (kind === "camera") {
-        selfOff.hidden = available && on;
-        selfOff.textContent = available ? "Câmera desligada" : "Sem câmera";
+        selfOff.hidden = available && on && !audioOnly;
+        selfOff.textContent = audioOnly ? "Somente áudio" : available ? "Câmera desligada" : "Sem câmera";
       }
+    }
+
+    /* Audio only: the camera track stops sending; the server records the
+       mode so the physician sees it and a reconnect restores it. */
+    function paintAudioOnly(enabled) {
+      audioOnly = enabled;
+      panel.setAttribute("data-media-mode", enabled ? "audio" : "video");
+      audioButton.setAttribute("aria-pressed", enabled ? "true" : "false");
+      audioButton.textContent = audioButton.getAttribute(enabled ? "data-text-on" : "data-text-off");
+      setToggle(camButton, "camera", !enabled, tracks("camera").length > 0 && !enabled);
+    }
+
+    function postAction(action, extra) {
+      var body = new FormData(statusForm);
+      body.set("action", action);
+      Object.keys(extra || {}).forEach(function (name) {
+        body.set(name, extra[name]);
+      });
+      return fetch(statusUrl, {
+        method: "POST",
+        body: body,
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+    }
+
+    function requestAudioOnly(enabled, automatic) {
+      if (terminal) {
+        return Promise.resolve();
+      }
+      audioButton.disabled = true;
+      audioButton.setAttribute("aria-busy", "true");
+      return postAction("audio_only", { enabled: enabled ? "true" : "false" })
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("audio_only " + response.status);
+          }
+          return response.json();
+        })
+        .then(
+          function (value) {
+            paintAudioOnly(Boolean(value.audio_only));
+            if (automatic) {
+              say(audioButton.getAttribute("data-text-auto"), "muted");
+            }
+          },
+          function () {
+            say(audioButton.getAttribute("data-text-failed"), "error");
+          }
+        )
+        .then(function () {
+          audioButton.removeAttribute("aria-busy");
+          audioButton.disabled = terminal;
+        });
     }
 
     function watchTracks() {
@@ -473,6 +537,10 @@
         } else if (stream) {
           setMedia("partial");
           showMediaFailure(result.reason);
+          /* Camera gone but microphone working: continue with audio only. */
+          if (result.microphone === "ready" && !audioOnly) {
+            requestAudioOnly(true, true);
+          }
         } else {
           setMedia(result.reason);
           showMediaFailure(result.reason);
@@ -482,6 +550,19 @@
 
     function applyState(status) {
       panel.setAttribute("data-state", status.state);
+      if (typeof status.physician_audio_only === "boolean") {
+        physicianMedia.textContent = physicianMedia.getAttribute(status.physician_audio_only ? "data-text-audio" : "data-text-video");
+      }
+      if (status.removed) {
+        finish("removed");
+        remoteText.textContent = "Você saiu da sala";
+        say("Você saiu da sala.", "error");
+        showFailure("removed", ["back"]);
+        return;
+      }
+      if (typeof status.audio_only === "boolean" && status.audio_only !== audioOnly) {
+        paintAudioOnly(status.audio_only);
+      }
       stateBadge.className = "badge " + (status.state === "active" ? "badge--success" : status.state === "waiting" ? "badge--pending" : status.state === "failed" ? "badge--error" : "badge--muted");
       stateBadge.textContent = status.label;
       physician.textContent = status.physician_joined ? "Já está na sala" : "Ainda não entrou";
@@ -524,26 +605,20 @@
       });
     }
 
-    function schedule() {
-      stopTimer();
-      if (!terminal) {
-        timer = window.setTimeout(connect, POLL_MS);
-      }
-    }
-
     function connect() {
       if (terminal) {
         return;
       }
-      stopTimer();
+      var mine = ++statusSeq;
       if (panel.getAttribute("data-connection") !== "connected") {
         setConnection("joining");
         say("Conectando à sala…");
       }
       poll().then(
         function (status) {
-          // A reply already in flight cannot undo an ended/expired/left room.
-          if (terminal) {
+          // A reply already in flight cannot undo an ended/expired/left room,
+          // and an older reply never paints over a newer one.
+          if (terminal || mine !== statusSeq) {
             return;
           }
           if (status.expired) {
@@ -557,7 +632,58 @@
             restoreMediaFailure();
           }
           applyState(status);
-          schedule();
+        },
+        function () {
+          if (terminal || mine !== statusSeq) {
+            return;
+          }
+          setConnection("offline");
+          say("Conexão perdida. Nada foi gravado.", "error");
+          showFailure("offline", ["reconnect"]);
+        }
+      );
+    }
+
+    /* Reconnect with state recovery: the server re-validates the patient,
+       renews an expired room credential and returns the stored media modes;
+       then the status refetch paints the room. */
+    function resume() {
+      if (terminal) {
+        return;
+      }
+      if (!navigator.onLine) {
+        connect();
+        return;
+      }
+      statusSeq += 1;
+      setConnection("reconnecting");
+      say("Reconectando à sala…");
+      postAction("resume").then(
+        function (response) {
+          if (terminal) {
+            return null;
+          }
+          if (response.status === 403) {
+            return connect();
+          }
+          if (response.status === 409) {
+            return response.json().then(function (value) {
+              if (value.code === "not_in_room") {
+                applyState({ state: "waiting", removed: true });
+              } else {
+                connect();
+              }
+            });
+          }
+          if (!response.ok) {
+            throw new Error("resume " + response.status);
+          }
+          return response.json().then(function (recovery) {
+            if (!terminal && recovery.audio_only !== audioOnly) {
+              paintAudioOnly(recovery.audio_only);
+            }
+            connect();
+          });
         },
         function () {
           if (terminal) {
@@ -577,8 +703,13 @@
       setToggle(camButton, "camera", camButton.getAttribute("aria-pressed") !== "true", true);
     });
     actions.retryMedia.addEventListener("click", startMedia);
-    actions.reconnect.addEventListener("click", connect);
+    actions.reconnect.addEventListener("click", resume);
     refresh.addEventListener("click", connect);
+    audioButton.addEventListener("click", function () {
+      requestAudioOnly(!audioOnly, false);
+    });
+    document.body.addEventListener("rt:teleconsult", connect);
+    document.body.addEventListener("rt:poll", connect);
     leave.addEventListener("click", function () {
       finish("left");
     });
@@ -586,18 +717,17 @@
       if (terminal) {
         return;
       }
-      stopTimer();
+      statusSeq += 1;
       setConnection("offline");
       say("Conexão perdida. Nada foi gravado.", "error");
       showFailure("offline", ["reconnect"]);
     });
     window.addEventListener("online", function () {
       if (panel.getAttribute("data-connection") === "offline") {
-        connect();
+        resume();
       }
     });
     window.addEventListener("pagehide", function () {
-      stopTimer();
       releaseMedia();
     });
 

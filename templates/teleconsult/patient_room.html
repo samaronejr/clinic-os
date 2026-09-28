@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% load static %}
-{% block extra_head %}<meta name="referrer" content="same-origin"><meta name="robots" content="noindex, nofollow"><link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-patient.js' %}" defer></script>{% endblock %}
+{% load static i18n %}
+{% block extra_head %}<meta name="referrer" content="same-origin"><meta name="robots" content="noindex, nofollow"><link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/realtime.js' %}" defer></script><script src="{% static 'js/teleconsult-patient.js' %}" defer></script>{% endblock %}
 {% block title %}Sala de teleconsulta · Clinic OS{% endblock %}
 {% block meta_description %}Sala de teleconsulta do paciente.{% endblock %}
 {% block content %}
-<section class="shell-wide tele-room" aria-labelledby="room-title" data-teleconsult="room">
+<section class="shell-wide tele-room" aria-labelledby="room-title" data-teleconsult="room" data-realtime-topic="{{ realtime_topic }}" data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}" data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
   <div class="tele-room-head">
     <h1 id="room-title">Sala de teleconsulta</h1>
     <p class="lede">Você está na sala da sua consulta. Gravação e transcrição estão desativadas.</p>
     {% include "teleconsult/partials/synthetic_notice.html" %}
+    {% if realtime_enabled %}<p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Automatic updates are unavailable. Use “Check status now” to update this page." %}</p>{% endif %}
   </div>
   <div class="tele-room-grid">
     <section class="panel tele-room-panel" id="room-panel" aria-labelledby="stage-title" data-session="{{ entry.session.pk }}" data-state="{{ entry.state }}" data-role="{{ entry.role }}" data-connection="idle" data-status-url="{% url 'teleconsult:patient' %}">
@@ -28,6 +29,7 @@
       <div class="tele-controls" role="group" aria-label="Controles da chamada">
         <button class="button button--secondary tele-toggle" type="button" data-toggle="microphone" aria-pressed="true" disabled>Microfone ligado</button>
         <button class="button button--secondary tele-toggle" type="button" data-toggle="camera" aria-pressed="true" disabled>Câmera ligada</button>
+        <button class="button button--secondary tele-toggle" type="button" data-audio-only aria-pressed="false" data-text-on="{% trans 'Audio only: on' %}" data-text-off="{% trans 'Audio only: off' %}" data-text-busy="{% trans 'Switching…' %}" data-text-auto="{% trans 'Your camera is unavailable, so the consultation continues with audio only.' %}" data-text-failed="{% trans 'The audio-only switch was not confirmed by the clinic. Try again.' %}">{% trans "Audio only: off" %}</button>
         <a class="button button--danger" href="{% url 'teleconsult:patient' %}" data-leave>Sair da sala</a>
       </div>
       <noscript><p class="feedback feedback--muted" role="status">O vídeo precisa de JavaScript ativado. Ative-o ou use outro navegador; se não for possível, a clínica pode continuar por telefone.</p></noscript>
@@ -55,6 +57,10 @@
           <div class="tele-fact">
             <dt>Médico</dt>
             <dd data-physician>{% if row.physician_joined %}Já está na sala{% else %}Ainda não entrou{% endif %}</dd>
+          </div>
+          <div class="tele-fact">
+            <dt>{% trans "Physician's media" %}</dt>
+            <dd data-physician-media data-text-audio="{% trans 'Audio only' %}" data-text-video="{% trans 'Video and audio' %}">{% trans "Video and audio" %}</dd>
           </div>
           <div class="tele-fact">
             <dt>Gravação</dt>

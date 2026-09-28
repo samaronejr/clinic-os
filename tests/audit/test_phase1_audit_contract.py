@@ -298,6 +298,12 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "teleconsult.session",
         "denied",
     ),
+    "teleconsult.participant.removed": (
+        "tenant",
+        "clinic-os-web",
+        "teleconsult.session",
+        "removed",
+    ),
     "providers.capability.proposed": (
         "system",
         "clinic-os-ops",

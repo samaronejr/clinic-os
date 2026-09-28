@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -58,6 +59,7 @@ from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import seed as clinical_seed
 from renewal.test_encounters import setup_context
 from renewal.test_retention import admin
+from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -78,6 +80,7 @@ PURPOSE = "teleconsultation"
 def synthetic_provider(settings: SettingsWrapper) -> SyntheticRoomAdapter:
     """Enable the synthetic room gate and re-register the boundary adapter."""
     settings.TELECONSULT_SYNTHETIC_PROVIDER = True
+    seed_video_versions()
     adapter = SyntheticRoomAdapter()
     register_send_adapter(adapter)
     return adapter
@@ -118,6 +121,30 @@ def _operation(graph: RbacGraph, session: TeleconsultSession) -> IntegrationOper
     with setup_context(graph.organization_a):
         room = TeleconsultRoom.objects.get(session_id=session.pk)
         return IntegrationOperation.objects.get(pk=room.operation_id)
+
+
+def room_name(graph: RbacGraph, session: TeleconsultSession) -> str:
+    """Return the stored opaque provider room name for one session."""
+    with setup_context(graph.organization_a):
+        return TeleconsultRoom.objects.get(session_id=session.pk).room_name
+
+
+def opaque_room_name(graph: RbacGraph, session: TeleconsultSession) -> str:
+    """Return the stored room name after proving it spells no stored identifier."""
+    name = room_name(graph, session)
+    assert re.fullmatch(r"tc-[0-9a-f]{32}", name)
+    for identifier in (
+        session.pk,
+        session.encounter_id,
+        session.appointment_id,
+        session.patient_id,
+        session.physician_id,
+        session.clinic_id,
+        session.organization_id,
+    ):
+        assert identifier.hex not in name
+        assert str(identifier) not in name
+    return name
 
 
 def _run_room(graph: RbacGraph, session: TeleconsultSession) -> str:
@@ -206,13 +233,15 @@ def test_scoped_lifecycle_room_and_event_history(
     assert _run_room(graph, session) == "succeeded"
     operation = _operation(graph, session)
     assert operation.status == "succeeded"
-    assert operation.provider_reference == f"synthetic:room:tc-{session.pk}"
+    assert operation.provider_reference == "synthetic:room:" + opaque_room_name(
+        graph, session
+    )
     physician_token = _physician_join(graph, session)
     patient_token = _patient_join(patient_session, session)
     assert physician_token != patient_token
     physician_entry = _physician_enter(graph, physician_token)
     patient_entry = _patient_enter(patient_session, patient_token)
-    assert physician_entry.room_name == f"tc-{session.pk}"
+    assert physician_entry.room_name == room_name(graph, session)
     assert patient_entry.room_name == physician_entry.room_name
     assert physician_entry.role == "physician"
     assert patient_entry.role == "patient"
@@ -428,10 +457,9 @@ def test_foreign_principals_and_token_replays_fail_closed(
     ):
         enter_room(token=patient_token, role="patient")
     # The intended participants still enter after every denial above.
-    assert _physician_enter(graph, physician_token).room_name == (f"tc-{session.pk}")
-    assert _patient_enter(patient_session, patient_token).room_name == (
-        f"tc-{session.pk}"
-    )
+    name = room_name(graph, session)
+    assert _physician_enter(graph, physician_token).room_name == name
+    assert _patient_enter(patient_session, patient_token).room_name == name
 
 
 def test_expired_and_rotated_credentials_cannot_enter(
@@ -468,7 +496,7 @@ def test_expired_and_rotated_credentials_cannot_enter(
         pytest.raises(TeleconsultAccessDeniedError),
     ):
         enter_room(token=live_token, role="physician")
-    assert _physician_enter(graph, rotated_token).room_name == (f"tc-{session.pk}")
+    assert _physician_enter(graph, rotated_token).room_name == room_name(graph, session)
     kinds = _kinds(graph, session)
     assert kinds[0] == "created"
     assert kinds.count("join_denied") == 2
@@ -492,6 +520,7 @@ def test_raw_mutation_reopen_and_capture_flag_fail_closed(
         "teleconsult_teleconsultroom",
         "teleconsult_teleconsultcredential",
         "teleconsult_teleconsultevent",
+        "teleconsult_teleconsultdevicecheck",
     ]
     with connection.cursor() as cursor:
         cursor.execute(
@@ -564,7 +593,8 @@ def test_raw_mutation_reopen_and_capture_flag_fail_closed(
     with setup_context(graph.organization_a):
         session.refresh_from_db()
         assert session.state == "ended"
-        assert TeleconsultRoom.objects.get(pk=room.pk).room_name == (f"tc-{session.pk}")
+        assert TeleconsultRoom.objects.get(pk=room.pk).room_name == room.room_name
+        assert re.fullmatch(r"tc-[0-9a-f]{32}", room.room_name)
         assert TeleconsultEvent.objects.filter(session_id=session.pk).exists()
 
 

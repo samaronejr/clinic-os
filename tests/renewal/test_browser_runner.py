@@ -68,6 +68,20 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS
     assert set(runner.SUITES) >= runner.FIXTURE_SUITES
     assert "video-recovery" in runner.FIXTURE_SUITES & runner.VIDEO_SUITES
+    # The realtime suite also drives teleconsult hints through a real room.
+    assert (
+        frozenset(
+            {
+                "realtime",
+                "teleconsult",
+                "patient-video",
+                "clinician-video",
+                "video-recovery",
+                "end-to-end",
+            }
+        )
+        == runner.VIDEO_SUITES
+    )
     # The rehearsal drives every synthetic adapter slice in one runtime.
     assert "end-to-end" in (
         runner.FIXTURE_SUITES

@@ -87,6 +87,7 @@ DOMAIN_RELATIONS: Final = (
     "scheduling_waitlistentry",
     "scheduling_waitlistoffer",
     "teleconsult_teleconsultcredential",
+    "teleconsult_teleconsultdevicecheck",
     "teleconsult_teleconsultevent",
     "teleconsult_teleconsultroom",
     "teleconsult_teleconsultsession",

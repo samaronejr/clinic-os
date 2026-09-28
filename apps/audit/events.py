@@ -289,6 +289,9 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "teleconsult.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "teleconsult.session", "denied"
         ),
+        "teleconsult.participant.removed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "removed"
+        ),
         "providers.capability.proposed": Phase1AuditEventDefinition(
             "system",
             "clinic-os-ops",

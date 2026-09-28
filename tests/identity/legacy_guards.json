@@ -3109,6 +3109,40 @@
       ]
     },
     {
+      "symbol": "apps.teleconsult.participants.clinician_session",
+      "signals": [
+        "denial",
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.participants.clinician_session"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.participants.patient_session",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.participants.patient_session#observed"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.participants.authorize_room_topic",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.participants.authorize_room_topic"
+      ]
+    },
+    {
       "symbol": "apps.tenancy.db.tenant_context",
       "signals": [
         "denial",
@@ -3441,6 +3475,9 @@
     "apps.scheduling.views.availability_list_view",
     "apps.scheduling.views.availability_retire_view",
     "apps.scheduling.waitlist_views.waitlist_view",
+    "apps.teleconsult.participants.authorize_room_topic",
+    "apps.teleconsult.participants.clinician_session",
+    "apps.teleconsult.participants.patient_session#observed",
     "apps.teleconsult.services._assigned_physician",
     "apps.teleconsult.services._denied",
     "apps.teleconsult.services._enter_as_patient#observed",
@@ -5074,7 +5111,8 @@
           "clinic_app.identity_rolegrant:scope_read"
         ],
         "resolvers": [
-          "clinic_app.consent_guard"
+          "clinic_app.consent_guard",
+          "clinic_app.teleconsult_clinician"
         ]
       },
       "kind": "staff_guard",
@@ -6571,14 +6609,44 @@
           }
         ],
         "migrations": [
-          "apps/teleconsult/migrations/_teleconsult_sql.py"
+          "apps/teleconsult/migrations/_teleconsult_sql.py",
+          "apps/teleconsult/migrations/_teleconsult_v2_sql.py"
         ],
         "policies": [],
         "resolvers": []
       },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_binding_guard#device"
+      ],
+      "reason": "Row binding trigger whose v2 device-check branch decides participant authority: the staff branch requires clinic_app.teleconsult_clinician (has_permission clinical.write with the session patient's enrollment plus the bound physician), the patient branch teleconsult_patient_match. The trigger oracle fires the guarded INSERT under every stored role."
+    },
+    "clinic_app.teleconsult_clinician": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_v2_sql.py"
+        ],
+        "policies": [
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_insert",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_read"
+        ],
+        "resolvers": [
+          "clinic_app.teleconsult_binding_guard"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_clinician"
+      ],
+      "reason": "Direct callable SQL decision: clinic_app.has_permission('clinical.write', clinic, session patient's enrollment) and the session's bound physician, with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
     },
     "clinic_app.teleconsult_credential_guard": {
       "discovery": {
@@ -6659,12 +6727,15 @@
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_insert",
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_read",
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_update",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_insert",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_read",
           "clinic_app.teleconsult_teleconsultevent:teleconsult_event_insert",
           "clinic_app.teleconsult_teleconsultevent:teleconsult_event_read",
           "clinic_app.teleconsult_teleconsultroom:teleconsult_room_read",
           "clinic_app.teleconsult_teleconsultsession:teleconsult_session_read"
         ],
         "resolvers": [
+          "clinic_app.teleconsult_binding_guard",
           "clinic_app.teleconsult_fail",
           "clinic_app.teleconsult_room_state",
           "clinic_app.teleconsult_session_scope"

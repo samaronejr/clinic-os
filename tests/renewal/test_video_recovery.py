@@ -57,6 +57,7 @@ from renewal.test_teleconsult_sessions import (
     _physician_enter,
     _physician_join,
     _run_room,
+    room_name,
     seed,
     synthetic_provider,
 )
@@ -269,7 +270,7 @@ def test_timeout_after_remote_creation_retries_the_same_room(
     assert _run_room(graph, session) == "skipped"
     assert adapter.calls == 2
     assert adapter.effects == {
-        _operation(graph, session).pk: f"synthetic:room:tc-{session.pk}"
+        _operation(graph, session).pk: f"synthetic:room:{room_name(graph, session)}"
     }
     assert _kinds(graph, session) == ["created"]
 
@@ -321,7 +322,7 @@ def test_duplicate_and_out_of_order_authenticated_room_callbacks(
     session = _create(graph, encounter)
     assert _run_room(graph, session) == "succeeded"
     token = _patient_join(patient, session)
-    reference = f"synthetic:room:tc-{session.pk}"
+    reference = f"synthetic:room:{room_name(graph, session)}"
     assert callback(reference, first, "one") == "applied"
     assert callback(reference, first, "one") == "duplicate"
     assert (
@@ -354,7 +355,8 @@ def test_late_callbacks_cannot_reopen_an_ended_consultation(
     token = _patient_join(patient, session)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         ended = end_consultation(clinic_id=graph.clinic_a, session_id=session.pk)
-    assert callback(f"synthetic:room:tc-{session.pk}", "delivered", "late") == "applied"
+    reference = f"synthetic:room:{room_name(graph, session)}"
+    assert callback(reference, "delivered", "late") == "applied"
     with pytest.raises(TeleconsultConflictError):
         _patient_enter(patient, token)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
@@ -381,7 +383,7 @@ def test_unapproved_end_callbacks_and_forged_callbacks_fail_closed(
     assert _run_room(graph, session) == "succeeded"
     for _ in range(2):
         with pytest.raises(CallbackAuthenticationError):
-            callback(f"synthetic:room:tc-{session.pk}", "ended", "end")
+            callback(f"synthetic:room:{room_name(graph, session)}", "ended", "end")
     with runtime_role(), pytest.raises(CallbackAuthenticationError):
         integration.receive_provider_callback(
             provider=PROVIDER, headers={}, body=b"forged"
