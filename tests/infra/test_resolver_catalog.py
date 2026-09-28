@@ -97,9 +97,8 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
-    # Machine authority is read-only: STABLE makes PostgreSQL refuse writes.
-    "principal_scope": ("s", False, ["clinic_agent", "clinic_resolver"]),
-    "principal_has": ("s", False, ["clinic_agent", "clinic_resolver"]),
+    "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),

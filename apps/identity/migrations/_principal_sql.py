@@ -51,7 +51,7 @@ CREATE TRIGGER principal_immutable BEFORE UPDATE OR DELETE
 SET LOCAL ROLE clinic_resolver;
 CREATE FUNCTION clinic_app.principal_scope(
  requested_principal uuid, requested_clinic uuid)
-RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER
+RETURNS uuid LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT p.organization_id FROM clinic_app.identity_serviceprincipal p
  WHERE p.id=requested_principal AND p.clinic_id=requested_clinic
@@ -68,7 +68,7 @@ REVOKE ALL ON FUNCTION clinic_app.principal_scope(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION clinic_app.principal_scope(uuid,uuid) TO clinic_agent;
 
 CREATE FUNCTION clinic_app.principal_has(perm text, clinic uuid)
-RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+RETURNS boolean LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 DECLARE registered_tenant uuid; principal uuid; tenant uuid;
 BEGIN

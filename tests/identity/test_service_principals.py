@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import secrets
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from itertools import product
@@ -48,6 +49,7 @@ from django.db import (
 from psycopg import sql
 
 from identity.authority_catalog import Catalog, Reads
+from identity.authority_sql import references
 from identity.machine_gate import (
     NOT_GATED,
     SETTING_WRITE,
@@ -67,7 +69,7 @@ from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
     from uuid import UUID
 
     from pytest_django.plugin import DjangoDbBlocker
@@ -94,10 +96,8 @@ ACTOR_GUC = "app.current_user_id"
 # depend on how a migration spelled it. The body is prosrc verbatim and no text
 # is rewritten, so every byte, including whitespace inside literals, counts.
 # Changing principal_scope means re-reviewing it and updating this pin.
-# Round 8 (D1-r8) declared it STABLE; removing " STABLE" from today's text
-# gives the previous pin 5d1317b7..., so nothing else changed.
 REFUSAL_HELPER_DIGEST = (
-    "495fc119a247ee1d4e3f2a1ce87431d2e845029a9b82d4569d972a15116eb743"
+    "5d1317b75f31ab4987abf387194cced1b4c9a2d1f866baef1d9152a3aea2a28a"
 )
 # Everything the pinned helper's closure may read; any view is refused.
 REFUSAL_HELPER_RELATIONS = frozenset(
@@ -123,8 +123,28 @@ MACHINE_SQL_OPAQUE = {"opaque function pg_catalog.pg_has_role"}
 # data-modifying CTEs and every utility command (SET, NOTIFY, LOCK, COPY...)
 # inside sql/plpgsql bodies, and volatile natives (nextval, setval,
 # pg_advisory*, pg_notify, lo_*, set_config) cannot be reached. Native
-# functions outside pg_catalog are already opaque.
+# functions outside pg_catalog are already opaque. The only exception is
+# VOLATILE_GATES below.
 READ_ONLY_VOLATILITY = frozenset({"i", "s"})
+# The gate functions stay VOLATILE, like staff has_permission: each call takes
+# a fresh READ COMMITTED snapshot, so a revocation committed while a cursor or
+# a long statement is running stops its next row (review round 9, D1-r9;
+# test_revocation_stops_*). PostgreSQL does not keep a VOLATILE body
+# read-only, so each gate is admitted only (a) with its reviewed definition,
+# pinned like REFUSAL_HELPER_DIGEST, because a statement such as FOR SHARE,
+# LOCK or NOTIFY in a VOLATILE body is invisible to the write rule, and (b)
+# while its own closure passes the write, setting and volatile-callee rules,
+# with only other admitted gates exempt (_admitted_gates). The executed
+# snapshot check runs both. The set is exactly the refusal helper plus the
+# functions the clinic_agent RLS policies call
+# (test_volatile_gate_exception_is_exact).
+VOLATILE_GATES: dict[str, tuple[str, str]] = {
+    REFUSAL_HELPER: (REFUSAL_HELPER + "(uuid,uuid)", REFUSAL_HELPER_DIGEST),
+    "clinic_app.principal_has": (
+        "clinic_app.principal_has(text,uuid)",
+        "60aa50c81ffd438d6075eee2b592bafcab0ef8bfade6d211b80eaf96902744d8",
+    ),
+}
 # Builtins labelled STABLE that still assign a transaction id.
 XID_ASSIGNING = frozenset({"pg_catalog.txid_current", "pg_catalog.pg_current_xact_id"})
 WRITES_RELATION = "writes a relation"
@@ -357,6 +377,116 @@ def test_revocation_is_visible_inside_existing_context(
         ),
     ):
         pytest.fail("revoked context entered")
+
+
+def _seed_own_blocks(graph: RbacGraph, count: int) -> set[UUID]:
+    """Blocks in the principal's clinic, all visible to the agent."""
+    start = datetime(2032, 1, 1, 12, tzinfo=UTC)
+    with owner_context(graph.organization_a):
+        return {
+            AvailabilityBlock.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                practitioner_id=graph.physician,
+                start_at=start + timedelta(days=day),
+                end_at=start + timedelta(days=day, hours=1),
+                idempotency_key=uuid4(),
+                create_fingerprint=b"s" * 32,
+            ).pk
+            for day in range(count)
+        }
+
+
+def _revoke(principal: ServicePrincipal, target: str) -> None:
+    """Revoke from a distinct owner connection and commit."""
+    with owner_context(principal.organization_id):
+        if target == "principal":
+            ServicePrincipal.objects.filter(pk=principal.pk).update(active=False)
+        else:
+            ServicePrincipalGrant.objects.filter(principal=principal).update(
+                active=False
+            )
+
+
+def _agent_in_scope(principal: ServicePrincipal) -> psycopg.Connection[Any]:
+    """A raw agent-login connection inside an open machine transaction."""
+    agent = psycopg.connect(**connections["agent"].get_connection_params())
+    agent.execute(
+        "SELECT set_config('app.current_principal', %s, true),"
+        " set_config('app.current_tenant', %s, true)",
+        [str(principal.pk), str(principal.organization_id)],
+    )
+    return agent
+
+
+@pytest.mark.parametrize("target", ["principal", "grant"])
+def test_revocation_stops_an_open_cursor_on_the_agent_login(
+    principal: ServicePrincipal, rbac_graph: RbacGraph, target: str
+) -> None:
+    """Review round 9 (D1-r9): the agent_grant policy calls the VOLATILE
+    principal_has per row, which takes a fresh snapshot, so rows fetched from
+    an open cursor after a revocation commits are refused."""
+    own = _seed_own_blocks(rbac_graph, 3)
+    with _agent_in_scope(principal) as agent, agent.cursor() as cursor:
+        cursor.execute(
+            "DECLARE machine_rows NO SCROLL CURSOR FOR"
+            " SELECT id FROM clinic_app.scheduling_availabilityblock"
+        )
+        cursor.execute("FETCH 1 FROM machine_rows")
+        first = cursor.fetchall()
+        _revoke(principal, target)
+        cursor.execute("FETCH ALL FROM machine_rows")
+        rest = cursor.fetchall()
+        agent.rollback()
+    # Anti-vacuity: the grant was live for the first row, and two rows remained.
+    assert [row[0] for row in first] in [[block] for block in own]
+    assert rest == []
+
+
+# Advisory lock keys for the statement handshake (lane test database only).
+GATE_LOCK, ROW_LOCK = 7_314_001, 7_314_002
+
+
+@pytest.mark.parametrize("target", ["principal", "grant"])
+def test_revocation_stops_the_rest_of_a_running_statement(
+    principal: ServicePrincipal,
+    rbac_graph: RbacGraph,
+    superuser_database_url: str,
+    target: str,
+) -> None:
+    """Review round 9 (D1-r9): one SELECT is held after its first row passed
+    the agent_grant policy. Its target list, evaluated per row after the RLS
+    check, releases ROW_LOCK and then waits on GATE_LOCK. The test takes
+    ROW_LOCK (so the first row has been checked), commits the revocation,
+    releases GATE_LOCK, and the statement's remaining rows are refused.
+    Bounded by lock_timeout and the future's timeout; no timer waits."""
+    own = _seed_own_blocks(rbac_graph, 3)
+    with (
+        psycopg.connect(superuser_database_url, autocommit=True) as gate,
+        psycopg.connect(superuser_database_url, autocommit=True) as watcher,
+        _agent_in_scope(principal) as agent,
+    ):
+        gate.execute("SELECT pg_advisory_lock(%s)", [GATE_LOCK])
+        agent.execute("SELECT pg_advisory_lock(%s)", [ROW_LOCK])
+
+        def statement() -> list[tuple[Any, ...]]:
+            return agent.execute(
+                "SELECT b.id, pg_advisory_unlock(%s),"
+                " pg_advisory_xact_lock_shared(%s)"
+                " FROM clinic_app.scheduling_availabilityblock b",
+                [ROW_LOCK, GATE_LOCK],
+            ).fetchall()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            running = pool.submit(statement)
+            watcher.execute("SET lock_timeout = '60s'")
+            watcher.execute("SELECT pg_advisory_lock(%s)", [ROW_LOCK])
+            _revoke(principal, target)
+            gate.execute("SELECT pg_advisory_unlock(%s)", [GATE_LOCK])
+            rows = running.result(timeout=60)
+        agent.rollback()
+    # Anti-vacuity: the first row was granted, and two rows remained.
+    assert [row[0] for row in rows] in [[block] for block in own]
 
 
 def test_principal_context_refuses_nesting(principal: ServicePrincipal) -> None:
@@ -781,6 +911,7 @@ class SealedCatalog(Catalog):
         }
         assert len(self.sealed) == 1, "refusal helper missing or overloaded"
         self.channels = self.derive()
+        self.admitted = _admitted_gates(self)
 
     def _function(self, oid: int, *, bypass: bool, seen: set[Node]) -> Reads:
         if oid in self.sealed:
@@ -788,17 +919,65 @@ class SealedCatalog(Catalog):
         return super()._function(oid, bypass=bypass, seen=seen)
 
 
-def refusal_helper_digest() -> str:
+def function_digest(signature: str) -> str:
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_get_functiondef(p.oid) || ' --owner ' || "
             "pg_get_userbyid(p.proowner) || ' --acl ' || p.proacl::text "
             "FROM pg_proc p WHERE p.oid = %s::regprocedure",
-            [REFUSAL_HELPER + "(uuid,uuid)"],
+            [signature],
         )
         row = cursor.fetchone()
     assert row is not None
     return hashlib.sha256(str(row[0]).encode()).hexdigest()
+
+
+def refusal_helper_digest() -> str:
+    return function_digest(REFUSAL_HELPER + "(uuid,uuid)")
+
+
+def _volatile_calls(catalog: Catalog, reads: Reads, exempt: Iterable[str]) -> list[str]:
+    """Functions in a closure outside READ_ONLY_VOLATILITY, apart from exempt."""
+    return sorted(
+        function.name
+        for function in (catalog.functions[oid] for oid in reads.functions)
+        if (
+            function.volatility not in READ_ONLY_VOLATILITY
+            or function.name in XID_ASSIGNING
+        )
+        and function.name not in set(exempt)
+    )
+
+
+def _admitted_gates(catalog: SealedCatalog) -> frozenset[str]:
+    """The largest subset of VOLATILE_GATES whose live definitions are the
+    reviewed ones and whose own closures (the helper unsealed) write nothing,
+    write no setting, hold nothing uninspectable and call no VOLATILE function
+    outside the subset itself."""
+    closures: dict[str, Reads] = {}
+    sealed, catalog.sealed = catalog.sealed, set()
+    try:
+        with connection.cursor() as cursor:
+            for name, (signature, digest) in VOLATILE_GATES.items():
+                if function_digest(signature) != digest:
+                    continue
+                cursor.execute("SELECT %s::regprocedure::oid", [signature])
+                row = cursor.fetchone()
+                assert row is not None
+                closures[name] = catalog._function(row[0], bypass=False, seen=set())
+    finally:
+        catalog.sealed = sealed
+    admitted = set(closures)
+    while rejected := {
+        name
+        for name in admitted
+        if closures[name].writes
+        or _setting_writes(catalog, closures[name])
+        or closures[name].opaque - MACHINE_SQL_OPAQUE
+        or _volatile_calls(catalog, closures[name], admitted)
+    }:
+        admitted -= rejected
+    return frozenset(admitted)
 
 
 def _views(catalog: SealedCatalog, reads: Reads) -> list[str]:
@@ -901,12 +1080,7 @@ def _closure_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     # Cross-check derived from the catalog: no writing statement anywhere.
     if reads.writes:
         problems.append(WRITES_RELATION + ": " + ", ".join(sorted(reads.writes)))
-    if volatile := sorted(
-        catalog.functions[oid].name
-        for oid in reads.functions
-        if catalog.functions[oid].volatility not in READ_ONLY_VOLATILITY
-        or catalog.functions[oid].name in XID_ASSIGNING
-    ):
+    if volatile := _volatile_calls(catalog, reads, catalog.admitted):
         problems.append(VOLATILE_CALL + ": " + ", ".join(volatile))
     return problems
 
@@ -1258,6 +1432,88 @@ def test_refusal_helper_pin_is_the_live_definition() -> None:
     assert refusal_helper_digest() == REFUSAL_HELPER_DIGEST
 
 
+def test_volatile_gate_exception_is_exact() -> None:
+    """The VOLATILE exception is exactly the refusal helper plus every function
+    a clinic_agent RLS policy calls (they need a fresh snapshot per row), and
+    every one of them is admitted on the live catalog."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid)"
+            " FROM pg_policy WHERE 'clinic_agent'::regrole = ANY(polroles)"
+        )
+        expressions = [text for row in cursor.fetchall() for text in row if text]
+    assert expressions, "no clinic_agent policy"
+    catalog = SealedCatalog()
+    calls = {call for text in expressions for call in references(text).calls}
+    # Resolved as the census resolves names; an unresolved call fails closed.
+    assert all(catalog.function_names.get(call) for call in calls), calls
+    policy_calls = {
+        catalog.functions[oid].name
+        for call in calls
+        for oid in catalog.function_names[call]
+    }
+    assert set(VOLATILE_GATES) == {REFUSAL_HELPER} | policy_calls
+    assert catalog.admitted == set(VOLATILE_GATES)
+
+
+# Each shape takes the admission away from the named gates while leaving their
+# volatility as it is: statements to run, and a query returning one more
+# statement to run (or None).
+UNPROVEN_GATES: dict[str, tuple[list[str], str | None, set[str]]] = {
+    # A reviewed-looking change invisible to the write rule: a row lock in a
+    # VOLATILE body. Only the definition pin sees it.
+    "for_share_body": (
+        [],
+        """
+        SELECT replace(pg_get_functiondef(
+          'clinic_app.principal_has(text,uuid)'::regprocedure),
+          ' RETURN EXISTS', ' PERFORM 1 FROM clinic_app.identity_serviceprincipal'
+          || ' FOR SHARE; RETURN EXISTS')""",
+        {"clinic_app.principal_has"},
+    ),
+    # The definitions are untouched, but their closures now reach a VOLATILE
+    # function through the = operator both bodies use.
+    "volatile_operator": (
+        [
+            """
+            CREATE FUNCTION clinic_app.principal_eq_hint(a uuid, b text)
+              RETURNS boolean LANGUAGE sql VOLATILE
+              SET search_path=pg_catalog,clinic_app,pg_temp
+              AS $f$ SELECT a::text = b $f$""",
+            """
+            CREATE OPERATOR clinic_app.= (LEFTARG = uuid, RIGHTARG = text,
+              FUNCTION = clinic_app.principal_eq_hint)""",
+        ],
+        None,
+        {"clinic_app.principal_has", REFUSAL_HELPER},
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(UNPROVEN_GATES))
+def test_unproven_gate_loses_its_volatile_exception(shape: str) -> None:
+    statements, rewrite, unproven = UNPROVEN_GATES[shape]
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute("SET LOCAL ROLE clinic_resolver")
+        for statement in statements:
+            cursor.execute(statement)
+        if rewrite:
+            cursor.execute(rewrite)
+            row = cursor.fetchone()
+            assert row is not None
+            assert "FOR SHARE" in row[0]
+            cursor.execute(row[0])
+        catalog = SealedCatalog()
+        violations = machine_violations(catalog, machine_members())
+        transaction.set_rollback(True)
+    assert catalog.admitted == set(VOLATILE_GATES) - unproven
+    for name in unproven:
+        # The gate itself is now an unadmitted VOLATILE function.
+        calls = [v for v in violations[name] if v.startswith(VOLATILE_CALL + ":")]
+        assert calls, (name, violations[name])
+        assert name in calls[0].split(": ", 1)[1].split(", "), calls
+
+
 def test_forged_actor_with_domain_history_is_refused_on_the_agent_login(
     principal: ServicePrincipal,
     rbac_graph: RbacGraph,
@@ -1502,7 +1758,17 @@ def test_machine_calls_leave_every_table_and_sequence_unchanged(
     """Review round 8 (D1-r8): every member runs on the real agent login
     under refusing states (forged actor, foreign clinics, foreign tenant) and
     granting ones, each call committed on its own, and the whole database is
-    unchanged afterwards."""
+    unchanged afterwards.
+
+    Boundary: this compares transactional table and sequence state only (row
+    versions of every table and matview, pg_largeobject_metadata, sequence
+    positions). It does not see session advisory locks, queued NOTIFY,
+    session GUCs, large-object data pages, temp tables or xid consumption.
+    Those are refused structurally: every closure function must be
+    non-volatile (pg_advisory*, pg_notify, lo_*, set_config are VOLATILE;
+    txid_current and pg_current_xact_id are excluded by name), setting writes
+    and writing statements are refused, and the two VOLATILE gates are
+    admitted only with their reviewed definitions (VOLATILE_GATES)."""
     members = machine_members()
     types = _argument_types(members)
     pools: dict[str, list[UUID | str]] = {
