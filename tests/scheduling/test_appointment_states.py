@@ -188,6 +188,38 @@ class Snapshot(NamedTuple):
     updated_at: object
 
 
+@contextmanager
+def checked_statements() -> Iterator[list[str]]:
+    sent: list[str] = []
+
+    def spy(
+        execute: Callable[..., object],
+        sql: str,
+        params: Sequence[object] | None,
+        many: bool,
+        context: dict[str, object],
+    ) -> object:
+        sent.append(sql)
+        return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(spy):
+        yield sent
+
+
+def _sql_expire(row: Appointment, *, stale: bool = False) -> str:
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT clinic_app.scheduling_expire_hold(%s, %s, %s, %s)",
+                [row.clinic_id, row.pk, row.revision + (99 if stale else 0), uuid4()],
+            )
+    except DatabaseError as error:
+        if getattr(error.__cause__, "sqlstate", None) == "42501":
+            return "denied"
+        raise
+    return "ok"
+
+
 def _owner_snapshot(world: LifecycleWorld, row: Appointment) -> Snapshot:
     """Read side effects as the owner inside the same (to be rolled back) txn."""
     with connection.cursor() as cursor:
@@ -685,17 +717,30 @@ def test_expiry_is_machine_only_and_the_job_expires_due_holds(
     world: LifecycleWorld,
 ) -> None:
     held = world.rows["held"]
-    for name in ("receptionist", "own_physician", "own_patient", "clinic_admin"):
-        with acting(world, world.actors[name]):
-            with pytest.raises(AppointmentAccessDeniedError):
-                services.expire(
-                    clinic_id=world.setup.clinic_id,
-                    appointment_id=held.pk,
-                    expected_revision=held.revision,
-                    command_id=uuid4(),
-                )
-            with pytest.raises(AppointmentAccessDeniedError):
-                services.expire_due_holds()
+    humans = [name for name in world.actors if name != "machine"]
+    assert set(ROLES) <= set(humans)
+    with pinned_clock(_database_url(), held.hold_expires_at or world.reference):
+        for name in humans:
+            with acting(world, world.actors[name]), checked_statements() as sent:
+                # The Python layer refuses before any expiry statement is sent ...
+                with pytest.raises(AppointmentAccessDeniedError):
+                    services.expire(
+                        clinic_id=world.setup.clinic_id,
+                        appointment_id=held.pk,
+                        expected_revision=held.revision,
+                        command_id=uuid4(),
+                    )
+                with pytest.raises(AppointmentAccessDeniedError):
+                    services.expire_due_holds()
+                assert not any("scheduling_expire_hold" in text for text in sent)
+                assert not any("scheduling_due_holds" in text for text in sent)
+                # ... and the W resolvers refuse humans on their own.
+                assert _sql_expire(held) == "denied", name
+                # Refused before any row work: not a revision conflict.
+                assert _sql_expire(held, stale=True) == "denied", name
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT * FROM clinic_app.scheduling_due_holds(100)")
+                    assert cursor.fetchall() == [], name
     with runtime_role():
         # Not yet due: the machine can only do what the clock mandates.
         assert services.expire_due_holds() == ()
@@ -824,3 +869,16 @@ def test_lifecycle_services_read_no_python_clock() -> None:
     # Hold deadlines, expiry and the no-show deadline are DB time only.
     assert not hasattr(appointment_lifecycle, "timezone")
     assert not hasattr(appointment_lifecycle, "datetime")
+
+
+def test_hold_is_due_exactly_at_its_deadline(rbac_graph: RbacGraph) -> None:
+    """The single equality rule, without any world: due iff deadline <= DB time."""
+    instant = datetime(2035, 6, 1, 0, 10, tzinfo=UTC)
+    tick = timedelta(microseconds=1)
+    with pinned_clock(_database_url(), instant), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.scheduling_hold_due(%s), "
+            "clinic_app.scheduling_hold_due(%s), clinic_app.scheduling_hold_due(%s)",
+            [instant - tick, instant, instant + tick],
+        )
+        assert cursor.fetchone() == (True, True, False)

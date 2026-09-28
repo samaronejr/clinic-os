@@ -167,15 +167,22 @@ ALTER TABLE clinic_app.scheduling_appointmenttransition
  REFERENCES clinic_app.scheduling_appointment (organization_id, clinic_id, id);
 """
 
-REVERSE_CONSTRAINT_SQL = """
+# Reversed first (last operation): refuse before any work once v2 data exists.
+ROLLBACK_GUARD_SQL = """
+SET LOCAL ROLE clinic_resolver;
 DO $guard$
 BEGIN
  IF EXISTS (SELECT 1 FROM clinic_app.scheduling_appointment
-   WHERE status NOT IN ('scheduled','cancelled') OR series_id IS NOT NULL) THEN
+   WHERE status NOT IN ('scheduled','cancelled') OR series_id IS NOT NULL)
+  OR EXISTS (SELECT 1 FROM clinic_app.scheduling_appointmentseries) THEN
   RAISE EXCEPTION 'appointment lifecycle v2 is populated; rollback requires restore'
    USING ERRCODE='23514', CONSTRAINT='scheduling_lifecycle_rollback';
  END IF;
 END $guard$;
+RESET ROLE;
+"""
+
+REVERSE_CONSTRAINT_SQL = """
 ALTER TABLE clinic_app.scheduling_appointmenttransition
  DROP CONSTRAINT scheduling_transition_binding;
 ALTER TABLE clinic_app.scheduling_seriesexception

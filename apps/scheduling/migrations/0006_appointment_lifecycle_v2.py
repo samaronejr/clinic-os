@@ -29,6 +29,7 @@ from apps.scheduling.migrations._lifecycle_sql import (
     REVERSE_CLOCK_SQL,
     REVERSE_CONSTRAINT_SQL,
     REVERSE_GUARD_SQL,
+    ROLLBACK_GUARD_SQL,
 )
 from apps.scheduling.rls import (
     LIFECYCLE_RLS_TARGETS,
@@ -493,4 +494,5 @@ class Migration(migrations.Migration):
         migrations.RunSQL(GUARD_SQL, REVERSE_GUARD_SQL),
         migrations.RunSQL(ACL_SQL, REVERSE_ACL_SQL),
         migrations.RunSQL(EHR_SQL, EHR_REVERSE_SQL),
+        migrations.RunSQL(migrations.RunSQL.noop, ROLLBACK_GUARD_SQL),
     ]
