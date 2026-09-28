@@ -1265,7 +1265,7 @@ SECRET_READER_EXEMPTIONS: dict[Path, str] = {
 # A suite whose fixture dict holds every kind of credential and whose tests
 # fail in each way pytest can render one: the argument line, --showlocals,
 # a derived plain str, an assertion diff, captured output, an exception
-# message and a fixture setup error.
+# message, the TOTP seed as bytes and a fixture setup error.
 LEAKY_SUITE = """
 import json
 import os
@@ -1308,6 +1308,11 @@ def test_assertion_diff(staff):
 def test_captured_output(staff):
     print(staff["dsn"], staff["password"], staff["code"])
     assert staff["totp_key"] in "no seed here"
+
+
+def test_seed_bytes(staff):
+    seed = bytes.fromhex(staff["totp_key"])
+    assert seed == b"no seed"
 
 
 @pytest.fixture
@@ -1366,10 +1371,12 @@ def _leaky_run(
     # Only the summary line: the inner output may carry its synthetic secrets.
     summary = (completed.stdout.strip().splitlines() or [""])[-1]
     assert completed.returncode == 1, summary
-    assert "4 failed, 1 error" in summary, summary
+    assert "5 failed, 1 error" in summary, summary
     values = [owner_password]
     for line in probe.read_text(encoding="utf-8").splitlines():
         values.extend(v for k, v in json.loads(line).items() if k != "clinic")
+        # The seed as bytes.fromhex(...) renders it (test_seed_bytes).
+        values.append(repr(bytes.fromhex(json.loads(line)["totp_key"]))[2:-1])
     return (
         completed.stdout + completed.stderr,
         junit.read_text(encoding="utf-8"),

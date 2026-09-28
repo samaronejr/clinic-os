@@ -26,6 +26,7 @@ runs a failing suite with and without them.
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 import os
 import re
@@ -109,12 +110,25 @@ def new_access_code() -> FixtureSecret:
     return FixtureSecret(secrets.token_urlsafe(32))
 
 
+HEX_SECRET: Final = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
+
+
 def _credentials(value: str) -> set[str]:
-    """``value`` and, for a URL, the password inside it in every spelling."""
+    """``value`` in every spelling a report can show.
+
+    For a URL, the password inside it (raw, unquoted, quoted). For a hex
+    secret (a TOTP seed), also the decoded bytes as ``repr`` shows them
+    (``bytes.fromhex(seed)`` in an assertion or a local) and as base32 (the
+    authenticator's own spelling).
+    """
     found = {value}
     password = urlsplit(value).password if "://" in value else None
     if password:
         found.update({password, unquote(password), quote(password, safe="")})
+    if HEX_SECRET.fullmatch(value):
+        raw = bytes.fromhex(value)
+        encoded = base64.b32encode(raw).decode("ascii")
+        found.update({repr(raw)[2:-1], encoded, encoded.rstrip("=")})
     return found
 
 
