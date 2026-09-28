@@ -98,12 +98,13 @@ flagged `unverified_settlement` and can never create a receipt.
 Reconciliation records payment events for a deactivated actor on purpose. The
 `billing_event_recorder` insert policy admits the operation's recorded actor
 through `billing_payment_event_recorder` without an `is_active` check, just as
-it already admits an actor who no longer holds a billing role. Every recorded
-event is provider-backed: `receive_payment_event` authenticates the raw event
-through the adapter before any stored charge or tenant is resolved, and
-`reconcile_charge`, which has no inbound event, takes its facts only from the
-provider's authoritative lookup for the stored charge. In both paths
-`billing_payment_event_guard` validates every event against the stored
+it already admits an actor who no longer holds a billing role.
+`receive_payment_event` authenticates the raw event through the adapter before
+any stored charge or tenant is resolved. `reconcile_charge`, which has no
+inbound event, takes its facts from the provider's authoritative lookup for the
+stored charge; if that lookup fails, it records the stored charge's own terms
+as `operator_required`/`provider_query_failed`, which never settles. In both
+paths `billing_payment_event_guard` validates every event against the stored
 operation (tenant, invoice, provider, actor) and, for a settlement, the stored
 settlement row. A money event for a charge started by since-offboarded staff is
 therefore recorded instead of lost. It does not settle the charge, because the

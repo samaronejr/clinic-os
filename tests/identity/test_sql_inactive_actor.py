@@ -16,12 +16,14 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from apps.billing.services import create_invoice, issue_invoice
+from apps.ehr.history import HistoryChange, save_history
 from apps.identity.models import User, UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
+from sqlparse import tokens
 
-from identity.authority_sql import references
+from identity.authority_sql import _tokenize, references
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
@@ -110,8 +112,10 @@ PROBES = {
 @dataclass(frozen=True)
 class Reader:
     own_clause: bool
-    # One entry per called name: the signatures of all its overloads.
-    callees: frozenset[frozenset[str]]
+    language: str
+    source: str
+    # Called clinic_app function name -> the signatures of all its overloads.
+    callees: dict[str, frozenset[str]]
 
 
 def _actor_readers() -> dict[str, Reader]:
@@ -144,20 +148,139 @@ def _actor_readers() -> dict[str, Reader]:
         assert parsed.opaque <= PARSEABLE_OPAQUE, (signature, parsed.opaque)
         if ACTOR_SETTING in parsed.settings:
             names = {name[-1] for name in parsed.names}
-            callees = frozenset(
-                frozenset(overloads[call[-1]])
+            callees = {
+                call[-1]: frozenset(overloads[call[-1]])
                 for call in parsed.calls
                 if call[:-1] in {(), ("clinic_app",)} and call[-1] in overloads
-            )
+            }
             readers[signature] = Reader(
                 own_clause={"identity_user", "is_active"} <= names,
+                language=language,
+                source=source,
                 callees=callees,
             )
     return readers
 
 
+# Clause keywords that end a WHERE or ON condition inside one query level.
+_CLAUSE_END = frozenset({"where", "group by", "order by", "having", "limit", "window"})
+_SET_OPERATORS = frozenset({"union", "union all", "intersect", "except"})
+
+
+def _sql_tokens(source: str) -> list[str]:
+    return [
+        " ".join(value.lower().split())
+        for kind, value in _tokenize(source)
+        if kind not in tokens.Whitespace and kind not in tokens.Comment
+        if value != ";"
+    ]
+
+
+def _close(items: list[str], start: int) -> int:
+    depth = 0
+    for index in range(start, len(items)):
+        depth += {"(": 1, ")": -1}.get(items[index], 0)
+        if depth == 0:
+            return index
+    return -1
+
+
+def _top(items: list[str]) -> list[tuple[int, str]]:
+    """Tokens outside every parenthesis, with their positions."""
+    depth, result = 0, []
+    for index, item in enumerate(items):
+        if item == ")":
+            depth -= 1
+        elif item == "(":
+            depth += 1
+        elif depth == 0:
+            result.append((index, item))
+    return result
+
+
+def _split(items: list[str], word: str) -> list[list[str]]:
+    parts, start = [], 0
+    for index, item in _top(items):
+        if item == word:
+            parts.append(items[start:index])
+            start = index + 1
+    return [*parts, items[start:]]
+
+
+def _requires(items: list[str], checked: set[str]) -> bool:
+    """Whether the condition can hold only when a checked call holds.
+
+    Every OR branch must require one, and one AND operand suffices. Anything
+    not understood (NOT, CASE, BETWEEN, set operations, outer joins) requires
+    nothing, so an unrecognised shape fails the census rather than passing it.
+    """
+    disjuncts = _split(items, "or")
+    if len(disjuncts) > 1:
+        return all(_requires(branch, checked) for branch in disjuncts)
+    if any(item == "between" for _index, item in _top(items)):
+        return False
+    conjuncts = _split(items, "and")
+    if len(conjuncts) > 1:
+        return any(_requires(operand, checked) for operand in conjuncts)
+    return _atom_requires(items, checked)
+
+
+def _atom_requires(items: list[str], checked: set[str]) -> bool:
+    if not items:
+        return False
+    if items[0] == "(" and _close(items, 0) == len(items) - 1:
+        return _requires(items[1:-1], checked)
+    if items[:2] == ["exists", "("] and _close(items, 1) == len(items) - 1:
+        return _query_requires(items[2:-1], checked)
+    call = items[2:] if items[:2] == ["clinic_app", "."] else items
+    return (
+        len(call) > 2
+        and call[0] in checked
+        and call[1] == "("
+        and _close(call, 1) == len(call) - 1
+    )
+
+
+def _query_requires(items: list[str], checked: set[str]) -> bool:
+    """A subquery requires a check through its WHERE or inner-join ON condition."""
+    top = _top(items)
+    words = {item for _index, item in top}
+    if items[:1] != ["select"] or words & _SET_OPERATORS:
+        return False
+    inner = all(item in {"join", "inner join"} for item in words if "join" in item)
+    conditions = []
+    for index, item in top:
+        if item == "where" or (item == "on" and inner):
+            end = next(
+                (
+                    later
+                    for later, word in top
+                    if later > index
+                    and (word in _CLAUSE_END or word == "on" or "join" in word)
+                ),
+                len(items),
+            )
+            conditions.append(items[index + 1 : end])
+    return any(_requires(condition, checked) for condition in conditions)
+
+
+def _delegates(reader: Reader, checked: set[str]) -> bool:
+    """SQL bodies must require a checked call on every branch; plpgsql, a call.
+
+    plpgsql control flow is not analysed here: every plpgsql delegator is a
+    trigger guard whose own refusal is executed by GUARD_PROBES.
+    """
+    names = {name for name, edge in reader.callees.items() if edge <= checked}
+    if reader.language != "sql":
+        return bool(names)
+    items = _sql_tokens(reader.source)
+    if items[:1] != ["select"] or any(word == "from" for _i, word in _top(items)):
+        return False
+    return _requires(items[1:], names)
+
+
 def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
-    """Derive own-clause readers, then readers that call a checked helper."""
+    """Derive own-clause readers, then readers that delegate to them."""
     own = {name for name, reader in readers.items() if reader.own_clause}
     checked = set(own)
     grew = True
@@ -165,7 +288,7 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
         grew = False
         for name, reader in readers.items():
             # An edge counts only when every overload of the name is checked.
-            if name not in checked and any(edge <= checked for edge in reader.callees):
+            if name not in checked and _delegates(reader, checked):
                 checked.add(name)
                 grew = True
     return own, checked - own
@@ -372,6 +495,21 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
     graph = rbac_graph
     appointment, encounter, _consent, _patient, _manager = teleconsult_seed(graph)
     session = teleconsult_create(graph, encounter)
+    # A history author reaches ehr_history_care's second branch, whose own
+    # questionnaire_staff call is the only refusal once ehr_care is false.
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        save_history(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            change=HistoryChange(
+                kind="problem",
+                expected_revision=0,
+                state="documented",
+                description="Problema sintetico",
+                status="active",
+                reason="Registro inicial",
+            ),
+        )
     scope: dict[str, UUID] = {
         "clinic": graph.clinic_a,
         "organization": graph.organization_a,
