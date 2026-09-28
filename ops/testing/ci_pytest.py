@@ -12,10 +12,13 @@ runner's coverage gate::
    ``make db-bootstrap`` or the runner) is migrated once, then cloned per
    xdist worker as ``test_<db>_gw<N>`` (pytest-django's xdist suffix) with the
    template's owner, encoding and database ACL. ``clinic_owner`` is NOCREATEDB,
-   so the superuser clones; the clones are dropped afterwards.
+   so the superuser clones.
 3. ``parallel``: ``pytest -n N --dist loadfile`` over everything not
    classified serial, with the per-test server-state guard on, between two
    readings of the shared catalogs' cumulative ``pg_stat`` counters.
+   Afterwards the clones are dropped (also on any failure), before the serial
+   phase: every ``DROP DATABASE`` forces a checkpoint, and live clones would
+   make each of the serial phase's own drops flush their files.
 4. ``serial``: one process runs the classified tests alone, appends to the
    same coverage data and applies the unchanged reports and
    ``--cov-fail-under=90`` to the combined total.
@@ -39,6 +42,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
@@ -133,23 +137,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ]
             )
             catalog_failures = window.check(work)
-            reports = ["--cov-report=term-missing"]
-            if arguments.cov_xml is not None:
-                reports.append(f"--cov-report=xml:{arguments.cov_xml}")
-            serial = _run(
-                [
-                    *PLUGIN,
-                    "--ci-pytest-phase=serial",
-                    f"--ci-pytest-record={work}",
-                    "--reuse-db",
-                    *coverage_targets(),
-                    "--cov-append",
-                    *reports,
-                    COVERAGE_FLOOR,
-                    *arguments.pytest_args,
-                    *_serial_paths(expected_serial),
-                ]
-            )
+        reports = ["--cov-report=term-missing"]
+        if arguments.cov_xml is not None:
+            reports.append(f"--cov-report=xml:{arguments.cov_xml}")
+        serial = _run(
+            [
+                *PLUGIN,
+                "--ci-pytest-phase=serial",
+                f"--ci-pytest-record={work}",
+                "--reuse-db",
+                *coverage_targets(),
+                "--cov-append",
+                *reports,
+                COVERAGE_FLOOR,
+                *arguments.pytest_args,
+                *_serial_paths(expected_serial),
+            ]
+        )
         failures = [*verify(work, reference, expected_serial), *catalog_failures]
         executed = {phase: len(_executed(work, phase)) for phase in PHASES}
     for failure in failures:
@@ -384,8 +388,7 @@ def _worker_databases(workers: int) -> Iterator[CatalogWindow]:
         try:
             yield from _cloned(admin, owner_url, template, clones, since[0])
         finally:
-            for clone in clones:
-                _drop(admin, clone)
+            _drop_concurrently(clones)
             _say(f"worker databases dropped: {', '.join(clones)}")
 
 
@@ -469,6 +472,29 @@ def _clone(
                 sql.SQL(" WITH GRANT OPTION" if grantable else ""),
             )
         )
+
+
+def _drop_concurrently(clones: list[str]) -> None:
+    """Drop every clone at once, each on its own session.
+
+    Each DROP DATABASE discards its database's buffers, cancels its pending
+    fsync requests and then waits for an immediate checkpoint. Issued one
+    by one, the first drop's checkpoint still writes and fsyncs every other
+    clone. Issued together, every cancellation reaches the checkpointer while
+    it syncs (it absorbs requests every few fsyncs), so the dropped files are
+    skipped.
+    """
+    with ThreadPoolExecutor(max_workers=len(clones)) as pool:
+        futures = [pool.submit(_drop_on_own_session, clone) for clone in clones]
+    for future in futures:
+        future.result()
+
+
+def _drop_on_own_session(clone: str) -> None:
+    with psycopg.connect(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"], dbname="postgres", autocommit=True
+    ) as session:
+        _drop(session, clone)
 
 
 def _drop(admin: psycopg.Connection[tuple[object, ...]], clone: str) -> None:

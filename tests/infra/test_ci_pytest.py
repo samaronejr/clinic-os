@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -287,15 +288,17 @@ def test_population_check_fails_on_a_dropped_or_misrouted_test(
     assert "checks=FAILED" in output
 
 
-def test_catalog_check_runs_after_the_parallel_phase(
+def test_clones_are_dropped_after_the_catalog_check_and_before_the_serial_phase(
     tmp_path: Path, phases: FakePhases
 ) -> None:
     assert _main(tmp_path) == 0
-    assert phases.events[:4] == [
+    assert phases.events == [
         "collect",
         "clones-created",
         "parallel",
         "catalog-check",
+        "clones-dropped",
+        "serial",
     ]
 
 
@@ -311,6 +314,27 @@ def test_clones_are_dropped_when_the_parallel_phase_raises(
     with pytest.raises(KeyboardInterrupt):
         _main(tmp_path)
     assert phases.events == ["collect", "clones-created", "clones-dropped"]
+
+
+def test_clones_are_dropped_concurrently_and_every_drop_is_awaited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clones = [f"test_clinic_gw{index}" for index in range(4)]
+    # Passes only when all four drops are in flight at the same time.
+    together = threading.Barrier(len(clones), timeout=30)
+    dropped: list[str] = []
+
+    def drop(clone: str) -> None:
+        together.wait()
+        if clone == "test_clinic_gw1":
+            message = "synthetic drop failure"
+            raise RuntimeError(message)
+        dropped.append(clone)
+
+    monkeypatch.setattr(ci_pytest, "_drop_on_own_session", drop)
+    with pytest.raises(RuntimeError, match="synthetic drop failure"):
+        ci_pytest._drop_concurrently(clones)
+    assert sorted(dropped) == ["test_clinic_gw0", "test_clinic_gw2", "test_clinic_gw3"]
 
 
 def test_catalog_check_failure_fails_the_run(
