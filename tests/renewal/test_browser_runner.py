@@ -384,6 +384,9 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
     NAVIGATION_MODULE: {
         "expect_document": "the helper: expect_navigation between two settles",
         "goto_settled": "the helper: goto between two settles",
+        "goto_refused": (
+            "the helper: goto between a settle and the error-document drain"
+        ),
         "reload_settled": "the helper: reload between two settles",
         "go_back_settled": "the helper: go_back between two settles",
         "go_forward_settled": "the helper: go_forward between two settles",
@@ -904,6 +907,7 @@ SAFE_SHAPES = {
         "    with expect_document(page):\n        page.evaluate('history.back()')\n"
     ),
     "goto_settled": "    goto_settled(page, '/x')\n",
+    "goto_refused": "    goto_refused(page, '/x')\n",
     "Tab key": "    page.keyboard.press('Tab')\n",
     "requestfailed event": (
         "    with page.expect_event('requestfailed'):\n        page.evaluate('1')\n"
@@ -956,6 +960,7 @@ def test_browser_suites_navigate_only_through_the_navigation_helpers() -> None:
         "click_to_navigate",
         "expect_document",
         "goto_settled",
+        "goto_refused",
         "reload_settled",
         "go_back_settled",
         "go_forward_settled",

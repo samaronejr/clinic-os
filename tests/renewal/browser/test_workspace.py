@@ -23,6 +23,7 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import goto_refused
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
@@ -815,10 +816,17 @@ def test_offline_reload_reveals_no_patient_content(
         assert str(offline["credentialed_stylesheet"]).startswith("rejected")
         assert str(offline["patients"]).startswith("rejected")
         assert str(offline["worker"]).startswith("rejected")
+        # The refused navigation leaves an error document committing under
+        # the refused URL; goto_refused drains that commit so nothing pending
+        # can interrupt the recovery goto (hosted flake, fix-a14).
         with pytest.raises(PlaywrightError, match=offline_navigation_error(context)):
-            page.goto(f"{renewal_base_url}{patients_a}")
+            goto_refused(page, f"{renewal_base_url}{patients_a}")
         context.set_offline(offline=False)
 
+        # A bare goto: the error document is fully committed, so no pending
+        # navigation can interrupt, and the worker already activated before
+        # the offline phase, so none can be mid-activation. A settle would
+        # evaluate on Firefox's error document, where evaluate raises.
         page.goto(f"{renewal_base_url}{patients_a}")
         cached_after = _cached_urls(page)
         assert all(url.startswith("/static/") for url in cached_after)

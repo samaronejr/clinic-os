@@ -24,8 +24,28 @@ once the new document has loaded:
 * ``goto_settled``, ``reload_settled``, ``go_back_settled``,
   ``go_forward_settled``: the browser-initiated ones (a ``goto`` into scope
   is held exactly like a POST; gate review B1);
+* ``goto_refused``: a navigation the engine must refuse (``set_offline``,
+  an aborted route); see below;
 * ``wait_for_signed_in``: every sign-in ends on the first signed-in page,
   where the context's worker first registers, and settles there.
+
+A refused navigation has a second hazard beside the worker hold. Firefox
+loads an error document for it that commits under the refused URL itself
+(``document.title`` "Problem loading page", a ``framenavigated`` to the
+target with no request on the wire); Chromium loads its own
+``chrome-error://`` document. That commit can outlive the ``Page.goto``
+error by tens of milliseconds and then interrupt the next navigation: a
+hosted workspace@firefox run failed ``Page.goto`` right after
+``set_offline(offline=False)`` with "Navigation to <patients> is
+interrupted by another navigation to <patients>" (fix-a14; event trace in
+the fix-a14 QA evidence, reproduced in the suite and a minimal driver).
+The refusal is not the end of the navigation: ``goto_refused`` arms a
+main-frame ``framenavigated`` subscription *before* ``goto``, lets the
+refusal raise, then drains the error document's commit - armed early, the
+event is captured whether it lands before or after the refusal - so
+nothing pending can interrupt the recovery navigation. WebKit loads no error document at
+all; draining there would wait out the timeout for nothing, so the helper
+skips the subscription on engines that never commit one.
 
 After the first settle in a context no later navigation can meet an
 installing or activating worker: the worker script is content-versioned and
@@ -62,6 +82,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Final, Literal
+
+from playwright.sync_api import Error as PlaywrightError
 
 from renewal.browser._page_wait import click_when_hittable, evaluate_js
 
@@ -152,6 +174,66 @@ def goto_settled(
     response = page.goto(url, wait_until=wait_until, timeout=timeout)
     settle_service_worker(page, timeout=timeout)
     return response
+
+
+# Engines that commit an error document for a refused navigation. WebKit's
+# refusal leaves the previous document and emits no framenavigated, so a
+# drain subscription there would wait out the whole timeout.
+ERROR_DOCUMENT_ENGINES: Final = frozenset({"chromium", "firefox"})
+
+
+class UnexpectedNavigationError(PlaywrightError):
+    """``goto_refused`` saw the navigation it expected to fail succeed."""
+
+    def __init__(self, url: str) -> None:
+        super().__init__(
+            f"goto_refused expected a refused navigation, but {url} loaded"
+        )
+
+
+def goto_refused(
+    page: Page,
+    url: str,
+    *,
+    timeout: float | None = None,
+) -> None:
+    """``page.goto`` that must fail, drained of the engine's error document.
+
+    Refused navigations (offline, aborted routes) still navigate: Firefox
+    commits an error document under the refused URL, Chromium commits
+    ``chrome-error://`` (see the module docstring). The subscription arms
+    before ``goto``, so the commit is captured whenever it lands - before
+    the refusal returns or after. The refusal is re-raised for the
+    caller's ``pytest.raises``; a navigation that unexpectedly succeeds
+    raises ``UnexpectedNavigationError``. On engines without an error
+    document the refusal is re-raised immediately. ``timeout`` is in
+    milliseconds, for both the ``goto`` and the drain; ``None`` uses the
+    page's default.
+    """
+    settle_service_worker(page, timeout=timeout)
+    browser = page.context.browser
+    drains = browser is not None and browser.browser_type.name in (
+        ERROR_DOCUMENT_ENGINES
+    )
+    refusal: PlaywrightError | None = None
+    if drains:
+        with page.expect_event(
+            "framenavigated",
+            predicate=lambda frame: frame == page.main_frame,
+            timeout=timeout,
+        ):
+            try:
+                page.goto(url, timeout=timeout)
+            except PlaywrightError as error:
+                refusal = error
+    else:
+        try:
+            page.goto(url, timeout=timeout)
+        except PlaywrightError as error:
+            refusal = error
+    if refusal is None:
+        raise UnexpectedNavigationError(url)
+    raise refusal
 
 
 def reload_settled(
