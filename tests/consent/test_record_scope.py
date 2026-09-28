@@ -1,14 +1,19 @@
 """Record scope: every clinic/organization/patient binding decides both ways.
 
 Sites are derived, never listed from memory. On the Python side they are every
-ORM call in ``apps/consent`` whose keyword (or ``defaults`` key) is a scope
-column or whose value reads one. On the SQL side they are every comparison
-involving a scope column in the consent SQL functions, read from the live
-catalog. Derivation fails closed: a ``**`` splat, a non-literal ``defaults``
-or a scope token outside a parsed comparison or a named non-binding context
-fails the census. Each site maps to the cell that decides it or to an
-equivalence with the binding that makes it redundant, and the tables must
-equal the derivation.
+ORM call anywhere in ``apps/consent`` (functions, methods, nested scopes) whose
+keyword or ``defaults`` key names a scope relation or column (``clinic``,
+``clinic_id``, ``enrollment__clinic_id``) or whose value reads one, plus every
+comparison that reads one. On the SQL side they are every comparison involving
+a scope column in the consent SQL functions and in the RLS policy expressions
+of every consent table, read from the live catalog. Derivation fails closed:
+every scope token in the Python modules must sit in a derived site or in a
+named non-binding context (anything else, e.g. a ``Q`` object, a positional
+filter argument or raw SQL, fails), a ``**`` splat or a non-literal
+``defaults`` fails, and every SQL scope token must sit in a parsed comparison
+or a named non-binding context. Each site maps to the cell that decides it or
+to an equivalence with the binding that makes it redundant, and the tables
+must equal the derivation.
 
 The world has one patient enrolled in clinics A and B of the same
 organization, plus a second patient. Staff hold the permission in both
@@ -21,6 +26,7 @@ import ast
 import re
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -39,9 +45,11 @@ from apps.consent.models import (
     RefusalRecord,
 )
 from apps.ehr.services import open_encounter
+from apps.identity import current_context
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import (
     CareTeamMembership,
+    Clinic,
     ProfessionalRegistration,
     User,
     UserClinicRole,
@@ -55,6 +63,7 @@ from apps.intake.patient_access import (
 )
 from apps.intake.services import create_patient
 from apps.tenancy.db import tenant_context
+from django.apps import apps
 from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
@@ -76,6 +85,9 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 ROOT = Path(__file__).resolve().parents[2]
 SCOPE = ("clinic_id", "organization_id", "patient_id")
+# Lookup parts naming a scope relation or column; any one makes a keyword,
+# name or attribute a scope token (``clinic``, ``enrollment__clinic_id``).
+SCOPE_PARTS = frozenset({"clinic", "organization", "patient", *SCOPE})
 ORM_METHODS = frozenset(
     {
         "filter",
@@ -197,6 +209,56 @@ PY_SITES: dict[str, str | tuple[str, str]] = {
         "test_attestations_bind_the_encounter_patients_enrollment"
     ),
 }
+# Scope tokens outside ORM sites and comparisons, keyed module:scope:context,
+# each with its reason. A token in any other context fails the census, so a
+# Q object, a positional filter argument, raw SQL or a new assignment of a
+# scope value has to be classified before it can land.
+_DECLARATION = "model field or constraint declaration (schema, not a row read)"
+_ORGANIZATION_OF_CLINIC = (
+    "organization_id read from the named clinic row (the Clinic.get:pk site)"
+)
+PY_CONTEXTS: dict[str, str] = {
+    **{
+        f"models:{model}:statement:Assign": _DECLARATION
+        for model in (
+            "AIUseDisclosure",
+            "ConsentAcceptance",
+            "ConsentRevocation",
+            "ConsentText",
+            "NoticeVersion",
+            "ParticipantAcknowledgment",
+            "RefusalRecord",
+        )
+    },
+    "models:ConsentText.Meta:call:UniqueConstraint": _DECLARATION,
+    "models:NoticeVersion.Meta:call:UniqueConstraint": _DECLARATION,
+    "services:ConsentAuthority:statement:AnnAssign": (
+        "dataclass fields filled only from consent_session()"
+    ),
+    "services:publish_text:statement:Assign": _ORGANIZATION_OF_CLINIC,
+    "services:publish_text:call:values_list": _ORGANIZATION_OF_CLINIC,
+    "services:publish_notice:statement:Assign": _ORGANIZATION_OF_CLINIC,
+    "services:publish_notice:call:values_list": _ORGANIZATION_OF_CLINIC,
+    "services:_lock:call:execute": "advisory-lock key",
+    "views:staff_consent:statement:AnnAssign": (
+        "template context for the clinic form URL"
+    ),
+    "views:_staff_action:call:handler": (
+        "dispatch to the views helpers of the same dict, each forwarding the "
+        "URL clinic to a consent service whose own sites are derived"
+    ),
+}
+# Callees whose scope argument is not a row binding, wherever they are called.
+# Calls to any function defined in apps/consent are forwards: the callee's own
+# tokens are derived here.
+CALLEE_ROLES = {
+    "require_permission": "authority argument (test_authority decides it)",
+    "record_phase1_event": "audit event scope",
+    "build_phase1_audit_event": "audit event scope",
+    "AuditTrustedContext": "audit chain scope",
+    "reverse": "URL argument",
+    "path": "URL pattern",
+}
 
 _ENROLLMENT_ORG = (
     "equivalent",
@@ -279,6 +341,68 @@ SQL_SITES: dict[str, str | tuple[str, str]] = {
         "test_consent_audit_chains_within_its_organization"
     ),
 }
+# RLS policy sites: table.policy.(using|check):comparison#occurrence.
+_RLS = "test_rls_reads_bind_the_patient_session_and_tenant"
+_TENANT = "organization_id = current_setting('app.current_tenant')#0"
+_ATTESTATION = "test_attestations_bind_the_encounter_patients_enrollment"
+SQL_SITES |= {
+    **{
+        f"{table}.setup_tenant.using:{_TENANT}": _RLS
+        for table in (
+            "consent_aiusedisclosure",
+            "consent_consentacceptance",
+            "consent_consentrevocation",
+            "consent_consenttext",
+            "consent_noticeversion",
+            "consent_participantacknowledgment",
+            "consent_refusalrecord",
+        )
+    },
+    # Patient-bound rows: consent_guard binds the session, not the tenant, so
+    # the owner-role WITH CHECK decides by itself.
+    **{
+        f"{table}.setup_tenant.check:{_TENANT}": "test_owner_inserts_bind_the_tenant"
+        for table in (
+            "consent_consentacceptance",
+            "consent_consentrevocation",
+            "consent_refusalrecord",
+        )
+    },
+    **{
+        f"{table}.setup_tenant.check:{_TENANT}": (
+            "equivalent",
+            "the BEFORE INSERT consent_guard checks has_permission, which binds "
+            "app.current_tenant, and refuses first (42501); "
+            "test_owner_inserts_bind_the_tenant pins that refusal",
+        )
+        for table in (
+            "consent_aiusedisclosure",
+            "consent_consenttext",
+            "consent_noticeversion",
+            "consent_participantacknowledgment",
+        )
+    },
+    "consent_consenttext.consent_text_read.using:"
+    "clinic_id = (SELECT s.clinic_id)#0": _RLS,
+    "consent_noticeversion.consent_notice_read.using:"
+    "clinic_id = (SELECT s.clinic_id)#0": _RLS,
+    "consent_aiusedisclosure.consent_ai_disclosure_read.using:"
+    "consent_aiusedisclosure.patient_id = s.patient_id#0": _RLS,
+    "consent_aiusedisclosure.consent_ai_disclosure_read.using:"
+    "consent_aiusedisclosure.clinic_id = s.clinic_id#0": _RLS,
+    **{
+        f"{table}.{policy}.check:{comparison}#0": decision
+        for table, policy in (
+            ("consent_aiusedisclosure", "consent_ai_disclosure_insert"),
+            ("consent_participantacknowledgment", "consent_participant_insert"),
+        )
+        for comparison, decision in (
+            ("en.organization_id = e.organization_id", _ENROLLMENT_ORG),
+            ("en.clinic_id = e.clinic_id", _ATTESTATION),
+            ("en.patient_id = e.patient_id", _ATTESTATION),
+        )
+    },
+}
 # Scope tokens that are not bindings between rows, each with its reason. Any
 # other occurrence outside a parsed comparison fails the census.
 NON_BINDING = {
@@ -290,20 +414,71 @@ NON_BINDING = {
     r"audit_event \(organization_id": "audit insert column list",
     r"VALUES \(s\.organization_id": "audit insert value (from the scope row)",
     r"'clinic_id',s\.clinic_id": "audit payload key",
+    r"has_permission\('[a-z_.]+'::text, clinic_id\b": "authority argument",
+    r"consent_session\(\) s\(session_id, organization_id, clinic_id, patient_id, "
+    r"enrollment_id\)": "consent_session() column alias list",
 }
+# The right side is an identifier, a scalar subquery's projection or a GUC.
 COMPARISON = re.compile(
     r"(?P<left>[A-Za-z_][\w.]*)\s*(?P<op>IS NOT DISTINCT FROM|IS DISTINCT FROM|<>|=)"
-    r"\s*(?P<right>[A-Za-z_][\w.]*)"
+    r"\s*(?:(?P<right>[A-Za-z_][\w.]*)"
+    r"|\(\s*SELECT\s+(?P<select>[A-Za-z_][\w.]*)"
+    r"|\(\s*NULLIF\(current_setting\('(?P<setting>[\w.]+)')"
 )
 TOKEN = re.compile(r"\b(?:\w+\.)?(?:clinic_id|organization_id|patient_id)\b")
 
 
-def _references_scope(node: ast.AST) -> bool:
-    return any(
-        (isinstance(item, ast.Name) and item.id in SCOPE)
-        or (isinstance(item, ast.Attribute) and item.attr in SCOPE)
-        for item in ast.walk(node)
-    )
+def _scope_key(key: str) -> bool:
+    return any(part in SCOPE_PARTS for part in key.split("__"))
+
+
+def _is_scope_token(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in SCOPE_PARTS
+    if isinstance(node, ast.Attribute):
+        return node.attr in SCOPE_PARTS
+    if isinstance(node, ast.keyword):
+        return node.arg is not None and _scope_key(node.arg)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        # A lookup string or text naming a scope column, e.g. raw SQL.
+        return _scope_key(node.value) or TOKEN.search(node.value) is not None
+    return False
+
+
+def _callee(call: ast.Call) -> str:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return ast.unparse(call.func)
+
+
+def _ancestors(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> list[ast.AST]:
+    chain = []
+    while node in parents:
+        node = parents[node]
+        chain.append(node)
+    return chain
+
+
+def _qualname(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
+    scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    names = [
+        item.name
+        for item in reversed(_ancestors(node, parents))
+        if isinstance(item, scopes)
+    ]
+    return ".".join(names) or "<module>"
+
+
+def _context(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> tuple[str, str]:
+    """The innermost call (callee) or statement holding a scope token."""
+    for item in _ancestors(node, parents):
+        if isinstance(item, ast.Call):
+            return "call", _callee(item)
+        if isinstance(item, ast.stmt):
+            return "statement", type(item).__name__
+    return "statement", "Module"
 
 
 def _receiver(call: ast.Call) -> str:
@@ -319,41 +494,80 @@ def _receiver(call: ast.Call) -> str:
             pytest.fail(f"unresolved ORM receiver {ast.unparse(call)}")
 
 
-def python_sites() -> set[str]:
+def _orm_sites(
+    call: ast.Call, parents: dict[ast.AST, ast.AST]
+) -> list[tuple[str, list[ast.AST]]]:
+    """Scope sites of one ORM call and the nodes each site covers."""
+    pairs: list[tuple[str, ast.AST, ast.expr]] = []
+    for keyword in call.keywords:
+        # Fail closed: a splat or computed defaults hides bindings.
+        assert keyword.arg is not None, ast.unparse(call)
+        if keyword.arg == "defaults":
+            assert isinstance(keyword.value, ast.Dict), ast.unparse(call)
+            for key, value in zip(
+                keyword.value.keys, keyword.value.values, strict=True
+            ):
+                assert isinstance(key, ast.Constant), ast.unparse(call)
+                assert isinstance(key.value, str), ast.unparse(call)
+                pairs.append((f"defaults.{key.value}", key, value))
+        else:
+            pairs.append((keyword.arg, keyword, keyword.value))
+    assert isinstance(call.func, ast.Attribute)
+    return [
+        (
+            f"{_qualname(call, parents)}:{_receiver(call)}.{call.func.attr}:{key}",
+            [item for top in (node, value) for item in ast.walk(top)],
+        )
+        for key, node, value in pairs
+        if _scope_key(key.removeprefix("defaults."))
+        or any(_is_scope_token(item) for item in ast.walk(value))
+    ]
+
+
+def python_census() -> tuple[set[str], set[str]]:
+    """Derived Python sites, and the contexts of every other scope token."""
+    modules = {
+        path: ast.parse(path.read_text())
+        for path in sorted((ROOT / "apps/consent").glob("*.py"))
+    }
+    forwards = {
+        node.name
+        for tree in modules.values()
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
     sites: list[str] = []
-    for path in sorted((ROOT / "apps/consent").glob("*.py")):
-        tree = ast.parse(path.read_text())
-        for function in tree.body:
-            if not isinstance(function, ast.FunctionDef):
+    contexts: set[str] = set()
+    for path, tree in modules.items():
+        parents = {
+            child: node
+            for node in ast.walk(tree)
+            for child in ast.iter_child_nodes(node)
+        }
+        covered: set[int] = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ORM_METHODS
+            ):
+                for site, nodes in _orm_sites(node, parents):
+                    sites.append(site)
+                    covered.update(map(id, nodes))
+            elif isinstance(node, ast.Compare) and any(
+                _is_scope_token(item) for item in ast.walk(node)
+            ):
+                sites.append(f"{_qualname(node, parents)}:compare:{ast.unparse(node)}")
+                covered.update(map(id, ast.walk(node)))
+        for node in ast.walk(tree):
+            if not _is_scope_token(node) or id(node) in covered:
                 continue
-            for call in ast.walk(function):
-                if not (
-                    isinstance(call, ast.Call)
-                    and isinstance(call.func, ast.Attribute)
-                    and call.func.attr in ORM_METHODS
-                ):
-                    continue
-                pairs: list[tuple[str, ast.expr]] = []
-                for keyword in call.keywords:
-                    # Fail closed: a splat or computed defaults hides bindings.
-                    assert keyword.arg is not None, ast.unparse(call)
-                    if keyword.arg == "defaults":
-                        assert isinstance(keyword.value, ast.Dict), ast.unparse(call)
-                        for key, value in zip(
-                            keyword.value.keys, keyword.value.values, strict=True
-                        ):
-                            assert isinstance(key, ast.Constant), ast.unparse(call)
-                            assert isinstance(key.value, str), ast.unparse(call)
-                            pairs.append((f"defaults.{key.value}", value))
-                    else:
-                        pairs.append((keyword.arg, keyword.value))
-                sites.extend(
-                    f"{function.name}:{_receiver(call)}.{call.func.attr}:{key}"
-                    for key, value in pairs
-                    if key.rsplit(".", 1)[-1] in SCOPE or _references_scope(value)
-                )
+            kind, name = _context(node, parents)
+            if kind == "call" and (name in CALLEE_ROLES or name in forwards):
+                continue
+            contexts.add(f"{path.stem}:{_qualname(node, parents)}:{kind}:{name}")
     assert len(sites) == len(set(sites)), "ambiguous site id"
-    return set(sites)
+    return set(sites), contexts
 
 
 def consent_functions() -> dict[str, str]:
@@ -373,16 +587,52 @@ def consent_functions() -> dict[str, str]:
     return bodies
 
 
+def consent_policies() -> dict[str, str]:
+    """Every RLS policy expression on every consent table, from the catalog."""
+    tables = sorted(
+        model._meta.db_table for model in apps.get_app_config("consent").get_models()
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT c.relname, c.relrowsecurity AND c.relforcerowsecurity, "
+            "p.polname, pg_catalog.pg_get_expr(p.polqual, p.polrelid), "
+            "pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid) "
+            "FROM pg_catalog.pg_class c "
+            "LEFT JOIN pg_catalog.pg_policy p ON p.polrelid = c.oid "
+            "WHERE c.relnamespace = 'clinic_app'::regnamespace "
+            "AND c.relname = ANY(%s)",
+            [tables],
+        )
+        rows = cursor.fetchall()
+    # Every consent table exists, forces RLS and carries policies.
+    assert sorted({row[0] for row in rows}) == tables
+    assert all(row[1] and row[2] for row in rows), rows
+    expressions: dict[str, str] = {}
+    for table, _, policy, using, check in rows:
+        for part, expression in (("using", using), ("check", check)):
+            if expression is not None:
+                expressions[f"{table}.{policy}.{part}"] = str(expression)
+    return expressions
+
+
+def _right(match: re.Match[str]) -> str:
+    if match["right"]:
+        return match["right"]
+    if match["select"]:
+        return f"(SELECT {match['select']})"
+    return f"current_setting('{match['setting']}')"
+
+
 def sql_sites(bodies: dict[str, str]) -> set[str]:
     sites: set[str] = set()
     for name, body in bodies.items():
         covered: list[tuple[int, int]] = []
         seen: dict[str, int] = {}
         for match in COMPARISON.finditer(body):
-            sides = (match["left"], match["right"])
+            sides = (match["left"], match["right"] or match["select"] or "")
             if not any(side.rsplit(".", 1)[-1] in SCOPE for side in sides):
                 continue
-            text = f"{match['left']} {match['op']} {match['right']}"
+            text = f"{match['left']} {match['op']} {_right(match)}"
             index = seen.get(text, 0)
             seen[text] = index + 1
             sites.add(f"{name}:{text}#{index}")
@@ -404,8 +654,12 @@ def sql_sites(bodies: dict[str, str]) -> set[str]:
 
 
 def test_record_scope_sites_are_derived_and_every_site_is_decided() -> None:
-    assert python_sites() == set(PY_SITES)
-    assert sql_sites(consent_functions()) == set(SQL_SITES)
+    sites, contexts = python_census()
+    assert sites == set(PY_SITES)
+    assert contexts == set(PY_CONTEXTS)
+    assert all(PY_CONTEXTS.values())
+    assert all(CALLEE_ROLES.values())
+    assert sql_sites({**consent_functions(), **consent_policies()}) == set(SQL_SITES)
     cells = {name for name in globals() if name.startswith("test_")}
     for decision in (*PY_SITES.values(), *SQL_SITES.values()):
         if isinstance(decision, tuple):
@@ -427,13 +681,59 @@ def test_derivation_fails_closed_on_hidden_bindings(
     ):
         module.write_text(source)
         with pytest.raises(AssertionError):
-            python_sites()
+            python_census()
     module.write_text("def read(clinic_id):\n    Model.objects.filter(pk=clinic_id)\n")
-    assert python_sites() == {"read:Model.filter:pk"}
+    assert python_census() == ({"read:Model.filter:pk"}, set())
+    # Every other spelling of a binding is a derived site.
+    derived = {
+        "class Repo:\n    def read(self, c):\n"
+        "        Model.objects.get(clinic_id=c)\n": ("Repo.read:Model.get:clinic_id"),
+        "async def read(c):\n    Model.objects.exclude(clinic=c)\n": (
+            "read:Model.exclude:clinic"
+        ),
+        "def read(c):\n    Model.objects.filter(enrollment__patient_id=c)\n": (
+            "read:Model.filter:enrollment__patient_id"
+        ),
+        "def read(row, c):\n    if row.organization_id != c:\n        raise E\n": (
+            "read:compare:row.organization_id != c"
+        ),
+    }
+    for source, site in derived.items():
+        module.write_text(source)
+        assert python_census() == ({site}, set()), source
+    # A token the derivation cannot bind to a site lands in an unclassified
+    # context, which the census rejects.
+    hidden = {
+        "def leak(c):\n    Model.objects.filter(Q(clinic_id=c))\n": "call:Q",
+        "def leak(c):\n    Model.objects.filter(Exists(c.clinic))\n": "call:Exists",
+        "def leak(cursor, c):\n"
+        "    cursor.execute('SELECT 1 FROM t WHERE clinic_id=%s', [c])\n": (
+            "call:execute"
+        ),
+        "def leak(row):\n    clinic = row.clinic\n": "statement:Assign",
+    }
+    for source, context in hidden.items():
+        module.write_text(source)
+        sites, contexts = python_census()
+        assert sites == set(), source
+        assert contexts == {f"leaky:leak:{context}"}, source
+        assert not contexts <= set(PY_CONTEXTS)
     with pytest.raises(AssertionError, match="unclassified scope token"):
         sql_sites({"planted": "SELECT 1 WHERE coalesce(x.clinic_id, y) IS NULL"})
-    assert sql_sites({"planted": "SELECT 1 WHERE a.clinic_id = b.clinic_id"}) == {
-        "planted:a.clinic_id = b.clinic_id#0"
+    with pytest.raises(AssertionError, match="unclassified scope token"):
+        sql_sites({"planted": "(x.clinic_id IN ( SELECT s.clinic_id FROM t s))"})
+    assert sql_sites(
+        {
+            "planted": "SELECT 1 WHERE a.clinic_id = b.clinic_id",
+            "t.p.using": "((organization_id = (NULLIF(current_setting('app.t'::text, "
+            "true), ''::text))::uuid) AND (clinic_id = ( SELECT s.clinic_id\n"
+            "   FROM clinic_app.consent_session() s(session_id, organization_id, "
+            "clinic_id, patient_id, enrollment_id))))",
+        }
+    ) == {
+        "planted:a.clinic_id = b.clinic_id#0",
+        "t.p.using:organization_id = current_setting('app.t')#0",
+        "t.p.using:clinic_id = (SELECT s.clinic_id)#0",
     }
 
 
@@ -454,6 +754,7 @@ class ScopeWorld:
     session_a: UUID
     session_b: UUID
     other_session_b: UUID
+    text_a_v1: UUID  # A teleconsultation, version 1
     text_a: UUID  # A teleconsultation, version 2
     text_b: UUID  # B teleconsultation, version 1
     marketing_a: UUID
@@ -608,7 +909,7 @@ def seed_scope_world(graph: RbacGraph) -> ScopeWorld:
             clinic_id=graph.clinic_b, appointment_id=appointment_b.pk
         ).pk
     # Clinic A publishes twice before clinic B publishes its first version.
-    _publish(graph, graph.clinic_a, "teleconsultation", "Sintetico A v1")
+    text_a_v1 = _publish(graph, graph.clinic_a, "teleconsultation", "Sintetico A v1")
     text_a = _publish(graph, graph.clinic_a, "teleconsultation", "Sintetico A v2")
     marketing_a = _publish(graph, graph.clinic_a, "marketing", "Sintetico A mkt")
     text_b = _publish(graph, graph.clinic_b, "teleconsultation", "Sintetico B v1")
@@ -670,6 +971,7 @@ def seed_scope_world(graph: RbacGraph) -> ScopeWorld:
         session_a=session_a,
         session_b=session_b,
         other_session_b=other_session_b,
+        text_a_v1=text_a_v1,
         text_a=text_a,
         text_b=text_b,
         marketing_a=marketing_a,
@@ -783,6 +1085,84 @@ def test_staff_reads_return_exactly_the_named_clinics_records(
         (b, w.enrollment_b): w.acceptance_b,
         (b, unknown): None,
     }
+
+
+def test_unknown_and_foreign_clinics_are_refused_identically(
+    rbac_graph: RbacGraph,
+) -> None:
+    """B1: an unknown clinic and every foreign clinic give one refusal.
+
+    The reader holds receptionist in A and B and physician in clinic C of
+    another organization; clinic D of the same organization has no role for
+    them. Each read names clinic B's real records, so only the clinic decides.
+    """
+    w = seed_scope_world(rbac_graph)
+    with owner_context(w.organization):
+        unheld = Clinic.objects.create(
+            organization_id=w.organization,
+            name="Sintetico Clinic D",
+            crm_uf="MG",
+            timezone="America/Sao_Paulo",
+        ).pk
+    reads: dict[str, Callable[[UUID], object]] = {
+        "staff_receipts": lambda clinic: consent.staff_receipts(
+            clinic_id=clinic, enrollment_id=w.enrollment_b
+        ),
+        "staff_refusals": lambda clinic: consent.staff_refusals(
+            clinic_id=clinic, enrollment_id=w.enrollment_b
+        ),
+        "ai_disclosure_status": lambda clinic: consent.ai_disclosure_status(
+            clinic_id=clinic, encounter_id=w.encounter_b
+        ),
+        "consent_for_future_use": lambda clinic: consent.consent_for_future_use(
+            clinic_id=clinic, enrollment_id=w.enrollment_b, purpose="teleconsultation"
+        ),
+    }
+    clinics = {
+        "permitted": w.clinic_b,
+        "unknown": uuid4(),
+        "other-organization": w.graph.clinic_c,
+        "unheld-same-organization": unheld,
+    }
+    observed = {}
+    with runtime_role(), transaction.atomic():
+        for name, read in reads.items():
+            for label, clinic in clinics.items():
+                cell = run(w.reader, w.organization, partial(read, clinic))
+                observed[name, label] = (
+                    type(cell.error),
+                    None if cell.error is None else cell.error.args,
+                    cell.writes,
+                    # The named clinic is the only input that differs.
+                    [
+                        tuple("<named>" if item == clinic else item for item in names)
+                        for names in cell.names
+                    ],
+                )
+        transaction.set_rollback(True)
+    refusal = (
+        current_context._UnauthorizedActorError,
+        ("current actor unauthorized",),
+        0,
+        [
+            ("demographics.read", "<named>", None),
+            ("configuration.organization", "<named>", None),
+        ],
+    )
+    for name in reads:
+        error, args, _, names = observed[name, "permitted"]
+        assert (error, args, names) == (
+            type(None),
+            None,
+            [("demographics.read", "<named>", None)],
+        ), name
+        assert {
+            label: observed[name, label] for label in clinics if label != "permitted"
+        } == {
+            "unknown": refusal,
+            "other-organization": refusal,
+            "unheld-same-organization": refusal,
+        }, name
 
 
 def test_patient_sessions_see_only_their_clinic(rbac_graph: RbacGraph) -> None:
@@ -1142,6 +1522,185 @@ def test_trigger_refuses_every_crossed_binding(rbac_graph: RbacGraph) -> None:
         crossed = _outcome(revoke(w.acceptance_a))
         own = _outcome(revoke(w.acceptance_b))
     assert (crossed, own) == ("23514:invalid revocation binding", None)
+
+
+_CONSENT_MODELS = (
+    ConsentText,
+    NoticeVersion,
+    ConsentAcceptance,
+    RefusalRecord,
+    ConsentRevocation,
+    AIUseDisclosure,
+    ParticipantAcknowledgment,
+)
+
+
+def _visible() -> dict[str, set[UUID]]:
+    """Every row the current role and GUCs can read, per consent table."""
+    return {
+        model.__name__: set(model._default_manager.values_list("pk", flat=True))
+        for model in _CONSENT_MODELS
+    }
+
+
+def test_rls_reads_bind_the_patient_session_and_tenant(rbac_graph: RbacGraph) -> None:
+    """Direct reads, no Python filter: the policies alone decide the rows."""
+    w = seed_scope_world(rbac_graph)
+    sessions = {}
+    for label, session in (
+        ("P in A", w.session_a),
+        ("P in B", w.session_b),
+        ("Q in B", w.other_session_b),
+    ):
+        with runtime_role(), patient_session_context(session):
+            sessions[label] = _visible()
+    texts_a = {w.text_a_v1, w.text_a, w.marketing_a}
+    texts_b = {w.text_b, w.marketing_b}
+    assert sessions == {
+        "P in A": {
+            "ConsentText": texts_a,
+            "NoticeVersion": {w.notice_a},
+            "ConsentAcceptance": {w.acceptance_a},
+            "RefusalRecord": {w.refusal_a},
+            "ConsentRevocation": {w.revocation_a},
+            "AIUseDisclosure": {w.disclosure_a},
+            "ParticipantAcknowledgment": set(),
+        },
+        # P's clinic A disclosure stays in A (clinic binding).
+        "P in B": {
+            "ConsentText": texts_b,
+            "NoticeVersion": {w.notice_b},
+            "ConsentAcceptance": {w.acceptance_b},
+            "RefusalRecord": {w.refusal_b},
+            "ConsentRevocation": set(),
+            "AIUseDisclosure": {w.disclosure_b},
+            "ParticipantAcknowledgment": set(),
+        },
+        # P's clinic B disclosure is not Q's (patient binding).
+        "Q in B": {
+            "ConsentText": texts_b,
+            "NoticeVersion": {w.notice_b},
+            "ConsentAcceptance": set(),
+            "RefusalRecord": {w.other_refusal_b},
+            "ConsentRevocation": set(),
+            "AIUseDisclosure": set(),
+            "ParticipantAcknowledgment": set(),
+        },
+    }
+    # The maintenance role sees its tenant's rows and nothing of another.
+    tenants = {}
+    for label, organization in (("A", w.organization), ("B", w.graph.organization_b)):
+        with owner_context(organization):
+            tenants[label] = _visible()
+    assert tenants == {
+        "A": {
+            "ConsentText": texts_a | texts_b,
+            "NoticeVersion": {w.notice_a, w.notice_b},
+            "ConsentAcceptance": {w.acceptance_a, w.acceptance_b},
+            "RefusalRecord": {w.refusal_a, w.refusal_b, w.other_refusal_b},
+            "ConsentRevocation": {w.revocation_a},
+            "AIUseDisclosure": {w.disclosure_a, w.disclosure_b},
+            "ParticipantAcknowledgment": {w.acknowledgment_a, w.acknowledgment_b},
+        },
+        "B": {model.__name__: set() for model in _CONSENT_MODELS},
+    }
+
+
+def _bind_gucs(**settings: UUID) -> None:
+    with connection.cursor() as cursor:
+        for setting, value in settings.items():
+            cursor.execute(
+                "SELECT pg_catalog.set_config(%s, %s, true)",
+                [f"app.{setting}", str(value)],
+            )
+
+
+def test_owner_inserts_bind_the_tenant(rbac_graph: RbacGraph) -> None:
+    """Maintenance-role INSERTs of organization A rows under tenant A and B."""
+    w = seed_scope_world(rbac_graph)
+    graph = w.graph
+    org, a, b = w.organization, w.clinic_a, w.clinic_b
+    q_care = physician(graph, {a: (w.other_a,)})
+    target = w.other_encounter_a
+    staff = {
+        "text": (
+            graph.clinic_admin,
+            _publication(
+                ConsentText, organization_id=org, clinic_id=b, actor=graph.clinic_admin
+            ),
+        ),
+        "notice": (
+            graph.clinic_admin,
+            _publication(
+                NoticeVersion,
+                organization_id=org,
+                clinic_id=b,
+                actor=graph.clinic_admin,
+            ),
+        ),
+        "participant": (
+            q_care,
+            _attestation(q_care, "participant", (org, a, target, w.other_patient)),
+        ),
+        "disclosure": (
+            q_care,
+            _attestation(q_care, "disclosure", (org, a, target, w.other_patient)),
+        ),
+    }
+    # Q in clinic B has neither accepted nor refused B's teleconsultation text;
+    # P revokes the live clinic B acceptance.
+    q_row = {
+        "organization_id": org,
+        "clinic_id": b,
+        "patient_id": w.other_patient,
+        "enrollment": w.other_b,
+        "text": w.text_b,
+    }
+    patient = {
+        "acceptance": (
+            w.other_session_b,
+            _patient_row(ConsentAcceptance, w.other_session_b, **q_row),
+        ),
+        "refusal": (
+            w.other_session_b,
+            _patient_row(RefusalRecord, w.other_session_b, **q_row),
+        ),
+        "revocation": (
+            w.session_b,
+            lambda: ConsentRevocation.objects.create(
+                organization_id=org,
+                clinic_id=b,
+                acceptance_id=w.acceptance_b,
+                patient_session_id=w.session_b,
+                revoked_at=timezone.now(),
+            ),
+        ),
+    }
+    outcomes = {}
+    for tenant, organization in (("A", org), ("B", graph.organization_b)):
+        for name, (actor, insert) in staff.items():
+            with owner_context(organization):
+                _bind_gucs(current_user_id=actor)
+                outcomes[tenant, name] = _outcome(insert)
+        for name, (session, insert) in patient.items():
+            with owner_context(organization):
+                _bind_gucs(current_patient_session=session)
+                outcomes[tenant, name] = _outcome(insert)
+    staff_refused = "42501:consent staff authority required"
+
+    def rls(table: str) -> str:
+        return f'42501:new row violates row-level security policy for table "{table}"'
+
+    assert outcomes == {
+        **{("A", name): None for name in (*staff, *patient)},
+        ("B", "text"): staff_refused,
+        ("B", "notice"): staff_refused,
+        ("B", "participant"): staff_refused,
+        ("B", "disclosure"): staff_refused,
+        ("B", "acceptance"): rls("consent_consentacceptance"),
+        ("B", "refusal"): rls("consent_refusalrecord"),
+        ("B", "revocation"): rls("consent_consentrevocation"),
+    }
 
 
 def test_consent_audit_chains_within_its_organization(rbac_graph: RbacGraph) -> None:
