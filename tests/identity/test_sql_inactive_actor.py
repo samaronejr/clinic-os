@@ -17,6 +17,8 @@ import psycopg
 import pytest
 from apps.billing.services import create_invoice, issue_invoice
 from apps.ehr.history import HistoryChange, save_history
+from apps.ehr.models import SpecialtyTemplate
+from apps.ehr.services import create_draft
 from apps.identity.models import User, UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, ProgrammingError, connection, transaction
@@ -162,95 +164,119 @@ def _actor_readers() -> dict[str, Reader]:
     return readers
 
 
+# (identifier or literal, lower-cased text) for one lexical SQL token.
+type Tok = tuple[bool, str]
+
 # Clause keywords that end a WHERE or ON condition inside one query level.
 _CLAUSE_END = frozenset({"where", "group by", "order by", "having", "limit", "window"})
 _SET_OPERATORS = frozenset({"union", "union all", "intersect", "except"})
+# The only non-identifier tokens a condition level may hold, besides the type
+# after a :: cast. Anything else there (CASE/WHEN/END, BETWEEN, ARRAY[...],
+# IS DISTINCT FROM, <, a comma...) can hide AND/OR that are not conjunctions of
+# this level, so the whole level counts as unchecked.
+_CONDITION_WORDS = frozenset(
+    {"and", "or", "not", "exists", "is", "null", "not null", "true", "false"}
+    | {"=", ".", "::"}
+)
 
 
-def _sql_tokens(source: str) -> list[str]:
+def _sql_tokens(source: str) -> list[Tok]:
     return [
-        " ".join(value.lower().split())
+        (kind is tokens.Name or kind in tokens.Literal, " ".join(value.lower().split()))
         for kind, value in _tokenize(source)
         if kind not in tokens.Whitespace and kind not in tokens.Comment
         if value != ";"
     ]
 
 
-def _close(items: list[str], start: int) -> int:
+def _close(items: list[Tok], start: int) -> int:
     depth = 0
     for index in range(start, len(items)):
-        depth += {"(": 1, ")": -1}.get(items[index], 0)
+        depth += {"(": 1, ")": -1}.get(items[index][1], 0)
         if depth == 0:
             return index
     return -1
 
 
-def _top(items: list[str]) -> list[tuple[int, str]]:
+def _top(items: list[Tok]) -> list[tuple[int, Tok]]:
     """Tokens outside every parenthesis, with their positions."""
     depth, result = 0, []
     for index, item in enumerate(items):
-        if item == ")":
+        if item[1] == ")":
             depth -= 1
-        elif item == "(":
+        elif item[1] == "(":
             depth += 1
         elif depth == 0:
             result.append((index, item))
     return result
 
 
-def _split(items: list[str], word: str) -> list[list[str]]:
+def _understood(items: list[Tok]) -> bool:
+    previous = ""
+    for _index, (plain, value) in _top(items):
+        if not (plain or value in _CONDITION_WORDS or previous == "::"):
+            return False
+        previous = value
+    return True
+
+
+def _split(items: list[Tok], word: str) -> list[list[Tok]]:
     parts, start = [], 0
-    for index, item in _top(items):
-        if item == word:
+    for index, (_plain, value) in _top(items):
+        if value == word:
             parts.append(items[start:index])
             start = index + 1
     return [*parts, items[start:]]
 
 
-def _requires(items: list[str], checked: set[str]) -> bool:
+def _requires(items: list[Tok], checked: set[str]) -> bool:
     """Whether the condition can hold only when a checked call holds.
 
-    Every OR branch must require one, and one AND operand suffices. Anything
-    not understood (NOT, CASE, BETWEEN, set operations, outer joins) requires
-    nothing, so an unrecognised shape fails the census rather than passing it.
+    Every OR branch must require one, and one AND operand suffices. The rule is
+    an allowlist: a level holding any token outside the understood grammar
+    (identifiers, literals, calls, AND, OR, NOT, EXISTS, parenthesised groups,
+    = and IS comparisons, :: casts) requires nothing, so an unrecognised shape
+    fails the census rather than passing it.
     """
+    if not _understood(items):
+        return False
     disjuncts = _split(items, "or")
     if len(disjuncts) > 1:
         return all(_requires(branch, checked) for branch in disjuncts)
-    if any(item == "between" for _index, item in _top(items)):
-        return False
     conjuncts = _split(items, "and")
     if len(conjuncts) > 1:
         return any(_requires(operand, checked) for operand in conjuncts)
     return _atom_requires(items, checked)
 
 
-def _atom_requires(items: list[str], checked: set[str]) -> bool:
+def _atom_requires(items: list[Tok], checked: set[str]) -> bool:
+    values = [value for _plain, value in items]
     if not items:
         return False
-    if items[0] == "(" and _close(items, 0) == len(items) - 1:
+    if values[0] == "(" and _close(items, 0) == len(items) - 1:
         return _requires(items[1:-1], checked)
-    if items[:2] == ["exists", "("] and _close(items, 1) == len(items) - 1:
+    if values[:2] == ["exists", "("] and _close(items, 1) == len(items) - 1:
         return _query_requires(items[2:-1], checked)
-    call = items[2:] if items[:2] == ["clinic_app", "."] else items
+    call = items[2:] if values[:2] == ["clinic_app", "."] else items
     return (
         len(call) > 2
-        and call[0] in checked
-        and call[1] == "("
+        and call[0][0]
+        and call[0][1] in checked
+        and call[1][1] == "("
         and _close(call, 1) == len(call) - 1
     )
 
 
-def _query_requires(items: list[str], checked: set[str]) -> bool:
+def _query_requires(items: list[Tok], checked: set[str]) -> bool:
     """A subquery requires a check through its WHERE or inner-join ON condition."""
-    top = _top(items)
-    words = {item for _index, item in top}
-    if items[:1] != ["select"] or words & _SET_OPERATORS:
+    top = [(index, value) for index, (_plain, value) in _top(items)]
+    words = {value for _index, value in top}
+    if items[:1] != [(False, "select")] or words & _SET_OPERATORS:
         return False
-    inner = all(item in {"join", "inner join"} for item in words if "join" in item)
+    inner = all(value in {"join", "inner join"} for value in words if "join" in value)
     conditions = []
-    for index, item in top:
-        if item == "where" or (item == "on" and inner):
+    for index, value in top:
+        if value == "where" or (value == "on" and inner):
             end = next(
                 (
                     later
@@ -274,7 +300,9 @@ def _delegates(reader: Reader, checked: set[str]) -> bool:
     if reader.language != "sql":
         return bool(names)
     items = _sql_tokens(reader.source)
-    if items[:1] != ["select"] or any(word == "from" for _i, word in _top(items)):
+    if items[:1] != [(False, "select")] or any(
+        value == "from" for _index, (_plain, value) in _top(items)
+    ):
         return False
     return _requires(items[1:], names)
 
@@ -509,6 +537,14 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
                 status="active",
                 reason="Registro inicial",
             ),
+        )
+    # An authored draft reaches the authored-version branch of ehr_care and
+    # retention_care, which the appointment branch would otherwise satisfy.
+    with owner_context(graph.organization_a):
+        template = SpecialtyTemplate.objects.get(clinic_id=graph.clinic_a)
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        create_draft(
+            clinic_id=graph.clinic_a, encounter_id=encounter.pk, template_id=template.pk
         )
     scope: dict[str, UUID] = {
         "clinic": graph.clinic_a,
