@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from functools import cache
 from importlib import import_module
 from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
 
 from apps.identity.current_context import (
     CurrentActorError,
@@ -35,8 +36,15 @@ if TYPE_CHECKING:
 
 RECORDER = "__workflow_decision_site__"
 IGNORER = "__workflow_decision_ignore__"
+FOREIGN = "__workflow_decision_foreign__"
 PERMISSION = "permission"
 RELATION = "relation"
+SCOPE = "scope"
+SCOPE_NAMES = frozenset({"clinic_id", "clinic", "organization_id", "organization"})
+QUERY_METHODS = frozenset(
+    {"filter", "exclude", "get", "get_or_create", "update_or_create"}
+)
+WRITE_METHODS = frozenset({"create", "bulk_create", "update"})
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,7 @@ class Site:
     symbol: str
     kind: str
     position: tuple[int, int, int, int]
+    detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -292,32 +301,124 @@ def discover_sites() -> dict[str, Site]:
     sites: dict[str, Site] = {}
     for key, function in functions.items():
         candidates = [
-            (PERMISSION, node)
+            (PERMISSION, node, "")
             for node in ast.walk(function.node)
             if isinstance(node, ast.Call) and _target(node, function) == permission
-        ] + [(RELATION, node) for node in relations[key].values()]
-        for kind, node in sorted(candidates, key=lambda item: _position(item[1])):
+        ] + [(RELATION, node, "") for node in relations[key].values()]
+        candidates += _scope_sites(key, function)
+        for kind, node, detail in sorted(
+            candidates, key=lambda item: _position(item[1])
+        ):
             base = f"{key}:{kind}:{ast.unparse(node)}"
             sid = next(
                 name
                 for name in (base, *(f"{base}#{n}" for n in range(2, 99)))
                 if name not in sites
             )
-            sites[sid] = Site(sid, key, kind, _position(node))
+            sites[sid] = Site(sid, key, kind, _position(node), detail)
     return sites
+
+
+def _scope_operand(node: ast.AST) -> bool:
+    if isinstance(node, ast.Call) and len(node.args) == 1:
+        return _scope_operand(node.args[0])
+    if isinstance(node, ast.Name):
+        return node.id in SCOPE_NAMES
+    if isinstance(node, ast.Attribute):
+        return node.attr in SCOPE_NAMES
+    return (
+        isinstance(node, ast.Subscript)
+        and isinstance(node.slice, ast.Constant)
+        and node.slice.value in {"clinic", "organization"}
+    )
+
+
+def _local_import(func: ast.expr, function: _Function) -> object:
+    """Resolve a name imported inside the function body (lazy imports)."""
+    if not isinstance(func, ast.Name):
+        return None
+    for node in ast.walk(function.node):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                if (alias.asname or alias.name) == func.id:
+                    return getattr(import_module(node.module), alias.name, None)
+    return None
+
+
+def _manager_method(call: ast.Call) -> str | None:
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    chain = any(
+        isinstance(node, ast.Attribute) and node.attr == "objects"
+        for node in ast.walk(call.func.value)
+    )
+    return call.func.attr if chain else None
+
+
+def _scope_sites(key: str, function: _Function) -> list[tuple[str, ast.AST, str]]:
+    """Record scope: a referenced or target row's clinic/org against the call.
+
+    ORM lookups filtering on a scope column and comparisons with a scope
+    operand are sites. Scope passed to a resolved callee is forwarding; a
+    manager write stores scope. Anything else naming scope fails closed.
+    """
+    found: list[tuple[str, ast.AST, str]] = []
+    for node in ast.walk(function.node):
+        if isinstance(node, ast.Compare) and any(
+            _scope_operand(operand) for operand in (node.left, *node.comparators)
+        ):
+            found.append((SCOPE, node, "compare"))
+        if not isinstance(node, ast.Call):
+            continue
+        scoped = [
+            keyword
+            for keyword in node.keywords
+            if keyword.arg is not None
+            and (
+                keyword.arg in SCOPE_NAMES
+                or keyword.arg.startswith(("clinic__", "organization__"))
+            )
+        ]
+        if not scoped:
+            continue
+        method = _manager_method(node)
+        if method in QUERY_METHODS:
+            found.extend((SCOPE, keyword, "keyword") for keyword in scoped)
+        elif method in WRITE_METHODS:
+            continue
+        else:
+            target = _resolve(node.func, function.module) or _local_import(
+                node.func, function
+            )
+            assert method is None, (key, ast.unparse(node)[:80], "unclassified query")
+            assert inspect.isfunction(target) or inspect.isclass(target), (
+                key,
+                ast.unparse(node)[:80],
+                "unclassified record-scope use",
+            )
+    return found
 
 
 class _Rewrite(ast.NodeTransformer):
     def __init__(
         self,
         sites: dict[tuple[int, int, int, int], Site],
-        mutation: tuple[str, str] | None,
+        mutations: frozenset[tuple[str, str]],
     ) -> None:
         self.sites = sites
-        self.mutation = mutation
+        self.mutations = mutations
 
     def generic_visit(self, node: ast.AST) -> ast.AST:
         visited = super().generic_visit(node)
+        if isinstance(visited, ast.Call) and self.mutations:
+            visited.keywords = [
+                keyword
+                for keyword in visited.keywords
+                if not self._mutated(keyword, "remove")
+            ]
+            for keyword in visited.keywords:
+                if self._mutated(keyword, "mismatch"):
+                    keyword.value = ast.Call(ast.Name(FOREIGN, ast.Load()), [], [])
         site = self.sites.get(_position(node))
         if site is None or not isinstance(visited, ast.expr):
             return visited
@@ -328,8 +429,8 @@ class _Rewrite(ast.NodeTransformer):
                 [ast.Constant(site.sid), expression],
                 [],
             )
-        if self.mutation is not None and self.mutation[0] == site.sid:
-            mode = self.mutation[1]
+        mode = next((m for s, m in self.mutations if s == site.sid), None)
+        if mode is not None:
             if mode == "ignore":
                 expression = ast.Call(
                     ast.Name(IGNORER, ast.Load()),
@@ -347,6 +448,10 @@ class _Rewrite(ast.NodeTransformer):
                 )
         return ast.copy_location(expression, node)
 
+    def _mutated(self, keyword: ast.keyword, mode: str) -> bool:
+        site = self.sites.get(_position(keyword))
+        return site is not None and (site.sid, mode) in self.mutations
+
 
 RECORDS: list[tuple[str, bool]] = []
 
@@ -354,6 +459,11 @@ RECORDS: list[tuple[str, bool]] = []
 def _record(sid: str, value: object) -> object:
     RECORDS.append((sid, bool(value)))
     return value
+
+
+def _foreign() -> UUID:
+    """A scope that matches no row: the 'record scope never matches' mutant."""
+    return uuid4()
 
 
 def _ignore(call: Callable[[], object]) -> object:
@@ -365,14 +475,14 @@ def _ignore(call: Callable[[], object]) -> object:
 
 
 @cache
-def _compiled(key: str, mutation: tuple[str, str] | None) -> CodeType:
+def _compiled(key: str, mutations: frozenset[tuple[str, str]]) -> CodeType:
     function = _functions()[key]
     positions = {
         site.position: site for site in discover_sites().values() if site.symbol == key
     }
     node = copy.deepcopy(function.node)
     node.decorator_list = []
-    rewritten = ast.fix_missing_locations(_Rewrite(positions, mutation).visit(node))
+    rewritten = ast.fix_missing_locations(_Rewrite(positions, mutations).visit(node))
     code = compile(
         ast.Module([rewritten], []),
         str(function.path),
@@ -387,12 +497,23 @@ def _compiled(key: str, mutation: tuple[str, str] | None) -> CodeType:
     return compiled.__code__
 
 
-_ACTIVE: list[tuple[str, str] | None] = []
+def modes(site: Site) -> tuple[str, ...]:
+    """Mutation modes: discard a refusal, force a decision, or drop/miss a scope."""
+    if site.kind == PERMISSION:
+        return ("ignore",)
+    if site.kind == SCOPE and site.detail == "keyword":
+        return ("remove", "mismatch")
+    return ("true", "false")
+
+
+_ACTIVE: list[frozenset[tuple[str, str]]] = []
 
 
 @contextmanager
-def rewritten(mutation: tuple[str, str] | None = None) -> Iterator[None]:
-    """Record every relation decision and apply at most one decision mutant.
+def rewritten(
+    mutation: tuple[str, str] | frozenset[tuple[str, str]] | None = None,
+) -> Iterator[None]:
+    """Record every relation decision and apply decision mutants (usually one).
 
     Re-entry without a mutation reuses an active rewrite, so a mutant applied
     for a whole test run also records the matrix's observations.
@@ -402,30 +523,37 @@ def rewritten(mutation: tuple[str, str] | None = None) -> Iterator[None]:
         return
     assert not _ACTIVE, "one rewrite at a time"
     sites = discover_sites()
-    assert mutation is None or mutation[0] in sites, mutation
-    assert mutation is None or mutation[1] in (
-        ("ignore",) if sites[mutation[0]].kind == PERMISSION else ("true", "false")
-    ), mutation
+    mutations = (
+        frozenset()
+        if mutation is None
+        else mutation
+        if isinstance(mutation, frozenset)
+        else frozenset({mutation})
+    )
+    for sid, mode in mutations:
+        assert sid in sites, sid
+        assert mode in modes(sites[sid]), (sid, mode)
     symbols = {site.symbol for site in sites.values()}
     functions = _functions()
     originals: dict[str, CodeType] = {}
     modules = {functions[key].module for key in symbols}
-    _ACTIVE.append(mutation)
+    _ACTIVE.append(mutations)
     try:
         for module in modules:
             setattr(module, RECORDER, _record)
             setattr(module, IGNORER, _ignore)
+            setattr(module, FOREIGN, _foreign)
         for key in sorted(symbols):
             plain = inspect.unwrap(functions[key].function)
             assert not plain.__code__.co_freevars, key
             originals[key] = plain.__code__
-            plain.__code__ = _compiled(key, mutation)
+            plain.__code__ = _compiled(key, mutations)
         yield
     finally:
         for key, code in originals.items():
             inspect.unwrap(functions[key].function).__code__ = code
         for module in modules:
-            for name in (RECORDER, IGNORER):
+            for name in (RECORDER, IGNORER, FOREIGN):
                 if hasattr(module, name):
                     delattr(module, name)
         RECORDS.clear()

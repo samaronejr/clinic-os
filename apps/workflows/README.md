@@ -99,7 +99,17 @@ decision, and each permission, helper or actor comparison inside a trigger
 branch, is derived from the catalog and exercised both ways in
 `tests/workflows/test_sql_decisions.py`. Constraints, defaults, indexes and
 views in the workflows closure must not read the actor; the inventory fails
-closed if one does.
+closed if one does. Checks were removed from the trigger only where row
+security already decides them for `clinic_app`; this holds for the runtime role
+only. `clinic_owner` owns the tables and can disable triggers, so owner-context
+provisioning is trusted operator code, not a guarded path.
+
+Record scope is a guard input too: every comparison of a referenced or target
+row's clinic against the call's clinic, in Python lookups and in SQL, is
+derived and exercised with a same-clinic and another-clinic record. A wrong-clinic
+reference gets the same denial as an unknown id. Organization equality is the
+tenant boundary: rows carry composite (organization, clinic) keys, so it is
+implied by the clinic comparison and is classified rather than mutated.
 Every new table is classified as restored tenant data in the recovery manifest;
 UUID primary keys introduce no sequences. Protected comment bytes ship encrypted
 from their first version; no plaintext conversion or backfill exists.

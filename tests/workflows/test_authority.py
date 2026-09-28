@@ -370,7 +370,11 @@ def test_every_decision_site_belongs_to_a_derived_guard() -> None:
     reachable = decision_sites.reachable(set(discover_guards()))
     assert {site.symbol for site in sites.values()} <= reachable
     kinds = {site.kind for site in sites.values()}
-    assert kinds == {decision_sites.PERMISSION, decision_sites.RELATION}
+    assert kinds == {
+        decision_sites.PERMISSION,
+        decision_sites.RELATION,
+        decision_sites.SCOPE,
+    }
     for case in CASES:
         assert case.bound <= set(sites), case.symbol
 

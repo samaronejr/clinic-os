@@ -41,6 +41,11 @@ if TYPE_CHECKING:
 MAX_COMMENT_LENGTH = 2000
 TERMINAL = frozenset({"done", "cancelled"})
 REPLAY_KEY_CONSTRAINT = "workflows_task_command_uniq"
+COMMENT_KEY_CONSTRAINT = "workflows_taskcomment_pkey"
+
+
+def _constraint(error: IntegrityError) -> object:
+    return getattr(getattr(error.__cause__, "diag", None), "constraint_name", None)
 
 
 def _event(task: Task, verb: str) -> None:
@@ -66,9 +71,9 @@ def _command(task: Task, expected: int, verb: str, terms: object) -> bool:
 def _dependency(task: Task) -> None:
     if (
         task.depends_on_id is not None
-        and not Task.objects.filter(
-            pk=task.depends_on_id, clinic_id=task.clinic_id, state="done"
-        ).exists()
+        # The composite (organization, clinic, depends_on) key already pins
+        # the predecessor to this task's clinic.
+        and not Task.objects.filter(pk=task.depends_on_id, state="done").exists()
     ):
         raise WorkflowConflictError
 
@@ -120,9 +125,7 @@ def create_task(*, clinic_id: UUID, spec: TaskSpec, idempotency_key: UUID) -> Ta
     except IntegrityError as error:
         # Only the replay key existing outside this actor's visibility is a
         # conflict; every other rejection stays a visible fault.
-        if getattr(getattr(error.__cause__, "diag", None), "constraint_name", None) != (
-            REPLAY_KEY_CONSTRAINT
-        ):
+        if _constraint(error) != REPLAY_KEY_CONSTRAINT:
             raise
         raise WorkflowConflictError from error
     if task.fingerprint != fingerprint:
@@ -228,16 +231,23 @@ def add_comment(
     _clinic, actor = require_clinic_access(clinic_id=clinic_id, permission="tasks.view")
     if not isinstance(body, str) or not body.strip() or len(body) > MAX_COMMENT_LENGTH:
         raise WorkflowInputError
-    comment, created = TaskComment.objects.get_or_create(
-        pk=idempotency_key,
-        clinic_id=clinic_id,
-        defaults={
-            "organization_id": task.organization_id,
-            "task": task,
-            "author_id": actor,
-            "body": body,
-        },
-    )
+    # The key is global: a replay that names another task, author or body -
+    # including one outside this actor's visibility - is a conflict.
+    try:
+        comment, created = TaskComment.objects.get_or_create(
+            pk=idempotency_key,
+            defaults={
+                "organization_id": task.organization_id,
+                "clinic_id": clinic_id,
+                "task": task,
+                "author_id": actor,
+                "body": body,
+            },
+        )
+    except IntegrityError as error:
+        if _constraint(error) != COMMENT_KEY_CONSTRAINT:
+            raise
+        raise WorkflowConflictError from error
     if comment.task_id != task_id or comment.author_id != actor or comment.body != body:
         raise WorkflowConflictError
     if created:

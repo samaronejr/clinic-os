@@ -42,11 +42,9 @@ def step_send_eligible(scope: OperationScope) -> bool:
         return False
     step = (
         WorkflowStep.objects.select_related("run__definition_version")
-        .filter(
-            pk=operation.subject_id,
-            clinic_id=scope.clinic_id,
-            operation_id=operation.pk,
-        )
+        # The operation was found in scope.clinic_id; the trigger binds a
+        # step's operation to the step's own clinic.
+        .filter(pk=operation.subject_id, operation_id=operation.pk)
         .first()
     )
     return (

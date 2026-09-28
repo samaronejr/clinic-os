@@ -216,6 +216,149 @@ def discover_conditions() -> dict[str, Condition]:
     return conditions
 
 
+SCOPE_OPERAND = (
+    r"(?:\b[A-Za-z_]\w*\.)?(?:clinic_id|organization_id)\b|\bclinic\b|\btenant\b"
+)
+SCOPE_COMPARISON = re.compile(
+    r"(?P<left>(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*)\s*"
+    r"(?P<op>=|<>|!=|IS\s+NOT\s+DISTINCT\s+FROM|IS\s+DISTINCT\s+FROM)\s*"
+    r"(?P<right>(?:[A-Za-z_]\w*\.)?[A-Za-z_]\w*|NULLIF\(\s*current_setting\("
+    r"\s*'app\.current_tenant'\s*,\s*true\s*\)\s*,\s*''\s*\)::uuid)"
+)
+TENANT = "app.current_tenant"
+
+
+def _is_scope(operand: str, parameters: set[str]) -> bool:
+    name = operand.rsplit(".", maxsplit=1)[-1]
+    return (
+        name in {"clinic_id", "organization_id"}
+        or ("." not in operand and name in parameters)
+        or TENANT in operand
+    )
+
+
+def _spans(text: str, pattern: str) -> list[tuple[int, int]]:
+    return [(m.start(), m.end()) for m in re.finditer(pattern, text)]
+
+
+def _argument_spans(text: str) -> list[tuple[int, int]]:
+    """Argument lists of calls: scope passed to a callee is forwarding."""
+    spans = []
+    for match in re.finditer(r"\b[A-Za-z_][\w.]*\(", text):
+        if match.group(0)[:-1].upper() in {
+            "IF",
+            "AND",
+            "OR",
+            "NOT",
+            "IN",
+            "EXISTS",
+            "ROW",
+        }:
+            continue
+        spans.append((match.end(), _call_end(text, match.start()) - 1))
+    return spans
+
+
+def _code_only(source: str) -> str:
+    """Blank comments and string literals (same length) so only code is scanned."""
+    out = list(source)
+    index = 0
+    while index < len(source):
+        if source.startswith("--", index):
+            end = source.find("\n", index)
+            end = len(source) if end < 0 else end
+            out[index:end] = " " * (end - index)
+            index = end
+        elif source[index] == "'":
+            end = index + 1
+            while end < len(source):
+                if source[end] == "'" and source[end + 1 : end + 2] == "'":
+                    end += 2
+                elif source[end] == "'":
+                    break
+                else:
+                    end += 1
+            out[index + 1 : end] = " " * (end - index - 1)
+            index = end + 1
+        else:
+            index += 1
+    return "".join(out)
+
+
+def discover_scope_conditions() -> dict[str, Condition]:
+    """Record scope in SQL: a row's clinic/org compared with the call's scope.
+
+    Clinic comparisons are sites (removed and forced-mismatched by the sweep).
+    Organization comparisons are the tenant boundary: rows carry composite
+    (organization, clinic) keys, so each is implied by a clinic comparison or
+    by has_permission's clinic-in-tenant check; they are classified, not
+    mutated. Every other scope token must be forwarded as a call argument or
+    projected; anything else fails closed.
+    """
+    sites: dict[str, Condition] = {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT p.oid::regprocedure::text, p.prosrc, "
+            "coalesce(p.proargnames, ARRAY[]::text[]) FROM pg_proc p "
+            "JOIN pg_namespace n ON n.oid=p.pronamespace "
+            "WHERE n.nspname||'.'||p.proname=ANY(%s) OR (n.nspname='clinic_app' "
+            "AND p.proname LIKE 'workflows\\_%%') ORDER BY 1",
+            [_functions()],
+        )
+        functions = cursor.fetchall()
+    for signature, raw, names in functions:
+        source = _code_only(raw)
+        parameters = {name for name in names if name in {"clinic", "tenant"}}
+        classified: list[tuple[int, int]] = []
+        for match in SCOPE_COMPARISON.finditer(source):
+            left, right = match.group("left"), match.group("right")
+            if not (_is_scope(left, parameters) or _is_scope(right, parameters)):
+                continue
+            classified.append((match.start(), match.end()))
+            text = " ".join(match.group(0).split())
+            clinic = any(
+                operand.split(".")[-1] == "clinic_id" or operand == "clinic"
+                for operand in (left, right)
+            ) and not any(
+                operand.split(".")[-1] == "organization_id" or TENANT in operand
+                for operand in (left, right)
+            )
+            if not clinic:
+                continue
+            operator = " ".join(match.group("op").split())
+            base = f"scope:{signature}:{text}"
+            cid = next(
+                name
+                for name in (base, *(f"{base}#{n}" for n in range(2, 99)))
+                if name not in sites
+            )
+            sites[cid] = Condition(
+                cid,
+                signature,
+                "scope",
+                f"clinic_app.{signature}",
+                (match.start(), match.end()),
+                "true" if operator in {"=", "IS NOT DISTINCT FROM"} else "false",
+            )
+        classified += _argument_spans(source)
+        classified += _spans(source, r"(?s)\bSELECT\b(?:(?!\bFROM\b).)*?\bFROM\b")
+        for use in re.finditer(SCOPE_OPERAND, source):
+            name = use.group(0).split(".")[-1]
+            if name in {"clinic", "tenant"} and name not in parameters:
+                continue
+            assert any(a <= use.start() < b for a, b in classified), (
+                signature,
+                "unclassified record-scope use",
+                source[max(0, use.start() - 50) : use.end() + 20],
+            )
+        for use in re.finditer(re.escape(TENANT), raw):
+            assert any(a <= use.start() < b for a, b in classified), (
+                signature,
+                "unclassified tenant scope use",
+            )
+    return sites
+
+
 def discover_sql_sites() -> dict[str, SqlSite]:
     catalog = Catalog()
     tables = _tables()

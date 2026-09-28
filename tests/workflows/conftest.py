@@ -17,11 +17,16 @@ MUTANT = "CLINIC_WORKFLOW_DECISION_MUTANT"
 
 @pytest.fixture(autouse=True)
 def workflow_decision_mutant() -> Iterator[None]:
-    """Apply one '<site id>|<mode>' rewrite; unset means the shipped code runs."""
+    """Apply '<site id>|<mode>' rewrites (';;'-joined); unset: shipped code runs."""
     requested = os.environ.get(MUTANT)
     if not requested:
         yield
         return
-    site, _separator, mode = requested.rpartition("|")
-    with rewritten((site, mode)):
+    mutations = frozenset(
+        (site, mode)
+        for site, _separator, mode in (
+            item.rpartition("|") for item in requested.split(";;")
+        )
+    )
+    with rewritten(mutations):
         yield

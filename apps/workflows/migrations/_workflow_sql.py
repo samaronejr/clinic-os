@@ -179,7 +179,7 @@ BEGIN
     OR NOT clinic_app.workflows_owned(OLD.clinic_id,OLD.owner_user_id,OLD.owner_role)
     OR (NEW.depends_on_id IS NOT NULL AND NOT EXISTS
      (SELECT 1 FROM clinic_app.workflows_task t WHERE t.id=NEW.depends_on_id
-      AND t.clinic_id=NEW.clinic_id AND t.state='done'))
+      AND t.state='done'))
     THEN RAISE EXCEPTION 'task completion denied' USING ERRCODE='42501'; END IF;
    END IF;
    IF NEW.state='cancelled' AND NOT clinic_app.has_permission('tasks.reassign',
