@@ -118,9 +118,18 @@ episodes and unscheduled encounters.
     patient workspace and timeline (todo 28). Typed addendum fields and
     templates come with todo 29, and nurse observations with todo 28
     (`observation.write`).
+- Every writer decides every refusal, including the read scope of what its
+  response renders, before its first write (the read audit included). The
+  request transaction commits any response below 500, so a later refusal
+  would keep the write. `services.author_scope` decides clinic scope,
+  assignee and authorship with reads only before a draft is written.
+  `episodes.open_episode_for_encounter` opens and links an episode in one
+  savepoint after all of its checks. The only row a refusal leaves is the
+  fixed `ehr.access.denied` record.
 - Migrations `0010` and `0011` are additive and rehearsed forward and
-  backward. Once an unscheduled encounter or an addendum exists, rollback is a
-  restore.
+  backward. The reverse refuses while an unscheduled encounter exists, or while
+  any of their tables holds a row (a `*_rollback_is_restore` probe), so
+  rollback is a restore and never a silent drop.
 
 Verification: `tests/renewal/test_encounters.py`, `tests/ehr/test_autosave.py`,
 `tests/ehr/test_addenda.py`,
