@@ -137,7 +137,12 @@ READ_ONLY_VOLATILITY = frozenset({"i", "s"})
 # with only other admitted gates exempt (_admitted_gates). The executed
 # snapshot check runs both. The set is exactly the refusal helper plus the
 # functions the clinic_agent RLS policies call
-# (test_volatile_gate_exception_is_exact).
+# (test_volatile_gate_exception_is_exact). Either gate VOLATILE is enough for
+# the revocation tests: principal_has calls principal_scope, and both read the
+# same principal and grant rows (the grant CHECK allows appointment.read only),
+# so one fresh snapshot refuses. The tests fail when both are STABLE (the
+# D1-r9 configuration); either one alone is refused by its pin here and by
+# the resolver posture pin.
 VOLATILE_GATES: dict[str, tuple[str, str]] = {
     REFUSAL_HELPER: (REFUSAL_HELPER + "(uuid,uuid)", REFUSAL_HELPER_DIGEST),
     "clinic_app.principal_has": (
@@ -425,7 +430,8 @@ def test_revocation_stops_an_open_cursor_on_the_agent_login(
 ) -> None:
     """Review round 9 (D1-r9): the agent_grant policy calls the VOLATILE
     principal_has per row, which takes a fresh snapshot, so rows fetched from
-    an open cursor after a revocation commits are refused."""
+    an open cursor after a revocation commits are refused. (Either gate alone
+    STABLE is masked by the other; see VOLATILE_GATES.)"""
     own = _seed_own_blocks(rbac_graph, 3)
     with _agent_in_scope(principal) as agent, agent.cursor() as cursor:
         cursor.execute(
