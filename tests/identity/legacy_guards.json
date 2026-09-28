@@ -431,9 +431,9 @@
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
       "enforced_by": [
+        "apps.core.navigation.granted_permissions",
         "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.privileged_totp_required",
-        "clinic_app.has_permission"
+        "apps.identity.otp.privileged_totp_required"
       ]
     },
     {
@@ -444,9 +444,9 @@
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
       "enforced_by": [
+        "apps.core.navigation.granted_permissions",
         "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.is_privileged_user",
-        "clinic_app.has_permission"
+        "apps.identity.otp.is_privileged_user"
       ]
     },
     {
@@ -457,9 +457,9 @@
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
       "enforced_by": [
+        "apps.core.navigation.granted_permissions",
         "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.privileged_totp_required",
-        "clinic_app.has_permission"
+        "apps.identity.otp.privileged_totp_required"
       ]
     },
     {
@@ -471,8 +471,7 @@
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
       "enforced_by": [
         "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.privileged_totp_required",
-        "clinic_app.has_permission"
+        "apps.identity.otp.privileged_totp_required"
       ]
     },
     {
@@ -480,10 +479,9 @@
       "signals": [
         "resolver"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "probes": [
+        "apps.core.navigation.granted_permissions"
       ]
     },
     {
@@ -1519,11 +1517,9 @@
       "signals": [
         "denial"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.intake.access.authorized_manager_clinic",
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "probes": [
+        "apps.intake.patient_search.search_patients_exact"
       ]
     },
     {
@@ -3351,6 +3347,7 @@
     "apps.core.integration._prepare_with_authority",
     "apps.core.integration._resolve_callback_scope",
     "apps.core.integration._resolve_scope",
+    "apps.core.navigation.granted_permissions",
     "apps.core.views.workspace_home",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
@@ -3434,6 +3431,7 @@
     "apps.intake.patient_access.patient_session_overview#observed",
     "apps.intake.patient_access.redeem_invitation#observed",
     "apps.intake.patient_access.revoke_patient_access",
+    "apps.intake.patient_search.search_patients_exact",
     "apps.intake.questionnaire_views._denied",
     "apps.intake.questionnaire_views.patient_questionnaires#observed",
     "apps.intake.questionnaire_views.staff_questionnaires",
