@@ -593,6 +593,9 @@ def workflow(
         slots = patient_slots(date(2035, 6, 2))
         assert slots
         booked = book_patient_slot(token=slots[0].token, idempotency_key=uuid4())
+    # Lifecycle v2 (D-9): reception records arrival before any encounter opens.
+    with runtime_role(), tenant_context(graph.receptionist_a, graph.organization_a):
+        booked = arrive_appointment(booked)
     session_id, operation_id = _teleconsult_round_trip(
         graph, encounter_id, patient_session
     )

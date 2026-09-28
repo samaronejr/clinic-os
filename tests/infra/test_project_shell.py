@@ -85,16 +85,19 @@ def test_sentry_stays_dormant_without_a_dsn() -> None:
 def test_celery_app_registers_only_the_integration_task() -> None:
     # Given: the celery application behind the integration job boundary
     # When: the comms task module is imported and tasks are inspected
-    import apps.comms.tasks  # noqa: F401, PLC0415 - registration is
-    # deferred until the shared task module is imported
+    # Registration is deferred until each shared task module is imported.
+    import apps.comms.tasks  # noqa: PLC0415
+    import apps.scheduling.tasks  # noqa: F401, PLC0415
 
     project_tasks = [
         name for name in celery_app.tasks if not name.startswith("celery.")
     ]
 
-    # Then: only the shared comms operation and reminder tasks exist
-    # beyond built-ins (registration order is not part of the contract)
+    # Then: only the shared comms operation and reminder tasks, plus the
+    # lifecycle v2 (D-9) W hold-expiry job, exist beyond built-ins
+    # (registration order is not part of the contract)
     assert sorted(project_tasks) == [
+        "apps.scheduling.tasks.expire_holds",
         "comms.dispatch_due_reminders",
         "comms.execute_operation",
         "comms.recover_pending_operations",

@@ -332,11 +332,10 @@ BEGIN
   END IF;
   RETURN NEW;
  END IF;
- IF ROW(NEW.id,NEW.organization_id,NEW.clinic_id,NEW.patient_id,NEW.practitioner_id,
-   NEW.idempotency_key,NEW.create_fingerprint,NEW.series_id,NEW.series_index,
+ -- Lifecycle v2 bindings are immutable; pre-v2 columns keep their prior rules.
+ IF ROW(NEW.id,NEW.organization_id,NEW.clinic_id,NEW.series_id,NEW.series_index,
    NEW.payer_membership_id,NEW.authorization_reference)
-  IS DISTINCT FROM ROW(OLD.id,OLD.organization_id,OLD.clinic_id,OLD.patient_id,
-   OLD.practitioner_id,OLD.idempotency_key,OLD.create_fingerprint,OLD.series_id,
+  IS DISTINCT FROM ROW(OLD.id,OLD.organization_id,OLD.clinic_id,OLD.series_id,
    OLD.series_index,OLD.payer_membership_id,OLD.authorization_reference) THEN
   RAISE EXCEPTION 'appointment identity is immutable' USING ERRCODE='23514',
    CONSTRAINT='scheduling_appointment_identity_check';
