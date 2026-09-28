@@ -12,6 +12,8 @@
   var drag = null;
   var suppressClick = false;
   var pendingFocus = null;
+  var editing = null;
+  var moveInFlight = false;
   var pendingPlace = null;
 
   function dialog() {
@@ -57,7 +59,7 @@
       option.selected = time === (start || link.getAttribute("data-start"));
       select.appendChild(option);
     });
-    pendingFocus = link.getAttribute("data-appointment");
+    editing = link.getAttribute("data-appointment");
     return form;
   }
 
@@ -214,9 +216,54 @@
 
   document.addEventListener("htmx:beforeRequest", function (event) {
     if (event.target.matches("[data-move-form]")) {
+      moveInFlight = true;
+      pendingFocus = editing;
       busy(true);
     }
   });
+
+  // Return focus to the appointment's cell in the grid as it is now (a
+  // realtime refetch may have replaced the opener), else the grid's tab stop.
+  function focusCell(id) {
+    var grid = document.getElementById("agenda-grid");
+    if (!grid) {
+      return;
+    }
+    var link = id && grid.querySelector("[data-appointment=\"" + id + "\"]");
+    var cell = cellOf(link) ||
+      grid.querySelector("[role=gridcell][tabindex=\"0\"]") ||
+      grid.querySelector("[role=gridcell]");
+    if (!cell) {
+      return;
+    }
+    grid.querySelectorAll("[role=gridcell]").forEach(function (item) {
+      item.tabIndex = item === cell ? 0 : -1;
+    });
+    cell.focus();
+  }
+
+  // Cancel is a plain button: the form posts through HTMX, which would
+  // swallow a formmethod="dialog" submit, so the dialog is closed here.
+  document.addEventListener("click", function (event) {
+    var cancel = event.target.closest && event.target.closest("[data-move-dialog] [data-dialog-close]");
+    if (cancel) {
+      event.preventDefault();
+      dialog().close();
+      // The close event is a queued task; return focus now, and again there
+      // (after components/dialog.js returns it to the opener link).
+      focusCell(editing);
+    }
+  });
+
+  // Cancel, Escape or an abandoned offline retry: nothing moved, so focus goes
+  // back to the invoking appointment. A move in flight places focus itself.
+  document.addEventListener("close", function (event) {
+    if (!event.target.matches || !event.target.matches("[data-move-dialog]") || moveInFlight) {
+      return;
+    }
+    focusCell(editing);
+    editing = null;
+  }, true);
 
   document.addEventListener("htmx:beforeSwap", function (event) {
     if (event.detail.target && event.detail.target.id === "agenda-grid-results") {
@@ -252,9 +299,15 @@
     if (!event.target.matches("[data-move-form]")) {
       return;
     }
+    moveInFlight = false;
     busy(false);
     var box = dialog();
-    if (event.detail.xhr && event.detail.xhr.status) {
+    var status = event.detail.xhr ? event.detail.xhr.status : 0;
+    if (status !== 200 && status !== 409) {
+      // No grid came back, so nothing will place focus after a swap.
+      pendingFocus = null;
+    }
+    if (status) {
       if (box.open) {
         box.close();
       }

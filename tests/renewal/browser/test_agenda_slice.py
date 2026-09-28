@@ -44,7 +44,7 @@ import pytest
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
-from renewal.browser._page_wait import evaluate_js, wait_for_js
+from renewal.browser._page_wait import WaitTimeoutError, evaluate_js, wait_for_js
 from renewal.browser.a11y_support import AXE_RUN_JS, AXE_URL
 from renewal.browser.engines import selected_engine, throttle_cpu
 from renewal.browser.test_agenda import (
@@ -1044,3 +1044,132 @@ def test_js_off_grid_keeps_the_native_path(variant: str, scene: Scene) -> None:
         "raw": {"appointments_rendered": rendered, "href": href, "reached": reached},
     }
     assert passed, scene.report[variant]["js_off"]
+
+
+# --------------------------------------------------------------------------
+# 7. The move dialog's Cancel (review B2): Enter, click, Escape, and after a
+#    realtime refetch replaced the opener
+# --------------------------------------------------------------------------
+
+FOCUSED_JS: Final = """() => {
+  const el = document.activeElement;
+  if (!el) return 'none';
+  return el.tagName + (el.isConnected ? '' : ' (detached)')
+    + (el.closest('dialog') ? ' in dialog' : '')
+    + (el.matches('[data-grid-cell]') ? ' cell ' + el.dataset.slot : '');
+}"""
+FOCUS_ON_APPOINTMENT_CELL_JS: Final = """(id) => {
+  const el = document.activeElement;
+  return !!el && el.isConnected && !el.closest('dialog')
+    && el.matches('[data-grid-cell]')
+    && !!el.querySelector('[data-appointment="' + id + '"]');
+}"""
+
+
+def _open_dialog_by_keyboard(page: Page, appointment: str) -> None:
+    cell = page.locator(f'[data-grid-cell]:has([data-appointment="{appointment}"])')
+    cell.first.focus()
+    page.keyboard.press("m")
+    expect(page.locator("[data-move-dialog]")).to_have_attribute("open", "")
+
+
+def _cancel(page: Page, how: str) -> None:
+    if how == "enter":
+        page.locator("[data-move-dialog] [data-dialog-close]").focus()
+        page.keyboard.press("Enter")
+    elif how == "click":
+        page.locator("[data-move-dialog] [data-dialog-close]").click()
+    else:
+        page.keyboard.press("Escape")
+    expect(page.locator("[data-move-dialog]")).not_to_have_attribute("open", "")
+
+
+def _focus_returned(page: Page, appointment: str) -> bool:
+    """Focus reaches the appointment's live cell, awaited as page state."""
+    try:
+        wait_for_js(page, FOCUS_ON_APPOINTMENT_CELL_JS, arg=appointment, timeout=5000)
+    except WaitTimeoutError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("variant", _variants())
+def test_move_dialog_cancel_closes_without_a_request_and_returns_focus(
+    variant: str, scene: Scene
+) -> None:
+    seeded = scene.world.seed_day()
+    first, second = scene.world.physicians[0], scene.world.physicians[1]
+    appointment = seeded.by_physician[first][0]
+    moves: list[str] = []
+    outcomes: dict[str, bool] = {}
+    focused: dict[str, str] = {}
+    with scene.browser.new_context(
+        locale="pt-BR",
+        storage_state=scene.state,
+        viewport={"width": 1280, "height": 900},
+    ) as context:
+        context.add_init_script(CSP_ONLY_JS)
+        remote = context.new_page()
+        page = context.new_page()
+        path = _path(scene.world, variant, seeded.day)
+        _open(remote, scene.base_url, path, variant)
+        _open(page, scene.base_url, path, variant)
+        _connected(page)
+        page.on(
+            "request",
+            lambda request: (
+                moves.append(request.url)
+                if request.method == "POST" and VARIANTS[variant].move in request.url
+                else None
+            ),
+        )
+        for how in ("enter", "click", "escape"):
+            _open_dialog_by_keyboard(page, appointment)
+            _cancel(page, how)
+            outcomes[how] = _focus_returned(page, appointment)
+            focused[how] = str(evaluate_js(page, FOCUSED_JS))
+        # A realtime refetch lands while the dialog is open: the opener is
+        # replaced, and focus must still return to the (refreshed) cell.
+        remote_moves = iter(seeded.free[second][:2])
+        for how in ("escape", "click"):
+            _open_dialog_by_keyboard(page, appointment)
+            b0 = seeded.by_physician[second][0]
+            with page.expect_response(_is_refetch(variant, seeded.day)) as refetched:
+                status = evaluate_js(
+                    remote,
+                    REMOTE_MOVE_JS,
+                    [
+                        f"/scheduling/clinics/{scene.world.staff['clinic_a']}"
+                        "/agenda/grid/move/",
+                        {
+                            "appointment_id": b0,
+                            "expected_revision": str(scene.world.stored(b0)[1]),
+                            "day": seeded.day,
+                            "start": next(remote_moves),
+                            "duration": "30",
+                        },
+                    ],
+                )
+                assert status == 200
+            assert refetched.value.status == 200
+            wait_for_js(page, SETTLED_JS)
+            expect(page.locator("[data-move-dialog]")).to_have_attribute("open", "")
+            _cancel(page, how)
+            outcomes[f"{how}-after-refresh"] = _focus_returned(page, appointment)
+            focused[f"{how}-after-refresh"] = str(evaluate_js(page, FOCUSED_JS))
+        csp = evaluate_js(page, "window.__slice.csp")
+        page.screenshot(path=str(scene.root / f"cancel-{variant}.png"))
+    stored = scene.world.stored(appointment)
+    passed = all(outcomes.values()) and moves == [] and stored[1] == 1 and csp == 0
+    scene.report[variant]["dialog_cancel"] = {
+        "criterion": "Cancel (Enter, click, Escape, and after a realtime refetch)"
+        " closes with no request and returns focus to the appointment's cell",
+        "pass": passed,
+        "raw": {
+            "focus_returned": outcomes,
+            "focused": focused,
+            "move_requests": moves,
+            "stored": stored,
+        },
+    }
+    assert passed, scene.report[variant]["dialog_cancel"]
