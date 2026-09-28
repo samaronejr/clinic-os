@@ -478,11 +478,15 @@ def dropped_then_offline(scene: AutosaveScene) -> list[str]:
     pattern = re.compile(re.escape(AUTOSAVE) + "$")
     page.route(pattern, drop)
     page.locator("#id_subjective").fill("Relato após a queda da rede")
-    with page.expect_event("requestfailed"):
-        page.clock.fast_forward(1500)
+    page.clock.fast_forward(1500)
+    # Engine-agnostic: the app's own retry state, reached only after the
+    # handler let the server commit and then aborted the response. WebKit
+    # emits no "requestfailed" when a request is never intercepted, so that
+    # event is not the signal; an unintercepted save ends "saved" and fails
+    # here instead of passing silently.
+    expect(status).to_have_attribute("data-state", "retrying")
     page.unroute(pattern)
     assert dropped == [200]
-    expect(status).to_have_attribute("data-state", "retrying")
     expect(status).to_have_text("Não salvo - tentando novamente")
     revision, content = stored_soap(scene.staff, scene.version)
     assert (revision, content["subjective"]) == (3, "Relato após a queda da rede")
@@ -581,10 +585,14 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
     browser = renewal_page.context.browser
     assert browser is not None
     data = seed(staff, AUTOSAVE_DAY)
+    # The journey intercepts the autosave request. On WebKit, page.route never
+    # sees requests from a page a fetch-handling service worker controls (see
+    # engines.py), so this context blocks workers like every intercepting suite.
     context = browser.new_context(
         locale="pt-BR",
         viewport={"width": 1280, "height": 900},
         record_video_dir=folder,
+        service_workers="block",
     )
     try:
         page = context.new_page()
