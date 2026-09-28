@@ -1070,6 +1070,8 @@ PLANTED_MEMBERS = {
     "notify": f"""
         SELECT {MACHINE_GATE} IS NOT NULL
           AND pg_notify('sintetico', clinic::text) IS NULL""",
+    # A STABLE builtin that still assigns a transaction id.
+    "xid_assign": f"SELECT {MACHINE_GATE} IS NOT NULL AND txid_current() > 0",
     # A gated member declared VOLATILE: PostgreSQL would let its body write.
     "volatile_member": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
     # Positive control: each uuid parameter behind its own gate.
@@ -1173,6 +1175,7 @@ PLANT_VIOLATIONS = {
     "advisory_lock": {VOLATILE_CALL},
     "notify": {OPAQUE, VOLATILE_CALL},
     "volatile_member": {VOLATILE_CALL},
+    "xid_assign": {VOLATILE_CALL},
     "two_uuid_gated": set(),
     "helper_reset": {SETTING_WRITE, SETTINGS, VOLATILE_CALL},
 }
