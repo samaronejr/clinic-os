@@ -8,7 +8,9 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import psycopg
+import psycopg.sql
 import pytest
+from django.db import connection
 
 from . import clock_catalog_cache
 from .world_database import admin_url
@@ -153,3 +155,67 @@ def test_omitting_world_class_serves_its_plant(
         "catalog_after_sha256": after,
         "mutant_served_stale": "true",
     }
+
+
+def test_database_acl_is_hashed_as_a_set_not_an_order() -> None:
+    """Clones regain CONNECT in role-name order; the template kept OID order.
+
+    Reordering the same grants must not make a clone look stale, and any real
+    grant change must still change the catalog version.
+    """
+    database = str(connection.settings_dict["NAME"])
+    grants = connect_grants(database)
+    with psycopg.connect(admin_url("postgres"), autocommit=True) as admin:
+        # The first CONNECT grantee in array order: re-granting moves it last.
+        row = admin.execute(
+            "SELECT pg_get_userbyid(a.grantee), a.is_grantable "
+            "FROM pg_database d, unnest(d.datacl) WITH ORDINALITY i(item, position), "
+            "aclexplode(ARRAY[i.item]) a WHERE d.datname=%s AND a.grantee<>0 "
+            "AND a.grantee<>d.datdba AND a.privilege_type='CONNECT' "
+            "ORDER BY i.position LIMIT 1",
+            [database],
+        ).fetchone()
+    assert row is not None
+    role, grantable = str(row[0]), bool(row[1])
+    grantee = psycopg.sql.Identifier(role)
+    target = psycopg.sql.Identifier(database)
+    option = psycopg.sql.SQL(" WITH GRANT OPTION" if grantable else "")
+    before = clock_catalog_cache.catalog_version()
+    with psycopg.connect(admin_url("postgres"), autocommit=True) as admin:
+        acl = "SELECT datacl::text FROM pg_database WHERE datname=%s"
+        (original,) = admin.execute(acl, [database]).fetchone() or ("",)
+        try:
+            # Same grant, moved to the end of the ACL array.
+            admin.execute(
+                psycopg.sql.SQL("REVOKE CONNECT ON DATABASE {} FROM {}").format(
+                    target, grantee
+                )
+            )
+            admin.execute(
+                psycopg.sql.SQL("GRANT CONNECT ON DATABASE {} TO {}{}").format(
+                    target, grantee, option
+                )
+            )
+            (reordered,) = admin.execute(acl, [database]).fetchone() or ("",)
+            assert reordered != original
+            assert clock_catalog_cache.catalog_version() == before
+            # A real grant change is catalog state.
+            admin.execute(
+                psycopg.sql.SQL("GRANT TEMPORARY ON DATABASE {} TO {}").format(
+                    target, grantee
+                )
+            )
+            assert clock_catalog_cache.catalog_version() != before
+            admin.execute(
+                psycopg.sql.SQL("REVOKE TEMPORARY ON DATABASE {} FROM {}").format(
+                    target, grantee
+                )
+            )
+            assert clock_catalog_cache.catalog_version() == before
+        finally:
+            admin.execute(
+                psycopg.sql.SQL("REVOKE TEMPORARY ON DATABASE {} FROM {}").format(
+                    target, grantee
+                )
+            )
+    assert set(connect_grants(database)) == set(grants)

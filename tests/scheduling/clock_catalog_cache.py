@@ -28,6 +28,8 @@ CACHE_STATS = {"builds": 0, "hits": 0}
 # avoids locale comparisons of long expression trees without omitting any row.
 # A stale true hint is harmless; false must not hide existing objects. PostgreSQL
 # 16 also needs relhasrules for a view's _RETURN rule to expand a SELECT.
+# A database ACL is a set of grants: a world clone regains CONNECT in role-name
+# order while its template kept grantee-OID order, so items are hashed sorted.
 CATALOG_VERSION = """
 WITH ns AS (
  SELECT oid FROM pg_namespace
@@ -78,7 +80,8 @@ WITH ns AS (
  UNION ALL SELECT 'extension',ROW(x.*)::text FROM pg_extension x
  UNION ALL SELECT 'language',ROW(x.*)::text FROM pg_language x
  UNION ALL SELECT 'database-environment',
- ROW(d.datdba,d.datacl,d.datcollate,d.datctype)::text
+ ROW(d.datdba,(SELECT array_agg(x::text ORDER BY x::text COLLATE "C")
+ FROM unnest(d.datacl) x),d.datcollate,d.datctype)::text
  FROM pg_database d WHERE d.datname=current_database()
  UNION ALL SELECT 'database-settings',ROW(s.setrole,s.setconfig)::text
  FROM pg_db_role_setting s JOIN pg_database d ON d.oid=s.setdatabase
