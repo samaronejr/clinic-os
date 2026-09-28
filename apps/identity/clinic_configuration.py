@@ -36,6 +36,9 @@ MAX_LOGO_DIMENSION = 1024
 MAX_DISPLAY_NAME = 120
 MAX_EMAIL = 254
 DEFAULT_BRAND = "navy"
+MIN_HOLD_TTL = 1
+MAX_HOLD_TTL = 60
+DEFAULT_HOLD_TTL = 10
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,10 @@ class ConfigurationContent:
     brand_token: str = DEFAULT_BRAND
     reminder_hours: int = 24
     queue_quotas: Mapping[str, int] | None = None
+    # ``None`` carries the previous snapshot's scheduling policy forward, so an
+    # ordinary settings save never resets approval or hold TTL (todo 22).
+    self_booking_requires_approval: bool | None = None
+    hold_ttl_minutes: int | None = None
 
     def validate(self) -> None:
         """Validate text, formats and fixed tokens at the service boundary."""
@@ -61,6 +68,17 @@ class ConfigurationContent:
             or type(self.reminder_hours) is not int
             or self.reminder_hours not in REMINDER_HOURS
             or len(self.contact_email) > MAX_EMAIL
+            or (
+                self.self_booking_requires_approval is not None
+                and type(self.self_booking_requires_approval) is not bool
+            )
+            or (
+                self.hold_ttl_minutes is not None
+                and (
+                    type(self.hold_ttl_minutes) is not int
+                    or not MIN_HOLD_TTL <= self.hold_ttl_minutes <= MAX_HOLD_TTL
+                )
+            )
             or (
                 self.contact_phone
                 and not re.fullmatch(r"\+[1-9][0-9]{7,14}", self.contact_phone)
@@ -177,6 +195,14 @@ def publish_configuration(
             raise ValidationError(msg)
         fields = asdict(content)
         quotas = fields.pop("queue_quotas")
+        if fields["self_booking_requires_approval"] is None:
+            fields["self_booking_requires_approval"] = bool(
+                previous and previous.self_booking_requires_approval
+            )
+        if fields["hold_ttl_minutes"] is None:
+            fields["hold_ttl_minutes"] = (
+                previous.hold_ttl_minutes if previous else DEFAULT_HOLD_TTL
+            )
         # Serialize quota writes and org-effective carry-forward reads so
         # concurrent publishes cannot resurrect a superseded quota map.
         cursor.execute(

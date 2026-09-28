@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.scheduling.appointment_errors import (
     AppointmentCancellationConflictError,
     AppointmentCancellationInputError,
+    AppointmentTerminalError,
 )
 from apps.scheduling.appointment_locking import (
     acquire_appointment_write_gates,
@@ -57,6 +58,9 @@ def cancel_appointment(*, appointment_id: UUID, reason: str) -> Appointment:
             if current.cancellation_reason == reason:
                 return current
             raise AppointmentCancellationConflictError
+        if current.status != Appointment.Status.SCHEDULED:
+            # Lifecycle v2 states use the permission-bound ``cancel`` service.
+            raise AppointmentTerminalError
         current.status = Appointment.Status.CANCELLED
         current.cancellation_reason = reason
         current.cancelled_at = timezone.now()

@@ -86,7 +86,7 @@ def revoke_staff_role(
                 organization_id=context.organization_id,
                 clinic_id=context.clinic_id,
                 practitioner_id=request.target_user_id,
-                status=Appointment.Status.SCHEDULED,
+                status__in=Appointment.OCCUPYING_STATUSES,
                 end_at__gt=timezone.now(),
             ).exists()
         ):

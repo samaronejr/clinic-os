@@ -35,7 +35,7 @@ from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
 from provider_gate_support import assert_capability_gate_closed
 from scheduling.appointment_service_support import (
-    create_synthetic_appointment,
+    arrived_synthetic_appointment,
     seed_appointment_setup,
 )
 
@@ -91,7 +91,7 @@ def setup(
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
     ):
-        appointment = create_synthetic_appointment(appointment_setup)
+        appointment = arrived_synthetic_appointment(appointment_setup)
     with (
         runtime_role(),
         tenant_context(rbac_graph.physician, rbac_graph.organization_a),

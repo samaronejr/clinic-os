@@ -47,7 +47,7 @@ from renewal.test_encounters import physician_client
 from renewal.test_signatures import owner_scope, physician_anonymous_post
 from scheduling.appointment_service_support import (
     AppointmentSetup,
-    create_synthetic_appointment,
+    arrived_synthetic_appointment,
 )
 
 if TYPE_CHECKING:
@@ -594,7 +594,7 @@ def test_return_link_keeps_document_patient(
             patient.enrollment.pk,
             patient.patient.pk,
         )
-        appointment = create_synthetic_appointment(
+        appointment = arrived_synthetic_appointment(
             setup, start_local="2035-06-02T10:00", end_local="2035-06-02T11:00"
         )
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):

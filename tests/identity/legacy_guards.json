@@ -3341,6 +3341,121 @@
       "probes": [
         "apps.tenancy.middleware.TenantMiddleware._patient#observed"
       ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle._save",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Constraint-to-code mapping for the write its caller already authorized; the database lifecycle trigger (staff_guard with SQL oracles) re-decides the edge and its 42501 maps to the shared denial."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle._transition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The lifecycle v2 role matrix in tests/scheduling/test_appointment_states.py executes every action from every stored state for every catalog role, the booked and another physician, both patient sessions, inactive and foreign-clinic actors, and spies the exact permission names.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.authorize_transition",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The lifecycle v2 role matrix in tests/scheduling/test_appointment_states.py executes every action from every stored state for every catalog role, the booked and another physician, both patient sessions, inactive and foreign-clinic actors, and spies the exact permission names.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.expire",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "W (machine) clock-mandated hold expiry: refuses any human actor or patient session before calling the worker_protocol resolver, which refuses them again; no staff-role decision exists for this edge."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.expire_due_holds",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "W (machine) hold-expiry job over the worker_protocol projection; refuses human actors and patient sessions; each hold expires through expire(). No staff-role decision."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series._enrollment_patient",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Enrollment-to-patient resolution inside the clinic its caller already authorized (RLS-scoped); unknown and foreign enrollments share the series denial."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series._require_edit_authority",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. tests/scheduling/test_series.py executes every catalog role and the series owner both ways.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series.create_series",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. tests/scheduling/test_series.py executes every catalog role and the own-schedule physician.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series.edit_series",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. tests/scheduling/test_series.py executes every catalog role and the series owner both ways.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.lifecycle_views.appointment_lifecycle_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The agenda lifecycle route calls the permission-bound arrive/start/complete services.",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.patient_authority.patient_booking_requires_approval",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "reason": "Patient-session policy read behind the validated booking scope; staff state is never consulted.",
+      "enforced_by": [
+        "apps.scheduling.patient_authority.require_patient_booking_scope"
+      ]
     }
   ],
   "probes": [
@@ -4954,6 +5069,7 @@
         ],
         "migrations": [
           "apps/ehr/migrations/0009_protected_fields.py",
+          "apps/ehr/migrations/_arrival_sql.py",
           "apps/ehr/migrations/_clinical_sql.py",
           "apps/ehr/migrations/_finalization_sql.py"
         ],
@@ -5158,7 +5274,8 @@
           "clinic_app.billing_settlement_receipt",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
-          "clinic_app.scheduling_capacity_guard"
+          "clinic_app.scheduling_capacity_guard",
+          "clinic_app.scheduling_lifecycle_receipt"
         ]
       },
       "kind": "crypto_protocol",
@@ -5187,6 +5304,7 @@
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
+          "clinic_app.scheduling_lifecycle_guard",
           "clinic_app.scheduling_service_practitioners"
         ]
       },
@@ -5357,6 +5475,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [],
@@ -5377,6 +5496,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py",
           "apps/scheduling/migrations/_resource_slots_sql.py"
         ],
@@ -5442,6 +5562,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [],
@@ -5450,6 +5571,26 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.patient_booking_requires_approval": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Returns only the session clinic's self-booking approval policy; staff callers get the default."
     },
     "clinic_app.patient_booking_scope": {
       "discovery": {
@@ -5468,6 +5609,7 @@
           "clinic_app.scheduling_appointment:patient_booking_insert",
           "clinic_app.scheduling_appointment:patient_booking_read",
           "clinic_app.scheduling_appointment:patient_booking_update",
+          "clinic_app.scheduling_appointmenttransition:patient_booking_read",
           "clinic_app.scheduling_availabilityblock:patient_booking_read",
           "clinic_app.scheduling_waitlistentry:waitlist_read",
           "clinic_app.scheduling_waitlistentry:waitlist_update",
@@ -5479,9 +5621,11 @@
           "clinic_app.patient_booking_lock_availability",
           "clinic_app.patient_booking_practitioner",
           "clinic_app.patient_booking_receipt",
+          "clinic_app.patient_booking_requires_approval",
           "clinic_app.patient_booking_slots",
           "clinic_app.scheduling_appointment_guard_v1",
-          "clinic_app.scheduling_capacity_guard"
+          "clinic_app.scheduling_capacity_guard",
+          "clinic_app.scheduling_lifecycle_guard"
         ]
       },
       "kind": "patient_principal",
@@ -6621,7 +6765,8 @@
         ],
         "migrations": [
           "apps/scheduling/migrations/0003_patient_booking.py",
-          "apps/scheduling/migrations/_appointment_sql.py"
+          "apps/scheduling/migrations/_appointment_sql.py",
+          "apps/scheduling/migrations/_lifecycle_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -6661,6 +6806,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
         "policies": [],
@@ -6672,6 +6818,29 @@
         "scheduling_capacity_guard#insert"
       ],
       "reason": "Trigger staff gate on service bookings; the oracles fire its UPDATE and INSERT branches under every stored staff role, expecting 42501 exactly where the bundle lacks the permission."
+    },
+    "clinic_app.scheduling_clock": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scheduling_hold_due",
+          "clinic_app.scheduling_lifecycle_guard"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "The single lifecycle v2 DB-time reader (statement_timestamp); reads no relation or setting and is classified by the scheduling SQL clock census."
     },
     "clinic_app.scheduling_definition_guard": {
       "discovery": {
@@ -6695,6 +6864,26 @@
       ],
       "reason": "Trigger staff gate on scheduling definitions; the oracle fires it with a direct INSERT under every stored staff role, expecting 42501 exactly where the bundle lacks the permission."
     },
+    "clinic_app.scheduling_due_holds": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "batch integer",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "W job projection of due hold identifiers; returns nothing to any human actor or patient session. tests/scheduling/test_appointment_states.py refuses every sampled staff and patient caller."
+    },
     "clinic_app.scheduling_effective_interval": {
       "discovery": {
         "signatures": [
@@ -6713,12 +6902,33 @@
           "clinic_app.patient_booking_slots",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
-          "clinic_app.scheduling_generated_block_guard"
+          "clinic_app.scheduling_generated_block_guard",
+          "clinic_app.scheduling_release_due_holds"
         ]
       },
       "kind": "row_integrity",
       "probes": [],
       "reason": "Pure IMMUTABLE interval arithmetic over its four arguments, used by the scheduling row guards. It reads no relation or setting; tests/scheduling/test_resource_role_matrix.py executes it under every staff state and requires identical exact results."
+    },
+    "clinic_app.scheduling_expire_hold": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_appointment uuid, expected_revision integer, command uuid",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "W expiry of one due hold under a deterministic command; refuses (42501) any human actor or patient session and lets the lifecycle trigger refuse holds not yet due. Until todo 7 service principals land, W is the no-human-actor worker context."
     },
     "clinic_app.scheduling_generated_block_guard": {
       "discovery": {
@@ -6741,6 +6951,116 @@
         "scheduling_generated_block_guard"
       ],
       "reason": "Trigger staff gate on resource and template availability; the oracle fires it with a direct INSERT under every stored staff role, expecting 42501 exactly where the bundle lacks the permission."
+    },
+    "clinic_app.scheduling_history_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Rejects every UPDATE/DELETE of series, series exceptions and lifecycle receipts."
+    },
+    "clinic_app.scheduling_hold_due": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "deadline timestamp with time zone",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scheduling_due_holds",
+          "clinic_app.scheduling_lifecycle_guard",
+          "clinic_app.scheduling_release_due_holds"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Pure hold-expiry equality over its argument and the census-controlled scheduling clock: due exactly when deadline <= DB time. Reads no relation or setting."
+    },
+    "clinic_app.scheduling_lifecycle_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "scheduling_lifecycle_guard",
+        "scheduling_lifecycle_guard#care",
+        "scheduling_lifecycle_guard#hold"
+      ],
+      "reason": "Lifecycle v2 transition trigger: every status edge is decided by has_permission (book, move, own-scope move_own for the clinician) or the booked patient's session; the oracles fire its arrive, start and hold branches under every stored staff role expecting 42501 exactly where the bundle lacks the permission. tests/scheduling/test_appointment_states.py also issues every (source, target) pair as clinic_app."
+    },
+    "clinic_app.scheduling_lifecycle_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Database-owned lifecycle receipt writer (AFTER trigger); records the transition and a closed actor-kind label, grants nothing and decides nothing. The runtime role can only read receipts."
+    },
+    "clinic_app.scheduling_release_due_holds": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "booking uuid, org uuid, practitioner uuid, patient uuid, resources uuid[], starts timestamp with time zone, ends timestamp with time zone",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scheduling_lifecycle_guard"
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Machine (W) release of due holds, executable only by the lifecycle trigger's owner (no clinic_app EXECUTE). It clears and restores the transaction-local human settings so the trigger records the machine actor, and can only expire holds whose deadline already passed."
     },
     "clinic_app.scheduling_service_practitioners": {
       "discovery": {

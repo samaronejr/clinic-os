@@ -241,6 +241,7 @@ def test_route_table_maps_task_modules_to_queues() -> None:
     assert routes["comms.*"]["queue"] == "clinic-integrations"
     module_queues = {
         "apps.ehr.tasks.*": "clinical",
+        "apps.scheduling.tasks.*": "clinical",
         "apps.prescription.tasks.*": "clinical",
         "apps.scribe.tasks.*": "ai-interactive",
         "apps.ai.tasks.*": "ai-batch",
@@ -259,6 +260,8 @@ def test_route_table_maps_task_modules_to_queues() -> None:
     assert routed["queue"].name == "clinic-integrations"
     routed = celery_app.amqp.router.route({}, "apps.ai.tasks.draft")
     assert routed["queue"].name == "ai-batch"
+    routed = celery_app.amqp.router.route({}, "apps.scheduling.tasks.expire_holds")
+    assert routed["queue"].name == "clinical"
 
 
 def test_beat_schedule_is_unchanged() -> None:
@@ -269,6 +272,11 @@ def test_beat_schedule_is_unchanged() -> None:
         },
         "pending-operation-recovery": {
             "task": "comms.recover_pending_operations",
+            "schedule": 60.0,
+        },
+        # Lifecycle v2 (D-9): the W hold-expiry job.
+        "appointment-hold-expiry": {
+            "task": "apps.scheduling.tasks.expire_holds",
             "schedule": 60.0,
         },
     }

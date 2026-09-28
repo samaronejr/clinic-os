@@ -46,6 +46,9 @@ def insert_appointment(
                 create_fingerprint=prepared.fingerprint,
                 service_type_id=request.service_type_id,
                 resource_ids=sorted(request.resource_ids),
+                status=request.initial_status,
+                series_id=request.series_id,
+                series_index=request.series_index,
             )
     except IntegrityError as error:
         replay = replay_appointment(
@@ -67,7 +70,7 @@ def insert_appointment(
         if constraint == "scheduling_appointment_active_availability_check":
             raise AppointmentAvailabilityError from error
         raise
-    appointment.refresh_from_db(fields=("buffer_before", "buffer_after"))
+    appointment.refresh_from_db()
     return appointment, True
 
 

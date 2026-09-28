@@ -26,6 +26,7 @@ from apps.scheduling.resource_services import (
 from apps.scheduling.services import (
     AppointmentLocalRange,
     ServiceBooking,
+    arrive,
     create_availability,
     create_service_appointment,
 )
@@ -66,6 +67,8 @@ def own_permitted(any_permission: str, own_permission: str) -> tuple[str, ...]:
 class SchedulingSubjects:
     room: UUID
     appointment: UUID
+    # Lifecycle v2 (D-9): a second service booking already arrived (for the C edge).
+    arrived: UUID
 
 
 def seed_scheduling(actor: LegacyWorld, enrollment: UUID) -> SchedulingSubjects:
@@ -122,7 +125,26 @@ def seed_scheduling(actor: LegacyWorld, enrollment: UUID) -> SchedulingSubjects:
             ),
             idempotency_key=uuid4(),
         )
-    return SchedulingSubjects(room.pk, appointment.pk)
+        second = create_service_appointment(
+            clinic_id=actor.clinic,
+            enrollment_id=enrollment,
+            practitioner_id=graph.physician,
+            booking=ServiceBooking(
+                AppointmentLocalRange(
+                    f"{DAY.isoformat()}T10:00", f"{DAY.isoformat()}T10:30"
+                ),
+                service.pk,
+                (room.pk,),
+            ),
+            idempotency_key=uuid4(),
+        )
+        arrived = arrive(
+            clinic_id=actor.clinic,
+            appointment_id=second.pk,
+            expected_revision=second.revision,
+            command_id=uuid4(),
+        )
+    return SchedulingSubjects(room.pk, appointment.pk, arrived.pk)
 
 
 def _clinic(actor: LegacyWorld, valid: bool) -> UUID:
@@ -190,6 +212,35 @@ def insert_service_booking(subjects: SchedulingSubjects, valid: bool) -> bool:
             "idempotency_key": uuid4(),
             "start_at": booking.start_at + shift,
             "end_at": booking.end_at + shift,
+        }
+    )
+    return True
+
+
+def transition_booking(appointment: UUID, target: str, valid: bool) -> bool:
+    """Fire the lifecycle v2 trigger with one status edge."""
+    if not valid:
+        _foreign_actor()
+    return Appointment.objects.filter(pk=appointment).update(status=target) == 1
+
+
+def insert_held_booking(subjects: SchedulingSubjects, valid: bool) -> bool:
+    """Fire the lifecycle trigger's new -> held branch with a copied booking."""
+    if not valid:
+        _foreign_actor()
+    booking = Appointment.objects.get(pk=subjects.appointment)
+    shift = timedelta(minutes=90)
+    Appointment.objects.create(
+        **{
+            field.attname: getattr(booking, field.attname)
+            for field in Appointment._meta.concrete_fields
+        }
+        | {
+            "id": uuid4(),
+            "idempotency_key": uuid4(),
+            "start_at": booking.start_at + shift,
+            "end_at": booking.end_at + shift,
+            "status": "held",
         }
     )
     return True

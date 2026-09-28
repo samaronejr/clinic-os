@@ -29,12 +29,34 @@ def test_appointment_exposes_only_the_phase1a_schema_contract() -> None:
         "start_at",
         "status",
         "updated_at",
+        # Lifecycle v2 (D-9): database-owned lifecycle columns, series binding and
+        # insurer placeholders (plan item 59 adds the payer FK).
+        "revision",
+        "hold_expires_at",
+        "transitioned_at",
+        "last_command_id",
+        "series",
+        "series_index",
+        "payer_membership_id",
+        "authorization_reference",
     }
     assert appointment_model._meta.get_field("patient").remote_field.model is Patient
     for field_name in ("clinic", "patient", "practitioner"):
         field = appointment_model._meta.get_field(field_name)
         assert field.remote_field.on_delete is models.PROTECT
-    assert appointment_model.Status.values == ["scheduled", "cancelled"]
+    # D-9: additive widening; stored ``scheduled`` remains booked/confirmed.
+    assert appointment_model.Status.values == [
+        "scheduled",
+        "cancelled",
+        "requested",
+        "held",
+        "arrived",
+        "in_progress",
+        "completed",
+        "expired",
+        "no_show",
+    ]
+    assert appointment_model._meta.get_field("status").max_length == 16
     assert appointment_model.CancellationReason.values == [
         "patient_request",
         "clinic_request",

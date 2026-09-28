@@ -7,6 +7,7 @@ from apps.comms.views import reminders_view
 from apps.scheduling import (
     agenda_views,
     booking_views,
+    lifecycle_views,
     patient_views,
     resource_views,
     transition_views,
@@ -53,6 +54,11 @@ urlpatterns: list[URLPattern] = [
         "scheduling/clinics/<uuid:clinic_id>/appointments/new/",
         booking_views.appointment_create_view,
         name="appointment-create",
+    ),
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/appointments/lifecycle/",
+        lifecycle_views.appointment_lifecycle_view,
+        name="appointment-lifecycle",
     ),
     path(
         "scheduling/clinics/<uuid:clinic_id>/agenda/",

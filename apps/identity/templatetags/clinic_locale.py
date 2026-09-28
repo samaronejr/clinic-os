@@ -6,12 +6,20 @@ from decimal import Decimal
 from django import template
 from django.utils.formats import date_format, number_format
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 register = template.Library()
 
 APPOINTMENT_LABELS = {
     "scheduled": _("Scheduled"),
     "cancelled": _("Cancelled"),
+    "requested": pgettext_lazy("appointment status", "Requested"),
+    "held": pgettext_lazy("appointment status", "Held"),
+    "arrived": pgettext_lazy("appointment status", "Arrived"),
+    "in_progress": pgettext_lazy("appointment status", "In progress"),
+    "completed": pgettext_lazy("appointment status", "Completed"),
+    "expired": pgettext_lazy("appointment status", "Expired"),
+    "no_show": pgettext_lazy("appointment status", "No-show"),
     "patient_request": _("Patient request"),
     "clinic_request": _("Clinic request"),
     "practitioner_unavailable": _("Practitioner unavailable"),

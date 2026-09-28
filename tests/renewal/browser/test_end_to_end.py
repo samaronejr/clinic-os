@@ -770,6 +770,14 @@ def physician_reads_answers(case: Day, physician: Page) -> None:
     capture(case, physician, "physician-answers")
 
 
+def reception_records_arrival(case: Day, reception: Page) -> None:
+    """Reception records arrival from the agenda (lifecycle v2, D-9)."""
+    row = agenda_row(case, reception)
+    with reception.expect_navigation():
+        row.locator('button[value="arrive"]').click()
+    expect(agenda_row(case, reception)).to_contain_text("Paciente chegou")
+
+
 def write_notes(case: Day, physician: Page) -> str:
     """Open the encounter from the agenda, pick the template and save notes."""
     row = agenda_row(case, physician)
@@ -1292,6 +1300,7 @@ def test_synthetic_clinic_day(  # noqa: PLR0913 - the day needs its full context
             assign_questionnaire(case, physician)
             patient_arrives(case, patient, code)
             physician_reads_answers(case, physician)
+            reception_records_arrival(case, reception)
             encounter = write_notes(case, physician)
             video_visit(case, physician, patient, encounter)
             finalize_notes(case, physician)

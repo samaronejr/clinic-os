@@ -25,6 +25,7 @@ from apps.tenancy.db import tenant_context
 from identity.legacy_parity_support import LEGACY, PHYSICIAN, Boundary, has_rows
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
+from scheduling.appointment_service_support import arrive_appointment
 
 if TYPE_CHECKING:
     import pytest
@@ -76,6 +77,7 @@ def seed_teleconsult(
             local_range=AppointmentLocalRange("2035-06-02T10:00", "2035-06-02T10:30"),
             idempotency_key=uuid4(),
         )
+        appointment = arrive_appointment(appointment)
     with runtime_role(), tenant_context(w.graph.physician, w.graph.organization_a):
         open_encounter(clinic_id=w.clinic, appointment_id=appointment.pk)
     return TeleconsultSubjects(session, credential, operation)

@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 type AgendaView = Literal["day", "week"]
 AGENDA_PAGE_SIZE: Final = 25
+# Every lifecycle state a person acts on or reviews; lapsed holds are hidden.
+AGENDA_STATUSES: Final = tuple(
+    status for status in Appointment.Status.values if status != "expired"
+)
 
 
 class AgendaInputError(ValueError):
@@ -53,6 +57,7 @@ class AgendaItem:
     start_local: str
     end_local: str
     status: str
+    revision: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +144,7 @@ def view_agenda(
             clinic_id=clinic_id,
             start_at__gte=start_at,
             start_at__lt=end_at,
-            status__in=(Appointment.Status.SCHEDULED, Appointment.Status.CANCELLED),
+            status__in=AGENDA_STATUSES,
         )
         if scope.practitioner_id is not None:
             rows = rows.filter(practitioner_id=scope.practitioner_id)
@@ -162,6 +167,7 @@ def view_agenda(
                 start_local=format_local_minute(row.start_at, timezone_key),
                 end_local=format_local_minute(row.end_at, timezone_key),
                 status=row.status,
+                revision=row.revision,
             )
             for row in selected_rows
         )

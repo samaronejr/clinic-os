@@ -51,6 +51,12 @@ class CreateAppointmentRequest:
     idempotency_key: UUID
     service_type_id: UUID | None = None
     resource_ids: tuple[UUID, ...] = ()
+    # Lifecycle v2: holds and patient requests are born in their own state and
+    # use permission-bound authority; legacy bookings keep role authority.
+    initial_status: str = "scheduled"
+    permission_authority: bool = False
+    series_id: UUID | None = None
+    series_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +106,12 @@ def prepare_appointment(
             + fingerprint
             + request.service_type_id.bytes
             + b"".join(pk.bytes for pk in sorted(request.resource_ids))
+        ).digest()
+    if request.initial_status != "scheduled":
+        fingerprint = hashlib.sha256(
+            b"clinic-appointment-status-v1\0"
+            + fingerprint
+            + request.initial_status.encode()
         ).digest()
     return PreparedAppointment(enrollment, start_at, end_at, fingerprint)
 

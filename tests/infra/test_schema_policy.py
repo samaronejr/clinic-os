@@ -136,6 +136,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         ("scheduling_appointment", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_insert"),
         ("scheduling_appointment", "patient_booking_update"),
+        # Lifecycle v2: patients read their own appointments' receipts (replay).
+        ("scheduling_appointmenttransition", "patient_booking_read"),
     }
 
 
@@ -252,6 +254,7 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         ("scheduling_availabilitytemplate", "active"),
         ("scheduling_holiday", "active"),
         ("scheduling_absence", "active"),
+        ("scheduling_appointment", "last_command_id"),
         ("comms_integrationoperation", "attempt_count"),
         ("comms_integrationoperation", "last_callback_event_id"),
         ("comms_integrationoperation", "last_error"),

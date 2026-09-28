@@ -137,16 +137,26 @@ def test_populated_agenda_exposes_an_accessible_table(
         "col",
         "row",
     }
-    assert document.tagged("form") == []
+    # Lifecycle v2 (todo 22): the only form is reception's native POST arrival
+    # action for the booked row; selectors stay in the body.
+    assert document.tagged("form") == [
+        {
+            "class": "agenda-lifecycle",
+            "method": "post",
+            "action": (
+                f"/scheduling/clinics/{context.clinic_id}/appointments/lifecycle/"
+            ),
+        }
+    ]
     # Every row action carries a distinct accessible name: verb plus the row.
-    action = gettext("Reschedule")
     hidden = gettext("%(patient)s at %(start)s") % {
         "patient": "Nina Synthetic Testpatient",
         "start": "08:15",
     }
-    assert f'{action}<span class="visually-hidden"> {hidden}</span>'.encode() in (
-        response.content
-    )
+    for action in (gettext("Reschedule"), gettext("Record arrival")):
+        assert f'{action}<span class="visually-hidden"> {hidden}</span>'.encode() in (
+            response.content
+        )
 
 
 def test_malformed_agenda_announces_an_accessible_alert(

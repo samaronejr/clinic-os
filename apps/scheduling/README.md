@@ -110,9 +110,63 @@ buffers, and submission independently rechecks the database rules.
 
 Migration `0005_resources_templates` is additive. Empty-schema reverse/forward is
 supported; downgrade refuses once any new definition is populated, rather than
-losing history. After rollout, rollback is a restore, not hard deletion. Todo 22
-owns lifecycle widening; capacity guards already name `{held, scheduled, arrived,
-in_progress}` while the existing appointment lifecycle constraints remain unchanged.
+losing history. After rollout, rollback is a restore, not hard deletion. Capacity
+guards name `{held, scheduled, arrived, in_progress}`; todo 22 widened the
+appointment lifecycle to match (below).
+
+## Appointment lifecycle v2, holds and series
+
+Todo 22 (D-9) widens `Appointment.Status` additively: `requested`, `held`,
+`arrived`, `in_progress`, `completed`, `expired` and `no_show` join the stored
+`scheduled` (booked/confirmed, shown as "Agendada") and `cancelled`. `status`
+is 16 characters. Both named slot exclusions and the buffer exclusion cover the
+capacity-consuming states `{held, scheduled, arrived, in_progress}`; `requested`
+never occupies. Legal edges (a database trigger enforces them; there is no
+regression and no hard delete):
+
+| From | To | Actor (has_permission terms) |
+|---|---|---|
+| new | requested | patient session, only when `self_booking_requires_approval` |
+| new | held / scheduled | staff `appointment.book` or own `appointment.book_own`; patient |
+| requested | held / scheduled | staff book terms |
+| held | scheduled | staff book terms or the booked patient, before the deadline |
+| requested / held | cancelled | staff `appointment.move` / own `appointment.move_own`; patient |
+| scheduled | arrived / no_show | staff move terms; no-show only once start <= DB time |
+| scheduled | cancelled | unchanged legacy authority (manager roles, patient guard) |
+| arrived | in_progress, in_progress -> completed | the booked clinician (`appointment.move_own`) |
+| arrived | cancelled | staff move terms |
+| held | expired | W: no human actor, and only when the deadline <= DB time |
+
+Services are keyword-only `hold`, `book`, `arrive`, `start`, `complete`,
+`cancel`, `expire` and `mark_no_show(*, clinic_id, appointment_id,
+expected_revision, command_id)`; `create_hold` creates a hold. The database owns
+`revision`, `transitioned_at` and `hold_expires_at` (clinic `hold_ttl_minutes`,
+default 10) and writes an immutable `AppointmentTransition` receipt per status
+change; `command_id` is unique per organization, so replays return the current
+row and reuse elsewhere is an idempotency conflict. Refusal codes are
+`illegal_transition`, `hold_expired` and `revision_conflict`; unknown, foreign
+and unauthorized selectors share one denial and write nothing.
+
+A hold is due exactly when its deadline equals or precedes DB time
+(`scheduling_hold_due`). Due holds stop occupying: any overlapping booking first
+expires them as the machine actor, and the `apps.scheduling.tasks.expire_holds`
+beat job (every 60 s, `clinical` queue) expires the rest, one transaction and
+deterministic command per hold. Until todo 7's service principals land, W means
+a connection with no human actor or patient session; the job can only perform
+what the clock already mandates.
+
+`create_series` materializes a bounded weekly, biweekly or monthly-by-weekday
+rule (count <= 52 or until <= 366 days) atomically as ordinary bookings bound by
+`(series, series_index)`; one conflict rejects the whole series. `edit_series`
+applies `SeriesEdit(kind cancelled|moved, occurrence_index, scope this|future)`
+under the move terms (own = the series practitioner) and appends an immutable
+`SeriesException`; occurrences are never deleted. Moves keep each date's
+clinic-local wall time, so a DST-free zone never shifts. `payer_membership_id`
+and `authorization_reference` are insurer placeholders without a foreign key
+(todo 59). Reception records arrival from the agenda; physicians open the
+encounter once the patient has arrived. Migration `0006_appointment_lifecycle_v2`
+is one rehearsed transaction; reverse refuses once v2 states exist
+(rollback = restore).
 
 ## Appointment reminders
 

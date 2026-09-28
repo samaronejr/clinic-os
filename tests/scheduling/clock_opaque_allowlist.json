@@ -809,6 +809,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.set_config(text, text, boolean)": {
+    "extension": "",
+    "implementation": "set_config_by_name",
+    "language": "internal",
+    "library": "",
+    "reason": "Todo 22 hold release clears and then restores the transaction-local human actor settings so due holds expire as the machine (W) actor; this exact setting writer never reads a clock.",
+    "returns": "text",
+    "volatility": "v"
+  },
   "pg_catalog.similar_to_escape(text)": {
     "extension": "",
     "implementation": "similar_to_escape_1",

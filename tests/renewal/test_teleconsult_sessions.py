@@ -58,6 +58,7 @@ from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import seed as clinical_seed
 from renewal.test_encounters import setup_context
 from renewal.test_retention import admin
+from scheduling.appointment_service_support import arrive_appointment
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -586,6 +587,7 @@ def test_room_and_session_bindings_are_not_swappable(
             local_range=AppointmentLocalRange("2035-06-02T10:30", "2035-06-02T11:00"),
             idempotency_key=uuid4(),
         )
+        appointment_b = arrive_appointment(appointment_b)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         encounter_b = open_encounter(
             clinic_id=graph.clinic_a, appointment_id=appointment_b.pk

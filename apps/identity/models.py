@@ -102,6 +102,13 @@ class ClinicConfiguration(models.Model):
     )
     reminder_hours = models.PositiveSmallIntegerField(default=24)
     queue_quotas = models.JSONField(default=dict, blank=True)
+    # Scheduling lifecycle policy (todo 22): patient self-booking becomes a
+    # non-occupying request only when staff approval is required; holds expire
+    # after this many minutes of database time.
+    self_booking_requires_approval = models.BooleanField(
+        default=False, db_default=False
+    )
+    hold_ttl_minutes = models.PositiveSmallIntegerField(default=10, db_default=10)
     logo_png = models.BinaryField(default=bytes, blank=True)
     published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -134,6 +141,11 @@ class ClinicConfiguration(models.Model):
                     output_field=models.BooleanField(),
                 ),
                 name="identity_config_queue_quotas_shape",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(hold_ttl_minutes__gte=1)
+                & models.Q(hold_ttl_minutes__lte=60),
+                name="identity_config_hold_ttl_bounds",
             ),
         ]
 

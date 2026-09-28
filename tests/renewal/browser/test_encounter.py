@@ -72,6 +72,16 @@ def seed(staff: dict[str, str], day: str) -> dict[str, str]:
                 secrets.token_bytes(32),
             ],
         )
+        # Lifecycle v2 (D-9): encounters open only after arrival; the booked
+        # physician (appointment.move_own, own schedule) records it.
+        conn.execute(
+            "SELECT set_config('app.current_user_id', %s, true)",
+            [staff["physician_a_id"]],
+        )
+        conn.execute(
+            "UPDATE clinic_app.scheduling_appointment SET status='arrived' WHERE id=%s",
+            [data["appointment"]],
+        )
         conn.execute(
             "INSERT INTO clinic_app.ehr_specialtytemplate "
             "(id,organization_id,clinic_id,key,version,title,prompts,created_at) "

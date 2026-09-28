@@ -21,13 +21,16 @@ from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, 
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
 from identity.sql_scheduling_probes import (
+    PRACTITIONER_ROLE,
     SchedulingSubjects,
     insert_definition,
+    insert_held_booking,
     insert_resource_block,
     insert_service_booking,
     own_permitted,
     permitted,
     seed_scheduling,
+    transition_booking,
     update_service_booking,
 )
 from patient_service_support import runtime_role
@@ -365,6 +368,33 @@ PROBES = {
         lambda w, ok: [],
         refusal_state="42501",
         execute=lambda w, ok: insert_service_booking(w.scheduling, ok),
+    ),
+    # Lifecycle v2 (D-9) trigger: roles pinned from the SM actor column + RP.
+    "scheduling_lifecycle_guard": SqlProbe(
+        "scheduling_lifecycle_guard",
+        own_permitted("appointment.move", "appointment.move_own"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: transition_booking(
+            w.scheduling.appointment, "arrived", ok
+        ),
+    ),
+    "scheduling_lifecycle_guard#hold": SqlProbe(
+        "scheduling_lifecycle_guard",
+        own_permitted("appointment.book", "appointment.book_own"),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: insert_held_booking(w.scheduling, ok),
+    ),
+    "scheduling_lifecycle_guard#care": SqlProbe(
+        "scheduling_lifecycle_guard",
+        # Only the booked clinician: own-scope move_own, never clinic-wide move.
+        tuple(sorted({PRACTITIONER_ROLE} & set(permitted("appointment.move_own")))),
+        lambda w, ok: [],
+        refusal_state="42501",
+        execute=lambda w, ok: transition_booking(
+            w.scheduling.arrived, "in_progress", ok
+        ),
     ),
     "has_permission": SqlProbe(
         "has_permission",

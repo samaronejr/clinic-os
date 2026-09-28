@@ -58,6 +58,8 @@ def test_appointment_has_exact_force_rls_and_column_acl_catalog() -> None:
             ("cancellation_reason",),
             ("cancelled_at",),
             ("end_at",),
+            # Lifecycle v2 (D-9): the transition command id (receipts stay DB-owned).
+            ("last_command_id",),
             ("start_at",),
             ("status",),
             ("updated_at",),

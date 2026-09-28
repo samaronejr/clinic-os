@@ -2564,3 +2564,55 @@ msgstr "Profissional"
 
 msgid "Service bookings require an eligible professional. Without a service, choose a physician."
 msgstr "Agendamentos com tipo de atendimento exigem um profissional habilitado. Sem um tipo de atendimento, escolha um médico."
+
+msgctxt "appointment status"
+msgid "Requested"
+msgstr "Solicitada"
+
+msgctxt "appointment status"
+msgid "Held"
+msgstr "Reservada"
+
+msgctxt "appointment status"
+msgid "Arrived"
+msgstr "Paciente chegou"
+
+msgctxt "appointment status"
+msgid "In progress"
+msgstr "Em atendimento"
+
+msgctxt "appointment status"
+msgid "Completed"
+msgstr "Concluída"
+
+msgctxt "appointment status"
+msgid "Expired"
+msgstr "Expirada"
+
+msgctxt "appointment status"
+msgid "No-show"
+msgstr "Não compareceu"
+
+msgid "Start visit"
+msgstr "Iniciar atendimento"
+
+msgid "Complete visit"
+msgstr "Concluir atendimento"
+
+msgid "Appointment not changed"
+msgstr "Consulta não alterada"
+
+msgid "The appointment state changed before this action."
+msgstr "A situação da consulta mudou antes desta ação."
+
+msgid "This request was already used for another change. Reload the agenda."
+msgstr "Esta solicitação já foi usada para outra alteração. Recarregue a agenda."
+
+msgid "This appointment cannot move to that state."
+msgstr "Esta consulta não pode passar para essa situação."
+
+msgid "The hold on this time expired. Choose the time again."
+msgstr "A reserva deste horário expirou. Escolha o horário novamente."
+
+msgid "This appointment changed meanwhile. Reload before trying again."
+msgstr "Esta consulta mudou enquanto isso. Recarregue antes de tentar novamente."

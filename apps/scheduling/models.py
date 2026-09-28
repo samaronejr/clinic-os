@@ -19,6 +19,11 @@ from django.utils import timezone
 
 from apps.identity.models import Clinic
 from apps.intake.models import Patient
+from apps.scheduling.lifecycle_models import (
+    AppointmentSeries,
+    AppointmentTransition,
+    SeriesException,
+)
 from apps.scheduling.resource_models import (
     Absence,
     AppointmentResource,
@@ -37,11 +42,14 @@ __all__ = (
     "Absence",
     "Appointment",
     "AppointmentResource",
+    "AppointmentSeries",
+    "AppointmentTransition",
     "AvailabilityBlock",
     "AvailabilityTemplate",
     "Holiday",
     "PatientBookingEvent",
     "Resource",
+    "SeriesException",
     "ServiceType",
     "WaitlistEntry",
     "WaitlistOffer",
@@ -175,10 +183,25 @@ class Appointment(TenantScopedModel):
     """One clinic booking for an enrolled organization patient."""
 
     class Status(models.TextChoices):
-        """The complete Phase 1A appointment lifecycle."""
+        """Lifecycle v2 (D-9); stored ``scheduled`` IS booked/confirmed."""
 
         SCHEDULED = "scheduled", "Scheduled"
         CANCELLED = "cancelled", "Cancelled"
+        REQUESTED = "requested", "Requested"
+        HELD = "held", "Held"
+        ARRIVED = "arrived", "Arrived"
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+        EXPIRED = "expired", "Expired"
+        NO_SHOW = "no_show", "No-show"
+
+    # Capacity-consuming states named by every exclusion and capacity guard.
+    OCCUPYING_STATUSES: ClassVar[tuple[str, ...]] = (
+        "held",
+        "scheduled",
+        "arrived",
+        "in_progress",
+    )
 
     class CancellationReason(models.TextChoices):
         """The fixed non-free-text cancellation vocabulary."""
@@ -216,9 +239,28 @@ class Appointment(TenantScopedModel):
     idempotency_key = models.UUIDField()
     create_fingerprint = models.BinaryField(max_length=32, editable=False)
     status = models.CharField(
-        max_length=10,
+        max_length=16,
         choices=Status,
         default=Status.SCHEDULED,
+    )
+    # Database-owned: the lifecycle trigger assigns revision, transition time
+    # and hold expiry; callers can never choose them.
+    revision = models.PositiveIntegerField(default=1, db_default=1, editable=False)
+    hold_expires_at = models.DateTimeField(null=True, blank=True, editable=False)
+    transitioned_at = models.DateTimeField(null=True, blank=True, editable=False)
+    last_command_id = models.UUIDField(null=True, blank=True)
+    series = models.ForeignKey(
+        AppointmentSeries,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="occurrences",
+    )
+    series_index = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Insurer linkage placeholders; todo 59 adds the FK and eligibility rules.
+    payer_membership_id = models.UUIDField(null=True, blank=True)
+    authorization_reference = models.CharField(
+        max_length=64, blank=True, default="", db_default=""
     )
     cancellation_reason = models.CharField(
         max_length=32,
@@ -274,7 +316,7 @@ class Appointment(TenantScopedModel):
                         RangeOperators.OVERLAPS,
                     ),
                 ),
-                condition=Q(status="scheduled"),
+                condition=Q(status__in=["held", "scheduled", "arrived", "in_progress"]),
             ),
             ExclusionConstraint(
                 name="scheduling_appointment_scheduled_patient_excl",
@@ -291,7 +333,16 @@ class Appointment(TenantScopedModel):
                         RangeOperators.OVERLAPS,
                     ),
                 ),
-                condition=Q(status="scheduled"),
+                condition=Q(status__in=["held", "scheduled", "arrived", "in_progress"]),
+            ),
+            models.UniqueConstraint(
+                fields=("series", "series_index"),
+                name="scheduling_appointment_series_index_uniq",
+            ),
+            models.CheckConstraint(
+                condition=Q(series__isnull=True, series_index__isnull=True)
+                | Q(series__isnull=False, series_index__gte=1, series_index__lte=52),
+                name="scheduling_appointment_series_shape",
             ),
         ]
         indexes: ClassVar[list[models.Index]] = [

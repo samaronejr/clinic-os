@@ -19,8 +19,15 @@ RESOURCE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
         "appointmentresource",
     )
 )
+LIFECYCLE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
+    (f"scheduling_{table}", "organization_id")
+    for table in ("appointmentseries", "seriesexception", "appointmenttransition")
+)
 ALL_SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = (
-    SCHEDULING_RLS_TARGETS | APPOINTMENT_RLS_TARGETS | RESOURCE_RLS_TARGETS
+    SCHEDULING_RLS_TARGETS
+    | APPOINTMENT_RLS_TARGETS
+    | RESOURCE_RLS_TARGETS
+    | LIFECYCLE_RLS_TARGETS
 )
 
 # Posture registry declarations consumed by apps.tenancy.posture.
@@ -48,6 +55,9 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "scheduling_holiday": frozenset({"SELECT", "INSERT"}),
     "scheduling_absence": frozenset({"SELECT", "INSERT"}),
     "scheduling_appointmentresource": frozenset({"SELECT"}),
+    "scheduling_appointmentseries": frozenset({"SELECT", "INSERT"}),
+    "scheduling_seriesexception": frozenset({"SELECT", "INSERT"}),
+    "scheduling_appointmenttransition": frozenset({"SELECT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
@@ -55,6 +65,7 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("scheduling_appointment", "cancellation_reason", "UPDATE"),
         ("scheduling_appointment", "cancelled_at", "UPDATE"),
         ("scheduling_appointment", "end_at", "UPDATE"),
+        ("scheduling_appointment", "last_command_id", "UPDATE"),
         ("scheduling_appointment", "start_at", "UPDATE"),
         ("scheduling_appointment", "status", "UPDATE"),
         ("scheduling_appointment", "updated_at", "UPDATE"),

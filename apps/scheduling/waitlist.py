@@ -187,14 +187,14 @@ def issue_waitlist_offer(
             ).exists()
             or Appointment.objects.filter(
                 practitioner_id=practitioner_id,
-                status="scheduled",
+                status__in=Appointment.OCCUPYING_STATUSES,
                 start_at__lt=ends,
                 end_at__gt=starts,
             ).exists()
         ):
             raise WaitlistInputError
         busy_patients = Appointment.objects.filter(
-            status="scheduled",
+            status__in=Appointment.OCCUPYING_STATUSES,
             start_at__lt=ends,
             end_at__gt=starts,
         ).values("patient_id")

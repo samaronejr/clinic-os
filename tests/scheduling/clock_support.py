@@ -31,12 +31,15 @@ SQL_CLOCKS: Final = {
     "patient_booking_receipt()": {"statement_timestamp()": 1},
     "scheduling_definition_guard()": {"statement_timestamp()": 3},
     "scheduling_generated_block_guard()": {"statement_timestamp()": 1},
+    # Lifecycle v2 (D-9): the single clock reader (hold TTL, expiry, no-show).
+    "scheduling_clock()": {"statement_timestamp()": 1},
 }
 SOURCE_CLOCKS: Final = {
     "_appointment_sql.py": {"current_timestamp": 1},
     "_patient_booking_sql.py": {"statement_timestamp()": 4},
     "_resource_slots_sql.py": {"statement_timestamp()": 1},
     "_resources_sql.py": {"statement_timestamp()": 4},
+    "_lifecycle_sql.py": {"statement_timestamp()": 1},
 }
 AUTHORITY_CLOCKS: Final = frozenset({"patient_booking_scope()"})
 SQL_CLOCKS_CONTROLLED: ContextVar[bool] = ContextVar(

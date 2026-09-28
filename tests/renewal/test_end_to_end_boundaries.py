@@ -113,6 +113,7 @@ from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import setup_context
+from scheduling.appointment_service_support import arrive_appointment
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -408,6 +409,7 @@ def _seed_org_b(graph: BoundaryGraph) -> tuple[UUID, UUID, UUID, UUID, UUID, UUI
             local_range=AppointmentLocalRange("2035-07-07T09:00", "2035-07-07T09:30"),
             idempotency_key=uuid4(),
         )
+        appointment_b = arrive_appointment(appointment_b)
         invoice_b = create_invoice(
             clinic_id=graph.clinic_c,
             patient_id=registration.patient.pk,
@@ -569,6 +571,7 @@ def workflow(
             local_range=AppointmentLocalRange("2035-06-02T09:00", "2035-06-02T09:30"),
             idempotency_key=uuid4(),
         )
+        appointment = arrive_appointment(appointment)
     with runtime_role(), tenant_context(graph.owner_a, graph.organization_a):
         text = publish_text(
             clinic_id=graph.clinic_a,

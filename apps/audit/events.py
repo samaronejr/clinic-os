@@ -265,6 +265,54 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "scheduling.appointment",
             "cancelled",
         ),
+        "scheduling.appointment.requested": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "requested",
+        ),
+        "scheduling.appointment.held": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "held",
+        ),
+        "scheduling.appointment.booked": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "booked",
+        ),
+        "scheduling.appointment.arrived": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "arrived",
+        ),
+        "scheduling.appointment.started": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "started",
+        ),
+        "scheduling.appointment.completed": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "completed",
+        ),
+        "scheduling.appointment.no_show": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-web",
+            "scheduling.appointment",
+            "no_show",
+        ),
+        "scheduling.series.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.appointment_series", "created"
+        ),
+        "scheduling.series.edited": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.appointment_series", "edited"
+        ),
         "scheduling.appointment.viewed": Phase1AuditEventDefinition(
             "tenant",
             "clinic-os-web",

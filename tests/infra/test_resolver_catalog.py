@@ -73,6 +73,11 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("scheduling_absence", "SELECT"),
     ("scheduling_appointmentresource", "SELECT"),
     ("scheduling_appointmentresource", "INSERT"),
+    # Lifecycle v2 (D-9): series reads and DB-owned transition receipts.
+    ("scheduling_appointmentseries", "SELECT"),
+    ("scheduling_seriesexception", "SELECT"),
+    ("scheduling_appointmenttransition", "SELECT"),
+    ("scheduling_appointmenttransition", "INSERT"),
     ("scheduling_appointment", "SELECT"),
     ("scheduling_availabilityblock", "SELECT"),
     ("scheduling_patientbookingevent", "INSERT"),
@@ -103,6 +108,9 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("scheduling_appointmentresource", "end_at", "UPDATE"),
     ("scheduling_appointmentresource", "unit", "UPDATE"),
     ("scheduling_appointmentresource", "occupied", "UPDATE"),
+    # Lifecycle v2: machine hold expiry (status + command id) as the resolver.
+    ("scheduling_appointment", "status", "UPDATE"),
+    ("scheduling_appointment", "last_command_id", "UPDATE"),
     ("teleconsult_teleconsultsession", "ended_at", "UPDATE"),
     ("teleconsult_teleconsultsession", "failure_reason", "UPDATE"),
     ("teleconsult_teleconsultsession", "revision", "UPDATE"),
@@ -113,6 +121,11 @@ POSTURE_OVERRIDES: Final = {
     "scheduling_definition_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_capacity_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_lifecycle_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_lifecycle_receipt": ("v", False, ["clinic_resolver"]),
+    "scheduling_history_immutable": ("v", False, ["clinic_resolver"]),
+    "scheduling_release_due_holds": ("v", False, ["clinic_resolver"]),
+    "scheduling_expire_hold": ("v", True, ["clinic_app", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),
@@ -221,6 +234,22 @@ FUNCTION_SIGNATURES: Final = {
     ("scheduling_generated_block_guard", ""),
     ("scheduling_capacity_guard", ""),
     ("scheduling_service_practitioners", "requested_clinic uuid"),
+    ("patient_booking_requires_approval", ""),
+    ("scheduling_due_holds", "batch integer"),
+    (
+        "scheduling_expire_hold",
+        "requested_clinic uuid, requested_appointment uuid, "
+        "expected_revision integer, command uuid",
+    ),
+    ("scheduling_history_immutable", ""),
+    ("scheduling_lifecycle_guard", ""),
+    ("scheduling_lifecycle_receipt", ""),
+    (
+        "scheduling_release_due_holds",
+        "booking uuid, org uuid, practitioner uuid, patient uuid, "
+        "resources uuid[], starts timestamp with time zone, "
+        "ends timestamp with time zone",
+    ),
     ("auth_lookup", "requested_username text"),
     ("billing_immutable", ""),
     ("billing_invoice_guard", ""),
@@ -362,6 +391,24 @@ FUNCTION_RESULTS: Final = {
     ("scheduling_definition_guard", ""): "trigger",
     ("scheduling_generated_block_guard", ""): "trigger",
     ("scheduling_capacity_guard", ""): "trigger",
+    ("patient_booking_requires_approval", ""): "boolean",
+    ("scheduling_due_holds", "batch integer"): (
+        "TABLE(clinic_id uuid, appointment_id uuid, revision integer)"
+    ),
+    (
+        "scheduling_expire_hold",
+        "requested_clinic uuid, requested_appointment uuid, "
+        "expected_revision integer, command uuid",
+    ): "integer",
+    ("scheduling_history_immutable", ""): "trigger",
+    ("scheduling_lifecycle_guard", ""): "trigger",
+    ("scheduling_lifecycle_receipt", ""): "trigger",
+    (
+        "scheduling_release_due_holds",
+        "booking uuid, org uuid, practitioner uuid, patient uuid, "
+        "resources uuid[], starts timestamp with time zone, "
+        "ends timestamp with time zone",
+    ): "void",
     (
         "scheduling_service_practitioners",
         "requested_clinic uuid",

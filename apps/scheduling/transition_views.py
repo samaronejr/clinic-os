@@ -169,6 +169,8 @@ def _cancelled(form: AppointmentCancelForm, appointment_id: UUID) -> bool:
         form.add_error(None, CANCELLATION_CONFLICT_MESSAGE)
     except AppointmentCancellationInputError:
         form.add_error(None, INVALID_CANCELLATION_MESSAGE)
+    except AppointmentTerminalError:
+        form.add_error(None, TERMINAL_MESSAGE)
     else:
         return True
     return False
