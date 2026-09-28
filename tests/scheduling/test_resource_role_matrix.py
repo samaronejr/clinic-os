@@ -13,12 +13,14 @@ from __future__ import annotations
 import io
 from dataclasses import replace
 from datetime import date, time, timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
-from apps.identity.models import User, UserClinicRole
+from apps.identity.models import Clinic, User, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
+from apps.scheduling import resource_services
 from apps.scheduling.models import Appointment, Resource
 from apps.scheduling.resource_booking import (
     authorized_service_clinic,
@@ -53,7 +55,11 @@ from django.db import DatabaseError, connection, transaction
 from django.test import Client
 
 from auth.stepup_test_support import create_role_actor
-from identity.permission_support import permission_actor, permission_context
+from identity.permission_support import (
+    owner_context,
+    permission_actor,
+    permission_context,
+)
 from otp_test_support import (
     create_totp_device,
     fixed_otp_time,
@@ -164,6 +170,16 @@ def test_configuration_boundaries_follow_the_role_bundle(
             content=ResourceInput(name="Sintetico matrix spare", kind="location"),
         )
     actor, _ = permission_actor(rbac_graph, role)
+    with owner_context(rbac_graph.organization_a):
+        clinic_row = Clinic.objects.get(pk=setup.clinic_id)
+        # Owner-read, derived: every active professional of the clinic.
+        professionals = frozenset(
+            UserClinicRole.objects.filter(
+                clinic_id=setup.clinic_id,
+                role__in=PROFESSIONAL_ROLES,
+                user__is_active=True,
+            ).values_list("user_id", flat=True)
+        )
     expected = role in permitted(*CONFIGURE)
     clinic = setup.clinic_id
     calls: dict[str, Callable[[], object]] = {
@@ -203,10 +219,24 @@ def test_configuration_boundaries_follow_the_role_bundle(
             _sql_allowed(lambda: _definition_row(clinic, setup.organization_id))
             is expected
         ), (role, "definition trigger")
-        projection = role in permitted(*PROJECTION) or (
-            role in permitted(BOOK_OWN, MOVE_OWN) and role in PROFESSIONAL_ROLES
+        # Exact membership: clinic-wide holders see every professional,
+        # own-scope holders see exactly themselves, everyone else nobody.
+        if role in permitted(*PROJECTION):
+            visible = professionals
+        elif role in permitted(BOOK_OWN, MOVE_OWN) and actor in professionals:
+            visible = frozenset({actor})
+        else:
+            visible = frozenset()
+        assert {pk for pk, _ in service_practitioners(clinic)} == visible, (
+            role,
+            "projection",
         )
-        assert bool(service_practitioners(clinic)) is projection, (role, "projection")
+        # _subject decides by that projection itself; the definition trigger
+        # would otherwise mask a _subject that ignores it.
+        for subject in (setup.practitioner_id, actor):
+            assert _allowed(
+                partial(resource_services._subject, clinic_row, subject, None)
+            ) is (subject in visible), (role, "subject", subject == actor)
 
 
 @pytest.mark.parametrize("role", ROLES)
