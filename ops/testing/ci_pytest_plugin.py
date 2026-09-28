@@ -5,18 +5,24 @@ The driver loads this module with ``-p ops.testing.ci_pytest_plugin``; a plain
 test's semantics are unchanged. It provides three things:
 
 * phase selection: ``parallel`` deselects the tests classified in
-  ``ci-serial-tests.txt``, ``serial`` keeps only them, ``collect`` and
-  ``observe`` select everything;
+  ``ci-serial-tests.txt``, ``serial`` keeps only them, ``collect`` selects
+  everything;
 * records: the reference population (``collect``) and every executed node ID
-  with its reports (``parallel``/``serial``/``observe``), written as JSON for
-  the driver's population-equality check;
-* the server-state guard: a fingerprint of every PostgreSQL shared catalog
-  (plus ``pg_file_settings``) taken around each test. Any committed
-  cluster-global write (role attributes or passwords, memberships,
-  ``ALTER ROLE/DATABASE ... SET``, databases, tablespaces, ``ALTER SYSTEM``)
-  changes it, because every committed row version carries a new ``xmin``.
-  In the parallel phase a change means a test that must be serial ran next
-  to other workers; the driver fails the run.
+  with its reports (``parallel``/``serial``), written as JSON for the
+  driver's population-equality check;
+* the server-state guard (parallel phase), around each test:
+
+  - a fingerprint of every PostgreSQL shared catalog (plus
+    ``pg_file_settings``). Any committed cluster-global write that is still
+    there when the test ends (role attributes or passwords, memberships,
+    ``ALTER ROLE/DATABASE ... SET``, databases, tablespaces, ``ALTER
+    SYSTEM``) changes it, because every committed row version carries a new
+    ``xmin``; the driver fails the run and names the test.
+  - a reading of the shared catalogs' cumulative ``pg_stat`` counters
+    (:func:`read_counters`). A write that a test commits and undoes again
+    (``GRANT`` then ``REVOKE``) leaves no fingerprint, but it still counts;
+    the driver compares the counters across the whole phase and uses these
+    per-test readings only to point at the writer.
 """
 
 from __future__ import annotations
@@ -24,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
@@ -35,8 +42,7 @@ from psycopg import sql
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-PHASES: Final = ("collect", "parallel", "serial", "observe")
-GUARDED_PHASES: Final = frozenset({"parallel", "observe"})
+PHASES: Final = ("collect", "parallel", "serial")
 MANIFEST: Final = Path(__file__).resolve().with_name("ci-serial-tests.txt")
 CATEGORIES: Final = frozenset({"server-state", "worker-environment"})
 # pg_shdepend is the one shared catalog outside the fingerprint: PostgreSQL
@@ -60,6 +66,33 @@ SELECT 'pg_file_settings', count(*), coalesce(md5(string_agg(
     E'\\x1e' ORDER BY seqno)), '')
 FROM pg_catalog.pg_file_settings
 """
+# Cumulative tuple counters of the counted shared catalogs. PostgreSQL counts
+# n_tup_ins/upd/del for every attempted write, committed or rolled back, but
+# n_mod_since_analyze (its changed_tuples) only for committed ones; ANALYZE
+# resets that one, which analyze_count/autoanalyze_count record.
+SHARED_COUNTERS: Final = """
+SELECT s.relname, s.n_tup_ins, s.n_tup_upd, s.n_tup_del,
+       s.n_mod_since_analyze, s.analyze_count + s.autoanalyze_count
+FROM pg_catalog.pg_stat_all_tables AS s
+JOIN pg_catalog.pg_class AS c ON c.oid = s.relid
+WHERE c.relisshared
+  AND c.relkind = 'r'
+  AND c.relnamespace = 'pg_catalog'::pg_catalog.regnamespace
+ORDER BY s.relname
+"""
+# What else must hold for the counters to cover a window: counting is on,
+# the server did not restart, the shared-object counters were not reset
+# (pg_stat_database's datid 0 row) and the configuration was not reloaded.
+COUNTER_SERVER_STATE: Final = """
+SELECT pg_catalog.current_setting('track_counts'),
+       pg_catalog.pg_postmaster_start_time()::text,
+       pg_catalog.pg_conf_load_time()::text,
+       coalesce((SELECT d.stats_reset::text FROM pg_catalog.pg_stat_database AS d
+                 WHERE d.datid = 0), 'never')
+"""
+COUNTED_SHARED: Final = frozenset(
+    {"pg_auth_members", "pg_authid", "pg_database", "pg_db_role_setting"}
+)
 _ENTRY: Final = re.compile(r"(?P<category>[a-z-]+) (?P<prefix>tests/\S+\.py(::\S+)?)")
 
 
@@ -93,6 +126,110 @@ def load_manifest(path: Path = MANIFEST) -> tuple[SerialEntry, ...]:
     return tuple(entries)
 
 
+@dataclass(frozen=True, slots=True)
+class CatalogCounters:
+    """One shared catalog's cumulative ``pg_stat`` tuple counters."""
+
+    inserted: int
+    updated: int
+    deleted: int
+    committed: int
+    analyzed: int
+
+
+@dataclass(frozen=True, slots=True)
+class Counters:
+    """A reading of every counted shared catalog plus the server state."""
+
+    server: tuple[str, ...]
+    catalogs: dict[str, CatalogCounters]
+
+
+def read_counters(connection: psycopg.Connection[tuple[object, ...]]) -> Counters:
+    """Read the shared catalogs' counters (autocommit: a fresh stats snapshot)."""
+    server = connection.execute(COUNTER_SERVER_STATE).fetchone()
+    if server is None:
+        _fail("the server state query returned no row")
+    catalogs = {
+        str(name): CatalogCounters(*(int(str(value)) for value in values))
+        for name, *values in connection.execute(SHARED_COUNTERS).fetchall()
+        if name not in UNFINGERPRINTED_SHARED
+    }
+    return Counters(tuple(str(value) for value in server), catalogs)
+
+
+def catalog_writes(
+    before: Counters, after: Counters
+) -> tuple[dict[str, dict[str, int]], list[str]]:
+    """Return the committed shared-catalog writes between two readings.
+
+    The second value lists every reason the readings cannot certify the
+    window (counting off, a restart, a reset, a reload, an ANALYZE that hid
+    the committed counter, counters that went backwards); callers fail
+    closed on it. Rolled-back writes move only the attempt counters and are
+    not writes.
+    """
+    problems = _server_problems(before, after)
+    writes: dict[str, dict[str, int]] = {}
+    for name in sorted(set(before.catalogs) & set(after.catalogs)):
+        delta, problem = _catalog_delta(
+            name, before.catalogs[name], after.catalogs[name]
+        )
+        if problem is not None:
+            problems.append(problem)
+        elif delta["committed"]:
+            writes[name] = delta
+    return writes, problems
+
+
+def _server_problems(before: Counters, after: Counters) -> list[str]:
+    checks = (
+        (
+            before.server[0] == after.server[0] == "on",
+            "track_counts is off, so writes are not counted",
+        ),
+        (before.server[1] == after.server[1], "the PostgreSQL server restarted"),
+        (
+            before.server[3] == after.server[3],
+            "the shared-object statistics were reset",
+        ),
+        (before.server[2] == after.server[2], "the server configuration was reloaded"),
+        (
+            set(after.catalogs) >= COUNTED_SHARED,
+            "the shared catalogs' counters are incomplete",
+        ),
+        (
+            set(before.catalogs) == set(after.catalogs),
+            "the set of shared catalogs changed",
+        ),
+    )
+    return [problem for holds, problem in checks if not holds]
+
+
+def _catalog_delta(
+    name: str, old: CatalogCounters, new: CatalogCounters
+) -> tuple[dict[str, int], str | None]:
+    delta = {
+        "inserted": new.inserted - old.inserted,
+        "updated": new.updated - old.updated,
+        "deleted": new.deleted - old.deleted,
+        "committed": new.committed - old.committed,
+    }
+    attempted = delta["inserted"] + delta["updated"] + delta["deleted"]
+    if min(delta["inserted"], delta["updated"], delta["deleted"]) < 0:
+        return delta, f"{name}: the counters went backwards"
+    if new.analyzed != old.analyzed:
+        if new.analyzed < old.analyzed or attempted:
+            return delta, (
+                f"{name}: ANALYZE reset the committed-write counter while "
+                f"{attempted} row writes were attempted"
+            )
+        return {**delta, "committed": 0}, None
+    if not 0 <= delta["committed"] <= attempted:
+        return delta, f"{name}: the committed-write counter is inconsistent"
+    return delta, None
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Register the driver-only options."""
     group = parser.getgroup("ci-pytest", "hosted Python job phases")
@@ -112,8 +249,8 @@ def pytest_configure(config: pytest.Config) -> None:
         return
     if record is None or not Path(record).is_absolute() or not Path(record).is_dir():
         _fail("--ci-pytest-record must name an existing absolute directory")
-    if guard and phase not in GUARDED_PHASES:
-        _fail("the server-state guard runs only in the parallel or observe phase")
+    if guard and phase != "parallel":
+        _fail("the server-state guard runs only in the parallel phase")
     workerinput = getattr(config, "workerinput", None)
     worker = "main" if workerinput is None else str(workerinput["workerid"])
     config.pluginmanager.register(
@@ -129,9 +266,7 @@ class CiPhase:
         self.phase = phase
         self.record = record
         self.worker = worker
-        self.guard = (
-            ServerStateGuard(record / f"guard-{worker}.jsonl") if guard else None
-        )
+        self.guard = ServerStateGuard(record, worker) if guard else None
         self.reports: dict[str, list[dict[str, str]]] = {}
 
     @pytest.hookimpl(trylast=True)
@@ -154,8 +289,6 @@ class CiPhase:
                 self.record / "collected.json",
                 {"items": [item.nodeid for item in items], "manifest": matches},
             )
-            return
-        if self.phase == "observe":
             return
         keep_serial = self.phase == "serial"
         selected = [item for item in items if (item.nodeid in serial) == keep_serial]
@@ -185,7 +318,7 @@ class CiPhase:
         try:
             return (yield)
         finally:
-            self.guard.after(item.nodeid, self.worker)
+            self.guard.after(item.nodeid)
 
     def pytest_sessionfinish(self) -> None:
         """Persist this process's reports and close the guard connection."""
@@ -196,25 +329,56 @@ class CiPhase:
 
 
 class ServerStateGuard:
-    """Detect committed writes to PostgreSQL's cluster-global state."""
+    """Detect committed writes to PostgreSQL's cluster-global state.
 
-    def __init__(self, violations: Path) -> None:
-        """Bind the per-process violation log; connect lazily."""
-        self.violations = violations
+    Per worker it writes, into the record directory: ``guard-<worker>.jsonl``
+    (fingerprint changes: violations), ``counted-<worker>.jsonl`` (tests
+    after which the cumulative counters showed a committed shared-catalog
+    write, or could not certify the window) and ``windows-<worker>.json``
+    (every test's wall-clock window), which the driver uses to attribute a
+    phase-level counter change.
+    """
+
+    def __init__(self, record: Path, worker: str) -> None:
+        """Bind the record directory and worker identity; connect lazily."""
+        self.record = record
+        self.worker = worker
         self.connection: psycopg.Connection[tuple[object, ...]] | None = None
         self.query: sql.Composed | None = None
         self.last: dict[str, tuple[int, str]] | None = None
+        self.last_counters: Counters | None = None
+        self.started = 0.0
+        self.windows: list[tuple[str, float, float]] = []
 
     def before(self) -> None:
-        """Take the first fingerprint; later tests reuse the previous one."""
+        """Take the first readings; later tests reuse the previous ones."""
+        self.started = time.time()
         if self.last is None:
             self.last = self._fingerprint()
+            self.last_counters = read_counters(self._connect())
 
-    def after(self, nodeid: str, worker: str) -> None:
-        """Compare with the pre-test fingerprint and log any change."""
+    def after(self, nodeid: str) -> None:
+        """Compare with the pre-test readings and log any change."""
         current = self._fingerprint()
-        previous = self.last
-        self.last = current
+        counters = read_counters(self._connect())
+        ended = time.time()
+        self.windows.append((nodeid, self.started, ended))
+        previous, previous_counters = self.last, self.last_counters
+        self.last, self.last_counters = current, counters
+        if previous_counters is not None:
+            writes, problems = catalog_writes(previous_counters, counters)
+            if writes or problems:
+                self._append(
+                    f"counted-{self.worker}.jsonl",
+                    {
+                        "nodeid": nodeid,
+                        "worker": self.worker,
+                        "started": self.started,
+                        "ended": ended,
+                        "writes": writes,
+                        "problems": problems,
+                    },
+                )
         if previous is None or current == previous:
             return
         changed = sorted(
@@ -222,15 +386,21 @@ class ServerStateGuard:
             for name in current.keys() | previous.keys()
             if current.get(name) != previous.get(name)
         )
-        line = json.dumps({"nodeid": nodeid, "worker": worker, "changed": changed})
-        with self.violations.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
+        self._append(
+            f"guard-{self.worker}.jsonl",
+            {"nodeid": nodeid, "worker": self.worker, "changed": changed},
+        )
 
     def close(self) -> None:
-        """Release the guard's own backend."""
+        """Persist the test windows and release the guard's own backend."""
+        _write_json(self.record / f"windows-{self.worker}.json", self.windows)
         if self.connection is not None:
             self.connection.close()
             self.connection = None
+
+    def _append(self, name: str, record: dict[str, object]) -> None:
+        with (self.record / name).open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
 
     def _fingerprint(self) -> dict[str, tuple[int, str]]:
         connection = self._connect()

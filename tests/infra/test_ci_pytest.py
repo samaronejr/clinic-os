@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -20,14 +21,18 @@ from ops.testing import ci_pytest
 from ops.testing import renewal_runner as runner
 from ops.testing.ci_pytest_plugin import (
     UNFINGERPRINTED_SHARED,
+    CatalogCounters,
+    Counters,
     SerialEntry,
     ServerStateGuard,
+    catalog_writes,
     load_manifest,
+    read_counters,
 )
 from psycopg import sql
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PARALLEL = ("tests/a.py::test_one", "tests/a.py::test_two[x-1]")
@@ -99,9 +104,11 @@ class FakePhases:
 
     def __init__(self) -> None:
         self.calls: dict[str, list[str]] = {}
+        self.events: list[str] = []
         self.parallel = list(PARALLEL)
         self.serial = [SERIAL]
         self.guard: list[dict[str, object]] = []
+        self.catalog_failures: list[str] = []
 
     def __call__(self, pytest_args: list[str], *, quiet: bool = False) -> int:
         phase = next(a for a in pytest_args if a.startswith("--ci-pytest-phase="))
@@ -109,6 +116,7 @@ class FakePhases:
         name = phase.split("=", 1)[1]
         work = Path(record.split("=", 1)[1])
         self.calls[name] = pytest_args
+        self.events.append(name)
         if name == "collect":
             (work / "collected.json").write_text(
                 json.dumps(
@@ -131,14 +139,27 @@ class FakePhases:
         return 0
 
 
+class FakeWindow:
+    def __init__(self, phases: FakePhases) -> None:
+        self.phases = phases
+
+    def check(self, work: Path) -> list[str]:
+        self.phases.events.append("catalog-check")
+        return self.phases.catalog_failures
+
+
 @pytest.fixture
 def phases(monkeypatch: pytest.MonkeyPatch) -> FakePhases:
     fake = FakePhases()
 
     @contextlib.contextmanager
-    def databases(workers: int) -> Iterator[str]:
+    def databases(workers: int) -> Iterator[FakeWindow]:
         assert workers == 4
-        yield "test_clinic"
+        fake.events.append("clones-created")
+        try:
+            yield FakeWindow(fake)
+        finally:
+            fake.events.append("clones-dropped")
 
     monkeypatch.setattr(ci_pytest, "_run", fake)
     monkeypatch.setattr(ci_pytest, "_worker_databases", databases)
@@ -267,6 +288,65 @@ def test_population_check_fails_on_a_dropped_or_misrouted_test(
     assert "checks=FAILED" in output
 
 
+def test_clones_are_dropped_after_the_catalog_check_and_before_the_serial_phase(
+    tmp_path: Path, phases: FakePhases
+) -> None:
+    assert _main(tmp_path) == 0
+    assert phases.events == [
+        "collect",
+        "clones-created",
+        "parallel",
+        "catalog-check",
+        "clones-dropped",
+        "serial",
+    ]
+
+
+def test_clones_are_dropped_when_the_parallel_phase_raises(
+    tmp_path: Path, phases: FakePhases, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def interrupted(pytest_args: list[str], *, quiet: bool = False) -> int:
+        if "--ci-pytest-phase=parallel" in pytest_args:
+            raise KeyboardInterrupt
+        return phases(pytest_args, quiet=quiet)
+
+    monkeypatch.setattr(ci_pytest, "_run", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        _main(tmp_path)
+    assert phases.events == ["collect", "clones-created", "clones-dropped"]
+
+
+def test_clones_are_dropped_concurrently_and_every_drop_is_awaited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clones = [f"test_clinic_gw{index}" for index in range(4)]
+    # Passes only when all four drops are in flight at the same time.
+    together = threading.Barrier(len(clones), timeout=30)
+    dropped: list[str] = []
+
+    def drop(clone: str) -> None:
+        together.wait()
+        if clone == "test_clinic_gw1":
+            message = "synthetic drop failure"
+            raise RuntimeError(message)
+        dropped.append(clone)
+
+    monkeypatch.setattr(ci_pytest, "_drop_on_own_session", drop)
+    with pytest.raises(RuntimeError, match="synthetic drop failure"):
+        ci_pytest._drop_concurrently(clones)
+    assert sorted(dropped) == ["test_clinic_gw0", "test_clinic_gw2", "test_clinic_gw3"]
+
+
+def test_catalog_check_failure_fails_the_run(
+    tmp_path: Path, phases: FakePhases, capsys: pytest.CaptureFixture[str]
+) -> None:
+    phases.catalog_failures = ["cluster-global PostgreSQL state was written: x"]
+    assert _main(tmp_path) == 1
+    output = capsys.readouterr().out
+    assert "FAIL cluster-global PostgreSQL state was written: x" in output
+    assert "checks=FAILED" in output
+
+
 def test_guard_violation_fails_the_run(
     tmp_path: Path, phases: FakePhases, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -285,11 +365,13 @@ def _superuser() -> psycopg.Connection[tuple[object, ...]]:
 def test_guard_fingerprints_every_shared_catalog_but_pg_shdepend(
     tmp_path: Path,
 ) -> None:
-    guard = ServerStateGuard(tmp_path / "guard.jsonl")
+    guard = ServerStateGuard(tmp_path, "gw9")
     try:
         guard.before()
         assert guard.last is not None
+        assert guard.last_counters is not None
         fingerprinted = set(guard.last)
+        counted = set(guard.last_counters.catalogs)
     finally:
         guard.close()
     with _superuser() as admin:
@@ -301,40 +383,300 @@ def test_guard_fingerprints_every_shared_catalog_but_pg_shdepend(
         }
     assert set(UNFINGERPRINTED_SHARED) == {"pg_shdepend"}
     assert fingerprinted == (shared - UNFINGERPRINTED_SHARED) | {"pg_file_settings"}
+    assert counted == shared - UNFINGERPRINTED_SHARED
     assert shared >= EXPECTED_SHARED | UNFINGERPRINTED_SHARED
 
 
-def test_guard_flags_a_value_preserving_cluster_global_write(tmp_path: Path) -> None:
-    # Serial-classified: it commits a (value-identical) ALTER ROLE.
-    log = tmp_path / "guard.jsonl"
-    guard = ServerStateGuard(log)
-    try:
-        guard.before()
-        with _superuser() as admin:
-            row = admin.execute(
-                "SELECT rolconnlimit FROM pg_roles WHERE rolname = 'clinic_app'"
-            ).fetchone()
-            assert row is not None
-            admin.execute(
-                sql.SQL("ALTER ROLE clinic_app CONNECTION LIMIT {}").format(
-                    sql.Literal(row[0])
-                )
-            )
-        guard.after("synthetic::node", "gw9")
-    finally:
-        guard.close()
-    records = [json.loads(line) for line in log.read_text().splitlines()]
-    assert records == [
-        {"nodeid": "synthetic::node", "worker": "gw9", "changed": ["pg_authid"]}
+def _counters(**catalogs: tuple[int, int, int, int, int]) -> Counters:
+    server = ("on", "started", "loaded", "never")
+    return Counters(
+        server, {name: CatalogCounters(*values) for name, values in catalogs.items()}
+    )
+
+
+BASE = dict.fromkeys(sorted(EXPECTED_SHARED), (5, 5, 5, 5, 1))
+
+
+@pytest.mark.parametrize(
+    ("after", "server", "writes", "problems"),
+    [
+        # Rolled back: attempts counted, nothing committed.
+        ({"pg_authid": (6, 5, 5, 5, 1)}, None, {}, []),
+        # GRANT then REVOKE, both committed.
+        (
+            {"pg_auth_members": (6, 5, 6, 7, 1)},
+            None,
+            {
+                "pg_auth_members": {
+                    "inserted": 1,
+                    "updated": 0,
+                    "deleted": 1,
+                    "committed": 2,
+                }
+            },
+            [],
+        ),
+        # ANALYZE with no attempted write: nothing to hide.
+        ({"pg_database": (5, 5, 5, 0, 2)}, None, {}, []),
+        (
+            {"pg_authid": (6, 5, 5, 0, 2)},
+            None,
+            {},
+            [
+                "pg_authid: ANALYZE reset the committed-write counter while 1 row "
+                "writes were attempted"
+            ],
+        ),
+        (
+            {"pg_authid": (4, 5, 5, 5, 1)},
+            None,
+            {},
+            ["pg_authid: the counters went backwards"],
+        ),
+        (
+            {"pg_authid": (6, 5, 5, 7, 1)},
+            None,
+            {},
+            ["pg_authid: the committed-write counter is inconsistent"],
+        ),
+        (
+            {},
+            ("off", "started", "loaded", "never"),
+            {},
+            ["track_counts is off, so writes are not counted"],
+        ),
+        (
+            {},
+            ("on", "restarted", "loaded", "never"),
+            {},
+            ["the PostgreSQL server restarted"],
+        ),
+        (
+            {},
+            ("on", "started", "reloaded", "never"),
+            {},
+            ["the server configuration was reloaded"],
+        ),
+        (
+            {},
+            ("on", "started", "loaded", "now"),
+            {},
+            ["the shared-object statistics were reset"],
+        ),
+    ],
+    ids=[
+        "rolled-back",
+        "grant-then-revoke",
+        "analyze-without-writes",
+        "analyze-hides-writes",
+        "backwards",
+        "inconsistent",
+        "track-counts-off",
+        "restart",
+        "reload",
+        "stats-reset",
+    ],
+)
+def test_catalog_writes_counts_committed_rows_and_fails_closed(
+    after: dict[str, tuple[int, int, int, int, int]],
+    server: tuple[str, ...] | None,
+    writes: dict[str, dict[str, int]],
+    problems: list[str],
+) -> None:
+    before = _counters(**BASE)
+    current = _counters(**{**BASE, **after})
+    if server is not None:
+        current = Counters(server, current.catalogs)
+    assert catalog_writes(before, current) == (writes, problems)
+
+
+def test_catalog_writes_fails_closed_on_missing_catalogs() -> None:
+    before = _counters(**BASE)
+    reduced = {name: BASE[name] for name in BASE if name != "pg_auth_members"}
+    assert catalog_writes(before, _counters(**reduced)) == (
+        {},
+        [
+            "the shared catalogs' counters are incomplete",
+            "the set of shared catalogs changed",
+        ],
+    )
+
+
+def test_catalog_check_names_the_tests_around_the_first_counted_write(
+    tmp_path: Path,
+) -> None:
+    windows = {
+        "gw0": [
+            ["tests/a.py::test_long_before", 0.0, 10.0],
+            ["tests/a.py::test_near", 95.0, 99.0],
+        ],
+        "gw1": [
+            ["tests/b.py::test_writer", 98.0, 101.0],
+            ["tests/b.py::test_after", 150.0, 151.0],
+        ],
+    }
+    for worker, entries in windows.items():
+        (tmp_path / f"windows-{worker}.json").write_text(json.dumps(entries))
+    counted = {
+        "nodeid": "tests/b.py::test_writer",
+        "worker": "gw1",
+        "started": 98.0,
+        "ended": 101.0,
+        "writes": {"pg_auth_members": {"committed": 2}},
+        "problems": [],
+    }
+    (tmp_path / "counted-gw1.jsonl").write_text(json.dumps(counted) + "\n")
+    assert ci_pytest._suspects(tmp_path, "pg_auth_members") == (
+        "first counted after tests/b.py::test_writer on gw1; the writer is "
+        "normally among the tests running within 10 s before that, most recent "
+        "first: ['tests/b.py::test_writer on gw1', 'tests/a.py::test_near on gw0']"
+    )
+    # Published only when the writer's backend exited: the phase's last tests.
+    assert ci_pytest._suspects(tmp_path, "pg_authid") == (
+        "counted only after the last test; the writer is normally among the "
+        "tests running within 10 s before that, most recent first: "
+        "['tests/b.py::test_after on gw1']"
+    )
+
+
+def test_catalog_check_fails_closed_while_a_phase_backend_is_connected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ci_pytest, "QUIESCE_SECONDS", 0.0)
+    with _superuser() as admin:
+        since = admin.execute("SELECT now()").fetchone()
+        assert since is not None
+        window = ci_pytest.CatalogWindow(admin, since[0])
+        assert window.check(tmp_path) == [
+            "shared-catalog counters have no baseline reading"
+        ]
+        window.baseline = read_counters(admin)
+        with _superuser() as lingering:
+            pid = lingering.info.backend_pid
+            (failure,) = window.check(tmp_path)
+    assert failure.startswith(
+        "shared-catalog counters are unreadable: backends of the run are still "
+        "connected after 0 s: "
+    )
+    assert f"({pid}, 'client backend', 'postgres', '')" in failure
+
+
+def _alter_role_same_value(writer: psycopg.Connection[tuple[object, ...]]) -> None:
+    row = writer.execute(
+        "SELECT rolconnlimit FROM pg_roles WHERE rolname = 'clinic_app'"
+    ).fetchone()
+    assert row is not None
+    writer.execute(
+        sql.SQL("ALTER ROLE clinic_app CONNECTION LIMIT {}").format(sql.Literal(row[0]))
+    )
+
+
+def _grant_then_revoke(writer: psycopg.Connection[tuple[object, ...]]) -> None:
+    # The fix-a11 review's shape (GRANT clinic_resolver TO clinic_app, then
+    # REVOKE), on two synthetic NOLOGIN roles: each statement commits.
+    member, granted = (
+        sql.Identifier(f"synthetic_guard_{uuid4().hex}") for _ in range(2)
+    )
+    writer.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(member))
+    writer.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(granted))
+    writer.execute(sql.SQL("GRANT {} TO {}").format(granted, member))
+    writer.execute(sql.SQL("REVOKE {} FROM {}").format(granted, member))
+    writer.execute(sql.SQL("DROP ROLE {}, {}").format(member, granted))
+
+
+@pytest.mark.parametrize(
+    ("write", "fingerprinted", "counted"),
+    [
+        pytest.param(
+            _alter_role_same_value,
+            ["pg_authid"],
+            {"pg_authid": {"inserted": 0, "updated": 1, "deleted": 0, "committed": 1}},
+            id="alter-role-same-value",
+        ),
+        pytest.param(
+            _grant_then_revoke,
+            [],
+            {
+                "pg_auth_members": {
+                    "inserted": 1,
+                    "updated": 0,
+                    "deleted": 1,
+                    "committed": 2,
+                },
+                "pg_authid": {
+                    "inserted": 2,
+                    "updated": 0,
+                    "deleted": 2,
+                    "committed": 4,
+                },
+            },
+            id="grant-then-revoke",
+        ),
+    ],
+)
+def test_guard_flags_a_value_preserving_cluster_global_write(
+    tmp_path: Path,
+    write: Callable[[psycopg.Connection[tuple[object, ...]]], None],
+    fingerprinted: list[str],
+    counted: dict[str, dict[str, int]],
+) -> None:
+    # Serial-classified: it commits cluster-global writes that end where
+    # they began. The per-test fingerprint sees only a changed row version;
+    # the cumulative counters see both, and the phase check names the test.
+    guard = ServerStateGuard(tmp_path, "gw9")
+    with _superuser() as admin:
+        since = admin.execute("SELECT now()").fetchone()
+        assert since is not None
+        window = ci_pytest.CatalogWindow(admin, since[0])
+        window.start()
+        try:
+            guard.before()
+            with _superuser() as writer:
+                write(writer)
+                # Published now, not when this backend gets round to it.
+                writer.execute("SELECT pg_stat_force_next_flush()")
+            guard.after("synthetic::node")
+        finally:
+            guard.close()
+        # Waits for the writer's and the guard's backends to exit.
+        failures = window.check(tmp_path)
+    violations = tmp_path / "guard-gw9.jsonl"
+    records = (
+        [json.loads(line) for line in violations.read_text().splitlines()]
+        if violations.exists()
+        else []
+    )
+    assert records == (
+        [{"changed": fingerprinted, "nodeid": "synthetic::node", "worker": "gw9"}]
+        if fingerprinted
+        else []
+    )
+    (observed,) = [
+        json.loads(line)
+        for line in (tmp_path / "counted-gw9.jsonl").read_text().splitlines()
     ]
+    # Only the catalogs this test wrote: an earlier test's late counts are
+    # not this test's business.
+    assert {name: observed["writes"][name] for name in counted} == counted
+    assert observed["problems"] == []
+    for name, counts in counted.items():
+        (failure,) = [failure for failure in failures if f": {name} " in failure]
+        assert failure.startswith(
+            "cluster-global PostgreSQL state was written during the parallel "
+            f"phase: {name} {counts} "
+        )
+        assert "first counted after synthetic::node on gw9" in failure
+        assert "['synthetic::node on gw9']" in failure
+    assert not [failure for failure in failures if "cannot certify" in failure]
 
 
 @pytest.mark.django_db
 def test_guard_ignores_database_local_and_rolled_back_work(
     tmp_path: Path, superuser_database_url: str
 ) -> None:
-    log = tmp_path / "guard.jsonl"
-    guard = ServerStateGuard(log)
+    guard = ServerStateGuard(tmp_path, "gw9")
+    with _superuser() as admin:
+        before = read_counters(admin)
     try:
         guard.before()
         with psycopg.connect(superuser_database_url, autocommit=True) as local:
@@ -348,17 +690,26 @@ def test_guard_ignores_database_local_and_rolled_back_work(
             assert depends is not None
             assert depends[0] > 0
             with psycopg.connect(superuser_database_url) as rolled_back:
-                rolled_back.execute(
-                    sql.SQL("CREATE ROLE {} NOLOGIN").format(
-                        sql.Identifier(f"synthetic_guard_{uuid4().hex}")
-                    )
-                )
+                role = sql.Identifier(f"synthetic_guard_{uuid4().hex}")
+                rolled_back.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(role))
+                rolled_back.execute(sql.SQL("GRANT clinic_app TO {}").format(role))
                 rolled_back.rollback()
+                rolled_back.autocommit = True
+                rolled_back.execute("SELECT pg_stat_force_next_flush()")
             # Taken while the temp table and its pg_shdepend rows still exist.
-            guard.after("synthetic::local", "gw9")
+            guard.after("synthetic::local")
     finally:
         guard.close()
-    assert not log.exists()
+    with _superuser() as admin:
+        after = read_counters(admin)
+    assert not (tmp_path / "guard-gw9.jsonl").exists()
+    # The rolled-back writes were attempted and counted, but not committed.
+    for name in ("pg_authid", "pg_auth_members"):
+        assert after.catalogs[name].inserted > before.catalogs[name].inserted
+    writes, problems = catalog_writes(before, after)
+    assert "pg_authid" not in writes
+    assert "pg_auth_members" not in writes
+    assert problems == []
 
 
 def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
