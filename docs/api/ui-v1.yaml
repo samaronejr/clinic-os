@@ -70,6 +70,158 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/ui/v1/ehr/addendum/autosave/:
+    post:
+      operationId: ehr_addendum_autosave
+      description: Adapt ``ehr.addenda.autosave_addendum``; unknown and foreign match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumAutosaveRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddendumSaved'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveConflict'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/ui/v1/ehr/addendum/open/:
+    post:
+      operationId: ehr_addendum_open
+      description: Adapt ``ehr.addenda.open_addendum``; unknown and foreign match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumOpenRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddendumOpened'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/ui/v1/ehr/autosave/:
     post:
       operationId: ehr_draft_autosave
@@ -160,6 +312,76 @@ paths:
           description: ''
 components:
   schemas:
+    AddendumAutosaveRequest:
+      type: object
+      description: POST body of ``ehr/addendum/autosave``; same contract as the main
+        draft.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        addendum_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        editor_command_id:
+          type: string
+          format: uuid
+          description: 'Idempotency key: a retry of the same save reuses it.'
+        text:
+          type: string
+          maxLength: 20000
+      required:
+      - addendum_id
+      - clinic_id
+      - editor_command_id
+      - expected_revision
+      - text
+    AddendumOpenRequest:
+      type: object
+      description: POST body of ``ehr/addendum/open``; the encounter stays in the
+        body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        encounter_id:
+          type: string
+          format: uuid
+      required:
+      - clinic_id
+      - encounter_id
+    AddendumOpened:
+      type: object
+      description: The caller's own addendum draft on that encounter.
+      properties:
+        addendum_id:
+          type: string
+          format: uuid
+          readOnly: true
+        revision:
+          type: integer
+          readOnly: true
+      required:
+      - addendum_id
+      - revision
+    AddendumSaved:
+      type: object
+      description: The acknowledged addendum save.
+      properties:
+        revision:
+          type: integer
+          readOnly: true
+        saved_at:
+          type: string
+          readOnly: true
+          description: ISO 8601 in the clinic's UTC offset.
+      required:
+      - revision
+      - saved_at
     AgendaItem:
       type: object
       description: 'Adapt ``scheduling.AgendaItem``: one clinic-local appointment

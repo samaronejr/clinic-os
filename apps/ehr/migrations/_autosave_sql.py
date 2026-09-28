@@ -129,6 +129,11 @@ if _BINDING_GUARD.count(_ARRIVAL_BRANCH) != 1:  # pragma: no cover - import cont
     message = "arrival binding branch moved"
     raise RuntimeError(message)
 _BINDING = _BINDING_GUARD.replace(_ARRIVAL_BRANCH, _TWO_SHAPE_BRANCH, 1)
+# The rewrite replaces the live guard; the census detects the definition here.
+_BINDING_DEFINITION = "CREATE OR REPLACE FUNCTION clinic_app.ehr_binding_guard()"
+if not _BINDING.lstrip().startswith(_BINDING_DEFINITION):  # pragma: no cover
+    message = "binding guard definition moved"
+    raise RuntimeError(message)
 _BINDING_ARRIVAL = _BINDING_GUARD.replace(
     "__ENCOUNTER_STATUSES__", "IN ('arrived', 'in_progress')", 1
 )

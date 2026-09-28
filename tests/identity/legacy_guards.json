@@ -3456,7 +3456,7 @@
         "apps.ehr.services._encounter_actor",
         "apps.ehr.services.view_version"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27 autosave. Authority is exactly the explicit save's: view_version, then _encounter_actor. tests/ehr/test_autosave.py::test_autosave_refuses_every_non_author_and_writes_nothing executes it for all 10 catalog roles as non-authors, a foreign clinic claim, an unknown draft, no membership and an inactive author. It asks no permission name of its own."
     },
     {
       "symbol": "apps.ehr.autosave.section_edit_epochs",
@@ -3468,7 +3468,7 @@
         "apps.ehr.services._encounter_actor",
         "apps.ehr.services.view_version"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27: reads the author's epoch counters through view_version and _encounter_actor. Tests execute it only for the assigned author; its refusals are those of the two delegates."
     },
     {
       "symbol": "apps.ehr.episodes._require",
@@ -3479,7 +3479,7 @@
       "enforced_by": [
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27 helper: maps a require_permission (clinic_app.has_permission) refusal to the clinical denial. Reached through its callers' role matrices: test_open_episode_is_decided_by_clinical_write and tests/ehr/test_addenda.py::test_addendum_open_is_decided_by_clinical_write, each over all 10 catalog roles with a statement spy on 'clinical.write'."
     },
     {
       "symbol": "apps.ehr.episodes.close_episode",
@@ -3490,7 +3490,7 @@
       "enforced_by": [
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27: requires clinical.write for the episode's enrollment through has_permission. Tests execute it only for the permitted physician; its refusal branch is _require's, which is executed through open_episode."
     },
     {
       "symbol": "apps.ehr.episodes.encounter_episodes",
@@ -3502,7 +3502,7 @@
         "apps.ehr.services._encounter_actor",
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27 read for the encounter page: _encounter_actor, then clinical.read through has_permission. It runs for the assigned physician via the workspace tests; there is no dedicated refusal matrix, and a refusal only hides the panel."
     },
     {
       "symbol": "apps.ehr.episodes.link_encounter",
@@ -3514,7 +3514,7 @@
         "apps.ehr.services._encounter_actor",
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27: requires the assignee (_encounter_actor), the same patient and clinic, and clinical.write. test_episode_links_decide_patient_clinic_assignee_and_state executes the owner physician, a care-team colleague (refused as non-assignee), other-patient, other-clinic and closed episodes, and an already-linked encounter."
     },
     {
       "symbol": "apps.ehr.services._encounter_actor",
@@ -3538,7 +3538,7 @@
       "enforced_by": [
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27: 'encounter.open_unscheduled' through has_permission. It is executed for all 10 catalog roles with a statement spy (test_unscheduled_open_is_decided_by_its_exact_permission). test_unscheduled_refusals_cover_actor_states_and_record_scope adds unregistered, inactive, foreign-clinic and no-membership actors, foreign and unknown enrollments, and a v2 RoleGrant subtraction."
     },
     {
       "symbol": "apps.ehr.services.resume_encounter",
@@ -3550,7 +3550,7 @@
         "apps.ehr.services._encounter_actor",
         "apps.ehr.services.open_encounter"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27: rechecks an encounter's assignment. Scheduled encounters go through open_encounter and unscheduled ones through _encounter_actor. Executed for the assignee and a refused colleague on an unscheduled encounter (test_unscheduled_encounter_carries_the_draft_lifecycle), and for the assignee by every encounter page test."
     },
     {
       "symbol": "apps.ehr.views._episode",
@@ -3562,7 +3562,29 @@
         "apps.ehr.services._encounter_actor",
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27. Consumer of the named executable authorization boundaries; tests/ehr/test_autosave.py executes it for every stored catalog role, inactive, unregistered, no-membership and foreign-clinic actors and pins the exact permission names with a statement spy."
+      "reason": "Plan item 27 workspace route for episode actions. It resolves the encounter through resume_encounter (_encounter_actor) and calls the episode services (has_permission). Executed only for the permitted physician (test_unscheduled_start_through_the_workspace)."
+    },
+    {
+      "symbol": "apps.ehr.addenda._authorized",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27 addendum: the caller's own addendum in the claimed clinic, under clinical.write through has_permission. tests/ehr/test_addenda.py::test_addendum_scope_holds_in_python_and_sql executes the author, a same-clinic colleague (refused), and the author claiming clinic B, where they hold the same standing (refused). The API refusals are asserted byte-identical."
+    },
+    {
+      "symbol": "apps.ehr.addenda.open_addendum",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27 addendum: clinical.write through has_permission for the encounter's patient in its own clinic; the assignee is sent to the main draft. test_addendum_open_is_decided_by_clinical_write runs all 10 catalog roles with a statement spy. test_addendum_refusals_cover_actor_states_scope_and_the_assignee adds inactive, foreign-clinic, unregistered and no-membership actors, clinic B and C claims, an unknown encounter, the assignee and a closed encounter."
     }
   ],
   "probes": [
@@ -5091,6 +5113,26 @@
       "probes": [],
       "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
     },
+    "clinic_app.ehr_addendum_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_addendum_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
     "clinic_app.ehr_assigned": {
       "discovery": {
         "signatures": [
@@ -5118,6 +5160,7 @@
           "clinic_app.ehr_draftsavereceipt:draft_receipt_insert",
           "clinic_app.ehr_draftsavereceipt:draft_receipt_read",
           "clinic_app.ehr_encounter:clinical_lock",
+          "clinic_app.ehr_encounteraddendum:addendum_insert",
           "clinic_app.ehr_encounterintakereference:clinical_insert",
           "clinic_app.ehr_encounterintakereference:clinical_read",
           "clinic_app.ehr_episodeencounter:episode_member_insert",
@@ -5203,6 +5246,7 @@
         "migrations": [
           "apps/ehr/migrations/0009_protected_fields.py",
           "apps/ehr/migrations/_arrival_sql.py",
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_clinical_sql.py",
           "apps/ehr/migrations/_finalization_sql.py"
         ],
@@ -5433,6 +5477,9 @@
         ],
         "policies": [
           "clinic_app.ehr_encounter:clinical_insert",
+          "clinic_app.ehr_encounteraddendum:addendum_insert",
+          "clinic_app.ehr_encounteraddendum:addendum_read",
+          "clinic_app.ehr_encounteraddendum:addendum_write",
           "clinic_app.ehr_episode:episode_close",
           "clinic_app.ehr_episode:episode_insert",
           "clinic_app.ehr_episode:episode_read",

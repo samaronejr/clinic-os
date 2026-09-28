@@ -15,6 +15,7 @@ from apps.audit.services import record_event, record_phase1_event
 from apps.ehr.models import (
     ClinicalDocument,
     ClinicalDocumentVersion,
+    DraftEditState,
     Encounter,
     EncounterIntakeReference,
     SpecialtyTemplate,
@@ -443,6 +444,7 @@ def record_clinical_note(
             msg = "stale_revision"
             raise ClinicalConflictError(msg)
         stored_sha256 = version.content_sha256
+        previous = version.soap
         version.set_soap(content)
         if version.content_sha256 == stored_sha256:
             # An unchanged save is a no-op: re-encrypting the same plaintext
@@ -453,7 +455,40 @@ def record_clinical_note(
         version.save(
             update_fields=("content", "content_sha256", "revision", "updated_at")
         )
+        advance_section_epochs(version, previous, content)
         record_phase1_event(
             "ehr.document.saved", clinic_id=clinic_id, affected_record_id=version.pk
         )
         return version
+
+
+def draft_edit_state(version: ClinicalDocumentVersion) -> DraftEditState:
+    """Lock (or create) the draft's autosave state row in the caller's txn."""
+    state = DraftEditState.objects.select_for_update().filter(version=version).first()
+    if state is not None:
+        return state
+    return DraftEditState.objects.create(
+        organization_id=version.organization_id,
+        version=version,
+        author_id=version.author_id,
+        section_edit_epochs=dict.fromkeys(SOAP_FIELDS, 0),
+    )
+
+
+def advance_section_epochs(
+    version: ClinicalDocumentVersion,
+    previous: dict[str, str],
+    content: dict[str, str],
+) -> None:
+    """Count one accepted edit for every section this write changed.
+
+    Called by the single revision writer, so explicit saves, autosaves and
+    merges all advance the epochs todo 42 compares against (N1).
+    """
+    state = draft_edit_state(version)
+    epochs = dict(state.section_edit_epochs)
+    for field in SOAP_FIELDS:
+        if previous.get(field, "") != content[field]:
+            epochs[field] = int(epochs[field]) + 1
+    state.section_edit_epochs = epochs
+    state.save(update_fields=("section_edit_epochs", "updated_at"))

@@ -164,10 +164,6 @@ PATIENT_SCOPED_PERMISSIONS_V1: Final = PROFESSIONAL_PERMISSIONS_V1 - {
     "break_glass.request",
     "break_glass.request_scoped",
 }
-# v2 encounter authority needs a current registration but no patient scope.
-PROFESSIONAL_PERMISSIONS_V2: Final = (
-    PROFESSIONAL_PERMISSIONS_V1 | ENCOUNTER_PERMISSIONS_V2
-)
 
 
 def _parse_uuid(raw_value: str | UUID | None) -> UUID | None:

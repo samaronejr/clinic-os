@@ -404,6 +404,86 @@ class DraftSaveReceipt(TenantScopedModel):
         ]
 
 
+class EncounterAddendum(TenantScopedModel):
+    """Another clinician's contribution to an encounter (plan item 27).
+
+    The main SOAP draft has one author, the encounter's assigned physician.
+    Anyone else with ``clinical.write`` for the patient writes here instead:
+    a separate row per author that can never overwrite the main draft. Only
+    the draft state exists today; finalization belongs to later todos.
+    """
+
+    class State(models.TextChoices):
+        """Draft only; finalizing addenda is a later todo."""
+
+        DRAFT = "draft", "Draft"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
+    encounter = models.ForeignKey(Encounter, on_delete=models.PROTECT)
+    patient = models.ForeignKey("intake.Patient", on_delete=models.PROTECT)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
+    )
+    text = EncryptedTextField(purpose="ehr.encounteraddendum.text", null=True)
+    text_sha256 = models.CharField(max_length=64, blank=True, default="")
+    revision = models.PositiveIntegerField(default=1)
+    state = models.CharField(max_length=16, choices=State, default=State.DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """One live addendum draft per author and encounter."""
+
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("encounter", "author"),
+                condition=models.Q(state="draft"),
+                name="ehr_addendum_one_draft",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(state__in=["draft"], revision__gte=1),
+                name="ehr_addendum_state_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(text_sha256="")
+                | models.Q(text_sha256__regex=r"^[0-9a-f]{64}$"),
+                name="ehr_addendum_digest_check",
+            ),
+        ]
+
+
+class AddendumSaveReceipt(TenantScopedModel):
+    """Append-only acknowledgement of one addendum autosave command."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    addendum = models.ForeignKey(EncounterAddendum, on_delete=models.PROTECT)
+    command_id = models.UUIDField()
+    request_sha256 = models.CharField(max_length=64)
+    base_revision = models.PositiveIntegerField()
+    revision = models.PositiveIntegerField()
+    saved_at = models.DateTimeField()
+
+    class Meta:
+        """One receipt per command and addendum; revisions move forward by one."""
+
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("addendum", "command_id"),
+                name="ehr_addendumreceipt_command_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(request_sha256__regex=r"^[0-9a-f]{64}$"),
+                name="ehr_addendumreceipt_digest_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(revision=models.F("base_revision"))
+                | models.Q(revision=models.F("base_revision") + 1),
+                name="ehr_addendumreceipt_revision_check",
+            ),
+        ]
+
+
 class ClinicalAttachment(TenantScopedModel):
     """One uploaded file kept private until validation marks it available."""
 

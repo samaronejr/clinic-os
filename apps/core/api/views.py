@@ -34,6 +34,10 @@ from apps.core.api.errors import (
     ui_api_not_found_response,
 )
 from apps.core.api.serializers import (
+    AddendumAutosaveRequestSerializer,
+    AddendumOpenedSerializer,
+    AddendumOpenRequestSerializer,
+    AddendumSavedSerializer,
     AgendaPageSerializer,
     AgendaQueryRequestSerializer,
     DraftAutosaveConflictSerializer,
@@ -41,6 +45,7 @@ from apps.core.api.serializers import (
     DraftAutosaveSavedSerializer,
     ErrorSerializer,
 )
+from apps.ehr.addenda import autosave_addendum, open_addendum
 from apps.ehr.autosave import (
     AutosaveIdempotencyError,
     AutosaveResult,
@@ -58,6 +63,7 @@ from apps.scheduling.services import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from uuid import UUID
 
     from django.http import HttpRequest, JsonResponse
     from rest_framework.request import Request
@@ -181,13 +187,94 @@ class DraftAutosaveView(UiApiView):
             raise UiApiError(HANDOVER_REQUESTED)
         if result.status == AutosaveStatus.CONFLICT:
             return Response(_conflict_body(result), status=409)
-        clinic = Clinic.objects.get(pk=data["clinic_id"])
-        saved_at = timezone.localtime(result.saved_at, ZoneInfo(str(clinic.timezone)))
         return Response(
             {
                 "revision": result.revision,
-                "saved_at": saved_at.isoformat(timespec="seconds"),
+                "saved_at": _clinic_time(data["clinic_id"], result),
                 "lock": "handed_over" if result.handed_over else "held",
+            }
+        )
+
+
+def _clinic_time(clinic_id: UUID, result: AutosaveResult) -> str:
+    clinic = Clinic.objects.get(pk=clinic_id)
+    saved_at = timezone.localtime(result.saved_at, ZoneInfo(str(clinic.timezone)))
+    return saved_at.isoformat(timespec="seconds")
+
+
+class AddendumOpenView(UiApiView):
+    """Open or resume the caller's addendum draft on one encounter."""
+
+    @extend_schema(
+        operation_id="ehr_addendum_open",
+        tags=["ehr"],
+        request=AddendumOpenRequestSerializer,
+        responses={
+            200: AddendumOpenedSerializer,
+            412: ErrorSerializer,
+            **ERROR_RESPONSES,
+        },
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``ehr.addenda.open_addendum``; unknown and foreign match."""
+        body = AddendumOpenRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            addendum = open_addendum(
+                clinic_id=data["clinic_id"], encounter_id=data["encounter_id"]
+            )
+        except (ClinicalAccessDeniedError, CurrentActorError) as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except ClinicalConflictError as error:
+            raise UiApiError(DRAFT_NOT_EDITABLE) from error
+        return Response(
+            {"addendum_id": str(addendum.pk), "revision": addendum.revision}
+        )
+
+
+class AddendumAutosaveView(UiApiView):
+    """Autosave one addendum revision; CAS, idempotency and compare."""
+
+    @extend_schema(
+        operation_id="ehr_addendum_autosave",
+        tags=["ehr"],
+        request=AddendumAutosaveRequestSerializer,
+        responses={
+            200: AddendumSavedSerializer,
+            409: DraftAutosaveConflictSerializer,
+            412: ErrorSerializer,
+            422: ErrorSerializer,
+            **ERROR_RESPONSES,
+        },
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``ehr.addenda.autosave_addendum``; unknown and foreign match."""
+        body = AddendumAutosaveRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            result = autosave_addendum(
+                clinic_id=data["clinic_id"],
+                addendum_id=data["addendum_id"],
+                expected_revision=data["expected_revision"],
+                editor_command_id=data["editor_command_id"],
+                text=data["text"],
+            )
+        except (ClinicalAccessDeniedError, CurrentActorError) as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except ClinicalConflictError as error:
+            raise UiApiError(DRAFT_NOT_EDITABLE) from error
+        except AutosaveIdempotencyError as error:
+            raise UiApiError(IDEMPOTENCY_MISMATCH) from error
+        except ValidationError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        if result.status == AutosaveStatus.CONFLICT:
+            return Response(_conflict_body(result), status=409)
+        return Response(
+            {
+                "revision": result.revision,
+                "saved_at": _clinic_time(data["clinic_id"], result),
             }
         )
 

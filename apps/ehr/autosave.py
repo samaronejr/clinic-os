@@ -44,6 +44,7 @@ from apps.ehr.services import (
     ClinicalConflictError,
     _denied,
     _encounter_actor,
+    draft_edit_state,
     record_clinical_note,
     view_version,
 )
@@ -143,34 +144,25 @@ def section_diff(
     stored: Mapping[str, str], mine: Mapping[str, str]
 ) -> tuple[SectionDiff, ...]:
     """Compare line by line; ``removed`` lines exist only in the saved text."""
-    result: list[SectionDiff] = []
-    for field in SOAP_FIELDS:
-        theirs, ours = stored.get(field, ""), mine[field]
-        if theirs == ours:
-            continue
-        before, after = theirs.splitlines(), ours.splitlines()
-        lines: list[DiffLine] = []
-        matcher = difflib.SequenceMatcher(None, before, after, autojunk=False)
-        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-            if tag == "equal":
-                lines.extend(DiffLine("same", text) for text in before[i1:i2])
-                continue
-            lines.extend(DiffLine("removed", text) for text in before[i1:i2])
-            lines.extend(DiffLine("added", text) for text in after[j1:j2])
-        result.append(SectionDiff(field, theirs, tuple(lines)))
-    return tuple(result)
-
-
-def _edit_state(version: ClinicalDocumentVersion) -> DraftEditState:
-    state = DraftEditState.objects.select_for_update().filter(version=version).first()
-    if state is not None:
-        return state
-    return DraftEditState.objects.create(
-        organization_id=version.organization_id,
-        version=version,
-        author_id=version.author_id,
-        section_edit_epochs=dict.fromkeys(SOAP_FIELDS, 0),
+    return tuple(
+        text_diff(field, stored.get(field, ""), mine[field])
+        for field in SOAP_FIELDS
+        if stored.get(field, "") != mine[field]
     )
+
+
+def text_diff(section: str, theirs: str, ours: str) -> SectionDiff:
+    """Line comparison of one text; ``removed`` lines exist only in ``theirs``."""
+    before, after = theirs.splitlines(), ours.splitlines()
+    lines: list[DiffLine] = []
+    matcher = difflib.SequenceMatcher(None, before, after, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            lines.extend(DiffLine("same", text) for text in before[i1:i2])
+            continue
+        lines.extend(DiffLine("removed", text) for text in before[i1:i2])
+        lines.extend(DiffLine("added", text) for text in after[j1:j2])
+    return SectionDiff(section, theirs, tuple(lines))
 
 
 def _hold(state: DraftEditState, session: UUID, now: datetime) -> None:
@@ -184,9 +176,10 @@ def _hold(state: DraftEditState, session: UUID, now: datetime) -> None:
 
 
 def _save_state(state: DraftEditState) -> None:
+    # Epochs belong to record_clinical_note (advance_section_epochs): the lock
+    # bookkeeping never writes them, so it cannot roll a count back.
     state.save(
         update_fields=(
-            "section_edit_epochs",
             "lock_holder",
             "lock_expires_at",
             "handover_requested_by",
@@ -253,18 +246,12 @@ def _write(  # noqa: PLR0913 - one locked save and its bookkeeping
         if state.lock_holder == session and state.handover_requested_by != session
         else None
     )
-    previous = version.soap
     saved = record_clinical_note(
         clinic_id=clinic_id,
         version_id=version.pk,
         expected_revision=expected_revision,
         content=content,
     )
-    epochs = dict(state.section_edit_epochs)
-    for field in SOAP_FIELDS:
-        if previous.get(field, "") != content[field]:
-            epochs[field] = int(epochs[field]) + 1
-    state.section_edit_epochs = epochs
     if handover_to is not None:
         # This session's text is saved first; the lock then moves.
         state.lock_holder = handover_to
@@ -329,7 +316,7 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         replayed = _replay(version, editor_command_id, digest)
         if replayed is not None:
             return replayed
-        state = _edit_state(version)
+        state = draft_edit_state(version)
         refused = _lock_refusal(
             state, version, editor_session_id, now, request_handover=request_handover
         )

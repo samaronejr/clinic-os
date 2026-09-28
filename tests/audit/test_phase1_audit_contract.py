@@ -119,6 +119,18 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "ehr.document_version",
         "handed_over",
     ),
+    "ehr.addendum.opened": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.encounter_addendum",
+        "opened",
+    ),
+    "ehr.addendum.saved": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.encounter_addendum",
+        "saved",
+    ),
     "ehr.access.denied": ("tenant", "clinic-os-web", "ehr.record", "denied"),
     "ehr.attachment.uploaded": (
         "tenant",

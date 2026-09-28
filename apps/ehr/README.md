@@ -72,7 +72,14 @@ episodes and unscheduled encounters.
 - One editor session (tab) holds the draft lock; each autosave renews it for
   two minutes. Another tab gets `locked_by_other` and may request a handover,
   which the holder's next autosave grants after saving its own text.
-  `section_edit_epochs` counts acknowledged edits per section for todo 42.
+- The lock is advisory by design: it coordinates the author's tabs, and the
+  revision compare-and-set protects the text. An explicit save (or an
+  autosave naming another tab's session) can write past the lock. That write
+  still needs the current revision, so any other tab then gets the compare
+  and cannot overwrite it.
+- `section_edit_epochs` counts one accepted edit per changed section. It is
+  advanced inside `record_clinical_note`, the single revision writer, so
+  explicit saves, autosaves and merges all count (todo 42 relies on this).
 - `static/js/ehr-autosave.js` debounces 1.5 s, resends an unacknowledged
   command unchanged after a network failure ("Não salvo - tentando
   novamente"), shows "Salvo às HH:MM (revisão N)" only after the server's
@@ -93,9 +100,29 @@ episodes and unscheduled encounters.
   `has_permission`; linking also needs the encounter's assigned physician, the
   same patient and clinic, and an open episode, re-decided by RLS and the
   binding trigger.
-- Migration `0010` is additive and rehearsed forward and backward; once an
-  unscheduled encounter exists, rollback is a restore.
+- Addendum drafts (`addenda.py`; `POST /api/ui/v1/ehr/addendum/open/` and
+  `/addendum/autosave/`) carry other clinicians' contributions to an
+  encounter:
+  - Anyone other than the assigned physician who holds `clinical.write` for
+    the encounter's patient in its clinic (a registered care-team physician
+    today) opens one addendum draft per encounter, stored in
+    `EncounterAddendum`. It never touches the main draft.
+  - Autosave has the same CAS, idempotency receipts
+    (`AddendumSaveReceipt`) and compare as the main draft. There is no lock,
+    because the author is the only writer.
+  - RLS (`has_permission`, author) and `ehr_addendum_guard` (same
+    organization, clinic, patient; open encounter; never the assignee)
+    re-decide every write.
+  - Only the draft state exists. Later todos extend it: finalizing,
+    releasing and showing addenda to readers, and a UI entry point from the
+    patient workspace and timeline (todo 28). Typed addendum fields and
+    templates come with todo 29, and nurse observations with todo 28
+    (`observation.write`).
+- Migrations `0010` and `0011` are additive and rehearsed forward and
+  backward. Once an unscheduled encounter or an addendum exists, rollback is a
+  restore.
 
 Verification: `tests/renewal/test_encounters.py`, `tests/ehr/test_autosave.py`,
+`tests/ehr/test_addenda.py`,
 `tests/renewal/test_attachments.py` and renewal browser suites `encounter` and
 `attachments`. All fixtures and browser evidence are synthetic-only.

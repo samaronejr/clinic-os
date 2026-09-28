@@ -10,6 +10,14 @@ app_name = "ui_api"
 urlpatterns: list[URLPattern] = [
     path("agenda/query/", views.AgendaQueryView.as_view(), name="agenda-query"),
     path("ehr/autosave/", views.DraftAutosaveView.as_view(), name="ehr-autosave"),
+    path(
+        "ehr/addendum/open/", views.AddendumOpenView.as_view(), name="ehr-addendum-open"
+    ),
+    path(
+        "ehr/addendum/autosave/",
+        views.AddendumAutosaveView.as_view(),
+        name="ehr-addendum-autosave",
+    ),
     # Last: every other path under the prefix gets the JSON 404 contract body.
     re_path(r"", views.not_found, name="not-found"),
 ]

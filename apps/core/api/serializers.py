@@ -158,3 +158,42 @@ class DraftAutosaveConflictSerializer(serializers.Serializer[Any]):
 
     current_revision = serializers.IntegerField(read_only=True)
     diff = DraftSectionDiffSerializer(many=True, read_only=True)
+
+
+class AddendumOpenRequestSerializer(serializers.Serializer[None]):
+    """POST body of ``ehr/addendum/open``; the encounter stays in the body."""
+
+    clinic_id = serializers.UUIDField()
+    encounter_id = serializers.UUIDField()
+
+
+class AddendumOpenedSerializer(serializers.Serializer[Any]):
+    """The caller's own addendum draft on that encounter."""
+
+    addendum_id = serializers.UUIDField(read_only=True)
+    revision = serializers.IntegerField(read_only=True)
+
+
+class AddendumAutosaveRequestSerializer(serializers.Serializer[None]):
+    """POST body of ``ehr/addendum/autosave``; same contract as the main draft."""
+
+    clinic_id = serializers.UUIDField()
+    addendum_id = serializers.UUIDField()
+    expected_revision = serializers.IntegerField(
+        min_value=1, max_value=AUTOSAVE_MAX_REVISION
+    )
+    editor_command_id = serializers.UUIDField(
+        help_text="Idempotency key: a retry of the same save reuses it."
+    )
+    text = serializers.CharField(
+        allow_blank=True, trim_whitespace=False, max_length=AUTOSAVE_MAX_SECTION
+    )
+
+
+class AddendumSavedSerializer(serializers.Serializer[Any]):
+    """The acknowledged addendum save."""
+
+    revision = serializers.IntegerField(read_only=True)
+    saved_at = serializers.CharField(
+        read_only=True, help_text="ISO 8601 in the clinic's UTC offset."
+    )

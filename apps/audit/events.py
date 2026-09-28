@@ -127,6 +127,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.draft.handed_over": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.document_version", "handed_over"
         ),
+        "ehr.addendum.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter_addendum", "opened"
+        ),
+        "ehr.addendum.saved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.encounter_addendum", "saved"
+        ),
         "ehr.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.record", "denied"
         ),

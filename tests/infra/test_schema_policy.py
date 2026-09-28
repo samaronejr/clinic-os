@@ -88,6 +88,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ehr_episodeencounter",
         "ehr_drafteditstate",
         "ehr_draftsavereceipt",
+        "ehr_encounteraddendum",
+        "ehr_addendumsavereceipt",
         # Task-32 author-only drafts and snapshots: test_prescription_drafts.
         "prescription_prescriptiondraft",
         "prescription_prescriptionitem",

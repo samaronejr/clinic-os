@@ -133,6 +133,24 @@ non-enumerating: they return the same response as "does not exist".
 - Failure: a stale revision returns the current revision and a section
   comparison and writes nothing; another live editor session is
   `locked_by_other`; a reused key with different content is refused.
+- The editor lock is advisory: it coordinates one author's tabs, and the
+  revision compare-and-set is what prevents overwrites. Every accepted write,
+  whether explicit save, autosave or merge, advances the per-section edit
+  epochs.
+
+### Addendum draft
+
+- Principal: a clinician other than the encounter's assigned physician holding
+  `clinical.write` for the patient in the encounter's clinic.
+- Preconditions: the encounter is `open`. There is one live addendum draft per
+  author and encounter.
+- Transition: an addendum draft beside the main draft (never inside it). Its
+  autosave follows the same compare-and-set, idempotency and compare rules as
+  Autosave draft.
+- Audit: `ehr.addendum.opened`, `ehr.addendum.saved`.
+- Failure: the assigned physician gets `use_main_draft`; a closed encounter
+  gets `encounter_closed`; unknown, foreign and unauthorized requests get the
+  same denial and nothing is written.
 
 ### Open unscheduled encounter
 

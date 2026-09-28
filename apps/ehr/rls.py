@@ -25,6 +25,8 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "ehr_episodeencounter",
         "ehr_drafteditstate",
         "ehr_draftsavereceipt",
+        "ehr_encounteraddendum",
+        "ehr_addendumsavereceipt",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
@@ -42,6 +44,8 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "ehr_episodeencounter": frozenset({"SELECT", "INSERT"}),
     "ehr_drafteditstate": frozenset({"SELECT", "INSERT"}),
     "ehr_draftsavereceipt": frozenset({"SELECT", "INSERT"}),
+    "ehr_encounteraddendum": frozenset({"SELECT", "INSERT"}),
+    "ehr_addendumsavereceipt": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
@@ -66,6 +70,10 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("ehr_encounter", "closed_at", "UPDATE"),
         ("ehr_encounter", "revision", "UPDATE"),
         ("ehr_encounter", "state", "UPDATE"),
+        ("ehr_encounteraddendum", "revision", "UPDATE"),
+        ("ehr_encounteraddendum", "text", "UPDATE"),
+        ("ehr_encounteraddendum", "text_sha256", "UPDATE"),
+        ("ehr_encounteraddendum", "updated_at", "UPDATE"),
         ("ehr_episode", "closed_at", "UPDATE"),
         ("ehr_episode", "closed_by_id", "UPDATE"),
         ("ehr_episode", "state", "UPDATE"),

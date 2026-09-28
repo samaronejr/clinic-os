@@ -289,6 +289,34 @@ def test_autosave_acknowledges_revisions_and_counts_section_epochs(
     assert_no_phi_in_audit(rbac_graph)
 
 
+def test_every_accepted_write_advances_section_epochs(rbac_graph: RbacGraph) -> None:
+    """Explicit saves and autosaves both count (review N1): plan changes 3x."""
+    version = draft_world(rbac_graph)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        assert save(rbac_graph, version.pk, 1).revision == 2
+        explicit = services.record_clinical_note(
+            clinic_id=rbac_graph.clinic_a,
+            version_id=version.pk,
+            expected_revision=2,
+            content={**SECTIONS, "plan": "Plano explícito"},
+        )
+        assert explicit.revision == 3
+        again = save(
+            rbac_graph, version.pk, 3, sections={**SECTIONS, "plan": "De novo"}
+        )
+        assert again.revision == 4
+        # An unchanged explicit save is not an edit.
+        services.record_clinical_note(
+            clinic_id=rbac_graph.clinic_a,
+            version_id=version.pk,
+            expected_revision=4,
+            content={**SECTIONS, "plan": "De novo"},
+        )
+        assert section_edit_epochs(
+            clinic_id=rbac_graph.clinic_a, version_id=version.pk
+        ) == {"subjective": 1, "objective": 1, "assessment": 1, "plan": 3}
+
+
 def test_replay_writes_once_and_a_reused_key_is_refused(rbac_graph: RbacGraph) -> None:
     version = draft_world(rbac_graph)
     command = uuid4()
