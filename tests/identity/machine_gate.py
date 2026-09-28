@@ -25,6 +25,12 @@ before the gate.
 
 Behind the gate everything else can only narrow a grant principal_scope
 already validated for every clinic the member was asked about.
+
+PostgreSQL does not order a SQL member's AND conjuncts, so a conjunct may
+still run before the gate. What that conjunct can do is bounded by the
+census rather than this prover: every function in a member's closure must be
+STABLE or IMMUTABLE, so PostgreSQL refuses writes and utility commands and no
+volatile function is reachable (test_service_principals, review round 8).
 """
 
 from __future__ import annotations

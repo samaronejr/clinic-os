@@ -94,8 +94,10 @@ ACTOR_GUC = "app.current_user_id"
 # depend on how a migration spelled it. The body is prosrc verbatim and no text
 # is rewritten, so every byte, including whitespace inside literals, counts.
 # Changing principal_scope means re-reviewing it and updating this pin.
+# Round 8 (D1-r8) declared it STABLE; removing " STABLE" from today's text
+# gives the previous pin 5d1317b7..., so nothing else changed.
 REFUSAL_HELPER_DIGEST = (
-    "5d1317b75f31ab4987abf387194cced1b4c9a2d1f866baef1d9152a3aea2a28a"
+    "495fc119a247ee1d4e3f2a1ce87431d2e845029a9b82d4569d972a15116eb743"
 )
 # Everything the pinned helper's closure may read; any view is refused.
 REFUSAL_HELPER_RELATIONS = frozenset(
@@ -113,6 +115,20 @@ REFUSAL_HELPER_SETTINGS = frozenset(
 # these two settings are themselves caller-settable on the agent login.
 MEMBER_SETTINGS = frozenset({"app.current_principal", "app.current_tenant"})
 MACHINE_SQL_OPAQUE = {"opaque function pg_catalog.pg_has_role"}
+# Machine members and their helpers are read-only, because a refused call must
+# be side-effect free and PostgreSQL does not order a SQL member's AND
+# conjuncts. The rule is an allowlist of volatility: every function in a
+# closure (member, helper, native) must be IMMUTABLE or STABLE. PostgreSQL
+# then refuses INSERT/UPDATE/DELETE/MERGE, SELECT FOR UPDATE/SHARE,
+# data-modifying CTEs and every utility command (SET, NOTIFY, LOCK, COPY...)
+# inside sql/plpgsql bodies, and volatile natives (nextval, setval,
+# pg_advisory*, pg_notify, lo_*, set_config) cannot be reached. Native
+# functions outside pg_catalog are already opaque.
+READ_ONLY_VOLATILITY = frozenset({"i", "s"})
+# Builtins labelled STABLE that still assign a transaction id.
+XID_ASSIGNING = frozenset({"pg_catalog.txid_current", "pg_catalog.pg_current_xact_id"})
+WRITES_RELATION = "writes a relation"
+VOLATILE_CALL = "calls a volatile function"
 # Cross-check only (the rule is machine_violations). Actor GUC cells: cleared;
 # the matrix actor; other staff; every pooled uuid ("pooled"); non-uuid values
 # ("malformed"); and each call's own argument values ("own_argument").
@@ -882,6 +898,16 @@ def _closure_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
         problems.append("reads views: " + ", ".join(views))
     if writers := _setting_writes(catalog, reads):
         problems.append(SETTING_WRITE + ": " + ", ".join(writers))
+    # Cross-check derived from the catalog: no writing statement anywhere.
+    if reads.writes:
+        problems.append(WRITES_RELATION + ": " + ", ".join(sorted(reads.writes)))
+    if volatile := sorted(
+        catalog.functions[oid].name
+        for oid in reads.functions
+        if catalog.functions[oid].volatility not in READ_ONLY_VOLATILITY
+        or catalog.functions[oid].name in XID_ASSIGNING
+    ):
+        problems.append(VOLATILE_CALL + ": " + ", ".join(volatile))
     return problems
 
 
@@ -939,6 +965,15 @@ PLANTED_VIEWS = """
     CREATE FUNCTION clinic_app.principal_reset_hint() RETURNS text
       LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,clinic_app,pg_temp
       AS $f$ BEGIN RESET app.current_user_id; RETURN ''; END $f$;
+    CREATE FUNCTION clinic_app.principal_write_hint(c uuid) RETURNS boolean
+      LANGUAGE sql VOLATILE SET search_path=pg_catalog,clinic_app,pg_temp
+      AS $f$ INSERT INTO clinic_app.prescription_verificationprobe
+        (probe_key, window_start, lookups)
+        VALUES (decode(md5(c::text), 'hex'), now(), 1) RETURNING true $f$;
+    CREATE FUNCTION clinic_app.principal_delete_hint() RETURNS boolean
+      LANGUAGE plpgsql STABLE SET search_path=pg_catalog,clinic_app,pg_temp
+      AS $f$ BEGIN DELETE FROM clinic_app.prescription_verificationprobe
+        WHERE false; RETURN true; END $f$;
 """
 MACHINE_PRINCIPAL = "NULLIF(current_setting('app.current_principal',true),'')::uuid"
 MACHINE_GATE = f"clinic_app.principal_scope({MACHINE_PRINCIPAL}, clinic)"
@@ -1019,6 +1054,24 @@ PLANTED_MEMBERS = {
     "helper_reset": f"""
         SELECT {MACHINE_GATE} IS NOT NULL
           AND clinic_app.principal_reset_hint() = ''""",
+    # A helper conjunct writes whether or not the gate refuses (review round 8,
+    # D1-r8): PostgreSQL does not order AND conjuncts.
+    "write_helper": f"""
+        SELECT clinic_app.principal_write_hint(clinic)
+          AND {MACHINE_GATE} IS NOT NULL""",
+    # A STABLE-declared helper whose body writes: the catalog still sees it.
+    "stable_delete_helper": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          AND clinic_app.principal_delete_hint()""",
+    # Volatile side effects before or beside the gate.
+    "advisory_lock": f"""
+        SELECT (SELECT pg_advisory_xact_lock(7)) IS NULL
+          AND {MACHINE_GATE} IS NOT NULL""",
+    "notify": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          AND pg_notify('sintetico', clinic::text) IS NULL""",
+    # A gated member declared VOLATILE: PostgreSQL would let its body write.
+    "volatile_member": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
     # Positive control: each uuid parameter behind its own gate.
     "two_uuid_gated": (
         f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic_app.principal_scope("
@@ -1085,6 +1138,8 @@ PLANT_SIGNATURES = {
 }
 # Plants with extra function-level configuration (default: search_path only).
 PLANT_HEADERS = {"header_set": " SET TimeZone = 'UTC'"}
+# Plants are STABLE unless the plant is about volatility.
+PLANT_VOLATILITY = {"volatile_member": "VOLATILE"}
 UNREACHED = "does not reach the refusal helper"
 SETTINGS = "reads settings outside the allowlist"
 OPAQUE = "uninspectable read"
@@ -1108,13 +1163,18 @@ PLANT_VIOLATIONS = {
     "own_clinic_gate": {UNBOUND_CLINIC},
     "plpgsql_reassigned_clinic": {NOT_GATED},
     "plpgsql_set_local": {NOT_GATED, SETTING_WRITE, SETTINGS},
-    "plpgsql_declare_set_config": {NOT_GATED, SETTING_WRITE, SETTINGS},
+    "plpgsql_declare_set_config": {NOT_GATED, SETTING_WRITE, SETTINGS, VOLATILE_CALL},
     "plpgsql_reset_after": {SETTING_WRITE, SETTINGS},
     "two_uuid": {UNGATED_UUID},
     "uuid_array": {UNGATED_UUID},
     "header_set": {SETTING_WRITE},
+    "write_helper": {WRITES_RELATION, VOLATILE_CALL},
+    "stable_delete_helper": {WRITES_RELATION},
+    "advisory_lock": {VOLATILE_CALL},
+    "notify": {OPAQUE, VOLATILE_CALL},
+    "volatile_member": {VOLATILE_CALL},
     "two_uuid_gated": set(),
-    "helper_reset": {SETTING_WRITE, SETTINGS},
+    "helper_reset": {SETTING_WRITE, SETTINGS, VOLATILE_CALL},
 }
 
 
@@ -1132,7 +1192,8 @@ def test_planted_actor_reader_is_refused_by_construction(plant: str) -> None:
         signature = PLANT_SIGNATURES.get(plant, "clinic uuid")
         cursor.execute(
             f"CREATE FUNCTION clinic_app.principal_extra({signature}) RETURNS boolean"
-            f" LANGUAGE {language} VOLATILE SECURITY DEFINER"
+            f" LANGUAGE {language} {PLANT_VOLATILITY.get(plant, 'STABLE')}"
+            " SECURITY DEFINER"
             " SET search_path=pg_catalog,clinic_app,pg_temp"
             f"{PLANT_HEADERS.get(plant, '')} AS $f$ {body} $f$"
         )
@@ -1405,6 +1466,81 @@ def test_every_uuid_argument_refuses_foreign_clinics_on_the_agent_login(
             )
             if not foreign_values.intersection(vector)
         ), (name, "never grants")
+
+
+def _database_state(admin: psycopg.Connection[Any]) -> dict[str, object]:
+    """Every row version (ctid, xmin, xmax: inserts, updates, deletes and row
+    locks) of every table, matview and large object, and every sequence
+    position, read as the superuser past RLS."""
+    relations = admin.execute(
+        "SELECT c.oid::regclass::text, c.relkind FROM pg_class c"
+        " JOIN pg_namespace n ON n.oid = c.relnamespace"
+        " WHERE c.relkind IN ('r', 'm', 'S')"
+        " AND n.nspname NOT IN ('pg_catalog', 'information_schema')"
+        " AND n.nspname !~ '^pg_(toast|temp_)'"
+    ).fetchall()
+    rows = sql.SQL(
+        "SELECT count(*), md5(string_agg(concat_ws(':', t.ctid, t.xmin, t.xmax),"
+        " ',' ORDER BY t.ctid)) FROM {} t"
+    )
+    sequence = sql.SQL("SELECT last_value, is_called FROM {}")
+    state: dict[str, object] = {}
+    for name, kind in [*relations, ("pg_catalog.pg_largeobject_metadata", "r")]:
+        query = sequence if kind == "S" else rows
+        # Names come from pg_class as regclass text, already quoted.
+        state[name] = admin.execute(query.format(sql.SQL(name))).fetchone()
+    assert len(state) > len(relations), "empty catalog snapshot"
+    return state
+
+
+def test_machine_calls_leave_every_table_and_sequence_unchanged(
+    principal: ServicePrincipal, rbac_graph: RbacGraph, superuser_database_url: str
+) -> None:
+    """Review round 8 (D1-r8): every member runs on the real agent login
+    under refusing states (forged actor, foreign clinics, foreign tenant) and
+    granting ones, each call committed on its own, and the whole database is
+    unchanged afterwards."""
+    members = machine_members()
+    types = _argument_types(members)
+    pools: dict[str, list[UUID | str]] = {
+        "uuid": [principal.clinic_id, rbac_graph.clinic_b, rbac_graph.clinic_c],
+        "text": ["appointment.read", str(rbac_graph.clinic_c)],
+    }
+    calls = {
+        name: (
+            [(principal.pk, clinic) for clinic in pools["uuid"]]
+            if name == REFUSAL_HELPER
+            else _machine_vectors({name: types[name]}, pools)[name]
+        )
+        for name in members
+    }
+    tenants = [principal.organization_id, rbac_graph.organization_b]
+    actors = ["", str(rbac_graph.physician)]
+    outcomes: dict[str, set[bool]] = {name: set() for name in members}
+    params = connections["agent"].get_connection_params()
+    with psycopg.connect(superuser_database_url, autocommit=True) as admin:
+        before = _database_state(admin)
+        with psycopg.connect(**params, autocommit=True) as agent:
+            for tenant, actor in product(tenants, actors):
+                agent.execute(
+                    "SELECT set_config('app.current_principal', %s, false),"
+                    " set_config('app.current_tenant', %s, false),"
+                    " set_config('app.current_user_id', %s, false)",
+                    [str(principal.pk), str(tenant), actor],
+                )
+                for name, vectors in calls.items():
+                    for vector in vectors:
+                        row = agent.execute(
+                            _call(name, types[name]), list(vector)
+                        ).fetchone()
+                        assert row is not None
+                        outcomes[name].add(_granted(row[0]))
+        after = _database_state(admin)
+    # Both paths ran for every member: refusals, and grants as anti-vacuity.
+    assert outcomes == {name: {False, True} for name in members}
+    changed = sorted(name for name in before if before[name] != after.get(name))
+    assert not changed, changed
+    assert after == before
 
 
 def test_staff_state_never_grants_machine_authority(

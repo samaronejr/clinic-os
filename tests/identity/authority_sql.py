@@ -64,6 +64,8 @@ SET_SPECIAL = frozenset(
     }
 )
 DDL = frozenset({"create", "alter", "drop", "grant", "revoke", "copy"})
+# Statements that write rows (UPDATE also covers SELECT ... FOR UPDATE).
+WRITES = frozenset({"insert", "update", "delete", "truncate", "merge", "copy"})
 
 
 @dataclass
@@ -150,7 +152,7 @@ def _keyword(
         _set_setting(items, index + 1, result)
     if keyword in DYNAMIC | DDL:
         result.opaque.add(keyword)
-    if keyword in {"insert", "update", "delete", "truncate"}:
+    if keyword in WRITES:
         result.writes = True
 
 

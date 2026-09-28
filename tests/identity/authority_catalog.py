@@ -70,6 +70,7 @@ CRYPTO_PRIMITIVES = {
 }
 
 
+UNRESOLVED_WRITE = "unresolved write target"
 # Catalog relations that list server settings (and so every session GUC).
 SETTING_CATALOGS = frozenset(
     {"pg_settings", "pg_file_settings", "pg_db_role_setting", "pg_show_all_settings"}
@@ -107,12 +108,17 @@ class Reads:
     functions: set[int] = field(default_factory=set)
     settings: set[str] = field(default_factory=set)
     opaque: set[str] = field(default_factory=set)
+    # Relations named by a writing statement (INSERT, UPDATE, DELETE, MERGE,
+    # TRUNCATE, COPY, SELECT ... FOR UPDATE); an unresolved target is kept
+    # as a marker so a write never disappears.
+    writes: set[str] = field(default_factory=set)
 
     def merge(self, other: Reads) -> None:
         self.relations.update(other.relations)
         self.functions.update(other.functions)
         self.settings.update(other.settings)
         self.opaque.update(other.opaque)
+        self.writes.update(other.writes)
 
 
 @dataclass(frozen=True)
@@ -296,6 +302,9 @@ class Catalog:
         for oid in relations:
             result.merge(self._relation(oid, bypass=bypass, seen=seen))
         if parsed.writes:
+            result.writes.update(
+                {self.relations[oid].name for oid in relations} or {UNRESOLVED_WRITE}
+            )
             for oid in tuple(result.relations):
                 result.merge(self._write(oid, bypass=bypass, seen=seen))
         for oid in functions:

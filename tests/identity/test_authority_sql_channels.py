@@ -11,7 +11,7 @@ import pytest
 from apps.identity.models import User
 from django.db import connection, transaction
 
-from identity.authority_catalog import Catalog, Reads
+from identity.authority_catalog import UNRESOLVED_WRITE, Catalog, Reads
 from identity.authority_observer import AuthorityObservedError, AuthorityObserver
 from identity.authority_sql import references
 from identity.nonstaff_differential import (
@@ -227,6 +227,39 @@ def test_set_and_reset_statements_record_the_setting(
 )
 def test_unresolved_set_forms_are_opaque(statement: str) -> None:
     assert "unresolved SET setting" in references(statement).opaque
+
+
+@PARSER_ONLY
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "INSERT INTO t VALUES (1)",
+        "UPDATE t SET a = 1",
+        "DELETE FROM t",
+        "MERGE INTO t USING u ON true WHEN MATCHED THEN DELETE",
+        "TRUNCATE t",
+        "COPY t FROM STDIN",
+        "SELECT 1 FROM t FOR UPDATE",
+        "WITH x AS (DELETE FROM t RETURNING 1) SELECT 1",
+    ],
+)
+def test_writing_statements_are_writes(statement: str) -> None:
+    assert references(statement).writes
+
+
+@PARSER_ONLY
+def test_catalog_records_written_relations() -> None:
+    catalog = Catalog()
+    written = catalog.statement(
+        "INSERT INTO clinic_app.prescription_verificationprobe"
+        " (probe_key, window_start, lookups) VALUES ('', now(), 1)"
+    )
+    assert written.writes == {"clinic_app.prescription_verificationprobe"}
+    # A target the catalog cannot resolve is still a write.
+    assert catalog.statement("DELETE FROM t6_nowhere").writes == {UNRESOLVED_WRITE}
+    assert not catalog.statement(
+        "SELECT 1 FROM clinic_app.prescription_verificationprobe"
+    ).writes
 
 
 @PARSER_ONLY
