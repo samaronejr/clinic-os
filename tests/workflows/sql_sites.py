@@ -123,6 +123,99 @@ def _branches(
     return sites
 
 
+COMPARISON = re.compile(
+    r"(?P<left>[A-Za-z_][\w.]*)\s*(?P<op>=|<>|!=|IS\s+NOT\s+DISTINCT\s+FROM|"
+    r"IS\s+DISTINCT\s+FROM)\s*actor\b"
+    r"|\bactor\s*(?P<rop>=|<>|!=)\s*(?P<right>[A-Za-z_][\w.]*)"
+)
+PERMISSION = re.compile(r"clinic_app\.has_permission\(\s*'([a-z.]+)'")
+
+
+@dataclass(frozen=True)
+class Condition:
+    """One actor-reading operand of a trigger branch: a permission, helper or
+    actor comparison. Removing it means treating it as satisfied."""
+
+    cid: str
+    branch: str
+    kind: str
+    target: str
+    span: tuple[int, int]
+    granted: str
+
+
+def _call_end(text: str, start: int) -> int:
+    depth, cursor = 0, text.index("(", start)
+    while True:
+        depth += {"(": 1, ")": -1}.get(text[cursor], 0)
+        cursor += 1
+        if depth == 0:
+            return cursor
+
+
+def discover_conditions() -> dict[str, Condition]:
+    """Split every actor-reading trigger branch into its removable conditions.
+
+    Fails closed when an ``actor`` token or an actor-reading helper call inside
+    a branch is not covered by exactly one classified condition.
+    """
+    catalog = Catalog()
+    conditions: dict[str, Condition] = {}
+    with connection.cursor() as cursor:
+        for site in discover_sql_sites().values():
+            if site.kind != BRANCH:
+                continue
+            cursor.execute(
+                "SELECT prosrc FROM pg_proc WHERE oid=%s::regprocedure", [site.target]
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            source = str(row[0])
+            start, end = site.span
+            text = source[start:end]
+            found: list[tuple[int, int, str, str]] = []
+            for match in re.finditer(r"clinic_app\.(\w+)\(", text):
+                name = match.group(1)
+                if (
+                    ACTOR
+                    not in catalog.statement(f"SELECT clinic_app.{name}()").settings
+                ):
+                    continue
+                stop = _call_end(text, match.start())
+                permission = PERMISSION.match(text, match.start())
+                kind = (
+                    f"permission:{permission.group(1)}"
+                    if permission
+                    else f"helper:{name}"
+                )
+                found.append((match.start(), stop, kind, "true"))
+            for match in COMPARISON.finditer(text):
+                operator = " ".join((match.group("op") or match.group("rop")).split())
+                granted = (
+                    "true" if operator in {"=", "IS NOT DISTINCT FROM"} else "false"
+                )
+                found.append(
+                    (
+                        match.start(),
+                        match.end(),
+                        f"actor:{' '.join(match.group(0).split())}",
+                        granted,
+                    )
+                )
+            for use in re.finditer(r"\bactor\b", text):
+                assert any(a <= use.start() < b for a, b, _k, _g in found), (
+                    site.sid,
+                    "unclassified actor condition",
+                    text[use.start() - 40 : use.end() + 10],
+                )
+            for index, (a, b, kind, granted) in enumerate(sorted(found), 1):
+                cid = f"{site.sid}#{index}:{kind}"
+                conditions[cid] = Condition(
+                    cid, site.sid, kind, site.target, (start + a, start + b), granted
+                )
+    return conditions
+
+
 def discover_sql_sites() -> dict[str, SqlSite]:
     catalog = Catalog()
     tables = _tables()
@@ -183,7 +276,57 @@ def discover_sql_sites() -> dict[str, SqlSite]:
                 f"clinic_app.{table}",
                 policy=(name, table, using is not None, check is not None),
             )
+    _require_no_actor_surfaces(catalog, tables)
     return sites
+
+
+def _require_no_actor_surfaces(catalog: Catalog, tables: list[str]) -> None:
+    """Fail closed on actor reads in constraints, defaults, indexes and views.
+
+    None of these surfaces may decide on the actor in the workflows closure:
+    there is no behavioural oracle for them, so any such expression (including
+    one reached through a helper or relation) is refused as unclassified.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT 'constraint '||c.relname||'.'||k.conname, "
+            "pg_get_constraintdef(k.oid) FROM pg_constraint k "
+            "JOIN pg_class c ON c.oid=k.conrelid "
+            "WHERE c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s) "
+            "AND k.conbin IS NOT NULL "
+            "UNION ALL SELECT 'default '||c.relname||'.'||a.attname, "
+            "pg_get_expr(d.adbin, d.adrelid) FROM pg_attrdef d "
+            "JOIN pg_class c ON c.oid=d.adrelid JOIN pg_attribute a "
+            "ON a.attrelid=d.adrelid AND a.attnum=d.adnum "
+            "WHERE c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s) "
+            "UNION ALL SELECT 'index '||i.indexrelid::regclass::text, "
+            "concat_ws(' ', pg_get_expr(i.indexprs,i.indrelid), "
+            "pg_get_expr(i.indpred,i.indrelid)) FROM pg_index i "
+            "JOIN pg_class c ON c.oid=i.indrelid "
+            "WHERE c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s) "
+            "AND (i.indexprs IS NOT NULL OR i.indpred IS NOT NULL) "
+            "UNION ALL SELECT DISTINCT 'view '||v.oid::regclass::text, "
+            "pg_get_viewdef(v.oid) FROM pg_rewrite r JOIN pg_class v "
+            "ON v.oid=r.ev_class JOIN pg_depend d ON d.classid='pg_rewrite'::regclass "
+            "AND d.objid=r.oid JOIN pg_class c ON c.oid=d.refobjid "
+            "WHERE v.relkind IN ('v','m') "
+            "AND c.relnamespace='clinic_app'::regnamespace AND c.relname=ANY(%s)",
+            [tables, tables, tables, tables],
+        )
+        surfaces = cursor.fetchall()
+    for label, expression in surfaces:
+        text = str(expression)
+        if text.upper().startswith("CHECK "):
+            text = text[len("CHECK ") :].removesuffix(" NOT VALID")
+        reads = catalog.statement(
+            text if label.startswith("view ") else "SELECT " + text
+        )
+        opaque = {item for item in reads.opaque if item not in _TOKENIZER_KEYWORDS}
+        assert not opaque, (label, opaque)
+        assert ACTOR not in reads.settings, (
+            "unclassified actor-reading surface",
+            label,
+        )
 
 
 def _digest(cursor: psycopg.Cursor[tuple[object, ...]]) -> str:
@@ -218,9 +361,28 @@ def _replace_calls(body: str, names: tuple[str, ...], value: str) -> tuple[str, 
 
 
 def _statements(
-    cursor: psycopg.Cursor[tuple[object, ...]], site: SqlSite, mode: str
+    cursor: psycopg.Cursor[tuple[object, ...]],
+    site: SqlSite | tuple[Condition, ...],
+    mode: str,
 ) -> tuple[list[str], list[str]]:
     """Return (mutate, restore) statements for one site and mode."""
+    if isinstance(site, tuple):
+        # Remove several conditions of one trigger at once (reviewer's X3).
+        assert len({condition.target for condition in site}) == 1
+        cursor.execute(
+            "SELECT pg_get_functiondef(%s::regprocedure), prosrc FROM pg_proc "
+            "WHERE oid=%s::regprocedure",
+            [site[0].target, site[0].target],
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        definition, source = str(row[0]), str(row[1])
+        assert definition.count(source) == 1
+        mutated = source
+        for condition in sorted(site, key=lambda item: item.span, reverse=True):
+            a, b = condition.span
+            mutated = mutated[:a] + f"({condition.granted})" + mutated[b:]
+        return [definition.replace(source, mutated)], [definition]
     value = "true" if mode == "allow" else "false"
     if site.kind == POLICY:
         name, _table, has_using, has_check = site.policy
@@ -270,7 +432,9 @@ def _statements(
 
 @contextmanager
 def mutated(
-    connection_: psycopg.Connection[tuple[object, ...]], site: SqlSite, mode: str
+    connection_: psycopg.Connection[tuple[object, ...]],
+    site: SqlSite | tuple[Condition, ...],
+    mode: str,
 ) -> Iterator[None]:
     """Apply one SQL decision mutant as superuser; restore and verify by digest."""
     with connection_.cursor() as cursor:
@@ -278,11 +442,11 @@ def mutated(
         mutate, restore = _statements(cursor, site, mode)
         for statement in mutate:
             cursor.execute(statement)
-        assert _digest(cursor) != before, site.sid
+        assert _digest(cursor) != before, getattr(site, "sid", site)
     try:
         yield
     finally:
         with connection_.cursor() as cursor:
             for statement in restore:
                 cursor.execute(statement)
-            assert _digest(cursor) == before, (site.sid, "restore digest mismatch")
+            assert _digest(cursor) == before, (repr(site), "restore digest mismatch")

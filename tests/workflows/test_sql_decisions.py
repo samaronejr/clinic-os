@@ -46,7 +46,7 @@ from identity.permission_support import (
     permission_context,
 )
 from patient_service_support import runtime_role
-from workflows.sql_sites import discover_sql_sites
+from workflows.sql_sites import discover_conditions, discover_sql_sites
 from workflows.test_tasks import spec
 
 if TYPE_CHECKING:
@@ -485,6 +485,259 @@ def test_every_derived_sql_decision_has_a_behavioural_case() -> None:
 @pytest.mark.parametrize("site", sorted(CASES))
 def test_sql_decision_refuses_and_allows(world: World, site: str) -> None:
     CASES[site](world)
+
+
+# --- One condition at a time ----------------------------------------------------
+# Each derived trigger condition gets an otherwise valid direct write in which
+# exactly that input is missing: the permission narrowed from the actor's
+# bundle, the helper's relation unmet, or the actor comparison forged.
+
+
+def _refuses(message: str) -> tuple[str, str]:
+    return (
+        "23514"
+        if message.startswith(("invalid", "definition", "run denied"))
+        else "42501",
+        message,
+    )
+
+
+def _bare_run(w: World) -> WorkflowRun:
+    """A run the manager started directly: no steps yet, so position 0 is free."""
+    with w.acting(w.manager):
+        return raw_run(w, w.manager)
+
+
+def _raw_step(
+    w: World, run: WorkflowRun, state: str = "pending"
+) -> Callable[[], object]:
+    return lambda: WorkflowStep.objects.create(
+        organization_id=w.graph.organization_a,
+        clinic_id=w.clinic,
+        run=run,
+        position=0,
+        state=state,
+    )
+
+
+def task_without_assign(w: World) -> None:
+    narrow(w, "nurse", "tasks.assign")
+    with w.acting(w.nurse):
+        refused(_refuses("invalid task"), lambda: raw_task(w, w.nurse))
+
+
+def assignment_to_an_invalid_owner(w: World) -> None:
+    outsider = User.objects.create(username=f"sintetico-outsider-{uuid4().hex}").pk
+    with w.acting(w.manager):
+        refused(
+            _refuses("task assignment denied"),
+            lambda: command(w.user_task.pk, owner_user_id=outsider),
+        )
+
+
+def assignment_to_a_role_without_reassign(w: World) -> None:
+    with w.acting(w.nurse):
+        mine = raw_task(w, w.nurse)
+        refused(
+            _refuses("task assignment denied"),
+            lambda: command(mine.pk, owner_role="nurse", state="assigned"),
+        )
+
+
+def start_without_complete(w: World) -> None:
+    narrow(w, "nurse", "tasks.complete")
+    with w.acting(w.nurse):
+        refused(
+            _refuses("task completion denied"),
+            lambda: command(w.user_task.pk, state="in_progress"),
+        )
+
+
+def escalate_without_assign(w: World) -> None:
+    with w.acting(w.nurse):
+        due = raw_task(w, w.nurse, due=-timedelta(hours=1))
+    narrow(w, "nurse", "tasks.assign")
+    with w.acting(w.nurse):
+        refused(
+            _refuses("invalid escalation"),
+            lambda: command(due.pk, escalated_at=timezone.now()),
+        )
+
+
+def comment_without_view(w: World) -> None:
+    with w.acting(w.nurse):
+        mine = raw_task(w, w.nurse)
+    narrow(w, "nurse", "tasks.view")
+    with w.acting(w.nurse):
+        refused(_refuses("comment denied"), lambda: raw_comment(w, mine.pk, w.nurse))
+
+
+def comment_on_anothers_open_task(w: World) -> None:
+    with w.acting(w.manager):
+        theirs = raw_task(w, w.manager)
+    with w.acting(w.receptionist):
+        refused(
+            _refuses("comment denied"),
+            lambda: raw_comment(w, theirs.pk, w.receptionist),
+        )
+
+
+def _manager_without(
+    permission: str, write: Callable[[World, UUID], object], message: str
+) -> Callable[[World], None]:
+    def case(w: World) -> None:
+        narrow(w, "clinic_manager", permission)
+        with w.acting(w.manager):
+            refused(_refuses(message), lambda: write(w, w.manager))
+
+    return case
+
+
+def transition_without_reassign(w: World) -> None:
+    narrow(w, "clinic_manager", "tasks.reassign")
+    with w.acting(w.manager):
+        refused(
+            _refuses("run transition denied"),
+            lambda: WorkflowRun.objects.filter(pk=w.run.pk).update(state="running"),
+        )
+
+
+def step_by_another_manager(w: World) -> None:
+    run = _bare_run(w)
+    with w.acting(w.other_manager):
+        refused(_refuses("step authority denied"), _raw_step(w, run))
+
+
+def _starter_step_without(permission: str) -> Callable[[World], None]:
+    def case(w: World) -> None:
+        run = _bare_run(w)
+        narrow(w, "clinic_manager", permission)
+        with w.acting(w.manager):
+            refused(_refuses("step authority denied"), _raw_step(w, run))
+
+    return case
+
+
+def _cancel_step_without(permission: str) -> Callable[[World], None]:
+    def case(w: World) -> None:
+        run = _bare_run(w)
+        narrow(w, "clinic_manager", permission)
+        with w.acting(w.other_manager):
+            refused(_refuses("step authority denied"), _raw_step(w, run, "cancelled"))
+
+    return case
+
+
+CONDITIONS: dict[str, Callable[[World], None]] = {
+    "invalid task#1:permission:tasks.assign": task_without_assign,
+    "invalid task#2:actor:NEW.created_by_id IS DISTINCT FROM actor": invalid_task,
+    "task assignment denied#1:helper:workflows_owner_valid": (
+        assignment_to_an_invalid_owner
+    ),
+    "task assignment denied#2:permission:tasks.reassign": assignment,
+    "task assignment denied#3:actor:NEW.owner_user_id IS NOT DISTINCT FROM actor": (
+        assignment_to_a_role_without_reassign
+    ),
+    "task completion denied#1:permission:tasks.complete": start_without_complete,
+    "task completion denied#2:helper:workflows_owned": completion,
+    "task cancellation denied#1:permission:tasks.reassign": cancellation,
+    "invalid escalation#1:permission:tasks.assign": escalate_without_assign,
+    "comment denied#1:actor:NEW.author_id IS DISTINCT FROM actor": comment_trigger,
+    "comment denied#2:permission:tasks.view": comment_without_view,
+    "comment denied#3:actor:t.created_by_id=actor": comment_on_anothers_open_task,
+    "comment denied#4:helper:workflows_owned": comment_trigger,
+    "comment denied#5:permission:tasks.reassign": comment_trigger,
+    "definition denied#1:actor:NEW.published_by_id IS DISTINCT FROM actor": (
+        definition_trigger
+    ),
+    "definition denied#2:permission:tasks.reassign": _manager_without(
+        "tasks.reassign", raw_definition, "definition denied"
+    ),
+    "definition denied#3:permission:tasks.view": _manager_without(
+        "tasks.view", raw_definition, "definition denied"
+    ),
+    "run denied#1:actor:NEW.started_by_id IS DISTINCT FROM actor": run_trigger,
+    "run denied#2:permission:tasks.reassign": _manager_without(
+        "tasks.reassign", raw_run, "run denied"
+    ),
+    "run denied#3:permission:tasks.assign": _manager_without(
+        "tasks.assign", raw_run, "run denied"
+    ),
+    "run denied#4:permission:tasks.view": _manager_without(
+        "tasks.view", raw_run, "run denied"
+    ),
+    "run transition denied#1:permission:tasks.reassign": transition_without_reassign,
+    "run transition denied#2:permission:tasks.assign": run_transition,
+    "step authority denied#1:actor:run.started_by_id=actor": step_by_another_manager,
+    "step authority denied#2:permission:tasks.reassign": _starter_step_without(
+        "tasks.reassign"
+    ),
+    "step authority denied#3:permission:tasks.assign": _starter_step_without(
+        "tasks.assign"
+    ),
+    "step authority denied#4:permission:tasks.view": _starter_step_without(
+        "tasks.view"
+    ),
+    "step authority denied#5:permission:tasks.reassign": _cancel_step_without(
+        "tasks.reassign"
+    ),
+    "step authority denied#6:permission:tasks.view": _cancel_step_without("tasks.view"),
+}
+
+
+def _condition_key(cid: str) -> str:
+    return cid.removeprefix(GUARD)
+
+
+def test_every_trigger_condition_has_a_missing_input_case() -> None:
+    """Fail closed: each derived branch condition has its own refusal case."""
+    assert {_condition_key(cid) for cid in discover_conditions()} == set(CONDITIONS)
+
+
+@pytest.mark.parametrize("condition", sorted(CONDITIONS))
+def test_trigger_condition_refuses_when_its_input_is_missing(
+    world: World, condition: str
+) -> None:
+    CONDITIONS[condition](world)
+
+
+@pytest.mark.parametrize(
+    ("surface", "ddl"),
+    [
+        (
+            "constraint",
+            "ALTER TABLE clinic_app.workflows_taskcomment ADD CONSTRAINT "
+            "workflows_plant CHECK (author_id = NULLIF(current_setting("
+            "'app.current_user_id', true), '')::uuid) NOT VALID",
+        ),
+        (
+            "default",
+            "ALTER TABLE clinic_app.workflows_task ALTER COLUMN owner_role SET "
+            "DEFAULT current_setting('app.current_user_id', true)",
+        ),
+        (
+            "view",
+            "CREATE VIEW clinic_app.workflows_plant AS SELECT t.id FROM "
+            "clinic_app.workflows_task t WHERE t.created_by_id = NULLIF("
+            "current_setting('app.current_user_id', true), '')::uuid",
+        ),
+        (
+            "helper",
+            "ALTER TABLE clinic_app.workflows_task ADD CONSTRAINT workflows_plant "
+            "CHECK (clinic_app.has_permission('tasks.view', clinic_id, NULL)) "
+            "NOT VALID",
+        ),
+    ],
+)
+def test_unclassified_actor_surface_fails_the_inventory(surface: str, ddl: str) -> None:
+    """Plants: an actor read in a constraint, default or view is refused."""
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(ddl)
+        with pytest.raises(AssertionError, match="unclassified actor-reading surface"):
+            discover_sql_sites()
+        transaction.set_rollback(True)
+    assert set(discover_sql_sites()) == set(CASES), surface
 
 
 def test_every_nonmanager_role_sees_and_comments_only_on_work_it_owns(

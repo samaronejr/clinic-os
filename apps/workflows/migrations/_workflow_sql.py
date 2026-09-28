@@ -160,12 +160,13 @@ BEGIN
    THEN RAISE EXCEPTION 'task identity is immutable' USING ERRCODE='23514'; END IF;
    IF ROW(NEW.owner_user_id, NEW.owner_role) IS DISTINCT FROM ROW(OLD.owner_user_id,
    OLD.owner_role) THEN
+    -- owner_valid decides tasks.assign; the UPDATE policy already limits a
+    -- non-manager's rows to own open tasks and owned work, so a self-claim
+    -- needs no second, unobservable copy of that visibility here.
     IF NOT clinic_app.workflows_owner_valid(NEW.clinic_id, NEW.owner_user_id,
     NEW.owner_role)
     OR NOT (clinic_app.has_permission('tasks.reassign',NEW.clinic_id,NULL)
-     OR (clinic_app.has_permission('tasks.assign',NEW.clinic_id,NULL)
-      AND NEW.owner_user_id=actor AND ((OLD.state='open' AND OLD.created_by_id=actor)
-       OR clinic_app.workflows_owned(OLD.clinic_id,OLD.owner_user_id,OLD.owner_role))))
+     OR NEW.owner_user_id IS NOT DISTINCT FROM actor)
     THEN RAISE EXCEPTION 'task assignment denied' USING ERRCODE='42501'; END IF;
    END IF;
    allowed := NEW.state=OLD.state OR (OLD.state='open' AND NEW.state='assigned')
@@ -267,8 +268,8 @@ BEGIN
      (OLD.state IN ('running', 'waiting') AND NEW.state IN ('running', 'waiting',
      'completed', 'failed', 'cancelled')))
    THEN RAISE EXCEPTION 'invalid run transition' USING ERRCODE='23514'; END IF;
+   -- tasks.view is decided by the UPDATE policy before any row reaches here.
    IF NOT clinic_app.has_permission('tasks.reassign',NEW.clinic_id,NULL)
-   OR NOT clinic_app.has_permission('tasks.view',NEW.clinic_id,NULL)
    OR (NEW.state<>'cancelled' AND NOT clinic_app.has_permission('tasks.assign',
    NEW.clinic_id, NULL))
    THEN RAISE EXCEPTION 'run transition denied' USING ERRCODE='42501'; END IF;

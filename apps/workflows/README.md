@@ -95,8 +95,11 @@ in the same migration. No machine-role table access is granted implicitly.
 Row visibility is decided by the SELECT/UPDATE policies (owner, role owner,
 creator, run starter); insert authority is decided once, by the BEFORE trigger,
 which PostgreSQL runs before any INSERT `WITH CHECK`. Every actor-reading SQL
-decision is derived from the catalog and exercised both ways in
-`tests/workflows/test_sql_decisions.py`.
+decision, and each permission, helper or actor comparison inside a trigger
+branch, is derived from the catalog and exercised both ways in
+`tests/workflows/test_sql_decisions.py`. Constraints, defaults, indexes and
+views in the workflows closure must not read the actor; the inventory fails
+closed if one does.
 Every new table is classified as restored tenant data in the recovery manifest;
 UUID primary keys introduce no sequences. Protected comment bytes ship encrypted
 from their first version; no plaintext conversion or backfill exists.
