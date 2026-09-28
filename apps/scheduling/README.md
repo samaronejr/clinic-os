@@ -186,6 +186,18 @@ race or a taken time with 409 and the current grid; with JavaScript off each
 appointment links to its own reschedule page. ADR-001 records why this HTMX
 variant, not a React island, was selected.
 
+The move POST answers with the manager grid, so `authorize_grid_move` requires
+the grid's own scope (`authorized_view_scope`, manager roles: owner,
+receptionist, clinic admin) before any write; a physician (own column only) or
+a role outside the agenda scope is refused like an unknown clinic and nothing
+moves. The booking's own rule then applies unchanged: a legacy booking moves
+under the manager roles, a service booking under `appointment.move`. Allowed
+through the grid is therefore the intersection: legacy = owner, receptionist,
+clinic admin; service = receptionist, clinic admin. Scheduler and clinic
+manager hold `appointment.move` but not the agenda scope, so they keep their
+other move paths and do not get this one; the grid shows a move hook only where
+the viewer's move would be accepted.
+
 ## Appointment reminders
 
 Booking (including patient and waitlist booking) atomically schedules eligible

@@ -28,6 +28,7 @@ from apps.scheduling.agenda_grid import (
     DayGrid,
     GridAppointment,
     GridColumn,
+    authorize_grid_move,
     view_day_grid,
 )
 from apps.scheduling.agenda_presenter import clinic_local_today
@@ -240,9 +241,15 @@ REFUSALS: Final[dict[type[Exception], Promise]] = {
 @privileged_totp_required(move_continuation)
 @require_http_methods(["POST"])
 def agenda_grid_move_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
-    """Move one appointment only from the revision the grid rendered."""
+    """Move one appointment only from the revision the grid rendered.
+
+    The grid's own scope is authorized before any write: a refusal (unknown or
+    foreign clinic, an actor outside the manager grid, an unknown appointment)
+    is the unknown-clinic 404 and changes nothing.
+    """
     appointment_id, revision, day, local_range = _inputs(request)
     try:
+        authorize_grid_move(clinic_id)
         move_appointment(
             clinic_id=clinic_id,
             appointment_id=appointment_id,

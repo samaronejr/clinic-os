@@ -19,6 +19,7 @@ from apps.audit.services import record_phase1_event
 from apps.identity.current_context import (
     CurrentActorError,
     list_active_clinic_physicians,
+    require_permission,
 )
 from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
@@ -125,6 +126,35 @@ def _columns(scope: AvailabilityViewScope, booked: set[UUID]) -> dict[UUID, str]
     return labels
 
 
+def _holds(permission: str, clinic_id: UUID) -> bool:
+    """Whether the actor holds ``permission``; move hooks follow the service rule.
+
+    A service booking moves under ``appointment.move`` (reschedule's rule), a
+    legacy one under the manager roles the grid scope already requires, so the
+    grid never offers a move the service would refuse.
+    """
+    try:
+        require_permission(permission, clinic_id=clinic_id)
+    except CurrentActorError:
+        return False
+    return True
+
+
+def authorize_grid_move(clinic_id: UUID) -> None:
+    """Refuse, before any write, an actor outside the grid's move scope.
+
+    The move POST belongs to the manager grid: its answer is that grid, so an
+    actor who cannot view it (``authorized_view_scope``) or sees only their own
+    column (a physician) is refused like an unknown clinic, and nothing moves.
+    Staff who hold ``appointment.move`` without the agenda scope (scheduler,
+    clinic manager) keep their other move paths; the grid is not one of them.
+    """
+    if type(clinic_id) is not UUID:
+        raise AvailabilityAccessDeniedError
+    if authorized_view_scope(clinic_id).practitioner_id is not None:
+        raise AvailabilityAccessDeniedError
+
+
 def view_day_grid(*, clinic_id: UUID, date: str) -> DayGrid:
     """Return one authorized clinic-local day by practitioner and room."""
     if type(clinic_id) is not UUID:
@@ -160,6 +190,7 @@ def view_day_grid(*, clinic_id: UUID, date: str) -> DayGrid:
         labels = _columns(scope, {row.practitioner_id for row in selected})
         practitioners = tuple(labels)
         can_move = scope.practitioner_id is None
+        moves_services = can_move and _holds("appointment.move", clinic_id)
         appointments = tuple(
             GridAppointment(
                 appointment_id=row.pk,
@@ -170,7 +201,9 @@ def view_day_grid(*, clinic_id: UUID, date: str) -> DayGrid:
                 end_local=format_local_minute(row.end_at, timezone_key),
                 status=row.status,
                 revision=row.revision,
-                movable=can_move and row.status == Appointment.Status.SCHEDULED,
+                movable=can_move
+                and row.status == Appointment.Status.SCHEDULED
+                and (row.service_type_id is None or moves_services),
             )
             for row in selected
         )
@@ -202,5 +235,6 @@ __all__ = (
     "DayGrid",
     "GridAppointment",
     "GridColumn",
+    "authorize_grid_move",
     "view_day_grid",
 )

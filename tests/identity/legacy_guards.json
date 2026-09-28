@@ -2489,6 +2489,18 @@
       ]
     },
     {
+      "symbol": "apps.scheduling.agenda_grid.authorize_grid_move",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.access.authorized_view_scope"
+      ],
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. Todo 23 review B1: the grid move POST requires the grid's manager scope before any write; tests/scheduling/test_agenda_grid.py runs every catalog role (plus no membership) against a legacy and a service booking and asserts no write and no audit on every refusal."
+    },
+    {
       "symbol": "apps.scheduling.agenda_grid.view_day_grid",
       "signals": [
         "denial"
@@ -2497,9 +2509,10 @@
       "enforced_by": [
         "apps.identity.current_context.list_active_clinic_physicians",
         "apps.identity.current_context.practitioner_display_label",
-        "apps.scheduling.access.authorized_view_scope"
+        "apps.scheduling.access.authorized_view_scope",
+        "clinic_app.has_permission"
       ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant. The todo 23 day grid reuses view_agenda's scope; tests/scheduling/test_agenda_grid.py covers unknown, foreign and malformed input."
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant. The todo 23 day grid reuses view_agenda's scope; tests/scheduling/test_agenda_grid.py covers unknown, foreign and malformed input. Move hooks on service bookings follow appointment.move through require_permission."
     },
     {
       "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_view",
@@ -2523,10 +2536,11 @@
       "enforced_by": [
         "apps.identity.otp.is_privileged_user",
         "apps.identity.otp.privileged_totp_required",
+        "apps.scheduling.access.authorized_view_scope",
         "apps.scheduling.patient_authority.authorized_appointment_clinic",
         "clinic_app.has_permission"
       ],
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The move POST calls move_appointment, whose authority is reschedule_appointment's; tests/scheduling/test_agenda_grid.py proves the two refuse exactly the same actors for every catalog role."
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The move POST calls move_appointment, whose authority is reschedule_appointment's; tests/scheduling/test_agenda_grid.py proves the two refuse exactly the same actors for every catalog role. The grid scope (authorized_view_scope, manager roles) is checked before move_appointment runs."
     },
     {
       "symbol": "apps.scheduling.agenda_queries._labels",

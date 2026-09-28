@@ -9,14 +9,16 @@ HTMX variant the slice selected (docs/adr/ADR-001).
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 from queue import Queue
 from threading import Barrier, Thread
 from typing import TYPE_CHECKING, Any, Final, cast
 from uuid import UUID, uuid4
 
 import pytest
+from apps.identity.current_context import MANAGER_ROLES
 from apps.identity.models import UserClinicRole
+from apps.identity.permissions import BUNDLES_V1
 from apps.scheduling.agenda_grid import DayGrid, GridAppointment, GridColumn
 from apps.scheduling.agenda_grid_views import (
     MOVED_MESSAGE,
@@ -35,11 +37,14 @@ from apps.scheduling.services import (
 )
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connections
+from django.test import Client
 from django.utils.translation import gettext
 
+from auth.stepup_test_support import create_role_actor
 from identity.permission_support import permission_actor, permission_context
 from otp_test_support import runtime_role
 from patient_http_support import audit_event_types, receptionist_client
+from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from scheduling.appointment_http_support import (
     AGENDA_VIEWED_EVENT,
     APPOINTMENT_RESCHEDULED_EVENT,
@@ -52,10 +57,11 @@ from scheduling.appointment_service_support import (
     seed_appointment_setup,
 )
 from scheduling.availability_http_support import FUTURE_DATE, LocalWindow, seed_block
+from scheduling.test_resource_role_matrix import _verified_client
+from scheduling.test_resource_rules import book
+from scheduling.test_resources import _catalog
 
 if TYPE_CHECKING:
-    from django.test import Client
-
     from rbac_fixtures import RbacGraph
     from scheduling.appointment_service_support import AppointmentSetup
 
@@ -499,3 +505,129 @@ def test_grid_refuses_unknown_clinics_and_malformed_days_identically(
     ]
     assert _refusal_body(foreign) == _refusal_body(unknown)
     assert _refusal_body(malformed) == _refusal_body(unknown)
+
+
+# --------------------------------------------------------------------------
+# HTTP role matrix: legacy and service bookings, every catalog role (review B1)
+# --------------------------------------------------------------------------
+
+GRID_ROLES: Final = frozenset(str(role) for role in MANAGER_ROLES)
+MOVE_HOLDERS: Final = frozenset(
+    role for role, bundle in BUNDLES_V1.items() if "appointment.move" in bundle
+)
+RESCHEDULED: Final = APPOINTMENT_RESCHEDULED_EVENT
+
+
+def _matrix_world(graph: RbacGraph) -> tuple[AppointmentSetup, dict[str, Appointment]]:
+    setup = seed_appointment_setup(graph)
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        legacy = create_synthetic_appointment(setup)
+        service = book(setup, _catalog(setup), start="11:00")
+        legacy.refresh_from_db()
+        service.refresh_from_db()
+    assert service.service_type_id is not None
+    assert legacy.service_type_id is None
+    return setup, {"legacy": legacy, "service": service}
+
+
+def _matrix_payload(booked: Appointment, start: str) -> dict[str, str]:
+    minutes = int((booked.end_at - booked.start_at).total_seconds() // 60)
+    return {
+        "appointment_id": str(booked.pk),
+        "expected_revision": str(booked.revision),
+        "day": DAY,
+        "start": start,
+        "duration": str(minutes),
+    }
+
+
+def _state(
+    setup: AppointmentSetup, booked: Appointment
+) -> tuple[datetime, datetime, int]:
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        row = Appointment.objects.get(pk=booked.pk)
+    return row.start_at, row.end_at, row.revision
+
+
+def _role_client(graph: RbacGraph, role: str) -> Client:
+    if role == "none":
+        client = Client()
+        with runtime_role():
+            assert client.login(
+                username=graph.no_membership_username, password=RBAC_RAW_CREDENTIAL
+            )
+        return client
+    return _verified_client(create_role_actor(graph, UserClinicRole.Role(role)))
+
+
+@pytest.mark.usefixtures("resource_clock")
+@pytest.mark.parametrize("role", [*UserClinicRole.Role.values, "none"])
+def test_grid_move_refuses_every_role_outside_scope_before_any_write(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    """Allowed = grid (manager) scope AND the booking's own move authority.
+
+    Legacy bookings move under the manager roles; service bookings under
+    appointment.move. Every other role gets the unknown-clinic 404 on both the
+    HTMX and the native POST, with no cookie, no write and no audit row.
+    """
+    setup, bookings = _matrix_world(rbac_graph)
+    client = _role_client(rbac_graph, role)
+    targets = {"legacy": "08:00", "service": "10:30"}
+    allowed = {
+        "legacy": role in GRID_ROLES,
+        "service": role in GRID_ROLES and role in MOVE_HOLDERS,
+    }
+    before_audit = audit_event_types(rbac_graph, setup.actor_id).count(RESCHEDULED)
+    with runtime_role():
+        # The first request after sign-in may rotate the session; refuse after it.
+        client.get("/auth/protected/")
+        baseline = client.post(
+            _move(uuid4()), _matrix_payload(bookings["legacy"], "08:00")
+        )
+    # A member gets the unknown-clinic 404; an actor with no membership at all
+    # is refused earlier by the tenant middleware (403), for every clinic.
+    assert baseline.status_code == (403 if role == "none" else 404), role
+    assert "sessionid" not in baseline.cookies, role
+    moved = 0
+    for kind, booked in bookings.items():
+        before = _state(setup, booked)
+        payload = _matrix_payload(booked, targets[kind])
+        with runtime_role():
+            hx = client.post(_move(setup.clinic_id), payload, HTTP_HX_REQUEST="true")
+        if allowed[kind]:
+            assert hx.status_code == 200, (role, kind, hx.status_code)
+            assert _state(setup, booked)[2] == before[2] + 1, (role, kind)
+            moved += 1
+            continue
+        with runtime_role():
+            native = client.post(_move(setup.clinic_id), payload)
+        for response in (hx, native):
+            assert response.status_code == baseline.status_code, (role, kind)
+            assert _refusal_body(response) == _refusal_body(baseline), (role, kind)
+            assert set(response.cookies) == set(baseline.cookies), (role, kind)
+        assert _state(setup, booked) == before, (role, kind)
+    after_audit = audit_event_types(rbac_graph, setup.actor_id).count(RESCHEDULED)
+    assert after_audit - before_audit == moved, role
+    assert moved == sum(allowed.values()), role
+
+
+def test_matrix_expectations_are_the_live_catalog() -> None:
+    # Derived from the catalog, cross-checked against the review's finding:
+    # scheduler and clinic_manager hold appointment.move without grid scope.
+    assert frozenset({"scheduler", "clinic_manager"}) <= MOVE_HOLDERS - GRID_ROLES
+    assert {"owner", "receptionist", "clinic_admin"} == GRID_ROLES
+
+
+def test_owner_sees_no_move_hook_on_a_service_booking_it_cannot_move(
+    rbac_graph: RbacGraph, resource_clock: object
+) -> None:
+    del resource_clock
+    setup, bookings = _matrix_world(rbac_graph)
+    owner = create_role_actor(rbac_graph, UserClinicRole.Role.OWNER)
+    client = _verified_client(owner)
+    with runtime_role():
+        page = client.get(_grid(setup.clinic_id, DAY))
+    assert page.status_code == 200
+    assert f'data-appointment="{bookings["legacy"].pk}"'.encode() in page.content
+    assert f'data-appointment="{bookings["service"].pk}"'.encode() not in page.content
