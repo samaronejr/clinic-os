@@ -2616,3 +2616,44 @@ msgstr "A reserva deste horário expirou. Escolha o horário novamente."
 
 msgid "This appointment changed meanwhile. Reload before trying again."
 msgstr "Esta consulta mudou enquanto isso. Recarregue antes de tentar novamente."
+
+msgid "Agenda grid · Clinic OS"
+msgstr "Grade da agenda · Clinic OS"
+
+msgid "See the clinic-local day by practitioner and room, and move appointments without exposing patient identifiers in the address bar."
+msgstr "Veja o dia no horário da clínica por médico e sala, e reagende consultas sem expor identificadores de pacientes na barra de endereço."
+
+msgid "Grid"
+msgstr "Grade"
+
+msgid "Move appointment"
+msgstr "Reagendar consulta"
+
+msgid "New start time"
+msgstr "Novo horário de início"
+
+msgid "Only this practitioner's free times are listed. The room is checked when you confirm."
+msgstr "Só aparecem os horários livres deste médico. A sala é conferida quando você confirmar."
+
+msgid "Moving…"
+msgstr "Reagendando…"
+
+msgid "Move"
+msgstr "Reagendar"
+
+msgid "Busy"
+msgstr "Ocupado"
+
+msgid "To move an appointment, drag it to a free time, or select it and press M."
+msgstr "Para reagendar uma consulta, arraste-a até um horário livre ou selecione-a e pressione M."
+
+#, python-format
+msgid "Practitioners and rooms on %(day)s"
+msgstr "Médicos e salas em %(day)s"
+
+#, python-format
+msgid "Appointment moved to %(start)s."
+msgstr "Consulta reagendada para %(start)s."
+
+msgid "Someone else changed this appointment first. The grid shows their change; yours was not saved."
+msgstr "Outra pessoa alterou esta consulta antes. A grade mostra essa alteração; a sua não foi salva."

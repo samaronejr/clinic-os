@@ -2477,6 +2477,58 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
+      "symbol": "apps.scheduling.agenda_grid._columns",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. Managers get the active-physician catalog, a physician only their own label.",
+      "enforced_by": [
+        "apps.identity.current_context.list_active_clinic_physicians",
+        "apps.identity.current_context.practitioner_display_label"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.agenda_grid.view_day_grid",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.list_active_clinic_physicians",
+        "apps.identity.current_context.practitioner_display_label",
+        "apps.scheduling.access.authorized_view_scope"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant. The todo 23 day grid reuses view_agenda's scope; tests/scheduling/test_agenda_grid.py covers unknown, foreign and malformed input."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "apps.scheduling.access.authorized_view_scope"
+      ],
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The grid GET renders view_day_grid, whose scope is authorized_view_scope; refusals share the unknown-clinic 404."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_move_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "apps.scheduling.patient_authority.authorized_appointment_clinic",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The move POST calls move_appointment, whose authority is reschedule_appointment's; tests/scheduling/test_agenda_grid.py proves the two refuse exactly the same actors for every catalog role."
+    },
+    {
       "symbol": "apps.scheduling.agenda_queries._labels",
       "signals": [
         "denial"
@@ -3390,6 +3442,18 @@
       ],
       "kind": "data_operation",
       "reason": "W (machine) hold-expiry job over the worker_protocol projection; refuses human actors and patient sessions; each hold expires through expire(). No staff-role decision."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_rescheduling._reschedule",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The added denial only maps a clinic other than the appointment's to the unknown-appointment refusal before any staff decision."
     },
     {
       "symbol": "apps.scheduling.appointment_series._enrollment_patient",

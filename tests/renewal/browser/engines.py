@@ -700,6 +700,35 @@ def zoom_200(
     return context, zoomed
 
 
+CPU_CALIBRATION_JS: Final = """() => {
+  const started = performance.now();
+  let value = 0;
+  for (let index = 0; index < 4000000; index += 1) value = (value + index) % 7919;
+  return [performance.now() - started, value];
+}"""
+
+
+def throttle_cpu(page: Page, rate: float) -> dict[str, object]:
+    """Slow ``page``'s renderer ``rate`` times; Chromium DevTools only.
+
+    Lighthouse's mobile profile runs at 4x CPU. Only Chromium exposes CPU
+    throttling (``Emulation.setCPUThrottlingRate``); any other engine fails
+    the caller instead of measuring unthrottled. The same fixed loop is timed
+    before and after, so the evidence shows the slowdown actually applied.
+    """
+    if _engine_of(page.context) != "chromium":
+        pytest.fail("CPU throttling needs Chromium DevTools")
+    before = evaluate_js(page, CPU_CALIBRATION_JS)[0]
+    session = page.context.new_cdp_session(page)
+    session.send("Emulation.setCPUThrottlingRate", {"rate": rate})
+    after = evaluate_js(page, CPU_CALIBRATION_JS)[0]
+    return {
+        "method": f"chromium Emulation.setCPUThrottlingRate rate={rate}",
+        "calibration_ms": [before, after],
+        "observed_ratio": after / before if before else None,
+    }
+
+
 def mobile_context(
     browser: Browser, profile: str, *, locale: str = "pt-BR"
 ) -> BrowserContext:

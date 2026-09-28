@@ -1,0 +1,26 @@
+{% load i18n %}{% comment %}
+Move dialog of the agenda grid (variant A): opened by static/js/agenda-grid.js
+from an appointment (click, Enter or M), filled with that practitioner's free
+times, and posted with the revision the grid rendered. JS off never reaches
+it; each appointment links to its own reschedule page instead.
+{% endcomment %}<dialog class="dialog agenda-move-dialog" id="agenda-move-dialog" aria-labelledby="agenda-move-title" aria-describedby="agenda-move-summary" data-dialog data-move-dialog data-text-offline="{% trans "Nothing was sent. Reconnect, then try again." %}">
+  <form class="dialog-form" method="post" action="{{ move_url }}" hx-post="{{ move_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-form>
+    {% csrf_token %}
+    <h2 class="dialog-title" id="agenda-move-title">{% trans "Move appointment" %}</h2>
+    <p class="dialog-body" id="agenda-move-summary" data-move-summary></p>
+    <input type="hidden" name="appointment_id" value="">
+    <input type="hidden" name="expected_revision" value="">
+    <input type="hidden" name="day" value="{{ grid.date|date:'Y-m-d' }}">
+    <input type="hidden" name="duration" value="">
+    <div class="field">
+      <label for="agenda-move-start">{% trans "New start time" %}</label>
+      <select id="agenda-move-start" name="start" aria-describedby="agenda-move-start-hint" data-move-start></select>
+      <p class="hint" id="agenda-move-start-hint">{% trans "Only this practitioner's free times are listed. The room is checked when you confirm." %}</p>
+    </div>
+    <p class="field-progress" data-move-progress role="status" hidden>{% trans "Moving…" %}</p>
+    <div class="dialog-actions">
+      <button type="submit" formmethod="dialog" value="cancel" class="button--quiet" data-dialog-close>{% trans "Cancel" %}</button>
+      <button type="submit" data-move-confirm>{% trans "Move" %}</button>
+    </div>
+  </form>
+</dialog>

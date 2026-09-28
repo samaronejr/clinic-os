@@ -43,7 +43,10 @@ from apps.scheduling.appointment_lifecycle import (
     mark_no_show,
     start,
 )
-from apps.scheduling.appointment_rescheduling import reschedule_appointment
+from apps.scheduling.appointment_rescheduling import (
+    move_appointment,
+    reschedule_appointment,
+)
 from apps.scheduling.appointment_series import (
     SeriesBooking,
     SeriesEdit,
@@ -124,6 +127,7 @@ __all__ = (
     "expire_due_holds",
     "hold",
     "mark_no_show",
+    "move_appointment",
     "prepare_booking",
     "reschedule_appointment",
     "retire_availability",

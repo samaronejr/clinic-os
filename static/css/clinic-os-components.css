@@ -804,6 +804,43 @@ a.resource-grid-free {
   color: var(--color-ink-soft);
 }
 
+/* Agenda grid (todo 23): a movable appointment can also be dragged, with a
+   mouse or pen, onto a free time in its own column; the move dialog stays
+   the primary path. */
+.agenda-grid-announce > .state-note {
+  margin-bottom: var(--space-4);
+}
+
+.agenda-grid-hint {
+  margin: 0 0 var(--space-4);
+}
+
+/* Practitioner and room columns share the width; a long professional
+   label wraps inside its header instead of widening its column, and below
+   the columns' minimum the region scrolls sideways. */
+.agenda-grid {
+  min-width: min-content;
+}
+
+.agenda-grid .resource-grid-cell[role="columnheader"] + [role="columnheader"] {
+  overflow-wrap: anywhere;
+}
+
+.resource-slot[data-move] {
+  cursor: grab;
+}
+
+.resource-slot.is-dragging {
+  border-style: dashed;
+  cursor: grabbing;
+}
+
+.resource-grid-cell.is-drop-target {
+  background: var(--color-selection);
+  outline: var(--line-2) dashed var(--color-primary-strong);
+  outline-offset: calc(-1 * var(--line-2));
+}
+
 /* ------------------------------------------------------------------ */
 /* Command palette                                                     */
 /* ------------------------------------------------------------------ */

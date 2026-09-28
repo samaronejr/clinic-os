@@ -33,6 +33,7 @@ def _private(path: Path) -> Path:
 def test_suite_registry_is_closed_and_registered_files_exist() -> None:
     assert set(runner.SUITES) == {
         "agenda",
+        "agenda-slice",
         "realtime",
         "amendments",
         "attachments",
@@ -64,6 +65,8 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "workspace",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
+    assert {"realtime", "agenda-slice"} == runner.REALTIME_SUITES
+    assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS
     assert set(runner.SUITES) >= runner.FIXTURE_SUITES

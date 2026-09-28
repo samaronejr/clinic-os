@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
+from uuid import UUID
 
 from django.db import transaction
 from django.utils import timezone
 
+from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentCreateInputError,
     AppointmentRescheduleInputError,
     AppointmentTerminalError,
     SlotConflict,
+)
+from apps.scheduling.appointment_lifecycle import (
+    REVISION_CONFLICT,
+    AppointmentLifecycleError,
 )
 from apps.scheduling.appointment_locking import (
     acquire_appointment_write_gates,
@@ -43,9 +49,10 @@ from apps.scheduling.timezones import parse_local_minute
 
 if TYPE_CHECKING:
     from datetime import datetime
-    from uuid import UUID
 
     from apps.identity.models import Clinic
+
+MAX_REVISION: Final = 2**31 - 1
 
 
 def _parse_range(
@@ -83,9 +90,53 @@ def reschedule_appointment(
     local_range: AppointmentLocalRange,
 ) -> Appointment:
     """Move one scheduled appointment under the shared write-lock order."""
+    return _reschedule(appointment_id, local_range)
+
+
+def move_appointment(
+    *,
+    clinic_id: UUID,
+    appointment_id: UUID,
+    expected_revision: int,
+    local_range: AppointmentLocalRange,
+) -> Appointment:
+    """Move one scheduled appointment only if nobody changed it since it was read.
+
+    The agenda grid's drag and move dialog carry the revision they rendered.
+    A stale revision refuses with ``revision_conflict`` and writes nothing, so
+    two receptionists moving the same appointment never lose an update. An
+    unknown appointment and one of another clinic share one denial.
+    """
+    if (
+        type(clinic_id) is not UUID
+        or type(expected_revision) is not int
+        or not 1 <= expected_revision <= MAX_REVISION
+    ):
+        raise AppointmentRescheduleInputError
+    return _reschedule(
+        appointment_id, local_range, clinic_id=clinic_id, revision=expected_revision
+    )
+
+
+def _require_movable(current: Appointment, revision: int | None) -> None:
+    if revision is not None and current.revision != revision:
+        raise AppointmentLifecycleError(REVISION_CONFLICT)
+    if current.status != Appointment.Status.SCHEDULED:
+        raise AppointmentTerminalError
+
+
+def _reschedule(
+    appointment_id: UUID,
+    local_range: AppointmentLocalRange,
+    *,
+    clinic_id: UUID | None = None,
+    revision: int | None = None,
+) -> Appointment:
     _validate_syntax(local_range)
     with transaction.atomic():
         discovered = discover_transition_appointment(appointment_id)
+        if clinic_id is not None and discovered.clinic_id != clinic_id:
+            raise AppointmentAccessDeniedError
         target = transition_write_target(discovered)
         acquire_appointment_write_gates(target=target)
         clinic = authorized_transition_clinic(discovered)
@@ -105,8 +156,7 @@ def reschedule_appointment(
             for_update=True,
         )
         start_at, end_at = _parse_range(clinic, local_range)
-        if current.status != Appointment.Status.SCHEDULED:
-            raise AppointmentTerminalError
+        _require_movable(current, revision)
         require_transition_practitioner(current)
         if len(rows.additional_availability) != 1:
             raise AppointmentAvailabilityError

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Agenda grid · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "See the clinic-local day by practitioner and room, and move appointments without exposing patient identifiers in the address bar." %}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<script src="{% static 'js/realtime.js' %}" defer></script>
+<script src="{% static 'js/components/resource-grid.js' %}" defer></script>
+<script src="{% static 'js/components/dialog.js' %}" defer></script>
+<script src="{% static 'js/agenda-grid.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="agenda-shell" id="agenda-shell" aria-labelledby="agenda-title" data-realtime-topic="clinic:{{ clinic_id }}:agenda" data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}" data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  <h1 id="agenda-title">{% trans "Clinic agenda" %}</h1>
+  {% for message in messages %}{% if "scheduling.appointment.moved" in message.tags %}{% include "includes/components/state.html" with state="success" message=message id="agenda-grid-moved" only %}{% endif %}{% endfor %}
+  <div class="agenda-bar">
+    <h2 class="agenda-period" id="agenda-range-title"><span class="agenda-period-text"><time datetime="{{ grid.date|date:'Y-m-d' }}">{{ grid.date|date:"l"|capfirst }}, {{ grid.date|date:"SHORT_DATE_FORMAT" }}</time></span></h2>
+    <nav class="agenda-nav" aria-label="{% trans "Agenda navigation" %}">
+      <ul class="agenda-steps">
+        <li><a class="button button--secondary" href="{{ previous_url }}">{% trans "Previous day" %}</a></li>
+        <li><a class="button button--quiet" href="{{ today_url }}">{% trans "Today" %}</a></li>
+        <li><a class="button button--secondary" href="{{ next_url }}">{% trans "Next day" %}</a></li>
+      </ul>
+      <ul class="agenda-views" aria-label="{% trans "Agenda view" %}">
+        <li><a class="button button--quiet" href="{{ list_url }}">{% trans "Day" %}</a></li>
+        <li><a class="button button--quiet" href="{{ grid_url }}" aria-current="page">{% trans "Grid" %}</a></li>
+      </ul>
+    </nav>
+  </div>
+  {% include "scheduling/partials/agenda_grid.html" %}
+  {% if grid.can_move %}{% include "scheduling/partials/agenda_move_dialog.html" %}{% endif %}
+</section>
+{% endblock %}

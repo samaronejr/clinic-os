@@ -80,6 +80,7 @@ SUITES: Final = {
     "encounter": ("tests/renewal/browser/test_encounter.py",),
     "end-to-end": ("tests/renewal/browser/test_end_to_end.py",),
     "agenda": ("tests/renewal/browser/test_agenda.py",),
+    "agenda-slice": ("tests/renewal/browser/test_agenda_slice.py",),
     "realtime": ("tests/renewal/browser/test_realtime.py",),
     "availability": ("tests/renewal/browser/test_availability.py",),
     "contacts": ("tests/renewal/browser/test_contacts.py",),
@@ -101,6 +102,7 @@ SUITES: Final = {
 FIXTURE_SUITES: Final = frozenset(
     {
         "agenda",
+        "agenda-slice",
         "realtime",
         "clinic-settings",
         "billing",
@@ -130,6 +132,8 @@ FIXTURE_SUITES: Final = frozenset(
         "workspace",
     }
 )
+# Suites served through the task-owned Redis, SSE process and same-origin proxy.
+REALTIME_SUITES: Final = frozenset({"realtime", "agenda-slice"})
 # Suites that exercise the synthetic room provider through the real outbox.
 VIDEO_SUITES: Final = frozenset(
     {
@@ -929,7 +933,10 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         }
         extra_processes.enter_context(
             realtime_broker(
-                repository, server_environment, run_root, enabled=suite == "realtime"
+                repository,
+                server_environment,
+                run_root,
+                enabled=suite in REALTIME_SUITES,
             )
         )
         try:
@@ -948,7 +955,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     server_environment,
                     run_root,
                     port,
-                    enabled=suite == "realtime",
+                    enabled=suite in REALTIME_SUITES,
                 )
             )
             base_url = f"http://127.0.0.1:{port_for_browser}"

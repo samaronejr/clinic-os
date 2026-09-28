@@ -1,0 +1,39 @@
+{% load i18n clinic_locale %}{% comment %}
+Multi-resource day grid (todo 23 slice, variant A). One column per
+practitioner, then one per room; rows are clinic-local half hours. Every
+appointment is a link to its own reschedule page, so the grid works with
+JavaScript off. static/js/agenda-grid.js adds drag-to-move and the M move
+dialog; static/js/components/resource-grid.js adds the roving tab stop.
+The data-* attributes carry only opaque ids, revisions and times. Swaps
+settle at 0 ms: HTMX installs the new grid's realtime trigger when it
+settles, so a hint landing inside a settle delay would otherwise be lost.
+The move outcome lives in #agenda-grid-announce, outside the refetched
+region, so the realtime echo of the user's own move cannot erase it.
+{% endcomment %}<div class="agenda-grid-announce" id="agenda-grid-announce" aria-live="polite">{% if notice %}{% if notice_tone == "success" %}{% include "includes/components/state.html" with state="success" message=notice id="agenda-grid-notice" only %}{% else %}{% trans "Appointment not changed" as refused_title %}{% include "includes/components/state.html" with state="conflict" title=refused_title message=notice id="agenda-grid-notice" only %}{% endif %}{% endif %}</div>
+<div id="agenda-grid-results" class="agenda-grid-results" hx-get="{{ grid_url }}" hx-trigger="rt:agenda from:body, rt:poll from:body" hx-select="#agenda-grid-results" hx-swap="outerHTML settle:0ms" hx-sync="this:replace" data-agenda-grid data-day="{{ grid.date|date:'Y-m-d' }}">
+  <p class="agenda-status" id="agenda-grid-status" role="status">{% blocktrans count total=grid.appointments|length %}{{ total }} appointment on this day.{% plural %}{{ total }} appointments on this day.{% endblocktrans %}</p>
+  {% if grid.can_move %}<p class="hint agenda-grid-hint" id="agenda-grid-hint">{% trans "To move an appointment, drag it to a free time, or select it and press M." %}</p>{% endif %}
+  <div class="resource-grid-wrap">
+    <p class="panel-title" id="agenda-grid-caption">{% blocktrans with day=grid.date|date:"SHORT_DATE_FORMAT" %}Practitioners and rooms on {{ day }}{% endblocktrans %}</p>
+    <div class="resource-grid-scroll" role="region" aria-labelledby="agenda-grid-caption" tabindex="-1">
+      <div class="resource-grid agenda-grid" id="agenda-grid" role="grid" aria-labelledby="agenda-grid-caption"{% if grid.can_move %} aria-describedby="agenda-grid-hint"{% endif %} aria-rowcount="{{ rows|length|add:1 }}" data-resource-grid>
+        <div class="resource-grid-row resource-grid-head" role="row">
+          <span class="resource-grid-cell" role="columnheader">{% trans "Time" %}</span>
+          {% for column in grid.columns %}<span class="resource-grid-cell agenda-grid-head--{{ column.kind }}" role="columnheader"><span>{{ column.label }}{% if column.kind == "room" %}<span class="resource-slot-meta"> · {% trans "Room" %}</span>{% endif %}</span></span>{% endfor %}
+        </div>
+        {% for row in rows %}
+        <div class="resource-grid-row" role="row">
+          <span class="resource-grid-cell" role="rowheader"><time>{{ row.time }}</time></span>
+          {% for cell in row.cells %}
+          <div class="resource-grid-cell" role="gridcell" data-grid-cell data-slot="{{ row.time }}"{% if cell.column.kind == "practitioner" %} data-column="{{ cell.column.column_id }}"{% endif %}{% if cell.kind == "free" %} data-free{% endif %}>
+            {% if cell.kind == "booked" %}{% for item in cell.appointments %}{% if grid.can_move %}<a class="resource-slot{% if item.status != "scheduled" %} resource-slot--done{% endif %}" href="{% url 'scheduling:appointment-reschedule' item.appointment_id %}"{% if item.movable and cell.column.kind == "practitioner" %} draggable="false" data-move data-appointment="{{ item.appointment_id }}" data-revision="{{ item.revision }}" data-start="{{ item.start_time }}" data-duration="{{ item.duration_minutes }}"{% endif %}>{% else %}<span class="resource-slot{% if item.status != "scheduled" %} resource-slot--done{% endif %}">{% endif %}<strong>{{ item.patient_display_name }}</strong><span class="resource-slot-meta">{{ item.start_time }}–{{ item.end_time }}{% if cell.column.kind == "room" %} · {% for pk, label in names.items %}{% if pk == item.practitioner_id %}{{ label }}{% endif %}{% endfor %}{% endif %}{% if item.status != "scheduled" %} · {{ item.status|appointment_label }}{% endif %}</span>{% if grid.can_move %}</a>{% else %}</span>{% endif %}{% endfor %}
+            {% elif cell.kind == "continues" %}<span class="resource-grid-free">{% trans "Busy" %}</span>
+            {% else %}<span class="resource-grid-free">{% trans "Free" %}<span class="visually-hidden"> {{ row.time }}, {{ cell.column.label }}</span></span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
