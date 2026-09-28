@@ -1,5 +1,15 @@
 """Scheduling adapters for the behavioural classification census (todo 21).
 
+configuration_clinic, authorized_service_clinic, authorized_transition_clinic
+and service_practitioners decide by an ordered OR of permissions (appointment.book
+then configuration.organization; book then book_own with actor equality; move
+then move_own; the SQL projection's five terms). Todo 7's root-delegation model
+takes one deciding permission, so they are certified as direct observed
+boundaries instead: the census actor is refused exactly (or sees nobody), and
+the observer must see the authority channel reached. Their per-role and
+per-permission decisions are executed in tests/scheduling
+(test_resource_role_matrix, test_resource_permission_identity).
+
 booking_selection, _template and require_open_window run after their callers'
 permission boundary. They read the clinic row and the tenant setting through
 RLS, so they are observed boundaries rather than nonstaff exemptions: the
@@ -15,7 +25,7 @@ from uuid import uuid4
 
 from apps.identity.models import Clinic
 from apps.scheduling import resource_booking, resource_services
-from apps.scheduling.models import AvailabilityTemplate, ServiceType
+from apps.scheduling.models import Appointment, AvailabilityTemplate, ServiceType
 from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.resource_services import (
     ClosureInput,
@@ -109,7 +119,33 @@ def scheduling_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
     with owner_context(graph.organization_a):
         clinic = Clinic.objects.get(pk=clinic_id)
     practitioner = graph.physician
+    # A service booking of the clinic; the transition guard reads only these.
+    booked = Appointment(
+        clinic_id=clinic_id, service_type_id=service.pk, practitioner_id=practitioner
+    )
     return [
+        DifferentialProbe(
+            "apps.scheduling.resource_services.configuration_clinic",
+            lambda: resource_services.configuration_clinic(clinic_id),
+            expected=False,
+        ),
+        DifferentialProbe(
+            "apps.scheduling.resource_booking.authorized_service_clinic",
+            lambda: resource_booking.authorized_service_clinic(clinic_id, practitioner),
+            expected=False,
+        ),
+        DifferentialProbe(
+            "apps.scheduling.resource_booking.authorized_transition_clinic",
+            lambda: resource_booking.authorized_transition_clinic(booked),
+            expected=False,
+        ),
+        DifferentialProbe(
+            "apps.scheduling.resource_booking.service_practitioners",
+            lambda: resource_booking.service_practitioners(clinic_id),
+            # Membership-free actor: the projection lists nobody.
+            decision=lambda rows: rows != (),
+            expected=False,
+        ),
         DifferentialProbe(
             "apps.scheduling.resource_booking.booking_selection",
             lambda: resource_booking.booking_selection(

@@ -2806,11 +2806,11 @@
         "tenant_boundary"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
+        "apps.scheduling.resource_services.configuration_clinic",
         "apps.tenancy.db.tenant_context",
-        "clinic_app.has_permission",
-        "clinic_app.user_has_org"
+        "clinic_app.scheduling_service_practitioners"
       ]
     },
     {
@@ -2819,10 +2819,11 @@
         "denial",
         "scope_name"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
-      "enforced_by": [
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "reason": "Decides service booking by appointment.book, then appointment.book_own with the actor as practitioner, through require_permission. Multi-permission, so not a single-permission root delegation: certified as an observed boundary (tests/identity/nonstaff_scheduling_probes.py: exact refusal, authority channel reached). Per-role and per-permission decisions are executed in tests/scheduling/test_resource_role_matrix.py and test_resource_permission_identity.py.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.resource_booking.authorized_service_clinic#observed"
       ]
     },
     {
@@ -2831,13 +2832,11 @@
         "denial",
         "scope_name"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
-      "enforced_by": [
-        "apps.identity.current_context.require_current_actor_clinic_roles",
-        "apps.scheduling.access.authorized_appointment_manager_clinic",
-        "apps.scheduling.patient_authority.authorized_appointment_clinic",
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "reason": "Decides service-booking transitions by appointment.move, then appointment.move_own with the actor as practitioner; legacy and patient bookings keep their existing boundary. Multi-permission, so not a single-permission root delegation: certified as an observed boundary (tests/identity/nonstaff_scheduling_probes.py: exact refusal, authority channel reached). Per-role and per-permission decisions are executed in tests/scheduling/test_resource_role_matrix.py and test_resource_permission_identity.py.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.resource_booking.authorized_transition_clinic#observed"
       ]
     },
     {
@@ -2846,14 +2845,16 @@
         "scope_name"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
         "apps.identity.current_context._active_clinic_physicians",
         "apps.identity.current_context.list_active_clinic_physicians",
         "apps.identity.current_context.require_current_actor_clinic_roles",
         "apps.scheduling.appointment_values.require_active_practitioner",
-        "clinic_app.has_permission",
-        "clinic_app.list_active_clinic_physicians"
+        "apps.scheduling.resource_booking.service_practitioners",
+        "clinic_app.list_active_clinic_physicians",
+        "clinic_app.patient_booking_practitioner",
+        "clinic_app.scheduling_service_practitioners"
       ]
     },
     {
@@ -2861,10 +2862,11 @@
       "signals": [
         "resolver"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
-      "enforced_by": [
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "reason": "Returns the professional projection decided in SQL by scheduling_service_practitioners (five has_permission terms, own terms by actor equality). Multi-permission, so not a single-permission root delegation: certified as an observed boundary (tests/identity/nonstaff_scheduling_probes.py: exact refusal, authority channel reached). Per-role and per-permission decisions are executed in tests/scheduling/test_resource_role_matrix.py and test_resource_permission_identity.py.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.resource_booking.service_practitioners#observed"
       ]
     },
     {
@@ -2884,10 +2886,11 @@
       "signals": [
         "denial"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
-      "enforced_by": [
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "reason": "Decides scheduling configuration by an ordered OR (appointment.book, then configuration.organization) through require_permission. Multi-permission, so not a single-permission root delegation: certified as an observed boundary (tests/identity/nonstaff_scheduling_probes.py: exact refusal, authority channel reached). Per-role and per-permission decisions are executed in tests/scheduling/test_resource_role_matrix.py and test_resource_permission_identity.py.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.resource_services.configuration_clinic#observed"
       ]
     },
     {
@@ -2896,9 +2899,10 @@
         "denial"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
-        "clinic_app.has_permission"
+        "apps.scheduling.resource_services.configuration_clinic",
+        "clinic_app.scheduling_service_practitioners"
       ]
     },
     {
@@ -2908,9 +2912,9 @@
         "resolver"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
-        "clinic_app.has_permission"
+        "clinic_app.scheduling_service_practitioners"
       ]
     },
     {
@@ -2919,9 +2923,10 @@
         "denial"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
-        "clinic_app.has_permission"
+        "apps.scheduling.resource_services.configuration_clinic",
+        "clinic_app.scheduling_service_practitioners"
       ]
     },
     {
@@ -2942,9 +2947,9 @@
         "denial"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
-        "clinic_app.has_permission"
+        "apps.scheduling.resource_services.configuration_clinic"
       ]
     },
     {
@@ -2965,11 +2970,13 @@
         "decorator"
       ],
       "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The derived role-refusal matrix in tests/scheduling/test_resource_role_matrix.py executes every stored role through this boundary.",
+      "reason": "Consumer of the named executable scheduling boundaries (observed and executed per role and per permission); not a root delegation, because those boundaries decide by an ordered OR of permissions.",
       "enforced_by": [
         "apps.identity.otp.is_privileged_user",
         "apps.identity.otp.privileged_totp_required",
-        "clinic_app.has_permission"
+        "apps.scheduling.resource_booking.service_practitioners",
+        "apps.scheduling.resource_services.configuration_clinic",
+        "clinic_app.scheduling_service_practitioners"
       ]
     },
     {
@@ -3582,8 +3589,12 @@
     "apps.scheduling.patient_authority.require_patient_booking_scope#observed",
     "apps.scheduling.patient_booking._slot#observed",
     "apps.scheduling.patient_booking.patient_appointment#observed",
+    "apps.scheduling.resource_booking.authorized_service_clinic#observed",
+    "apps.scheduling.resource_booking.authorized_transition_clinic#observed",
     "apps.scheduling.resource_booking.booking_selection#observed",
+    "apps.scheduling.resource_booking.service_practitioners#observed",
     "apps.scheduling.resource_services._template#observed",
+    "apps.scheduling.resource_services.configuration_clinic#observed",
     "apps.scheduling.resource_services.require_open_window#observed",
     "apps.scheduling.transition_views.appointment_cancel_view",
     "apps.scheduling.transition_views.appointment_reschedule_view",
