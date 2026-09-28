@@ -89,6 +89,7 @@ class Function:
     extension: str | None
     library: str | None
     native_types: bool
+    defaults: str | None
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,8 @@ class Catalog:
                          JOIN pg_type t ON t.oid=arg.oid
                          JOIN pg_namespace tn ON tn.oid=t.typnamespace
                          WHERE tn.nspname<>'pg_catalog'
-                       )
+                       ),
+                       pg_get_expr(p.proargdefaults, 0)
                 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                 JOIN pg_language l ON l.oid=p.prolang
                 JOIN pg_roles r ON r.oid=p.proowner
@@ -373,14 +375,23 @@ class Catalog:
             return self._relation(oid, bypass=bypass, seen=seen)
         return Reads()
 
+    def _defaults(self, function: Function, *, bypass: bool, seen: set[Node]) -> Reads:
+        # Parameter defaults are evaluated in the caller's query, so their
+        # reads count with the caller's RLS context, not the definer's.
+        if not function.defaults:
+            return Reads()
+        return self._statement("SELECT " + function.defaults, bypass=bypass, seen=seen)
+
     def _function(self, oid: int, *, bypass: bool, seen: set[Node]) -> Reads:
         function = self.functions[oid]
+        caller_bypass = bypass
         bypass = function.bypass_rls if function.security_definer else bypass
         node = ("function", oid, bypass)
         if node in seen:
             return Reads()
         seen.add(node)
         result = Reads(functions={oid})
+        result.merge(self._defaults(function, bypass=caller_bypass, seen=seen))
         if not function.native_types:
             result.opaque.add("uninspectable function signature " + function.name)
         if function.language in {"c", "internal"}:

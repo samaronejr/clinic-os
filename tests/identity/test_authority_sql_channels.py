@@ -182,6 +182,18 @@ def test_view_setting_read_is_parsed_from_the_view_definition(
     assert ("guc", "app.current_user_id") in observer.touches
 
 
+def test_default_argument_setting_read_is_in_the_closure(rbac_graph: RbacGraph) -> None:
+    # A parameter DEFAULT is evaluated in the caller, outside the body text.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE FUNCTION pg_temp.t6_default_reader("
+            "actor text DEFAULT current_setting('app.current_user_id', true))"
+            " RETURNS text LANGUAGE sql STABLE AS $f$ SELECT actor $f$"
+        )
+    observer = _observe(rbac_graph, "SELECT pg_temp.t6_default_reader()")
+    assert ("guc", "app.current_user_id") in observer.touches
+
+
 @pytest.mark.parametrize("relation", ["pg_settings", "pg_catalog.pg_settings"])
 def test_setting_enumeration_is_opaque(rbac_graph: RbacGraph, relation: str) -> None:
     observer = _observe(

@@ -48,6 +48,7 @@ from django.db import (
 from psycopg import sql
 
 from identity.authority_catalog import Catalog, Reads
+from identity.machine_gate import EARLY_RETURN, NOT_GATED, member_gate
 from identity.nonstaff_states import (
     ReplayScope,
     StaffState,
@@ -100,7 +101,9 @@ REFUSAL_HELPER_SETTINGS = frozenset(
     {"app.current_patient_session", "app.current_user_id", "transaction_isolation"}
 )
 # The only settings any other member may read, with the helper sealed: its own
-# machine scope. Actor, patient and invented settings all fail closed.
+# machine scope. Actor, patient and invented settings all fail closed. This is
+# a cross-check; the rule is the principal_scope gate (machine_gate), because
+# these two settings are themselves caller-settable on the agent login.
 MEMBER_SETTINGS = frozenset({"app.current_principal", "app.current_tenant"})
 MACHINE_SQL_OPAQUE = {"opaque function pg_catalog.pg_has_role"}
 # Cross-check only (the rule is machine_violations). Actor GUC cells: cleared;
@@ -806,6 +809,23 @@ def _member_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     return problems
 
 
+def _gate_violations(name: str) -> list[str]:
+    """The member's own result must be gated by principal_scope (machine_gate)."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT l.lanname, p.prosrc, p.prorettype = 'boolean'::regtype"
+            " AND NOT p.proretset AND p.proargmodes IS NULL"
+            " FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace"
+            " JOIN pg_language l ON l.oid = p.prolang"
+            " WHERE n.nspname || '.' || p.proname = %s",
+            [name],
+        )
+        ((language, source, returns_boolean),) = cursor.fetchall()
+    return member_gate(
+        language=language, source=source, returns_boolean=returns_boolean
+    )
+
+
 def _closure_violations(catalog: SealedCatalog, reads: Reads) -> list[str]:
     problems = []
     if reads.relations & catalog.channels.relations:
@@ -827,10 +847,12 @@ def machine_violations(
 
     The refusal helper is the reviewed definition pinned by digest, reading
     exactly its principal tables and settings and no view. Every other member
-    must reach the helper and, with the helper sealed, read no setting outside
+    must have its result gated by principal_scope on its parsed body
+    (machine_gate), so no other input can widen a grant. As cross-checks, with
+    the helper sealed, it must reach the helper and read no setting outside
     MEMBER_SETTINGS, no view, and no staff authority channel, directly or
-    through policies, triggers or helper functions. Uninspectable reads,
-    including settings catalogs, fail closed.
+    through defaults, policies, triggers or helper functions. Uninspectable
+    reads, including settings catalogs, fail closed.
     """
     assert REFUSAL_HELPER in members, "refusal helper is not a registry member"
     result: dict[str, list[str]] = {}
@@ -845,7 +867,7 @@ def machine_violations(
             problems = _helper_violations(catalog, reads)
         else:
             reads = catalog.statement(statement)
-            problems = _member_violations(catalog, reads)
+            problems = _member_violations(catalog, reads) + _gate_violations(name)
         result[name] = problems + _closure_violations(catalog, reads)
     return result
 
@@ -865,7 +887,15 @@ PLANTED_VIEWS = """
     CREATE FUNCTION clinic_app.principal_actor_hint() RETURNS text
       LANGUAGE sql STABLE SET search_path=pg_catalog,clinic_app,pg_temp
       AS $f$ SELECT current_setting('app.current_user_id', true) $f$;
+    CREATE FUNCTION clinic_app.principal_default_hint(
+      actor text DEFAULT current_setting('app.current_user_id', true))
+      RETURNS text LANGUAGE sql STABLE
+      SET search_path=pg_catalog,clinic_app,pg_temp AS $f$ SELECT actor $f$;
 """
+MACHINE_GATE = (
+    "clinic_app.principal_scope(NULLIF(current_setting('app.current_principal',"
+    "true),'')::uuid, clinic)"
+)
 PLANTED_MEMBERS = {
     # Grants when the actor names a practitioner (review round 3, MY2).
     "practitioner_join": """
@@ -908,20 +938,69 @@ PLANTED_MEMBERS = {
         SELECT clinic_app.principal_scope(clinic, clinic) IS NOT NULL
           OR EXISTS (SELECT 1 FROM clinic_app.principal_settings_v s
             WHERE s.name = 'app.current_user_id' AND s.setting = clinic::text)""",
+    # The allowlisted, caller-settable principal GUC used as an identity, OR-ed
+    # around the gate (review round 5, A7).
+    "or_principal": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          OR EXISTS (SELECT 1 FROM clinic_app.scheduling_availabilityblock b
+            WHERE b.practitioner_id::text
+              = current_setting('app.current_principal', true))""",  # noqa: S608 - fixed plant SQL.
+    # Identity supplied as an argument, OR-ed around the gate (round 5, A2).
+    "or_argument": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          OR EXISTS (SELECT 1 FROM clinic_app.scheduling_appointment a
+            WHERE a.practitioner_id = clinic)""",  # noqa: S608 - fixed plant SQL.
+    # The actor through a helper's parameter DEFAULT, OR-ed (round 5, A6b).
+    "default_or": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          OR EXISTS (SELECT 1 FROM clinic_app.scheduling_appointment a
+            WHERE a.practitioner_id::text = clinic_app.principal_default_hint())""",  # noqa: S608 - fixed plant SQL.
+    # Gated, but a DEFAULT still reads the actor: the allowlist sees it.
+    "default_gated": f"""
+        SELECT {MACHINE_GATE} IS NOT NULL
+          AND clinic_app.principal_default_hint() = clinic::text""",
+    # Positive control: a gated SQL member is accepted.
+    "sql_gated": f"SELECT {MACHINE_GATE} IS NOT NULL AND clinic IS NOT NULL",
+}
+PLPGSQL_EARLY = """
+    IF current_setting('app.current_principal', true) IN (
+      SELECT b.practitioner_id::text FROM clinic_app.scheduling_availabilityblock b)
+    THEN RETURN true; END IF;"""
+PLPGSQL_MEMBER = """
+    DECLARE registered uuid;
+    BEGIN{early}
+     registered := {gate};
+     IF registered IS NULL THEN RETURN false; END IF;
+     RETURN true;
+    END"""
+PLANTED_PLPGSQL_MEMBERS = {
+    # An early RETURN true before the gate (review round 5).
+    "plpgsql_early_return": PLPGSQL_MEMBER.format(
+        early=PLPGSQL_EARLY, gate=MACHINE_GATE
+    ),
+    # Positive control: the same member without the early return.
+    "plpgsql_gated": PLPGSQL_MEMBER.format(early="", gate=MACHINE_GATE),
 }
 UNREACHED = "does not reach the refusal helper"
 SETTINGS = "reads settings outside the allowlist"
 OPAQUE = "uninspectable read"
 VIEWS = "reads views"
 PLANT_VIOLATIONS = {
-    "practitioner_join": {UNREACHED, SETTINGS},
-    "non_uuid": {UNREACHED, SETTINGS},
-    "actor_helper": {SETTINGS},
-    "settings_catalog": {OPAQUE},
-    "view_practitioner": {SETTINGS, VIEWS},
-    "patient_session": {SETTINGS},
-    "on_behalf_of": {SETTINGS},
-    "settings_view": {OPAQUE, VIEWS},
+    "practitioner_join": {UNREACHED, SETTINGS, NOT_GATED},
+    "non_uuid": {UNREACHED, SETTINGS, NOT_GATED},
+    "actor_helper": {SETTINGS, NOT_GATED},
+    "settings_catalog": {OPAQUE, NOT_GATED},
+    "view_practitioner": {SETTINGS, VIEWS, NOT_GATED},
+    "patient_session": {SETTINGS, NOT_GATED},
+    "on_behalf_of": {SETTINGS, NOT_GATED},
+    "settings_view": {OPAQUE, VIEWS, NOT_GATED},
+    "or_principal": {NOT_GATED},
+    "or_argument": {NOT_GATED},
+    "default_or": {SETTINGS, NOT_GATED},
+    "default_gated": {SETTINGS},
+    "sql_gated": set(),
+    "plpgsql_early_return": {EARLY_RETURN},
+    "plpgsql_gated": set(),
 }
 
 
@@ -929,16 +1008,18 @@ def _kinds(problems: list[str]) -> set[str]:
     return {problem.split(":", 1)[0] for problem in problems}
 
 
-@pytest.mark.parametrize("plant", sorted(PLANTED_MEMBERS))
+@pytest.mark.parametrize("plant", sorted(PLANTED_MEMBERS | PLANTED_PLPGSQL_MEMBERS))
 def test_planted_actor_reader_is_refused_by_construction(plant: str) -> None:
+    language = "plpgsql" if plant in PLANTED_PLPGSQL_MEMBERS else "sql"
+    body = (PLANTED_MEMBERS | PLANTED_PLPGSQL_MEMBERS)[plant]
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL ROLE clinic_resolver")
         cursor.execute(PLANTED_VIEWS)
         cursor.execute(
             "CREATE FUNCTION clinic_app.principal_extra(clinic uuid) RETURNS boolean"
-            " LANGUAGE sql VOLATILE SECURITY DEFINER"
+            f" LANGUAGE {language} VOLATILE SECURITY DEFINER"
             " SET search_path=pg_catalog,clinic_app,pg_temp"
-            f" AS $f$ {PLANTED_MEMBERS[plant]} $f$"
+            f" AS $f$ {body} $f$"
         )
         violations = machine_violations(
             SealedCatalog(), [*machine_members(), "clinic_app.principal_extra"]
