@@ -8,7 +8,14 @@ from uuid import UUID, uuid4
 from django.db import connection
 from psycopg import sql
 
-from identity.legacy_parity_support import LEGACY, MANAGERS, PHYSICIAN, Boundary
+from identity.legacy_parity_support import (
+    LEGACY,
+    MANAGERS,
+    PHYSICIAN,
+    Boundary,
+    sql_boolean_decision,
+    sql_rows_allow,
+)
 
 if TYPE_CHECKING:
     from identity.legacy_operational_boundaries import OperationalSubjects
@@ -26,7 +33,9 @@ def query(
             args,
         )
         rows = cursor.fetchall()
-    return rows == [(True,)] if boolean else bool(rows) and rows[0] != (None,)
+    if boolean:
+        return sql_boolean_decision(rows)
+    return sql_rows_allow(rows)
 
 
 def _bound_user(w: LegacyWorld, valid: bool, name: str) -> bool:

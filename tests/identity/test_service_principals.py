@@ -1655,9 +1655,9 @@ def _machine_decisions(
                 [str(actor or "")],
             )
             cursor.execute(statement, list(vector))
-            row = cursor.fetchone()
-            assert row is not None
-            return row[0]
+            (row,) = cursor.fetchall()
+            (value,) = row
+            return value
 
         for tenant_label, tenant in tenants.items():
             cursor.execute(
@@ -1821,11 +1821,11 @@ def test_machine_calls_leave_every_table_and_sequence_unchanged(
                 )
                 for name, vectors in calls.items():
                     for vector in vectors:
-                        row = agent.execute(
+                        (row,) = agent.execute(
                             _call(name, types[name]), list(vector)
-                        ).fetchone()
-                        assert row is not None
-                        outcomes[name].add(_granted(row[0]))
+                        ).fetchall()
+                        (value,) = row
+                        outcomes[name].add(_granted(value))
         after = _database_state(admin)
     # Both paths ran for every member: refusals, and grants as anti-vacuity.
     assert outcomes == {name: {False, True} for name in members}

@@ -46,7 +46,7 @@ from patient_service_support import runtime_role
 from renewal.test_encounters import draft, seed
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from apps.ehr.models import ClinicalDocumentVersion, SpecialtyTemplate
     from apps.scheduling.models import Appointment
@@ -146,6 +146,47 @@ def world(graph: RbacGraph, role: str) -> LegacyWorld:
 
 def has_rows(result: object) -> bool:
     return bool(result)
+
+
+type SqlCell = tuple[type[object], object]
+type SqlRows = tuple[SqlCell, ...]
+type SqlRowset = tuple[SqlRows, ...]
+
+
+def sql_rowset(rows: Sequence[tuple[object, ...]]) -> SqlRowset:
+    """Tag every cell with its runtime type, so Python equality coercion
+    (``1 == True``) cannot alias distinct SQL values into the same denial."""
+    return tuple(tuple((type(cell), cell) for cell in row) for row in rows)
+
+
+SQL_BOOLEAN_TRUE: SqlRowset = sql_rowset([(True,)])
+SQL_BOOLEAN_FALSE: SqlRowset = sql_rowset([(False,)])
+SQL_ROW_DENIALS: frozenset[SqlRowset] = frozenset(
+    {sql_rowset([]), sql_rowset([(None,)])}
+)
+
+
+def sql_boolean_decision(rows: Sequence[tuple[object, ...]]) -> bool:
+    """Exact scalar-boolean verdict: the whole rowset, its row count and its
+    value types. Allow is exactly ``[(True,)]``, denial exactly ``[(False,)]``;
+    anything else is a malformed decision and fails the probe outright."""
+    rowset = sql_rowset(rows)
+    assert rowset in {SQL_BOOLEAN_TRUE, SQL_BOOLEAN_FALSE}, (rows, rowset)
+    return rowset == SQL_BOOLEAN_TRUE
+
+
+def sql_rows_allow(rows: Sequence[tuple[object, ...]]) -> bool:
+    """Row-returning deny contract: a denied set-returning function yields the
+    empty rowset, or the supported nullable scalar sentinel ``[(None,)]`` as a
+    singleton. Nothing may follow that sentinel; every other rowset is data."""
+    return sql_rowset(rows) not in SQL_ROW_DENIALS
+
+
+def sql_count_allow(rows: Sequence[tuple[object, ...]]) -> bool:
+    """Exact single-int verdict for count resolvers: one row, one int value."""
+    (row,) = rows
+    (value,) = row
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
 def http_allowed(result: object) -> bool:

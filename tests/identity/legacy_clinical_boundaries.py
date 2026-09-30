@@ -15,7 +15,14 @@ from apps.retention import services as retention
 from django.db import connection
 from psycopg import sql
 
-from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, Boundary
+from identity.legacy_parity_support import (
+    ADMINS,
+    LEGACY,
+    MANAGERS,
+    PHYSICIAN,
+    Boundary,
+    sql_boolean_decision,
+)
 
 if TYPE_CHECKING:
     from identity.legacy_parity_support import LegacyWorld
@@ -45,8 +52,8 @@ def _sql(w: LegacyWorld, valid: bool, name: str) -> bool:
             sql.SQL("SELECT clinic_app.{}(%s)").format(sql.Identifier(name)),
             [w.encounter_for(valid)],
         )
-        row = cursor.fetchone()
-    return bool(row == (True,))
+        rows = cursor.fetchall()
+    return sql_boolean_decision(rows)
 
 
 def _projection(w: LegacyWorld, valid: bool, *, attachment: bool) -> bool:

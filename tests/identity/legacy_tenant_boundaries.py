@@ -32,7 +32,7 @@ def exercise_tenant_boundaries(w: LegacyWorld) -> None:
                     connection.cursor() as cursor,
                 ):
                     cursor.execute("SELECT current_setting('app.current_tenant')")
-                    assert cursor.fetchone() == (str(organization),)
+                    assert cursor.fetchall() == [(str(organization),)]
             except TenantAccessDeniedError:
                 allowed = False
             else:

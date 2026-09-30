@@ -17,7 +17,16 @@ from psycopg import sql
 
 from identity.legacy_operational_boundaries import seed_operational
 from identity.legacy_owner_boundaries import _owner_call
-from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
+from identity.legacy_parity_support import (
+    ADMINS,
+    LEGACY,
+    MANAGERS,
+    PHYSICIAN,
+    sql_boolean_decision,
+    sql_count_allow,
+    sql_rows_allow,
+    world,
+)
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
@@ -144,10 +153,10 @@ def call(probe: SqlProbe, w: SqlWorld, valid: bool) -> bool:
         )
         rows = cursor.fetchall()
     if probe.result == "boolean":
-        return bool(rows == [(True,)])
+        return sql_boolean_decision(rows)
     if probe.result == "count":
-        return bool(len(rows) == 1 and rows[0][0] > 0)
-    return bool(rows and rows[0] != (None,))
+        return sql_count_allow(rows)
+    return sql_rows_allow(rows)
 
 
 PROBES = {
