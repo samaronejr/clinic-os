@@ -63,7 +63,8 @@ and the surface says so.
 ### Provider adapter
 
 `apps/teleconsult/video_providers.py` defines the `VideoProvider` protocol:
-`create_room(RoomSpec)`, `mint_token(TokenGrant)` and `revoke(RevokeSpec)`.
+`create_room(RoomSpec)`, `mint_token(TokenGrant)`, `revoke(RevokeSpec)` and
+`verify_token(token, room_name=..., now=...)`.
 Room names are opaque (`tc-` plus 32 random hex) and the database refuses any
 name that spells a stored session, encounter, appointment, patient,
 physician, clinic or organization identifier. Participant identities are the
@@ -76,6 +77,18 @@ but reach a network only through an injected `Transport`; the default
 `BlockedTransport` refuses without opening a socket and `live_provider()`
 always raises. Live legs are BLOCKED-ON-EG (EG-1 spend, EG-5 provider
 contract); tests use recorded synthetic fixtures (`tests/teleconsult/fixtures`).
+
+Admission requires the current signed grant for the opaque room and role.
+Minting a replacement invalidates all earlier grants, even at the same clock;
+revocation invalidates the role's grant, and expiry is checked at admission.
+Unique random grant nonces prevent same-second token reuse. Synthetic state
+is shared by server and worker in `CLINIC_SECRET_DIR/video-grants`, under the
+explicit `synthetic-file` backend: private files contain only token digests,
+never bearer tokens or clinical identity. Recorded LiveKit/Twilio adapters
+exercise this admission contract alongside their exact outbound requests.
+Their disconnect receipts alone are not revocation proof. Real provider
+admission remains BLOCKED-ON-EG and must satisfy the same lifecycle contract
+before a live adapter can be enabled.
 
 `select_room_provider` never falls back. When `providers.is_live("video")`
 holds, the current version's own live adapter must serve the room (today

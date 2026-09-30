@@ -204,7 +204,7 @@ def test_every_adapter_implements_the_video_provider_protocol() -> None:
     # The keys are the seeded registry's version providers, not free text.
     assert {LIVEKIT_PROVIDER, TWILIO_PROVIDER} == LIVE_PROVIDERS
     for adapter in adapters:
-        for method in ("create_room", "mint_token", "revoke"):
+        for method in ("create_room", "mint_token", "revoke", "verify_token"):
             assert callable(getattr(adapter, method))
 
 
@@ -242,13 +242,14 @@ def test_twilio_recorded_create_never_records_and_revoke_disconnects() -> None:
 
 @pytest.mark.parametrize("name", ["livekit", "twilio"])
 def test_minted_tokens_match_the_recording_and_live_fifteen_minutes(
-    name: str,
+    name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recording = _fixture(name)
     token = recording["token"]
     credentials = recording["credentials"]
     assert isinstance(token, dict)
     assert isinstance(credentials, dict)
+    monkeypatch.setattr(secrets, "token_hex", lambda _size: str(token["nonce"]))
     adapter: VideoProvider = livekit()[0] if name == "livekit" else twilio()[0]
     secret = str(
         credentials["api_secret" if name == "livekit" else "api_key_secret"]
@@ -340,6 +341,71 @@ def test_synthetic_tokens_expire_bind_one_room_and_refuse_tampering() -> None:
     with pytest.raises(TokenInvalidError):
         provider.verify_token(minted.token[:-2] + "xx", room_name=ROOM, now=issued)
     assert provider.create_room(RoomSpec(ROOM)).reference == f"synthetic:room:{ROOM}"
+
+
+def lifecycle_provider(name: str, *operations: str) -> VideoProvider:
+    """Use the real signer and only recorded outbound provider exchanges."""
+    if name == "synthetic":
+        return SyntheticVideoProvider()
+    if name == "livekit":
+        return livekit(*operations)[0]
+    return twilio(*operations)[0]
+
+
+@pytest.mark.parametrize("name", ["synthetic", "livekit", "twilio"])
+def test_provider_lifecycle_revoke_refuses_prior_join_and_preserves_other_role(
+    name: str,
+) -> None:
+    issued = datetime(2035, 6, 2, 10, tzinfo=UTC)
+    provider = lifecycle_provider(name, "revoke")
+    patient = provider.mint_token(TokenGrant(ROOM, "patient", issued))
+    physician = provider.mint_token(TokenGrant(ROOM, "physician", issued))
+    verifier = lifecycle_provider(name)
+    assert verifier.verify_token(patient.token, room_name=ROOM, now=issued) == "patient"
+    provider.revoke(RevokeSpec(ROOM, "patient"))
+    # Fresh adapters must consult the shared admission state.
+    with pytest.raises(TokenInvalidError):
+        verifier.verify_token(patient.token, room_name=ROOM, now=issued)
+    assert (
+        verifier.verify_token(physician.token, room_name=ROOM, now=issued)
+        == "physician"
+    )
+    fresh = provider.mint_token(TokenGrant(ROOM, "patient", issued))
+    assert fresh.token != patient.token
+    assert verifier.verify_token(fresh.token, room_name=ROOM, now=issued) == "patient"
+    with pytest.raises(TokenInvalidError):
+        verifier.verify_token(patient.token, room_name=ROOM, now=issued)
+
+
+@pytest.mark.parametrize("name", ["synthetic", "livekit", "twilio"])
+def test_provider_lifecycle_rotation_refuses_old_join_at_the_same_clock(
+    name: str,
+) -> None:
+    issued = datetime(2035, 6, 2, 10, tzinfo=UTC)
+    first = lifecycle_provider(name)
+    old = first.mint_token(TokenGrant(ROOM, "patient", issued))
+    replacement = lifecycle_provider(name).mint_token(
+        TokenGrant(ROOM, "patient", issued)
+    )
+    assert replacement.token != old.token
+    assert (
+        first.verify_token(replacement.token, room_name=ROOM, now=issued) == "patient"
+    )
+    with pytest.raises(TokenInvalidError):
+        first.verify_token(old.token, room_name=ROOM, now=issued)
+
+
+@pytest.mark.parametrize("name", ["synthetic", "livekit", "twilio"])
+def test_provider_lifecycle_expiry_refuses_reuse_at_the_exact_boundary(
+    name: str,
+) -> None:
+    issued = datetime(2035, 6, 2, 10, tzinfo=UTC)
+    grant = TokenGrant(ROOM, "patient", issued)
+    minted = lifecycle_provider(name).mint_token(grant)
+    verifier = lifecycle_provider(name)
+    assert verifier.verify_token(minted.token, room_name=ROOM, now=issued) == "patient"
+    with pytest.raises(TokenInvalidError):
+        verifier.verify_token(minted.token, room_name=ROOM, now=grant.expires_at)
 
 
 # --------------------------------------------------------------------------

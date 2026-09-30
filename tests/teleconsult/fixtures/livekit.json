@@ -95,10 +95,12 @@
   ],
   "token": {
     "identity": "patient",
+    "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
     "jwt_header": {"alg": "HS256", "typ": "JWT"},
     "claims": {
       "iss": "APIsintetico01",
       "sub": "patient",
+      "jti": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "nbf": 1790596800,
       "exp": 1790597700,
       "video": {

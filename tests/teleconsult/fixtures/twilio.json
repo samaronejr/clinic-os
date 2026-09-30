@@ -83,9 +83,10 @@
   ],
   "token": {
     "identity": "patient",
+    "nonce": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
     "jwt_header": {"alg": "HS256", "typ": "JWT", "cty": "twilio-fpa;v=1"},
     "claims": {
-      "jti": "SKsintetico0000000000000000000001-1790596800",
+      "jti": "SKsintetico0000000000000000000001-1790596800-a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "iss": "SKsintetico0000000000000000000001",
       "sub": "ACsintetico0000000000000000000001",
       "nbf": 1790596800,

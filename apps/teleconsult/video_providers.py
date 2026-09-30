@@ -22,12 +22,16 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import re
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, NoReturn, Protocol
 from urllib.parse import quote, urlencode
 
+from django.conf import settings
 from django.core import signing
 
 from apps.providers.models import CapabilityVersion
@@ -162,6 +166,10 @@ class VideoProvider(Protocol):
         """Disconnect one participant; runs only outside transactions."""
         ...
 
+    def verify_token(self, token: str, *, room_name: str, now: datetime) -> str:
+        """Admit only the current unexpired grant; return its role identity."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderRequest:
@@ -217,6 +225,89 @@ def _epoch(moment: datetime) -> int:
     return int(moment.timestamp())
 
 
+def _grant_path(provider: str, room: str, identity: str) -> Path:
+    """Share synthetic admission state across the server and outbox worker."""
+    backend = getattr(settings, "CLINIC_SECRET_BACKEND", None)
+    if backend is None:
+        backend = os.environ.get("CLINIC_SECRET_BACKEND")
+    root = getattr(settings, "CLINIC_SECRET_DIR", None)
+    if root is None:
+        root = os.environ.get("CLINIC_SECRET_DIR")
+    if backend != "synthetic-file" or type(root) is not str or not root:
+        raise ProviderRequestError
+    directory = Path(root) / "video-grants"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    key = hashlib.sha256(f"{provider}/{room}/{identity}".encode()).hexdigest()
+    return directory / key
+
+
+def _remember_token(provider: str, grant: TokenGrant, token: str) -> None:
+    """Atomically replace the current digest; never store a bearer token."""
+    path = _grant_path(provider, grant.room_name, grant.identity)
+    pending = path.with_name(path.name + "." + secrets.token_hex(16))
+    try:
+        descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode=0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(hashlib.sha256(token.encode()).digest())
+        pending.replace(path)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def _revoke_token(provider: str, spec: RevokeSpec) -> None:
+    _grant_path(provider, spec.room_name, spec.identity).unlink(missing_ok=True)
+
+
+def _current_token(provider: str, token: str, room: str, identity: str) -> bool:
+    try:
+        digest = _grant_path(provider, room, identity).read_bytes()
+    except FileNotFoundError:
+        return False
+    return hmac.compare_digest(digest, hashlib.sha256(token.encode()).digest())
+
+
+def _admit_token(
+    provider: str,
+    token: str,
+    room: str,
+    claims: dict[str, object],
+    now: datetime,
+) -> str:
+    identity, expiry = claims.get("i"), claims.get("e")
+    if (
+        claims.get("r") != room
+        or not isinstance(identity, str)
+        or identity not in IDENTITIES
+        or not isinstance(expiry, int)
+        or expiry <= _epoch(now)
+        or not _current_token(provider, token, room, identity)
+    ):
+        raise TokenInvalidError
+    return identity
+
+
+def _jwt_claims(token: str, secret: bytes, now: datetime) -> dict[str, object]:
+    try:
+        header, payload, signature = token.split(".")
+        expected = hmac.new(
+            secret, f"{header}.{payload}".encode("ascii"), hashlib.sha256
+        ).digest()
+        if not hmac.compare_digest(
+            base64.urlsafe_b64decode(signature + "=="), expected
+        ):
+            raise TokenInvalidError
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=="))
+    except ValueError as error:
+        raise TokenInvalidError from error
+    if (
+        not isinstance(claims, dict)
+        or not isinstance(claims.get("nbf"), int)
+        or claims["nbf"] > _epoch(now)
+    ):
+        raise TokenInvalidError
+    return claims
+
+
 def _response_json(response: ProviderResponse, expected: int) -> dict[str, object]:
     if response.status != expected:
         raise ProviderRequestError
@@ -239,16 +330,18 @@ class SyntheticVideoProvider:
         return RoomReceipt(self.key, f"synthetic:room:{spec.room_name}")
 
     def mint_token(self, grant: TokenGrant) -> MintedToken:
-        """Sign room, identity and expiry; nothing else is in the token."""
+        """Sign the opaque room, role, expiry and unique grant nonce."""
         token = signing.dumps(
             {
                 "r": grant.room_name,
                 "i": grant.identity,
                 "e": _epoch(grant.expires_at),
+                "n": secrets.token_hex(16),
             },
             salt=_SYNTHETIC_SALT,
             compress=False,
         )
+        _remember_token(self.key, grant, token)
         return MintedToken(token, grant.expires_at)
 
     def verify_token(self, token: str, *, room_name: str, now: datetime) -> str:
@@ -257,19 +350,13 @@ class SyntheticVideoProvider:
             value = signing.loads(token, salt=_SYNTHETIC_SALT)
         except signing.BadSignature as error:
             raise TokenInvalidError from error
-        if (
-            not isinstance(value, dict)
-            or set(value) != {"r", "i", "e"}
-            or value["r"] != room_name
-            or value["i"] not in IDENTITIES
-            or not isinstance(value["e"], int)
-            or value["e"] <= _epoch(now)
-        ):
+        if not isinstance(value, dict) or set(value) != {"r", "i", "e", "n"}:
             raise TokenInvalidError
-        return str(value["i"])
+        return _admit_token(self.key, token, room_name, value, now)
 
     def revoke(self, spec: RevokeSpec) -> RoomReceipt:
         """Return an explicitly synthetic revoke reference."""
+        _revoke_token(self.key, spec)
         return RoomReceipt(
             self.key, f"synthetic:revoke:{spec.room_name}:{spec.identity}"
         )
@@ -354,6 +441,7 @@ class LiveKitVideoProvider:
             {
                 "iss": self._api_key,
                 "sub": grant.identity,
+                "jti": secrets.token_hex(16),
                 "nbf": _epoch(grant.issued_at),
                 "exp": _epoch(grant.expires_at),
                 "video": {
@@ -367,7 +455,22 @@ class LiveKitVideoProvider:
             },
             self._secret,
         )
+        _remember_token(self.key, grant, token)
         return MintedToken(token, grant.expires_at)
+
+    def verify_token(self, token: str, *, room_name: str, now: datetime) -> str:
+        """Exercise the required admission contract in recorded fixtures."""
+        claims = _jwt_claims(token, self._secret, now)
+        video = claims.get("video")
+        if not isinstance(video, dict):
+            raise TokenInvalidError
+        return _admit_token(
+            self.key,
+            token,
+            room_name,
+            {"r": video.get("room"), "i": claims.get("sub"), "e": claims.get("exp")},
+            now,
+        )
 
     def revoke(self, spec: RevokeSpec) -> RoomReceipt:
         """RemoveParticipant for one role identity."""
@@ -376,6 +479,7 @@ class LiveKitVideoProvider:
             {"room": spec.room_name, "identity": spec.identity},
             self._admin({"roomAdmin": True, "room": spec.room_name}),
         )
+        _revoke_token(self.key, spec)
         return RoomReceipt(self.key, f"livekit:revoke:{spec.room_name}:{spec.identity}")
 
 
@@ -451,7 +555,7 @@ class TwilioVideoProvider:
         token = hs256_jwt(
             {"alg": "HS256", "typ": "JWT", "cty": "twilio-fpa;v=1"},
             {
-                "jti": f"{self._key}-{nbf}",
+                "jti": f"{self._key}-{nbf}-{secrets.token_hex(16)}",
                 "iss": self._key,
                 "sub": self._account,
                 "nbf": nbf,
@@ -463,7 +567,26 @@ class TwilioVideoProvider:
             },
             self._secret.encode("utf-8"),
         )
+        _remember_token(self.key, grant, token)
         return MintedToken(token, grant.expires_at)
+
+    def verify_token(self, token: str, *, room_name: str, now: datetime) -> str:
+        """Exercise the required admission contract in recorded fixtures."""
+        claims = _jwt_claims(token, self._secret.encode(), now)
+        grants = claims.get("grants")
+        if not isinstance(grants, dict) or not isinstance(grants.get("video"), dict):
+            raise TokenInvalidError
+        return _admit_token(
+            self.key,
+            token,
+            room_name,
+            {
+                "r": grants["video"].get("room"),
+                "i": grants.get("identity"),
+                "e": claims.get("exp"),
+            },
+            now,
+        )
 
     def revoke(self, spec: RevokeSpec) -> RoomReceipt:
         """Disconnect one role identity from the named room."""
@@ -473,6 +596,7 @@ class TwilioVideoProvider:
             {"Status": "disconnected"},
             200,
         )
+        _revoke_token(self.key, spec)
         return RoomReceipt(self.key, f"twilio:revoke:{spec.room_name}:{spec.identity}")
 
 
