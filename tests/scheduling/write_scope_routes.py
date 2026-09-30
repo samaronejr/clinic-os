@@ -7,6 +7,15 @@ import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from apps.scheduling import (
+    agenda_views,
+    booking_views,
+    patient_views,
+    resource_views,
+    transition_views,
+    views,
+    waitlist_views,
+)
 from django.urls import get_resolver
 from django.urls.resolvers import URLPattern, URLResolver
 
@@ -24,13 +33,13 @@ class WriteRoute:
 # These siblings have their own HTTP suites; a new callback cannot silently
 # fall outside the appointment matrix. GET-only callbacks are classified too.
 SIBLINGS = {
-    "resource_settings": "scheduling.test_resource_http",
-    "patient_booking_view": "renewal.test_self_booking",
-    "patient_offers_view": "renewal.test_waitlist",
-    "waitlist_view": "renewal.test_waitlist",
-    "availability_list_view": "scheduling.test_availability_http",
-    "availability_retire_view": "scheduling.test_availability_http",
-    "agenda_view": "scheduling.test_agenda_http",
+    inspect.unwrap(resource_views.resource_settings): "scheduling.test_resource_http",
+    inspect.unwrap(patient_views.patient_booking_view): "renewal.test_self_booking",
+    inspect.unwrap(waitlist_views.patient_offers_view): "renewal.test_waitlist",
+    inspect.unwrap(waitlist_views.waitlist_view): "renewal.test_waitlist",
+    inspect.unwrap(views.availability_list_view): "scheduling.test_availability_http",
+    inspect.unwrap(views.availability_retire_view): "scheduling.test_availability_http",
+    inspect.unwrap(agenda_views.agenda_view): "scheduling.test_agenda_http",
 }
 
 
@@ -80,14 +89,13 @@ def write_routes() -> tuple[WriteRoute, ...]:
     result = []
     for name, pattern in _leaves(get_resolver().url_patterns):
         callback = inspect.unwrap(pattern.callback)
-        match callback.__name__:
-            case "appointment_create_view":
-                result.append(WriteRoute(name, _booking_modes(callback), "clinic_id"))
-            case "appointment_reschedule_view":
-                result.append(WriteRoute(name, ("reschedule",), "appointment_id"))
-            case "appointment_cancel_view":
-                result.append(WriteRoute(name, ("cancel",), "appointment_id"))
-            case sibling:
-                assert sibling in SIBLINGS, ("unclassified scheduling route", name)
+        if callback is inspect.unwrap(booking_views.appointment_create_view):
+            result.append(WriteRoute(name, _booking_modes(callback), "clinic_id"))
+        elif callback is inspect.unwrap(transition_views.appointment_reschedule_view):
+            result.append(WriteRoute(name, ("reschedule",), "appointment_id"))
+        elif callback is inspect.unwrap(transition_views.appointment_cancel_view):
+            result.append(WriteRoute(name, ("cancel",), "appointment_id"))
+        else:
+            assert callback in SIBLINGS, ("unclassified scheduling route", name)
     assert result, "no scheduling appointment routes discovered"
     return tuple(result)

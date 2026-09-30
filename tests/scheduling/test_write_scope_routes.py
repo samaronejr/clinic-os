@@ -15,13 +15,15 @@ if TYPE_CHECKING:
     from django.http import HttpRequest
 
 
+@pytest.mark.parametrize("name", ["unclassified", "agenda_view"])
 def test_new_scheduling_route_requires_classification(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
     def unclassified(request: HttpRequest) -> HttpResponse:
         return HttpResponse()
 
     unclassified.__module__ = booking_views.__name__
+    unclassified.__name__ = name
     resolver = get_resolver()
     monkeypatch.setattr(
         resolver,
