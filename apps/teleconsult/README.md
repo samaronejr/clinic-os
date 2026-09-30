@@ -137,7 +137,10 @@ page is refused by the physician guard before any clinic lookup.
   patient's device results and media mode.
 - Audio only: `audio_only`/`video_restored` events per role; the camera track
   stops sending; a camera loss with a working microphone switches
-  automatically.
+  automatically. Each actual change of the physician's mode records
+  `teleconsult.audio_only.enabled` or `teleconsult.audio_only.disabled`
+  (session record, `clinic_id` and `object_verb` only); repeating the current
+  mode records nothing.
 - Reconnect: `resume` re-validates the participant, rotates an expired join
   credential, appends `reconnected` and returns the stored media modes and
   peer presence. A revoked (removed, ended or rotated) participant is

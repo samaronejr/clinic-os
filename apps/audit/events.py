@@ -292,6 +292,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "teleconsult.participant.removed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "teleconsult.session", "removed"
         ),
+        "teleconsult.audio_only.enabled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "audio_only"
+        ),
+        "teleconsult.audio_only.disabled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "teleconsult.session", "video_restored"
+        ),
         "providers.capability.proposed": Phase1AuditEventDefinition(
             "system",
             "clinic-os-ops",

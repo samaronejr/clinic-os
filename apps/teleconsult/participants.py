@@ -58,6 +58,10 @@ PHYSICIAN: Final = TeleconsultCredential.Role.PHYSICIAN
 PATIENT: Final = TeleconsultCredential.Role.PATIENT
 _LIVE: Final = (TeleconsultSession.State.WAITING, TeleconsultSession.State.ACTIVE)
 _MODE_KINDS: Final = ("audio_only", "video_restored")
+_MODE_AUDIT: Final = {
+    True: "teleconsult.audio_only.enabled",
+    False: "teleconsult.audio_only.disabled",
+}
 _SESSION_CLOSED: Final = "session_closed"
 _NOT_IN_ROOM: Final = "not_in_room"
 _REVOKE_NAMESPACE: Final = UUID("0b8f7a52-3c1d-4e6f-9a2b-5d4c3e2f1a0b")
@@ -257,6 +261,12 @@ def _set_audio_only(session: TeleconsultSession, role: str, *, enabled: bool) ->
                 kind="audio_only" if enabled else "video_restored",
                 actor_role=role,
             )
+            if role == PHYSICIAN:
+                record_phase1_event(
+                    _MODE_AUDIT[enabled],
+                    clinic_id=session.clinic_id,
+                    affected_record_id=session.pk,
+                )
             publish_session_hint(session)
     return enabled
 
