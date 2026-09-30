@@ -23,10 +23,11 @@ from apps.ehr.autosave import (
     AutosaveResult,
     AutosaveStatus,
 )
-from apps.ehr.finalization import close_encounter
+from apps.ehr.finalization import close_encounter, finalize_version
 from apps.ehr.models import (
     AddendumSaveReceipt,
     ClinicalDocumentVersion,
+    DraftSaveReceipt,
     Encounter,
     EncounterAddendum,
 )
@@ -43,6 +44,7 @@ from django.db import DatabaseError, connection, connections, transaction
 from django.test import Client
 from django.utils import timezone
 
+from auth.stepup_test_support import verified_request
 from ehr.test_autosave import (
     ROLES,
     SECTIONS,
@@ -522,29 +524,111 @@ def test_addendum_scope_holds_in_python_and_sql(rbac_graph: RbacGraph) -> None:
     assert main_draft(rbac_graph, version.pk)[0] == 1
 
 
-def test_addendum_on_a_closed_encounter_is_refused_by_the_trigger(
+def test_closed_encounter_refuses_every_new_save_before_its_receipt(
     rbac_graph: RbacGraph,
 ) -> None:
-    opener_enrolled = enrollment_of(
-        rbac_graph,
-        draft_world(rbac_graph).document.encounter.patient_id,
-        rbac_graph.clinic_a,
-    )
-    opener = clinician(rbac_graph, "physician", opener_enrolled)
-    colleague = clinician(rbac_graph, "physician", opener_enrolled)
-    third = clinician(rbac_graph, "physician", opener_enrolled)
-    with as_actor(rbac_graph, opener):
-        visit = open_walk_in(rbac_graph, opener_enrolled)
+    """Round-2 B2: an unchanged save after closure created a new receipt.
+
+    A finalized main note leaves the encounter open, and addenda still save
+    (record contract). Once the encounter is closed, every new command is
+    refused before its receipt, changed or unchanged, in the service, through
+    the API and at the database guard; replaying an acknowledged command stays
+    a read. The main draft's own commands are refused as non-draft.
+    """
+    version = draft_world(rbac_graph)
+    encounter = version.document.encounter
+    enrolled = enrollment_of(rbac_graph, encounter.patient_id, rbac_graph.clinic_a)
+    colleague = clinician(rbac_graph, "physician", enrolled)
+    request = verified_request(rbac_graph.physician)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        save(rbac_graph, version.pk, 1)
+        finalize_version(
+            clinic_id=rbac_graph.clinic_a,
+            version_id=version.pk,
+            expected_revision=2,
+            request=request,
+        )
+    acknowledged = uuid4()
     with as_actor(rbac_graph, colleague):
-        addendum = open_addendum(clinic_id=rbac_graph.clinic_a, encounter_id=visit.pk)
-    with as_actor(rbac_graph, opener):
-        close_encounter(clinic_id=rbac_graph.clinic_a, encounter_id=visit.pk)
+        addendum = open_addendum(
+            clinic_id=rbac_graph.clinic_a, encounter_id=encounter.pk
+        )
+        saved = write(rbac_graph, addendum.pk, 1, command=acknowledged)
+    assert (saved.status, saved.revision) == (AutosaveStatus.SAVED, 2)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        close_encounter(clinic_id=rbac_graph.clinic_a, encounter_id=encounter.pk)
+    receipts = (
+        count(rbac_graph, AddendumSaveReceipt),
+        count(rbac_graph, DraftSaveReceipt),
+    )
+    with owner_context(rbac_graph.organization_a):
+        mark = AuditEvent.objects.order_by("-pk").values_list("pk", flat=True)[0]
+    with as_actor(rbac_graph, colleague):
+        for text in (TEXT, "Depois do encerramento"):
+            with pytest.raises(ClinicalConflictError, match="encounter_closed"):
+                write(rbac_graph, addendum.pk, 2, text)
+        replay = write(rbac_graph, addendum.pk, 1, command=acknowledged)
+    assert (replay.status, replay.revision) == (AutosaveStatus.REPLAYED, 2)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        for sections in (SECTIONS, {**SECTIONS, "plan": "Depois"}):
+            with pytest.raises(ClinicalConflictError, match="precondition_failed"):
+                save(rbac_graph, version.pk, 2, sections=sections)
+    with signed_in(colleague) as client:
+        unchanged = client.post(
+            "/api/ui/v1/ehr/addendum/autosave/",
+            json.dumps(
+                {
+                    "clinic_id": str(rbac_graph.clinic_a),
+                    "addendum_id": str(addendum.pk),
+                    "expected_revision": 2,
+                    "editor_command_id": str(uuid4()),
+                    "text": TEXT,
+                }
+            ),
+            "application/json",
+        )
+    assert unchanged.status_code == 412
+    # The database decides the same binding when the service is bypassed.
     with (
         as_actor(rbac_graph, colleague),
-        pytest.raises(DatabaseError),
+        pytest.raises(DatabaseError, match="invalid addendum receipt"),
         transaction.atomic(),
     ):
-        write(rbac_graph, addendum.pk, 1, "Depois do encerramento")
+        AddendumSaveReceipt.objects.create(
+            organization_id=rbac_graph.organization_a,
+            addendum_id=addendum.pk,
+            command_id=uuid4(),
+            request_sha256="0" * 64,
+            base_revision=2,
+            revision=2,
+            saved_at=timezone.now(),
+        )
+    with as_actor(rbac_graph, colleague):
+        closed_row = EncounterAddendum.objects.get(pk=addendum.pk)
+    closed_row.text = "Depois do encerramento"
+    closed_row.text_sha256 = "1" * 64
+    closed_row.revision = 3
+    with (
+        as_actor(rbac_graph, colleague),
+        pytest.raises(DatabaseError, match="invalid addendum binding"),
+        transaction.atomic(),
+    ):
+        closed_row.save(update_fields=("text", "text_sha256", "revision"))
+    assert (
+        count(rbac_graph, AddendumSaveReceipt),
+        count(rbac_graph, DraftSaveReceipt),
+    ) == receipts
+    with owner_context(rbac_graph.organization_a):
+        added = list(
+            AuditEvent.objects.filter(pk__gt=mark)
+            .order_by("pk")
+            .values_list("event_type", flat=True)
+        )
+    # Nothing: no receipt, no saved event and no read audit on either draft.
+    assert added == []
+    with owner_context(rbac_graph.organization_a):
+        assert EncounterAddendum.objects.get(pk=addendum.pk).revision == 2
+    third = clinician(rbac_graph, "physician", enrolled)
     with (
         owner_context(rbac_graph.organization_a),
         pytest.raises(DatabaseError),
@@ -553,8 +637,8 @@ def test_addendum_on_a_closed_encounter_is_refused_by_the_trigger(
         EncounterAddendum.objects.create(
             organization_id=rbac_graph.organization_a,
             clinic_id=rbac_graph.clinic_a,
-            encounter_id=visit.pk,
-            patient_id=visit.patient_id,
+            encounter_id=encounter.pk,
+            patient_id=encounter.patient_id,
             author_id=third,
         )
 

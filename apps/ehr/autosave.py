@@ -294,6 +294,14 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         expected_revision, editor_command_id, editor_session_id, sections
     )
     author_scope(clinic_id=clinic_id, version_id=version_id)
+    if not ClinicalDocumentVersion.objects.filter(
+        pk=version_id, state="draft"
+    ).exists():
+        # A finalized note (or a closed encounter, which has no draft) is
+        # refused before the read audit; the locked re-check below still
+        # decides a race.
+        msg = "precondition_failed"
+        raise ClinicalConflictError(msg)
     # The read audit is the first write: every refusal was decided above.
     view_version(clinic_id=clinic_id, version_id=version_id)
     digest = request_digest(

@@ -112,7 +112,10 @@ episodes and unscheduled encounters.
     because the author is the only writer.
   - RLS (`has_permission`, author) and `ehr_addendum_guard` (same
     organization, clinic, patient; open encounter; never the assignee)
-    re-decide every write.
+    re-decide every write. A new save command on a closed encounter is
+    refused (`encounter_closed`) before its receipt, even when the text is
+    unchanged; the guard binds receipts to an open encounter too (`0012`).
+    Replaying an already acknowledged command stays a read.
   - Only the draft state exists. Later todos extend it: finalizing,
     releasing and showing addenda to readers, and a UI entry point from the
     patient workspace and timeline (todo 28). Typed addendum fields and
@@ -130,8 +133,9 @@ episodes and unscheduled encounters.
   `episodes.open_episode_for_encounter` opens and links an episode in one
   savepoint after all of its checks. The only row a refusal leaves is the
   fixed `ehr.access.denied` record.
-- Migrations `0010` and `0011` are additive and rehearsed forward and
-  backward. The reverse refuses while an unscheduled encounter exists, or while
+- Migrations `0010`, `0011` and `0012` are additive and rehearsed forward
+  and backward; `0012` only replaces the guard body and its reverse
+  restores the `0011` body exactly. The reverse refuses while an unscheduled encounter exists, or while
   any of their tables holds a row (a `*_rollback_is_restore` probe), so
   rollback is a restore and never a silent drop.
 

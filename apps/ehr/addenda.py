@@ -157,6 +157,17 @@ def autosave_addendum(
                 revision=receipt.revision,
                 saved_at=receipt.saved_at,
             )
+        # A new command needs an open encounter even when the text is
+        # unchanged and no addendum row is written (round-2 B2); the receipt
+        # guard re-decides the same binding in the database.
+        if (
+            Encounter.objects.filter(pk=locked.encounter_id)
+            .values_list("state", flat=True)
+            .first()
+            != Encounter.State.OPEN
+        ):
+            msg = "encounter_closed"
+            raise ClinicalConflictError(msg)
         stored = locked.text or ""
         if locked.revision != expected_revision:
             return AutosaveResult(
