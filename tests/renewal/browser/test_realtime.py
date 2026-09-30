@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+import time
+from typing import TYPE_CHECKING, Final
+from urllib.parse import urlparse
 
 import psycopg
 from django.utils.translation import gettext
@@ -29,10 +31,96 @@ from renewal.browser.test_primitives import AXE_RUN_JS
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Page
+    from playwright.sync_api import Page, Request, Response
 
 __all__ = ("agenda_staff",)
 WIDTHS = (1280, 375, 320)
+# Ticket POST and EventSource GET share this one same-origin path.
+REALTIME_PATH: Final = "/rt/stream"
+
+
+class _RealtimeTap:
+    """Every /rt/stream request and response of one page, against a revocation.
+
+    Boundary rule: ``boundary_ms`` is the host wall clock read right after the
+    owner transaction that deletes the role has committed. A request is
+    post-revocation iff its browser issue instant (``request.timing``
+    ``startTime``, epoch ms on the same host clock) is at or after the
+    boundary: the server cannot authorize it before the commit, so a 2xx is a
+    fail-open grant. A request issued before the boundary was in flight while
+    the revocation became visible; its authorization may have run on either
+    side of the commit, so it may end 200 or 403 and never counts as the
+    refusal. Anything unclassifiable fails the test.
+    """
+
+    def __init__(self) -> None:
+        self.boundary_ms: float | None = None
+        self.responses: list[tuple[float, str, int]] = []
+        self.streams: list[Request] = []
+        self.open_streams: list[Request] = []
+        self.anomalies: list[str] = []
+
+    @staticmethod
+    def issued_ms(request: Request) -> float | None:
+        start = request.timing.get("startTime")
+        if not isinstance(start, (int, float)) or start < 0:
+            return None
+        # Browser and test share the host clock; a foreign unit or epoch would
+        # silently corrupt the boundary classification, so check plausibility.
+        if abs(start - time.time() * 1000) > 60_000:
+            return None
+        return start
+
+    def mark_boundary(self) -> None:
+        self.boundary_ms = time.time() * 1000
+
+    def on_request(self, request: Request) -> None:
+        if urlparse(request.url).path != REALTIME_PATH or request.method != "GET":
+            return
+        if "text/event-stream" in request.headers.get("accept", ""):
+            self.streams.append(request)
+            self.open_streams.append(request)
+
+    def on_response(self, response: Response) -> None:
+        request = response.request
+        if urlparse(request.url).path != REALTIME_PATH:
+            return
+        issued = self.issued_ms(request)
+        if issued is None:
+            self.anomalies.append(f"unclassifiable {request.method} response")
+            return
+        self.responses.append((issued, request.method, response.status))
+
+    def on_ended(self, request: Request) -> None:
+        # requestfinished or requestfailed: the EventSource request is over.
+        self.open_streams = [
+            open_ for open_ in self.open_streams if open_ is not request
+        ]
+
+    def is_refusal(self, response: Response) -> bool:
+        issued = self.issued_ms(response.request)
+        return (
+            urlparse(response.url).path == REALTIME_PATH
+            and self.boundary_ms is not None
+            and issued is not None
+            and issued >= self.boundary_ms
+            and response.status == 403
+        )
+
+    def post_revocation(self) -> list[tuple[str, int]]:
+        assert self.boundary_ms is not None
+        return [
+            (method, status)
+            for issued, method, status in sorted(self.responses)
+            if issued >= self.boundary_ms
+        ]
+
+    def grants(self) -> list[tuple[str, int]]:
+        return [
+            (method, status)
+            for method, status in self.post_revocation()
+            if 200 <= status < 300
+        ]
 
 
 def _connected(page: Page) -> None:
@@ -104,6 +192,53 @@ def _degraded(page: Page, base_url: str, clinic_id: str, root: Path) -> None:
     full_page_screenshot(page, root / "degraded.png")
 
 
+def _denied_after_revocation(
+    a: Page,
+    b: Page,
+    base_url: str,
+    agenda_staff: dict[str, str],
+    tap: _RealtimeTap,
+) -> list[tuple[str, int]]:
+    # Owner SQL fixture revokes the clinic assignment. Logout is the real
+    # immediate control event; unit tests independently prove role-delete
+    # signals and periodic reauth when an event is lost.
+    # The refusal wait is armed before the revocation: b's stream can also
+    # close for other reasons (a transport drop and its backoff retry, the
+    # periodic reauthorization), and a refused request that lands before a
+    # late wait exists is lost (hosted run 36475967514; fix-a16). It matches
+    # only a post-revocation 403, so a late or absent refusal times out.
+    with b.expect_response(tap.is_refusal):
+        with psycopg.connect(agenda_staff["dsn"]) as owner:
+            owner.execute(
+                "SELECT set_config('app.current_tenant', %s, true)",
+                [agenda_staff["organization"]],
+            )
+            owner.execute(
+                "DELETE FROM clinic_app.identity_userclinicrole "
+                "WHERE clinic_id = %s AND user_id = %s",
+                [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
+            )
+        # Leaving the connection context committed the delete.
+        tap.mark_boundary()
+        goto_settled(a, base_url + "/auth/logout/")
+        with expect_document(a):
+            a.locator("form button[type=submit]").click()
+    # The client closes its EventSource before every new ticket request, and
+    # its denied state follows the refused response: once denied is visible,
+    # every earlier realtime event has been dispatched to the tap.
+    expect(b.locator("#agenda-shell")).to_have_attribute(
+        "data-realtime-state", "denied"
+    )
+    post_revocation = tap.post_revocation()
+    # A single grant followed by a refusal is still a grant (gate-review B1).
+    assert [status for _method, status in post_revocation[:1]] == [403], post_revocation
+    assert tap.grants() == [], post_revocation
+    assert tap.streams, "the tap saw no realtime stream open"
+    assert tap.open_streams == [], "b's realtime stream never closed"
+    assert tap.anomalies == [], tap.anomalies
+    return post_revocation
+
+
 def test_two_sessions_refetch_and_fail_closed_without_realtime(
     renewal_page: Page,
     renewal_base_url: str,
@@ -158,41 +293,20 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             assert b.evaluate("window.rtReceived >= window.rtStarted")
             _accessibility(b, root, width)
 
+        # Tap all of b's realtime traffic, then reload so the tap also sees
+        # the stream under revocation open, not only close.
+        tap = _RealtimeTap()
+        b.on("request", tap.on_request)
+        b.on("response", tap.on_response)
+        b.on("requestfinished", tap.on_ended)
+        b.on("requestfailed", tap.on_ended)
+        goto_settled(b, b.url)
+
         _ticket_replay(b)
         _connected(b)
 
-        # Owner SQL fixture revokes the clinic assignment. Logout is the real
-        # immediate control event; unit tests independently prove role-delete
-        # signals and periodic reauth when an event is lost.
-        # The refusal wait is armed before the revocation: b's stream can also
-        # close for other reasons (a transport drop and its backoff retry, the
-        # periodic reauthorization), and a refused POST that lands before the
-        # wait exists is lost, leaving b denied with no further POST (hosted
-        # run 36475967514; fix-a16). Every b ticket request after the delete is
-        # refused, so the wait is for the refused one: a reconnect that
-        # lands before the delete returns 200 and cannot satisfy it.
-        with b.expect_response(
-            lambda response: (
-                response.request.method == "POST"
-                and response.url.endswith("/rt/stream")
-                and response.status == 403
-            )
-        ):
-            with psycopg.connect(agenda_staff["dsn"]) as owner:
-                owner.execute(
-                    "SELECT set_config('app.current_tenant', %s, true)",
-                    [agenda_staff["organization"]],
-                )
-                owner.execute(
-                    "DELETE FROM clinic_app.identity_userclinicrole "
-                    "WHERE clinic_id = %s AND user_id = %s",
-                    [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
-                )
-            goto_settled(a, renewal_base_url + "/auth/logout/")
-            with expect_document(a):
-                a.locator("form button[type=submit]").click()
-        expect(b.locator("#agenda-shell")).to_have_attribute(
-            "data-realtime-state", "denied"
+        post_revocation = _denied_after_revocation(
+            a, b, renewal_base_url, agenda_staff, tap
         )
         api_status = b.evaluate(
             """async clinic => {
@@ -208,9 +322,11 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             agenda_staff["clinic_a"],
         )
         assert api_status == 403
+        assert tap.grants() == [], tap.post_revocation()
         (root / "revoke.txt").write_text(
-            "stream closed; new ticket 403; authorized refetch API 403; "
-            "ticket replay 403\n"
+            "stream closed; first post-revocation response 403; no "
+            f"post-revocation 2xx {post_revocation}; authorized refetch API "
+            "403; ticket replay 403\n"
         )
 
         # Clinic B membership remains: ordinary work continues during an actual
