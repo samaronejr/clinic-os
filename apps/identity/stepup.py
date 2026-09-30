@@ -134,14 +134,20 @@ def _freshness_is_valid(request: HttpRequest, max_age: int) -> bool:
         return False
 
     verified_at = request.session.get(STEP_UP_SESSION_KEY)
-    if isinstance(verified_at, bool) or not isinstance(verified_at, int):
+    if (
+        isinstance(verified_at, bool)
+        or not isinstance(verified_at, int)
+        or verified_at < 0
+    ):
         clear_step_up_verification(request)
         return False
     age = _utc_now_seconds() - verified_at
-    if age < 0 or age > max_age:
+    if age < 0:
         clear_step_up_verification(request)
         return False
-    return True
+    # A stale timestamp can only age further and the challenge replaces it, so
+    # the refusal leaves it in place: a refused request never writes the session.
+    return age <= max_age
 
 
 def assert_step_up(

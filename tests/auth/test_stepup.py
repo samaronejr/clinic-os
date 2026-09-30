@@ -53,6 +53,7 @@ def test_older_than_max_age_redirects_to_reverification(
     verified_request: HttpRequest,
 ) -> None:
     verified_request.session[STEP_UP_SESSION_KEY] = STEP_UP_NOW - STEP_UP_MAX_AGE - 1
+    verified_request.session.modified = False
 
     @require_recent_verification(max_age=STEP_UP_MAX_AGE)
     def sensitive_action(_request: HttpRequest) -> HttpResponse:
@@ -62,15 +63,24 @@ def test_older_than_max_age_redirects_to_reverification(
 
     assert response.status_code == 302
     assert response.headers["Location"].startswith("/auth/step-up/")
-    assert STEP_UP_SESSION_KEY not in verified_request.session
+    assert (
+        verified_request.session[STEP_UP_SESSION_KEY]
+        == STEP_UP_NOW - STEP_UP_MAX_AGE - 1
+    )
+    assert not verified_request.session.modified
 
 
-def test_assert_step_up_rejects_stale_verification(
+def test_assert_step_up_rejects_stale_verification_without_session_write(
     verified_request: HttpRequest,
 ) -> None:
     verified_request.session[STEP_UP_SESSION_KEY] = STEP_UP_NOW - STEP_UP_MAX_AGE - 1
+    verified_request.session.modified = False
 
     with pytest.raises(StepUpRequired):
         assert_step_up(verified_request, max_age=STEP_UP_MAX_AGE)
 
-    assert STEP_UP_SESSION_KEY not in verified_request.session
+    assert (
+        verified_request.session[STEP_UP_SESSION_KEY]
+        == STEP_UP_NOW - STEP_UP_MAX_AGE - 1
+    )
+    assert not verified_request.session.modified

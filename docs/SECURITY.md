@@ -105,10 +105,12 @@ It requires all of the following:
   configured non-negative integer maximum age.
 
 Missing, boolean, non-integer, malformed, future, or stale freshness fails
-closed. Invalid user/device state also clears the device binding. A malformed
-maximum-age argument fails closed. Successful enrollment, ordinary TOTP
-verification, and re-verification rotate the session key, bind the confirmed
-device, and stamp fresh verification time.
+closed. Invalid user/device state also clears the device binding. A stale,
+non-negative integer timestamp is refused but left in place: it can only age
+further, the challenge replaces it, and the refused request therefore writes no
+session and sets no cookie. A malformed maximum-age argument fails closed.
+Successful enrollment, ordinary TOTP verification, and re-verification rotate
+the session key, bind the confirmed device, and stamp fresh verification time.
 
 The `/auth/step-up/` challenge accepts GET/POST, uses CSRF protection, applies
 the existing OTP throttling/replay checks, rejects users without a confirmed
