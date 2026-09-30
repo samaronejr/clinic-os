@@ -719,6 +719,35 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
     assert "CELERY_RESULT_BACKEND" not in environment
 
 
+def test_browser_children_preserve_owned_runtime_paths_and_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owned = {
+        "TMPDIR": str(tmp_path / "tmp"),
+        "PLAYWRIGHT_BROWSERS_PATH": str(tmp_path / "browsers"),
+        "REALTIME_REDIS_URL": "redis://127.0.0.1:65431/1",
+    }
+    for name, value in owned.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("CLINIC_UNRELATED_SECRET", "must-not-inherit")
+    environments = (
+        runner._server_environment(
+            "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic"
+        ),
+        runner._pytest_environment(
+            base_url="http://127.0.0.1:48000",
+            artifact_root=tmp_path,
+            browser=str(tmp_path / "browser"),
+            engine="chromium",
+            username="synthetic-staff",
+            password=tmp_path.name,
+        ),
+    )
+    for environment in environments:
+        assert {name: environment[name] for name in owned} == owned
+        assert "CLINIC_UNRELATED_SECRET" not in environment
+
+
 def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
     log = tmp_path / "hung.log"
     started = time.monotonic()

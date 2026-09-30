@@ -616,6 +616,9 @@ def _child_env(extra: dict[str, str]) -> dict[str, str]:
         "PYTHONPATH": str(_repository()),
         "PYTHONTZPATH": "",
     }
+    for name in ("TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "REALTIME_REDIS_URL"):
+        if name in os.environ:
+            environment[name] = os.environ[name]
     environment.update(extra)
     return environment
 
