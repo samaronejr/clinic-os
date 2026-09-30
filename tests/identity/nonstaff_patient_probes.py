@@ -21,6 +21,7 @@ from apps.scheduling import (
 from apps.teleconsult import participants as teleconsult_participants
 from apps.teleconsult import services as teleconsult
 from apps.teleconsult import views as teleconsult_views
+from apps.teleconsult.models import TeleconsultEvent
 from apps.tenancy.middleware import TenantMiddleware
 from django.db import transaction
 from django.http import HttpResponse
@@ -44,6 +45,19 @@ def _patient_middleware(data: NonstaffSubjects) -> object:
         return HttpResponse()
 
     return TenantMiddleware(response)._patient(request)
+
+
+def _patient_mode_audit(data: NonstaffSubjects) -> None:
+    session = data.tc.session
+    TeleconsultEvent.objects.create(
+        organization_id=session.organization_id,
+        session=session,
+        kind="audio_only",
+        actor_role="patient",
+    )
+    teleconsult_participants._patient_mode_audit(
+        session, "teleconsult.audio_only.enabled"
+    )
 
 
 def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
@@ -226,6 +240,10 @@ def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
             lambda: teleconsult_participants.patient_session(
                 session_id=d.tc.session.pk
             ),
+        ),
+        DifferentialProbe(
+            "apps.teleconsult.participants._patient_mode_audit",
+            lambda: _patient_mode_audit(d),
         ),
         DifferentialProbe(
             "apps.teleconsult.services.patient_session_events",

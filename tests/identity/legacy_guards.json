@@ -3143,6 +3143,18 @@
       ]
     },
     {
+      "symbol": "apps.teleconsult.participants._patient_mode_audit",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.participants._patient_mode_audit#observed"
+      ]
+    },
+    {
       "symbol": "apps.tenancy.db.tenant_context",
       "signals": [
         "denial",
@@ -3475,6 +3487,7 @@
     "apps.scheduling.views.availability_list_view",
     "apps.scheduling.views.availability_retire_view",
     "apps.scheduling.waitlist_views.waitlist_view",
+    "apps.teleconsult.participants._patient_mode_audit#observed",
     "apps.teleconsult.participants.authorize_room_topic",
     "apps.teleconsult.participants.clinician_session",
     "apps.teleconsult.participants.patient_session#observed",
@@ -4778,7 +4791,8 @@
           "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_verify",
           "clinic_app.prescription_verify_synthetic",
-          "clinic_app.retention_record_viewed"
+          "clinic_app.retention_record_viewed",
+          "clinic_app.teleconsult_mode_audit"
         ]
       },
       "kind": "crypto_protocol",
@@ -6710,6 +6724,48 @@
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
+    "clinic_app.teleconsult_mode_audit": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_mode_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.teleconsult_mode_audit_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, event_name text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_mode_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.teleconsult_mode_audit"
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
     "clinic_app.teleconsult_patient_match": {
       "discovery": {
         "signatures": [
@@ -6737,6 +6793,7 @@
         "resolvers": [
           "clinic_app.teleconsult_binding_guard",
           "clinic_app.teleconsult_fail",
+          "clinic_app.teleconsult_mode_audit_scope",
           "clinic_app.teleconsult_room_state",
           "clinic_app.teleconsult_session_scope"
         ]

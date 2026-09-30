@@ -16,10 +16,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid5
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
-from apps.audit.services import record_phase1_event
+from apps.audit.events import build_phase1_audit_event
+from apps.audit.services import AuditTrustedContext, _content_hash, record_phase1_event
 from apps.comms.models import IntegrationOperation
 from apps.consent.services import patient_authority
 from apps.core.integration import OperationRequest, enqueue_operation
@@ -267,8 +268,35 @@ def _set_audio_only(session: TeleconsultSession, role: str, *, enabled: bool) ->
                     clinic_id=session.clinic_id,
                     affected_record_id=session.pk,
                 )
+            else:
+                _patient_mode_audit(session, _MODE_AUDIT[enabled])
             publish_session_hint(session)
     return enabled
+
+
+def _patient_mode_audit(session: TeleconsultSession, event_name: str) -> None:
+    """Append the patient's transition; the writer re-derives every field."""
+    append = build_phase1_audit_event(
+        event_name, clinic_id=session.clinic_id, affected_record_id=session.pk
+    )
+    content_hash = _content_hash(
+        append.event,
+        AuditTrustedContext(
+            organization_id=session.organization_id,
+            actor_user_id=patient_authority().session_id,
+        ),
+        dict(append.payload),
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.teleconsult_mode_audit(%s,%s,%s,%s)",
+            [
+                str(session.pk),
+                event_name,
+                append.event.occurred_at_utc,
+                content_hash,
+            ],
+        )
 
 
 def set_audio_only(*, clinic_id: UUID, session_id: UUID, enabled: bool) -> bool:

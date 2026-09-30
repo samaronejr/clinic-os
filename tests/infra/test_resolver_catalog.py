@@ -188,6 +188,7 @@ POSTURE_OVERRIDES: Final = {
         ["clinic_app", "clinic_owner", "clinic_resolver"],
     ),
     "teleconsult_immutable": ("v", False, ["clinic_resolver"]),
+    "teleconsult_mode_audit_scope": ("s", False, ["clinic_owner", "clinic_resolver"]),
     "teleconsult_patient_match": (
         "s",
         True,
@@ -336,6 +337,7 @@ FUNCTION_SIGNATURES: Final = {
     ("teleconsult_credential_guard", ""),
     ("teleconsult_fail", "requested_session uuid, reason text"),
     ("teleconsult_immutable", ""),
+    ("teleconsult_mode_audit_scope", "requested_session uuid, event_name text"),
     ("teleconsult_patient_match", "requested_session uuid"),
     ("teleconsult_room_state", "requested_session uuid"),
     ("teleconsult_session_guard", ""),
@@ -554,6 +556,10 @@ FUNCTION_RESULTS: Final = {
     ("teleconsult_credential_guard", ""): "trigger",
     ("teleconsult_fail", "requested_session uuid, reason text"): "boolean",
     ("teleconsult_immutable", ""): "trigger",
+    ("teleconsult_mode_audit_scope", "requested_session uuid, event_name text"): (
+        "TABLE(patient_session uuid, organization_id uuid, clinic_id uuid, "
+        "object_verb text, changed_at timestamp with time zone)"
+    ),
     ("teleconsult_patient_match", "requested_session uuid"): "boolean",
     ("teleconsult_room_state", "requested_session uuid"): "text",
     ("teleconsult_session_guard", ""): "trigger",

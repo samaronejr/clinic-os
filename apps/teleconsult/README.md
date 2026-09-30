@@ -137,10 +137,15 @@ page is refused by the physician guard before any clinic lookup.
   patient's device results and media mode.
 - Audio only: `audio_only`/`video_restored` events per role; the camera track
   stops sending; a camera loss with a working microphone switches
-  automatically. Each actual change of the physician's mode records
+  automatically. Each actual change of either participant's mode records
   `teleconsult.audio_only.enabled` or `teleconsult.audio_only.disabled`
   (session record, `clinic_id` and `object_verb` only); repeating the current
-  mode records nothing.
+  mode records nothing. The physician appends through `record_phase1_event`.
+  A patient session carries no tenant or user GUC, so its transition appends
+  through `clinic_app.teleconsult_mode_audit` (owner writer) after
+  `teleconsult_mode_audit_scope` (resolver) admits only the bound patient
+  session whose newest own mode event matches; a replayed or forged claim is
+  refused with 42501.
 - Reconnect: `resume` re-validates the participant, rotates an expired join
   credential, appends `reconnected` and returns the stored media modes and
   peer presence. A revoked (removed, ended or rotated) participant is
