@@ -164,7 +164,7 @@ def _owner(w: LegacyWorld, valid: bool) -> object:
     )
     with assume_runtime_owner(context), connection.cursor() as cursor:
         cursor.execute("SELECT current_user")
-        assert cursor.fetchone() == ("clinic_app",)
+        assert cursor.fetchall() == [("clinic_app",)]
     # The owner lifecycle context deliberately restores the owner connection;
     # put the test connection back under the same runtime role for its assertion.
     with connection.cursor() as cursor:

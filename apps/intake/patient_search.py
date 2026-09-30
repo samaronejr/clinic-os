@@ -10,7 +10,10 @@ from django.db import connection, transaction
 
 from apps.audit.services import record_phase1_event
 from apps.core.idempotency import PatientNameValueError, normalize_patient_name
-from apps.intake.access import authorized_manager_clinic
+from apps.identity.current_context import CurrentActorError, require_permission
+from apps.intake.access import PatientAccessDeniedError, authorized_manager_clinic
+from apps.intake.models import PatientClinicEnrollment
+from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.envelope import _kek
 
 if TYPE_CHECKING:
@@ -56,6 +59,36 @@ def _normalized_query(query: str) -> str:
     if not MIN_QUERY_LENGTH <= len(normalized) <= MAX_QUERY_LENGTH:
         raise PatientSearchInputError
     return normalized
+
+
+def search_patients_exact(
+    *, clinic_id: UUID, query: str, limit: int
+) -> PatientSearchPage:
+    """Select by tenant HMAC first, then reveal only the bounded exact matches."""
+    query = _normalized_query(query)
+    authorized_manager_clinic(clinic_id)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError as error:
+        raise PatientAccessDeniedError from error
+    matches = PatientClinicEnrollment.objects.filter(
+        clinic_id=clinic_id, patient__full_name_index__in=name_indexes(query)
+    ).order_by("id")
+    total = matches.count()
+    items = (
+        tuple(
+            PatientSearchItem(row.pk, row.patient.full_name, row.patient.birth_date)
+            for row in matches.select_related("patient")[:limit]
+        )
+        if total <= limit
+        else ()
+    )
+    record_phase1_event(
+        "intake.patient.searched", clinic_id=clinic_id, affected_record_id=clinic_id
+    )
+    return PatientSearchPage(
+        items=items, page=1, total=total, page_count=(total + limit - 1) // limit
+    )
 
 
 def search_patients(

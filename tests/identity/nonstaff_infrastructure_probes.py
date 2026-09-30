@@ -164,6 +164,14 @@ def infrastructure_probes(
             database_role="clinic_owner",
         ),
         DifferentialProbe(
+            "apps.tenancy.envelope.blind_indexes",
+            lambda: envelope.blind_indexes(
+                purpose="synthetic.differential", plaintext=b"Sintetico"
+            ),
+            bool,
+            database_role="clinic_owner",
+        ),
+        DifferentialProbe(
             "apps.tenancy.envelope.rewrap_tenant_keys",
             lambda: envelope.rewrap_tenant_keys(new_kek="ab" * 32),
             bool,

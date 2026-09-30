@@ -9,7 +9,10 @@ service's own role checks; refusals use the ``{code, message_key}`` contract.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
+from django.template.loader import render_to_string
+from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema
 from rest_framework.parsers import JSONParser
@@ -29,8 +32,14 @@ from apps.core.api.errors import (
 from apps.core.api.serializers import (
     AgendaPageSerializer,
     AgendaQueryRequestSerializer,
+    CommandResultSerializer,
+    CommandSearchRequestSerializer,
     ErrorSerializer,
 )
+from apps.core.command_search import CommandResult, CommandSearch, search_commands
+from apps.core.command_views import tokenized
+from apps.core.workspace import ACTIVE_CLINIC_SESSION_KEY, clinic_of_actor
+from apps.identity.models import User
 from apps.scheduling.services import (
     AgendaInputError,
     AvailabilityAccessDeniedError,
@@ -96,6 +105,88 @@ class AgendaQueryView(UiApiView):
         except AgendaInputError as error:
             raise UiApiError(INVALID_INPUT) from error
         return Response(AgendaPageSerializer(page).data)
+
+
+class CommandSearchView(UiApiView):
+    """Return the actor's allowed palette rows for one query in one clinic."""
+
+    @extend_schema(
+        operation_id="command_search",
+        tags=["command"],
+        request=CommandSearchRequestSerializer,
+        responses={200: CommandResultSerializer(many=True), **ERROR_RESPONSES},
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``core.search_commands``; unknown and foreign clinics answer ``[]``."""
+        query = CommandSearchRequestSerializer(data=request.data)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+        user = request.user
+        if not isinstance(user, User):
+            raise UiApiError(ACCESS_DENIED)
+        clinic_id = data.get("clinic_id") or _remembered_clinic(request)
+        clinic = clinic_of_actor(user.pk, clinic_id) if clinic_id else None
+        if clinic is None:
+            return Response([])
+        search = search_commands(
+            clinic_id=clinic.id,
+            timezone=clinic.timezone,
+            roles=clinic.roles,
+            query=data["q"],
+            context_path=data.get("page_path", ""),
+        )
+        if search.patient_status == "refine":
+            search = CommandSearch(
+                results=(
+                    *search.results,
+                    CommandResult(
+                        kind="notice",
+                        group=gettext("Patients"),
+                        label=gettext(
+                            "Several patients share this name. "
+                            "Use the patient registry to tell them apart."
+                        ),
+                        meta="",
+                        action_url_name="",
+                        href=None,
+                    ),
+                ),
+                patient_status="refine",
+            )
+        rows = []
+        previous_group = ""
+        for index, (result, token) in enumerate(
+            tokenized(request.session, clinic.id, search)
+        ):
+            rows.append(
+                {
+                    "kind": result.kind,
+                    "label": result.label,
+                    "meta": result.meta,
+                    "action_url_name": result.action_url_name,
+                    "token": token or None,
+                    "href": result.href,
+                    "html": render_to_string(
+                        "core/partials/command_api_option.html",
+                        {
+                            "result": result,
+                            "token": token,
+                            "index": index,
+                            "group_start": result.group != previous_group,
+                        },
+                    ),
+                }
+            )
+            previous_group = result.group
+        return Response(CommandResultSerializer(rows, many=True).data)
+
+
+def _remembered_clinic(request: Request) -> UUID | None:
+    raw = request.session.get(ACTIVE_CLINIC_SESSION_KEY)
+    try:
+        return UUID(raw) if isinstance(raw, str) else None
+    except ValueError:
+        return None
 
 
 @csrf_exempt

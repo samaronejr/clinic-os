@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.core.patient_context import bind_patient_context
 from apps.identity.current_context import CurrentActorError
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import PatientAccessDeniedError
@@ -156,12 +157,13 @@ def _appointment_context(
             if created
             else "Este questionário já estava atribuído a esta consulta."
         )
-    context["statuses"] = completion_status(
-        clinic_id=clinic_id,
-        enrollment_id=appointment_enrollment(
-            clinic_id=clinic_id, appointment_id=appointment_id
-        ),
+    enrollment_id = appointment_enrollment(
+        clinic_id=clinic_id, appointment_id=appointment_id
     )
+    context["statuses"] = completion_status(
+        clinic_id=clinic_id, enrollment_id=enrollment_id
+    )
+    bind_patient_context(request, clinic_id=clinic_id, enrollment_id=enrollment_id)
     context["appointment_id"] = appointment_id
     context["templates"] = published_templates(clinic_id=clinic_id)
     return context
@@ -182,9 +184,13 @@ def staff_questionnaires(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         if request.method == "POST":
             action = request.POST.get("action")
             if action == "status":
+                enrollment_id = UUID(request.POST.get("enrollment_id", ""))
                 context["statuses"] = completion_status(
                     clinic_id=clinic_id,
-                    enrollment_id=UUID(request.POST.get("enrollment_id", "")),
+                    enrollment_id=enrollment_id,
+                )
+                bind_patient_context(
+                    request, clinic_id=clinic_id, enrollment_id=enrollment_id
                 )
             elif action in ("appointment", "assign"):
                 context.update(_appointment_context(request, clinic_id, action))
@@ -203,6 +209,9 @@ def staff_questionnaires(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                     )
                 response = clinical_response(
                     clinic_id=clinic_id, response_id=response_id
+                )
+                bind_patient_context(
+                    request, clinic_id=clinic_id, enrollment_id=response.enrollment_id
                 )
                 context["response"] = response
                 context["answers"] = [

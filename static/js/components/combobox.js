@@ -3,7 +3,9 @@
    Alt+Down opens, Enter chooses, Escape closes (a second Escape clears),
    Tab leaves. Static options are filtered here; with
    data-combobox-endpoint the typed text is POSTed (never put in a URL) and
-   the server returns <li role="option"> markup. Nothing is stored. */
+   the server returns <li role="option"> markup (in each typed row's html
+   field for /api/ui/ endpoints). data-combobox-context is a page path, never
+   a record, and travels in the same body. Nothing is stored. */
 (function () {
   "use strict";
 
@@ -170,8 +172,19 @@
       self.request.abort();
     }
     self.request = new AbortController();
+    var jsonApi = self.endpoint.indexOf("/api/ui/") === 0;
+    var context = self.root.getAttribute("data-combobox-context");
     var body = new URLSearchParams();
     body.set("q", self.input.value);
+    if (context) {
+      body.set("context", context);
+    }
+    var headers = { "X-CSRFToken": csrfToken(self.root) };
+    if (jsonApi) {
+      headers["Content-Type"] = "application/json";
+      headers.Accept = "application/json";
+      body = JSON.stringify({q: self.input.value, page_path: context || "/"});
+    }
     self.root.setAttribute("aria-busy", "true");
     if (self.status) {
       self.status.textContent = self.text("loading", 0);
@@ -180,13 +193,15 @@
       method: "POST",
       body: body,
       credentials: "same-origin",
-      headers: { "X-CSRFToken": csrfToken(self.root) },
+      headers: headers,
       signal: self.request.signal
     }).then(function (response) {
       if (!response.ok) {
         throw new Error("search failed");
       }
-      return response.text();
+      return jsonApi ? response.json().then(function (rows) {
+        return rows.map(function (row) { return row.html; }).join("");
+      }) : response.text();
     }).then(function (html) {
       self.root.removeAttribute("aria-busy");
       self.listbox.innerHTML = html;

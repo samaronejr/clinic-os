@@ -563,7 +563,7 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
         for function, probe in GUARD_PROBES.items():
             if probe.latest is not None:
                 cursor.execute(probe.latest, scope)
-                (latest[function],) = cursor.fetchone()
+                ((latest[function],),) = cursor.fetchall()
     manager = _staff_actor(graph)
     rows: dict[str, list[bool | Outcome]] = {
         name: [] for name in [*DELEGATE_PROBES, *GUARD_PROBES]

@@ -32,6 +32,9 @@ class Patient(TenantScopedModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = EncryptedPatientNameField(purpose="intake.patient.full_name")
+    full_name_index = models.BinaryField(
+        max_length=32, editable=False, null=True, db_index=True
+    )
     birth_date = EncryptedDateField(purpose="intake.patient.birth_date")
     created_at = models.DateTimeField(auto_now_add=True)
 

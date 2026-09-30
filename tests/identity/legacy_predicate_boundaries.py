@@ -5,11 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
+from apps.core import navigation
 from apps.ehr import services as ehr
-from apps.identity import current_context, otp, preferences
+from apps.identity import current_context, otp, preferences, saved_views
 from apps.identity.auth_backends import ClinicBackend
 from apps.identity.models import User, UserClinicRole
-from apps.intake import contacts, patient_access, questionnaire_views
+from apps.identity.permissions import BUNDLES_V1, PROFESSIONAL_PERMISSIONS_V1
+from apps.intake import contacts, patient_access, patient_search, questionnaire_views
 from apps.retention import services as retention
 from apps.teleconsult import services as teleconsult
 from django.contrib.auth.models import AnonymousUser
@@ -19,6 +21,7 @@ from django.http import HttpResponse
 from identity.legacy_parity_support import (
     ADMINS,
     LEGACY,
+    MANAGERS,
     PHYSICIAN,
     Boundary,
     has_rows,
@@ -81,9 +84,78 @@ def _preferences(_w: LegacyWorld, valid: bool) -> object:
     return preferences.save_ui_preferences(theme="dark", density="compact")
 
 
+def _saved_view(w: LegacyWorld, valid: bool) -> object:
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
+            )
+    try:
+        return saved_views.save_view(
+            clinic_id=w.graph.clinic_a, destination="agenda", params={"view": "week"}
+        )
+    except saved_views.SavedViewError:
+        # Row security hides the clinic from an actor holding no role in it.
+        return False
+
+
+def _granted_permissions(w: LegacyWorld, valid: bool) -> object:
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
+            )
+    granted = navigation.granted_permissions(w.graph.clinic_a)
+    # Exact value, not presence: the role's v1 bundle within the registry,
+    # less the professionally scoped permissions, which need a current
+    # professional registration that this world does not seed. An unknown
+    # actor must hold exactly nothing; asserting equality with the empty set
+    # refuses any nonempty unauthorized projection instead of converting it
+    # into a denial through the valid role's set.
+    expected: frozenset[str] = (
+        (BUNDLES_V1[w.role] - PROFESSIONAL_PERMISSIONS_V1)
+        & navigation.REGISTRY_PERMISSIONS
+        if valid
+        else frozenset()
+    )
+    assert granted == expected, (granted, expected)
+    return valid
+
+
+def _search_exact(w: LegacyWorld, valid: bool) -> object:
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
+            )
+    return patient_search.search_patients_exact(
+        clinic_id=w.graph.clinic_a, query="Sintetico", limit=5
+    )
+
+
+# Two gates decide the exact search: the manager roles, then demographics.read.
+# The owner passes the first and lacks the second; the physician the reverse.
+EXACT_SEARCH = tuple(
+    role for role in MANAGERS if "demographics.read" in BUNDLES_V1[role]
+)
+
+
 BOUNDARIES = (
     Boundary(
         "apps.identity.preferences.save_ui_preferences", "actor", LEGACY, _preferences
+    ),
+    Boundary("apps.identity.saved_views.save_view", "actor", LEGACY, _saved_view),
+    Boundary(
+        "apps.core.navigation.granted_permissions",
+        "resolver",
+        LEGACY,
+        _granted_permissions,
+    ),
+    Boundary(
+        "apps.intake.patient_search.search_patients_exact",
+        "denial",
+        EXACT_SEARCH,
+        _search_exact,
     ),
     Boundary(
         "apps.identity.models.User._has_role",

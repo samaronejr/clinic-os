@@ -194,14 +194,14 @@ def _as_owner() -> Iterator[None]:
     """Trusted seeding on the owner role, then back to the bound runtime role."""
     with connection.cursor() as cursor:
         cursor.execute("SELECT current_user")
-        row = cursor.fetchone()
-        assert row is not None
+        (row,) = cursor.fetchall()
+        (role,) = row
         cursor.execute("SET ROLE clinic_owner")
     try:
         yield
     finally:
         with connection.cursor() as cursor:
-            cursor.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(row[0])))
+            cursor.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(role)))
 
 
 def staff_session(graph: RbacGraph, actor: UUID) -> str:

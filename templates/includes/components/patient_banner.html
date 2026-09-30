@@ -1,0 +1,60 @@
+{% load i18n %}{% comment %}
+Patient banner: the minimum-necessary identity of the patient in context,
+pinned under the navigation whenever a patient context is active
+(apps/core/patient_context.py decides when). Never put these values in the
+page title, a URL, a data-* attribute, a toast or browser storage.
+
+Shows: the social name first when recorded (legal name after it), age in
+completed years, masked identifiers, the allergy assessment (encounter-bound
+physician only; otherwise no allergy statement at all), the active encounter,
+delegate and restricted-record indicators, the patient actions the actor may
+use (POST forms, enrollment in the body) and "Close patient". Closing and
+switching go through static/js/patient-context.js (data-context-switch).
+
+Context (include with `only` and pass csrf_token):
+  patient     apps.core.patient_context.PatientBanner (required unless
+              state="empty")
+  clinic_id   Clinic of the context (required for actions)
+  next        Path to resume after closing (the current page)
+  state       SC-8 state; hover/focus/active force the close button look,
+              other states add the shared state note
+  message     State note text
+  id          Element id (default "patient-banner")
+  name_context  Element id appended to the landmark name (showcase repeats)
+  specimen    True for showcase captures (in flow, actions render inert)
+{% endcomment %}{% firstof id "patient-banner" as banner_id %}<section class="patient-banner{% if patient.bound %} patient-banner--bound{% endif %}{% if specimen %} patient-banner--specimen{% endif %}" id="{{ banner_id }}" aria-labelledby="{{ banner_id }}-label{% if name_context %} {{ name_context }}{% endif %}" data-patient-banner{% if state == "loading" %} aria-busy="true"{% endif %}>
+  <span class="visually-hidden" id="{{ banner_id }}-label">{% trans "Patient in context" %}</span>
+  <div class="patient-banner-inner">
+    {% if state == "empty" %}{% include "includes/components/state.html" with state="empty" title=_("No patient in context") message=_("Choose a patient in the search (Ctrl+K) to pin them here.") only %}{% else %}
+    <p class="patient-banner-identity">
+      <strong class="patient-banner-name">{% if patient.social_name %}{{ patient.social_name }}{% else %}{{ patient.name }}{% endif %}</strong>
+      {% if patient.social_name %}<span class="patient-banner-meta">{% trans "Legal name:" %} {{ patient.name }}</span>{% endif %}
+      <span class="patient-banner-meta">{{ patient.age_label }}</span>
+      {% for identifier in patient.identifiers %}<span class="patient-banner-meta">{{ identifier.kind }} {{ identifier.masked }}</span>{% endfor %}
+    </p>
+    {% if patient.allergy_state or patient.active_encounter or patient.delegate or patient.restricted %}
+    <ul class="patient-banner-flags" aria-label="{% trans "Patient indicators" %}">
+      {% if patient.allergy_state %}<li><span class="badge {% if patient.allergy_state == "documented" %}badge--error{% elif patient.allergy_state == "not_assessed" %}badge--warning{% else %}badge--muted{% endif %}">{% include "includes/components/icon.html" with name="alert" only %}{{ patient.allergy_label }}</span></li>{% endif %}
+      {% if patient.active_encounter %}<li><span class="badge badge--info">{% trans "Encounter in progress" %}</span></li>{% endif %}
+      {% if patient.delegate %}<li><span class="badge badge--pending">{% trans "Acting for a delegate" %}</span></li>{% endif %}
+      {% if patient.restricted %}<li><span class="badge badge--warning">{% include "includes/components/icon.html" with name="lock" only %}{% trans "Restricted record" %}</span></li>{% endif %}
+    </ul>
+    {% endif %}
+    <div class="patient-banner-actions">
+      {% for action in patient.actions %}<form method="post" action="{% if specimen %}#{% else %}{% url action.url_name clinic_id=clinic_id %}{% endif %}">
+        {% csrf_token %}
+        {% if action.key == "book" %}<input type="hidden" name="mode" value="prepare">{% else %}<input type="hidden" name="action" value="manage">{% endif %}
+        <input type="hidden" name="enrollment_id" value="{{ patient.enrollment_id }}">
+        <button class="button--quiet" type="submit"{% if state == "disabled" or state == "permission-denied" or state == "offline" %} disabled{% endif %}>{{ action.label }}</button>
+      </form>{% endfor %}
+      <form method="post" action="{% if specimen %}#{% else %}{% url 'workspace-patient-close' %}{% endif %}" data-context-switch>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <input type="hidden" name="unsaved" value="">
+        <button class="button--quiet patient-banner-close{% if state == "hover" %} is-hover{% elif state == "focus" %} is-focus{% elif state == "active" %} is-active{% endif %}" type="submit"{% if state == "disabled" %} disabled{% endif %}>{% include "includes/components/icon.html" with name="close" only %}{% trans "Close patient" %}</button>
+      </form>
+    </div>
+    {% if state == "loading" or state == "error" or state == "success" or state == "stale" or state == "conflict" or state == "permission-denied" or state == "offline" or state == "disabled" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+    {% endif %}
+  </div>
+</section>

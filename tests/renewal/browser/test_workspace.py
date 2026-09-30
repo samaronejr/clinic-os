@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -23,7 +22,15 @@ from django_otp.oath import TOTP
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
-from renewal.browser._navigation import goto_refused
+from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_refused,
+    goto_settled,
+    settle_service_worker,
+    wait_for_signed_in,
+)
 from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser.engines import (
     assert_only_refused_document_logged,
@@ -57,7 +64,6 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
     """Seed a two-clinic receptionist, a TOTP-enrolled physician and clinic B."""
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
@@ -65,10 +71,10 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
         "receptionist_id": str(uuid4()),
         "physician": f"medico-{uuid4().hex[:8]}",
         "physician_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
-        "totp_key": secrets.token_hex(20),
+        "password": new_password(),
+        "totp_key": new_totp_key(),
     }
-    with psycopg.connect(values["dsn"]) as connection:
+    with psycopg.connect(fixture_dsn()) as connection:
         connection.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
             [values["organization"]],
@@ -267,9 +273,17 @@ def _submit_diagnostics(page: Page, selector: str) -> Iterator[None]:
         recorder.detach()
 
 
-def _submit(page: Page, selector: str) -> None:
+def _submit(page: Page, selector: str, *, navigation: bool = True) -> None:
+    """Finish the triggered document, not merely its POST's response headers.
+
+    Both kinds settle the worker first (renewal.browser._navigation): the
+    navigating one through ``expect_document``, the htmx one directly.
+    """
+    if not navigation:
+        settle_service_worker(page)
     with (
         _submit_diagnostics(page, selector),
+        expect_document(page, wait_until="load") if navigation else nullcontext(),
         page.expect_response(
             lambda response: response.request.method == "POST"
         ) as received,
@@ -279,7 +293,7 @@ def _submit(page: Page, selector: str) -> None:
 
 
 def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
     wait_for_js(page, FIELD_WATCH_JS)
     expect(page.locator(".nav-list")).to_have_count(0)  # authentication stays focused
     expect(page.locator(".nav-brand .nav-wordmark")).to_have_text("Clinic Ops")
@@ -290,14 +304,60 @@ def _sign_in(page: Page, base_url: str, username: str, password: str) -> None:
 
 
 def _register_and_find_patient(page: Page, base_url: str, patients: str) -> None:
-    page.goto(f"{base_url}{patients}new/")
+    goto_settled(page, f"{base_url}{patients}new/")
     page.locator("#id_full_name").fill(PATIENT)
     page.locator("#id_birth_date").fill("1990-05-17")
     _submit(page, "button[type=submit]")
     page.wait_for_url(f"**{patients}")
     page.locator("#id_q").fill(PATIENT)
-    _submit(page, "#patient-search-form button[type=submit]")
+    _submit(page, "#patient-search-form button[type=submit]", navigation=False)
     expect(page.locator(".intake-table tbody")).to_contain_text(PATIENT)
+
+
+def test_submit_finishes_native_and_htmx_redirect_navigation(
+    desktop: Page,
+    renewal_base_url: str,
+    workspace_staff: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The click's own wait ends at the navigation's commit; ``_submit`` must
+    # also have seen the new document's ``load`` before it returns. The click
+    # keeps that wait: ``no_wait_after`` would also skip its hit-target check
+    # and can lose the submit (renewal.browser._navigation).
+    loaded: list[str] = []
+    desktop.on("load", lambda page: loaded.append(page.url))
+    original = _submit
+
+    def checked(page: Page, selector: str, *, navigation: bool = True) -> None:
+        before = len(loaded)
+        original(page, selector, navigation=navigation)
+        if navigation:
+            assert len(loaded) > before
+
+    monkeypatch.setattr(f"{__name__}._submit", checked)
+    assert "dsn" not in workspace_staff
+    for key in ("password", "totp_key"):
+        assert workspace_staff[key] not in repr(workspace_staff)
+    _sign_in(
+        desktop,
+        renewal_base_url,
+        workspace_staff["receptionist"],
+        workspace_staff["password"],
+    )
+    _register_and_find_patient(
+        desktop,
+        renewal_base_url,
+        f"/intake/clinics/{workspace_staff['clinic_a']}/patients/",
+    )
+
+
+def _open_clinic_switcher(page: Page) -> None:
+    """Open the clinic switcher from the keyboard.
+
+    Enter on its ``<summary>`` toggles the native disclosure; no document.
+    """
+    page.locator(".nav-switch-summary").focus()
+    page.keyboard.press("Enter")
 
 
 def _modules(page: Page) -> list[str]:
@@ -360,7 +420,7 @@ def _cached_urls(page: Page) -> list[str]:
 
 def _sign_in_receptionist(page: Page, base_url: str, staff: dict[str, str]) -> None:
     _sign_in(page, base_url, staff["receptionist"], staff["password"])
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def test_receptionist_reaches_every_module_and_switches_clinic(
@@ -378,19 +438,11 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
 
     _sign_in_receptionist(page, renewal_base_url, workspace_staff)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
-    assert _modules(page) == [
-        "agenda",
-        "patients",
-        "billing",
-        "availability",
-        "retention",
-        "consent",
-    ]
+    assert _modules(page) == ["agenda", "patients", "finance", "operations"]
     _capture(page, root, "receptionist-landing-1280")
 
     # Brand link and Agenda entry both land on today's agenda of this clinic.
-    with page.expect_navigation():
-        page.locator(".nav-brand").click()
+    click_to_navigate(page.locator(".nav-brand"))
     assert page.url.endswith(agenda_a)
     expect(page.locator("a[data-module=agenda]")).to_have_attribute(
         "aria-current", "page"
@@ -399,8 +451,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
     _capture(page, root, "receptionist-agenda-1280")
 
     # Register and find one synthetic patient through the real module.
-    with page.expect_navigation():
-        page.locator("a[data-module=patients]").click()
+    click_to_navigate(page.locator("a[data-module=patients]"))
     expect(page.locator("a[data-module=patients]")).to_have_attribute(
         "aria-current", "page"
     )
@@ -408,18 +459,16 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
     _capture(page, root, "receptionist-patients-1280")
 
     # Clinic switcher: native disclosure, keyboard reachable, changes context.
-    page.locator(".nav-switch-summary").focus()
-    page.keyboard.press("Enter")
+    _open_clinic_switcher(page)
     expect(page.locator(".nav-switch")).to_have_attribute("open", "")
     _capture(page, root, "receptionist-switch-open-1280")
-    with page.expect_navigation():
-        page.locator(".nav-switch-list a", has_text=CLINIC_B).click()
+    click_to_navigate(page.locator(".nav-switch-list a", has_text=CLINIC_B))
     assert workspace_staff["clinic_b"] in page.url
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_B)
     expect(page.locator(".nav-switch-list")).to_contain_text(CLINIC_A)
 
     # The remembered clinic survives a non-clinic page.
-    page.goto(f"{renewal_base_url}/auth/protected/")
+    goto_settled(page, f"{renewal_base_url}/auth/protected/")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_B)
     assert not errors
     checks = browser_report["checks"]
@@ -428,7 +477,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
         {
             "surface": "workspace",
             "assertion": "receptionist modules, agenda entry, clinic switcher",
-            "modules": ["agenda", "patients", "availability"],
+            "modules": ["agenda", "patients", "finance", "operations"],
             "console_errors": errors,
         }
     )
@@ -445,10 +494,11 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
     agenda_a = f"/scheduling/clinics/{workspace_staff['clinic_a']}/agenda/"
     _sign_in_receptionist(page, renewal_base_url, workspace_staff)
 
-    # Keyboard order: skip link, brand, clinic switcher, modules, sign out.
-    page.goto(f"{renewal_base_url}{agenda_a}")
+    # Keyboard order: skip link, brand, clinic switcher, search, destinations,
+    # sign out, then the Agenda section row (Agenda, Availability).
+    goto_settled(page, f"{renewal_base_url}{agenda_a}")
     order: list[str] = []
-    for _ in range(10):
+    for _ in range(11):
         page.keyboard.press("Tab")
         order.append(
             page.evaluate(
@@ -460,13 +510,14 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         "skip-link",
         "nav-brand",
         "nav-switch-summary",
+        "nav-command",
         "agenda",
         "patients",
-        "billing",
-        "availability",
-        "retention",
-        "consent",
+        "finance",
+        "operations",
         "nav-link",
+        "tab",
+        "tab",
     ]
     assert (
         page.evaluate("getComputedStyle(document.activeElement).outlineStyle") != "none"
@@ -478,8 +529,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         assert _no_overflow(page), width
         _capture(page, root, f"receptionist-agenda-{width}")
     page.set_viewport_size({"width": 320, "height": 900})
-    with page.expect_navigation():
-        page.locator("a[data-module=availability]").click()
+    click_to_navigate(page.locator(".shell-subnav a[data-tab=availability]"))
     assert "/availability/" in page.url
     assert _no_overflow(page)
     _capture(page, root, "receptionist-availability-320")
@@ -513,7 +563,7 @@ def test_installation_metadata_and_static_only_worker_resolve(
         # Firefox under Playwright controls only the page the worker claimed
         # (engines.navigations_are_worker_controlled): the signed-in landing.
         _await_worker(page)
-    page.goto(f"{renewal_base_url}{agenda_a}")
+    goto_settled(page, f"{renewal_base_url}{agenda_a}")
     if navigations_are_worker_controlled(page.context):
         _await_worker(page)
     scope = page.evaluate("navigator.serviceWorker.ready.then(r => r.scope)")
@@ -547,7 +597,7 @@ def test_worker_never_stores_credential_bearing_requests(
     page = desktop
     asset = "/static/css/clinic-os.css"
     legacy_cache = "clinic-os-static-legacy-credential-probe"
-    page.goto(f"{renewal_base_url}/auth/login/")
+    goto_settled(page, f"{renewal_base_url}/auth/login/")
     page.evaluate(
         """async ({name, asset}) => {
           const cache = await caches.open(name);
@@ -677,17 +727,17 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     token = TOTP(bytes.fromhex(workspace_staff["totp_key"]), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
     _submit(page, "button[type=submit]")
-    page.wait_for_url("**/auth/protected/")
-    assert _modules(page) == ["agenda", "availability", "retention", "consent"]
+    wait_for_signed_in(page)
+    assert _modules(page) == ["agenda", "patients", "operations"]
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator(".nav-switch")).to_have_count(0)
     _capture(page, renewal_artifact_root, "physician-landing-1280")
 
     # Forbidden role: the registry is refused on GET and on POST, never offered.
-    registry = page.goto(f"{renewal_base_url}{patients_a}")
+    registry = goto_settled(page, f"{renewal_base_url}{patients_a}")
     assert registry is not None
     assert registry.status == NOT_FOUND
-    assert _modules(page) == ["agenda", "availability", "retention", "consent"]
+    assert _modules(page) == ["agenda", "patients", "operations"]
     expect(page.locator("#id_q")).to_have_count(0)
     csrf = next(
         cookie["value"]
@@ -704,7 +754,7 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     _capture(page, renewal_artifact_root, "physician-registry-denied-1280")
 
     # Forbidden clinic: denied, and the shell keeps the physician's own clinic.
-    response = page.goto(f"{renewal_base_url}{agenda_b}")
+    response = goto_settled(page, f"{renewal_base_url}{agenda_b}")
     assert response is not None
     assert response.status == NOT_FOUND
     expect(page.locator("h1")).to_have_text(gettext("Page unavailable"))
@@ -732,11 +782,11 @@ def test_stale_clinic_context_is_dropped_after_revocation(
         workspace_staff["receptionist"],
         workspace_staff["password"],
     )
-    page.wait_for_url("**/auth/protected/")
-    page.goto(f"{renewal_base_url}{agenda_b}")
+    wait_for_signed_in(page)
+    goto_settled(page, f"{renewal_base_url}{agenda_b}")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_B)
 
-    with psycopg.connect(workspace_staff["dsn"]) as connection:
+    with psycopg.connect(fixture_dsn()) as connection:
         connection.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
             [workspace_staff["organization"]],
@@ -747,16 +797,61 @@ def test_stale_clinic_context_is_dropped_after_revocation(
             [workspace_staff["receptionist_id"], workspace_staff["clinic_b"]],
         )
 
-    page.goto(f"{renewal_base_url}/auth/protected/")
+    goto_settled(page, f"{renewal_base_url}/auth/protected/")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     assert CLINIC_B not in page.content()
     expect(page.locator(".nav-switch")).to_have_count(0)
     _capture(page, renewal_artifact_root, "stale-clinic-replaced-1280")
-    response = page.goto(f"{renewal_base_url}{agenda_b}")
+    response = goto_settled(page, f"{renewal_base_url}{agenda_b}")
     assert response is not None
     assert response.status == NOT_FOUND
     assert CLINIC_B not in page.content()
     _capture(page, renewal_artifact_root, "stale-clinic-denied-1280")
+
+
+def _settle_offline_navigation(page: Page) -> Page:
+    """Close the page holding the refused navigation; continue in a fresh one.
+
+    Firefox's network-error document retries its navigation when the browser
+    comes back online, and that retry can start after a later ``goto`` and
+    interrupt it. Chromium commits its error document after ``goto`` has
+    already raised, so even an ``about:blank`` navigation can be overtaken.
+    Closing the page, while still offline, ends every navigation and handler
+    it owns in every engine; the recovery ``goto`` cannot overlap them.
+    """
+    context = page.context
+    page.close()
+    fresh = context.new_page()
+    fresh.set_default_timeout(20_000)  # the suite's page default
+    return fresh
+
+
+def test_offline_settle_does_not_reuse_the_refused_page(
+    desktop: Page, renewal_base_url: str
+) -> None:
+    """Same-page-reuse regression check for ``_settle_offline_navigation``.
+
+    It does not reproduce the engine's reconnect retry: that needs a real
+    refused navigation and waiting for a navigation that must never start.
+    It pins what the fix relies on instead: while offline, the page that held
+    the navigation is closed and recovery continues in a new page of the same
+    context. test_offline_reload_reveals_no_patient_content runs the real
+    refused navigation through this helper.
+    """
+    page = desktop
+    login = f"{renewal_base_url}/auth/login/"
+    goto_settled(page, login)
+    page.context.set_offline(offline=True)
+    try:
+        fresh = _settle_offline_navigation(page)
+    finally:
+        page.context.set_offline(offline=False)
+    assert page.is_closed()
+    assert fresh is not page
+    assert fresh.context is page.context
+    response = goto_settled(fresh, login)
+    assert response is not None
+    assert response.status == OK
 
 
 def test_offline_reload_reveals_no_patient_content(
@@ -782,7 +877,7 @@ def test_offline_reload_reveals_no_patient_content(
             workspace_staff["receptionist"],
             workspace_staff["password"],
         )
-        page.wait_for_url("**/auth/protected/")
+        wait_for_signed_in(page)
         _await_worker(page)
         _register_and_find_patient(page, renewal_base_url, patients_a)
         cached_before = _cached_urls(page)
@@ -817,17 +912,17 @@ def test_offline_reload_reveals_no_patient_content(
         assert str(offline["patients"]).startswith("rejected")
         assert str(offline["worker"]).startswith("rejected")
         # The refused navigation leaves an error document committing under
-        # the refused URL; goto_refused drains that commit so nothing pending
-        # can interrupt the recovery goto (hosted flake, fix-a14).
+        # the refused URL; goto_refused drains that commit (fix-a14), and the
+        # page that held it is then closed while still offline, so neither
+        # the commit nor Firefox's reconnect retry can reach the recovery.
         with pytest.raises(PlaywrightError, match=offline_navigation_error(context)):
             goto_refused(page, f"{renewal_base_url}{patients_a}")
+        page = _settle_offline_navigation(page)
         context.set_offline(offline=False)
 
-        # A bare goto: the error document is fully committed, so no pending
-        # navigation can interrupt, and the worker already activated before
-        # the offline phase, so none can be mid-activation. A settle would
-        # evaluate on Firefox's error document, where evaluate raises.
-        page.goto(f"{renewal_base_url}{patients_a}")
+        # The recovery runs in the fresh page, which never held the error
+        # document, so it settles like every other navigation.
+        goto_settled(page, f"{renewal_base_url}{patients_a}")
         cached_after = _cached_urls(page)
         assert all(url.startswith("/static/") for url in cached_after)
         bodies = page.evaluate(

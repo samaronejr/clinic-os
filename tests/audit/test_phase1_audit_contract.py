@@ -41,6 +41,18 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "identity.service_principal_grant",
         "revoked",
     ),
+    "identity.saved_view.created": (
+        "tenant",
+        "clinic-os-web",
+        "identity.saved_view",
+        "created",
+    ),
+    "identity.saved_view.archived": (
+        "tenant",
+        "clinic-os-web",
+        "identity.saved_view",
+        "archived",
+    ),
     "identity.role_grant.created": (
         "tenant",
         "clinic-os-ops",

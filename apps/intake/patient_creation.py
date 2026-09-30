@@ -17,6 +17,7 @@ from apps.core.idempotency import (
 )
 from apps.intake.access import authorized_manager_clinic
 from apps.intake.models import Patient, PatientClinicEnrollment
+from apps.intake.patient_name_index import name_indexes
 from apps.scheduling.locks import acquire_advisory_locks, clinic_lock_key
 from apps.scheduling.timezones import format_local_minute
 
@@ -138,6 +139,7 @@ def create_patient(
                 patient = Patient.objects.create(
                     organization_id=clinic.organization_id,
                     full_name=normalized_name,
+                    full_name_index=name_indexes(normalized_name)[-1],
                     birth_date=birth_date,
                 )
                 enrollment = PatientClinicEnrollment.objects.create(

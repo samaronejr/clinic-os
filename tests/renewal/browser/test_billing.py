@@ -358,10 +358,10 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         sign_in_manager(admin, base, staff, manager)
         # The ledger is reachable from the shell, not only by typed URL.
-        click_to_navigate(admin.locator("a[data-module=billing]"))
+        click_to_navigate(admin.locator("a[data-module=finance]"))
         ledger = ledger_url(base, staff)
         assert admin.url == ledger
-        expect(admin.locator("a[data-module=billing]")).to_have_attribute(
+        expect(admin.locator("a[data-module=finance]")).to_have_attribute(
             "aria-current", "page"
         )
         # A long synthetic name and a grouped BRL value stress the ledger.

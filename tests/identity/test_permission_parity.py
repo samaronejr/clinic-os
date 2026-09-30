@@ -10,7 +10,7 @@ import pytest
 from apps.identity import stepup
 from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
-from django.db import DatabaseError, transaction
+from django.db import transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
@@ -32,6 +32,7 @@ from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventor
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
 from identity.nonstaff_census import run_nonstaff_census
 from identity.permission_support import owner_context
+from identity.sql_denial_contracts import redeem
 from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
 from identity.test_service_principals import agent_password
@@ -226,15 +227,7 @@ def test_sql_guards_allow_and_deny_all_staff_roles(
         for name, probe in PROBES.items():
             for valid in (True, False):
                 expected = valid and role in probe.roles
-                if not expected and probe.refusal_state is not None:
-                    with pytest.raises(DatabaseError) as caught, transaction.atomic():
-                        call(probe, subject, valid)
-                    assert (
-                        getattr(caught.value.__cause__, "sqlstate", None)
-                        == probe.refusal_state
-                    ), name
-                else:
-                    with transaction.atomic():
-                        actual = call(probe, subject, valid)
-                        transaction.set_rollback(True)
-                    assert actual is expected, (name, role, valid, actual)
+                with transaction.atomic():
+                    actual = redeem(call(probe, subject, valid), probe.function)
+                    transaction.set_rollback(True)
+                assert actual is expected, (name, role, valid, actual)

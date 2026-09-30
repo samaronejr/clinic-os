@@ -424,6 +424,78 @@
       ]
     },
     {
+      "symbol": "apps.core.command_views.command_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions",
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required"
+      ]
+    },
+    {
+      "symbol": "apps.core.command_views.command_options",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions",
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.is_privileged_user"
+      ]
+    },
+    {
+      "symbol": "apps.core.command_views.command_run",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions",
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required"
+      ]
+    },
+    {
+      "symbol": "apps.core.command_views.patient_close",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required"
+      ]
+    },
+    {
+      "symbol": "apps.core.navigation.granted_permissions",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.navigation.granted_permissions"
+      ]
+    },
+    {
+      "symbol": "apps.core.workspace.current_clinic",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics"
+      ]
+    },
+    {
       "symbol": "apps.ehr.attachment_views._workspace",
       "signals": [
         "denial",
@@ -1147,6 +1219,16 @@
       ]
     },
     {
+      "symbol": "apps.identity.saved_views.save_view",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.saved_views.save_view"
+      ]
+    },
+    {
       "symbol": "apps.identity.scope_provisioning._owner_clinic",
       "signals": [
         "denial"
@@ -1428,6 +1510,16 @@
       "observe": true,
       "probes": [
         "apps.intake.patient_access.end_patient_session#observed"
+      ]
+    },
+    {
+      "symbol": "apps.intake.patient_search.search_patients_exact",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.patient_search.search_patients_exact"
       ]
     },
     {
@@ -3147,6 +3239,18 @@
       ]
     },
     {
+      "symbol": "apps.tenancy.envelope.blind_indexes",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes#observed"
+      ]
+    },
+    {
       "symbol": "apps.tenancy.envelope.reveal",
       "signals": [
         "resolver"
@@ -3194,14 +3298,14 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.tenancy.middleware.TenantMiddleware.__call__",
+      "symbol": "apps.tenancy.middleware.TenantMiddleware._response",
       "signals": [
         "resolver",
         "tenant_boundary"
       ],
       "kind": "direct",
       "probes": [
-        "apps.tenancy.middleware.TenantMiddleware.__call__"
+        "apps.tenancy.middleware.TenantMiddleware._response"
       ]
     },
     {
@@ -3243,6 +3347,7 @@
     "apps.core.integration._prepare_with_authority",
     "apps.core.integration._resolve_callback_scope",
     "apps.core.integration._resolve_scope",
+    "apps.core.navigation.granted_permissions",
     "apps.core.views.workspace_home",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
@@ -3305,6 +3410,7 @@
     "apps.identity.physician_verification.verify_physician_for_signing",
     "apps.identity.preferences.save_ui_preferences",
     "apps.identity.preferences_views.preferences_view",
+    "apps.identity.saved_views.save_view",
     "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
     "apps.identity.services.clinics_for_user_roles",
     "apps.identity.services.has_clinic_role",
@@ -3325,6 +3431,7 @@
     "apps.intake.patient_access.patient_session_overview#observed",
     "apps.intake.patient_access.redeem_invitation#observed",
     "apps.intake.patient_access.revoke_patient_access",
+    "apps.intake.patient_search.search_patients_exact",
     "apps.intake.questionnaire_views._denied",
     "apps.intake.questionnaire_views.patient_questionnaires#observed",
     "apps.intake.questionnaire_views.staff_questionnaires",
@@ -3418,6 +3525,7 @@
     "apps.teleconsult.workspace._session_version",
     "apps.tenancy.db.service_principal_context#observed",
     "apps.tenancy.db.tenant_context",
+    "apps.tenancy.envelope.blind_indexes#observed",
     "apps.tenancy.envelope.decrypt#observed",
     "apps.tenancy.envelope.encrypt#observed",
     "apps.tenancy.envelope.issue_tenant_key#observed",
@@ -3426,8 +3534,8 @@
     "apps.tenancy.envelope.reveal#observed",
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
-    "apps.tenancy.middleware.TenantMiddleware.__call__",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
+    "apps.tenancy.middleware.TenantMiddleware._response",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
     "clinic_app.ehr_assigned",
@@ -5101,7 +5209,8 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
-          "clinic_app.prescription_verify_synthetic"
+          "clinic_app.prescription_verify_synthetic",
+          "clinic_app.protected_blind_index"
         ]
       },
       "kind": "crypto_protocol",
@@ -5147,6 +5256,26 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
+    },
+    "clinic_app.identity_savedview_transition": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/0015_saved_views.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
     "clinic_app.identity_scope_guard": {
       "discovery": {
@@ -5944,6 +6073,26 @@
       ],
       "reason": "Machine-principal authority for the clinic_agent login (todo 7), not staff membership. EXECUTE is granted only to clinic_agent; a set actor GUC refuses. The derived catalog closure reads no staff relation and the staff-state differential over every backstop state never grants; both oracles are in test_service_principals."
     },
+    "clinic_app.protected_blind_index": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, plaintext bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/tenancy/migrations/0007_blind_indexes.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "crypto_protocol",
+      "probes": [],
+      "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
     "clinic_app.protected_decrypt": {
       "discovery": {
         "signatures": [
@@ -6003,6 +6152,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.protected_blind_index",
           "clinic_app.protected_decrypt",
           "clinic_app.protected_encrypt"
         ]
@@ -6891,6 +7041,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.protected_blind_index",
           "clinic_app.tenant_decrypt",
           "clinic_app.tenant_encrypt"
         ]

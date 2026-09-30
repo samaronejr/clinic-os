@@ -1025,7 +1025,7 @@ def patient_downloads_document(case: Day, patient: Page, document: str) -> None:
 
 def charge_and_receipt(case: Day, reception: Page, patient: Page) -> None:
     """Reception charges the visit; the patient pays synthetically; receipt."""
-    click_to_navigate(reception.locator("a[data-module=billing]"))
+    click_to_navigate(reception.locator("a[data-module=finance]"))
     ledger = case.url(f"/billing/clinics/{case.clinic}/charges/")
     assert reception.url == ledger
 

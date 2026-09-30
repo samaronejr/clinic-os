@@ -1,6 +1,7 @@
 """Synchronous request tenant transaction boundary."""
 
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import Final
 from uuid import UUID
 
@@ -11,6 +12,9 @@ from django.http.response import HttpResponseBase
 from django.shortcuts import render
 
 from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
+from apps.core.patient_context import persist_bound_patient_context
+from apps.core.workspace import finish_clinic_selection
+from apps.core.workspace_access import workspace_denial
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     patient_session_context,
@@ -81,6 +85,16 @@ class TenantMiddleware:
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest) -> HttpResponseBase:
+        """Commit clinic selection only after the response and transaction succeed."""
+        accepted = False
+        try:
+            response = self._response(request)
+            accepted = response.status_code < HTTPStatus.BAD_REQUEST
+            return response
+        finally:
+            finish_clinic_selection(request, accepted=accepted)
+
+    def _response(self, request: HttpRequest) -> HttpResponseBase:
         """Validate signed session identifiers and execute the full response chain."""
         path = request.path_info
         if path in BYPASS_PATHS or path.startswith(
@@ -114,6 +128,8 @@ class TenantMiddleware:
                     raise TenantStreamingResponseError
                 if response.status_code >= SERVER_ERROR_STATUS:
                     transaction.set_rollback(True)
+                elif response.status_code not in {403, 404}:
+                    persist_bound_patient_context(request)
                 return response
         except TenantAccessDeniedError:
             # Resolve account status without opening a tenant. An inactive
@@ -132,6 +148,17 @@ class TenantMiddleware:
             else:
                 response = _staff_denial(request)
             return response
+
+    def process_view(
+        self,
+        request: HttpRequest,
+        view_func: Callable[..., HttpResponseBase],
+        view_args: tuple[object, ...],
+        view_kwargs: dict[str, object],
+    ) -> HttpResponseBase | None:
+        """Apply workspace permissions inside the already-open tenant transaction."""
+        del view_func, view_args, view_kwargs
+        return workspace_denial(request)
 
     def _patient(self, request: HttpRequest) -> HttpResponseBase:
         """Run one patient request inside its own session-bound transaction.

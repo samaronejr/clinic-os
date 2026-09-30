@@ -42,6 +42,7 @@ from django.http import Http404, HttpResponse, HttpResponseBase
 from rest_framework.exceptions import PermissionDenied as ApiPermissionDenied
 
 from auth.stepup_test_support import STEP_UP_NOW, create_role_actor, verified_request
+from identity.sql_denial_contracts import redeem
 from patient_service_support import runtime_role
 from renewal.test_encounters import draft, seed
 
@@ -200,12 +201,17 @@ def exercise(boundary: Boundary, subject: LegacyWorld) -> None:
         ):
             sys.setprofile(observe)
             try:
-                try:
-                    result = boundary.invoke(subject, valid)
-                except DENIALS:
-                    actual = False
+                if code is None:
+                    # A clinic_app function: only an issued contract verdict
+                    # decides; a Python denial exception is not one.
+                    actual = redeem(boundary.invoke(subject, valid), boundary.symbol)
                 else:
-                    actual = boundary.decision(result)
+                    try:
+                        result = boundary.invoke(subject, valid)
+                    except DENIALS:
+                        actual = False
+                    else:
+                        actual = boundary.decision(result)
             finally:
                 sys.setprofile(previous_profile)
             if valid and code is not None:

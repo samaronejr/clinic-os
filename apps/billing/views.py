@@ -281,17 +281,6 @@ def charges_workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
         )
     except (BillingAccessDeniedError, CurrentActorError, ValueError):
         return render(request, "403.html", status=403)
-    except BillingValueError:
-        return render(
-            request,
-            "billing/charges.html",
-            _staff_context(
-                clinic_id,
-                form=_charge_form(_enrolled(clinic_id)),
-                error="Informe um valor em reais com no máximo dois decimais.",
-            ),
-            status=INVALID,
-        )
 
 
 def _issue(request: HttpRequest, clinic_id: UUID, invoice_id: UUID) -> None:
