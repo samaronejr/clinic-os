@@ -748,6 +748,33 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
         assert "CLINIC_UNRELATED_SECRET" not in environment
 
 
+def test_browser_failure_tracebacks_never_include_fixture_arguments() -> None:
+    tree = ast.parse(
+        (REPOSITORY / "ops/testing/renewal_runner.py").read_text(encoding="utf-8")
+    )
+    suite = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_browser_suite"
+    )
+    commands = [
+        {
+            argument.value
+            for argument in call.args[0].elts
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+        }
+        for call in ast.walk(suite)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "_run_bounded"
+        and call.args
+        and isinstance(call.args[0], ast.List)
+    ]
+    pytest_commands = [arguments for arguments in commands if "pytest" in arguments]
+    assert pytest_commands
+    assert all("--tb=short" in arguments for arguments in pytest_commands)
+
+
 def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
     log = tmp_path / "hung.log"
     started = time.monotonic()

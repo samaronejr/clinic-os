@@ -992,6 +992,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "-m",
                     "pytest",
                     "-q",
+                    "--tb=short",
                     "-p",
                     "no:cacheprovider",
                     f"--junitxml={junit}",
