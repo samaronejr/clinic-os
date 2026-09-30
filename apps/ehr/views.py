@@ -439,7 +439,7 @@ def _resume(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
         )
     encounter = _selected(clinic_id, UUID(selected))
     if request.method == "POST":
-        if request.POST.get("action") != "template":
+        if request.POST.get("action") not in RESUME_ACTIONS:
             raise ClinicalAccessDeniedError
         create_draft(
             clinic_id=clinic_id,
@@ -485,8 +485,12 @@ POST_HANDLERS: dict[str, Callable[[HttpRequest, UUID, str], HttpResponseBase]] =
     "review": _review,
     "show": _show,
 }
+# The session-selected encounter's own action, handled by ``_resume``.
+RESUME_ACTIONS: Final = frozenset({"template"})
 # Every POST action the workspace routes; the refusal matrix derives from it.
-POST_ACTIONS: Final = frozenset({"open", "current", *POST_HANDLERS})
+POST_ACTIONS: Final = frozenset(
+    {"open", "current", *POST_HANDLERS.keys(), *RESUME_ACTIONS}
+)
 
 
 @never_cache
