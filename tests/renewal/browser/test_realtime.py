@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
@@ -29,6 +28,7 @@ from renewal.browser.test_agenda import (
 from renewal.browser.test_primitives import AXE_RUN_JS
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from playwright.sync_api import Page, Request, Response
@@ -42,54 +42,54 @@ REALTIME_PATH: Final = "/rt/stream"
 class _RealtimeTap:
     """Every /rt/stream request and response of one page, against a revocation.
 
-    Boundary rule: ``boundary_ms`` is the host wall clock read right after the
-    owner transaction that deletes the role has committed. A request is
-    post-revocation iff its browser issue instant (``request.timing``
-    ``startTime``, epoch ms on the same host clock) is at or after the
-    boundary: the server cannot authorize it before the commit, so a 2xx is a
-    fail-open grant. A request issued before the boundary was in flight while
-    the revocation became visible; its authorization may have run on either
-    side of the commit, so it may end 200 or 403 and never counts as the
-    refusal. Anything unclassifiable fails the test.
+    Boundary rule, causal and clock-free: ``mark_boundary`` runs BEFORE the
+    owner transaction that deletes the role commits, and freezes the list of
+    realtime responses the tap has received so far. Only those responses are
+    pre-revocation; every later one is post-revocation. The server sends a
+    response only after deciding it, the tap receives it only after it is
+    sent, and the commit happens after the mark, so a response the server
+    decides after the commit can never be in the frozen list, whatever the
+    browser or host clocks say. The rule fails closed: a response decided
+    before the commit but received after the mark is post-revocation too, and
+    a 2xx one fails the test. The mark first waits for the response of every
+    realtime request the tap has seen, so an idle page leaves nothing
+    legitimately in flight across the commit.
     """
 
     def __init__(self) -> None:
-        self.boundary_ms: float | None = None
-        self.responses: list[tuple[float, str, int]] = []
+        self.boundary: int | None = None
+        self.requests: list[Request] = []
+        self.responses: list[Response] = []
         self.streams: list[Request] = []
         self.open_streams: list[Request] = []
-        self.anomalies: list[str] = []
+
+    def mark_boundary(self, page: Page) -> None:
+        for request in self.requests:
+            answered = any(seen.request is request for seen in self.responses)
+            if not answered and request.failure is None:
+                # Registered before any event is dispatched, so the response
+                # cannot slip past; bounded by the page default timeout.
+                with page.expect_response(self._answers(request)):
+                    pass
+        self.boundary = len(self.responses)
 
     @staticmethod
-    def issued_ms(request: Request) -> float | None:
-        start = request.timing.get("startTime")
-        if not isinstance(start, (int, float)) or start < 0:
-            return None
-        # Browser and test share the host clock; a foreign unit or epoch would
-        # silently corrupt the boundary classification, so check plausibility.
-        if abs(start - time.time() * 1000) > 60_000:
-            return None
-        return start
-
-    def mark_boundary(self) -> None:
-        self.boundary_ms = time.time() * 1000
+    def _answers(request: Request) -> Callable[[Response], bool]:
+        return lambda response: response.request is request
 
     def on_request(self, request: Request) -> None:
-        if urlparse(request.url).path != REALTIME_PATH or request.method != "GET":
+        if urlparse(request.url).path != REALTIME_PATH:
             return
-        if "text/event-stream" in request.headers.get("accept", ""):
+        self.requests.append(request)
+        if request.method == "GET" and "text/event-stream" in request.headers.get(
+            "accept", ""
+        ):
             self.streams.append(request)
             self.open_streams.append(request)
 
     def on_response(self, response: Response) -> None:
-        request = response.request
-        if urlparse(request.url).path != REALTIME_PATH:
-            return
-        issued = self.issued_ms(request)
-        if issued is None:
-            self.anomalies.append(f"unclassifiable {request.method} response")
-            return
-        self.responses.append((issued, request.method, response.status))
+        if urlparse(response.request.url).path == REALTIME_PATH:
+            self.responses.append(response)
 
     def on_ended(self, request: Request) -> None:
         # requestfinished or requestfailed: the EventSource request is over.
@@ -98,21 +98,20 @@ class _RealtimeTap:
         ]
 
     def is_refusal(self, response: Response) -> bool:
-        issued = self.issued_ms(response.request)
+        # Identity against the frozen pre-boundary prefix: independent of
+        # whether the tap's listener has already appended this response.
         return (
             urlparse(response.url).path == REALTIME_PATH
-            and self.boundary_ms is not None
-            and issued is not None
-            and issued >= self.boundary_ms
+            and self.boundary is not None
+            and all(seen is not response for seen in self.responses[: self.boundary])
             and response.status == 403
         )
 
     def post_revocation(self) -> list[tuple[str, int]]:
-        assert self.boundary_ms is not None
+        assert self.boundary is not None
         return [
-            (method, status)
-            for issued, method, status in sorted(self.responses)
-            if issued >= self.boundary_ms
+            (response.request.method, response.status)
+            for response in self.responses[self.boundary :]
         ]
 
     def grants(self) -> list[tuple[str, int]]:
@@ -208,6 +207,9 @@ def _denied_after_revocation(
     # late wait exists is lost (hosted run 36475967514; fix-a16). It matches
     # only a post-revocation 403, so a late or absent refusal times out.
     with b.expect_response(tap.is_refusal):
+        # The mark precedes the commit, so every server decision after the
+        # commit is post-revocation (gate-review r2 B1: no clock boundary).
+        tap.mark_boundary(b)
         with psycopg.connect(agenda_staff["dsn"]) as owner:
             owner.execute(
                 "SELECT set_config('app.current_tenant', %s, true)",
@@ -219,7 +221,6 @@ def _denied_after_revocation(
                 [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
             )
         # Leaving the connection context committed the delete.
-        tap.mark_boundary()
         goto_settled(a, base_url + "/auth/logout/")
         with expect_document(a):
             a.locator("form button[type=submit]").click()
@@ -235,7 +236,6 @@ def _denied_after_revocation(
     assert tap.grants() == [], post_revocation
     assert tap.streams, "the tap saw no realtime stream open"
     assert tap.open_streams == [], "b's realtime stream never closed"
-    assert tap.anomalies == [], tap.anomalies
     return post_revocation
 
 
