@@ -16,7 +16,7 @@ from apps.audit.models import AuditEvent
 from apps.ehr import services
 from apps.ehr.autosave import autosave_draft
 from apps.ehr.episodes import open_episode_for_encounter
-from apps.ehr.finalization import finalize_version
+from apps.ehr.finalization import amend_document, finalize_version
 from apps.ehr.models import (
     DraftEditState,
     DraftSaveReceipt,
@@ -172,6 +172,13 @@ def test_care_reader_writes_are_refused_before_the_read_audit(
                 editor_command_id=uuid4(),
                 editor_session_id=TAB_A,
                 sections={**SECTIONS, "plan": "Leitor"},
+            )
+        # Amending needs the assignee, not the author; still decided first.
+        with pytest.raises(ClinicalAccessDeniedError):
+            amend_document(
+                clinic_id=rbac_graph.clinic_a,
+                version_id=version.pk,
+                reason="Leitor",
             )
     assert set(audit_since(rbac_graph, before)) <= {DENIAL}
     assert stored(rbac_graph, version.pk)[0] == 2

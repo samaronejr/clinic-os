@@ -411,14 +411,13 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     return version
 
 
-def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
-    """Decide clinic scope, assignee and authorship with reads only.
+def assignee_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
+    """Decide the version's clinic scope and its encounter's assignee, reads only.
 
-    Every writer of a draft calls this before its first write (the read audit
-    included), so a refusal can never follow a committed row: the request
-    transaction commits any response below 500. Unknown and foreign versions
-    share the undistinguished denial; in-clinic refusals keep the fixed
-    metadata-only ``ehr.access.denied`` record.
+    Writers that act as the encounter's assigned physician rather than as the
+    version's author (amendment) call this before their first write, the read
+    audit included. Unknown and foreign versions share the undistinguished
+    denial; in-clinic refusals keep the fixed ``ehr.access.denied`` record.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -430,13 +429,21 @@ def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
     encounter = Encounter.objects.filter(pk=scope[0], clinic_id=clinic_id).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    actor = _encounter_actor(clinic_id, encounter)
+    return _encounter_actor(clinic_id, encounter)
+
+
+def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
+    """Decide clinic scope, assignee and authorship with reads only.
+
+    Every writer of a draft calls this before its first write (the read audit
+    included), so a refusal can never follow a committed row: the request
+    transaction commits any response below 500. Unknown and foreign versions
+    share the undistinguished denial; in-clinic refusals keep the fixed
+    metadata-only ``ehr.access.denied`` record.
+    """
+    actor = assignee_scope(clinic_id=clinic_id, version_id=version_id)
     version = (
-        ClinicalDocumentVersion.objects.filter(
-            pk=version_id, document__encounter=encounter
-        )
-        .only("author_id")
-        .first()
+        ClinicalDocumentVersion.objects.filter(pk=version_id).only("author_id").first()
     )
     if version is None or version.author_id != actor:
         _denied(clinic_id, version_id, "not_assigned")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.contrib import messages
@@ -18,6 +18,7 @@ from django.views.decorators.http import require_http_methods
 from apps.ehr.history import (
     HistoryChange,
     authorize_history,
+    entry_encounter,
     read_history,
     save_history,
 )
@@ -38,6 +39,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 OK = 200
+WRITE_ACTIONS: Final = ("save", "edit", "new")
+# Every POST action the workspace routes; the refusal matrix derives from it.
+POST_ACTIONS: Final = frozenset({"open", *WRITE_ACTIONS})
 
 
 def continuation(clinic_id: UUID) -> str:
@@ -49,6 +53,13 @@ def _editor(request: HttpRequest, encounter: Encounter) -> HistoryForm:
     kind = request.POST.get("kind", "")
     if kind not in HistoryAssessment.Kind.values:
         raise ClinicalAccessDeniedError
+    if request.POST.get("action") == "edit":
+        # The entry may belong to another encounter of the patient: decide
+        # write authority there before the audited read below.
+        owner = entry_encounter(encounter, kind, UUID(request.POST.get("entry_id", "")))
+        if owner is None:
+            raise ClinicalAccessDeniedError
+        authorize_history(encounter.clinic_id, owner, write=True)
     context = read_history(
         clinic_id=encounter.clinic_id, encounter_id=encounter.pk, kind=kind
     )
@@ -64,9 +75,6 @@ def _editor(request: HttpRequest, encounter: Encounter) -> HistoryForm:
         entry = next((e for e in context.entries if e.entry_id == entry_id), None)
         if entry is None:
             raise ClinicalAccessDeniedError
-        authorize_history(
-            encounter.clinic_id, entry.assessment.encounter_id, write=True
-        )
         initial.update(
             entry_id=entry.entry_id, description=entry.description, status=entry.status
         )
@@ -134,7 +142,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         if action == "open":
             request.session[key] = str(encounter.pk)
             return redirect(continuation(clinic_id))
-        if action not in ("save", "edit", "new"):
+        if action not in WRITE_ACTIONS:
             raise ClinicalAccessDeniedError
         authorize_history(clinic_id, encounter.pk, write=True)
         if action in ("new", "edit"):

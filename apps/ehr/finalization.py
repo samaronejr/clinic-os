@@ -25,6 +25,7 @@ from apps.ehr.services import (
     ClinicalConflictError,
     _denied,
     _encounter_actor,
+    assignee_scope,
     record_denial,
     view_version,
 )
@@ -164,12 +165,14 @@ def amend_document(
     *, clinic_id: UUID, version_id: UUID, reason: str
 ) -> ClinicalDocumentVersion:
     """Open one linked amendment draft on the document's current version."""
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _encounter_actor(clinic_id, authorized.document.encounter)
+    # Every refusal is decided with reads only: the read audit below is the
+    # first write, and a care reader may pass view_version but not amend.
+    actor = assignee_scope(clinic_id=clinic_id, version_id=version_id)
     reason = reason.strip()
     if not reason or len(reason) > MAX_REASON:
         msg = "Informe o motivo da retificação."
         raise ValidationError(msg)
+    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
     with transaction.atomic():
         current = (
             ClinicalDocumentVersion.objects.select_for_update()

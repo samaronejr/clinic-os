@@ -3541,7 +3541,7 @@
       "reason": "Plan item 27 addendum: clinical.write through has_permission for the encounter's patient in its own clinic; the assignee is sent to the main draft. test_addendum_open_is_decided_by_clinical_write runs all 10 catalog roles with a statement spy. test_addendum_refusals_cover_actor_states_scope_and_the_assignee adds inactive, foreign-clinic, unregistered and no-membership actors, clinic B and C claims, an unknown encounter, the assignee and a closed encounter."
     },
     {
-      "symbol": "apps.ehr.services.author_scope",
+      "symbol": "apps.ehr.services.assignee_scope",
       "signals": [
         "denial",
         "resolver",
@@ -3552,7 +3552,20 @@
         "apps.ehr.services._encounter_actor",
         "clinic_app.ehr_version_scope"
       ],
-      "reason": "Plan item 27 write-ordering gate shared by record_clinical_note, autosave_draft and section_edit_epochs. With reads only, it decides the version's clinic scope (ehr_version_scope), the encounter's assignee (_encounter_actor) and authorship before any write, the read audit included. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused here. test_autosave_refuses_every_non_author_and_writes_nothing executes all 10 catalog roles, foreign and unknown scope, and no-membership and inactive actors."
+      "reason": "Plan item 27 round 3 write-ordering gate for writers acting as the encounter's assignee rather than the version's author (amend_document, the EHR and teleconsult amend handlers) and the first half of author_scope. With reads only, it decides the version's clinic scope (ehr_version_scope) and the encounter's assigned physician (_encounter_actor) before the read audit. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused amend_document here; tests/ehr/test_refusal_matrix.py executes the amend route in native and htmx modes as a care reader and a receptionist with no committed row."
+    },
+    {
+      "symbol": "apps.ehr.services.author_scope",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.ehr_version_scope"
+      ],
+      "reason": "Plan item 27 write-ordering gate shared by record_clinical_note, autosave_draft, section_edit_epochs and the explicit save/discard handlers (EHR workspace and teleconsult notes). With reads only, it takes the version's clinic scope and the encounter's assignee from assignee_scope (ehr_version_scope, _encounter_actor), then decides authorship, before any write, the read audit included. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused here. test_autosave_refuses_every_non_author_and_writes_nothing executes all 10 catalog roles, foreign and unknown scope, and no-membership and inactive actors. tests/ehr/test_refusal_matrix.py drives every save route and mode as a care reader and a receptionist and asserts no committed row."
     },
     {
       "symbol": "apps.ehr.episodes.open_episode_for_encounter",

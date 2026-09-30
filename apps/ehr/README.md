@@ -122,7 +122,11 @@ episodes and unscheduled encounters.
   response renders, before its first write (the read audit included). The
   request transaction commits any response below 500, so a later refusal
   would keep the write. `services.author_scope` decides clinic scope,
-  assignee and authorship with reads only before a draft is written.
+  assignee and authorship with reads only before a draft is written;
+  `services.assignee_scope` does the same for the amendment, which the
+  assignee writes. Every handler (encounter, history and teleconsult notes
+  workspaces, native or htmx) decides those scopes and any posted binding
+  before `view_version` or `read_history` appends a read audit.
   `episodes.open_episode_for_encounter` opens and links an episode in one
   savepoint after all of its checks. The only row a refusal leaves is the
   fixed `ehr.access.denied` record.
@@ -132,6 +136,7 @@ episodes and unscheduled encounters.
   rollback is a restore and never a silent drop.
 
 Verification: `tests/renewal/test_encounters.py`, `tests/ehr/test_autosave.py`,
-`tests/ehr/test_addenda.py`,
+`tests/ehr/test_addenda.py`, `tests/ehr/test_write_ordering.py`,
+`tests/ehr/test_refusal_matrix.py`,
 `tests/renewal/test_attachments.py` and renewal browser suites `encounter` and
 `attachments`. All fixtures and browser evidence are synthetic-only.

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
 from django.contrib import messages
@@ -40,6 +40,8 @@ from apps.ehr.models import (
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
+    assignee_scope,
+    author_scope,
     create_draft,
     open_encounter,
     open_unscheduled_encounter,
@@ -58,6 +60,8 @@ from apps.identity.stepup import StepUpRequired
 from apps.intake.models import PatientClinicEnrollment
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from django.http import HttpRequest, HttpResponse, HttpResponseBase
 
 logger = logging.getLogger(__name__)
@@ -168,9 +172,11 @@ def _conflict(
 def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     # The body version id prevents another tab changing the session selection
     # from silently redirecting this write to a different note.
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
+    version_id = UUID(request.POST.get("version_id", ""))
+    # Authorship is decided with reads only before the audited read below: a
+    # care reader passes view_version but may not write (round-2 B1).
+    author_scope(clinic_id=clinic_id, version_id=version_id)
+    version = view_version(clinic_id=clinic_id, version_id=version_id)
     data = request.POST.copy()
     if data.get("action") == "merge":
         # Explicit merge after a compare: the author saves the combined text
@@ -230,14 +236,16 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
 
 
 def _finalize(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponseBase:
-    """Freeze the draft; the service enforces recent step-up and audits denials."""
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
+    """Freeze the draft; the service enforces recent step-up and audits denials.
+
+    The service decides authorship and step-up before anything is written, so
+    no read audit precedes a refusal; only the conflict page reads the record.
+    """
+    version_id = UUID(request.POST.get("version_id", ""))
     try:
         finalized = finalize_version(
             clinic_id=clinic_id,
-            version_id=version.pk,
+            version_id=version_id,
             expected_revision=int(request.POST.get("revision", "")),
             request=request,
         )
@@ -245,6 +253,7 @@ def _finalize(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponseBa
         target = safe_next_url(request, continuation(clinic_id))
         return flow_redirect(request, "identity:step-up", target)
     except ClinicalConflictError as error:
+        version = view_version(clinic_id=clinic_id, version_id=version_id)
         return _conflict(request, clinic_id, version.document.encounter, error)
     request.session[key] = str(finalized.document.encounter_id)
     messages.success(
@@ -257,9 +266,10 @@ def _finalize(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponseBa
 
 def _amend(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """Open the linked amendment draft; the base version is never overwritten."""
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
+    version_id = UUID(request.POST.get("version_id", ""))
+    # Only the encounter's assignee amends; decided before the audited read.
+    assignee_scope(clinic_id=clinic_id, version_id=version_id)
+    version = view_version(clinic_id=clinic_id, version_id=version_id)
     form = AmendmentForm(request.POST)
     if not form.is_valid():
         context = _context(request, clinic_id, version.document.encounter)
@@ -284,9 +294,9 @@ def _amend(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
 
 def _discard(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """Retire the draft; discarded versions keep metadata and never serve content."""
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
+    version_id = UUID(request.POST.get("version_id", ""))
+    author_scope(clinic_id=clinic_id, version_id=version_id)
+    version = view_version(clinic_id=clinic_id, version_id=version_id)
     try:
         discard_draft(clinic_id=clinic_id, version_id=version.pk)
     except ClinicalConflictError as error:
@@ -319,11 +329,14 @@ def _review(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     ).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
-    if version.document.encounter_id != encounter.pk:
+    version_id = UUID(request.POST.get("version_id", ""))
+    # The binding is decided before the audited read: a version of another
+    # encounter is refused without a ehr.record.viewed row.
+    if not ClinicalDocumentVersion.objects.filter(
+        pk=version_id, document__encounter=encounter
+    ).exists():
         raise ClinicalAccessDeniedError
+    version = view_version(clinic_id=clinic_id, version_id=version_id)
     request.session[key] = str(encounter.pk)
     request.session[f"ehr.review.{clinic_id}"] = str(version.pk)
     return redirect(continuation(clinic_id))
@@ -394,7 +407,6 @@ def _show(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     encounter = _selected(clinic_id, UUID(request.POST.get("encounter_id", "")))
-    request.session[key] = str(encounter.pk)
     context = _context(request, clinic_id, encounter)
     displayed = context.get("version")
     if isinstance(displayed, ClinicalDocumentVersion):
@@ -402,6 +414,8 @@ def _show(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
         context["version"] = version
         if version.state == "draft":
             context["form"] = DraftForm(version)
+    # The selection moves only once every read of this response is decided.
+    request.session[key] = str(encounter.pk)
     return render(request, "ehr/encounter.html", context)
 
 
@@ -453,22 +467,26 @@ def _dispatch_post(
     if action == "current":
         request.session.pop(f"ehr.review.{clinic_id}", None)
         return redirect(continuation(clinic_id))
-    handlers = {
-        "save": _save,
-        "merge": _save,
-        "open_unscheduled": _open_unscheduled,
-        "episode_open": _episode,
-        "episode_link": _episode,
-        "episode_close": _episode,
-        "finalize": _finalize,
-        "amend": _amend,
-        "discard": _discard,
-        "close": _close,
-        "review": _review,
-        "show": _show,
-    }
-    handler = handlers.get(str(action))
+    handler = POST_HANDLERS.get(str(action))
     return handler(request, clinic_id, key) if handler else None
+
+
+POST_HANDLERS: dict[str, Callable[[HttpRequest, UUID, str], HttpResponseBase]] = {
+    "save": _save,
+    "merge": _save,
+    "open_unscheduled": _open_unscheduled,
+    "episode_open": _episode,
+    "episode_link": _episode,
+    "episode_close": _episode,
+    "finalize": _finalize,
+    "amend": _amend,
+    "discard": _discard,
+    "close": _close,
+    "review": _review,
+    "show": _show,
+}
+# Every POST action the workspace routes; the refusal matrix derives from it.
+POST_ACTIONS: Final = frozenset({"open", "current", *POST_HANDLERS})
 
 
 @never_cache

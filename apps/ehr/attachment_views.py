@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.contrib import messages
@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 OK = 200
+WRITE_ACTIONS: Final = ("upload", "scan")
+# Every POST action the workspace routes; the refusal matrix derives from it.
+POST_ACTIONS: Final = frozenset({"open", "download", *WRITE_ACTIONS})
 
 
 def continuation(clinic_id: UUID) -> str:
@@ -137,7 +140,7 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             return redirect(continuation(clinic_id))
         if action == "download":
             return _download(request, clinic_id)
-        if action not in ("upload", "scan"):
+        if action not in WRITE_ACTIONS:
             raise ClinicalAccessDeniedError
         authorize_attachment_encounter(clinic_id, encounter.pk, write=True)
         if action == "scan":
