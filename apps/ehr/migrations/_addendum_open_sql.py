@@ -32,16 +32,13 @@ _RECEIPT_OPEN = """   SELECT * INTO encounter_row FROM clinic_app.ehr_encounter
 """
 
 
-def _replaceable(body: str) -> str:
-    """Turn the 0011 ``CREATE FUNCTION`` into an in-place replacement."""
-    if body.count("CREATE FUNCTION") != 1 or body.count(_RECEIPT_PRIOR) != 1:
-        msg = "ehr_addendum_guard body differs from the 0011 definition"
-        raise RuntimeError(msg)
-    return body.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
-
-
-PRIOR = _replaceable(_GUARD)
-CURRENT = PRIOR.replace(_RECEIPT_PRIOR, _RECEIPT_OPEN)
+if _GUARD.count("CREATE FUNCTION") != 1 or _GUARD.count(_RECEIPT_PRIOR) != 1:
+    message = "ehr_addendum_guard body differs from the 0011 definition"
+    raise RuntimeError(message)
+# The 0011 ``CREATE FUNCTION`` as an in-place replacement, then its receipt
+# branch with the open-encounter binding.
+PRIOR = _GUARD.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1)
+CURRENT = PRIOR.replace(_RECEIPT_PRIOR, _RECEIPT_OPEN, 1)
 
 # The function is owned by clinic_resolver (SECURITY DEFINER); only its owner
 # may replace it. CREATE OR REPLACE keeps the owner, ACL and triggers.
