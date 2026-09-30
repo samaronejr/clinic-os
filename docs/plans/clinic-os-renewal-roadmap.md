@@ -1,5 +1,7 @@
 # Clinic OS renewal roadmap
 
+Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger).
+
 This page is the human-readable map of the renewal program. The executable
 plan `.omo/plans/clinic-os-renewal.md` is canonical: it owns task text,
 dependency edges, QA commands and acceptance criteria. This page distills it

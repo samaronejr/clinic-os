@@ -9,13 +9,16 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_attachments import cookie_csrf, csrf
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_encounter import DAYS, press, seed
+from renewal.browser.test_encounter import DAYS, press, press_in_view, seed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,8 +41,8 @@ ITEM = {
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "prescription-draft"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def form_data(page: Page) -> dict[str, str]:
@@ -74,7 +77,7 @@ def failures(page: Page, root: Path, width: int) -> None:
     expect(page.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     expect(page.locator("#id_items-0-dose")).to_have_value(ITEM["dose"])
     capture(page, root, "category-denied", width)
-    page.goto(page.url)
+    goto_settled(page, page.url)
     for field, value in ITEM.items():
         expect(page.locator(f"#id_items-0-{field}")).to_have_value(value)
     expect(page.locator("[data-draft]")).to_have_attribute("data-version", "2")
@@ -88,7 +91,7 @@ def role_denial(page: Page, staff: dict[str, str], root: Path, width: int) -> No
         other = other_context.new_page()
         base = page.url.split("/prescription/", 1)[0]
         _sign_in_receptionist(other, base, staff)
-        response = other.goto(page.url)
+        response = goto_settled(other, page.url)
         assert response is not None
         assert response.status == 403
         response_post = other.request.post(
@@ -122,8 +125,8 @@ def native_reflow(page: Page, root: Path) -> None:
     )
     try:
         fallback = native.new_page()
-        fallback.goto(page.url)
-        press(fallback, "save")
+        goto_settled(fallback, page.url)
+        press_in_view(fallback, "save")
         expect(fallback.locator("[data-draft]")).to_have_attribute("data-version", "3")
         capture(fallback, root, "native-200-percent", 640)
     finally:
@@ -186,27 +189,27 @@ def test_prescription_draft_journey(
     page.on("console", lambda message: console_types.append(message.type))
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/",
         )
         press(page, "open")
         encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
         assert encounter
-        with page.expect_navigation():
-            page.get_by_role("button", name="Prescrição sintética").click()
+        click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
         capture(page, root, "empty", width)
         draft = create_initial(
             page, encounter, data["patient"], staff["physician_a_id"]
         )
         second = context.new_page()
-        second.goto(page.url)
+        goto_settled(second, page.url)
         for field, value in ITEM.items():
             page.locator(f"#id_items-0-{field}").fill(value)
             second.locator(f"#id_items-0-{field}").fill(value)
         press(page, "save")
         expect(page.locator("[data-draft]")).to_have_attribute("data-version", "2")
         capture(page, root, "saved", width)
-        page.reload()
+        reload_settled(page)
         for field, value in ITEM.items():
             expect(page.locator(f"#id_items-0-{field}")).to_have_value(value)
         expect(page.locator("[data-draft]")).to_have_attribute("data-draft", draft)

@@ -1,0 +1,21 @@
+{% load i18n components %}{% comment %}
+Diff viewer: unified before/after of plain text (note versions, AI draft
+versus accepted text, conflict compare). Additions and removals are marked
+by +/- markers, <ins>/<del> and hidden words, never by color alone.
+
+Context:
+  id       Figure id (required).
+  title    Caption, e.g. "Version 3 compared with version 2" (required).
+  lines    Iterable of {kind: added | removed | same, text}.
+  state    SC-8 state: loading shows skeleton lines; empty says the versions
+           match; other states add a state note under the caption.
+  message  State note text.
+{% endcomment %}<figure class="diff" id="{{ id }}" aria-labelledby="{{ id }}-caption"{% if state == "loading" %} aria-busy="true"{% endif %}>
+  <figcaption class="diff-caption" id="{{ id }}-caption"><strong>{{ title }}</strong>{% if state != "loading" and state != "empty" %}{% diff_counts lines as counts %}<span class="diff-summary">{% blocktrans with added=counts.added removed=counts.removed %}{{ added }} added · {{ removed }} removed{% endblocktrans %}</span>{% endif %}</figcaption>
+  {% if state == "loading" %}<p class="diff-caption" role="status">{% trans "Comparing versions…" %}</p><ol class="diff-lines"><li class="diff-line"><span class="diff-marker" aria-hidden="true"> </span><span class="skeleton"></span></li><li class="diff-line"><span class="diff-marker" aria-hidden="true"> </span><span class="skeleton skeleton--short"></span></li></ol>
+  {% elif state == "empty" %}{% include "includes/components/state.html" with state="empty" title=_("The versions match") message=_("There is nothing to compare.") only %}
+  {% else %}{% if state != "default" and state != "hover" and state != "focus" and state != "active" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+  <ol class="diff-lines">
+    {% for line in lines %}<li class="diff-line diff-line--{{ line.kind }}{% if state == "hover" and forloop.counter == 2 %} is-hover{% endif %}">{% if line.kind == "added" %}<span class="diff-marker" aria-hidden="true">+</span><span><span class="visually-hidden">{% trans "Added:" %} </span><ins>{{ line.text }}</ins></span>{% elif line.kind == "removed" %}<span class="diff-marker" aria-hidden="true">−</span><span><span class="visually-hidden">{% trans "Removed:" %} </span><del>{{ line.text }}</del></span>{% else %}<span class="diff-marker" aria-hidden="true"> </span><span>{{ line.text }}</span>{% endif %}</li>{% endfor %}
+  </ol>{% if state == "focus" or state == "active" %}<div class="diff-caption"><a class="button button--secondary{% if state == "focus" %} is-focus{% else %} is-active{% endif %}" href="#{{ id }}">{% trans "Keep this version" %}</a></div>{% endif %}{% endif %}
+</figure>

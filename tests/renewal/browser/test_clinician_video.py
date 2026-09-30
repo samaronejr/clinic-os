@@ -13,7 +13,6 @@ the stored rows; a session identifier never reaches another patient's note.
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -25,7 +24,18 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect, sync_playwright
 from psycopg.types.json import Jsonb
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
+from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    full_page_screenshot,
+    install_media,
+    launch_selected,
+    logs_failed_responses,
+    media_source,
+    offline_console,
+    watch_page_errors,
+)
 from renewal.browser.test_amendments import (
     stored_encounter,
     stored_versions,
@@ -38,7 +48,7 @@ from renewal.browser.test_availability import (
 )
 from renewal.browser.test_encounter import FIELDS, stored
 from renewal.browser.test_patient_access import _redeem
-from renewal.browser.test_patient_video import MEDIA_ARGS, TRACK_JS
+from renewal.browser.test_patient_video import PENDING_PROMPT_JS, TRACK_JS
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 from renewal.browser.test_teleconsult import (
     _accept_consent,
@@ -104,8 +114,8 @@ class _Case:
 
 
 def _capture(page: Page, case: _Case, state: str) -> None:
-    page.screenshot(path=str(case.root / f"{state}-{case.width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, case.root / f"{state}-{case.width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:
@@ -127,18 +137,21 @@ def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:
 
 
 def _context(browser: Browser, case: _Case, *, media: bool) -> BrowserContext:
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = browser.new_context(
-        locale="pt-BR", viewport={"width": case.width, "height": 900}
+        locale="pt-BR",
+        viewport={"width": case.width, "height": 900},
+        service_workers="block",
     )
-    if media:
-        context.grant_permissions(["camera", "microphone"], origin=case.base)
+    install_media(context, case.base, granted=media)
     return context
 
 
 def _page(context: BrowserContext, errors: list[str], console: list[str]) -> Page:
     page = context.new_page()
     page.set_default_timeout(20_000)
-    page.on("pageerror", lambda error: errors.append(str(error)))
+    watch_page_errors(page, errors)
     page.on(
         "console",
         lambda message: (
@@ -200,7 +213,7 @@ def _fail_room(case: _Case, session_id: str) -> None:
 
 def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     session_id = _create_session(physician, case.staff_url)
     _worker(_room_operation(case.staff, session_id), "sent", case.root)
     return session_id
@@ -219,9 +232,10 @@ def _htmx(page: Page, selector: str, status: int = OK) -> None:
 
 def _enter(physician: Page, case: _Case, session_id: str, name: str) -> None:
     """Join from the session list and land in the workspace for this patient."""
-    physician.goto(case.staff_url)
-    with physician.expect_navigation():
-        physician.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    goto_settled(physician, case.staff_url)
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
     assert physician.url == case.staff_url
     root = physician.locator("[data-teleconsult='clinician']")
     expect(root).to_have_attribute("data-session", session_id)
@@ -382,14 +396,14 @@ def _finalize_with_step_up(
 ) -> None:
     """A stale session device denies finalize until the real challenge passes."""
     key = swap_totp_device(case.staff)
-    with physician.expect_navigation(url=re.compile(r"/auth/verify/")):
-        physician.locator("[data-finalize]").click()
+    click_to_navigate(
+        physician.locator("[data-finalize]"), url=re.compile(r"/auth/verify/")
+    )
     assert stored_versions(case.staff, encounter)[0][1] == "draft"
     _capture(physician, case, "finalize-step-up")
     token = TOTP(bytes.fromhex(key), 30, 0, 6, 0).token()
     physician.locator("#id_otp_token").fill(f"{token:06d}")
-    with physician.expect_navigation():
-        physician.locator("button[type=submit]").click()
+    click_to_navigate(physician.locator("button[type=submit]"))
     physician.wait_for_url(case.staff_url)
     _enter(physician, case, session_id, name)
     _show(physician, case, "notes")
@@ -472,7 +486,7 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
         "Relato retificado offline"
     )
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
-    physician.locator('button[value="note-save"]').click()
+    click_when_hittable(physician.locator('button[value="note-save"]'))
     expect(physician.locator("#save-state")).to_contain_text("Sem conexão")
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     expect(physician.locator("#save-state")).to_be_focused()
@@ -543,8 +557,7 @@ def _leave_guard(physician: Page, case: _Case, version: str) -> None:
     expect(guard).to_be_hidden()
     expect(physician.locator("#id_subjective")).to_be_focused()
     physician.locator("[data-leave-room]").click()
-    with physician.expect_navigation():
-        physician.locator("[data-leave-discard]").click()
+    click_to_navigate(physician.locator("[data-leave-discard]"))
     expect(physician.locator("#teleconsult-title")).to_have_text("Teleconsulta")
     assert stored(case.staff, version) == (3, "Relato retificado offline")
 
@@ -644,8 +657,7 @@ def _close_with_unsaved(physician: Page, case: _Case, version: str) -> None:
         dialog.accept()
 
     physician.once("dialog", accept)
-    with physician.expect_navigation():
-        physician.locator(".nav-brand").click()
+    click_to_navigate(physician.locator(".nav-brand"))
     assert seen == ["beforeunload"]
     assert stored(case.staff, version) == (2, "Segundo paciente, texto não salvo")
 
@@ -673,6 +685,32 @@ def _reflow(physician: Page, case: _Case, session_id: str, name: str) -> None:
     physician.emulate_media(forced_colors="none")
 
 
+def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) -> None:
+    """The clinician room connects and follows the session while the prompt is open."""
+    _sign_in_physician(prompted, case.base, case.staff)
+    goto_settled(prompted, case.staff_url)
+    click_to_navigate(
+        prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
+    expect(prompted.locator("[data-teleconsult='clinician']")).to_have_attribute(
+        "data-session", session_id
+    )
+    expect(prompted.locator("h1")).to_have_text(name)
+    panel = prompted.locator("#room-panel")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    expect(panel).to_have_attribute("data-media", "pending")
+    expect(prompted.locator("[data-connection-status]")).to_contain_text(
+        "Aguardando o paciente"
+    )
+    # Answering the prompt later brings the devices into the same room.
+    wait_for_js(prompted, "() => window.__lateMedia.release !== null")
+    prompted.evaluate("() => window.__lateMedia.release()")
+    expect(panel).to_have_attribute("data-media", "ready")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    assert prompted.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
+    _capture(prompted, case, "prompt-answered")
+
+
 def _journey(  # noqa: PLR0913 - the journey needs its full context
     physician: Page,
     patient: Page,
@@ -686,11 +724,10 @@ def _journey(  # noqa: PLR0913 - the journey needs its full context
     second_session = _provision(physician, case, second)
     first_encounter = _encounter_of(case, first_session)
     second_encounter = _encounter_of(case, second_session)
-    patient.goto(case.patient_url)
-    with patient.expect_navigation():
-        patient.locator(
-            f'[data-session="{first_session}"] button[value="join"]'
-        ).click()
+    goto_settled(patient, case.patient_url)
+    click_to_navigate(
+        patient.locator(f'[data-session="{first_session}"] button[value="join"]')
+    )
     expect(patient.locator("#room-panel")).to_have_attribute("data-role", "patient")
     _enter(physician, case, first_session, first["name"])
     _capture(physician, case, "joined")
@@ -769,10 +806,7 @@ def test_clinician_video_journey(
     second = _seed_patient(case, 11, NAMES[1])
     template = _seed_template(case)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts = [
             _context(browser, case, media=True),
             _context(browser, case, media=False),
@@ -802,17 +836,32 @@ def test_clinician_video_journey(
                 _accept_consent(third_patient, base)
                 third_session = _provision(physician, case, third)
                 _reflow(physician, case, third_session, third["name"])
+            fourth = _seed_patient(case, 16, "Paciente Sintético Quatro")
+            contexts.append(_context(browser, case, media=False))
+            fourth_patient = _page(contexts[-1], errors, console)
+            _redeem(fourth_patient, base, case.staff["clinic_a"], fourth["code"])
+            _accept_consent(fourth_patient, base)
+            fourth_session = _provision(physician, case, fourth)
+            contexts.append(_context(browser, case, media=True))
+            contexts[-1].add_init_script(PENDING_PROMPT_JS)
+            prompted = _page(contexts[-1], errors, console)
+            _unanswered_prompt(prompted, case, fourth_session, fourth["name"])
             assert not errors, errors
             # The browser logs the two deliberate failures: the rejected save
-            # (503) and the offline save (htmx sendError plus its afterRequest).
+            # (503; Firefox logs no failed response) and the offline save
+            # (htmx sendError plus its afterRequest, and the engine's own
+            # offline line where it writes one).
+            offline = offline_console(physician.context)
             unexpected = [
                 message
                 for message in console
                 if not message.startswith(("htmx:sendError", "htmx:afterRequest"))
-                and "net::ERR_INTERNET_DISCONNECTED" not in message
+                and (offline is None or offline not in message)
                 and "status of 503" not in message
             ]
-            assert len([m for m in console if "status of 503" in m]) == 1
+            assert len([m for m in console if "status of 503" in m]) == (
+                1 if logs_failed_responses(physician.context) else 0
+            )
             assert len([m for m in console if m.startswith("htmx:sendError")]) == 1
             assert not unexpected, unexpected
             (case.root / f"accessibility-console-{width}.json").write_text(
@@ -821,7 +870,7 @@ def test_clinician_video_journey(
                         "page_errors": errors,
                         "console_errors": unexpected,
                         "expected_console": [m for m in console if m not in unexpected],
-                        "media": "chromium --use-fake-device-for-media-stream",
+                        "media": media_source(physician.context),
                         "offline": "BrowserContext.set_offline",
                         "failed_save_http": UNAVAILABLE,
                         "cross_patient_http": FORBIDDEN,
@@ -996,8 +1045,7 @@ def _guarded_record(
     expect(physician.locator("#id_subjective")).to_be_focused()
     physician.locator("[data-open-record]").click()
     expect(guard).to_be_visible()
-    with physician.expect_navigation(url=_record_url(case)):
-        physician.locator("[data-leave-discard]").click()
+    click_to_navigate(physician.locator("[data-leave-discard]"), url=_record_url(case))
     _expect_record(physician, first["name"], second)
     expect(physician.locator("#id_subjective")).to_have_value(REJECTED_LATE)
     assert PENDING_PLAN not in physician.content()
@@ -1026,15 +1074,13 @@ def _interleaved_record(
             return
         response = route.fetch(max_redirects=0)
         held.append(response.status)
-        with other.expect_navigation(url=record_url):
-            other.locator("[data-open-record]").click()
+        click_to_navigate(other.locator("[data-open-record]"), url=record_url)
         _expect_record(other, second, first)
         route.fulfill(response=response)
 
     physician.route(record_url, hold)
     try:
-        with physician.expect_navigation(url=record_url):
-            physician.locator("[data-open-record]").click()
+        click_to_navigate(physician.locator("[data-open-record]"), url=record_url)
     finally:
         physician.unroute(record_url, hold)
     assert held == [OK]
@@ -1093,13 +1139,13 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
     encounter: str,
 ) -> None:
     """Without JavaScript, start and end carry the typed draft back as unsaved."""
-    native.goto(case.staff_url)
-    with native.expect_navigation():
-        native.locator(f'[data-session="{session_id}"] button[value="join"]').click()
+    goto_settled(native, case.staff_url)
+    click_to_navigate(
+        native.locator(f'[data-session="{session_id}"] button[value="join"]')
+    )
     expect(native.locator("h1")).to_have_text(name)
     native.locator("#template-id").select_option(template)
-    with native.expect_navigation():
-        native.locator('button[value="note-template"]').click()
+    click_to_navigate(native.locator('button[value="note-template"]'))
     notes = native.locator("#notes-panel")
     expect(notes).to_have_attribute("data-state", "draft")
     version = notes.get_attribute("data-version")
@@ -1108,15 +1154,13 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
         "form", "soap-form"
     )
     native.locator("#id_subjective").fill(NATIVE["subjective"])
-    with native.expect_navigation():
-        native.locator('button[value="start"]').click()
+    click_to_navigate(native.locator('button[value="start"]'))
     expect(native.locator("#video-session")).to_have_attribute("data-state", "active")
     expect(native.locator("#id_subjective")).to_have_value(NATIVE["subjective"])
     expect(native.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     assert stored(case.staff, version) == (1, "")
     native.locator("#id_objective").fill(NATIVE["objective"])
-    with native.expect_navigation():
-        native.locator('button[value="end"]').click()
+    click_to_navigate(native.locator('button[value="end"]'))
     expect(native.locator("#video-session")).to_have_attribute("data-state", "ended")
     expect(native.locator("[data-session-notice]")).to_be_visible()
     expect(native.locator("#id_subjective")).to_have_value(NATIVE["subjective"])
@@ -1126,8 +1170,7 @@ def _native_transitions(  # noqa: PLR0913 - the native check needs its full cont
     assert stored(case.staff, version) == (1, "")
     assert stored_encounter(case.staff, encounter) == "open"
     _capture(native, case, "native-end-unsaved")
-    with native.expect_navigation():
-        native.locator('button[value="note-save"]').click()
+    click_to_navigate(native.locator('button[value="note-save"]'))
     expect(native.locator("#save-state")).to_have_attribute("data-state", "saved")
     assert stored(case.staff, version) == (2, NATIVE["subjective"])
     _capture(native, case, "native-end-saved")
@@ -1163,10 +1206,7 @@ def test_clinician_video_preservation(
     second = _seed_patient(case, 11, NAMES[1])
     template = _seed_template(case)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts = [
             _context(browser, case, media=True),
             _context(browser, case, media=False),

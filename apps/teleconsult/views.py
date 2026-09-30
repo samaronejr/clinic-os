@@ -13,6 +13,7 @@ from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
 from apps.consent.models import ConsentAcceptance
+from apps.core.patient_context import bind_encounter_context
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import Clinic
@@ -170,6 +171,7 @@ def _workspace(
     A native transition submits the notes form itself; the whole page keeps
     that posted text as unsaved instead of re-reading the stored draft over it.
     """
+    bind_encounter_context(request, session.encounter)
     if is_htmx(request):
         return _private(
             render(request, _SESSION_PARTIAL, video_context(clinic_id, session))
@@ -207,6 +209,7 @@ def _workspace_conflict(
         )
     except (TeleconsultAccessDeniedError, ValueError):
         return None
+    bind_encounter_context(request, session.encounter)
     context = video_context(clinic_id, session)
     message = _conflict_message(error)
     if is_htmx(request):
@@ -235,6 +238,7 @@ def _join(request: HttpRequest, clinic_id: UUID, session_id: UUID) -> HttpRespon
     """Admit the assigned physician and open the workspace for that patient."""
     issued = request_physician_join(clinic_id=clinic_id, session_id=session_id)
     entry = enter_room(token=issued.token, role=TeleconsultCredential.Role.PHYSICIAN)
+    bind_encounter_context(request, entry.session.encounter)
     return _private(
         render(
             request, WORKSPACE_TEMPLATE, _workspace_context(clinic_id, entry.session)
@@ -244,6 +248,7 @@ def _join(request: HttpRequest, clinic_id: UUID, session_id: UUID) -> HttpRespon
 
 def _note(request: HttpRequest, clinic_id: UUID, session_id: UUID) -> HttpResponseBase:
     session = assigned_session(clinic_id=clinic_id, session_id=session_id)
+    bind_encounter_context(request, session.encounter)
     # The action's own notes context is complete; the page adds the video facts.
     return _private(
         note_action(

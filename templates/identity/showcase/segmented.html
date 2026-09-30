@@ -1,0 +1,5 @@
+{% load i18n showcase %}{% showcase_fixture "segments" as options %}{% trans "Agenda view" as legend %}
+{% if state == "error" %}{% include "includes/components/segmented.html" with id=sid name=sid legend=legend options=options value="week" state=state message=_("This view could not be saved. Choose it again.") %}
+{% elif state == "success" %}{% include "includes/components/segmented.html" with id=sid name=sid legend=legend options=options value="week" state=state message=_("View saved.") %}
+{% elif state == "empty" %}{% include "includes/components/segmented.html" with id=sid name=sid legend=legend options=options state=state message=_("No view chosen yet; the agenda opens on the day view.") %}
+{% else %}{% include "includes/components/segmented.html" with id=sid name=sid legend=legend options=options value="week" state=state %}{% endif %}

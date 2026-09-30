@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 import warnings
 from pathlib import Path
@@ -46,6 +47,60 @@ def resolve_app_database_config(environment: Mapping[str, str]) -> dict[str, obj
             "APP_DATABASE_URL", default=DEFAULT_APP_DATABASE_URL
         )
     return config
+
+
+def agent_database_config(
+    environment: Mapping[str, str],
+    *,
+    primary: Mapping[str, object],
+    strict_tls: bool = False,
+) -> dict[str, dict[str, object]]:
+    """Resolve an optional, separate machine login on the same database endpoint.
+
+    Missing configuration disables the alias; it never borrows staff credentials.
+    Production uses the exact verified-TLS contract. Synthetic URLs still reject
+    libpq role/routing overrides, arbitrary options and different databases.
+    """
+    if "AGENT_DATABASE_URL" not in environment:
+        return {}
+    resolver = environ.Env()
+    resolver.ENVIRON = environment
+    try:
+        value = resolver.str("AGENT_DATABASE_URL")
+        parsed = urlsplit(value)
+        role = unquote(parsed.username or "")
+        query = parse_qsl(parsed.query, strict_parsing=True, keep_blank_values=True)
+        port = parsed.port
+    except (ImproperlyConfigured, RecursionError, TypeError, ValueError):
+        _fail()
+    if (
+        parsed.scheme != "postgresql"
+        or not re.fullmatch(r"clinic_agent(?:_[a-z0-9_]+)?", role)
+        or not parsed.password
+        or not parsed.hostname
+        or port is None
+        or parsed.fragment
+        or len(query) != len(dict(query))
+        or not {key for key, _ in query} <= BASE_QUERY_KEYS
+    ):
+        _fail()
+    if strict_tls:
+        config = parse_database_url(value, required_role=role)
+    else:
+        config = resolver.db_url_config(value)
+        config["ATOMIC_REQUESTS"] = False
+        # Same pooling-safe runtime contract as the primary (ADR-018): the
+        # agent reaches the same endpoint, possibly behind a transaction pool.
+        config["DISABLE_SERVER_SIDE_CURSORS"] = True
+        config.setdefault("OPTIONS", {}).update(
+            options="-c search_path=clinic_app,public", prepare_threshold=None
+        )
+    if any(
+        str(config.get(key, "")) != str(primary.get(key, ""))
+        for key in ("ENGINE", "HOST", "PORT", "NAME")
+    ):
+        _fail()
+    return {"agent": config}
 
 
 def parse_database_url(
@@ -96,6 +151,7 @@ def parse_database_url(
     options: dict[str, object] = {
         "connect_timeout": int(timeout_text),
         "options": "-c search_path=clinic_app,public",
+        "prepare_threshold": None,
         "sslmode": "verify-full",
         "sslrootcert": str(ca),
     }
@@ -103,6 +159,7 @@ def parse_database_url(
         options["hostaddr"] = required_hostaddr
     return {
         "ATOMIC_REQUESTS": False,
+        "DISABLE_SERVER_SIDE_CURSORS": True,
         "ENGINE": "django.db.backends.postgresql",
         "HOST": host,
         "NAME": database,
@@ -149,4 +206,6 @@ def _canonical_ca(value: str) -> Path:
 
 def _fail() -> Never:
     message = "database settings violate the fail-closed database contract"
-    raise ImproperlyConfigured(message)
+    # Parser exceptions can include the complete credential-bearing authority.
+    # Keep refusal observable without rendering that untrusted exception chain.
+    raise ImproperlyConfigured(message) from None

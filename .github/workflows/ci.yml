@@ -11,7 +11,7 @@ jobs:
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +58,7 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
           uv run mypy .
-          CLINIC_PDF_TOOLS=required uv run pytest --reuse-db $(grep -v '^#' ops/testing/coverage-targets.txt | tr '\n' ' ') --cov-report=term-missing --cov-report=xml:"$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml" --cov-fail-under=90 tests
+          CLINIC_PDF_TOOLS=required uv run python -m ops.testing.ci_pytest --workers 4 --work-root "$RUNNER_TEMP/clinic-ci-pytest" --cov-xml "$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml"
           uv run pip-audit --local
       - name: Publish machine-readable coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -117,9 +117,15 @@ jobs:
           - "clinic-settings,billing,prescription-draft,prescribing,document-verification"
           - "consent,amendments,attachments,clinical-history,clinician-video"
           - "video-recovery,encounter,end-to-end"
-          - "agenda,availability,contacts,locale,patient-access"
+          - "agenda,availability,contacts,locale,patient-access,realtime"
           - "patient-video,questionnaires,self-booking,waitlist"
           - "reminders,teleconsult,retention,primitives,smoke,staff-intake,workspace"
+          - "smoke@firefox,billing@firefox,clinic-settings@firefox,clinical-history@firefox,clinician-video@firefox,consent@firefox,end-to-end@firefox,patient-video@firefox,video-recovery@firefox,amendments@firefox,document-verification@firefox,prescribing@firefox,prescription-draft@firefox,reminders@firefox,teleconsult@firefox,waitlist@firefox"
+          - "primitives@firefox,workspace@firefox,self-booking@firefox,locale@firefox"
+          - "agenda@firefox,attachments@firefox,availability@firefox,contacts@firefox,encounter@firefox,patient-access@firefox,questionnaires@firefox,retention@firefox,staff-intake@firefox,realtime@firefox"
+          - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit,amendments@webkit,document-verification@webkit,prescribing@webkit,prescription-draft@webkit,reminders@webkit,teleconsult@webkit,waitlist@webkit"
+          - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit"
+          - "agenda@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -142,17 +148,29 @@ jobs:
         run: |
           command -v google-chrome || command -v google-chrome-stable || command -v chromium
           google-chrome --version 2>/dev/null || google-chrome-stable --version 2>/dev/null || chromium --version
+      - name: Install Playwright-managed Firefox and WebKit
+        if: contains(matrix.shard, '@')
+        run: |
+          uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file playwright install --with-deps firefox webkit
       - name: Run renewal browser suites
         env:
           RENEWAL_SUITES: ${{ matrix.shard }}
         run: |
           set -u
           uv sync --locked --all-groups
+          uv run --frozen --no-sync --no-env-file python -m playwright install ffmpeg
           status=0
-          for suite in ${RENEWAL_SUITES//,/ }; do
-            if ! uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner \
+          for entry in ${RENEWAL_SUITES//,/ }; do
+            suite="${entry%%@*}"
+            engine=chromium
+            if [ "$entry" != "$suite" ]; then engine="${entry#*@}"; fi
+            label="$suite"
+            if [ "$engine" != chromium ]; then label="$suite@$engine"; fi
+            if ! CLINIC_BROWSER_ENGINE="$engine" uv run --frozen --no-sync --no-env-file \
+                python -m ops.testing.renewal_runner \
                 browser --suite "$suite" \
-                --artifact-root "$RUNNER_TEMP/renewal/$suite"; then
+                --artifact-root "$RUNNER_TEMP/renewal/$label"; then
               status=1
             fi
           done
@@ -208,7 +226,7 @@ jobs:
           install -d "$RUNNER_TEMP/worker-integration"
           CLINIC_BROKER_GATE=required uv run pytest -q --reuse-db \
             --junitxml="$RUNNER_TEMP/worker-integration/junit.xml" \
-            tests/renewal/test_broker_delivery.py
+            tests/renewal/test_broker_delivery.py tests/realtime/
       - name: Publish broker gate evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

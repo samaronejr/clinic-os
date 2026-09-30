@@ -23,8 +23,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import qrcode
+from config.settings.contracts import resolved_data_mode
 from django.conf import settings
 from django.utils import timezone
+
+from apps.providers.services import is_live
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -124,18 +127,24 @@ class PaymentEventAdapter(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class PixCapability:
-    """Report the unavailable task-6 record, never inferred readiness."""
+    """Report the registry-gated live answer, never inferred readiness."""
 
     synthetic_enabled: bool
-    real_enabled: bool = False
+    real_enabled: bool
     reason: str = "missing_pix_provider_owner_and_sandbox_approval"
 
 
 def pix_capability() -> PixCapability:
-    """Permit only explicit rehearsal opt-in in synthetic data mode."""
+    """Permit only explicit rehearsal opt-in in synthetic data mode.
+
+    ``resolved_data_mode`` returns ``None`` when ``CLINIC_DATA_MODE`` is
+    absent or invalid, so a missing mode fails closed (both flags False)
+    instead of leaking ``AttributeError`` from the settings holder.
+    """
     return PixCapability(
-        synthetic_enabled=settings.CLINIC_DATA_MODE == "synthetic"
-        and getattr(settings, "BILLING_SYNTHETIC_PIX", False) is True
+        synthetic_enabled=resolved_data_mode() == "synthetic"
+        and getattr(settings, "BILLING_SYNTHETIC_PIX", False) is True,
+        real_enabled=is_live("pix", clinic_id=None),
     )
 
 

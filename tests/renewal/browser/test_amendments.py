@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import secrets
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -12,7 +11,11 @@ import pytest
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_totp_key
+from renewal.browser._navigation import click_to_navigate, goto_settled
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
+from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import (
     _no_overflow,
     _ring,
@@ -20,7 +23,7 @@ from renewal.browser.test_availability import (
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_encounter import DAYS, press, seed
+from renewal.browser.test_encounter import DAYS, press, press_in_view, seed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -48,8 +51,8 @@ MIN_TARGET_PX = 44
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "amendments"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def csrf(page: Page) -> str:
@@ -114,7 +117,7 @@ def stored_encounter(staff: dict[str, str], encounter: str) -> str:
 
 def swap_totp_device(staff: dict[str, str]) -> str:
     """Replace the physician's device row; the session binding goes stale."""
-    key = secrets.token_hex(20)
+    key = new_totp_key()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute("SET ROLE clinic_app")
         conn.execute(
@@ -138,11 +141,10 @@ def swap_totp_device(staff: dict[str, str]) -> str:
 
 def reverify(page: Page, base: str, key: str) -> None:
     """Complete the real re-verification challenge the denial redirected to."""
-    page.goto(f"{base}/auth/verify/")
+    goto_settled(page, f"{base}/auth/verify/")
     token = TOTP(bytes.fromhex(key), 30, 0, 6, 0).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
+    click_to_navigate(page.locator("button[type=submit]"))
 
 
 def fill_and_save(page: Page, content: dict[str, str]) -> None:
@@ -153,7 +155,7 @@ def fill_and_save(page: Page, content: dict[str, str]) -> None:
 
 def finalize_current(page: Page) -> None:
     """Finalize the visible draft and assert the frozen state marker."""
-    press(page, "finalize")
+    press_in_view(page, "finalize")
     expect(page.locator("[data-version]")).to_have_attribute("data-state", "finalized")
     expect(page.locator("[data-finalization]")).to_have_attribute(
         "data-finalization", "local"
@@ -176,7 +178,9 @@ def open_draft(
 ) -> str:
     """Reach a saved draft through the real agenda journey."""
     _sign_in_physician(page, base, staff)
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
     page.locator("#template-id").select_option(specialty)
     press(page, "template")
@@ -188,20 +192,21 @@ def open_draft(
 
 def review_superseded(page: Page, root: Path, width: int, digest: str) -> None:
     """Render the preserved superseded original in the review panel."""
-    with page.expect_navigation():
-        page.locator('[data-version-row] button[value="review"]').last.click()
+    click_to_navigate(
+        page.locator('[data-version-row] button[value="review"]').last, hittable=True
+    )
     expect(page.locator("[data-review]")).to_have_attribute("data-state", "superseded")
     expect(page.locator("[data-review]")).to_have_attribute("data-digest", digest)
     assert FIRST["subjective"] in page.content()
     capture(page, root, "review-superseded", width)
-    press(page, "current")
+    press_in_view(page, "current")
 
 
 def close_and_verify(page: Page, url: str, staff: dict[str, str]) -> str:
     """Close the encounter; a repeated POST returns the same closed row."""
     encounter = page.locator("[data-encounter]").get_attribute("data-encounter")
     assert encounter is not None
-    press(page, "close")
+    press_in_view(page, "close")
     expect(page.locator("[data-encounter]")).to_have_attribute(
         "data-encounter-state", "closed"
     )
@@ -233,7 +238,7 @@ def step_up_denial(
         [3, "draft"],
     ]
     reverify(page, base, key)
-    page.goto(url)
+    goto_settled(page, url)
     finalize_current(page)
     assert lineage(staff, encounter) == [
         [1, "superseded"],
@@ -285,7 +290,7 @@ def denied_read(
     try:
         denied = denied_context.new_page()
         _sign_in_receptionist(denied, base, staff)
-        response = denied.goto(url)
+        response = goto_settled(denied, url)
         assert response is not None
         assert response.status == 403
         assert FIRST["subjective"] not in denied.content()
@@ -454,8 +459,7 @@ def _native_scene(page: Page, ctx: dict[str, Any], root: Path) -> dict[str, obje
     open_draft(page, ctx["staff"], ctx["base"], ctx["day"], ctx["specialty"])
     finalize_current(page)
     amend_current(page, "Retificação nativa")
-    target = page.locator('button[value="save"]').bounding_box()
-    assert target is not None
+    target = element_box(page.locator('button[value="save"]'))
     assert target["height"] >= MIN_TARGET_PX
     capture(page, root, "native-zoom-200", 640)
     return {

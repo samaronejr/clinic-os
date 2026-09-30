@@ -28,13 +28,22 @@ import psycopg
 import pytest
 from playwright.sync_api import ViewportSize, expect
 
+from renewal.browser._fixture_secrets import new_access_code
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    full_page_screenshot,
+    grant_clipboard,
+    history_back,
+    history_reload,
+    pasted_clipboard,
+    restores_forms_on_back,
+    zoom_200,
+)
 from renewal.browser.test_availability import availability_staff
-from renewal.browser.test_encounter import press
+from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import (
     MIN_TARGET_PX,
-    ZOOM_FACTOR,
-    ZOOM_WINDOW,
     _no_overflow,
     _overflowing,
     _redeem,
@@ -80,14 +89,14 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     """Store one privacy-safe capture and prove the width holds no overflow."""
     folder = root / "billing"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
     assert _no_overflow(page), _overflowing(page)
 
 
 def seed_patient(staff: dict[str, str], name: str) -> dict[str, str]:
     """Create one synthetic enrolled patient with a billing invitation code."""
     data = {key: str(uuid4()) for key in ("patient", "enrollment", "grant")}
-    data["code"] = secrets.token_urlsafe(32)
+    data["code"] = new_access_code()
     data["name"] = name
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
@@ -216,7 +225,7 @@ def ledger_url(base: str, staff: dict[str, str]) -> str:
 
 def create_charge(page: Page, url: str, patient_id: str, amount: str) -> str:
     """Create one draft through the real form and return its charge URL."""
-    page.goto(url)
+    goto_settled(page, url)
     page.select_option("#id_patient_id", value=patient_id)
     page.locator("#id_amount").fill(amount)
     press(page, "create")
@@ -228,11 +237,10 @@ def create_charge(page: Page, url: str, patient_id: str, amount: str) -> str:
 
 def repeat_charge(page: Page, charge_url: str, amount: str) -> str:
     """Open the deliberate second charge offered by one charge's own screen."""
-    page.goto(charge_url)
-    with page.expect_navigation():
-        page.locator("[data-repeat-charge]").click()
+    goto_settled(page, charge_url)
+    click_to_navigate(page.locator("[data-repeat-charge]"), hittable=True)
     expect(page.locator("#id_amount")).to_have_value(amount)
-    press(page, "create")
+    press_in_view(page, "create")
     expect(page.locator("[data-payment-state]")).to_have_attribute(
         "data-payment-state", "draft"
     )
@@ -340,7 +348,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         browser.new_context(viewport=viewport, locale="pt-BR") as payer_context,
         browser.new_context(viewport=viewport, locale="pt-BR") as stranger_context,
     ):
-        staff_context.grant_permissions(["clipboard-read", "clipboard-write"])
+        grant_clipboard(staff_context)
         admin = staff_context.new_page()
         patient = payer_context.new_page()
         other = stranger_context.new_page()
@@ -350,11 +358,10 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         sign_in_manager(admin, base, staff, manager)
         # The ledger is reachable from the shell, not only by typed URL.
-        with admin.expect_navigation():
-            admin.locator("a[data-module=billing]").click()
+        click_to_navigate(admin.locator("a[data-module=finance]"))
         ledger = ledger_url(base, staff)
         assert admin.url == ledger
-        expect(admin.locator("a[data-module=billing]")).to_have_attribute(
+        expect(admin.locator("a[data-module=finance]")).to_have_attribute(
             "aria-current", "page"
         )
         # A long synthetic name and a grouped BRL value stress the ledger.
@@ -376,7 +383,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         admin.bring_to_front()
         copy_button.click()
         expect(admin.locator("[data-copy-status]")).to_have_text("Código copiado.")
-        assert admin.evaluate("navigator.clipboard.readText()") == code
+        assert pasted_clipboard(admin) == code
 
         # A bounded refresh re-reads stored state and never invents success.
         assert await_refresh(admin) == OK
@@ -391,8 +398,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         # The patient obtains the instructions, and only their own.
         _redeem(patient, base, staff["clinic_a"], payer["code"])
-        with patient.expect_navigation():
-            patient.locator("#charges-link").click()
+        click_to_navigate(patient.locator("#charges-link"))
         expect(patient.locator("[data-charge]")).to_have_count(1)
         expect(patient.locator("[data-amount]")).to_have_text(AMOUNT_TEXT)
         capture(patient, root, "patient-ledger", width)
@@ -403,11 +409,10 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         capture(patient, root, "patient-instructions", width)
 
         _redeem(other, base, staff["clinic_a"], stranger["code"])
-        with other.expect_navigation():
-            other.locator("#charges-link").click()
+        click_to_navigate(other.locator("#charges-link"))
         expect(other.locator("#charges-empty")).to_be_visible()
         capture(other, root, "patient-empty", width)
-        denied = other.goto(f"{base}/patient/charges/{invoice_id}/")
+        denied = goto_settled(other, f"{base}/patient/charges/{invoice_id}/")
         assert denied is not None
         assert denied.status == FORBIDDEN
         denied_body = str(other.content())
@@ -417,19 +422,19 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         # A lost connection stops the chain and says the screen may be stale.
         patient.route(STATUS_PATTERN, lambda route: route.abort())
-        patient.reload()
+        history_reload(patient)
         expect(patient.locator("[data-offline]")).to_be_visible()
         expect_state(patient, "pending")
         capture(patient, root, "patient-offline", width)
         patient.unroute(STATUS_PATTERN)
 
         # Only a stored settlement turns the screens to paid.
-        admin.goto(charge_url)
+        goto_settled(admin, charge_url)
         confirm_settlement(admin, AMOUNT)
         expect_state(admin, "paid")
         receipt = str(admin.locator("[data-receipt]").get_attribute("data-receipt"))
         capture(admin, root, "charge-paid", width)
-        patient.goto(f"{base}/patient/charges/{invoice_id}/")
+        goto_settled(patient, f"{base}/patient/charges/{invoice_id}/")
         expect_state(patient, "paid")
         expect(patient.locator("[data-receipt]")).to_have_attribute(
             "data-receipt", receipt
@@ -445,16 +450,16 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         press(admin, "issue")
         press(admin, "release")
         seed_expired_code(staff, manager["id"], expired_id)
-        admin.goto(expired_url)
+        goto_settled(admin, expired_url)
         expect_state(admin, "expired")
         assert CODE_PREFIX not in str(admin.content())
         capture(admin, root, "charge-expired", width)
-        patient.goto(f"{base}/patient/charges/{expired_id}/")
+        goto_settled(patient, f"{base}/patient/charges/{expired_id}/")
         expect_state(patient, "expired")
         assert CODE_PREFIX not in str(patient.content())
         capture(patient, root, "patient-expired", width)
 
-        admin.goto(expired_url)
+        goto_settled(admin, expired_url)
         press(admin, "regenerate")
         expect_state(admin, "pending")
         renewed = str(admin.locator("[data-code]").text_content())
@@ -463,23 +468,23 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
 
         # An authentic event the provider check could not confirm never pays.
         seed_unverified_event(staff, manager["id"], expired_id)
-        admin.goto(expired_url)
+        goto_settled(admin, expired_url)
         expect_state(admin, "flagged")
         expect(admin.locator("[data-payment-reason]")).to_be_visible()
         capture(admin, root, "charge-flagged", width)
-        patient.goto(f"{base}/patient/charges/{expired_id}/")
+        goto_settled(patient, f"{base}/patient/charges/{expired_id}/")
         expect_state(patient, "flagged")
         assert "Pago" not in str(patient.content())
         capture(patient, root, "patient-flagged", width)
 
         # A cancelled charge stops offering the code nobody should pay.
-        admin.goto(expired_url)
-        press(admin, "cancel")
+        goto_settled(admin, expired_url)
+        press_in_view(admin, "cancel")
         expect_state(admin, "cancelled")
         expect(admin.locator("[data-code]")).to_have_count(0)
         expect(admin.locator("[data-qr]")).to_have_count(0)
         capture(admin, root, "charge-cancelled", width)
-        patient.goto(f"{base}/patient/charges/{expired_id}/")
+        goto_settled(patient, f"{base}/patient/charges/{expired_id}/")
         expect_state(patient, "cancelled")
         expect(patient.locator("[data-code]")).to_have_count(0)
         expect(patient.locator("[data-qr]")).to_have_count(0)
@@ -487,7 +492,7 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         capture(patient, root, "patient-cancelled", width)
 
         # The populated ledger keeps every state and the long name readable.
-        admin.goto(ledger)
+        goto_settled(admin, ledger)
         assert admin.locator("[data-charge]").count() >= MIN_LEDGER_ROWS
         expect(admin.locator(f'[data-charge="{invoice_id}"]')).to_have_attribute(
             "data-state", "paid"
@@ -517,13 +522,34 @@ def test_charge_instructions_refresh_and_receipt_stay_exact(  # noqa: PLR0915 - 
         )
 
 
+def _resubmit_restored_form(
+    page: Page, root: Path, patient_id: str, charge_url: str
+) -> None:
+    """Submitting a Back-restored form opens nothing: it is the same charge.
+
+    The screen says so instead of claiming a second creation.
+    """
+    expect(page.locator("#id_patient_id")).to_have_value(patient_id)
+    expect(page.locator("#id_amount")).to_have_value(AMOUNT)
+    capture(page, root, "back-restored", 1280)
+    press(page, "create")
+    assert page.url == charge_url
+    expect_state(page, "draft")
+    expect(page.locator("p.feedback[role=status]")).to_have_count(1)
+    capture(page, root, "back-resubmitted", 1280)
+
+
 def test_browser_back_and_resubmit_never_opens_a_second_charge(
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     availability_staff: dict[str, str],
 ) -> None:
-    """Chrome's own Back restores the create form; resubmitting it opens no charge.
+    """Back restores the create form; resubmitting it opens no charge.
+
+    Firefox does not restore form controls on Back under Playwright
+    (engines.restores_forms_on_back); there Back shows a fresh form, and the
+    rest of the journey is the same on every engine.
 
     The browser, not a captured POST dictionary, decides what a restored form
     carries: it puts back the selected patient and the typed value while the
@@ -548,30 +574,24 @@ def test_browser_back_and_resubmit_never_opens_a_second_charge(
         rows = page.locator("[data-charge]").filter(has_text=name)
         charge_url = create_charge(page, ledger, payer["patient"], AMOUNT)
 
-        # Refresh the charge that was created, then press the browser's Back.
-        page.reload()
+        # Refresh the charge that was created, then press Back (engines.py,
+        # Session history: the document's own Reload/Back on every engine).
+        history_reload(page)
         assert page.url == charge_url
-        page.go_back()
-        page.wait_for_url(ledger)
-        expect(page.locator("#id_patient_id")).to_have_value(payer["patient"])
-        expect(page.locator("#id_amount")).to_have_value(AMOUNT)
-        capture(page, root, "back-restored", 1280)
-
-        # Submitting that restored form opens nothing: it is the same charge,
-        # and the screen says so instead of claiming a second creation.
-        press(page, "create")
-        assert page.url == charge_url
-        expect_state(page, "draft")
-        expect(page.locator("p.feedback[role=status]")).to_have_count(1)
-        capture(page, root, "back-resubmitted", 1280)
-        page.goto(ledger)
+        history_back(page, ledger)
+        if restores_forms_on_back(context):
+            _resubmit_restored_form(page, root, payer["patient"], charge_url)
+        else:
+            # Back renders a fresh form here: nothing restored to resubmit.
+            expect(page.locator("#id_amount")).to_have_value("")
+            capture(page, root, "back-fresh-form", 1280)
+        goto_settled(page, ledger)
         expect(rows).to_have_count(1)
 
         # Charging the same value again is explicit, distinct and retry-safe.
-        page.goto(charge_url)
+        goto_settled(page, charge_url)
         capture(page, root, "charge-repeat-offer", 1280)
-        with page.expect_navigation():
-            page.locator("[data-repeat-charge]").click()
+        click_to_navigate(page.locator("[data-repeat-charge]"))
         repeat_form = page.url
         expect(page.locator("#id_patient_id")).to_have_value(payer["patient"])
         expect(page.locator("#id_amount")).to_have_value(AMOUNT)
@@ -581,11 +601,10 @@ def test_browser_back_and_resubmit_never_opens_a_second_charge(
         second_url = page.url
         assert second_url != charge_url
         expect_state(page, "draft")
-        page.go_back()
-        page.wait_for_url(repeat_form)
+        history_back(page, repeat_form)
         press(page, "create")
         assert page.url == second_url
-        page.goto(ledger)
+        goto_settled(page, ledger)
         expect(rows).to_have_count(2)
         capture(page, root, "repeat-created", 1280)
     assert not errors
@@ -607,7 +626,7 @@ def test_preferences_keyboard_and_reflow_hold_on_the_payment_screen(
     with browser.new_context(
         viewport={"width": 375, "height": 900}, locale="pt-BR"
     ) as context:
-        context.grant_permissions(["clipboard-read", "clipboard-write"])
+        grant_clipboard(context)
         page = context.new_page()
         errors = _watch_errors(page)
         sign_in_manager(page, base, staff, manager)
@@ -637,20 +656,15 @@ def test_preferences_keyboard_and_reflow_hold_on_the_payment_screen(
         capture(page, root, "forced-colors-reduced-motion", 320)
         page.emulate_media(forced_colors="none", reduced_motion="no-preference")
 
-        cdp = context.new_cdp_session(page)
-        cdp.send(
-            "Emulation.setDeviceMetricsOverride",
-            {
-                "width": ZOOM_WINDOW // ZOOM_FACTOR,
-                "height": 450,
-                "deviceScaleFactor": ZOOM_FACTOR,
-                "mobile": False,
-            },
-        )
-        page.goto(charge_url)
-        assert page.evaluate("devicePixelRatio === 2 && innerWidth === 640")
-        capture(page, root, "zoom-200-layout", 640)
-        cdp.detach()
+        zoom_context, zoomed = zoom_200(page)
+        try:
+            zoom_errors = _watch_errors(zoomed)
+            goto_settled(zoomed, charge_url)
+            assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
+            capture(zoomed, root, "zoom-200-layout", 640)
+            assert not zoom_errors
+        finally:
+            zoom_context.close()
     assert not errors
 
 
@@ -689,23 +703,21 @@ def test_native_flow_completes_without_javascript(
         # selectable; the manual refresh link replaces the polling chain.
         expect(admin.locator("[data-code]")).to_be_visible()
         expect(admin.locator("[data-copy]")).to_be_hidden()
-        with admin.expect_navigation():
-            admin.locator("[data-refresh]").click()
+        click_to_navigate(admin.locator("[data-refresh]"))
         expect_state(admin, "pending")
         capture(admin, root, "native-pending", 768)
 
         press(admin, "release")
         _redeem(patient, base, staff["clinic_a"], payer["code"])
-        patient.goto(f"{base}/patient/charges/{invoice_id_of(charge_url)}/")
+        goto_settled(patient, f"{base}/patient/charges/{invoice_id_of(charge_url)}/")
         expect_state(patient, "pending")
         expect(patient.locator("[data-copy]")).to_be_hidden()
         capture(patient, root, "native-patient-instructions", 768)
 
-        admin.goto(charge_url)
+        goto_settled(admin, charge_url)
         confirm_settlement(admin, AMOUNT)
         expect_state(admin, "paid")
-        with patient.expect_navigation():
-            patient.locator("[data-refresh]").click()
+        click_to_navigate(patient.locator("[data-refresh]"))
         expect_state(patient, "paid")
         expect(patient.locator("[data-receipt]")).to_have_count(1)
         capture(patient, root, "native-patient-receipt", 768)

@@ -6,8 +6,12 @@ import hashlib
 import io
 import json
 import secrets
+import shutil
+import time
 import zipfile
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import psycopg
@@ -15,15 +19,29 @@ import pytest
 import rfc8785
 from django.contrib.auth.hashers import make_password
 from django_otp.oath import TOTP
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code, new_totp_key
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    wait_for_signed_in,
+)
+from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
+from renewal.browser.engines import (
+    failed_responses_logged,
+    full_page_screenshot,
+    new_context,
+)
 from renewal.browser.test_availability import (
     _sign_in,
     _sign_in_physician,
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_encounter import DAYS, press, seed
+from renewal.browser.test_encounter import DAYS, press, press_in_view, seed
 from renewal.browser.test_patient_access import (
     MIN_TARGET_PX,
     ZOOM_FACTOR,
@@ -37,10 +55,19 @@ from renewal.browser.test_patient_access import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
     from typing import Any
 
-    from playwright.sync_api import Browser, BrowserContext, Page
+    from playwright.sync_api import (
+        Browser,
+        BrowserContext,
+        ConsoleMessage,
+        Frame,
+        Page,
+        Request,
+        Response,
+    )
 
 __all__ = ("availability_staff",)
 
@@ -55,8 +82,204 @@ FIRST = {
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "retention"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
+
+
+# Page state at the check_disposal click, for the hosted Firefox stall where
+# the click returned but no POST reached the server. Structure only: paths,
+# states and validity flags, never field values, headers or bodies.
+DISPOSAL_STATE_JS = """() => {
+  const sw = navigator.serviceWorker;
+  const state = (worker) => (worker ? worker.state : null);
+  const button = document.querySelector(
+    '#disposal-form button[value="check_disposal"]');
+  let target = null;
+  if (button) {
+    const r = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    target = {
+      box: [r.left, r.top, r.width, r.height],
+      hit: hit === button ? 'button'
+        : hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : null,
+      disabled: button.disabled,
+      connected: button.isConnected,
+    };
+  }
+  const form = button && button.form;
+  return {
+    path: location.pathname,
+    readyState: document.readyState,
+    visibility: document.visibilityState,
+    hasFocus: document.hasFocus(),
+    active: document.activeElement
+      ? document.activeElement.tagName.toLowerCase() : null,
+    scroll: [scrollX, scrollY],
+    viewport: [innerWidth, innerHeight],
+    serviceWorker: sw ? {
+      controlled: Boolean(sw.controller),
+      controller: state(sw.controller),
+      registration: window.__disposalRegistration || null,
+    } : null,
+    button: target,
+    pointer: window.__disposalPointer || null,
+    form: form ? Array.from(form.elements).filter((e) => e.name).map((e) => ({
+      name: e.name, type: e.type, filled: e.value !== '', valid: e.validity.valid,
+    })) : null,
+  };
+}"""
+# Where the step's pointer and submit events actually land (capture phase):
+# event type, trust, viewport point, scroll offset and target tag#id only.
+POINTER_WATCH_JS = """() => {
+  const seen = [];
+  window.__disposalPointer = seen;
+  // Never awaited: Firefox's getRegistration() can stay pending, and an
+  // evaluate that awaits it would hang the suite (fix-a5 round 3). The state
+  // snapshot reads whatever it resolved to so far.
+  const sw = navigator.serviceWorker;
+  if (sw) {
+    const state = (worker) => (worker ? worker.state : null);
+    window.__disposalRegistration = {settled: false};
+    sw.getRegistration().then((reg) => {
+      window.__disposalRegistration = {
+        settled: true,
+        installing: state(reg && reg.installing),
+        waiting: state(reg && reg.waiting),
+        active: state(reg && reg.active),
+      };
+    });
+  }
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup',
+      'click', 'submit']) {
+    document.addEventListener(type, (event) => {
+      const t = event.target;
+      seen.push({
+        type,
+        trusted: event.isTrusted,
+        point: 'clientX' in event ? [event.clientX, event.clientY] : null,
+        scrollY: scrollY,
+        target: t && t.tagName ? t.tagName.toLowerCase() + (t.id ? '#' + t.id : '')
+          + (t.tagName === 'BUTTON' && t.value ? '[value=' + t.value + ']' : '') : null,
+      });
+    }, {capture: true});
+  }
+  return true;
+}"""
+CONSOLE_LIMIT = 200
+
+
+class _StepRecorder:
+    """Network, console and navigation events of one page step, PHI-free."""
+
+    def __init__(self, page: Page) -> None:
+        self.page = page
+        self.start = time.monotonic()
+        self.events: list[dict[str, object]] = []
+        self.active = True
+
+    def elapsed(self) -> float:
+        return round(time.monotonic() - self.start, 3)
+
+    def _note(self, kind: str, **fields: object) -> None:
+        if self.active:
+            self.events.append({"t": self.elapsed(), "kind": kind, **fields})
+
+    def request(self, request: Request) -> None:
+        self._note(
+            "request",
+            method=request.method,
+            path=urlsplit(request.url).path,
+            type=request.resource_type,
+            navigation=request.is_navigation_request(),
+        )
+
+    def failed(self, request: Request) -> None:
+        self._note(
+            "requestfailed",
+            method=request.method,
+            path=urlsplit(request.url).path,
+            failure=request.failure,
+        )
+
+    def response(self, response: Response) -> None:
+        self._note(
+            "response",
+            method=response.request.method,
+            path=urlsplit(response.url).path,
+            status=response.status,
+        )
+
+    def console(self, message: ConsoleMessage) -> None:
+        self._note("console", type=message.type, text=message.text[:CONSOLE_LIMIT])
+
+    def navigated(self, frame: Frame) -> None:
+        if frame == self.page.main_frame:
+            self._note("framenavigated", path=urlsplit(frame.url).path)
+
+    def attach(self) -> None:
+        self.page.on("request", self.request)
+        self.page.on("requestfailed", self.failed)
+        self.page.on("response", self.response)
+        self.page.on("console", self.console)
+        self.page.on("framenavigated", self.navigated)
+
+    def detach(self) -> None:
+        # Playwright cannot remove a page "console" listener again (pyee
+        # KeyError), so the recorder goes quiet instead; the page is per scene.
+        self.active = False
+
+
+def _probe(page: Page, script: str) -> Any:  # noqa: ANN401 - JSON page state
+    """Evaluate a synchronous probe under wait_for_js's driver-side deadline.
+
+    A plain ``page.evaluate`` has no deadline; a probe must never be the
+    thing that hangs the suite.
+    """
+    return wait_for_js(page, script).json_value()
+
+
+def _first_line(error: BaseException) -> str:
+    text = str(error)
+    return f"{type(error).__name__}: {text.splitlines()[0] if text else ''}"
+
+
+@contextmanager
+def disposal_diagnostics(page: Page, destination: Path) -> Iterator[None]:
+    """Record one step's network, console and page state; write it only on failure.
+
+    A passing step leaves nothing behind. On any failure the report goes to
+    ``destination`` (0o600) and the original error propagates unchanged.
+    """
+    recorder = _StepRecorder(page)
+    recorder.attach()
+    try:
+        _probe(page, POINTER_WATCH_JS)
+        before = _probe(page, DISPOSAL_STATE_JS)
+        try:
+            yield
+        except BaseException as error:
+            try:
+                after = _probe(page, DISPOSAL_STATE_JS)
+            except PlaywrightError as problem:
+                # A closed or crashed page must not mask the step's own error.
+                after = {"unavailable": _first_line(problem)}
+            report = {
+                "error": _first_line(error),
+                "elapsed": recorder.elapsed(),
+                "before": before,
+                "after": after,
+                "events": recorder.events,
+            }
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            destination.write_text(json.dumps(report, indent=2) + "\n")
+            destination.chmod(0o600)
+            raise
+    finally:
+        recorder.detach()
+
+
+def diagnostics_path(root: Path, width: int) -> Path:
+    return root / "retention" / f"retention-diagnostics-{width}.json"
 
 
 def csrf(page: Page) -> str:
@@ -85,7 +308,7 @@ def seed_manager(staff: dict[str, str]) -> dict[str, str]:
     manager = {
         "username": f"gestora-{secrets.token_hex(4)}",
         "id": str(uuid4()),
-        "totp_key": secrets.token_hex(20),
+        "totp_key": new_totp_key(),
     }
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
@@ -143,14 +366,13 @@ def sign_in_manager(
     # never flake the challenge.
     token = TOTP(bytes.fromhex(manager["totp_key"]), 30, 0, 6, 1).token()
     page.locator("#id_otp_token").fill(f"{token:06d}")
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
-    page.wait_for_url("**/auth/protected/")
+    click_to_navigate(page.locator("button[type=submit]"))
+    wait_for_signed_in(page)
 
 
 def grant_records(staff: dict[str, str], data: dict[str, str]) -> str:
     """Issue one records-capable invitation directly; return its code."""
-    code = secrets.token_urlsafe(32)
+    code = new_access_code()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)",
@@ -267,14 +489,16 @@ def open_finalized(  # noqa: PLR0913 - the journey needs its full context
 ) -> str:
     """Reach one finalized version through the real agenda journey."""
     _sign_in_physician(page, base, staff)
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
     page.locator("#template-id").select_option(specialty)
     press(page, "template")
     for field, value in (content or FIRST).items():
         page.locator(f"#id_{field}").fill(value)
     press(page, "save")
-    press(page, "finalize")
+    press_in_view(page, "finalize")
     expect(page.locator("[data-version]")).to_have_attribute("data-state", "finalized")
     version = page.locator("[data-version]").get_attribute("data-version")
     assert version is not None
@@ -313,7 +537,7 @@ def _physician_scene(  # noqa: PLR0913 - the scene needs its full context
 ) -> str:
     """Finalize, release and export one record as the assigned physician."""
     version = open_finalized(page, staff, base, DAYS[width], data["specialty"])
-    page.goto(url)
+    goto_settled(page, url)
     expect(page.locator("#policy-form")).to_have_count(0)
     expect(page.locator("#hold-form")).to_have_count(0)
     expect(page.locator("#releasable-list")).to_be_visible()
@@ -322,10 +546,12 @@ def _physician_scene(  # noqa: PLR0913 - the scene needs its full context
     expect(page.locator("#release-list")).to_be_visible()
     capture(page, root, "released", width)
     with page.expect_download() as received:
-        page.locator(
-            f'#export-patient-list li[data-patient="{data["patient"]}"] '
-            'button[value="export"]'
-        ).click()
+        click_when_hittable(
+            page.locator(
+                f'#export-patient-list li[data-patient="{data["patient"]}"] '
+                'button[value="export"]'
+            )
+        )
     package = received.value
     package_path = package.path()
     assert package_path is not None
@@ -353,7 +579,7 @@ def _policy_scene(
     """Propose and approve one zero-day policy through the manager forms."""
     page.locator("#policy-form #id_record_class").select_option("ehr.document_version")
     page.locator("#policy-form #id_retention_days").fill("0")
-    press(page, "propose_policy")
+    press_in_view(page, "propose_policy")
     proposed = stored_policies(staff, manager["id"])
     assert [(row[0], row[2]) for row in proposed] == [
         ("ehr.document_version", "proposed")
@@ -361,7 +587,7 @@ def _policy_scene(
     policy_id = proposed[0][3]
     row = page.locator(f'#policy-list li[data-policy="{policy_id}"]')
     expect(row).to_have_attribute("data-state", "proposed")
-    row.locator('button[value="approve_policy"]').click()
+    click_to_navigate(row.locator('button[value="approve_policy"]'))
     page.wait_for_url("**/retention/**")
     expect(
         page.locator(f'#policy-list li[data-policy="{policy_id}"]')
@@ -385,7 +611,7 @@ def _hold_scene(  # noqa: PLR0913 - the scene needs its full context
     page.locator("#hold-form #id_record_id").fill(version)
     page.locator("#hold-form #id_authority").fill("Autoridade sintética")
     page.locator("#hold-form #id_reason").fill("Motivo sintético")
-    press(page, "place_hold")
+    press_in_view(page, "place_hold")
     expect(page.locator("#hold-list")).to_contain_text("ativa")
     assert stored_holds(staff, version) == [("ehr.document_version", version, False)]
     capture(page, root, "hold-active", width)
@@ -393,7 +619,8 @@ def _hold_scene(  # noqa: PLR0913 - the scene needs its full context
         "ehr.document_version"
     )
     page.locator("#disposal-form #id_record_id").fill(version)
-    press(page, "check_disposal")
+    with disposal_diagnostics(page, diagnostics_path(root, width)):
+        press_in_view(page, "check_disposal")
     expect(page.locator("#retention-error")).to_contain_text("Descarte negado")
     _consume_expected_error(errors, "403")
     assert stored_version_state(staff, version) == "finalized"
@@ -403,13 +630,14 @@ def _hold_scene(  # noqa: PLR0913 - the scene needs its full context
         "Autoridade de liberação"
     )
     page.locator("#hold-release-form #id_release_reason").fill("Motivo de liberação")
-    press(page, "release_hold")
+    press_in_view(page, "release_hold")
     expect(page.locator("#hold-list")).to_contain_text("liberada")
     page.locator("#disposal-form #id_record_class").select_option(
         "ehr.document_version"
     )
     page.locator("#disposal-form #id_record_id").fill(version)
-    press(page, "check_disposal")
+    with disposal_diagnostics(page, diagnostics_path(root, width)):
+        press_in_view(page, "check_disposal")
     expect(page.locator("#disposal-result")).to_contain_text("Elegível")
     capture(page, root, "disposal-eligible", width)
 
@@ -425,7 +653,7 @@ def _reception_scene(  # noqa: PLR0913 - the scene needs its full context
 ) -> None:
     """Reception reads the status page but every write is denied."""
     _sign_in_receptionist(page, base, staff)
-    response = page.goto(url)
+    response = goto_settled(page, url)
     assert response is not None
     assert response.status == 200
     expect(page.locator("#policy-form")).to_have_count(0)
@@ -459,7 +687,7 @@ def _patient_scene(  # noqa: PLR0913 - the scene needs its full context
     code = grant_records(staff, data)
     _redeem(page, base, staff["clinic_a"], code)
     page.wait_for_url("**/patient/")
-    page.goto(f"{base}/patient/records/")
+    goto_settled(page, f"{base}/patient/records/")
     expect(page.locator("h1")).to_have_text("Seus registros")
     assert FIRST["subjective"] in page.content()
     capture(page, root, "patient-records", width)
@@ -502,7 +730,7 @@ def test_retention_journey(
             manager_page = manager_context.new_page()
             persona_errors["manager"] = _watch_errors(manager_page)
             sign_in_manager(manager_page, base, staff, manager)
-            manager_page.goto(url)
+            goto_settled(manager_page, url)
             expect(manager_page.locator("#policy-form")).to_be_visible()
             _policy_scene(manager_page, staff, manager, root, width)
             _hold_scene(
@@ -557,8 +785,73 @@ def test_retention_journey(
             )
             + "\n"
         )
+        # The check_disposal collector ran and, on success, wrote nothing.
+        assert not diagnostics_path(root, width).exists()
     finally:
         context.close()
+
+
+class _ForcedStepFailureError(Exception):
+    """Stands in for a step that fails, to prove the collector's failure path."""
+
+    def __init__(self) -> None:
+        """Carry the fixed marker the report must name."""
+        super().__init__("forced")
+
+
+def _failing_step(page: Page, destination: Path, url: str) -> None:
+    with disposal_diagnostics(page, destination):
+        goto_settled(page, url)
+        raise _ForcedStepFailureError
+
+
+def test_disposal_diagnostics_are_written_only_on_failure(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+) -> None:
+    folder = renewal_artifact_root / "retention" / "diagnostics-self-test"
+    login = f"{renewal_base_url}/auth/login/"
+    goto_settled(renewal_page, login)
+    passed = folder / "passed.json"
+    with disposal_diagnostics(renewal_page, passed):
+        goto_settled(renewal_page, login)
+    assert not passed.exists()
+    assert not folder.exists()
+    failed = folder / "failed.json"
+    with pytest.raises(_ForcedStepFailureError, match="forced"):
+        _failing_step(renewal_page, failed, login)
+    report = json.loads(failed.read_text())
+    assert failed.stat().st_mode & 0o777 == 0o600
+    assert report["error"] == "_ForcedStepFailureError: forced"
+    for state in (report["before"], report["after"]):
+        assert state["path"] == "/auth/login/"
+        assert state["readyState"] == "complete"
+        assert state["button"] is None
+        assert set(state["serviceWorker"]) == {
+            "controlled",
+            "controller",
+            "registration",
+        }
+    # The watcher is armed in the step's document; the navigation replaced it.
+    assert report["before"]["pointer"] == []
+    assert report["after"]["pointer"] is None
+    assert report["before"]["serviceWorker"]["registration"] is not None
+    assert report["after"]["serviceWorker"]["registration"] is None
+    # Subresources of the page loaded before the step may still report.
+    first = next(e for e in report["events"] if e.get("navigation"))
+    assert {k: first[k] for k in ("method", "path", "type")} == {
+        "method": "GET",
+        "path": "/auth/login/",
+        "type": "document",
+    }
+    assert any(
+        e["kind"] == "response" and e["path"] == "/auth/login/" and e["status"] == 200
+        for e in report["events"]
+    )
+    assert any(e["kind"] == "framenavigated" for e in report["events"])
+    # A forced failure is not evidence; leave nothing for the upload.
+    shutil.rmtree(folder)
 
 
 # --------------------------------------------------------------------------
@@ -604,19 +897,26 @@ def _matrix_patient(
     data: dict[str, str],
 ) -> tuple[Page, list[str], BrowserContext]:
     """Open one patient context, redeem a records grant and watch its console."""
-    context = browser.new_context(locale="pt-BR", **options)
+    context = new_context(browser, locale="pt-BR", **options)
     page = context.new_page()
     page.set_default_timeout(20_000)
     errors = _watch_errors(page)
     code = grant_records(staff, data)
     _redeem(page, base, staff["clinic_a"], code)
     page.wait_for_url("**/patient/")
-    page.goto(f"{base}/patient/records/")
+    goto_settled(page, f"{base}/patient/records/")
     return page, errors, context
 
 
 def _consume_expected_error(errors: list[str], status: str) -> None:
-    """Remove the one console error the asserted denial produced."""
+    """Remove the one console error the asserted denial produced.
+
+    Firefox logs no failed response (engines.failed_responses_logged), so
+    there the denial must have left no console line at all.
+    """
+    if not failed_responses_logged():
+        assert not [e for e in errors if status in e], errors
+        return
     expected = next((e for e in errors if status in e), None)
     assert expected is not None, errors
     errors.remove(expected)
@@ -664,7 +964,7 @@ def _matrix_widths(  # noqa: PLR0913 - the scene needs its full context
     # Keyboard: Enter submits the policy form and the patient export.
     focused: list[str] = []
     _tab_until(page, page.locator('button[value="propose_policy"]'), focused)
-    with page.expect_navigation():
+    with expect_document(page):
         page.keyboard.press("Enter")
     expect(page.locator(".feedback--success").first).to_be_visible()
     capture(page, root, "matrix-success", 1280)
@@ -697,13 +997,13 @@ def _matrix_denied(  # noqa: PLR0913 - the scene needs its full context
     version: str,
 ) -> dict[str, object]:
     """Reception reads the workspace but every write stays denied."""
-    context = browser.new_context(locale="pt-BR", **options)
+    context = new_context(browser, locale="pt-BR", **options)
     try:
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors = _watch_errors(page)
         _sign_in_receptionist(page, base, staff)
-        response = page.goto(url)
+        response = goto_settled(page, url)
         assert response is not None
         assert response.status == 200
         expect(page.locator("#policy-form")).to_have_count(0)
@@ -799,13 +1099,12 @@ def _matrix_conflict(  # noqa: PLR0913 - the scene needs its full context
     errors: list[str],
 ) -> dict[str, object]:
     """Releasing a draft through a forged id renders the fixed 409 surface."""
-    page.goto(url)
+    goto_settled(page, url)
     row = page.locator(f'#releasable-list li[data-version="{second_version}"]')
     row.locator('input[name="version_id"]').evaluate(
         "(element, value) => { element.value = value; }", draft
     )
-    with page.expect_navigation():
-        row.locator('button[value="release"]').click()
+    click_to_navigate(row.locator('button[value="release"]'))
     expect(page.locator("#retention-error")).to_contain_text("finalizada")
     _consume_expected_error(errors, "409")
     capture(page, root, "matrix-conflict", 1280)
@@ -831,13 +1130,14 @@ def _matrix_setup(  # noqa: PLR0913 - the scene needs its full context
         first = open_finalized(
             page, staff, base, "2035-06-05", data["specialty"], LONG_SOAP
         )
-        page.goto(url)
+        goto_settled(page, url)
         # Release the first version; the second stays releasable for the
         # forged conflict below.
-        with page.expect_navigation():
+        click_to_navigate(
             page.locator(
                 f'#releasable-list li[data-version="{first}"] button[value="release"]'
-            ).click()
+            )
+        )
         second_version = open_finalized(
             page, staff, base, "2035-06-06", second["specialty"]
         )
@@ -870,13 +1170,13 @@ def _matrix_scene(  # noqa: PLR0913 - the scene needs its full context
     scene_report: dict[str, object] = {}
     states: dict[str, object] = {}
     console: dict[str, list[str]] = {}
-    context = browser.new_context(locale="pt-BR", **options)
+    context = new_context(browser, locale="pt-BR", **options)
     try:
         page = context.new_page()
         page.set_default_timeout(20_000)
         errors = _watch_errors(page)
         sign_in_manager(page, base, staff, manager)
-        page.goto(url)
+        goto_settled(page, url)
         patient, patient_errors, patient_context = _matrix_patient(
             browser, options, staff, base, data
         )
@@ -990,16 +1290,18 @@ def test_retention_native_form_fallback(
         page = context.new_page()
         version = open_finalized(page, staff, base, "2035-06-07", data["specialty"])
         url = f"{base}/retention/clinics/{staff['clinic_a']}/"
-        page.goto(url)
-        with page.expect_navigation():
+        goto_settled(page, url)
+        click_to_navigate(
             page.locator(
                 f'#releasable-list li[data-version="{version}"] button[value="release"]'
-            ).click()
+            ),
+            hittable=True,
+        )
         expect(page.locator("#release-list")).to_be_visible()
         code = grant_records(staff, data)
         _redeem(page, base, staff["clinic_a"], code)
         page.wait_for_url("**/patient/")
-        page.goto(f"{base}/patient/records/")
+        goto_settled(page, f"{base}/patient/records/")
         expect(page.locator("h1")).to_have_text("Seus registros")
         assert FIRST["subjective"] in page.content()
         with page.expect_download() as received:

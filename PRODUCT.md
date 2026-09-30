@@ -8,7 +8,16 @@ Provenance: written by plan task 7 (clinic-os-renewal) from the approved plan
 pack (Clinic_Ops_SVG/ in the main checkout). No interactive product interview
 was possible in the execution session; facts marked [inferred] come from the
 plan or code rather than a direct user answer and should be confirmed.
+
+Successor update (clinic-ops-premium-intelligence todo 1, 2026-09-24): Product
+Purpose and Capabilities and Constraints were rewritten from the owner's
+product specification (clinic-ops-ambitious-product-plan.md v1.0) and the
+approved successor plan. No interview ran in that session either; the owner's
+written specification is the source, and facts marked [inferred] still need
+confirmation. Brand Commitments are unchanged.
 -->
+
+Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger).
 
 ## Platform
 
@@ -29,13 +38,19 @@ web
 
 ## Product Purpose
 
-A clinic operations system for modern Brazilian clinics: scheduling and
-agenda, patient registration and intake, clinical encounters and records,
-consent, teleconsultation, non-controlled prescriptions, PIX billing and
-reminders, delivered as one modular Django monolith with HTMX-enhanced
-server-rendered screens. Success means staff complete daily work faster with
-fewer errors while every patient record stays isolated per clinic, auditable
-and lawful under LGPD.
+Clinic Ops is a premium outpatient SaaS for Brazilian clinics with governed AI
+built into the work. One workspace runs the whole outpatient day: scheduling
+professionals, rooms and equipment; arrivals and queues; a longitudinal chart;
+recorded consultations turned into draft notes the clinician reviews; results
+and follow-ups that never drop; prescriptions, certificates and referrals;
+video visits; a patient portal; one inbox for official messaging channels; and
+the money side (payments, insurance claims, fiscal documents, stock and
+reports). AI prepares, drafts and proposes; a person approves anything
+clinical or financial. Success means staff finish their day faster with fewer
+errors, clinicians spend less time documenting, and every record stays
+isolated per clinic, auditable and lawful under LGPD and CFM rules.
+The binding scope and its supersession ledger live in
+docs/plans/clinic-ops-premium-successor.md.
 
 ## Positioning
 
@@ -74,13 +89,32 @@ remains a tested stub until real requirements are recorded.
   Every provider-backed slice runs on a labelled synthetic adapter and stays
   `waiting_external` until its capability record is approved; nothing here
   claims live readiness.
-- No new UI framework: styling is hand-written CSS custom properties served as
-  static files; no Tailwind, no component library, no client bundle.
-- Product name: the codebase and copy say "Clinic OS"; the user's brand pack
-  reads "Clinic Ops". The final name is an open decision. Until it is made,
-  the shell wordmark, the installable manifest and the icon alt text carry
-  the brand's "Clinic Ops" (plan task 9); code identifiers, routes, static
-  paths, page titles and other copy keep "Clinic OS".
+- Planned by the successor contract, not built yet: multi-resource scheduling
+  and reception queues, server-side autosave with conflict compare, orders
+  and results, care plans and recalls, the full prescription-class taxonomy
+  with SNCR gating, ambient scribe and clinician-reviewed AI drafts, bounded
+  agents with digest-bound approvals, the staff inbox, a patient PWA with
+  delegates, the double-entry journal, card payments, NFS-e, TISS, inventory,
+  ethical CRM, governed reports, SSO/SCIM, import/export with a versioned API,
+  RNDS, and subscriptions with usage metering.
+- AI boundary: AI never diagnoses, prescribes, finalizes a note or sends a
+  clinical message on its own. Clinical output is a draft the clinician
+  reviews; patients are told when AI is used and can refuse it (CFM
+  2.454/2026). The manual path for every task stays complete.
+- Provider boundary: every provider moves through researched,
+  selected_in_plan, approved_to_test, sandbox, production_authorized,
+  activated, degraded and revoked. Nothing reaches real patients or real money
+  until its external gate clears; synthetic evidence never counts as live.
+- Frontend: server-rendered templates with HTMX stay the baseline and every
+  page works with JavaScript off. Bounded React + TypeScript islands are
+  allowed only where the agenda vertical slice selects them (ADR-001), with
+  their Node toolchain confined to `frontend/`; no Tailwind, no third-party
+  component library, and no browser storage of clinical text or audio.
+- Product name: the customer-facing brand is "Clinic Ops" [inferred from the
+  owner specification]. The shell wordmark, the installable manifest and the
+  icon alt text already carry it (renewal task 9). Code identifiers, routes,
+  static paths, page titles and other existing copy keep "Clinic OS" until a
+  separate renaming decision.
 - Terminology: "clinic" (tenant unit inside an organization), "agenda",
   "availability block", "appointment", "encounter", "step-up verification".
 

@@ -12,9 +12,13 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import new_access_code
+from renewal.browser._navigation import expect_document, goto_settled, reload_settled
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt, encrypt
+from renewal.browser.engines import full_page_screenshot, zoom_200
 from renewal.browser.test_availability import availability_staff
-from renewal.browser.test_encounter import press
+from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import _redeem, _watch_errors
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
 
@@ -39,7 +43,7 @@ TEXT = (
 def seed_patient(staff: dict[str, str]) -> dict[str, str]:
     """Create only synthetic invitation fixtures; redemption uses the real portal."""
     data = {key: str(uuid4()) for key in ("patient", "enrollment", "grant")}
-    data["code"] = secrets.token_urlsafe(32)
+    data["code"] = new_access_code()
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]
@@ -95,12 +99,12 @@ def seed_patient(staff: dict[str, str]) -> dict[str, str]:
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "consent"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def publish(page: Page, url: str, text: str) -> None:
-    page.goto(url)
+    goto_settled(page, url)
     page.locator("#id_text").fill(text)
     press(page, "publish")
     expect(page.locator('[role="status"]')).to_be_visible()
@@ -121,7 +125,7 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
     assert button.evaluate("e => e.getBoundingClientRect().height >= 44")
     assert button.evaluate("e => getComputedStyle(e).outlineStyle !== 'none'")
     capture(patient, root, "keyboard-focus", width)
-    with patient.expect_navigation():
+    with expect_document(patient):
         patient.keyboard.press("Enter")
     receipt = patient.locator("[data-receipt]")
     expect(receipt).to_have_attribute("data-state", "accepted")
@@ -139,11 +143,11 @@ def accept_revoke(patient: Page, root: Path, width: int) -> str:
         )
         == 403
     )
-    press(patient, "revoke")
+    press_in_view(patient, "revoke")
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
     patient.locator("summary").click()
     capture(patient, root, "revoked-retained-receipt", width)
-    patient.reload()
+    reload_settled(patient)
     expect(patient.locator("[data-receipt]")).to_have_attribute("data-state", "revoked")
     return receipt_id
 
@@ -187,19 +191,12 @@ def accessibility_scenes(patient: Page, root: Path) -> None:
     patient.emulate_media(forced_colors="active", reduced_motion="reduce")
     capture(patient, root, "forced-colors-reduced-motion", 320)
     patient.emulate_media(forced_colors="none")
-    cdp = patient.context.new_cdp_session(patient)
-    cdp.send(
-        "Emulation.setDeviceMetricsOverride",
-        {
-            "width": 640,
-            "height": 450,
-            "deviceScaleFactor": 2,
-            "mobile": False,
-        },
-    )
-    assert patient.evaluate("devicePixelRatio === 2 && innerWidth === 640")
-    capture(patient, root, "zoom-200-layout", 640)
-    cdp.detach()
+    zoom_context, zoomed = zoom_200(patient, java_script_enabled=False)
+    goto_settled(zoomed, patient.url)
+    zoomed.locator("summary").click()
+    assert zoomed.evaluate("[devicePixelRatio, innerWidth]") == [2, 640]
+    capture(zoomed, root, "zoom-200-layout", 640)
+    zoom_context.close()
 
 
 def console_report(
@@ -319,10 +316,10 @@ def test_accept_revoke_receipt_and_replay_denials(
         ) as other_context:
             other_page = other_context.new_page()
             _redeem(other_page, base, staff["clinic_a"], other["code"])
-            other_page.goto(f"{base}/patient/consent/")
+            goto_settled(other_page, f"{base}/patient/consent/")
             replay_denied(other_page, token, root, width)
         receipt_id = accept_revoke(patient, root, width)
-        admin.goto(staff_url)
+        goto_settled(admin, staff_url)
         admin.locator("#enrollment-id").fill(data["enrollment"])
         press(admin, "receipts")
         expect(admin.locator("[data-receipt]")).to_have_attribute(

@@ -12,7 +12,10 @@ import pytest
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
+from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
+from renewal.browser.engines import element_box, full_page_screenshot, new_context
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -101,13 +104,17 @@ def seed(staff: dict[str, str], day: str) -> dict[str, str]:
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "encounter"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def press(page: Page, action: str) -> None:
-    with page.expect_navigation():
-        page.locator(f'button[value="{action}"]').first.click()
+    click_to_navigate(page.locator(f'button[value="{action}"]').first)
+
+
+def press_in_view(page: Page, action: str) -> None:
+    """``press`` for a button far outside the viewport (see click_when_hittable)."""
+    click_to_navigate(page.locator(f'button[value="{action}"]').first, hittable=True)
 
 
 def stored(staff: dict[str, str], version: str) -> tuple[int, str]:
@@ -171,7 +178,7 @@ def edit_and_reload(page: Page, staff: dict[str, str], root: Path, width: int) -
     )
     capture(page, root, "draft", width)
     second = page.context.new_page()
-    second.goto(page.url)
+    goto_settled(second, page.url)
     for field in FIELDS:
         page.locator(f"#id_{field}").fill(
             "Relato sintético salvo"
@@ -189,7 +196,7 @@ def edit_and_reload(page: Page, staff: dict[str, str], root: Path, width: int) -
     press(page, "save")
     expect(page.locator("#save-state")).to_have_attribute("data-state", "saved")
     capture(page, root, "saved", width)
-    page.reload()
+    reload_settled(page)
     expect(page.locator("#id_subjective")).to_have_value("Relato sintético salvo")
     expect(page.locator("[data-version]")).to_have_attribute("data-version", version)
     assert stored(staff, version) == (2, "Relato sintético salvo")
@@ -218,7 +225,8 @@ def check_reflow(page: Page, root: Path) -> None:
     assert browser is not None
     # Same browser-zoom metric contract as the existing availability suite:
     # 640 CSS px at DPR 2 is a 1280 physical-pixel window with 200% text.
-    native = browser.new_context(
+    native = new_context(
+        browser,
         locale="pt-BR",
         java_script_enabled=False,
         storage_state=page.context.storage_state(),
@@ -227,19 +235,18 @@ def check_reflow(page: Page, root: Path) -> None:
     )
     try:
         fallback = native.new_page()
-        fallback.goto(page.url)
+        goto_settled(fallback, page.url)
         assert fallback.evaluate("devicePixelRatio") == 2
         assert fallback.evaluate("innerWidth") == 640
         fallback.locator("#id_objective").fill("L" * 20000)
         press(fallback, "save")
-        fallback.reload()
+        reload_settled(fallback)
         expect(fallback.locator("#id_objective")).to_have_value("L" * 20000)
         expect(fallback.locator("[data-revision]")).to_have_attribute(
             "data-revision", "3"
         )
         capture(fallback, root, "native-long-zoom-200", 640)
-        target = fallback.locator('button[value="save"]').bounding_box()
-        assert target is not None
+        target = element_box(fallback.locator('button[value="save"]'))
         assert target["height"] >= 44
     finally:
         native.close()
@@ -256,7 +263,7 @@ def reception_denial(
     try:
         denied = denied_context.new_page()
         _sign_in_receptionist(denied, base, staff)
-        response = denied.goto(page.url)
+        response = goto_settled(denied, page.url)
         assert response is not None
         assert response.status == 403
         assert "Relato sintético salvo" not in denied.content()
@@ -288,11 +295,12 @@ def test_encounter_journey(
     root = renewal_artifact_root
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(url)
+        goto_settled(page, url)
         expect(page.locator("#encounter-title")).to_be_visible()
         capture(page, root, "empty", width)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/",
         )
         expect(page.locator('button[value="open"]')).to_be_visible()
         capture(page, root, "appointment", width)
@@ -314,7 +322,7 @@ def test_encounter_journey(
         press(page, "template")
         version = edit_and_reload(page, staff, root, width)
         failed_save(page, staff, root, width, version)
-        page.goto(url)
+        goto_settled(page, url)
         expect(page.locator("#id_subjective")).to_have_value("Relato sintético salvo")
         with psycopg.connect(staff["dsn"]) as conn:
             conn.execute(

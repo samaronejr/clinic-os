@@ -1,0 +1,6 @@
+{% load i18n %}{% trans "Appointment date and time" as legend %}{% trans "Brasília time (America/Sao_Paulo)" as zone %}
+{% if state == "active" %}{% include "includes/components/datetime.html" with id=sid name=sid legend=legend date_value="04/03/2031" time_value="14:30" timezone="America/Sao_Paulo" timezone_label=zone min="2031-03-03" open=True state=state %}
+{% elif state == "error" %}{% include "includes/components/datetime.html" with id=sid name=sid legend=legend date_value="31/02/2031" time_value="14:30" timezone="America/Sao_Paulo" timezone_label=zone state=state message=_("That date does not exist. Use DD/MM/YYYY, for example 04/03/2031.") %}
+{% elif state == "success" %}{% include "includes/components/datetime.html" with id=sid name=sid legend=legend date_value="04/03/2031" time_value="14:30" timezone="America/Sao_Paulo" timezone_label=zone state=state message=_("Time available with Dra. Lia Sintética.") %}
+{% elif state == "empty" %}{% include "includes/components/datetime.html" with id=sid name=sid legend=legend timezone="America/Sao_Paulo" timezone_label=zone state=state %}
+{% else %}{% include "includes/components/datetime.html" with id=sid name=sid legend=legend date_value="04/03/2031" time_value="14:30" timezone="America/Sao_Paulo" timezone_label=zone state=state %}{% endif %}

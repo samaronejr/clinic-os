@@ -17,6 +17,7 @@ def test_patient_identity_contract_allows_natural_duplicates() -> None:
         "birth_date",
         "created_at",
         "full_name",
+        "full_name_index",
         "id",
         "organization",
     }

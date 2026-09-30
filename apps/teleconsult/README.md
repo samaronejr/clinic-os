@@ -17,10 +17,12 @@ SHA-256 digest is stored. Only the bound physician or patient can exchange a
 live credential for its room; expired, revoked, foreign-role or
 foreign-participant tokens fail closed, and ended/failed sessions cannot be
 re-entered. Recording and transcription are disabled at the database layer.
+Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger):
+SD-4 lets todo 40 relax this additively; it still holds in code today.
 
 The synthetic room adapter requires `TELECONSULT_SYNTHETIC_PROVIDER`; the real
-video capability remains unavailable pending the task-6 record
-(`docs/integrations/records/2026-09-12-v1/video.md`). `TELECONSULT_SYNTHETIC_FAIL`
+video capability remains unavailable pending its capability record
+(`docs/integrations/records/2026-09-24-v2/video.md`). `TELECONSULT_SYNTHETIC_FAIL`
 injects a transient provider failure for QA only.
 
 ## Clinician workspace (renewal task 29)

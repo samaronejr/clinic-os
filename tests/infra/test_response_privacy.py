@@ -12,6 +12,7 @@ from otp_test_support import OTP_RAW_CREDENTIAL, create_receptionist, runtime_ro
 if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
+TELEMETRY_MIDDLEWARE = "apps.core.telemetry.TelemetryMiddleware"
 PRIVACY_MIDDLEWARE = "apps.core.middleware.ResponsePrivacyMiddleware"
 LIVE_HALT_MIDDLEWARE = "apps.core.middleware.LiveModeHaltMiddleware"
 SECURITY_MIDDLEWARE = "django.middleware.security.SecurityMiddleware"
@@ -22,10 +23,13 @@ PRIVATE_DIRECTIVES = ("private", "no-store", "no-cache", "must-revalidate")
 def test_privacy_middleware_precedes_the_preserved_security_whitenoise_pair() -> None:
     middleware = list(settings.MIDDLEWARE)
 
-    assert middleware[0] == PRIVACY_MIDDLEWARE
+    # Telemetry is outermost so every response — including early refusals —
+    # carries a request id and a latency observation.
+    assert middleware[0] == TELEMETRY_MIDDLEWARE
+    assert middleware[1] == PRIVACY_MIDDLEWARE
     # The live-mode halt sits between privacy and security so halted
     # responses still carry the private cache contract.
-    assert middleware[1] == LIVE_HALT_MIDDLEWARE
+    assert middleware[2] == LIVE_HALT_MIDDLEWARE
     security = middleware.index(SECURITY_MIDDLEWARE)
     assert middleware[security - 1] == LIVE_HALT_MIDDLEWARE
     assert middleware[security + 1] == WHITENOISE_MIDDLEWARE

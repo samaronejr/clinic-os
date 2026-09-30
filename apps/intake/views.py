@@ -15,6 +15,7 @@ from django.utils.translation import ngettext
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
+from apps.core.patient_context import bind_patient_context
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import authorized_manager_clinic
 from apps.intake.forms import (
@@ -444,6 +445,7 @@ def _render_manage(
     error: str = "",
 ) -> HttpResponseBase:
     overview = contact_overview(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    bind_patient_context(request, clinic_id=clinic_id, enrollment_id=enrollment_id)
     return render(
         request,
         CONTACTS_TEMPLATE,
@@ -752,6 +754,7 @@ def _render_access(
     error: str = "",
 ) -> HttpResponseBase:
     overview = access_overview(clinic_id=clinic_id, enrollment_id=enrollment_id)
+    bind_patient_context(request, clinic_id=clinic_id, enrollment_id=enrollment_id)
     return render(
         request,
         ACCESS_TEMPLATE,

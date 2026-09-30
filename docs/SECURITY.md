@@ -7,12 +7,13 @@ are in [RUNBOOK.md](RUNBOOK.md); architectural context is in
 
 ## Database roles and posture
 
-The bootstrap creates four roles with distinct duties:
+The bootstrap creates five roles with distinct duties (including ADR-019's machine role):
 
 | Role | Login | Superuser | `rolbypassrls` | Intended use |
 | --- | --- | --- | --- | --- |
 | `clinic_owner` | yes | no | no | database/schema owner and Django migration connection |
 | `clinic_app` | yes | no | **no** | ordinary runtime connection; it is not the database or schema owner |
+| `clinic_agent` | yes (no default password) | no | **no** | NOINHERIT machine role; no ownership, staff membership, default DML, audit or key-table reads |
 | `clinic_resolver` | no | no | yes | narrowly privileged owner of fixed resolver/auth `SECURITY DEFINER` functions |
 | `clinic_super` | yes | yes | no (superuser still bypasses RLS) | local/CI database administration and test setup only, never application runtime |
 
@@ -32,6 +33,35 @@ dynamic SQL, accepts no arbitrary-user argument, and is revoked from `PUBLIC`.
 Only the exact execute surface needed by `clinic_app` is granted. Bypass RLS is
 therefore contained behind reviewed functions rather than exposed to a runtime
 credential.
+
+`user_has_org` joins the actor's `identity_user` row and requires `is_active`,
+so a deactivated account cannot open a tenant transaction even with a valid
+session. `user_organizations` does not check `is_active`, because it is a
+post-login lookup and not a gate. Its only caller chooses the session's initial
+`active_org_id` after the login backend has already refused inactive accounts,
+and `user_has_org` rechecks `is_active` before any tenant work.
+`load_current_user` returns the row including `is_active`, and every caller
+refuses an inactive row.
+
+### Machine authority (ADR-019)
+
+Service principals use a separate optional `AGENT_DATABASE_URL` alias, never a
+staff actor GUC. Each owner-provisioned principal binds uniquely to its database
+`session_user` and one clinic. `principal_scope` and `principal_has` are fixed
+resolver-owned SECURITY DEFINER functions with a trusted search path and no
+PUBLIC execute. Registrations and grants are owner-only FORCE-RLS tables;
+revocation is irreversible, and both functions are VOLATILE, so it stops the
+next row of an open cursor or a running READ COMMITTED statement.
+`service_principal_context` refuses mixed human/patient contexts and nested or
+repeatable-read transactions. Staff services reject a machine connection even
+if it forges `app.current_user_id`.
+
+V1 allows only clinic-scoped availability reads. Each exposed table needs an
+explicit per-app `AGENT_GRANTS` declaration and a grant-aware restrictive policy,
+so the existing permissive tenant policy cannot authorize an ungranted machine.
+There is no agent clinical/fiscal execution authority or generic tool surface.
+See [identity's contract](../apps/identity/README.md#service-principals-adr-019-task-7)
+for owner provisioning, unique login mapping and future grant-version rules.
 
 ## Tenant boundary and fail-closed order
 
@@ -68,8 +98,8 @@ boundary.
 ## Session authentication and identity writes
 
 Phase 1A screens use Django session authentication and require authentication by
-default. There are no token or service-account authentication modes. The
-custom backend calls `auth_lookup` before session creation and
+default. There is no service-account web login or token mode; machine database
+principals use the separate boundary above. The custom backend calls `auth_lookup` before session creation and
 `load_current_user` for GUC-bound session rehydration; runtime SQL cannot read
 `identity_user` directly.
 
@@ -120,6 +150,49 @@ must-revalidate, and vary on the HTMX request header.
 The step-up API is a reusable extension point only. Prescription issuance,
 consent capture, document issuance, and other sensitive product operations are
 not implemented in Phase 0 and must not be represented as available.
+
+## Content-Security-Policy and the internal UI API
+
+`ContentSecurityPolicyMiddleware` (`apps/core/middleware.py`) sets one strict
+first-party policy on every response produced below WhiteNoise, including
+tenant, CSRF and API refusals. Responses answered above it carry no policy:
+static files served by WhiteNoise, the empty live-halt 503 and
+SecurityMiddleware redirects.
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'
+```
+
+There is no `'unsafe-inline'`, `'unsafe-eval'` or nonce: templates carry no
+inline script, style, event handler or `javascript:` URL, and htmx runs with
+`allowEval: false`, `includeIndicatorStyles: false` and `style` removed from
+`attributesToSettle` (the `htmx-config` meta in `base.html`). `tests/core/test_csp.py` scans templates and static scripts
+for those constructs, and every browser suite fails on a console CSP
+violation (`tests/renewal/browser/conftest.py`, report `csp-console.json`).
+
+The policy is enforced by default. `CLINIC_CSP_REPORT_ONLY=true` switches to
+`Content-Security-Policy-Report-Only` with the same policy as a synthetic-only
+rollout and rollback lever; live data mode refuses it at startup. Per-route
+extensions (`register_csp_extension`) may add exact `https`/`wss` origins to
+`connect-src`, `img-src` or `media-src` only while their `is_active` check
+passes. Teleconsult provider origins will register there from the provider
+lifecycle registry once a provider is activated; until then no extension
+exists.
+
+The internal UI API lives under `/api/ui/v1/` (`apps/core/api/`). Its
+contract is the committed `docs/api/ui-v1.yaml`, regenerated by
+`uv run python manage.py spectacular --file docs/api/ui-v1.yaml` and checked
+for drift by `tests/infra/test_openapi_drift.py`. Endpoints are POST-only JSON
+with record identifiers in the body, Django session authentication plus the
+`X-CSRFToken` header, and the same TOTP requirement for privileged roles as
+the HTML views. Every refusal is `{code, message_key}`; unknown and foreign
+records share the single `access_denied` body. Out-of-range input (agenda dates
+outside 2000-01-01..2199-12-31, pages above 10000) is `invalid_input`, an
+unexpected exception is a JSON `internal_error` 500, and any unpublished path
+under `/api/ui/v1/` returns `not_found`. The 500 is logged on `django.request`
+as the exception type, route name and traceback frame locations only: never
+the exception message, its arguments, chained exceptions, locals or request
+data.
 
 ## Audit ledger
 
@@ -189,6 +262,42 @@ restore point. Rotation and recovery actions require the authorized provider
 or deployment runbook; do not improvise destructive database commands. Record
 the timeline, scope, decisions, and follow-up tests in a restricted incident
 record.
+
+## ADR index
+
+The Clinic Ops successor plan records its security-relevant decisions as ADRs
+and its new attack surfaces as STRIDE threat models with Mermaid data-flow
+diagrams. Both describe planned controls. Nothing in them changes the
+synthetic-only boundary above, and none of them clears an item in
+LIVE-DATA-GATE.md. The full ADR list is in
+[ARCHITECTURE.md](ARCHITECTURE.md#adr-index).
+
+Security-relevant decisions:
+
+| ADR | Decision |
+| --- | --- |
+| [ADR-003](adr/ADR-003-authorization-permission-bundles.md) | One permission-bundle model, enforced in services and RLS |
+| [ADR-006](adr/ADR-006-ai-gateway-routing.md) | AI gateway with egress allowlist, budgets, kill switches and no cross-jurisdiction fallback |
+| [ADR-008](adr/ADR-008-workflows-and-approval-binding.md) | Approvals bound to an RFC 8785 + SHA-256 digest, revalidated at execution |
+| [ADR-010](adr/ADR-010-prescription-signature-trust.md) | Exact-bytes approval and independent verification of qualified signatures |
+| [ADR-014](adr/ADR-014-observability-redaction.md) | Allowlist redaction; clinical content never exported |
+| [ADR-015](adr/ADR-015-isolation-encryption-search.md) | FORCE RLS, envelope encryption, blind indexes, no plaintext duplicates |
+| [ADR-016](adr/ADR-016-recovery-with-key-escrow.md) | Restore fails when keys or objects are missing |
+| [ADR-019](adr/ADR-019-service-principals.md) | `clinic_agent` NOBYPASSRLS login; principals never impersonate clinicians |
+
+Threat models (mitigation ids map to todo numbers; todo 73 maps them to
+tests):
+
+| Surface | Threat model |
+| --- | --- |
+| Realtime event channel | [threat-models/realtime.md](threat-models/realtime.md) |
+| Scribe audio capture and media storage | [threat-models/scribe-media.md](threat-models/scribe-media.md) |
+| AI gateway | [threat-models/ai-gateway.md](threat-models/ai-gateway.md) |
+| Agents, proposals and approvals | [threat-models/agents.md](threat-models/agents.md) |
+| Guardian and delegate access | [threat-models/delegates.md](threat-models/delegates.md) |
+| Payments, journal and fiscal documents | [threat-models/payments.md](threat-models/payments.md) |
+| Import, export and external API | [threat-models/import-export.md](threat-models/import-export.md) |
+| Support access, break-glass and enterprise identity | [threat-models/support-access.md](threat-models/support-access.md) |
 
 Source anchors: [database bootstrap](../ops/db/bootstrap.sql),
 [RLS policy builder](../apps/tenancy/rls.py),

@@ -601,8 +601,12 @@
       releaseMedia();
     });
 
+    /* The room follows the session from the start: an unanswered camera or
+       microphone prompt (getUserMedia can stay pending indefinitely) must not
+       hold back the connection, the session state or an expiry notice. */
     setConnection("requesting");
-    startMedia().then(connect);
+    startMedia();
+    connect();
   }
 
   if (root.getAttribute("data-teleconsult") === "room") {

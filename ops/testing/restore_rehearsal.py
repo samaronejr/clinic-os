@@ -37,6 +37,7 @@ from ops.testing.restore_verification import (
     require_empty_target,
     require_equal_fingerprints,
     require_equal_migration_leaves,
+    require_equal_target_seed,
     require_equal_tenant_key_status,
     require_hba,
     require_key_probe,
@@ -160,6 +161,7 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
     source_leaves = migration_leaves(source)
     target_leaves = migration_leaves(target)
     require_equal_migration_leaves(source_leaves, target_leaves)
+    require_equal_target_seed(source, target)
     # The target must be a migrated-but-empty database: restoring into a
     # database that already holds domain rows is never a rehearsal target.
     require_empty_target(target)

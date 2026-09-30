@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import NewType
 from uuid import UUID
 
-from django.db import connection
+from django.db import connection, connections
 
-from apps.identity.models import User, UserClinicRole
+from apps.identity.models import Clinic, User, UserClinicRole
 
 UserId = NewType("UserId", UUID)
 ClinicId = NewType("ClinicId", UUID)
@@ -52,8 +52,14 @@ class _InvalidUsernameError(CurrentActorError):
 
 
 def _actor_uuid_from_guc() -> UserId:
+    if "agent" in connections and connections["agent"].in_atomic_block:
+        raise _UnavailableActorError
     with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_catalog.current_setting('app.current_user_id', true)")
+        cursor.execute(
+            "SELECT pg_catalog.current_setting('app.current_user_id', true) "
+            "WHERE current_user IN ('clinic_app', 'clinic_owner') "
+            "AND NULLIF(current_setting('app.current_principal', true), '') IS NULL"
+        )
         row = cursor.fetchone()
     if row is None or not isinstance(row, tuple) or len(row) != 1:
         raise _UnavailableActorError
@@ -113,6 +119,82 @@ def require_current_actor_clinic_roles(
         ).exists()
     ):
         raise _UnauthorizedActorError
+    return actor_id
+
+
+def require_current_actor_org_admin(
+    organization_id: UUID,
+    roles: ClinicRoles,
+) -> UserId:
+    """Require organization-wide authority without widening clinic assignments.
+
+    Keep the caller's legacy role equivalence on every clinic. A canonical
+    org_admin assignment can cover a clinic only through the permission
+    resolver, including its remove-only grants. Neither one clinic's admin
+    nor one clinic's org_admin assignment confers organization-wide power.
+    Empty organizations and empty legacy role contracts still fail closed.
+    Callers retain their own exact-clinic/domain guards.
+    """
+    actor_id = current_actor_id()
+    clinic_ids = set(
+        Clinic.objects.filter(organization_id=organization_id).values_list(
+            "pk", flat=True
+        )
+    )
+    if not roles or not clinic_ids:
+        raise _UnauthorizedActorError
+    assignments = UserClinicRole.objects.filter(
+        user_id=actor_id,
+        organization_id=organization_id,
+        role__in=(*roles, UserClinicRole.Role.ORG_ADMIN),
+    ).values_list("clinic_id", "role")
+    covered = {
+        clinic_id
+        for clinic_id, role in assignments
+        if role != UserClinicRole.Role.ORG_ADMIN
+    }
+    permission_scoped = {
+        clinic_id
+        for clinic_id, role in assignments
+        if role == UserClinicRole.Role.ORG_ADMIN
+    }
+    missing = clinic_ids - covered
+    if not missing <= permission_scoped:
+        raise _UnauthorizedActorError
+    for clinic_id in missing:
+        require_permission("staff.organization", clinic_id=clinic_id)
+    return actor_id
+
+
+def require_permission(
+    permission: str,
+    *,
+    clinic_id: UUID,
+    patient_enrollment_id: UUID | None = None,
+) -> UserId:
+    """Recheck exact-clinic eligibility in the authoritative database on every call.
+
+    No request cache: role removal, narrowing and care-team revocation take
+    effect at the next statement under the application's READ COMMITTED txn.
+    Unknown permissions/selectors have the same payload-free denial.
+    """
+    if (
+        not isinstance(permission, str)
+        or not isinstance(clinic_id, UUID)
+        or (
+            patient_enrollment_id is not None
+            and not isinstance(patient_enrollment_id, UUID)
+        )
+    ):
+        raise _UnauthorizedActorError
+    actor_id = current_actor_id()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.has_permission(%s, %s, %s)",
+            [permission, clinic_id, patient_enrollment_id],
+        )
+        if cursor.fetchone() != (True,):
+            raise _UnauthorizedActorError
     return actor_id
 
 

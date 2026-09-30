@@ -17,7 +17,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import secrets
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -28,7 +27,21 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext, ngettext
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_password
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    reload_settled,
+    wait_for_signed_in,
+)
+from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    assert_only_refused_document_logged,
+    full_page_screenshot,
+    new_context,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -105,13 +118,13 @@ def intake_staff(renewal_base_url: str) -> dict[str, str]:
     """
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
         "receptionist": f"recepcao-{uuid4().hex[:8]}",
         "receptionist_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
+        "password": new_password(),
     }
     registry = [
         (
@@ -209,8 +222,12 @@ def intake_browser(renewal_page: Page) -> Browser:
 @pytest.fixture(params=MATRIX_WIDTHS, ids=[f"{width}px" for width in MATRIX_WIDTHS])
 def journey(request: pytest.FixtureRequest, intake_browser: Browser) -> Iterator[Page]:
     """One pt-BR context per matrix width; tests read the width back from the page."""
+    # Routed requests: WebKit's route() misses service-worker-controlled
+    # pages (engines.py, Request interception).
     context = intake_browser.new_context(
-        locale="pt-BR", viewport={"width": int(request.param), "height": 900}
+        locale="pt-BR",
+        viewport={"width": int(request.param), "height": 900},
+        service_workers="block",
     )
     page = context.new_page()
     page.set_default_timeout(20_000)
@@ -239,7 +256,9 @@ def _watch_errors(page: Page) -> list[str]:
 def _capture(page: Page, root: Path, name: str, *, full_page: bool = True) -> str:
     destination = root / "staff-intake" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=full_page)
+    if full_page:
+        return ", ".join(path.name for path in full_page_screenshot(page, destination))
+    page.screenshot(path=str(destination))
     destination.chmod(0o600)
     return destination.name
 
@@ -251,7 +270,7 @@ def _submit(page: Page, selector: str) -> int:
     ) as received:
         page.locator(selector).click()
     assert received.value.status in POST_SET, received.value.status
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     return received.value.status
 
 
@@ -324,7 +343,7 @@ def _search_in_flight(
     ):
         page.locator(SEARCH).click()
     assert received.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     _assert_busy(busy, gettext("Searching…"))
     assert busy["form_border"] == PRIMARY, busy  # .panel[aria-busy="true"]
     expect(page.locator(SEARCH)).to_be_enabled()
@@ -333,12 +352,12 @@ def _search_in_flight(
 
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
-    page.wait_for_url("**/auth/protected/")
+    click_to_navigate(page.locator("button[type=submit]"))
+    wait_for_signed_in(page)
 
 
 def _focused(page: Page) -> str:
@@ -361,7 +380,7 @@ def _ring(page: Page) -> dict[str, str]:
 
 
 def _no_overflow(page: Page) -> bool:
-    return bool(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+    return bool(evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth"))
 
 
 def _row_names(page: Page) -> list[str]:
@@ -407,7 +426,7 @@ def _remove_attribute(page: Page, selector: str, attribute: str) -> None:
 
 
 def _open_blank_search(page: Page, base_url: str, patients: str, root: Path) -> None:
-    page.goto(f"{base_url}{patients}")
+    goto_settled(page, f"{base_url}{patients}")
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator("h1")).to_have_text(gettext("Patient search"))
     expect(page.locator(".eyebrow")).to_have_count(0)
@@ -422,8 +441,7 @@ def _register_and_land(
 ) -> dict[str, object]:
     """Register through the secondary action, hold the POST, land on the notice."""
     width = _width(page)
-    with page.expect_navigation():
-        page.locator(f"{SEARCH_FORM} a.button--secondary").click()
+    click_to_navigate(page.locator(f"{SEARCH_FORM} a.button--secondary"))
     expect(page.locator("h1")).to_have_text(gettext("Register a patient"))
     assert _no_overflow(page)
     _capture(page, root, f"register-blank-{width}")
@@ -431,7 +449,7 @@ def _register_and_land(
     page.locator("#id_birth_date").fill("1990-05-17")
     with (
         _observed_in_flight(page, f"{patients}new/", "register", root) as busy,
-        page.expect_navigation(),
+        expect_document(page),
     ):
         page.locator(REGISTER).click()
     page.wait_for_url(f"**{patients}")
@@ -446,7 +464,7 @@ def _register_and_land(
     assert _no_overflow(page)
     _capture(page, root, f"search-registered-{width}")
     # Reload: the notice is consumed once and the search stays blank.
-    page.reload()
+    reload_settled(page)
     expect(page.locator("#intake-registered")).to_have_count(0)
     expect(page.locator(STATUS)).to_have_text(gettext(BLANK))
     return busy
@@ -494,7 +512,7 @@ def _find_across_pages(
     ) as second:
         page.keyboard.press("Enter")
     assert second.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     expect(status).to_have_text(_status_text(total, 2, 2))
     assert _focused(page) == "patient-results-status"
     assert len(_row_names(page)) == total - PAGE_SIZE
@@ -503,7 +521,7 @@ def _find_across_pages(
     _capture(page, root, f"search-page-2-{width}")
 
     # Reload after a body-only search: no stale result and no query in the URL.
-    page.reload()
+    reload_settled(page)
     assert page.url == f"{base_url}{patients}"
     expect(page.locator(".intake-table")).to_have_count(0)
     expect(status).to_have_text(gettext(BLANK))
@@ -530,8 +548,7 @@ def _disambiguate_same_name(page: Page) -> None:
 def _book_handoff(page: Page, name: str, root: Path) -> None:
     """The row action posts the enrollment and the booking names the patient."""
     _search(page, name)
-    with page.expect_navigation():
-        page.locator(".intake-table tbody button").first.click()
+    click_to_navigate(page.locator(".intake-table tbody button").first)
     assert page.url.endswith("/appointments/new/")
     assert "?" not in page.url
     expect(page.locator("#booking-patient")).to_have_text(name)
@@ -596,29 +613,28 @@ def test_native_post_completes_find_and_register_without_javascript(
     native = f"Nádia Sintética {uuid4().hex[:4]}"
     try:
         _sign_in(page, renewal_base_url, intake_staff)
-        page.goto(f"{renewal_base_url}{patients}new/")
+        goto_settled(page, f"{renewal_base_url}{patients}new/")
         page.locator("#id_full_name").fill(native)
         page.locator("#id_birth_date").fill("1984-09-09")
-        with page.expect_navigation():
-            page.locator(REGISTER).click()
+        click_to_navigate(page.locator(REGISTER))
         page.wait_for_url(f"**{patients}")
         expect(page.locator("#intake-registered")).to_be_visible()
         page.locator("#id_q").fill(native)
-        with page.expect_navigation():
-            page.locator(SEARCH).click()
+        click_to_navigate(page.locator(SEARCH))
         assert page.url == f"{renewal_base_url}{patients}"
         assert _row_names(page) == [native]
         # Without scripts the browser owns the focus move: the status is the
         # document's only autofocus candidate and is programmatically focusable.
         _assert_autofocus_target(page, "patient-results-status")
+        # WebKit may apply it only after load; the next fill must not race it.
+        await_autofocus(page.locator(STATUS))
         assert _no_overflow(page)
         _capture(page, renewal_artifact_root, "native-results-768", full_page=False)
 
         # Native validation error: the summary is the focus target, the input kept.
         _remove_attribute(page, "#id_q", "minlength")
         page.locator("#id_q").fill("N")
-        with page.expect_navigation():
-            page.locator(SEARCH).click()
+        click_to_navigate(page.locator(SEARCH))
         _assert_autofocus_target(page, "intake-errors")
         expect(page.locator("#id_q")).to_have_value("N")
         expect(page.locator("#id_q")).to_have_attribute(
@@ -674,7 +690,7 @@ def _long_name(page: Page, root: Path) -> None:
 
 
 def _invalid_registration(page: Page, base_url: str, patients: str, root: Path) -> None:
-    page.goto(f"{base_url}{patients}new/")
+    goto_settled(page, f"{base_url}{patients}new/")
     page.locator("#id_full_name").fill("Teste Sintético Futuro")
     page.locator("#id_birth_date").fill("3999-01-01")
     assert _submit(page, REGISTER) == OK
@@ -730,7 +746,7 @@ def _duplicate_registration(
     expect(page.locator("#id_full_name")).to_have_value(f"{duplicate} Alterada")
     assert _no_overflow(page)
     _capture(page, root, f"register-duplicate-{_width(page)}")
-    page.goto(f"{base_url}{patients}")
+    goto_settled(page, f"{base_url}{patients}")
     _search(page, duplicate)
     assert _row_names(page) == [duplicate]
 
@@ -740,7 +756,7 @@ def _foreign_clinic(
 ) -> None:
     """No role in clinic B: its registry is refused on GET and POST, never named."""
     patients_b = f"/intake/clinics/{clinic_b}/patients/"
-    response = page.goto(f"{base_url}{patients_b}")
+    response = goto_settled(page, f"{base_url}{patients_b}")
     assert response is not None
     assert response.status == NOT_FOUND
     expect(page.locator("h1")).to_have_text(gettext("Page unavailable"))
@@ -750,7 +766,7 @@ def _foreign_clinic(
     assert FOREIGN_NAME not in body
     assert _no_overflow(page)
     _capture(page, root, f"foreign-clinic-denied-{_width(page)}")
-    page.goto(f"{base_url}{patients_a}")
+    goto_settled(page, f"{base_url}{patients_a}")
     refused = page.request.post(
         f"{base_url}{patients_b}",
         form={"csrfmiddlewaretoken": _csrf(page), "q": "Marina", "page": "1"},
@@ -777,15 +793,15 @@ def test_failures_preserve_input_and_never_cross_the_clinic_scope(
     root = renewal_artifact_root
     patients_a = f"/intake/clinics/{intake_staff['clinic_a']}/patients/"
     _sign_in(page, renewal_base_url, intake_staff)
-    page.goto(f"{renewal_base_url}{patients_a}")
+    goto_settled(page, f"{renewal_base_url}{patients_a}")
     _empty_and_invalid_search(page, patients_a, root)
     _long_name(page, root)
     _invalid_registration(page, renewal_base_url, patients_a, root)
     _duplicate_registration(page, renewal_base_url, patients_a, root)
     _foreign_clinic(page, renewal_base_url, intake_staff["clinic_b"], patients_a, root)
-    # The only console entry is the refused clinic-B document itself.
-    assert len(errors) == 1, errors
-    assert re.search(r"\b404\b", errors[0])
+    # The only console entry is the refused clinic-B document itself (where
+    # the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404")
     checks = browser_report["checks"]
     assert isinstance(checks, list)
     checks.append(
@@ -908,7 +924,7 @@ def _zoom_200(
     )
     assert height >= MIN_TARGET_PX, height
     captures.append(_capture(page, root, "search-results-zoom-200"))
-    page.goto(f"{base_url}{patients}new/")
+    goto_settled(page, f"{base_url}{patients}new/")
     page.locator("#id_full_name").fill("Teste Sintético Ampliado")
     page.locator("#id_birth_date").fill("3999-01-01")
     assert _submit(page, REGISTER) == OK
@@ -956,12 +972,12 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_registry_usable(
         ),
     ]
     for scene, options in scenes:
-        context = intake_browser.new_context(locale="pt-BR", **options)
+        context = new_context(intake_browser, locale="pt-BR", **options)
         page = context.new_page()
         page.set_default_timeout(20_000)
         try:
             _sign_in(page, renewal_base_url, intake_staff)
-            page.goto(f"{renewal_base_url}{patients}")
+            goto_settled(page, f"{renewal_base_url}{patients}")
             if scene == "widths":
                 report[scene] = _reflow(page, root)
             elif scene == "forced_colors":

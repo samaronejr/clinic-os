@@ -81,7 +81,11 @@ It performs a locked dependency sync, idempotent database bootstrap, owner
 migration, runtime posture check, Ruff lint and formatting checks, strict mypy,
 the complete test/coverage suite, and a local dependency audit. Tests use the
 pre-created database and explicitly exercise `clinic_app` runtime connections;
-test database creation and migration remain owner responsibilities.
+test database creation and migration remain owner responsibilities. Local test
+runs never connect to the workstation's Redis: `config.settings.test` defaults
+`CELERY_BROKER_URL` to the in-memory `memory://` transport unless the variable
+is exported explicitly (the hosted `worker-integration` gate sets its own
+isolated Redis URL).
 
 For a focused recent-verification check after bootstrap/migration:
 
@@ -108,20 +112,32 @@ contract builds the committed revision, so it requires a clean Git tree.
 
 ```sh
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
+CLINIC_BROWSER_ENGINE=webkit uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite smoke
 uv run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner ci
 ```
 
 `browser --suite <name>` runs one registered suite (the full registered
 set is enumerated by `SUITES` in `ops/testing/renewal_runner.py`). In hosted
 CI the `renewal-browser` matrix shards every registered suite across six
-jobs and the `Renewal RC acceptance` verdict binds shard list, per-suite
-reports and source digests. It captures the working tree
+Chromium jobs, and runs every registered suite again on Firefox and on WebKit
+in three `suite@engine` shards per engine. The `Renewal RC acceptance`
+verdict binds the shard list, per-leg reports and source digests. It captures the working tree
 through the current-source snapshot contract, provisions a unique
 `postgres:16` container and volume, applies migrations and seeds a clinic as
 `clinic_owner`, serves through a supervised Gunicorn master on loopback as
 `clinic_app` with the real middleware/CSRF/RLS stack, waits on `/readyz`,
-then drives the suite through real Chromium. The junit verdict is enforced:
-zero tests, skips, failures, errors or a missing report all fail the run.
+then drives the suite through a real browser engine. Chromium is the default
+(CI parity); `--engine firefox|webkit` or `CLINIC_BROWSER_ENGINE` selects the
+Playwright-managed Firefox or WebKit (`uv run playwright install firefox
+webkit`; add `--with-deps` or the listed system packages on a new host), and
+`report.json` records the `engine`. An unavailable engine fails the run; it
+never skips or falls back. Every suite runs on every engine. The
+engine-specific mechanisms (fake or synthetic camera/microphone, the 200%
+zoom, clipboard read-back, session history) and each documented engine
+difference live in `tests/renewal/browser/engines.py`. `ci` always runs
+Chromium. Runner children use the in-memory Celery broker (`memory://`), so
+no run reaches a host Redis. The junit verdict is enforced: zero tests, skips,
+failures, errors or a missing report all fail the run.
 
 `ci` runs the gates in order and aggregates per-command exits into
 `ci-report.json`: static (Ruff check, Ruff format, strict mypy), migration
@@ -162,7 +178,8 @@ retained as evidence.
 
 `.github/workflows/ci.yml` adds, alongside the frozen three-suite
 `contracts` selector and the `test` matrix: `renewal-browser` (all
-registered suites sharded across six jobs), `worker-integration` (real
+registered suites sharded across six Chromium jobs, plus Firefox and WebKit
+legs declared as `suite@engine` shard entries), `worker-integration` (real
 isolated `redis-server` plus a separate Celery worker proving
 rollback/lost-dispatch/idempotency/revocation/retry-ceiling/callback
 behaviour; `CLINIC_BROKER_GATE=required`), `migration-upgrade`
@@ -189,11 +206,65 @@ re-run the same command.
 | `renewal browser executable is unavailable` | 2 | No Chrome/Chromium on `PATH`; install one or set `CLINIC_RENEWAL_BROWSER_EXECUTABLE` |
 | `renewal browser executable override is not executable` | 2 | The override path is not an absolute, non-symlink, executable file |
 | `renewal browser suite is not registered: <name>` | 2 | Unknown suite; check `SUITES` in `ops/testing/renewal_runner.py` |
+| `renewal browser engine is not supported: <name>` / `name different engines` | 2 | Use `chromium`, `firefox` or `webkit`, and do not pass an `--engine` that contradicts `CLINIC_BROWSER_ENGINE` |
+| `renewal browser engine <name> is unavailable` | 2 | Run `uv run playwright install <name>` (plus `--with-deps` or its system packages) |
 | `renewal serving DSN must use the clinic_app role` | 2 | `CLINIC_RENEWAL_APP_DATABASE_URL` names an owner/superuser role; use the app role or unset it |
 | `current-source record is stale or drifted` | 2 | A `--record` no longer matches the working tree; re-capture the record |
 | `renewal suite failed` / `ran zero tests` / `skipped tests` | 2 | The suite itself failed or proved nothing; inspect `pytest.log` and the junit XML under the artifact root |
 | `smoke-current-source` fails inside `ci` | 1 | Usually the prior-boot ledger gate above; the `ci` report records the real exit rather than weakening the check |
 | `renewal runner interrupted` | 130 | SIGINT/SIGTERM; owned containers, volumes and processes are removed before exit |
+
+## Celery queues and workers
+
+Celery workloads are split across seven queues so one tenant's bulk or AI
+burst cannot delay another tenant's clinical work. Queue names are declared
+in `config/celery.py` and tasks route by module prefix; the existing
+`comms.*` outbox tasks stay on `clinic-integrations`.
+
+| Queue | Workload |
+| --- | --- |
+| `clinic-integrations` | comms outbox operations and reminder dispatch (existing) |
+| `clinical` | chart-facing tasks; isolated and fail-open under a Redis outage |
+| `ai-interactive` | latency-sensitive AI work (for example scribe chunk processing) |
+| `ai-batch` | deferred AI work (drafting, extraction); per-tenant quota |
+| `messaging` | patient messaging tasks; per-tenant quota |
+| `finance` | billing, insurance and subscription tasks; per-tenant quota |
+| `bulk` | imports, retention and workflow runs; per-tenant quota |
+
+Run one worker per queue (or a small set of queues) with the broker URL
+exported in the environment:
+
+```sh
+uv run celery -A config.celery worker -Q clinic-integrations -c 2
+uv run celery -A config.celery worker -Q clinical -c 2
+uv run celery -A config.celery worker -Q ai-interactive -c 2
+uv run celery -A config.celery worker -Q ai-batch -c 2
+uv run celery -A config.celery worker -Q messaging -c 2
+uv run celery -A config.celery worker -Q finance -c 2
+uv run celery -A config.celery worker -Q bulk -c 2
+```
+
+Beat is unchanged and schedules only the existing `comms.*` tasks:
+
+```sh
+uv run celery -A config.celery beat
+```
+
+Per-tenant fairness is enforced by `apps.core.fairness.fair_acquire`, a
+Redis token bucket keyed on `(organization, queue)`. Quotas are tasks per
+minute, published per organization through the validated
+`ClinicConfiguration.queue_quotas` map. Quota edits require
+organization-wide authority — an owner or clinic-admin role on every
+clinic of the organization until the planned org_admin role exists — so
+no single clinic's admin can move the organization's limits, and an
+ordinary clinic settings save carries the organization's effective map
+forward unchanged. A task on a regulated queue calls `acquire_or_defer`
+first; when the bucket is empty the task is re-enqueued with a 30-second
+countdown and a `clinic_fairness.deferred` metric is emitted. If Redis is
+unreachable, `bulk`, `ai-batch` and every other queue fail closed (defer)
+while `clinical` fails open so chart saves are never blocked by metering.
+A malformed stored quota fails closed as well; it never falls back to a
+larger allowance.
 
 ## Stop and reseed
 
@@ -216,6 +287,55 @@ make db-posture
 `docker compose down -v` permanently deletes the Compose database volume. Use
 it only for disposable local data after confirming no needed work exists in
 that volume. It is not a production recovery procedure.
+
+## Internal metrics and tracing
+
+`GET /internal/metrics` serves the Prometheus text exposition (request
+latency by route name, queue depth/age, outbox states, provider health by
+capability, AI invocation aggregates). It is sessionless and fail-closed:
+requests must come from `CLINIC_OPS_METRICS_ALLOWED_NETWORKS` (default
+loopback only) and carry `Authorization: Bearer $CLINIC_OPS_METRICS_TOKEN`
+(minimum 16 characters; unset or short token denies every request). The
+endpoint never labels metrics with patient or clinic names, raw URLs or
+request bodies (ADR-014).
+
+Structured JSON logs and the Sentry scrubber share the allowlist in
+`apps/core/telemetry.py`. The boundary is a closed vocabulary: log messages
+must be registered in `LOG_MESSAGE_ALLOWLIST` (args are never interpolated),
+and every emitted value is either a closed-set member or a validated id.
+Route labels are registered URL names, namespaced names included
+(`identity:login`); provider labels are `PROVIDER_CAPABILITY_KEYS` (the v2
+integration record set, pinned by test to the `apps/providers` seed); AI labels
+are `AI_INVOCATION_PURPOSES` (to be replaced by todo 38 model purposes).
+Logger names must resolve to an imported module or a framework logger.
+Sentry events are rebuilt from those vocabularies: the SDK timestamp is
+re-rendered from a strict parse, and `server_name`, `extra`, `user`,
+messages and nested `data` never leave. Options the SDK would otherwise infer
+from the environment are passed explicitly, because inferred values reach
+session and client-report envelopes outside `before_send`: `environment`
+is `SENTRY_ENVIRONMENT` only when it is a listed value, `release` is
+`SENTRY_RELEASE` only when it is a 40-hex SHA (else the fixed `unversioned`),
+`server_name` is fixed, automatic session tracking and Spotlight are off,
+transactions are dropped and check-ins are discarded. Set `SENTRY_RELEASE`
+to the deployed commit SHA to get release attribution.
+
+Celery workers use the same pipeline: `config/celery.py` connects
+`setup_logging`, applies Django `LOGGING` and redirects task stdout into
+it, so Celery never installs its own handlers (whose formats render task
+args, kwargs and return values). Django's DEBUG console, `mail_admins` and
+runserver handlers are likewise replaced. Queue age requires the
+enqueue-time header stamped by `before_task_publish` in `CoreConfig.ready`;
+unstamped legacy messages simply omit `clinic_queue_oldest_age_seconds`.
+Gunicorn access logs (`ops/container/gunicorn_no_proxy.py`
+`access_log_format`, also passed as `--access-logformat` to the browser
+harnesses) emit only method, status and duration, never the request line,
+query or peer address.
+
+OpenTelemetry tracing is disabled by default: set `CLINIC_OTEL_ENABLED=1`
+plus `CLINIC_OTEL_EXPORTER=console` or `otlp-http-json` with
+`CLINIC_OTEL_OTLP_ENDPOINT=<collector base URL>`. Span names resolve to
+route names, status descriptions are dropped (they carry exception
+messages), and exporter failures are contained and never affect requests.
 
 ## Troubleshooting
 
@@ -316,6 +436,21 @@ restored DEK metadata, one source envelope decrypted on the target through
 against the restored object store. It deletes and proves absence of the dump
 and hash. Restored verification is read-only except for advancing each
 restored sequence once; it runs no restored provisioning or browser command.
+
+Every relation in `clinic_app` has exactly one recovery classification in
+`ops/testing/restore_contract.py`: restored data (`DOMAIN_RELATIONS`, which
+includes per-user display preferences), a restored sequence
+(`SEQUENCE_TARGETS`), required-empty source relations (`REQUIRED_EMPTY`), or a
+target-owned exclusion with a written reason (`TARGET_OWNED_RELATIONS`). The
+provider capability registry is platform data seeded by the target's own
+migrations, so it is excluded. Before any target mutation, the rehearsal
+requires the source registry to equal the target's seed, ignoring only
+surrogate keys and timestamps. Owner-recorded provider approvals, activation
+records and health events must be empty on the source: the rehearsal refuses
+such a source rather than drop those records. `tests/infra/test_recovery_manifest.py`
+derives every table, partition, sequence and view from the migrated catalog
+and fails on any relation left unclassified, so a migration that adds a
+relation must classify it in the same change.
 
 Post-restore application proof runs as `clinic_app`, never `clinic_super`:
 SQL probes assert tenant-scoped reads, cross-tenant RLS denial and the

@@ -1,0 +1,14 @@
+{% load i18n %}{% comment %}
+One toast. Rendered by announcer.html or cloned by announcer.js.
+
+Context:
+  tone     success | error | warning | info | neutral (default).
+  message  Operational text only; never clinical content (required).
+  forced   hover | focus | active | disabled forces the dismiss state
+           (showcase only; applied to the first toast).
+  first    True for the first toast of a server-rendered list.
+{% endcomment %}<div class="toast{% if tone and tone != "neutral" %} toast--{{ tone }}{% endif %}" role="{% if tone == "error" %}alert{% else %}status{% endif %}" data-toast>
+  {% if tone == "error" or tone == "warning" %}{% include "includes/components/icon.html" with name="alert" only %}{% elif tone == "success" %}{% include "includes/components/icon.html" with name="check" only %}{% elif tone == "info" %}{% include "includes/components/icon.html" with name="offline" only %}{% endif %}
+  <p class="toast-message">{{ message }}</p>
+  <button type="button" class="button--quiet toast-dismiss{% if first and forced == "hover" %} is-hover{% elif first and forced == "focus" %} is-focus{% elif first and forced == "active" %} is-active{% endif %}" data-toast-dismiss{% if first and forced == "disabled" %} disabled{% endif %}>{% include "includes/components/icon.html" with name="close" only %}<span class="visually-hidden">{% trans "Dismiss notification" %}</span></button>
+</div>

@@ -1,0 +1,42 @@
+{% load i18n %}{% comment %}
+Editor shell: titled sections of plain text with one save indicator.
+The server decides every save outcome (autosave is server-side, todo 27);
+static/js/components/editor-shell.js only reports state: it marks a section
+"unsaved" on input, follows htmx request events to "saving"/"saved"/"error",
+and the browser's offline/online events to "offline". It never stores text
+in the browser. Without JavaScript the form posts normally.
+
+Context:
+  id          Editor id (required); sections are "<id>-<key>".
+  title       Editor heading (required).
+  sections    Iterable of {key, label, value, hint}.
+  save_state  saved | saving | unsaved | error | offline | conflict | stale
+              (default saved).
+  save_text   Indicator text; defaults per save_state.
+  action      Form action URL (POST + CSRF). Without it no form is rendered.
+  submit_label  Explicit save button text (default "Save").
+  state       SC-8 state (maps to save_state and control states).
+  message     State note text.
+  name_context  Optional id of an element whose text is appended to the
+              region name (unique names when a page repeats editors).
+{% endcomment %}<section class="editor" id="{{ id }}" aria-labelledby="{{ id }}-title{% if name_context %} {{ name_context }}{% endif %}" data-editor data-text-saved="{% trans "All changes saved" %}" data-text-saving="{% trans "Saving…" %}" data-text-unsaved="{% trans "Unsaved changes" %}" data-text-error="{% trans "Not saved. Try again." %}" data-text-offline="{% trans "Offline: not saved yet" %}" data-text-conflict="{% trans "Changed elsewhere: compare" %}" data-text-section-saved="{% trans "Saved" %}" data-text-section-unsaved="{% trans "Unsaved" %}" data-save-state="{% if state == "loading" %}saving{% elif state == "error" %}error{% elif state == "offline" %}offline{% elif state == "conflict" %}conflict{% elif state == "stale" %}stale{% elif state == "hover" or state == "active" %}unsaved{% else %}{{ save_state|default:"saved" }}{% endif %}"{% if state == "loading" %} aria-busy="true"{% endif %}>
+  <form method="post"{% if action %} action="{{ action }}"{% endif %} class="editor-form">
+    {% csrf_token %}
+    <header class="editor-header">
+      <h2 class="editor-title" id="{{ id }}-title">{{ title }}</h2>
+      <p class="editor-save" role="status" data-editor-indicator>{% if state == "loading" %}{% include "includes/components/icon.html" with name="clock" only %}{% elif state == "error" or state == "conflict" or state == "stale" %}{% include "includes/components/icon.html" with name="alert" only %}{% elif state == "offline" %}{% include "includes/components/icon.html" with name="offline" only %}{% elif state == "hover" or state == "active" %}{% include "includes/components/icon.html" with name="draft" only %}{% else %}{% include "includes/components/icon.html" with name="check" only %}{% endif %}<span data-editor-indicator-text>{% if save_text %}{{ save_text }}{% elif state == "loading" %}{% trans "Saving…" %}{% elif state == "error" %}{% trans "Not saved. Try again." %}{% elif state == "offline" %}{% trans "Offline: not saved yet" %}{% elif state == "conflict" %}{% trans "Changed elsewhere: compare" %}{% elif state == "stale" %}{% trans "Newer version available" %}{% elif state == "hover" or state == "active" %}{% trans "Unsaved changes" %}{% else %}{% trans "All changes saved" %}{% endif %}</span></p>
+    </header>
+    <div class="editor-sections">
+      {% if state == "empty" %}{% include "includes/components/state.html" with state="empty" title=_("No sections in this template") message=_("Choose a template to start the note.") only %}{% endif %}
+      {% for section in sections %}{% if state != "empty" %}<div class="field editor-section{% if state == "error" and forloop.first %} field--error{% endif %}{% if state == "hover" and forloop.first or state == "active" and forloop.first %} editor-section--dirty{% endif %}" data-editor-section="{{ section.key }}">
+        <label for="{{ id }}-{{ section.key }}">{{ section.label }}</label>
+        <textarea id="{{ id }}-{{ section.key }}" name="{{ section.key }}" rows="3" maxlength="20000" aria-describedby="{{ id }}-{{ section.key }}-state"{% if state == "disabled" or state == "permission-denied" %} disabled{% endif %}{% if state == "error" and forloop.first %} aria-invalid="true"{% endif %} class="{% if state == "focus" and forloop.first %}is-focus{% elif state == "hover" and forloop.first %}is-hover{% endif %}">{{ section.value }}</textarea>
+        <p class="editor-section-state{% if state == "error" and forloop.first %} field-error{% endif %}" id="{{ id }}-{{ section.key }}-state" data-editor-section-state>{% if state == "error" and forloop.first %}{% trans "This section was not saved." %}{% elif state == "hover" and forloop.first or state == "active" and forloop.first %}{% trans "Unsaved" %}{% else %}{% trans "Saved" %}{% endif %}</p>
+      </div>{% endif %}{% endfor %}
+      {% if state == "conflict" %}{% include "includes/components/state.html" with state="conflict" message=message action_label=_("Compare versions") only %}{% elif state == "stale" or state == "offline" or state == "permission-denied" or state == "success" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+    </div>
+    <footer class="editor-footer actions">
+      <button type="submit"{% if state == "disabled" or state == "loading" or state == "permission-denied" or state == "offline" %} disabled{% endif %}>{{ submit_label|default:_("Save") }}</button>
+    </footer>
+  </form>
+</section>

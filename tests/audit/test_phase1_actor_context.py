@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 from apps.identity.models import User, UserClinicRole
-from apps.tenancy.db import tenant_context
+from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext
 
@@ -102,10 +102,17 @@ def test_current_actor_rejects_nonexistent_and_inactive_users(
     User.objects.filter(pk=rbac_graph.physician).update(is_active=False)
     with (
         _runtime_role(),
+        pytest.raises(TenantAccessDeniedError),
         tenant_context(rbac_graph.physician, rbac_graph.organization_a),
-        pytest.raises(error_type, match="current actor unavailable"),
     ):
-        current_actor_id()
+        pass
+    with _runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true)",
+            [str(rbac_graph.physician)],
+        )
+        with pytest.raises(error_type, match="current actor unavailable"):
+            current_actor_id()
 
 
 def test_required_clinic_roles_derive_the_actor_and_fail_closed(

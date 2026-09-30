@@ -3,7 +3,13 @@
 from django.urls import path
 from django.urls.resolvers import URLPattern
 
-from apps.identity import clinic_settings_views, otp_views, stepup_views, views
+from apps.identity import (
+    clinic_settings_views,
+    otp_views,
+    preferences_views,
+    stepup_views,
+    views,
+)
 
 app_name = "identity"
 
@@ -17,6 +23,11 @@ urlpatterns: list[URLPattern] = [
         "clinics/<uuid:clinic_id>/settings/logo/",
         clinic_settings_views.clinic_logo,
         name="clinic-logo",
+    ),
+    path(
+        "account/preferences/",
+        preferences_views.preferences_view,
+        name="preferences",
     ),
     path("auth/login/", views.login_view, name="login"),
     path("auth/logout/", views.logout_view, name="logout"),

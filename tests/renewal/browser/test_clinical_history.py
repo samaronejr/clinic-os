@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-import base64
 import json
-import os
 import re
-from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    reload_settled,
+)
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import (
+    browser_zoom_200,
+    element_box,
+    full_page_screenshot,
+    zoom_screenshot,
+)
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
@@ -30,13 +40,15 @@ __all__ = ("availability_staff",)
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "clinical-history"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def edit(page: Page, kind: str, action: str) -> None:
-    with page.expect_navigation():
-        page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first.click()
+    click_to_navigate(
+        page.locator(f'[data-kind="{kind}"] button[value="{action}"]').first,
+        hittable=True,
+    )
 
 
 def save(page: Page, expected_status: int = 302) -> None:
@@ -70,7 +82,7 @@ def record_and_revise(page: Page, root: Path, kind: str, width: int) -> None:
     edit(page, kind, "edit")
     stale = page.context.new_page()
     # A second editor submits its own bound revision, not mutable session selection.
-    stale.goto(page.url)
+    goto_settled(stale, page.url)
     edit(stale, kind, "edit")
     page.locator("#id_description").fill(f"{kind} sintético corrigido")
     page.locator("#id_reason").fill("Correção sintética")
@@ -88,7 +100,7 @@ def record_and_revise(page: Page, root: Path, kind: str, width: int) -> None:
     page.locator("#id_status").select_option("resolved")
     page.locator("#id_reason").fill("Resolução sintética")
     save(page)
-    page.reload()
+    reload_settled(page)
     expect(section.locator("[data-entry]")).to_have_attribute("data-status", "resolved")
     expect(section).to_have_attribute("data-state", "documented")
     section.locator("summary").click()
@@ -114,7 +126,7 @@ def denied(
     try:
         other = context.new_page()
         _sign_in_receptionist(other, base, staff)
-        response = other.goto(page.url)
+        response = goto_settled(other, page.url)
         assert response is not None
         assert response.status == 403
         assert "sintético corrigido" not in other.content()
@@ -132,7 +144,9 @@ def denied(
         assert post_response.status == 403
         assert "sintético corrigido" not in post_response.text()
         # Render the actual denied navigation, not a mocked response.
-        response_page = page.goto(f"{base}/ehr/clinics/{staff['clinic_b']}/history/")
+        response_page = goto_settled(
+            page, f"{base}/ehr/clinics/{staff['clinic_b']}/history/"
+        )
         assert response_page is not None
         assert response_page.status == 403
         capture(page, root, "other-clinic-denied", width)
@@ -160,15 +174,14 @@ def reflow(page: Page, root: Path) -> None:
     )
     try:
         native = context.new_page()
-        native.goto(page.url)
+        goto_settled(native, page.url)
         edit(native, "problem", "new")
         native.locator("#id_description").fill("L" * 1000)
         native.locator("#id_reason").fill("Registro sem JavaScript")
         save(native)
         expect(native.locator('[data-kind="problem"] [data-entry]')).to_have_count(2)
         capture(native, root, "native-long-no-javascript", 640)
-        bounds = native.locator('button[value="new"]').first.bounding_box()
-        assert bounds is not None
+        bounds = element_box(native.locator('button[value="new"]').first)
         assert bounds["height"] >= 44
     finally:
         context.close()
@@ -192,8 +205,7 @@ def accessibility_checks(page: Page) -> dict[str, object]:
     buttons = page.locator("main button")
     for button in buttons.all():
         expect(button).to_have_accessible_name(re.compile(r"\S"))
-        bounds = button.bounding_box()
-        assert bounds is not None
+        bounds = element_box(button)
         assert bounds["height"] >= 44
         assert bounds["width"] >= 44
     page.locator("#id_description").focus()
@@ -236,126 +248,78 @@ def zoom_metrics(page: Page) -> dict[str, float]:
 
 
 def capture_zoom(page: Page, root: Path, state: str) -> None:
-    # Playwright full_page clips to CSS pixels even at native browser zoom.
-    # CDP's screenshot clip uses device-independent pixels, not CSS pixels.
-    session = page.context.new_cdp_session(page)
-    try:
-        layout = session.send("Page.getLayoutMetrics")
-        assert layout["cssVisualViewport"]["zoom"] == 2
-        screenshot = session.send(
-            "Page.captureScreenshot",
-            {
-                "captureBeyondViewport": True,
-                "clip": {**layout["contentSize"], "scale": 1},
-            },
-        )
-        (root / "clinical-history" / f"{state}-1280.png").write_bytes(
-            base64.b64decode(screenshot["data"])
-        )
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    finally:
-        session.detach()
+    zoom_screenshot(page, root / "clinical-history" / f"{state}-1280.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def zoom_journey(page: Page, root: Path) -> None:
-    """Use Chrome's own zoom setting, not device/CSS/pinch-scale emulation."""
-    browser = page.context.browser
-    assert browser is not None
-    with TemporaryDirectory(prefix="history-zoom-profile-", dir=root) as profile:
-        context = browser.browser_type.launch_persistent_context(
-            profile,
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            headless=True,
-            locale="pt-BR",
-            viewport={"width": 1280, "height": 900},
-            args=["--no-sandbox", "--disable-dev-shm-usage"],
-        )
+    """Edit and review history at 200% browser zoom (see engines.browser_zoom_200)."""
+    baseline = zoom_metrics(page)
+    with browser_zoom_200(page, root) as (zoomed, zoom_method):
         errors: list[str] = []
         console: list[dict[str, str]] = []
         checks: dict[str, object] = {}
-        try:
-            context.set_storage_state(page.context.storage_state())
-            zoomed = context.pages[0]
-            zoomed.on("pageerror", lambda error: errors.append(str(error)))
-            zoomed.on(
-                "console",
-                lambda message: (
-                    console.append({"type": message.type, "text": message.text})
-                    if message.type in ("warning", "error")
-                    else None
-                ),
-            )
-            zoomed.goto(page.url)
-            baseline = zoom_metrics(zoomed)
-            settings = context.new_page()
-            settings.goto("chrome://settings/appearance")
-            settings.evaluate("""() => new Promise((resolve, reject) => {
-                chrome.settingsPrivate.setDefaultZoom(2, () => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                    } else { resolve(); }
-                });
-            })""")
-            actual_zoom = settings.evaluate("""() => new Promise(resolve =>
-                chrome.settingsPrivate.getDefaultZoom(resolve))""")
-            assert actual_zoom == 2
-            settings.close()
-            zoomed.reload()
-            metrics = zoom_metrics(zoomed)
-            assert baseline["inner_width"] == 1280
-            assert baseline["device_pixel_ratio"] == 1
-            assert metrics == {
-                "inner_width": 640,
-                "inner_height": 450,
-                "device_pixel_ratio": 2,
-                "pinch_scale": 1,
-            }
-            for kind in ("problem", "allergy"):
-                edit(zoomed, kind, "edit")
-                zoomed.locator("#id_description").fill(f"{kind} corrigido em zoom 200%")
-                zoomed.locator("#id_reason").fill("Correção com zoom do navegador")
-                checks[kind] = accessibility_checks(zoomed)
-                capture_zoom(zoomed, root, f"zoom-200-{kind}-editor")
-                with zoomed.expect_navigation():
-                    zoomed.keyboard.press("Enter")
-                expect(zoomed.locator('[data-save-state="saved"]')).to_be_visible()
-                zoomed.reload()
-                section = zoomed.locator(f'[data-kind="{kind}"]')
-                expect(section.locator("[data-entry] h3")).to_have_text(
-                    f"{kind} corrigido em zoom 200%"
-                )
-                summary = section.locator("summary")
-                summary.focus()
+        zoomed.on("pageerror", lambda error: errors.append(str(error)))
+        zoomed.on(
+            "console",
+            lambda message: (
+                console.append({"type": message.type, "text": message.text})
+                if message.type in ("warning", "error")
+                else None
+            ),
+        )
+        goto_settled(zoomed, page.url)
+        metrics = zoom_metrics(zoomed)
+        assert baseline["inner_width"] == 1280
+        assert baseline["device_pixel_ratio"] == 1
+        assert metrics == {
+            "inner_width": 640,
+            "inner_height": 450,
+            "device_pixel_ratio": 2,
+            "pinch_scale": 1,
+        }
+        for kind in ("problem", "allergy"):
+            edit(zoomed, kind, "edit")
+            zoomed.locator("#id_description").fill(f"{kind} corrigido em zoom 200%")
+            zoomed.locator("#id_reason").fill("Correção com zoom do navegador")
+            checks[kind] = accessibility_checks(zoomed)
+            capture_zoom(zoomed, root, f"zoom-200-{kind}-editor")
+            with expect_document(zoomed):
                 zoomed.keyboard.press("Enter")
-                expect(section.locator("details")).to_have_attribute("open", "")
-                expect(section.locator("[data-history-version]")).to_have_count(4)
-                capture_zoom(zoomed, root, f"zoom-200-{kind}-saved-history")
-                assert zoom_metrics(zoomed) == metrics
-            (
-                root / "clinical-history" / "accessibility-console-zoom-200.json"
-            ).write_text(
-                json.dumps(
-                    {
-                        "zoom_method": "chrome.settingsPrivate.setDefaultZoom",
-                        "browser_zoom": actual_zoom,
-                        "baseline": baseline,
-                        "zoomed": metrics,
-                        "checks": checks,
-                        "native_keyboard_save_and_history_expansion": True,
-                        "page_errors": errors,
-                        "console_warnings_and_errors": console,
-                        "scope": (
-                            "History editors and saved versions; not a full WCAG audit"
-                        ),
-                    },
-                    indent=2,
-                )
-                + "\n"
+            expect(zoomed.locator('[data-save-state="saved"]')).to_be_visible()
+            reload_settled(zoomed)
+            section = zoomed.locator(f'[data-kind="{kind}"]')
+            expect(section.locator("[data-entry] h3")).to_have_text(
+                f"{kind} corrigido em zoom 200%"
             )
-            assert not errors
-            assert not console
-        finally:
-            context.close()
+            summary = section.locator("summary")
+            summary.focus()
+            zoomed.keyboard.press("Enter")
+            expect(section.locator("details")).to_have_attribute("open", "")
+            expect(section.locator("[data-history-version]")).to_have_count(4)
+            capture_zoom(zoomed, root, f"zoom-200-{kind}-saved-history")
+            assert zoom_metrics(zoomed) == metrics
+        (root / "clinical-history" / "accessibility-console-zoom-200.json").write_text(
+            json.dumps(
+                {
+                    "zoom_method": zoom_method,
+                    "browser_zoom": metrics["device_pixel_ratio"],
+                    "baseline": baseline,
+                    "zoomed": metrics,
+                    "checks": checks,
+                    "native_keyboard_save_and_history_expansion": True,
+                    "page_errors": errors,
+                    "console_warnings_and_errors": console,
+                    "scope": (
+                        "History editors and saved versions; not a full WCAG audit"
+                    ),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        assert not errors
+        assert not console
 
 
 @pytest.mark.parametrize("width", [1280, 768, 375])
@@ -378,14 +342,14 @@ def test_clinical_history_journey(
     page.on("pageerror", lambda error: errors.append(str(error)))
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(f"{base}/ehr/clinics/{staff['clinic_a']}/history/")
+        goto_settled(page, f"{base}/ehr/clinics/{staff['clinic_a']}/history/")
         capture(page, root, "empty", width)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/",
         )
         press(page, "open")
-        with page.expect_navigation():
-            page.get_by_role("button", name="Problemas e alergias").click()
+        click_to_navigate(page.get_by_role("button", name="Problemas e alergias"))
         capture(page, root, "not-assessed", width)
         for kind in ("problem", "allergy"):
             record_and_revise(page, root, kind, width)

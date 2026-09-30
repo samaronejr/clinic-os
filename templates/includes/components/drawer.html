@@ -1,0 +1,31 @@
+{% load i18n %}{% comment %}
+Drawer: non-modal context beside the work (patient summary, source detail).
+The page stays usable; focus is not trapped. Behavior:
+static/js/components/drawer.js. Without JavaScript the drawer renders in
+flow where it is placed, so its content is always reachable.
+
+Toggle: any button with data-drawer-toggle="<id>" aria-controls="<id>"
+aria-expanded="false|true". Escape closes and returns focus to the toggle.
+
+Context:
+  id           Element id (required).
+  title        Drawer heading (required).
+  body         Body text (optional; pages usually pass rendered content
+               through a wrapping template instead).
+  close_label  Close button text (default "Close").
+  docked       True docks the drawer at the inline end from 64rem.
+  collapsible  True lets drawer.js start it closed (hidden) once enhanced.
+  state        Optional SC-8 state shown as a state note in the body.
+  message      State note text.
+  name_context Optional id of an element whose text is appended to the
+               landmark name (unique names when a page repeats drawers).
+{% endcomment %}<aside class="drawer{% if docked %} drawer--docked{% endif %}{% if state == "hover" %} is-hover{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title{% if name_context %} {{ name_context }}{% endif %}" data-drawer{% if collapsible %} data-drawer-collapsible{% endif %}{% if state == "loading" %} aria-busy="true"{% endif %}>
+  <div class="drawer-header">
+    <h2 class="drawer-title" id="{{ id }}-title">{{ title }}</h2>
+    <button type="button" class="button--quiet{% if state == "focus" %} is-focus{% elif state == "active" %} is-active{% endif %}" data-drawer-close="{{ id }}"{% if state == "disabled" %} disabled{% endif %}>{% include "includes/components/icon.html" with name="close" only %}<span>{{ close_label|default:_("Close") }}</span></button>
+  </div>
+  <div class="drawer-body">
+    {% if body %}<p>{{ body }}</p>{% endif %}
+    {% if state and state != "default" and state != "hover" and state != "focus" and state != "active" %}{% include "includes/components/state.html" with state=state message=message only %}{% endif %}
+  </div>
+</aside>

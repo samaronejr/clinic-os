@@ -112,6 +112,12 @@ def test_user_clinic_role_values_are_canonical() -> None:
         "physician",
         "receptionist",
         "clinic_admin",
+        "nurse",
+        "allied_professional",
+        "scheduler",
+        "clinic_manager",
+        "finance",
+        "org_admin",
     )
 
 

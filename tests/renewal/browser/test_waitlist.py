@@ -10,6 +10,9 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
+from renewal.browser._page_wait import evaluate_all_js, evaluate_js
+from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import _sign_in_receptionist, availability_staff
 from renewal.browser.test_patient_access import _redeem
 from renewal.browser.test_self_booking import _choose_day, _seed
@@ -36,10 +39,11 @@ class _Case:
 def _capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "waitlist"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    assert page.locator("main button").evaluate_all(
-        "buttons => buttons.every(b => b.getBoundingClientRect().height >= 44)"
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
+    assert evaluate_all_js(
+        page.locator("main button"),
+        "buttons => buttons.every(b => b.getBoundingClientRect().height >= 44)",
     )
 
 
@@ -48,8 +52,7 @@ def _add(manager: Page, staff: dict[str, str], data: dict[str, str], day: str) -
     manager.locator("#id_entry-practitioner").select_option(staff["physician_a_id"])
     manager.locator("#id_entry-start_local").fill(day + "T08:00")
     manager.locator("#id_entry-end_local").fill(day + "T12:00")
-    with manager.expect_navigation():
-        manager.locator("#waitlist-entry-form button").click()
+    click_to_navigate(manager.locator("#waitlist-entry-form button"))
 
 
 def _issue(
@@ -58,8 +61,7 @@ def _issue(
     manager.locator("#id_offer-practitioner").select_option(staff["physician_a_id"])
     manager.locator("#id_offer-start_local").fill(day + "T" + start)
     manager.locator("#id_offer-end_local").fill(day + "T" + end)
-    with manager.expect_navigation():
-        manager.locator("#waitlist-offer-form button").click()
+    click_to_navigate(manager.locator("#waitlist-offer-form button"))
 
 
 def _body(page: Page) -> dict[str, str]:
@@ -126,25 +128,25 @@ def test_waitlist_journey(
     try:
         _cancel_opening(patient, case)
         _sign_in_receptionist(manager, renewal_base_url, staff)
-        manager.goto(queue)
+        goto_settled(manager, queue)
         _capture(manager, renewal_artifact_root, "staff-default", width)
         _add(manager, staff, first, day)
         _add(manager, staff, second, day)
         _issue(manager, staff, day, "08:00", "08:30")
         _capture(manager, renewal_artifact_root, "staff-offered", width)
-        patient.goto(renewal_base_url + PATH)
+        goto_settled(patient, renewal_base_url + PATH)
         expect(patient.locator('[data-state="pending"]')).to_have_count(1)
         saved = _body(patient)
         _capture(patient, renewal_artifact_root, "patient-pending", width)
         patient.get_by_role("button", name="Aceitar e agendar").focus()
-        with patient.expect_navigation():
+        with expect_document(patient):
             patient.keyboard.press("Enter")
         expect(patient.locator('[data-state="accepted"]')).to_have_count(1)
         _capture(patient, renewal_artifact_root, "accepted", width)
         assert _post(patient, saved) == 200
         expect(patient.locator('[data-state="accepted"]')).to_have_count(1)
         _capture(patient, renewal_artifact_root, "replayed", width)
-        manager.goto(queue)
+        goto_settled(manager, queue)
         expect(
             manager.locator(f'[data-entry]:has([data-offer="{saved["offer_id"]}"])')
         ).to_have_attribute("data-state", "fulfilled")
@@ -199,22 +201,20 @@ def _report(
 
 def _cancel_opening(patient: Page, case: _Case) -> None:
     _redeem(patient, case.base, case.staff["clinic_a"], case.first["code"])
-    patient.goto(case.base + PATH)
+    goto_settled(patient, case.base + PATH)
     _capture(patient, case.root, "empty-patient", case.width)
     patient.get_by_role("link", name="Consultar outros horários").click()
     _choose_day(patient, case.first["day"])
-    with patient.expect_navigation():
-        patient.locator("[data-slot] button").first.click()
+    click_to_navigate(patient.locator("[data-slot] button").first)
     expect(patient.locator('[data-status="scheduled"]')).to_have_count(1)
-    with patient.expect_navigation():
-        patient.get_by_role("button", name="Cancelar consulta").click()
+    click_to_navigate(patient.get_by_role("button", name="Cancelar consulta"))
     expect(patient.locator('[data-status="cancelled"]')).to_have_count(1)
     _capture(patient, case.root, "cancelled-opening", case.width)
 
 
 def _expire_and_deny(other: Page, case: _Case, saved: dict[str, str]) -> None:
     _redeem(other, case.base, case.staff["clinic_a"], case.second["code"])
-    other.goto(case.base + PATH)
+    goto_settled(other, case.base + PATH)
     expect(other.locator('[data-state="pending"]')).to_have_count(1)
     expired = _body(other)
     with psycopg.connect(case.staff["dsn"]) as conn:
@@ -243,24 +243,22 @@ def _stale_and_decline(pages: tuple[Page, Page, Page], case: _Case) -> None:
     base, root, width = case.base, case.root, case.width
     _add(manager, staff, first, day)
     _issue(manager, staff, day, "09:00", "09:30")
-    patient.goto(base + PATH)
+    goto_settled(patient, base + PATH)
     declined = _body(patient)
-    with patient.expect_navigation():
-        patient.get_by_role("button", name="Recusar oferta").click()
+    click_to_navigate(patient.get_by_role("button", name="Recusar oferta"))
     expect(patient.locator('[data-state="declined"]')).to_have_count(1)
     assert _post(patient, declined) == 409
     _capture(patient, root, "declined-replay", width)
     _add(manager, staff, first, day)
     _issue(manager, staff, day, "09:00", "09:30")
-    patient.goto(base + PATH)
+    goto_settled(patient, base + PATH)
     stale = _body(patient)
     # Another patient books the offered opening through the real booking surface.
-    other.goto(base + "/patient/appointments/?day=" + day)
+    goto_settled(other, base + "/patient/appointments/?day=" + day)
     slot = other.locator("[data-slot]").filter(
         has=other.get_by_text("09:00\N{EN DASH}09:30", exact=True)
     )
-    with other.expect_navigation():
-        slot.get_by_role("button").click()
+    click_to_navigate(slot.get_by_role("button"))
     expect(other.locator('[data-status="scheduled"]')).to_have_count(1)
     assert _post(patient, stale) == 409
     expect(patient.locator('[data-state="unavailable"]')).to_have_count(1)
@@ -300,16 +298,17 @@ def test_native_long_content_zoom(
                 ["ProfissionalSintetico" * 7, staff["physician_a_id"]],
             )
         _sign_in_receptionist(manager, renewal_base_url, staff)
-        manager.goto(
-            f"{renewal_base_url}/scheduling/clinics/{staff['clinic_a']}/waitlist/"
+        goto_settled(
+            manager,
+            f"{renewal_base_url}/scheduling/clinics/{staff['clinic_a']}/waitlist/",
         )
         _add(manager, staff, data, day)
         _issue(manager, staff, day, "08:00", "08:30")
         _redeem(page, renewal_base_url, staff["clinic_a"], data["code"])
-        page.goto(renewal_base_url + PATH)
+        goto_settled(page, renewal_base_url + PATH)
         _capture(page, renewal_artifact_root, "native-long-zoom-200", width)
         page.get_by_role("button", name="Aceitar e agendar").focus()
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator('[data-state="accepted"]')).to_have_count(1)
         _capture(page, renewal_artifact_root, "native-accepted-zoom-200", width)

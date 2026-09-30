@@ -9,13 +9,16 @@ dependencies = [
   "django-environ",
   "django-otp==1.7.*",
   "djangorestframework==3.17.*",
+  "drf-spectacular==0.30.0",
   "gunicorn",
+  "opentelemetry-sdk>=1.44.0",
   "psycopg[binary]>=3.2",
   "qrcode[pil]",
   "redis",
   "rfc8785",
   "sentry-sdk[django]",
   "sqlparse>=0.6.0,<0.7",
+  "uvicorn>=0.35,<1",
   "tzdata==2026.3",
   "whitenoise==6.12.0",
 ]
@@ -35,6 +38,7 @@ dev = [
   "pytest",
   "pytest-cov",
   "pytest-django",
+  "pytest-xdist>=3.8.0",
   "ruff",
   "basedpyright==1.39.9",
   "jsonschema>=4.26.0",
@@ -81,6 +85,8 @@ python_version = "3.12"
 strict = true
 show_error_codes = true
 plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+# drf-spectacular ships py.typed but leaves its extension base untyped.
+untyped_calls_exclude = ["drf_spectacular.plumbing"]
 
 [tool.django-stubs]
 django_settings_module = "config.settings.test"

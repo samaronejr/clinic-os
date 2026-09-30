@@ -2,43 +2,24 @@ from typing import Final
 
 import psycopg
 import pytest
-from apps.comms.rls import ALL_COMMS_RLS_TARGETS
 from apps.identity.models import (
     Clinic,
     ClinicConfiguration,
     Organization,
     UserClinicRole,
 )
-from apps.intake.rls import INTAKE_RLS_TARGETS
-from apps.scheduling.rls import ALL_SCHEDULING_RLS_TARGETS
+from apps.tenancy import posture
 from apps.tenancy.models import TenantScopedModel
-from apps.tenancy.rls import TENANT_RLS_TARGETS
 from django.apps import apps as django_apps
 from django.db import connection
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-FOUNDATION_TENANT_COLUMNS: Final = dict(TENANT_RLS_TARGETS)
-PHASE1A_TENANT_COLUMNS: Final = dict(INTAKE_RLS_TARGETS) | dict(
-    ALL_SCHEDULING_RLS_TARGETS
-)
-COMMS_TENANT_COLUMNS: Final = dict(ALL_COMMS_RLS_TARGETS)
-EXPECTED_TENANT_COLUMNS: Final = (
-    FOUNDATION_TENANT_COLUMNS | PHASE1A_TENANT_COLUMNS | COMMS_TENANT_COLUMNS
-)
-SELECT_ONLY_RUNTIME_TABLES: Final = {
-    "identity_organization",
-    "identity_clinic",
-    "identity_userclinicrole",
-    # Patient sessions are minted only by the resolver-owned redemption
-    # function; the runtime role can read and revoke but never insert.
-    "intake_patientsession",
-    # Reminder snapshots are inserted only by the appointment trigger.
-    "comms_appointmentreminder",
-}
-SELECT_INSERT_RUNTIME_TABLES: Final = (
-    set(PHASE1A_TENANT_COLUMNS) | set(COMMS_TENANT_COLUMNS)
-) - SELECT_ONLY_RUNTIME_TABLES
+# The expected tenant surface is derived from the per-app posture
+# registries (apps/<app>/rls.py) aggregated by apps.tenancy.posture.
+EXPECTED_TENANT_COLUMNS: Final = posture.expected_tenant_columns()
+SELECT_ONLY_RUNTIME_TABLES: Final = posture.select_only_runtime_tables()
+SELECT_INSERT_RUNTIME_TABLES: Final = posture.select_insert_runtime_tables()
 
 
 def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
@@ -85,6 +66,15 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
+        # Exact user-bound saved-view policy/ACLs: tests/core/test_saved_views.py.
+        "identity_savedview",
+        # Exact v1 scope policies: tests/identity/test_permission_scope.py.
+        "identity_rolegrant",
+        # Task 7 owner-only machine authority: test_agent_posture.
+        "identity_serviceprincipal",
+        "identity_serviceprincipalgrant",
+        "identity_careteammembership",
+        "identity_professionalregistration",
         # Exact clinical predicates and ACLs are checked in test_encounters.
         # Exact append-only history policies/ACLs: test_clinical_history.
         "ehr_historyassessment",
@@ -148,6 +138,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         (table, "tenant_isolation") for table in EXPECTED_TENANT_COLUMNS
     } | {
         ("scheduling_availabilityblock", "patient_booking_read"),
+        ("scheduling_availabilityblock", "agent_grant"),
         ("scheduling_appointment", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_insert"),
         ("scheduling_appointment", "patient_booking_update"),
@@ -244,7 +235,15 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
             FROM pg_catalog.pg_roles
             WHERE rolname = ANY(%s)
             """,
-            [["clinic_owner", "clinic_app", "clinic_resolver", "clinic_super"]],
+            [
+                [
+                    "clinic_owner",
+                    "clinic_app",
+                    "clinic_agent",
+                    "clinic_resolver",
+                    "clinic_super",
+                ]
+            ],
         )
         role_posture = set(cursor.fetchall())
 
@@ -294,6 +293,42 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     assert role_posture == {
         ("clinic_owner", True, False, False, False),
         ("clinic_app", True, False, False, False),
+        ("clinic_agent", True, False, False, False),
         ("clinic_resolver", False, False, True, False),
         ("clinic_super", True, True, False, False),
     }
+
+
+def test_user_preference_table_is_user_bound_without_delete() -> None:
+    # Given: the per-user display preference table (design system v2)
+    # When: its row security and runtime grants are read
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT class.relrowsecurity, class.relforcerowsecurity,
+                   class.relowner::regrole::text
+            FROM pg_catalog.pg_class AS class
+            WHERE class.oid = 'clinic_app.identity_userpreference'::regclass
+            """
+        )
+        posture = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT policyname, roles FROM pg_catalog.pg_policies
+            WHERE schemaname = 'clinic_app' AND tablename = 'identity_userpreference'
+            """
+        )
+        policies = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT privilege_type FROM information_schema.role_table_grants
+            WHERE grantee = 'clinic_app' AND table_schema = 'clinic_app'
+              AND table_name = 'identity_userpreference'
+            """
+        )
+        grants = {row[0] for row in cursor.fetchall()}
+
+    # Then: forced RLS bound to the user GUC, and no DELETE or full UPDATE
+    assert posture == (True, True, "clinic_owner")
+    assert policies == [("userpreference_owner_only", ["clinic_app"])]
+    assert grants == {"SELECT", "INSERT"}

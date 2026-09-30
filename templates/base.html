@@ -1,13 +1,15 @@
-{% load static i18n workspace clinic_branding %}
+{% load static i18n workspace clinic_branding ui_preferences %}
 {% get_current_language as LANGUAGE_CODE %}
-{% workspace_context as workspace %}
+{% block workspace_refusal %}{% endblock %}{% workspace_context as workspace %}
+{% if workspace %}{% ui_preferences as ui %}{% endif %}
 <!doctype html>
-<html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js"{% endif %}>
+<html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js" data-theme="{{ ui.theme }}" data-density="{{ ui.density }}"{% endif %}>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="{% block meta_description %}{% trans "Clinic OS secure clinical workspace." %}{% endblock %}">
     <meta name="theme-color" content="#0f2d3a">
+    <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"attributesToSettle":["class","width","height"]}'>
     <title>{% block title %}Clinic OS{% endblock %}</title>
     <link rel="manifest" href="{% static 'manifest.webmanifest' %}">
     <link rel="icon" href="{% static 'icons/clinic-os.svg' %}" type="image/svg+xml">
@@ -20,6 +22,13 @@
     <script src="{% static 'vendor/htmx/htmx.min.js' %}" defer></script>
     <script src="{% static 'js/auth-ui.js' %}" defer></script>
     <script src="{% static 'js/clinic-os-shell.js' %}" defer></script>
+    {% if workspace.clinic %}
+    <link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+    <script src="{% static 'js/components/dialog.js' %}" defer></script>
+    <script src="{% static 'js/components/combobox.js' %}" defer></script>
+    <script src="{% static 'js/components/command-palette.js' %}" defer></script>
+    <script src="{% static 'js/patient-context.js' %}" defer></script>
+    {% endif %}
     {% block extra_head %}{% endblock %}
   </head>
   <body>
@@ -51,6 +60,9 @@
           {% else %}
             <p class="nav-context"><strong class="nav-clinic">{% trans "No clinic assigned" %}</strong></p>
           {% endif %}
+          {% if workspace.clinic %}
+            <a class="nav-command" href="{% url 'workspace-command' %}" data-command-open="command-palette" aria-keyshortcuts="Control+K Meta+K">{% include "includes/components/icon.html" with name="search" only %}<span>{% trans "Search" %}</span> <kbd class="nav-command-key">Ctrl K</kbd></a>
+          {% endif %}
           <ul class="nav-list">
             {% for link in workspace.links %}
               <li><a class="nav-link" href="{{ link.url }}" data-module="{{ link.key }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}{% if link.badge %} <span class="nav-badge">{{ link.badge }}</span>{% endif %}</a></li>
@@ -62,7 +74,11 @@
           </ul>
         {% endif %}
       </nav>
+      {% if workspace.section %}
+        <div class="shell-subnav">{% include "includes/components/tabs.html" with id="section-nav" label=workspace.section_label tabs=workspace.section current=workspace.section_current mode="links" only %}</div>
+      {% endif %}
     </header>
+    {% block patient_banner %}{% if workspace.patient %}{% include "includes/components/patient_banner.html" with patient=workspace.patient clinic_id=workspace.clinic.id next=workspace.resume_path state="default" csrf_token=csrf_token only %}{% endif %}{% endblock %}
     {% if workspace.clinic %}
       {% clinic_branding workspace.clinic.id as branding %}
       {% if branding %}
@@ -85,8 +101,13 @@
       </section>
       {% endblock %}
     </main>
+    {% if workspace.clinic %}
+      {% url 'ui_api:command-search' as palette_endpoint %}{% url 'workspace-command-run' as palette_run %}{% trans "Patients: type the full name." as palette_note %}
+      {% include "includes/components/command_palette.html" with id="command-palette" groups=workspace.palette_groups endpoint=palette_endpoint run_action=palette_run next=workspace.resume_path note=palette_note state="default" message="" specimen=False csrf_token=csrf_token only %}
+      {% block context_switch_dialog %}{% if workspace.patient %}{% include "includes/components/context_switch_dialog.html" only %}{% endif %}{% endblock %}
+    {% endif %}
     <footer class="site-footer">
-      <p>{% trans "Clinic OS foundation" %}</p>
+      <p>{% trans "Clinic OS foundation" %}{% if workspace %} · <a href="{% url 'identity:preferences' %}">{% trans "Display preferences" %}</a>{% endif %}</p>
     </footer>
   </body>
 </html>

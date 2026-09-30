@@ -4,6 +4,17 @@ Phase 1A implements organization-scoped patient identity, clinic enrollment,
 idempotent registration, and paginated search through staff-only screens.
 Patient search values stay in request bodies rather than browser URLs.
 
+The workspace palette uses `search_patients_exact`, not the independent legacy
+substring registry. Registration stores a tenant-DEK HMAC in `full_name_index`;
+case, accent and whitespace folding are versioned by the
+`intake.patient.full_name.exact.v1` purpose. Lookup computes a digest for every
+DEK version, selects by indexed ciphertext metadata, orders by enrollment id,
+and reveals only bounded exact matches. Migration `0012_patient_name_index`
+backfills existing encrypted names one at a time in the owner transaction.
+No plaintext shadow, decrypted predicate, or decrypt-and-filter fallback exists
+on the palette path. Raw owner fixture inserts must supply the digest to be
+searchable by the palette; production registration always supplies it.
+
 Contacts and messaging preferences extend the same boundary: destinations
 are organization-level patient data verified per destination version,
 preferences are clinic-scoped versioned opt-in states per purpose and

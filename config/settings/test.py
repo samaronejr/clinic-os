@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import environ
 
 from .base import *  # noqa: F403
@@ -13,4 +15,24 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"].setdefault("OPTIONS", {})["options"] = (
     "-c search_path=clinic_app,public"
 )
+DATABASES["default"]["OPTIONS"]["prepare_threshold"] = None
+DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+DATABASES["locks"] = deepcopy(DATABASES["default"])
+DATABASES["locks"]["TEST"] = {"MIRROR": "default"}
+# Tests authenticate a real clinic_agent connection to the already-migrated
+# default test database. The principal test fixture installs an ephemeral secret;
+# an absent runtime AGENT_DATABASE_URL never enables a runtime fallback.
+DATABASES["agent"] = {
+    **DATABASES["default"],
+    "USER": "clinic_agent",
+    "PASSWORD": "",
+    "TEST": {"MIRROR": "default"},
+}
 PASSWORD_HASHERS: list[str] = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+# Test runs never reach for a developer workstation's Redis: base defaults
+# the broker to redis://localhost:6379/0, which is often another project's
+# broker. An explicit CELERY_BROKER_URL still wins (the real-broker gate
+# CLINIC_BROKER_GATE=required sets its own URL); the result backend keeps
+# the disabled default.
+CELERY_BROKER_URL = test_env("CELERY_BROKER_URL", default="memory://")
+CELERY_RESULT_BACKEND = test_env("CELERY_RESULT_BACKEND", default=None)

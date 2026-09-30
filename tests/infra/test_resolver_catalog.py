@@ -32,6 +32,12 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("ehr_historyassessment", "SELECT"),
     ("ehr_problem", "SELECT"),
     ("ehr_specialtytemplate", "SELECT"),
+    ("identity_careteammembership", "SELECT"),
+    ("identity_professionalregistration", "SELECT"),
+    ("identity_physicianprofile", "SELECT"),
+    ("identity_rolegrant", "SELECT"),
+    ("identity_serviceprincipal", "SELECT"),
+    ("identity_serviceprincipalgrant", "SELECT"),
     ("identity_clinic", "SELECT"),
     ("identity_clinicconfiguration", "SELECT"),
     ("identity_organization", "SELECT"),
@@ -91,6 +97,8 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),
@@ -108,6 +116,8 @@ POSTURE_OVERRIDES: Final = {
     "ehr_encounter_close_guard": ("v", False, ["clinic_resolver"]),
     "ehr_history_guard": ("v", False, ["clinic_resolver"]),
     "end_patient_session": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "has_permission": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "identity_scope_guard": ("v", False, ["clinic_resolver"]),
     "overlay_plain_text_guard": ("v", False, ["clinic_resolver"]),
     "patient_booking_event_immutable": ("v", False, ["clinic_resolver"]),
     "patient_booking_guard": ("v", False, ["clinic_resolver"]),
@@ -227,6 +237,7 @@ FUNCTION_SIGNATURES: Final = {
         "requested_provider text, requested_reference text",
     ),
     ("comms_operation_scope", "requested_operation uuid"),
+    ("comms_operation_state_counts_v1", ""),
     ("comms_recover_pending_v1", ""),
     ("comms_schedule_reminders_v1", ""),
     ("configuration_guard", ""),
@@ -244,6 +255,11 @@ FUNCTION_SIGNATURES: Final = {
     ("ehr_next_version", "requested_document uuid"),
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"),
     ("end_patient_session", "requested_session uuid"),
+    ("has_permission", "perm text, clinic uuid, enrollment uuid"),
+    ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
+    ("principal_has", "perm text, clinic uuid"),
+    ("identity_queue_quotas", "requested_org uuid"),
+    ("identity_scope_guard", ""),
     ("list_active_clinic_physicians", "requested_clinic uuid"),
     ("load_current_user", ""),
     ("overlay_plain_text_guard", ""),
@@ -388,6 +404,10 @@ FUNCTION_RESULTS: Final = {
     ("comms_operation_scope", "requested_operation uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
     ),
+    ("comms_operation_state_counts_v1", ""): (
+        "TABLE(status text, operation_count bigint, "
+        "oldest_created_at timestamp with time zone)"
+    ),
     ("comms_recover_pending_v1", ""): "SETOF uuid",
     ("comms_schedule_reminders_v1", ""): "trigger",
     ("configuration_guard", ""): "trigger",
@@ -410,6 +430,11 @@ FUNCTION_RESULTS: Final = {
     ("ehr_next_version", "requested_document uuid"): "integer",
     ("ehr_version_scope", "requested_clinic uuid, requested_version uuid"): "uuid",
     ("end_patient_session", "requested_session uuid"): "void",
+    ("has_permission", "perm text, clinic uuid, enrollment uuid"): "boolean",
+    ("principal_scope", "requested_principal uuid, requested_clinic uuid"): "uuid",
+    ("principal_has", "perm text, clinic uuid"): "boolean",
+    ("identity_queue_quotas", "requested_org uuid"): "jsonb",
+    ("identity_scope_guard", ""): "trigger",
     ("list_active_clinic_physicians", "requested_clinic uuid"): (
         "TABLE(user_id uuid, display_label text)"
     ),

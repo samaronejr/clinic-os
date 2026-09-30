@@ -95,6 +95,24 @@ events with the `BILLING_SYNTHETIC_PIX_SECRET` HMAC setting and reports only
 pending/expired authoritative states, so a synthetic settlement claim is always
 flagged `unverified_settlement` and can never create a receipt.
 
+Reconciliation records payment events for a deactivated actor on purpose. The
+`billing_event_recorder` insert policy admits the operation's recorded actor
+through `billing_payment_event_recorder` without an `is_active` check, just as
+it already admits an actor who no longer holds a billing role.
+`receive_payment_event` authenticates the raw event through the adapter before
+any stored charge or tenant is resolved. `reconcile_charge`, which has no
+inbound event, takes its facts from the provider's authoritative lookup for the
+stored charge; if that lookup fails, it records the stored charge's own terms
+as `operator_required`/`provider_query_failed`, which never settles. In both
+paths `billing_payment_event_guard` validates every event against the stored
+operation (tenant, invoice, provider, actor) and, for a settlement, the stored
+settlement row. A money event for a charge started by since-offboarded staff is
+therefore recorded instead of lost. It does not settle the charge, because the
+settlement guard and RLS refuse the deactivated actor: the event is recorded
+`operator_required`/`settlement_rejected`, the invoice stays open, and no
+settlement or receipt is created. A deactivated account cannot reach this path
+from the web: login, session rehydration and tenant entry all refuse it.
+
 No insurance, fiscal tax invoice, refund automation or clinical/provider metadata
 payload is added. Financial history cannot be edited or deleted by the runtime
 role.

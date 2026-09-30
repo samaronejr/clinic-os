@@ -1,0 +1,192 @@
+[
+  {
+    "id": "SD-1",
+    "source_path": "docs/plans/clinic-os-renewal-roadmap.md",
+    "source_lines": "58-63",
+    "class": 1,
+    "disposition": "SUPERSEDED: by docs/plans/clinic-ops-premium-successor.md and ADR-000; the roadmap keeps its history and gains a 'superseded in part' line",
+    "replaced_by_todo": [
+      1,
+      2
+    ]
+  },
+  {
+    "id": "SD-2",
+    "source_path": "docs/plans/clinic-os-renewal-roadmap.md",
+    "source_lines": "62-63",
+    "class": 3,
+    "disposition": "PRESERVED: the specification also forbids auto-merge; a human-adjudicated merge is added",
+    "replaced_by_todo": [
+      18
+    ]
+  },
+  {
+    "id": "SD-3",
+    "source_path": "docs/plans/clinic-os-renewal-roadmap.md",
+    "source_lines": "62-63",
+    "class": 3,
+    "disposition": "PRESERVED: fake signature verification stays forbidden",
+    "replaced_by_todo": [
+      35
+    ]
+  },
+  {
+    "id": "SD-4",
+    "source_path": "apps/teleconsult/migrations/_teleconsult_sql.py",
+    "source_lines": "113,116",
+    "class": 1,
+    "disposition": "REPLACED: by an additive migration; recording/transcription allowed only with a RecordingSession bound to consent and capability; the trigger is rewritten, not dropped",
+    "replaced_by_todo": [
+      40
+    ]
+  },
+  {
+    "id": "SD-5",
+    "source_path": "apps/comms/capabilities.py",
+    "source_lines": "22",
+    "class": 2,
+    "disposition": "REPLACED: by the provider-lifecycle registry (researched to revoked); the real path is reachable only when state is activated AND the live gate is satisfied; tests assert the gate, not the constant",
+    "replaced_by_todo": [
+      4
+    ]
+  },
+  {
+    "id": "SD-6",
+    "source_path": "apps/prescription/models.py",
+    "source_lines": "45-51",
+    "class": 1,
+    "disposition": "REPLACED: by a prescription-class taxonomy (simple, controle especial, antimicrobial/retention, notificacao A/B/B2, retinoids, thalidomide) with per-class eligibility gates; the synthetic category stays for rehearsal",
+    "replaced_by_todo": [
+      34
+    ]
+  },
+  {
+    "id": "SD-7",
+    "source_path": "tests/infra/test_module_boundaries.py",
+    "source_lines": "86-105",
+    "class": 2,
+    "disposition": "REPLACED: per stub when its todo lands; the module-boundary pin is updated in the same commit",
+    "replaced_by_todo": [
+      36,
+      43,
+      68
+    ]
+  },
+  {
+    "id": "SD-8a",
+    "source_path": "apps/ehr/README.md",
+    "source_lines": "7-8",
+    "class": 1,
+    "disposition": "SUPERSEDED: autosave is allowed server-side and durable only",
+    "replaced_by_todo": [
+      27
+    ]
+  },
+  {
+    "id": "SD-8b",
+    "source_path": "static/js/ehr-draft.js",
+    "source_lines": "3",
+    "class": 3,
+    "disposition": "PRESERVED: no browser storage of clinical text or audio",
+    "replaced_by_todo": [
+      27,
+      40,
+      50
+    ]
+  },
+  {
+    "id": "SD-9",
+    "source_path": "PRODUCT.md",
+    "source_lines": "108-112",
+    "class": 1,
+    "disposition": "CONDITIONALLY_SUPERSEDED: a Node toolchain (npm, bundler, JS lint) is allowed only under frontend/, for islands, and only if the agenda vertical slice selects them (ADR-001); committed build plus drift CI; the HTMX JS-off baseline is PRESERVED",
+    "replaced_by_todo": [
+      23
+    ]
+  },
+  {
+    "id": "SD-10",
+    "source_path": "docs/clinical/questionnaires.md",
+    "source_lines": "22-23",
+    "class": 1,
+    "disposition": "SUPERSEDED: with declarative, deterministic branching (no expressions, no eval)",
+    "replaced_by_todo": [
+      29
+    ]
+  },
+  {
+    "id": "SD-11",
+    "source_path": "apps/consent/models.py",
+    "source_lines": "40-45",
+    "class": 2,
+    "disposition": "EXTENDED: with a purpose taxonomy (recording, AI processing, messaging, marketing, research)",
+    "replaced_by_todo": [
+      20
+    ]
+  },
+  {
+    "id": "SD-12",
+    "source_path": "docs/integrations/capabilities.md",
+    "source_lines": "63-71",
+    "class": 1,
+    "disposition": "REWRITTEN: in the successor contract's todo (PRODUCT.md and capabilities.md)",
+    "replaced_by_todo": [
+      1
+    ]
+  },
+  {
+    "id": "SD-13",
+    "source_path": "docs/plans/clinic-os-phase1a-approved.md",
+    "source_lines": "1-924",
+    "class": 3,
+    "disposition": "PRESERVED: byte for byte",
+    "replaced_by_todo": [
+      1
+    ]
+  },
+  {
+    "id": "SD-14",
+    "source_path": "docs/compliance/LIVE-DATA-GATE.md",
+    "source_lines": "1-22",
+    "class": 3,
+    "disposition": "PRESERVED: and extended to every new domain",
+    "replaced_by_todo": [
+      5,
+      73,
+      77
+    ]
+  },
+  {
+    "id": "SD-15",
+    "source_path": "docs/plans/clinic-os-renewal-roadmap.md",
+    "source_lines": "60",
+    "class": 1,
+    "disposition": "PRESERVED: as the default (monolith plus a separate ASGI realtime process and workers); revisit triggers documented",
+    "replaced_by_todo": [
+      2
+    ]
+  },
+  {
+    "id": "SD-16",
+    "source_path": "tests/renewal/browser/conftest.py",
+    "source_lines": "61-65",
+    "class": 2,
+    "disposition": "EXTENDED: to Firefox/WebKit and a real-device matrix",
+    "replaced_by_todo": [
+      14
+    ]
+  },
+  {
+    "id": "SD-17",
+    "source_path": "docs/plans/clinic-ops-premium-successor.md",
+    "source_lines": "194-201",
+    "class": 3,
+    "disposition": "ADDED: patient information and right to refuse AI, human decision, AI-use record in the chart, risk classification, support for the clinic's AI and Telemedicine commission",
+    "replaced_by_todo": [
+      3,
+      20,
+      42,
+      47
+    ]
+  }
+]

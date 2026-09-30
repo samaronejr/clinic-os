@@ -1,4 +1,17 @@
-"""Define the closed logical-recovery archive and source-scope contract."""
+"""Define the closed logical-recovery archive and source-scope contract.
+
+Every relation in the ``clinic_app`` schema has exactly one classification:
+
+- ``DOMAIN_RELATIONS``: data restored through the fixed archive manifest;
+- ``SEQUENCE_TARGETS``: sequences restored and advanced past their table;
+- ``REQUIRED_EMPTY``: must hold zero source rows, so nothing is lost;
+- ``TARGET_OWNED_RELATIONS``: excluded, each with its written reason.
+
+Every exclusion names one relation; there are no prefix exclusions, so a
+new relation can never inherit a classification silently.
+``tests/infra/test_recovery_manifest.py`` derives the relation set from the
+live migrated catalog and fails on any relation left unclassified.
+"""
 
 from __future__ import annotations
 
@@ -29,13 +42,23 @@ DOMAIN_RELATIONS: Final = (
     "ehr_historyassessment",
     "ehr_problem",
     "ehr_specialtytemplate",
+    # Tenant authority/history is recovery data, never a framework exclusion.
+    "identity_careteammembership",
     "identity_clinic",
     "identity_clinicconfiguration",
     "identity_organization",
     "identity_physicianevidence",
     "identity_physicianprofile",
+    "identity_professionalregistration",
+    "identity_rolegrant",
+    # User-owned view preferences, including terminal archival, are durable data.
+    "identity_savedview",
+    # Machine principals and grants, revoked history included (todo 7).
+    "identity_serviceprincipal",
+    "identity_serviceprincipalgrant",
     "identity_user",
     "identity_userclinicrole",
+    "identity_userpreference",
     "intake_patient",
     "intake_patientaccessgrant",
     "intake_patientchannelpreference",
@@ -83,14 +106,38 @@ REQUIRED_EMPTY: Final = (
     "identity_user_user_permissions",
     "otp_static_staticdevice",
     "otp_static_statictoken",
+    # Owner-CLI provider decisions: the fixed manifest does not carry them, so
+    # a source holding any is refused before dump instead of losing them.
+    "providers_activationrecord",
+    "providers_capabilityapproval",
+    "providers_healthevent",
     "tenancy_tenantprobe",
 )
-EXCLUDED_PREFIXES: Final = ("auth_",)
+# Platform registry rows seeded by migration ``providers.0001`` under fresh
+# surrogate keys: the target's migrations recreate them, and the rehearsal
+# requires the source registry to equal the target's before any mutation.
+TARGET_SEEDED_RELATIONS: Final = (
+    "providers_capabilityversion",
+    "providers_providercapability",
+)
+TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
+    "audit_event_tenant": "view over audit_event; holds no rows of its own",
+    "auth_group": "framework auth groups; UserClinicRole is the only RBAC authority",
+    "auth_group_permissions": (
+        "framework auth group links; UserClinicRole is the only RBAC authority"
+    ),
+    "auth_permission": "framework auth permissions recreated by target migrations",
+    "django_admin_log": "framework admin log; never recovery scope",
+    "django_content_type": "framework state recreated by target migrations",
+    "django_migrations": "target migration leaf set must equal the source",
+    "django_session": "sessions are never restored; users sign in again",
+    **dict.fromkeys(
+        TARGET_SEEDED_RELATIONS,
+        "platform provider registry seeded by target migrations; not tenant data",
+    ),
+}
 EXCLUDED_RELATIONS: Final = (
-    "django_admin_log",
-    "django_content_type",
-    "django_migrations",
-    "django_session",
+    *TARGET_OWNED_RELATIONS,
     *REQUIRED_EMPTY,
 )
 POSTGRES_VERSION: Final = "16.14"

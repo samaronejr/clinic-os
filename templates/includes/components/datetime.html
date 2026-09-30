@@ -1,0 +1,50 @@
+{% load i18n %}{% comment %}
+Date and time picker in pt-BR, bound to the clinic's time zone.
+Native baseline: two text inputs (DD/MM/AAAA and HH:MM, 24 h) the server
+parses and validates in the clinic zone; the calendar is an enhancement from
+static/js/components/datetime.js (arrow keys by day/week, PageUp/PageDown by
+month, Home/End for the week, Enter picks, Escape closes and returns focus).
+"Today" is computed in data-timezone, never the device zone.
+
+Context:
+  id              Base id (required): "<id>-date", "<id>-time", "<id>-calendar".
+  name            Base field name (required): "<name>_date", "<name>_time".
+  legend          Group label (required).
+  date_value      DD/MM/AAAA text.
+  time_value      HH:MM text.
+  timezone        Clinic IANA zone (required), e.g. America/Sao_Paulo.
+  timezone_label  Human label for the zone line.
+  min / max       ISO dates (YYYY-MM-DD) bounding the calendar.
+  state           SC-8 state.
+  message         Error or state text.
+  open            True renders the calendar open (showcase).
+{% endcomment %}<fieldset class="datetime" data-datetime data-timezone="{{ timezone }}"{% if min %} data-min="{{ min }}"{% endif %}{% if max %} data-max="{{ max }}"{% endif %}{% if open %} data-datetime-open{% endif %}{% if state == "loading" %} aria-busy="true"{% endif %}{% if state == "disabled" or state == "permission-denied" %} disabled{% endif %}>
+  <legend>{{ legend }}</legend>
+  <div class="datetime-row">
+    <div class="field{% if state == "error" %} field--error{% elif state == "success" %} field--success{% endif %}">
+      <label for="{{ id }}-date">{% trans "Date" %}</label>
+      <div class="datetime-control">
+        <input id="{{ id }}-date" name="{{ name }}_date" type="text" inputmode="numeric" autocomplete="off" placeholder="{% trans "DD/MM/YYYY" %}"{% if date_value %} value="{{ date_value }}"{% endif %} aria-describedby="{{ id }}-zone{% if message %} {{ id }}-message{% endif %}"{% if state == "error" %} aria-invalid="true"{% endif %} class="{% if state == "hover" %}is-hover{% elif state == "focus" %}is-focus{% endif %}" data-datetime-date>
+        <button type="button" class="button--secondary datetime-open{% if state == "active" %} is-active{% endif %}" aria-haspopup="dialog" aria-expanded="{% if open %}true{% else %}false{% endif %}" aria-controls="{{ id }}-calendar" data-datetime-toggle hidden>{% include "includes/components/icon.html" with name="calendar" only %}<span class="visually-hidden">{% trans "Choose date" %}</span></button>
+      </div>
+    </div>
+    <div class="field{% if state == "error" %} field--error{% endif %}">
+      <label for="{{ id }}-time">{% trans "Time" %}</label>
+      <input id="{{ id }}-time" name="{{ name }}_time" type="text" inputmode="numeric" autocomplete="off" placeholder="{% trans "HH:MM" %}"{% if time_value %} value="{{ time_value }}"{% endif %} aria-describedby="{{ id }}-zone">
+    </div>
+  </div>
+  <p class="datetime-zone" id="{{ id }}-zone">{% blocktrans with zone=timezone_label|default:timezone %}Clinic time: {{ zone }}. 24-hour clock.{% endblocktrans %}</p>
+  {% if message %}<p class="{% if state == "error" %}field-error{% elif state == "success" %}field-success{% else %}hint{% endif %}" id="{{ id }}-message"{% if state == "error" %} role="alert"{% endif %}>{{ message }}</p>{% endif %}
+  {% if state == "loading" or state == "stale" or state == "conflict" or state == "offline" or state == "permission-denied" or state == "empty" %}{% include "includes/components/state.html" with state=state only %}{% endif %}
+  <div class="datetime-calendar" id="{{ id }}-calendar" role="dialog" aria-modal="false" aria-labelledby="{{ id }}-month" hidden data-datetime-calendar>
+    <div class="datetime-calendar-header">
+      <button type="button" class="button--quiet" data-datetime-prev>{% include "includes/components/icon.html" with name="chevron-left" only %}<span class="visually-hidden">{% trans "Previous month" %}</span></button>
+      <h3 class="datetime-month" id="{{ id }}-month" aria-live="polite" data-datetime-month></h3>
+      <button type="button" class="button--quiet" data-datetime-next>{% include "includes/components/icon.html" with name="chevron-right" only %}<span class="visually-hidden">{% trans "Next month" %}</span></button>
+    </div>
+    <table class="datetime-grid" role="grid" aria-labelledby="{{ id }}-month">
+      <thead><tr><th scope="col" abbr="{% trans "Sunday" %}">{% trans "Sun" %}</th><th scope="col" abbr="{% trans "Monday" %}">{% trans "Mon" %}</th><th scope="col" abbr="{% trans "Tuesday" %}">{% trans "Tue" %}</th><th scope="col" abbr="{% trans "Wednesday" %}">{% trans "Wed" %}</th><th scope="col" abbr="{% trans "Thursday" %}">{% trans "Thu" %}</th><th scope="col" abbr="{% trans "Friday" %}">{% trans "Fri" %}</th><th scope="col" abbr="{% trans "Saturday" %}">{% trans "Sat" %}</th></tr></thead>
+      <tbody data-datetime-days></tbody>
+    </table>
+  </div>
+</fieldset>

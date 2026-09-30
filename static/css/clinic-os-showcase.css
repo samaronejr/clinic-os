@@ -35,6 +35,10 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 }
 
+.spec-grid--wide {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+}
+
 .spec-grid--stack {
   grid-template-columns: 1fr;
 }
@@ -72,6 +76,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* The active date specimen keeps its calendar popover open; below 22.5rem the
+   popover overlays, so reserve its height inside the specimen. */
+@media (max-width: 22.49rem) {
+  [data-primitive="datetime"][data-state="active"] {
+    padding-block-end: calc(var(--control-height) * 8);
+  }
 }
 
 @media (forced-colors: active) {

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Display preferences · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Choose the theme and density of your Clinic OS workspace." %}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="preferences-title">
+  <h1 id="preferences-title">{% trans "Display preferences" %}</h1>
+  <p class="lede">{% trans "These apply to your account on every device. Other people's screens do not change." %}</p>
+  {% if form.errors %}
+    <div class="feedback feedback--error" id="preferences-errors" role="alert" tabindex="-1" autofocus data-focus-error>
+      <h2>{% trans "We could not save your preferences" %}</h2>
+      <ul>{% for field in form %}{% for error in field.errors %}<li><a href="#preferences-{{ field.name }}">{{ error }}</a></li>{% endfor %}{% endfor %}</ul>
+    </div>
+  {% elif saved %}
+    <div class="feedback feedback--success" id="preferences-saved" role="status" tabindex="-1" autofocus>
+      <h2>{% trans "Preferences saved" %}</h2>
+      <p>{% trans "The workspace now uses your choices." %}</p>
+    </div>
+  {% endif %}
+  <form class="panel" method="post" action="{% url 'identity:preferences' %}" novalidate>
+    {% csrf_token %}
+    <div class="field">
+      {% trans "Theme" as theme_legend %}
+      {% trans "Dark uses navy surfaces for low-light rooms." as theme_hint %}
+      {% if form.theme.errors %}{% include "includes/components/segmented.html" with id="preferences-theme" name="theme" legend=theme_legend options=theme_options value=current.theme hint=theme_hint state="error" message=form.theme.errors.0 %}{% else %}{% include "includes/components/segmented.html" with id="preferences-theme" name="theme" legend=theme_legend options=theme_options value=current.theme hint=theme_hint %}{% endif %}
+    </div>
+    <div class="field">
+      {% trans "Density" as density_legend %}
+      {% trans "Compact tightens spacing in tables and panels; buttons keep their size." as density_hint %}
+      {% if form.density.errors %}{% include "includes/components/segmented.html" with id="preferences-density" name="density" legend=density_legend options=density_options value=current.density hint=density_hint state="error" message=form.density.errors.0 %}{% else %}{% include "includes/components/segmented.html" with id="preferences-density" name="density" legend=density_legend options=density_options value=current.density hint=density_hint %}{% endif %}
+    </div>
+    <div class="actions">
+      <button type="submit">{% trans "Save preferences" %}</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

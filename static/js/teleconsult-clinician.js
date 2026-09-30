@@ -806,6 +806,10 @@
 
   layout();
   syncNotes();
+  /* The room follows the session from the start: an unanswered camera or
+     microphone prompt (getUserMedia can stay pending indefinitely) must not
+     hold back the connection, the session state or the patient's presence. */
   setConnection("requesting");
-  startMedia().then(connect);
+  startMedia();
+  connect();
 })();

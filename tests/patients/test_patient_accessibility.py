@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import re
+from datetime import date
 from typing import TYPE_CHECKING, Final
 
 import pytest
+from apps.intake.models import Patient, PatientClinicEnrollment
+from apps.tenancy.db import tenant_context
 from django.contrib.staticfiles import finders
+from django.middleware.csrf import (
+    CSRF_ALLOWED_CHARS,
+    CSRF_SECRET_LENGTH,
+    CSRF_TOKEN_LENGTH,
+)
+from django.utils.formats import date_format
 from django.utils.translation import gettext
 
 from accessible_document import Document
@@ -16,14 +26,55 @@ from patient_http_support import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 SEEDED: Final = tuple(f"Marina Synthetic P{index:03d}" for index in range(30))
+# Mirror of patient_http_support.seed_patients birth dates (days 1-27 of
+# January 1990): asserted against the rows actually read back so the leak
+# checks can never pass on an empty or drifted fixture set.
+EXPECTED_SEEDED_BIRTH_DATES: Final = frozenset(
+    date(1990, 1, day) for day in range(1, 28)
+)
+CSRF_TOKEN_PATTERN: Final = re.compile(r'name="csrfmiddlewaretoken" value="([^"]+)"')
+ENROLLMENT_INPUT_PATTERN: Final = re.compile(r'name="enrollment_id" value="([^"]+)"')
 
 
-def _search_page(graph: RbacGraph) -> bytes:
+def _unmask_csrf_token(token: str) -> str:
+    """Mirror django.middleware.csrf._unmask_cipher_token (not stubbed).
+
+    django-stubs exposes the length/charset constants but not the unmask
+    helper, so the identical algorithm is repeated here: the first half is
+    a mask applied character-wise over CSRF_ALLOWED_CHARS.
+    """
+    mask, cipher = token[:CSRF_SECRET_LENGTH], token[CSRF_SECRET_LENGTH:]
+    pairs = zip(
+        (CSRF_ALLOWED_CHARS.index(x) for x in cipher),
+        (CSRF_ALLOWED_CHARS.index(x) for x in mask),
+        strict=True,
+    )
+    return "".join(CSRF_ALLOWED_CHARS[x - y] for x, y in pairs)
+
+
+def _without_known_identifiers(text: str, identifiers: Iterable[str]) -> str:
+    """Blank only the exact identifier values this page legitimately renders.
+
+    Exemption is by literal value, never by shape: a birth year spliced into
+    a UUID-shaped string must still be caught, so pattern scrubbing is
+    forbidden (hosted CI run 36091656875 showed real UUIDs can contain the
+    year).
+    """
+    scrubbed = text
+    for identifier in identifiers:
+        scrubbed = scrubbed.replace(identifier, "")
+    return scrubbed
+
+
+def _search_page(graph: RbacGraph) -> tuple[bytes, str]:
+    """Post the seeded search and return the body plus the CSRF cookie secret."""
     client, receptionist = receptionist_client(graph)
     seed_patients(graph, receptionist.pk, graph.clinic_a, SEEDED)
     with runtime_role():
@@ -32,7 +83,14 @@ def _search_page(graph: RbacGraph) -> bytes:
             {"q": "Marina", "page": "1"},
         )
     assert response.status_code == 200
-    return response.content
+    csrf_cookie = client.cookies.get("csrftoken")
+    assert csrf_cookie is not None
+    csrf_secret = csrf_cookie.value
+    if len(csrf_secret) == CSRF_TOKEN_LENGTH:
+        # Django <4.0 masked the secret before storing it in the cookie.
+        csrf_secret = _unmask_csrf_token(csrf_secret)
+    assert len(csrf_secret) == CSRF_SECRET_LENGTH
+    return response.content, csrf_secret
 
 
 def test_blank_search_screen_meets_the_dom_accessibility_contract(
@@ -57,7 +115,7 @@ def test_blank_search_screen_meets_the_dom_accessibility_contract(
 def test_search_results_expose_an_accessible_table_and_pagination(
     rbac_graph: RbacGraph,
 ) -> None:
-    content = _search_page(rbac_graph)
+    content, csrf_secret = _search_page(rbac_graph)
     document = Document(content)
 
     document.assert_unique_identifiers()
@@ -86,12 +144,99 @@ def test_search_results_expose_an_accessible_table_and_pagination(
         "columnheader",
         "rowheader",
     }
-    # Birth dates are table cells only: never status text, labels or attributes.
-    assert b"1990" not in content.split(b"<tbody")[0]
+    # Birth dates are table cells only: never status text, labels or
+    # attributes. Check the seeded patients' birth year plus every rendered
+    # date format. The year check sees text with only the page's known
+    # opaque identifiers removed; the rendered-date checks see raw text.
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        birth_dates = list(
+            Patient.objects.filter(
+                organization_id=rbac_graph.organization_a
+            ).values_list("birth_date", flat=True)
+        )
+        enrollment_ids = [
+            str(enrollment_id)
+            for enrollment_id in PatientClinicEnrollment.objects.filter(
+                clinic_id=rbac_graph.clinic_a
+            ).values_list("id", flat=True)
+        ]
+    assert birth_dates
+    assert set(birth_dates) >= EXPECTED_SEEDED_BIRTH_DATES
+    expected_years = {item.year for item in EXPECTED_SEEDED_BIRTH_DATES}
+    assert {item.year for item in birth_dates} == expected_years
+    birth_years = {str(year) for year in expected_years}
+    rendered_dates = {
+        rendered
+        for birth_date in birth_dates
+        for rendered in (
+            birth_date.isoformat(),
+            date_format(birth_date, "DATE_FORMAT"),
+            date_format(birth_date, "SHORT_DATE_FORMAT"),
+        )
+    }
+    # Exempt only literal opaque values known to this page: the rendered
+    # enrollment UUIDs (provenance-checked against the seeded rows, since
+    # page 1 shows only a page-size subset), the clinic UUID in URLs, and
+    # this response's CSRF tokens. Patient UUIDs are never rendered, so
+    # they are not exempted: every exempted value must actually occur,
+    # which also keeps the exemption list from silently growing.
+    text = content.decode()
+    # A csrfmiddlewaretoken value is trusted only with independent
+    # provenance: it must be a well-formed masked token that unmasks to
+    # this client's csrftoken cookie secret. Anything else rendered in a
+    # csrf input stays page text, so a leaked birth date there still fails.
+    trusted_csrf = {
+        candidate
+        for candidate in CSRF_TOKEN_PATTERN.findall(text)
+        if len(candidate) == CSRF_TOKEN_LENGTH
+        and set(candidate) <= set(CSRF_ALLOWED_CHARS)
+        and _unmask_csrf_token(candidate) == csrf_secret
+    }
+    assert trusted_csrf
+    rendered_enrollments = set(ENROLLMENT_INPUT_PATTERN.findall(text))
+    assert len(enrollment_ids) == len(SEEDED)
+    assert rendered_enrollments
+    assert rendered_enrollments <= set(enrollment_ids)
+    known_identifiers = {
+        str(rbac_graph.clinic_a),
+        *rendered_enrollments,
+        *trusted_csrf,
+    }
+    assert known_identifiers
+    assert not [
+        identifier for identifier in known_identifiers if identifier not in text
+    ]
+    # An exempted value must be an opaque identifier, never a birth date:
+    # otherwise a leaked date could blanket-mask itself across the page.
+    assert not [
+        identifier
+        for identifier in known_identifiers
+        if any(rendered in identifier for rendered in rendered_dates)
+    ]
+    header = _without_known_identifiers(text.split("<tbody")[0], known_identifiers)
+    raw_header = text.split("<tbody")[0]
+    assert not [year for year in birth_years if year in header]
+    assert not [rendered for rendered in rendered_dates if rendered in raw_header]
     assert not [
         attributes
         for _tag, attributes in document.elements
-        if any("1990" in (value or "") for value in attributes.values())
+        if any(
+            year in _without_known_identifiers(value or "", known_identifiers)
+            for year in birth_years
+            for value in attributes.values()
+        )
+    ]
+    assert not [
+        attributes
+        for _tag, attributes in document.elements
+        if any(
+            rendered in (value or "")
+            for rendered in rendered_dates
+            for value in attributes.values()
+        )
     ]
     pagination = [
         item

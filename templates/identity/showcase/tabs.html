@@ -1,0 +1,6 @@
+{% load i18n showcase %}{% showcase_fixture "tabs" as tabs %}{% trans "Patient record sections" as label %}
+{% if state == "disabled" %}{% showcase_fixture "tabs_disabled" as disabled_tabs %}{% include "includes/components/tabs.html" with id=sid label=label tabs=disabled_tabs forced=state %}{% else %}{% include "includes/components/tabs.html" with id=sid label=label tabs=tabs forced=state %}{% endif %}
+<section class="tab-panel" id="{{ sid }}-overview" data-tab-panel>{% if state == "loading" or state == "error" or state == "empty" or state == "stale" or state == "conflict" or state == "permission-denied" or state == "offline" or state == "success" %}{% include "includes/components/state.html" with state=state only %}{% else %}<p>{% trans "Overview of the synthetic patient: next visit on 04/03/2031." %}</p>{% endif %}</section>
+<section class="tab-panel" id="{{ sid }}-timeline" data-tab-panel><p>{% trans "Twelve synthetic events." %}</p></section>
+<section class="tab-panel" id="{{ sid }}-results" data-tab-panel><p>{% trans "Three synthetic results." %}</p></section>
+{% if state != "disabled" %}<section class="tab-panel" id="{{ sid }}-documents" data-tab-panel><p>{% trans "No documents yet." %}</p></section>{% endif %}

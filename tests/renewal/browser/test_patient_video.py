@@ -1,9 +1,10 @@
 """Patient waiting room and room surface with real synthetic media devices.
 
-The suite launches its own Chromium with ``--use-fake-device-for-media-stream``
-so ``getUserMedia`` returns real synthetic tracks; permission is granted per
-context through the browser's own permission model and denied by leaving it
-ungranted. Connection loss is the browser's real offline emulation, session
+The suite launches its own runner-selected engine with synthetic media
+devices (``engines.install_media``: Chromium's fake capture devices behind its
+real permission model; on Firefox/WebKit, live synthetic tracks behind a
+context-level permission). Permission is granted per context and denied by
+leaving it ungranted. Connection loss is the browser's real offline emulation, session
 expiry is a stored-row change and the ended room is the physician's real end
 action. No provider SDK exists; the surface is the synthetic capability slice.
 """
@@ -11,7 +12,6 @@ action. No provider SDK exists; the surface is the synthetic capability slice.
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -20,6 +20,18 @@ import psycopg
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
+from renewal.browser._page_wait import evaluate_js, wait_for_js
+from renewal.browser.engines import (
+    END_TRACK_JS,
+    displays_clipped_video,
+    full_page_screenshot,
+    grant_media,
+    install_media,
+    launch_selected,
+    media_source,
+    watch_page_errors,
+)
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_patient_access import _redeem
 from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
@@ -43,11 +55,6 @@ __all__ = ("availability_staff",)
 TIMEOUT_MS = 20_000
 FORBIDDEN = 403
 CONFLICT = 409
-MEDIA_ARGS = (
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--use-fake-device-for-media-stream",
-)
 PATIENT_PATH = "/patient/teleconsult/"
 TRACK_JS = """(kind) => {
   const video = document.querySelector('[data-self-video]');
@@ -57,22 +64,31 @@ TRACK_JS = """(kind) => {
   if (!tracks.length) return null;
   return {enabled: tracks[0].enabled, state: tracks[0].readyState};
 }"""
-END_TRACK_JS = """() => {
-  const stream = document.querySelector('[data-self-video]').srcObject;
-  stream.getAudioTracks()[0].dispatchEvent(new Event('ended'));
-}"""
 # Holds the next getUserMedia open until the test releases it, then answers
 # with the real synthetic stream so a late resolution is observable.
+# Patched on the prototype: WebKit ignores an own-property override on the
+# navigator.mediaDevices instance.
 STALL_MEDIA_JS = """() => {
-  const devices = navigator.mediaDevices;
-  const real = devices.getUserMedia.bind(devices);
+  const proto = MediaDevices.prototype;
+  const real = proto.getUserMedia;
   window.__lateMedia = {release: null, stream: null};
-  devices.getUserMedia = (constraints) => new Promise((resolve, reject) => {
-    window.__lateMedia.release = () => real(constraints).then((stream) => {
-      window.__lateMedia.stream = stream;
-      resolve(stream);
-    }, reject);
-  });
+  proto.getUserMedia = function (constraints) {
+    return new Promise((resolve, reject) => {
+      window.__lateMedia.release = () => real.call(this, constraints).then((stream) => {
+        window.__lateMedia.stream = stream;
+        resolve(stream);
+      }, reject);
+    });
+  };
+}"""
+# The same hold from document start: every getUserMedia stays open, as while
+# the patient has not answered the browser's camera/microphone prompt yet.
+PENDING_PROMPT_JS = f"({STALL_MEDIA_JS})()"
+PLAYING_CAMERA_JS = """(selector) => {
+  const video = document.querySelector(selector);
+  const stream = video && video.srcObject;
+  const track = stream && stream.getVideoTracks()[0];
+  return Boolean(track) && track.readyState === 'live' && !video.paused;
 }"""
 LATE_TRACKS_JS = """() => {
   const stream = window.__lateMedia.stream;
@@ -100,23 +116,22 @@ class _Case:
 
 
 def _capture(page: Page, case: _Case, state: str) -> None:
-    page.screenshot(path=str(case.root / f"{state}-{case.width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, case.root / f"{state}-{case.width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _context(browser: Browser, case: _Case, *, media: bool) -> BrowserContext:
     context = browser.new_context(
         locale="pt-BR", viewport={"width": case.width, "height": 900}
     )
-    if media:
-        context.grant_permissions(["camera", "microphone"], origin=case.base)
+    install_media(context, case.base, granted=media)
     return context
 
 
 def _page(context: BrowserContext, errors: list[str], console: list[str]) -> Page:
     page = context.new_page()
     page.set_default_timeout(TIMEOUT_MS)
-    page.on("pageerror", lambda error: errors.append(str(error)))
+    watch_page_errors(page, errors)
     page.on(
         "console",
         lambda message: (
@@ -129,18 +144,17 @@ def _page(context: BrowserContext, errors: list[str], console: list[str]) -> Pag
 def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
     """Open the encounter, create the session and provision its room."""
     _open_encounter(physician, case.base, case.staff, case.day, data["appointment"])
-    physician.goto(case.staff_url)
+    goto_settled(physician, case.staff_url)
     session_id = _create_session(physician, case.staff_url)
     _worker(_room_operation(case.staff, session_id), "sent", case.root)
     return session_id
 
 
 def _staff_action(physician: Page, case: _Case, session_id: str, action: str) -> None:
-    physician.goto(case.staff_url)
-    with physician.expect_navigation():
-        physician.locator(
-            f'[data-session="{session_id}"] button[value="{action}"]'
-        ).click()
+    goto_settled(physician, case.staff_url)
+    click_to_navigate(
+        physician.locator(f'[data-session="{session_id}"] button[value="{action}"]')
+    )
 
 
 def _expire_patient_session(case: _Case, patient_id: str) -> None:
@@ -190,6 +204,21 @@ def _assert_status_request(case: _Case, requests: list[dict[str, str]]) -> None:
         assert 'name="session_id"' in request["body"]
 
 
+def _camera_frame(page: Page, selector: str) -> None:
+    """The synthetic camera reaches the clipped video element.
+
+    HAVE_CURRENT_DATA (a painted first frame) wherever the engine displays
+    clipped video; on WebKit, which never does (engines.displays_clipped_video),
+    the element must be playing a live camera track.
+    """
+    if displays_clipped_video(page.context):
+        wait_for_js(
+            page, "(s) => document.querySelector(s).readyState >= 2", arg=selector
+        )
+    else:
+        wait_for_js(page, PLAYING_CAMERA_JS, arg=selector)
+
+
 def _check_devices(patient: Page, case: _Case) -> None:
     """Explicit device test: idle, ready with a live preview, then released."""
     panel = patient.locator("[data-device-check]")
@@ -204,10 +233,7 @@ def _check_devices(patient: Page, case: _Case) -> None:
     expect(patient.locator('[data-device="microphone"]')).to_have_text("Pronto")
     expect(patient.locator("[data-device-status]")).to_be_focused()
     expect(patient.locator("[data-preview-video]")).to_be_visible()
-    # HAVE_CURRENT_DATA: the synthetic camera has painted its first frame.
-    patient.wait_for_function(
-        "() => document.querySelector('[data-preview-video]').readyState >= 2"
-    )
+    _camera_frame(patient, "[data-preview-video]")
     _capture(patient, case, "waiting-ready")
     patient.locator("[data-device-stop]").click()
     expect(panel).to_have_attribute("data-device-state", "idle")
@@ -217,8 +243,7 @@ def _check_devices(patient: Page, case: _Case) -> None:
 
 
 def _enter_room(patient: Page, case: _Case, session_id: str) -> None:
-    with patient.expect_navigation():
-        patient.locator('button[value="join"]').click()
+    click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-role", "patient")
     expect(patient.locator("#room-name")).to_contain_text(f"tc-{session_id}")
@@ -229,9 +254,7 @@ def _enter_room(patient: Page, case: _Case, session_id: str) -> None:
     )
     assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
     assert patient.evaluate(TRACK_JS, "video") == {"enabled": True, "state": "live"}
-    patient.wait_for_function(
-        "() => document.querySelector('[data-self-video]').readyState >= 2"
-    )
+    _camera_frame(patient, "[data-self-video]")
     _capture(patient, case, "room-connected")
 
 
@@ -308,7 +331,7 @@ def _stall_media_retry(patient: Page) -> None:
     patient.evaluate(STALL_MEDIA_JS)
     patient.locator("[data-retry-media]").click()
     expect(panel).to_have_attribute("data-media", "pending")
-    patient.wait_for_function("() => window.__lateMedia.release !== null")
+    wait_for_js(patient, "() => window.__lateMedia.release !== null")
 
 
 def _assert_late_media_dropped(patient: Page, state: str) -> None:
@@ -317,9 +340,10 @@ def _assert_late_media_dropped(patient: Page, state: str) -> None:
     expect(panel).to_have_attribute("data-connection", state)
     expect(panel).to_have_attribute("data-media", "off")
     patient.evaluate("() => window.__lateMedia.release()")
-    patient.wait_for_function(
+    wait_for_js(
+        patient,
         "() => { const s = window.__lateMedia.stream;"
-        " return s !== null && s.getTracks().every((t) => t.readyState === 'ended'); }"
+        " return s !== null && s.getTracks().every((t) => t.readyState === 'ended'); }",
     )
     assert patient.evaluate(LATE_TRACKS_JS) == ["ended", "ended"]
     expect(panel).to_have_attribute("data-media", "off")
@@ -351,8 +375,7 @@ def _ended_room(patient: Page, physician: Page, case: _Case, session_id: str) ->
     assert patient.evaluate(TRACK_JS, "audio") is None
     _assert_late_media_dropped(patient, "ended")
     _capture(patient, case, "room-ended")
-    with patient.expect_navigation():
-        patient.locator("[data-back]").click()
+    click_to_navigate(patient.locator("[data-back]"))
     expect(patient.locator("h1")).to_have_text("Sala de espera")
     expect(patient.locator("#empty-title")).to_be_visible()
     row = patient.locator(f'.tele-history-item[data-session="{session_id}"]')
@@ -388,7 +411,7 @@ def _happy_path(
             else None
         ),
     )
-    patient.goto(case.patient_url)
+    goto_settled(patient, case.patient_url)
     expect(patient.locator("h1")).to_have_text("Sala de espera")
     expect(patient.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "waiting"
@@ -435,7 +458,7 @@ def _reconnect_while_denied(denied: Page, case: _Case) -> None:
 
 def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) -> None:
     """Denied devices are explained, recoverable, then the session expires."""
-    denied.goto(case.patient_url)
+    goto_settled(denied, case.patient_url)
     panel = denied.locator("[data-device-check]")
     denied.locator("[data-device-test]").click()
     expect(panel).to_have_attribute("data-device-state", "denied")
@@ -447,8 +470,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     expect(denied.locator('[data-device="camera"]')).to_have_text("Permissão negada")
     expect(denied.locator('button[value="join"]')).to_be_enabled()
     _capture(denied, case, "waiting-denied")
-    with denied.expect_navigation():
-        denied.locator('button[value="join"]').click()
+    click_to_navigate(denied.locator('button[value="join"]'))
     room = denied.locator("#room-panel")
     expect(room).to_have_attribute("data-media", "denied")
     expect(room).to_have_attribute("data-connection", "connected")
@@ -463,7 +485,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     _reconnect_while_denied(denied, case)
     # The patient fixes the browser permission and retries without leaving.
     room_error = denied.locator("[data-room-error]")
-    denied.context.grant_permissions(["camera", "microphone"], origin=case.base)
+    grant_media(denied.context, case.base)
     denied.locator("[data-retry-media]").click()
     expect(room).to_have_attribute("data-media", "ready")
     expect(room_error).to_be_hidden()
@@ -478,8 +500,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     assert denied.evaluate(TRACK_JS, "audio") is None
     _assert_late_media_dropped(denied, "expired")
     _capture(denied, case, "room-expired")
-    with denied.expect_navigation():
-        denied.locator("[data-portal]").click()
+    click_to_navigate(denied.locator("[data-portal]"))
     expect(denied.locator("h1")).to_have_text("Acesso necessário")
     _capture(denied, case, "gate-expired")
     assert (
@@ -488,6 +509,30 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
         )
         == FORBIDDEN
     )
+
+
+def _unanswered_prompt(patient: Page, case: _Case, session_id: str) -> None:
+    """The room connects and follows the session while the prompt is open."""
+    goto_settled(patient, case.patient_url)
+    click_to_navigate(
+        patient.locator(
+            f'form:has(input[name="session_id"][value="{session_id}"]) '
+            'button[value="join"]'
+        )
+    )
+    panel = patient.locator("#room-panel")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    expect(panel).to_have_attribute("data-media", "pending")
+    expect(patient.locator("[data-connection-status]")).to_contain_text(
+        "Aguardando o médico"
+    )
+    # Answering the prompt later brings the devices into the same room.
+    wait_for_js(patient, "() => window.__lateMedia.release !== null")
+    patient.evaluate("() => window.__lateMedia.release()")
+    expect(panel).to_have_attribute("data-media", "ready")
+    expect(panel).to_have_attribute("data-connection", "connected")
+    assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
+    _capture(patient, case, "room-prompt-answered")
 
 
 def _assert_served_script_is_local_only(patient: Page, case: _Case) -> None:
@@ -524,18 +569,18 @@ def test_patient_video_journey(
     console: list[str] = []
     data = _seed(case.staff, case.day, 9)
     second = _seed(case.staff, case.day, 11)
+    third = _seed(case.staff, case.day, 13)
     with sync_playwright() as driver:
-        browser = driver.chromium.launch(
-            executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
-            args=list(MEDIA_ARGS),
-        )
+        browser = launch_selected(driver, media=True)
         contexts = [
             _context(browser, case, media=False),
             _context(browser, case, media=False),
             _context(browser, case, media=True),
             _context(browser, case, media=False),
+            _context(browser, case, media=True),
         ]
-        physician, admin, patient, denied = [
+        contexts[4].add_init_script(PENDING_PROMPT_JS)
+        physician, admin, patient, denied, prompted = [
             _page(context, errors, console) for context in contexts
         ]
         try:
@@ -551,10 +596,13 @@ def test_patient_video_journey(
             _accept_consent(denied, base)
             second_session = _provision(physician, case, second)
             _denied_path(denied, case, second_session, second["patient"])
+            _redeem(prompted, base, case.staff["clinic_a"], third["code"])
+            _accept_consent(prompted, base)
+            _unanswered_prompt(prompted, case, _provision(physician, case, third))
             if width == 375:
                 patient.set_viewport_size({"width": 320, "height": 900})
                 patient.emulate_media(forced_colors="active", reduced_motion="reduce")
-                patient.goto(case.patient_url)
+                goto_settled(patient, case.patient_url)
                 _capture(patient, case, "waiting-reflow-forced-colors")
             assert not errors, errors
             unexpected = [
@@ -571,7 +619,7 @@ def test_patient_video_journey(
                         "status_polls": len(requests),
                         "ended_join_status": CONFLICT,
                         "expired_join_status": FORBIDDEN,
-                        "media": "chromium --use-fake-device-for-media-stream",
+                        "media": media_source(patient.context),
                         "permissions": "granted per context; denied by omission",
                         "offline": "BrowserContext.set_offline",
                         "real_provider": "waiting_external",

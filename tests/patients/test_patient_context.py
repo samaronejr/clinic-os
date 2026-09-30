@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from apps.identity.models import User, UserClinicRole
-from apps.tenancy.db import tenant_context
+from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.db import connection, transaction
 
 from patient_service_support import runtime_role
@@ -64,15 +64,23 @@ def test_create_denies_inactive_missing_and_malformed_actors(
     User.objects.filter(pk=rbac_graph.shared_user).update(is_active=False)
     with (
         runtime_role(),
+        pytest.raises(TenantAccessDeniedError),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
-        pytest.raises(access_error, match="patient access denied"),
     ):
-        create_patient(
-            clinic_id=rbac_graph.clinic_a,
-            full_name="Ana Synthetic",
-            birth_date=date(2000, 1, 2),
-            idempotency_key=uuid4(),
+        pass
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_user_id', %s, true), "
+            "pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.shared_user), str(rbac_graph.organization_a)],
         )
+        with pytest.raises(access_error, match="patient access denied"):
+            create_patient(
+                clinic_id=rbac_graph.clinic_a,
+                full_name="Ana Synthetic",
+                birth_date=date(2000, 1, 2),
+                idempotency_key=uuid4(),
+            )
 
     with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(

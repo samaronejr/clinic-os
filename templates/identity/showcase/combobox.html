@@ -1,0 +1,10 @@
+{% load i18n showcase %}{% showcase_fixture "patient_options" as options %}{% showcase_fixture "patient_selection" as chosen %}{% trans "Patient" as label %}{% trans "Search by full name or CPF; results show age and masked CPF." as hint %}
+{% if state == "default" or state == "hover" or state == "active" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Ana" expanded=True state=state %}
+{% elif state == "focus" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Ana" state=state %}
+{% elif state == "disabled" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=_("Choose the clinic first.") options=options state=state %}
+{% elif state == "loading" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Ana Rib" state=state status=_("Searching…") %}
+{% elif state == "error" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Ana Rib" state=state status=_("Search failed. Try again.") %}
+{% elif state == "success" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Ana Ribeiro Sintética" state=state selection=chosen %}
+{% elif state == "empty" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Zuleica" state=state status=_("No matches. Check the spelling or search by another term.") %}
+{% elif state == "permission-denied" %}{% include "includes/components/combobox.html" with id=sid name=sid label=label options=options state=state %}{% include "includes/components/state.html" with state=state message=_("Your role cannot search the patient registry.") only %}
+{% else %}{% include "includes/components/combobox.html" with id=sid name=sid label=label hint=hint options=options value="Ana Ribeiro Sintética" selection=chosen state=state %}{% include "includes/components/state.html" with state=state only %}{% endif %}

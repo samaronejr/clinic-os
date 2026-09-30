@@ -1,15 +1,20 @@
 """Synchronous request tenant transaction boundary."""
 
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import Final
 from uuid import UUID
 
 from django.contrib.auth import SESSION_KEY
-from django.db import transaction
+from django.db import connection, transaction
 from django.http import HttpRequest
 from django.http.response import HttpResponseBase
 from django.shortcuts import render
 
+from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
+from apps.core.patient_context import persist_bound_patient_context
+from apps.core.workspace import finish_clinic_selection
+from apps.core.workspace_access import workspace_denial
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     patient_session_context,
@@ -28,10 +33,15 @@ BYPASS_PATHS: Final = frozenset(
         "/readyz",
         "/readyz/",
         "/auth/login/",
+        # Sessionless ops scrape endpoint; authenticates with its own bearer
+        # token plus a network allowlist (D-19, apps.core.telemetry).
+        "/internal/metrics",
+        "/internal/metrics/",
     }
 )
 BYPASS_PREFIXES: Final = (
     "/static/",
+    "/rt/",  # Ticket endpoint owns a short, independently authenticated txn.
     "/prescription/signing/callback/",
     "/prescription/verify/",
 )
@@ -46,6 +56,13 @@ class TenantStreamingResponseError(RuntimeError):
     def __init__(self) -> None:
         """Expose the unsupported streaming contract."""
         super().__init__("streaming tenant responses are not supported")
+
+
+def _staff_denial(request: HttpRequest) -> HttpResponseBase:
+    """Refuse one staff request; the UI API keeps its JSON error contract."""
+    if request.path_info.startswith(UI_API_PREFIX):
+        return ui_api_denial_response()
+    return render(request, "403.html", status=403)
 
 
 def _parse_uuid(raw_value: str | None) -> UUID | None:
@@ -68,6 +85,16 @@ class TenantMiddleware:
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest) -> HttpResponseBase:
+        """Commit clinic selection only after the response and transaction succeed."""
+        accepted = False
+        try:
+            response = self._response(request)
+            accepted = response.status_code < HTTPStatus.BAD_REQUEST
+            return response
+        finally:
+            finish_clinic_selection(request, accepted=accepted)
+
+    def _response(self, request: HttpRequest) -> HttpResponseBase:
         """Validate signed session identifiers and execute the full response chain."""
         path = request.path_info
         if path in BYPASS_PATHS or path.startswith(
@@ -86,13 +113,13 @@ class TenantMiddleware:
         raw_org_id = request.session.get("active_org_id")
         if not isinstance(raw_user_id, str) or not isinstance(raw_org_id, str):
             clear_connection_tenant_gucs()
-            return render(request, "403.html", status=403)
+            return _staff_denial(request)
 
         user_id = _parse_uuid(raw_user_id)
         org_id = _parse_uuid(raw_org_id)
         if user_id is None or org_id is None:
             clear_connection_tenant_gucs()
-            return render(request, "403.html", status=403)
+            return _staff_denial(request)
 
         try:
             with tenant_context(user_id, org_id):
@@ -101,9 +128,37 @@ class TenantMiddleware:
                     raise TenantStreamingResponseError
                 if response.status_code >= SERVER_ERROR_STATUS:
                     transaction.set_rollback(True)
+                elif response.status_code not in {403, 404}:
+                    persist_bound_patient_context(request)
                 return response
         except TenantAccessDeniedError:
-            return render(request, "403.html", status=403)
+            # Resolve account status without opening a tenant. An inactive
+            # account must still reach the existing anonymous-session cleanup
+            # and login/step-up redirects, never a staff tenant transaction.
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT set_config('app.current_user_id', %s, true)",
+                    [str(user_id)],
+                )
+                cursor.execute("SELECT is_active FROM clinic_app.load_current_user()")
+                inactive = cursor.fetchone() == (False,)
+            if inactive:
+                clear_connection_tenant_gucs()
+                response = self.get_response(request)
+            else:
+                response = _staff_denial(request)
+            return response
+
+    def process_view(
+        self,
+        request: HttpRequest,
+        view_func: Callable[..., HttpResponseBase],
+        view_args: tuple[object, ...],
+        view_kwargs: dict[str, object],
+    ) -> HttpResponseBase | None:
+        """Apply workspace permissions inside the already-open tenant transaction."""
+        del view_func, view_args, view_kwargs
+        return workspace_denial(request)
 
     def _patient(self, request: HttpRequest) -> HttpResponseBase:
         """Run one patient request inside its own session-bound transaction.

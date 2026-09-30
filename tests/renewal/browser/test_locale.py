@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -19,6 +18,15 @@ from django.contrib.auth.hashers import make_password
 from django.template.loader import render_to_string
 from django.utils.translation import gettext
 from playwright.sync_api import expect
+
+from renewal.browser._fixture_secrets import fixture_dsn, new_password
+from renewal.browser._navigation import (
+    goto_settled,
+    settle_service_worker,
+    wait_for_signed_in,
+)
+from renewal.browser._page_wait import await_autofocus
+from renewal.browser.engines import full_page_screenshot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -33,11 +41,11 @@ DAY = "2031-01-02"
 def locale_staff(renewal_base_url: str) -> dict[str, str]:
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
         "username": f"locale-{uuid4().hex}",
-        "password": secrets.token_urlsafe(24),
+        "password": new_password(),
         "physician": str(uuid4()),
     }
     with psycopg.connect(values["dsn"]) as connection:
@@ -71,7 +79,11 @@ def locale_staff(renewal_base_url: str) -> dict[str, str]:
 
 
 def _submit(page: Page, selector: str) -> None:
-    """Subscribe before the action; no sleeps or polling delays."""
+    """Subscribe before the action; no sleeps or polling delays.
+
+    Settles the worker first: the POST may navigate (see _navigation).
+    """
+    settle_service_worker(page)
     with page.expect_response(
         lambda response: response.request.method == "POST"
     ) as received:
@@ -82,25 +94,25 @@ def _submit(page: Page, selector: str) -> None:
 def _capture(page: Page, root: Path, name: str) -> None:
     destination = root / "locale" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=True)
-    destination.chmod(0o600)
+    full_page_screenshot(page, destination)
 
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
-    response = page.goto(f"{base_url}/readyz")
+    response = goto_settled(page, f"{base_url}/readyz")
     assert response is not None
     assert response.json() == {"status": "ok"}
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
     expect(page.locator("html")).to_have_attribute("lang", "pt-br")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["username"])
     page.locator("#id_password").fill(staff["password"])
     _submit(page, "button[type=submit]")
-    page.wait_for_url("**/auth/protected/")
+    wait_for_signed_in(page)
 
 
 def _register(page: Page, patients: str, root: Path, mode: str) -> None:
     name = f"{NAME} {mode}"
-    page.goto(patients + "new/")
+    goto_settled(page, patients + "new/")
     page.locator("#id_full_name").fill(name)
     # Exercise the server, not a native browser validation bubble.
     page.locator("#id_birth_date").evaluate(
@@ -151,7 +163,7 @@ def test_portuguese_patient_and_clinic_time_round_trip(
         _sign_in(page, renewal_base_url, locale_staff)
         _register(page, patients, renewal_artifact_root, mode)
 
-        page.goto(scheduling + "availability/")
+        goto_settled(page, scheduling + "availability/")
         page.locator("#id_practitioner").select_option(locale_staff["physician"])
         page.locator("#id_local_date").fill(DAY)
         page.locator("#id_start_time").fill("22:00")
@@ -164,7 +176,7 @@ def test_portuguese_patient_and_clinic_time_round_trip(
             "datetime", DAY + "T22:00"
         )
         expect(page.locator(".availability-window th time").first).to_have_text("22:00")
-        page.goto(patients)
+        goto_settled(page, patients)
         page.locator("#id_q").fill(f"{NAME} {mode}")
         _submit(page, "#patient-search-form button[type=submit]")
         expect(page.locator(".intake-table tbody tr").first).to_be_visible()
@@ -224,8 +236,8 @@ def test_synthetic_brl_display_and_denied_surface(
     renewal_base_url: str,
     renewal_artifact_root: Path,
 ) -> None:
-    response = renewal_page.goto(
-        f"{renewal_base_url}/intake/clinics/{uuid4()}/patients/"
+    response = goto_settled(
+        renewal_page, f"{renewal_base_url}/intake/clinics/{uuid4()}/patients/"
     )
     assert response is not None
     assert response.status == 403
@@ -244,7 +256,7 @@ def test_synthetic_brl_display_and_denied_surface(
 
     renewal_page.route(url, document)
     try:
-        renewal_page.goto(url)
+        goto_settled(renewal_page, url)
         expect(renewal_page.locator("#brl-example")).to_have_text("R$ 1.234,56")
         renewal_page.locator("[data-stress=brl-example]").screenshot(
             path=str(renewal_artifact_root / "locale" / "brl-example.png")

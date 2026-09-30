@@ -20,7 +20,7 @@ ITEM_LIMITS = {
 def validate_category(category: str) -> str:
     """Never infer a category or drug safety from medication text.
 
-    No real category has a confirmed issuance contract in 2026-09-12-v1.
+    No real category has a confirmed issuance contract in 2026-09-24-v2.
     This synthetic contract authorizes draft rehearsal only, not issuance.
     Controlled, notification, ordinary non-controlled and unknown categories
     all fail closed rather than inheriting the synthetic exception.

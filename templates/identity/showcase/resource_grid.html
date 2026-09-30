@@ -1,0 +1,2 @@
+{% load i18n showcase %}{% showcase_fixture "grid_resources" as resources %}{% showcase_fixture "grid_rows" as rows %}{% trans "Tuesday, 04/03/2031" as caption %}
+{% if state == "empty" %}{% include "includes/components/state.html" with state="empty" title=_("No resources on this day") message=_("Add a professional's availability to open the grid.") only %}{% else %}{% include "includes/components/resource_grid.html" with id=sid caption=caption resources=resources rows=rows state=state name_context=ctx %}{% endif %}

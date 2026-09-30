@@ -37,6 +37,7 @@ from ops.testing.restore_queries import (
     MIGRATION_LEAVES_SQL,
     POSTURE_SQL,
     SOURCE_SCOPE_SQL,
+    TARGET_SEED_SQL,
     TENANT_KEY_STATUS_SQL,
 )
 from ops.testing.tls_contract import HBA_RULES
@@ -64,6 +65,22 @@ def require_equal_migration_leaves(source: str, target: str) -> None:
     """Reject target state drift before any archive restore begins."""
     if not source or source != target:
         _fail("target migration leaf set does not equal source")
+
+
+def require_equal_target_seed(source: _SqlClient, target: _SqlClient) -> None:
+    """Require the excluded migration-seeded registry to equal the target's.
+
+    ``TARGET_SEEDED_RELATIONS`` are not archived because the target's own
+    migrations recreate them; any source drift from that seed would be lost
+    by the restore, so it refuses before any target mutation instead.
+    """
+    observed = source.sql(TARGET_SEED_SQL).strip()
+    if len(observed) != MD5_HEX_LENGTH or any(
+        character not in "0123456789abcdef" for character in observed
+    ):
+        _fail("target-seeded registry fingerprint is invalid")
+    if observed != target.sql(TARGET_SEED_SQL).strip():
+        _fail("source provider registry differs from the target migration seed")
 
 
 def relation_fingerprints(client: _SqlClient) -> dict[str, str]:

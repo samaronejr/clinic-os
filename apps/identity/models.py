@@ -8,8 +8,11 @@ from typing import TYPE_CHECKING, ClassVar
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
+from apps.tenancy.fields import EncryptedTextField
+from apps.tenancy.models import TenantScopedModel
 
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint
@@ -98,6 +101,7 @@ class ClinicConfiguration(models.Model):
         max_length=8, choices=(("navy", "Azul"), ("teal", "Verde")), default="navy"
     )
     reminder_hours = models.PositiveSmallIntegerField(default=24)
+    queue_quotas = models.JSONField(default=dict, blank=True)
     logo_png = models.BinaryField(default=bytes, blank=True)
     published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -114,6 +118,22 @@ class ClinicConfiguration(models.Model):
                 & models.Q(reminder_hours__in=(1, 2, 6, 12, 24, 48, 72))
                 & models.Q(brand_token__in=("navy", "teal")),
                 name="identity_config_bounded_values",
+            ),
+            models.CheckConstraint(
+                condition=models.expressions.RawSQL(
+                    "jsonb_typeof(queue_quotas) = 'object' "
+                    "AND queue_quotas - ARRAY['clinic-integrations','clinical',"
+                    "'ai-interactive','ai-batch','messaging','finance','bulk']"
+                    " = '{}'::jsonb "
+                    "AND queue_quotas::text ~ "
+                    '\'^\\{("[a-z-]+": [0-9]+(, "[a-z-]+": [0-9]+)*)?\\}$\' '
+                    "AND NOT jsonb_path_exists(queue_quotas, "
+                    '\'strict $.* ? (@.type() != "number" '
+                    "|| @ < 1 || @ > 100000)')",
+                    (),
+                    output_field=models.BooleanField(),
+                ),
+                name="identity_config_queue_quotas_shape",
             ),
         ]
 
@@ -132,6 +152,12 @@ class UserClinicRole(models.Model):
         PHYSICIAN = "physician", "Physician"
         RECEPTIONIST = "receptionist", "Receptionist"
         CLINIC_ADMIN = "clinic_admin", "Clinic admin"
+        NURSE = "nurse", "Nurse"
+        ALLIED_PROFESSIONAL = "allied_professional", "Allied professional"
+        SCHEDULER = "scheduler", "Scheduler"
+        CLINIC_MANAGER = "clinic_manager", "Clinic manager"
+        FINANCE = "finance", "Finance"
+        ORG_ADMIN = "org_admin", "Organization admin"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -152,6 +178,51 @@ class UserClinicRole(models.Model):
     def __str__(self) -> str:
         """Return stable identifiers and the stored role value."""
         return f"{self.user_id}:{self.clinic_id}:{self.role}"
+
+
+class UserPreference(models.Model):
+    """Per-user display preferences; each user reads and edits only their row.
+
+    Row security binds the row to ``app.current_user_id``; the runtime role may
+    insert and update theme/density but never delete. Defaults are light and
+    comfortable, so a missing row is a valid state.
+    """
+
+    class Theme(models.TextChoices):
+        """Stored theme values."""
+
+        LIGHT = "light", _("Light")
+        DARK = "dark", _("Dark")
+
+    class Density(models.TextChoices):
+        """Stored density values."""
+
+        COMFORTABLE = "comfortable", _("Comfortable")
+        COMPACT = "compact", _("Compact")
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, primary_key=True
+    )
+    theme = models.CharField(max_length=16, choices=Theme, default=Theme.LIGHT)
+    density = models.CharField(
+        max_length=16, choices=Density, default=Density.COMFORTABLE
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep the stored vocabulary closed at the database."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(theme__in=("light", "dark"))
+                & models.Q(density__in=("comfortable", "compact")),
+                name="identity_userpreference_closed_values",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the stable owner identifier."""
+        return str(self.pk)
 
 
 class PhysicianProfile(models.Model):
@@ -204,6 +275,173 @@ class PhysicianProfile(models.Model):
         return str(self.pk)
 
 
+class ServicePrincipal(TenantScopedModel):
+    """One immutable machine identity per database login, never a staff user."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    name = models.SlugField(max_length=64)
+    db_identity = models.CharField(max_length=63, unique=True)
+    purpose = models.SlugField(max_length=64)
+    grant_set_version = models.PositiveSmallIntegerField(default=1)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        """Bind one credential to one principal; labels contain no personal data."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"), name="identity_principal_org_id_uniq"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(grant_set_version=1)
+                & models.Q(db_identity__regex=r"^clinic_agent(_[a-z0-9_]+)?$")
+                & models.Q(name__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+                & models.Q(purpose__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$"),
+                name="identity_principal_v1_identity",
+            ),
+        ]
+
+
+class ServicePrincipalGrant(TenantScopedModel):
+    """Explicit machine scope; new permissions require a reviewed grant version."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    principal = models.ForeignKey(ServicePrincipal, on_delete=models.PROTECT)
+    permission = models.CharField(max_length=64)
+    subject_scope = models.CharField(max_length=16, default="clinic")
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        """V1 exposes availability read only, not any clinical or financial action."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("principal", "permission", "subject_scope"),
+                condition=models.Q(active=True),
+                name="identity_principal_active_grant",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    permission="appointment.read", subject_scope="clinic"
+                ),
+                name="identity_principal_grant_v1_scope",
+            ),
+        ]
+
+
+class RoleGrant(TenantScopedModel):
+    """Owner-provisioned, append-only clinic subtraction from a versioned bundle."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    role = models.CharField(max_length=20, choices=UserClinicRole.Role.choices)
+    permission = models.CharField(max_length=64)
+    bundle_version = models.PositiveSmallIntegerField(default=1)
+    effect = models.CharField(max_length=6, default="remove")
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """A grant is never an addition, including through raw SQL."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(effect="remove", bundle_version=1),
+                name="identity_rolegrant_remove_only",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(valid_to__isnull=True)
+                | models.Q(valid_to__gt=models.F("valid_from")),
+                name="identity_rolegrant_window",
+            ),
+        ]
+
+
+class CareTeamMembership(TenantScopedModel):
+    """Time-bounded patient scope, never a substitute for canonical staff roles."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    patient_enrollment = models.ForeignKey(
+        "intake.PatientClinicEnrollment", on_delete=models.PROTECT
+    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    role = models.CharField(max_length=20, choices=UserClinicRole.Role.choices)
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Keep clinical scopes and half-open validity windows explicit."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    role__in=("physician", "nurse", "allied_professional")
+                ),
+                name="identity_careteam_clinical_role",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(valid_to__isnull=True)
+                | models.Q(valid_to__gt=models.F("valid_from")),
+                name="identity_careteam_window",
+            ),
+        ]
+
+
+class ProfessionalRegistration(TenantScopedModel):
+    """Synthetic council evidence; encrypted number, optional legacy CRM linkage.
+
+    A new council is data, not a provider implementation or authority to sign.
+    Issuance still requires the existing per-attempt verification and step-up.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    physician_profile = models.ForeignKey(
+        PhysicianProfile, on_delete=models.PROTECT, null=True, blank=True
+    )
+    role = models.CharField(max_length=20, choices=UserClinicRole.Role.choices)
+    council = models.CharField(max_length=16)
+    number = EncryptedTextField(purpose="identity.registration.number")
+    jurisdiction = models.CharField(max_length=2)
+    specialty = EncryptedTextField(purpose="identity.registration.specialty", null=True)
+    synthetic = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=16,
+        choices=PhysicianProfile.Status,
+        default=PhysicianProfile.Status.UNKNOWN,
+    )
+    valid_from = models.DateTimeField()
+    valid_to = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Deny live evidence and cross-profession widening at the database."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(synthetic=True)
+                & models.Q(status__in=PhysicianProfile.Status.values)
+                & models.Q(council__regex=r"^[A-Z][A-Z0-9]{1,15}$")
+                & models.Q(jurisdiction__regex=r"^[A-Z]{2}$")
+                & models.Q(valid_to__gt=models.F("valid_from")),
+                name="identity_registration_synthetic",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(role="physician", council="CRM")
+                | models.Q(role="nurse", council="COREN")
+                | (
+                    models.Q(role="allied_professional")
+                    & ~models.Q(council__in=("CRM", "COREN"))
+                ),
+                name="identity_registration_profession",
+            ),
+        ]
+
+
 class PhysicianEvidence(models.Model):
     """Append-only normalized registry response, including failed verification."""
 
@@ -225,4 +463,42 @@ class PhysicianEvidence(models.Model):
 
     def __str__(self) -> str:
         """Return only the stable evidence identifier."""
+        return str(self.pk)
+
+
+class SavedView(TenantScopedModel):
+    """One user's saved workspace view: a destination plus closed parameters.
+
+    Parameters are short slugs from each destination's registered vocabulary
+    (``apps.core.saved_views``), never free text, so a saved view can carry
+    no patient data. Row security binds every row to ``app.current_user_id``
+    and a role the user still holds in the clinic; the runtime role may insert
+    and archive, never delete.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    destination = models.CharField(max_length=32)
+    params = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Keep destinations slug-shaped and one active copy per view."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(destination__regex=r"^[a-z][a-z-]{0,31}$"),
+                name="identity_savedview_destination_slug",
+            ),
+            models.UniqueConstraint(
+                fields=("user", "clinic", "destination", "params"),
+                condition=models.Q(archived_at__isnull=True),
+                name="identity_savedview_active_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the stable record identifier."""
         return str(self.pk)

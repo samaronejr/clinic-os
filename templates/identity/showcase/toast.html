@@ -1,0 +1,10 @@
+{% load i18n %}<span class="visually-hidden" id="{{ sid }}-toasts-label">{% trans "Notification examples" %}</span><section class="toast-region toast-region--specimen" aria-labelledby="{{ sid }}-toasts-label {{ ctx }}">
+{% if state == "error" %}{% include "includes/components/toast.html" with tone="error" message=_("Reminder not sent. Try again.") only %}
+{% elif state == "success" %}{% include "includes/components/toast.html" with tone="success" message=_("Appointment saved.") only %}
+{% elif state == "stale" or state == "conflict" %}{% include "includes/components/toast.html" with tone="warning" message=_("The agenda changed. Refresh to see it.") only %}
+{% elif state == "offline" %}{% include "includes/components/toast.html" with tone="info" message=_("No connection. Changes will not be sent.") only %}
+{% elif state == "empty" %}{% include "includes/components/state.html" with state="empty" title=_("No notifications") message=_("Confirmations appear here and stay until you close them.") only %}
+{% elif state == "loading" %}{% include "includes/components/toast.html" with tone="neutral" message=_("Sending reminder…") only %}
+{% elif state == "permission-denied" %}{% include "includes/components/toast.html" with tone="warning" message=_("You cannot send reminders for this clinic.") only %}
+{% else %}{% include "includes/components/toast.html" with tone="neutral" message=_("Reminder queued for tomorrow.") forced=state first=True only %}{% endif %}
+</section>

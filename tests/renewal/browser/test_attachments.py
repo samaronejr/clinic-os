@@ -11,6 +11,9 @@ import psycopg
 import pytest
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
+from renewal.browser._page_wait import evaluate_js
+from renewal.browser.engines import full_page_screenshot, new_context
 from renewal.browser.test_availability import (
     _no_overflow,
     _ring,
@@ -46,8 +49,8 @@ ACTIVE_PDF = b"%PDF-1.4\n1 0 obj<</OpenAction<</S/JavaScript/JS(app.alert(1))>>>
 def capture(page: Page, root: Path, state: str, width: int) -> None:
     folder = root / "attachments"
     folder.mkdir(exist_ok=True, mode=0o700)
-    page.screenshot(path=str(folder / f"{state}-{width}.png"), full_page=True)
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    full_page_screenshot(page, folder / f"{state}-{width}.png")
+    assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
 def _attachment_ids(page: Page) -> set[str]:
@@ -63,10 +66,11 @@ def _open_workspace(
 ) -> tuple[str, str]:
     """Sign in and reach the attachment workspace through the real journey."""
     _sign_in_physician(page, base, staff)
-    page.goto(f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/")
+    goto_settled(
+        page, f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{day}/1/"
+    )
     press(page, "open")
-    with page.expect_navigation():
-        page.get_by_role("button", name="Anexos").click()
+    click_to_navigate(page.get_by_role("button", name="Anexos"))
     expect(page.locator("#attachments-title")).to_be_visible()
     url = f"{base}/ehr/clinics/{staff['clinic_a']}/attachments/"
     encounter = page.locator('input[name="encounter_id"]').first.input_value()
@@ -223,7 +227,7 @@ def denied_journeys(
     try:
         other = context.new_page()
         _sign_in_receptionist(other, base, staff)
-        response = other.goto(url)
+        response = goto_settled(other, url)
         assert response is not None
         assert response.status == 403
         refused = other.request.post(
@@ -278,12 +282,12 @@ def test_attachment_journey(
     url = f"{base}/ehr/clinics/{staff['clinic_a']}/attachments/"
     try:
         _sign_in_physician(page, base, staff)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{DAYS[width]}/1/",
         )
         press(page, "open")
-        with page.expect_navigation():
-            page.get_by_role("button", name="Anexos").click()
+        click_to_navigate(page.get_by_role("button", name="Anexos"))
         expect(page.locator("#attachments-title")).to_be_visible()
         capture(page, root, "empty", width)
         encounter = page.locator('input[name="encounter_id"]').first.input_value()
@@ -437,7 +441,7 @@ def _stale_scene(
     """A stale tab cannot double-transition or serve quarantined bytes."""
     attachment = _uploaded(page)
     stale = page.context.new_page()
-    stale.goto(url)
+    goto_settled(stale, url)
     expect(stale.locator(f'[data-attachment="{attachment}"]')).to_have_attribute(
         "data-state", "quarantined"
     )
@@ -503,7 +507,7 @@ def test_attachment_accessibility_matrix(
         ("stale_tab", {"viewport": {"width": 1280, "height": 900}}),
     ]
     for scene, options in scenes:
-        context = browser.new_context(locale="pt-BR", **options)
+        context = new_context(browser, locale="pt-BR", **options)
         page = context.new_page()
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on(

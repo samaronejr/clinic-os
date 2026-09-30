@@ -11,6 +11,78 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "realtime.subscription.authorized": (
+        "tenant",
+        "clinic-os-web",
+        "identity.clinic",
+        "authorized",
+    ),
+    "identity.principal.created": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.service_principal",
+        "created",
+    ),
+    "identity.principal.revoked": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.service_principal",
+        "revoked",
+    ),
+    "identity.principal_grant.created": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.service_principal_grant",
+        "created",
+    ),
+    "identity.principal_grant.revoked": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.service_principal_grant",
+        "revoked",
+    ),
+    "identity.saved_view.created": (
+        "tenant",
+        "clinic-os-web",
+        "identity.saved_view",
+        "created",
+    ),
+    "identity.saved_view.archived": (
+        "tenant",
+        "clinic-os-web",
+        "identity.saved_view",
+        "archived",
+    ),
+    "identity.role_grant.created": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.role_grant",
+        "created",
+    ),
+    "identity.care_team.created": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.care_team_membership",
+        "created",
+    ),
+    "identity.care_team.revoked": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.care_team_membership",
+        "revoked",
+    ),
+    "identity.professional_registration.created": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.professional_registration",
+        "created",
+    ),
+    "identity.professional_registration.revoked": (
+        "tenant",
+        "clinic-os-ops",
+        "identity.professional_registration",
+        "revoked",
+    ),
     "identity.clinic_configuration.published": (
         "tenant",
         "clinic-os-web",
@@ -242,6 +314,54 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "clinic-os-web",
         "teleconsult.session",
         "denied",
+    ),
+    "providers.capability.proposed": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "proposed",
+    ),
+    "providers.capability.selected_in_plan": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "selected_in_plan",
+    ),
+    "providers.capability.approved": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "approved",
+    ),
+    "providers.capability.sandbox": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "sandbox",
+    ),
+    "providers.capability.production_authorized": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "production_authorized",
+    ),
+    "providers.capability.activated": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "activated",
+    ),
+    "providers.capability.degraded": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "degraded",
+    ),
+    "providers.capability.revoked": (
+        "system",
+        "clinic-os-ops",
+        "providers.capability_version",
+        "revoked",
     ),
 }
 

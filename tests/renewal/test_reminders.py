@@ -47,6 +47,7 @@ from django.utils import timezone
 
 from patient_http_support import receptionist_client
 from patient_service_support import runtime_role
+from provider_gate_support import assert_capability_gate_closed
 from renewal.test_integration_boundary import SECRET, SyntheticAuthenticator
 from scheduling.appointment_service_support import (
     create_synthetic_appointment,
@@ -210,7 +211,9 @@ def test_real_channel_blocked_independently(
 ) -> None:
     _, operation_id = _book(setup, channel)
     settings.COMMS_SYNTHETIC_CHANNELS = tuple(c for c in ADAPTERS if c != channel)
-    assert not channel_capability(channel).real_enabled
+    assert_capability_gate_closed(
+        settings, channel, probe=lambda: channel_capability(channel)
+    )
     assert not channel_capability(channel).synthetic_enabled
     assert all(
         channel_capability(c).synthetic_enabled for c in ADAPTERS if c != channel

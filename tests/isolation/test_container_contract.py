@@ -13,6 +13,8 @@ from ops.testing.image_source import assemble_candidate_context
 from ops.testing.isolation_candidate_contract import envelope_binding
 from ops.testing.process_helpers import run_process
 
+from isolation.realtime_container_contract import assert_realtime_contracts
+
 if TYPE_CHECKING:
     from ops.testing.isolation_common import JsonObject
 
@@ -57,6 +59,8 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
         f"FROM --platform=linux/amd64 {UV_IMAGE} AS uv",
         f"FROM --platform=linux/amd64 {PYTHON_IMAGE} AS builder",
         f"FROM --platform=linux/amd64 {PYTHON_IMAGE} AS runtime",
+        "FROM runtime AS realtime",
+        "FROM runtime AS web",
     ]
     assert re.search(r"\bapt(?:-get)?\b", dockerfile, re.IGNORECASE) is None
     assert "ARG TARGETARCH" in dockerfile
@@ -70,6 +74,25 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
         if line.startswith("CMD ")
     )
     assert json.loads(command_line) == DEFAULT_COMMAND
+    commands = [
+        json.loads(line.removeprefix("CMD "))
+        for line in dockerfile.splitlines()
+        if line.startswith("CMD ")
+    ]
+    assert commands == [
+        DEFAULT_COMMAND,
+        [
+            "uvicorn",
+            "config.asgi_realtime:application",
+            "--host=0.0.0.0",
+            "--port=8001",
+            "--no-proxy-headers",
+            "--no-access-log",
+            "--lifespan=off",
+            "--timeout-graceful-shutdown=5",
+            "--limit-concurrency=1000",
+        ],
+    ]
     assert 'PYTHONTZPATH=""' in dockerfile
     assert 'clinic.phase1a.python-version="3.13.14"' in dockerfile
     assert 'clinic.phase1a.uv-version="0.10.6"' in dockerfile
@@ -89,13 +112,18 @@ def test_application_dockerfile_is_immutable_nonroot_and_apt_free() -> None:
 
     gunicorn_config = PROJECT_ROOT / "ops/container/gunicorn_no_proxy.py"
     assert gunicorn_config.read_bytes() == (
-        b'forwarded_allow_ips = ""\nsecure_scheme_headers = {}\n'
+        b'forwarded_allow_ips = ""\n'
+        b"secure_scheme_headers = {}\n"
+        b"# ADR-014: access logs carry method + status + duration only; the request\n"
+        b"# line, query, remote address and headers are never logged (PHI boundary).\n"
+        b'access_log_format = "%(m)s %(s)s %(D)s"\n'
     )
     entrypoint = (PROJECT_ROOT / "ops/container/entrypoint.sh").read_text()
     assert "migrate" not in entrypoint
     assert 'exec "$@"' in entrypoint
     start = (PROJECT_ROOT / "ops/container/start.sh").read_text()
     assert re.search(r"(^|\s)(python|pip)(\s|$)", entrypoint + start) is None
+    assert_realtime_contracts()
 
 
 def test_application_context_is_assembled_from_clean_git_objects(

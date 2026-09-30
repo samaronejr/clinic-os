@@ -5,8 +5,11 @@ through the task-3 snapshot contract, provisions a unique claimed PostgreSQL
 container, migrates and seeds it through the owner role, serves the product
 through a supervised Gunicorn master bound to loopback as ``clinic_app`` with
 the real middleware/CSRF/RLS stack, and drives the registered pytest browser
-suite through a real Chromium executable. ``ci`` runs the static, migration,
-coverage, dependency, current-source image/TLS, and browser gates in order.
+suite through a real browser engine: Chromium by default (CI parity), or the
+Playwright-managed Firefox/WebKit selected by ``--engine`` or
+``CLINIC_BROWSER_ENGINE``. An unavailable engine fails the run; it never falls
+back to another engine. ``ci`` runs the static, migration, coverage,
+dependency, current-source image/TLS, and browser gates in order.
 
 Only resources created by this runner are removed; the artifact root is
 retained as evidence.
@@ -32,6 +35,8 @@ from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
 import psycopg
+from playwright.sync_api import Error as PlaywrightError
+from playwright.sync_api import sync_playwright
 
 from ops.testing.browser_server_controller import reserve_port, wait_until_ready
 from ops.testing.browser_server_supervisor import (
@@ -39,6 +44,7 @@ from ops.testing.browser_server_supervisor import (
     start_master,
     supervised_argv,
 )
+from ops.testing.ci_pytest import coverage_targets
 from ops.testing.current_source_snapshot import (
     capture_current_source,
     verify_current_source_record,
@@ -54,6 +60,7 @@ from ops.testing.isolation_common import (
     utc_now,
     write_no_replace,
 )
+from ops.testing.realtime_stack import browser_endpoint, realtime_broker
 from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
@@ -74,6 +81,7 @@ SUITES: Final = {
     "encounter": ("tests/renewal/browser/test_encounter.py",),
     "end-to-end": ("tests/renewal/browser/test_end_to_end.py",),
     "agenda": ("tests/renewal/browser/test_agenda.py",),
+    "realtime": ("tests/renewal/browser/test_realtime.py",),
     "availability": ("tests/renewal/browser/test_availability.py",),
     "contacts": ("tests/renewal/browser/test_contacts.py",),
     "locale": ("tests/renewal/browser/test_locale.py",),
@@ -88,12 +96,16 @@ SUITES: Final = {
     "primitives": ("tests/renewal/browser/test_primitives.py",),
     "smoke": ("tests/renewal/browser/test_smoke.py",),
     "staff-intake": ("tests/renewal/browser/test_staff_intake.py",),
-    "workspace": ("tests/renewal/browser/test_workspace.py",),
+    "workspace": (
+        "tests/renewal/browser/test_workspace.py",
+        "tests/renewal/browser/test_workspace_navigation.py",
+    ),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
     {
         "agenda",
+        "realtime",
         "clinic-settings",
         "billing",
         "prescription-draft",
@@ -138,6 +150,9 @@ SIGNING_SUITES: Final = frozenset(
 )
 # Suites that exercise the synthetic, explicitly non-payable PIX rehearsal.
 PAYMENT_SUITES: Final = frozenset({"billing", "end-to-end"})
+# Browser engines a suite can run on; chromium keeps CI parity as the default.
+ENGINES: Final = ("chromium", "firefox", "webkit")
+DEFAULT_ENGINE: Final = "chromium"
 CI_GATES: Final = (
     "static",
     "migration",
@@ -146,14 +161,7 @@ CI_GATES: Final = (
     "image-tls",
     "browser",
 )
-COVERAGE_TARGETS_FILE: Final = (
-    Path(__file__).resolve().with_name("coverage-targets.txt")
-)
-COVERAGE_TARGETS: Final = tuple(
-    line
-    for line in COVERAGE_TARGETS_FILE.read_text(encoding="utf-8").splitlines()
-    if line and not line.startswith("#")
-)
+COVERAGE_TARGETS: Final = coverage_targets()
 POSTGRES_IMAGE: Final = "postgres:16"
 POSTGRES_CONTAINER_PORT: Final = 5432
 PROTECTED_DATABASE_PORT: Final = 5432
@@ -204,13 +212,15 @@ PYTEST_TIMEOUT_SECONDS: Final = 900
 COMMAND_TIMEOUT_SECONDS: Final = 60
 STATIC_GATE_TIMEOUT_SECONDS: Final = 900
 COVERAGE_TIMEOUT_SECONDS: Final = 3600
+# Same worker count as the hosted job and ``make ci``.
+CI_PYTEST_WORKERS: Final = 4
 DEPENDENCY_TIMEOUT_SECONDS: Final = 900
 IMAGE_TLS_TIMEOUT_SECONDS: Final = 3600
 BUILD_TIMEOUT_SECONDS: Final = 3600
 MAX_LOG_TAIL_BYTES: Final = 4000
 KEK_SECRET_FILE: Final = "tenant-kek.secret"  # noqa: S105 - a file name
 _BROWSER_OPTIONS: Final = frozenset(
-    {"--artifact-root", "--record", "--run-root", "--suite"}
+    {"--artifact-root", "--engine", "--record", "--run-root", "--suite"}
 )
 _CI_OPTIONS: Final = frozenset({"--artifact-root", "--run-root"})
 
@@ -321,9 +331,45 @@ def _run_root(raw: str | None, artifact_root: Path) -> Path:
     return root
 
 
-def _resolve_browser() -> str:
-    """Return the real Chromium executable or reject the run."""
+def _resolve_engine(option: str | None) -> str:
+    """Return the engine chosen by ``--engine``/``CLINIC_BROWSER_ENGINE``."""
+    environment = os.environ.get("CLINIC_BROWSER_ENGINE", "")
+    if option is not None and environment and option != environment:
+        _fail("--engine and CLINIC_BROWSER_ENGINE name different engines")
+    engine = option if option is not None else environment or DEFAULT_ENGINE
+    if engine not in ENGINES:
+        _fail(f"renewal browser engine is not supported: {engine}")
+    return engine
+
+
+def _managed_executable(engine: str) -> str:
+    """Return the Playwright-managed executable path for ``engine``."""
+    try:
+        with sync_playwright() as driver:
+            browser_type = {"firefox": driver.firefox, "webkit": driver.webkit}[engine]
+            return browser_type.executable_path
+    except PlaywrightError as error:
+        message = f"renewal browser engine {engine} is unavailable"
+        raise RenewalRunnerError(message) from error
+
+
+def _resolve_browser(engine: str = DEFAULT_ENGINE) -> str:
+    """Return the real executable for ``engine`` or reject the run."""
     override = os.environ.get("CLINIC_RENEWAL_BROWSER_EXECUTABLE", "")
+    if engine != DEFAULT_ENGINE:
+        if override:
+            _fail("renewal browser executable override is Chromium-only")
+        candidate = Path(_managed_executable(engine))
+        if (
+            candidate.is_absolute()
+            and candidate.is_file()
+            and os.access(candidate, os.X_OK)
+        ):
+            return str(candidate)
+        _fail(
+            f"renewal browser engine {engine} is unavailable;"
+            f" run `uv run playwright install {engine}`"
+        )
     if override:
         candidate = Path(override)
         if (
@@ -735,17 +781,21 @@ def _server_environment(app_dsn: str) -> dict[str, str]:
     )
 
 
-def _pytest_environment(
+def _pytest_environment(  # noqa: PLR0913 - closed fixture inputs.
     *,
     base_url: str,
     artifact_root: Path,
     browser: str,
+    engine: str,
     username: str,
     password: str,
 ) -> dict[str, str]:
     """Export only the private runner-to-fixture inputs to the suite child."""
     return _child_env(
         {
+            # Suite fixtures and worker subprocesses never reach a host Redis.
+            "CELERY_BROKER_URL": "memory://",
+            "CLINIC_BROWSER_ENGINE": engine,
             "CLINIC_RENEWAL_ARTIFACT_ROOT": str(artifact_root),
             "CLINIC_RENEWAL_BASE_URL": base_url,
             "CLINIC_RENEWAL_BROWSER_EXECUTABLE": browser,
@@ -827,15 +877,16 @@ def _authorized_untracked(repository: Path) -> tuple[str, ...]:
     return tuple(sorted(path for path in paths if path and not _excluded(path)))
 
 
-def _run_browser_suite(
+def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
     repository: Path,
     suite: str,
     artifact_root: Path,
     run_root: Path,
     record: Path | None,
+    engine: str = DEFAULT_ENGINE,
 ) -> JsonObject:
     """Execute one registered suite against the real supervised runtime."""
-    browser = _resolve_browser()
+    browser = _resolve_browser(engine)
     override = os.environ.get("CLINIC_RENEWAL_APP_DATABASE_URL", "")
     override_dsn = _validate_serving_dsn(override) if override else None
     manifest, digest = _capture_source(repository, run_root, record)
@@ -844,16 +895,17 @@ def _run_browser_suite(
     junit = browser_root / f"junit-{suite}.xml"
     pytest_log = artifact_root / "pytest.log"
     server_log = artifact_root / "server.log"
-    access_log = artifact_root / "access.log"
-    token = secrets.token_hex(8)
     provisioned: ProvisionedDatabase | None = None
     fixture: dict[str, str] = {"password": "", "username": ""}
     database_cm = (
-        contextlib.nullcontext() if override else _provision_database(repository, token)
+        contextlib.nullcontext()
+        if override
+        else _provision_database(repository, secrets.token_hex(8))
     )
     with (
         _synthetic_secret_store(run_root) as secret_environment,
         database_cm as database,
+        contextlib.ExitStack() as extra_processes,
     ):
         if override_dsn is not None:
             app_dsn = override_dsn
@@ -868,27 +920,44 @@ def _run_browser_suite(
             app_dsn = _validate_serving_dsn(provisioned.app_dsn)
         _require_app_role(app_dsn)
         port = reserve_port()
-        base_url = f"http://127.0.0.1:{port}"
-        argv = supervised_argv(Path(sys.executable), port, access_log)
         spawned: list[SupervisedMaster] = []
+        server_environment = {
+            **_server_environment(app_dsn),
+            **secret_environment,
+            **_synthetic_adapters(suite),
+        }
+        extra_processes.enter_context(
+            realtime_broker(
+                repository, server_environment, run_root, enabled=suite == "realtime"
+            )
+        )
         try:
             start_master(
-                argv,
-                {
-                    **_server_environment(app_dsn),
-                    **secret_environment,
-                    **_synthetic_adapters(suite),
-                },
+                supervised_argv(
+                    Path(sys.executable), port, artifact_root / "access.log"
+                ),
+                server_environment,
                 server_log,
                 owner=spawned,
             )
             wait_until_ready(port, server_log)
+            port_for_browser = extra_processes.enter_context(
+                browser_endpoint(
+                    repository,
+                    server_environment,
+                    run_root,
+                    port,
+                    enabled=suite == "realtime",
+                )
+            )
+            base_url = f"http://127.0.0.1:{port_for_browser}"
             # Workers spawned by the suite read protected fields too.
             suite_environment = {
                 **_pytest_environment(
                     base_url=base_url,
                     artifact_root=browser_root,
                     browser=browser,
+                    engine=engine,
                     username=fixture["username"],
                     password=fixture["password"],
                 ),
@@ -944,6 +1013,7 @@ def _run_browser_suite(
         "artifact_root": str(artifact_root),
         "base_url": base_url,
         "browser": browser,
+        "engine": engine,
         "pytest_exit": pytest_code,
         "revision_sha": manifest.get("base_revision_sha"),
         "runtime_role": APP_ROLE,
@@ -1088,22 +1158,25 @@ def _gate_coverage(
         environment = _child_env(
             {
                 "APP_DATABASE_URL": database.app_dsn,
+                # As in hosted CI: the default broker is a host Redis that
+                # may belong to another project.
+                "CELERY_BROKER_URL": "memory://",
                 "DJANGO_SETTINGS_MODULE": "config.settings.test",
                 "MIGRATION_DATABASE_URL": database.owner_dsn,
                 "TEST_SUPERUSER_DATABASE_URL": database.super_dsn,
             }
         )
+        # The hosted job's own command: coverage-targets.txt, the 90% floor
+        # and the parallel + serial phases live in ops.testing.ci_pytest.
         code = _run_bounded(
             [
                 sys.executable,
                 "-m",
-                "pytest",
-                "--reuse-db",
+                "ops.testing.ci_pytest",
+                f"--workers={CI_PYTEST_WORKERS}",
+                f"--work-root={logs / 'ci-pytest'}",
+                "--",
                 "-q",
-                *COVERAGE_TARGETS,
-                "--cov-report=term-missing",
-                "--cov-fail-under=90",
-                "tests",
             ],
             environment,
             logs / "gate-coverage.log",
@@ -1254,7 +1327,9 @@ def _gate_browser(
         suite_root = artifact_root / f"ci-{suite}"
         ensure_private_directory(suite_root)
         try:
-            report = _run_browser_suite(repository, suite, suite_root, run_root, None)
+            report = _run_browser_suite(
+                repository, suite, suite_root, run_root, None, DEFAULT_ENGINE
+            )
             code = 0
         except RenewalInterruptError:
             raise
@@ -1349,6 +1424,7 @@ def _browser(arguments: list[str]) -> int:
     suite = options.get("--suite", "")
     if suite not in SUITES:
         _fail(f"renewal browser suite is not registered: {suite or '(missing)'}")
+    engine = _resolve_engine(options.get("--engine"))
     repository = _repository()
     artifact_root = _artifact_root(options.get("--artifact-root"), repository)
     run_root = _run_root(options.get("--run-root"), artifact_root)
@@ -1359,6 +1435,7 @@ def _browser(arguments: list[str]) -> int:
         artifact_root,
         run_root,
         Path(record) if record else None,
+        engine,
     )
     write_no_replace(
         artifact_root / "report.json",

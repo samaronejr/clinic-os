@@ -46,6 +46,42 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "realtime.subscription.authorized": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic", "authorized"
+        ),
+        "identity.principal.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.service_principal", "created"
+        ),
+        "identity.principal.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.service_principal", "revoked"
+        ),
+        "identity.principal_grant.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.service_principal_grant", "created"
+        ),
+        "identity.principal_grant.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.service_principal_grant", "revoked"
+        ),
+        "identity.saved_view.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.saved_view", "created"
+        ),
+        "identity.saved_view.archived": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.saved_view", "archived"
+        ),
+        "identity.role_grant.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.role_grant", "created"
+        ),
+        "identity.care_team.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.care_team_membership", "created"
+        ),
+        "identity.care_team.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.care_team_membership", "revoked"
+        ),
+        "identity.professional_registration.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.professional_registration", "created"
+        ),
+        "identity.professional_registration.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-ops", "identity.professional_registration", "revoked"
+        ),
         "identity.clinic_configuration.published": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic_configuration", "published"
         ),
@@ -255,6 +291,54 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         ),
         "teleconsult.access.denied": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "teleconsult.session", "denied"
+        ),
+        "providers.capability.proposed": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "proposed",
+        ),
+        "providers.capability.selected_in_plan": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "selected_in_plan",
+        ),
+        "providers.capability.approved": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "approved",
+        ),
+        "providers.capability.sandbox": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "sandbox",
+        ),
+        "providers.capability.production_authorized": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "production_authorized",
+        ),
+        "providers.capability.activated": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "activated",
+        ),
+        "providers.capability.degraded": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "degraded",
+        ),
+        "providers.capability.revoked": Phase1AuditEventDefinition(
+            "system",
+            "clinic-os-ops",
+            "providers.capability_version",
+            "revoked",
         ),
     }
 )

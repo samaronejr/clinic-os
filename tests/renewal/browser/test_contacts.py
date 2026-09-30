@@ -25,7 +25,20 @@ from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import fixture_dsn, new_password
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+    wait_for_signed_in,
+)
+from renewal.browser._page_wait import await_autofocus, evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt
+from renewal.browser.engines import (
+    assert_only_refused_document_logged,
+    full_page_screenshot,
+    new_context,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -94,13 +107,13 @@ def contacts_staff(renewal_base_url: str) -> dict[str, str]:
     """Seed a clinic-A receptionist, two patients in A and one in clinic B."""
     del renewal_base_url  # The runner fixture rejects use outside its lifecycle.
     values = {
-        "dsn": os.environ["CLINIC_RENEWAL_FIXTURE_DATABASE_URL"],
+        "dsn": fixture_dsn(),
         "clinic_a": os.environ["CLINIC_RENEWAL_CLINIC_ID"],
         "clinic_b": str(uuid4()),
         "organization": os.environ["CLINIC_RENEWAL_ORGANIZATION_ID"],
         "receptionist": f"recepcao-{uuid4().hex[:8]}",
         "receptionist_id": str(uuid4()),
-        "password": secrets.token_urlsafe(24),
+        "password": new_password(),
     }
     registry = [
         (values["clinic_a"], PATIENT_A, "1990-05-17"),
@@ -268,13 +281,15 @@ def _watch_errors(page: Page) -> list[str]:
 def _capture(page: Page, root: Path, name: str, *, full_page: bool = True) -> str:
     destination = root / "contacts" / f"{name}.png"
     destination.parent.mkdir(mode=0o700, exist_ok=True)
-    page.screenshot(path=str(destination), full_page=full_page)
+    if full_page:
+        return ", ".join(path.name for path in full_page_screenshot(page, destination))
+    page.screenshot(path=str(destination))
     destination.chmod(0o600)
     return destination.name
 
 
 def _no_overflow(page: Page) -> bool:
-    return bool(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+    return bool(evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth"))
 
 
 def _ring(page: Page) -> dict[str, str]:
@@ -288,28 +303,27 @@ def _ring(page: Page) -> dict[str, str]:
 
 
 def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
-    page.goto(f"{base_url}/auth/login/")
+    goto_settled(page, f"{base_url}/auth/login/")
+    await_autofocus(page.locator("#id_username"))
     page.locator("#id_username").fill(staff["receptionist"])
     page.locator("#id_password").fill(staff["password"])
-    with page.expect_navigation():
-        page.locator("button[type=submit]").click()
-    page.wait_for_url("**/auth/protected/")
+    click_to_navigate(page.locator("button[type=submit]"))
+    wait_for_signed_in(page)
 
 
 def _open_contacts(page: Page, base_url: str, staff: dict[str, str], name: str) -> None:
     """Search the patient and open the contacts screen through the row action."""
     patients = f"/intake/clinics/{staff['clinic_a']}/patients/"
-    page.goto(f"{base_url}{patients}")
+    goto_settled(page, f"{base_url}{patients}")
     page.locator("#id_q").fill(name)
     with page.expect_response(
         lambda response: response.request.method == "POST"
     ) as received:
         page.locator("#patient-search-form button[type=submit]").click()
     assert received.value.status == OK
-    page.wait_for_function(SETTLED_JS)
+    wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
-    with page.expect_navigation():
-        row.get_by_role("button", name=re.compile(r"^Contatos")).click()
+    click_to_navigate(row.get_by_role("button", name=re.compile(r"^Contatos")))
     expect(page.locator("h1")).to_have_text(gettext(CONTACTS_TITLE))
 
 
@@ -320,12 +334,10 @@ def _save_destination(
     item = page.locator(
         ".contacts-item", has=page.locator("h3", has_text=channel_label)
     )
-    with page.expect_navigation():
-        item.locator("form").first.locator("button").click()
+    click_to_navigate(item.locator("form").first.locator("button"))
     expect(page.locator("h1")).to_contain_text(gettext("Edit"))
     page.locator("#id_destination").fill(destination)
-    with page.expect_navigation():
-        page.locator("button", has_text=gettext("Save destination")).click()
+    click_to_navigate(page.locator("button", has_text=gettext("Save destination")))
     if not expect_error:
         expect(page.locator("h1")).to_have_text(gettext(CONTACTS_TITLE))
 
@@ -338,8 +350,7 @@ def _contact_item(page: Page, channel_label: str) -> Locator:
 
 def _verify(page: Page, channel_label: str) -> None:
     item = _contact_item(page, channel_label)
-    with page.expect_navigation():
-        item.locator("button", has_text=gettext("Mark as verified")).click()
+    click_to_navigate(item.locator("button", has_text=gettext("Mark as verified")))
 
 
 def _choose_and_revoke(
@@ -355,8 +366,7 @@ def _choose_and_revoke(
         has=page.locator("legend", has_text=gettext("Appointment reminders")),
     )
     purpose.locator(f"input[name=channel][value={value}]").check()
-    with page.expect_navigation():
-        purpose.locator("button", has_text=gettext("Save preference")).click()
+    click_to_navigate(purpose.locator("button", has_text=gettext("Save preference")))
     expect(page.locator(".feedback--success")).to_contain_text(
         gettext("Messaging preferences saved.")
     )
@@ -364,8 +374,7 @@ def _choose_and_revoke(
     _capture(page, root, f"manage-preference-chosen-{width}")
 
     purpose.locator("input[name=channel][value='']").check()
-    with page.expect_navigation():
-        purpose.locator("button", has_text=gettext("Save preference")).click()
+    click_to_navigate(purpose.locator("button", has_text=gettext("Save preference")))
     expect(page.locator(".feedback--success")).to_contain_text(
         gettext("Automated messages for this purpose were revoked.")
     )
@@ -463,15 +472,16 @@ def _foreign_clinic_denied(
 ) -> None:
     """Another clinic's contacts endpoint is denied on GET and POST."""
     foreign = f"/intake/clinics/{contacts_staff['clinic_b']}/contacts/"
-    response = page.goto(f"{renewal_base_url}{foreign}")
+    response = goto_settled(page, f"{renewal_base_url}{foreign}")
     assert response is not None
     assert response.status == NOT_FOUND
     body = page.content()
     assert CLINIC_B not in body
     assert FOREIGN_NAME not in body
     _capture(page, root, f"foreign-clinic-denied-{width}")
-    page.goto(
-        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/patients/"
+    goto_settled(
+        page,
+        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/patients/",
     )
     token = page.locator("input[name=csrfmiddlewaretoken]").first.get_attribute("value")
     assert token
@@ -529,15 +539,15 @@ def test_failures_mask_deny_and_never_cross_patients(
     expect(page.locator("#id_destination")).to_have_value("not-an-email")
     assert _no_overflow(page)
     _capture(page, root, f"edit-invalid-{width}")
-    with page.expect_navigation():
-        page.locator("button", has_text=gettext("Back to contacts")).click()
+    click_to_navigate(page.locator("button", has_text=gettext("Back to contacts")))
     expect(page.locator("h1")).to_have_text(gettext(CONTACTS_TITLE))
 
     _foreign_clinic_denied(page, renewal_base_url, contacts_staff, width, root)
 
     # The blank GET state carries no patient data.
-    response = page.goto(
-        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/contacts/"
+    response = goto_settled(
+        page,
+        f"{renewal_base_url}/intake/clinics/{contacts_staff['clinic_a']}/contacts/",
     )
     assert response is not None
     assert response.status == OK
@@ -546,9 +556,9 @@ def test_failures_mask_deny_and_never_cross_patients(
     assert _no_overflow(page)
     _capture(page, root, f"contacts-blank-get-{width}")
 
-    # The only console entry is the refused clinic-B document itself.
-    assert len(errors) == 1, errors
-    assert re.search(r"\b404\b", errors[0])
+    # The only console entry is the refused clinic-B document itself (where
+    # the engine logs failed responses at all).
+    assert_only_refused_document_logged(page, errors, "404")
     checks = browser_report["checks"]
     assert isinstance(checks, list)
     checks.append(
@@ -593,8 +603,9 @@ def test_native_post_completes_the_journey_without_javascript(
             has=page.locator("legend", has_text=gettext("Booking confirmations")),
         )
         purpose.locator("input[name=channel][value=email]").check()
-        with page.expect_navigation():
-            purpose.locator("button", has_text=gettext("Save preference")).click()
+        click_to_navigate(
+            purpose.locator("button", has_text=gettext("Save preference"))
+        )
         expect(page.locator(".feedback--success")).to_contain_text(
             gettext("Messaging preferences saved.")
         )
@@ -656,7 +667,7 @@ def test_keyboard_reaches_and_activates_the_verify_action(
         else:
             pytest.fail("verify action never received keyboard focus")
 
-        with page.expect_navigation():
+        with expect_document(page):
             page.keyboard.press("Enter")
         expect(page.locator(".feedback--success")).to_contain_text(
             gettext("Destination verified for automated messages.")
@@ -718,15 +729,13 @@ def test_stale_save_and_verify_actions_render_the_conflict(
 
         # Stale save: page 1 holds the edit form for version 1 while a
         # second tab saves version 2 first.
-        with page.expect_navigation():
-            sms.locator("button", has_text=gettext("Edit destination")).click()
+        click_to_navigate(sms.locator("button", has_text=gettext("Edit destination")))
         expect(page.locator("h1")).to_contain_text(gettext("Edit"))
         _save_from_second_tab(
             context, renewal_base_url, contacts_staff, "+55 11 90000-2222"
         )
         page.locator("#id_destination").fill("+55 11 90000-3333")
-        with page.expect_navigation():
-            page.locator("button", has_text=gettext("Save destination")).click()
+        click_to_navigate(page.locator("button", has_text=gettext("Save destination")))
         alert = page.locator("#contact-errors")
         expect(alert).to_have_attribute("role", "alert")
         expect(alert).to_contain_text(
@@ -740,14 +749,12 @@ def test_stale_save_and_verify_actions_render_the_conflict(
 
         # Stale verify: the manage screen rendered version 2; the
         # destination moved to version 3 before the verify POST.
-        with page.expect_navigation():
-            page.locator("button", has_text=gettext("Back to contacts")).click()
+        click_to_navigate(page.locator("button", has_text=gettext("Back to contacts")))
         expect(page.locator("h1")).to_have_text(gettext(CONTACTS_TITLE))
         _save_from_second_tab(
             context, renewal_base_url, contacts_staff, "+55 11 90000-4444"
         )
-        with page.expect_navigation():
-            sms.locator("button", has_text=gettext("Mark as verified")).click()
+        click_to_navigate(sms.locator("button", has_text=gettext("Mark as verified")))
         alert = page.locator(".feedback--error")
         expect(alert).to_have_attribute("role", "alert")
         expect(alert).to_contain_text(
@@ -858,8 +865,7 @@ def _zoom_200(page: Page, root: Path) -> dict[str, object]:
     assert height >= MIN_TARGET_PX, height
     captures = [_capture(page, root, "manage-zoom-200")]
     item = _contact_item(page, _channel_label("SMS"))
-    with page.expect_navigation():
-        item.locator("button", has_text=gettext("Edit destination")).click()
+    click_to_navigate(item.locator("button", has_text=gettext("Edit destination")))
     expect(page.locator("h1")).to_contain_text(gettext("Edit"))
     assert _no_overflow(page)
     captures.append(_capture(page, root, "edit-zoom-200"))
@@ -904,7 +910,7 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_contacts_usable(
         ),
     ]
     for scene, options in scenes:
-        context = contacts_browser.new_context(locale="pt-BR", **options)
+        context = new_context(contacts_browser, locale="pt-BR", **options)
         page = context.new_page()
         page.set_default_timeout(20_000)
         try:
