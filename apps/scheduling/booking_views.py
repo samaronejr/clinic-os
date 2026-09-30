@@ -255,8 +255,6 @@ def _booked_response(
 
 
 def _created(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
-    # Authorize the agenda this POST redirects to before anything is written.
-    authorized_view_scope(clinic_id)
     if request.POST.get("service_type_id"):
         _authorize_service_practitioner(request, clinic_id)
         choices = tuple(
@@ -283,6 +281,9 @@ def appointment_create_view(
     if mode not in {PREPARE_MODE, CREATE_MODE}:
         raise Http404
     try:
+        # Both the preparation page and a completed booking need agenda scope.
+        # Decide it before preparation can append its viewed event.
+        authorized_view_scope(clinic_id)
         if mode == PREPARE_MODE:
             return _prepared(request, clinic_id)
         return _created(request, clinic_id)

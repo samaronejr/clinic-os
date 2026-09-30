@@ -38,6 +38,7 @@ from scheduling.appointment_service_support import (
 from scheduling.test_resource_role_matrix import _verified_client
 from scheduling.test_resource_rules import book
 from scheduling.test_resources import _catalog
+from scheduling.write_scope_routes import write_routes
 
 if TYPE_CHECKING:
     from django.test import Client
@@ -73,25 +74,35 @@ def test_the_matrix_splits_every_write_and_response_scope() -> None:
     assert holds(PHYSICIAN, "appointment.move_own", "appointment.book_own")
 
 
-def _snapshot(database_url: str) -> tuple[dict[UUID, tuple[object, ...]], int]:
+def _snapshot(
+    database_url: str,
+) -> tuple[dict[tuple[str, UUID], tuple[object, ...]], int]:
     """Every booking row and the audit ledger size, read as the test superuser.
 
     A separate connection sees exactly what the request committed.
     """
     with psycopg.connect(database_url) as raw:
         rows = raw.execute(
-            "SELECT id, start_at, end_at, status FROM clinic_app.scheduling_appointment"
+            "SELECT id, start_at, end_at, status, service_type_id, resource_ids, "
+            "buffer_before, buffer_after FROM clinic_app.scheduling_appointment"
+        ).fetchall()
+        resources = raw.execute(
+            "SELECT id, appointment_id, resource_id, unit, start_at, end_at, occupied "
+            "FROM clinic_app.scheduling_appointmentresource"
         ).fetchall()
         audit = raw.execute("SELECT count(*) FROM clinic_app.audit_event").fetchone()
     assert audit is not None
-    return {row[0]: tuple(row[1:]) for row in rows}, int(audit[0])
+    return {
+        **{("appointment", row[0]): tuple(row[1:]) for row in rows},
+        **{("resource", row[0]): tuple(row[1:]) for row in resources},
+    }, int(audit[0])
 
 
 def _post(
-    client: Client, url: str, data: dict[str, object]
+    client: Client, url: str, data: dict[str, str | list[str]], *, htmx: bool = False
 ) -> _MonkeyPatchedWSGIResponse:
     with runtime_role():
-        return client.post(url, data)
+        return client.post(url, data, headers={"HX-Request": "true"} if htmx else {})
 
 
 def _refused_like(
@@ -101,12 +112,14 @@ def _refused_like(
         response.status_code == unknown.status_code == 404
         and response.content == unknown.content
         and not response.cookies
+        and not response.wsgi_request.session.modified
     )
 
 
 @pytest.mark.parametrize("role", ROLES)
+@pytest.mark.parametrize("htmx", [False, True], ids=["native", "htmx"])
 def test_writes_decide_their_response_scope_before_writing(
-    rbac_graph: RbacGraph, role: str, superuser_database_url: str
+    rbac_graph: RbacGraph, role: str, superuser_database_url: str, *, htmx: bool
 ) -> None:
     setup = seed_appointment_setup(rbac_graph)
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
@@ -128,76 +141,85 @@ def test_writes_decide_their_response_scope_before_writing(
     books_service = holds(role, "appointment.book") or (
         own and holds(role, "appointment.book_own")
     )
-    create_url = f"/scheduling/clinics/{setup.clinic_id}/appointments/new/"
-    reschedule = "scheduling:appointment-reschedule"
-    cancel = "scheduling:appointment-cancel"
-    cases: list[tuple[str, str, dict[str, object], bool, str]] = [
-        (
-            "create service",
-            create_url,
-            {
-                "mode": "create",
+    for route in write_routes():
+        for is_service, appointment in ((False, legacy), (True, serviced)):
+            booking_allowed = books_service if is_service else role in MANAGER_ROLES
+            moving_allowed = moves_service if is_service else role in MANAGER_ROLES
+            selection: dict[str, str | list[str]] = {
                 "enrollment_id": str(setup.enrollment_id),
                 "practitioner": str(setup.practitioner_id),
-                "service_type_id": str(service.pk),
-                "resource_ids": [str(room.pk), str(equipment.pk)],
-                "start_local": "2035-06-02T10:00",
-                "end_local": "2035-06-02T10:30",
+            }
+            if is_service:
+                selection.update(
+                    service_type_id=str(service.pk),
+                    resource_ids=[str(room.pk), str(equipment.pk)],
+                )
+            create_data = {
+                **selection,
+                "start_local": "2035-06-02T10:30" if is_service else "2035-06-02T10:00",
+                "end_local": "2035-06-02T11:00" if is_service else "2035-06-02T10:15",
                 "idempotency_key": str(uuid4()),
-            },
-            books_service and role in AGENDA_SCOPE,
-            f"/scheduling/clinics/{uuid4()}/appointments/new/",
-        ),
-        (
-            "reschedule service",
-            reverse(reschedule, args=[serviced.pk]),
-            {"start_local": "2035-06-02T11:00", "end_local": "2035-06-02T11:30"},
-            moves_service and role in TRANSITION_SCOPE,
-            reverse(reschedule, args=[uuid4()]),
-        ),
-        (
-            "reschedule legacy",
-            reverse(reschedule, args=[legacy.pk]),
-            {"start_local": "2035-06-02T11:45", "end_local": "2035-06-02T12:00"},
-            role in MANAGER_ROLES and role in TRANSITION_SCOPE,
-            reverse(reschedule, args=[uuid4()]),
-        ),
-        (
-            "cancel service",
-            reverse(cancel, args=[serviced.pk]),
-            {"reason": "clinic_request"},
-            moves_service and role in TRANSITION_SCOPE,
-            reverse(cancel, args=[uuid4()]),
-        ),
-        (
-            "cancel legacy",
-            reverse(cancel, args=[legacy.pk]),
-            {"reason": "clinic_request"},
-            role in MANAGER_ROLES and role in TRANSITION_SCOPE,
-            reverse(cancel, args=[uuid4()]),
-        ),
-    ]
-    # The first request after step-up records the verified session; warm it
-    # so every later comparison sees only what the request itself writes.
-    _post(client, cases[0][4], cases[0][2])
-    for name, url, data, allowed, unknown_url in cases:
-        before_rows, before_audit = _snapshot(superuser_database_url)
-        response = _post(client, url, data)
-        after_rows, after_audit = _snapshot(superuser_database_url)
-        if allowed:
-            assert response.status_code == 303, (role, name, response.status_code)
-            assert after_rows != before_rows, (role, name)
-            assert after_audit > before_audit, (role, name)
-            # The response's own target admits the actor (a browser follows it,
-            # which also consumes the completion notice).
-            with runtime_role():
-                assert client.get(response["Location"]).status_code == 200, (role, name)
-        else:
-            unknown = _post(client, unknown_url, data)
-            assert _refused_like(response, unknown), (role, name, response.status_code)
-            # Side-effect free: no booking changed, no audit row appended.
-            assert after_rows == before_rows, (role, name)
-            assert after_audit == before_audit, (role, name)
+            }
+            cases: dict[str, tuple[dict[str, str | list[str]], bool]] = {
+                "prepare": ({**selection, "mode": "prepare"}, booking_allowed),
+                "create": ({**create_data, "mode": "create"}, booking_allowed),
+                "reschedule": (
+                    {
+                        "start_local": (
+                            "2035-06-02T11:20" if is_service else "2035-06-02T08:00"
+                        ),
+                        "end_local": (
+                            "2035-06-02T11:50" if is_service else "2035-06-02T08:15"
+                        ),
+                    },
+                    moving_allowed,
+                ),
+                "cancel": ({"reason": "clinic_request"}, moving_allowed),
+            }
+            identifier = (
+                setup.clinic_id if route.selector == "clinic_id" else appointment.pk
+            )
+            url = reverse(route.name, kwargs={route.selector: identifier})
+            unknown_url = reverse(route.name, kwargs={route.selector: uuid4()})
+            for mode in route.modes:
+                assert mode in cases, ("unclassified scheduling mode", route.name, mode)
+                data, write_allowed = cases[mode]
+                response_scope = (
+                    AGENDA_SCOPE if mode in {"prepare", "create"} else TRANSITION_SCOPE
+                )
+                allowed = write_allowed and role in response_scope
+                name = (route.name, mode, "service" if is_service else "legacy", htmx)
+                # Warm step-up and compare the unknown request's own refusal.
+                unknown = _post(client, unknown_url, data, htmx=htmx)
+                session_before = dict(client.session)
+                before_rows, before_audit = _snapshot(superuser_database_url)
+                response = _post(client, url, data, htmx=htmx)
+                after_rows, after_audit = _snapshot(superuser_database_url)
+                if allowed:
+                    expected_status = 200 if mode == "prepare" else 204 if htmx else 303
+                    assert response.status_code == expected_status, (
+                        role,
+                        name,
+                        response.status_code,
+                    )
+                    assert (after_rows == before_rows) == (mode == "prepare"), (
+                        role,
+                        name,
+                    )
+                    assert after_audit > before_audit, (role, name)
+                    if mode != "prepare":
+                        target = response["HX-Redirect" if htmx else "Location"]
+                        with runtime_role():
+                            assert client.get(target).status_code == 200, (role, name)
+                else:
+                    assert _refused_like(response, unknown), (
+                        role,
+                        name,
+                        response.status_code,
+                    )
+                    assert dict(client.session) == session_before, (role, name)
+                    assert after_rows == before_rows, (role, name)
+                    assert after_audit == before_audit, (role, name)
     # The physician's own service move is refused only by the response scope.
     if role == PHYSICIAN:
         assert moves_service
