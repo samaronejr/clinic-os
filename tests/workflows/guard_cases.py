@@ -9,6 +9,7 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID, uuid4
+from weakref import WeakKeyDictionary
 
 from apps.comms.adapters import OperationScope, PermanentSendError
 from apps.comms.models import IntegrationOperation
@@ -40,6 +41,7 @@ from apps.workflows.validation import (
 )
 from django.db import connection
 from django.http import HttpRequest, HttpResponse, HttpResponseBase
+from django.shortcuts import render
 from django.test import RequestFactory
 from django.urls import resolve
 from django.utils import timezone
@@ -231,11 +233,27 @@ def _queue_owned(response: object, world: object) -> bool:
     )
 
 
+# Refused view calls remember their own request: the shared 403 page renders
+# the actor's shell, so the oracle re-renders it for exactly that request.
+_REFUSAL_REQUESTS: WeakKeyDictionary[HttpResponse, HttpRequest] = WeakKeyDictionary()
+
+
+def _remember(request: HttpRequest, view: Callable[[HttpRequest], object]) -> object:
+    response = view(request)
+    if isinstance(response, HttpResponse):
+        _REFUSAL_REQUESTS[response] = request
+    return response
+
+
 def _denied_page(response: object, _prepared: object) -> bool:
+    """The refusal is the shared request-rendered 403 page (todo 13 contract)."""
+    if not isinstance(response, HttpResponse):
+        return False
+    request = _REFUSAL_REQUESTS.get(response)
     return (
-        isinstance(response, HttpResponse)
+        request is not None
         and response.status_code == 403
-        and response.content == views._denied().content
+        and response.content == render(request, "403.html", status=403).content
     )
 
 
@@ -1081,14 +1099,16 @@ def _extras() -> dict[str, CaseRelations]:
                 ),
                 Cell(
                     "complete-another-users-task",
-                    lambda w, task: inspect.unwrap(views._authorized_tasks)(
+                    lambda w, task: _remember(
                         w.post(
                             action="complete",
                             task_id=str(task.pk),
                             expected_revision="3",
                             checked="on",
                         ),
-                        w.clinic,
+                        lambda request: inspect.unwrap(views._authorized_tasks)(
+                            request, w.clinic
+                        ),
                     ),
                     REFUSED,
                     MANAGER,
@@ -1123,14 +1143,14 @@ def _extras() -> dict[str, CaseRelations]:
                 ),
                 Cell(
                     "complete-another-users-task",
-                    lambda w, task: views.tasks(
+                    lambda w, task: _remember(
                         w.post(
                             action="complete",
                             task_id=str(task.pk),
                             expected_revision="3",
                             checked="on",
                         ),
-                        w.clinic,
+                        lambda request: views.tasks(request, w.clinic),
                     ),
                     REFUSED,
                     MANAGER,

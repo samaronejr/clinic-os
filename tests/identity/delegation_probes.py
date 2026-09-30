@@ -321,6 +321,31 @@ def _authorize_topics(graph: RbacGraph, actor: UUID) -> Seeded:
     )
 
 
+def _staff_topics(graph: RbacGraph, _actor: UUID) -> Seeded:
+    # The agenda topic's permission decides; proceeding returns nothing and
+    # records the authorized subscription.
+    return Seeded(
+        lambda: authorization._staff_topics((f"clinic:{graph.clinic_a}:agenda",)),
+        lambda: None,
+        returns=lambda _permitted: None,
+    )
+
+
+def _register_job(graph: RbacGraph, _actor: UUID) -> Seeded:
+    def call() -> bool:
+        scheduled = len(connection.run_on_commit)
+        with override_settings(REALTIME_ENABLED=True):
+            topic = scopes.register_job_topic(
+                clinic_id=graph.clinic_a, permission=PERMISSION
+            )
+        # Proceeding schedules the lease write; never let it reach a broker.
+        scheduled = len(connection.run_on_commit) - scheduled
+        transaction.set_rollback(True)
+        return topic.startswith("ai_job:") and scheduled == 1
+
+    return Seeded(call, lambda: None, returns=lambda _permitted: True)
+
+
 AGENDA = TOPIC_PERMISSIONS["agenda"]
 CASES: dict[str, Case] = {
     "apps.identity.current_context.require_permission": Case(
@@ -347,6 +372,13 @@ CASES: dict[str, Case] = {
     ),
     "apps.realtime.authorization.authorize_topics_sync": Case(
         _authorize_topics, database_role="clinic_app", permission=AGENDA, session=True
+    ),
+    # Surfaced by task 26's require_permission discovery signal (wave-a code).
+    "apps.realtime.authorization._staff_topics": Case(
+        _staff_topics, database_role="clinic_app", permission=AGENDA
+    ),
+    "apps.realtime.scopes.register_job_topic": Case(
+        _register_job, database_role="clinic_app"
     ),
 }
 

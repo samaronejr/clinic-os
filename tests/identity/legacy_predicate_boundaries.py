@@ -5,12 +5,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from apps.core import navigation
+from apps.core import navigation, patient_context
 from apps.ehr import services as ehr
 from apps.identity import current_context, otp, preferences, saved_views
 from apps.identity.auth_backends import ClinicBackend
 from apps.identity.models import User, UserClinicRole
-from apps.identity.permissions import BUNDLES_V1, PROFESSIONAL_PERMISSIONS_V1
+from apps.identity.permissions import (
+    BUNDLES_V1,
+    BUNDLES_V2,
+    PROFESSIONAL_PERMISSIONS_V1,
+)
 from apps.intake import contacts, patient_access, patient_search, questionnaire_views
 from apps.retention import services as retention
 from apps.teleconsult import services as teleconsult
@@ -106,12 +110,13 @@ def _granted_permissions(w: LegacyWorld, valid: bool) -> object:
                 "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
             )
     granted = navigation.granted_permissions(w.graph.clinic_a)
-    # Exact value, not presence: the role's v1 bundle within the registry,
-    # less the professionally scoped permissions, which need a current
-    # professional registration that this world does not seed. An unknown
-    # actor must hold nothing, so the same comparison refuses it.
+    # Exact value, not presence: the role's effective bundle (v2 = v1 plus
+    # task 26's task vocabulary) within the registry, less the professionally
+    # scoped permissions, which need a current professional registration that
+    # this world does not seed. An unknown actor must hold nothing, so the
+    # same comparison refuses it.
     expected = (
-        BUNDLES_V1[w.role] - PROFESSIONAL_PERMISSIONS_V1
+        BUNDLES_V2[w.role] - PROFESSIONAL_PERMISSIONS_V1
     ) & navigation.REGISTRY_PERMISSIONS
     return granted == expected
 
@@ -125,6 +130,22 @@ def _search_exact(w: LegacyWorld, valid: bool) -> object:
     return patient_search.search_patients_exact(
         clinic_id=w.graph.clinic_a, query="Sintetico", limit=5
     )
+
+
+def _patient_context_allowed(w: LegacyWorld, valid: bool) -> object:
+    if not valid:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [str(uuid4())]
+            )
+    return patient_context.patient_context_allowed(clinic_id=w.graph.clinic_a)
+
+
+# One permission decides the read-only patient-context check: every legacy role
+# whose effective bundle holds demographics.read, and nobody unknown.
+PATIENT_CONTEXT = tuple(
+    role for role in LEGACY if "demographics.read" in BUNDLES_V2[role]
+)
 
 
 # Two gates decide the exact search: the manager roles, then demographics.read.
@@ -144,6 +165,12 @@ BOUNDARIES = (
         "resolver",
         LEGACY,
         _granted_permissions,
+    ),
+    Boundary(
+        "apps.core.patient_context.patient_context_allowed",
+        "permission_helper",
+        PATIENT_CONTEXT,
+        _patient_context_allowed,
     ),
     Boundary(
         "apps.intake.patient_search.search_patients_exact",

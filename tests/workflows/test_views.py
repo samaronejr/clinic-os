@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import pytest
 from apps.comms.models import IntegrationOperation
-from apps.identity.models import UserClinicRole
+from apps.identity.models import RoleGrant, UserClinicRole
 from apps.tenancy.db import tenant_context
-from apps.workflows.models import Task
+from apps.workflows.models import Task, TaskComment
+from apps.workflows.reassignment import preview_reassignment
 from apps.workflows.services import TaskOwner, assign_task, create_task, start_task
 from django.db import connection
 from django.urls import URLPattern, URLResolver, get_resolver, reverse
+from django.utils import timezone
 
 from identity.permission_support import owner_context, permission_actor
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client
+from renewal.test_retention import staff_client
 from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_cross_clinic_appointment_setups,
@@ -290,3 +294,130 @@ def test_another_clinics_reference_is_the_unknown_id_route_denial(
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert writes() == before
         assert Task.objects.get(pk=review.pk).state == "in_progress"
+
+
+WRITE_ACTIONS = (
+    "create",
+    "assign",
+    "start",
+    "complete",
+    "cancel",
+    "comment",
+    "bulk-apply",
+)
+
+
+def _queue_snapshot(graph: RbacGraph) -> tuple[tuple[int, int], object, int]:
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        rows = sorted(
+            Task.objects.filter(clinic_id=graph.clinic_a).values_list(
+                "pk", "state", "revision", "owner_user_id", "owner_role"
+            )
+        )
+        return writes(), rows, TaskComment.objects.count()
+
+
+@pytest.mark.parametrize("action", WRITE_ACTIONS)
+def test_write_permission_without_view_scope_refuses_before_any_write(
+    rbac_graph: RbacGraph, action: str
+) -> None:
+    """Authorize-before-write: the queue re-render needs tasks.view.
+
+    A manager keeps tasks.assign, tasks.complete and tasks.reassign while a v2
+    clinic subtraction removes tasks.view. Every write action must answer the
+    unknown-clinic refusal and leave no task, comment, audit or outbox row: a
+    view that wrote first and then failed its read scope would commit the write
+    behind the refusal (the tenant transaction commits below 500).
+    """
+    graph = rbac_graph
+    admin = graph.clinic_admin
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=admin,
+            role=UserClinicRole.Role.CLINIC_ADMIN,
+        )
+    with runtime_role(), tenant_context(admin, graph.organization_a):
+        made = {
+            name: create_task(
+                clinic_id=graph.clinic_a, spec=spec(graph), idempotency_key=uuid4()
+            )
+            for name in ("open", "assigned", "started", "cancel", "comment", "bulk")
+        }
+        for name in ("assigned", "started"):
+            made[name] = assign_task(
+                clinic_id=graph.clinic_a,
+                task_id=made[name].pk,
+                owner=TaskOwner(user_id=admin),
+                expected_revision=1,
+            )
+        made["started"] = start_task(
+            clinic_id=graph.clinic_a, task_id=made["started"].pk, expected_revision=2
+        )
+        token = preview_reassignment(
+            clinic_id=graph.clinic_a,
+            task_ids=[made["bulk"].pk],
+            owner=TaskOwner(role=UserClinicRole.Role.RECEPTIONIST),
+        ).token
+    with owner_context(graph.organization_a):
+        RoleGrant.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            role=UserClinicRole.Role.CLINIC_ADMIN,
+            permission="tasks.view",
+            bundle_version=2,
+            valid_from=timezone.now() - timedelta(minutes=1),
+        )
+    bodies = {
+        "create": {
+            "action": "create",
+            "kind": "checklist",
+            "priority": "normal",
+            "due_date": "02/06/2035",
+            "due_time": "09:00",
+            "subject_kind": "clinic",
+            "subject_id": str(graph.clinic_a),
+            "idempotency_key": str(uuid4()),
+        },
+        "assign": {
+            "action": "assign",
+            "task_id": str(made["open"].pk),
+            "expected_revision": "1",
+            "owner": "role:receptionist",
+        },
+        "start": {
+            "action": "start",
+            "task_id": str(made["assigned"].pk),
+            "expected_revision": "2",
+        },
+        "complete": {
+            "action": "complete",
+            "task_id": str(made["started"].pk),
+            "expected_revision": "3",
+            "checked": "on",
+        },
+        "cancel": {
+            "action": "cancel",
+            "task_id": str(made["cancel"].pk),
+            "expected_revision": "1",
+        },
+        "comment": {
+            "action": "comment",
+            "task_id": str(made["comment"].pk),
+            "expected_revision": "1",
+            "idempotency_key": str(uuid4()),
+            "body": "Sintetico comment",
+        },
+        "bulk-apply": {"action": "bulk-apply", "preview_token": token},
+    }
+    before = _queue_snapshot(graph)
+    own_url = reverse("workflows:tasks", kwargs={"clinic_id": graph.clinic_a})
+    with staff_client(admin) as client:
+        baseline = client.get(reverse("workflows:tasks", kwargs={"clinic_id": uuid4()}))
+        assert baseline.status_code == 403
+        for headers in ({}, {"HX-Request": "true"}):
+            assert_refused(
+                client.post(own_url, bodies[action], headers=headers), baseline
+            )
+    assert _queue_snapshot(graph) == before

@@ -22,12 +22,16 @@ def test_realtime_census_classifications_are_explicit() -> None:
     # to an executable staff oracle; no reason-only (v2/nonstaff) exemption.
     assert classifications == {
         "apps.realtime.authorization._patient_topics": "direct",
+        # Surfaced by task 26's require_permission discovery signal; each runs as
+        # a root-delegation case in tests/identity/delegation_probes.py.
+        "apps.realtime.authorization._staff_topics": "delegated",
         "apps.realtime.authorization._verified_staff": "delegated",
         "apps.realtime.authorization.authorize_topics_sync": "delegated",
         "apps.realtime.hooks.permission_changed": "direct",
         "apps.realtime.scopes._schedule_scope": "infrastructure",
         "apps.realtime.scopes.authorize_scope": "delegated",
         "apps.realtime.scopes.grant_clinic_topic": "delegated",
+        "apps.realtime.scopes.register_job_topic": "delegated",
         "apps.realtime.scopes.revoke_clinic_topic": "delegated",
     }
 

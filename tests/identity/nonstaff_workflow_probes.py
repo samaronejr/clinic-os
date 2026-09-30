@@ -6,8 +6,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from apps.comms.adapters import PermanentSendError
-from apps.core import workspace
-from apps.workflows import engine, task_services, tasks, views
+from apps.workflows import engine, task_services, tasks
 
 from identity.legacy_guard_inventory import discover
 from identity.nonstaff_differential import DifferentialProbe
@@ -62,30 +61,8 @@ def workflow_probes(
                 world.assigned, world.assigned.revision, "probe", {}
             ),
         ),
-        "apps.workflows.views._denied": DifferentialProbe(
-            "apps.workflows.views._denied",
-            views._denied,
-            allowed_result,
-            expected=False,
-        ),
     }
-    clinic = workspace.WorkspaceClinic(
-        id=world.clinic,
-        name="Sintetico",
-        timezone="America/Sao_Paulo",
-        roles=frozenset({data.legacy.role}),
-    )
-    probes = [
-        DifferentialProbe(
-            "apps.core.workspace._links",
-            lambda: any(
-                link.key == "operations"
-                for link in workspace._links(data.legacy.request, clinic)
-            ),
-            bool,
-            expected=False,
-        )
-    ]
+    probes: list[DifferentialProbe] = []
     for symbol in discover():
         if not symbol.startswith("apps.workflows."):
             continue

@@ -1518,7 +1518,8 @@
     {
       "symbol": "apps.intake.patient_search.search_patients_exact",
       "signals": [
-        "denial"
+        "denial",
+        "permission_helper"
       ],
       "kind": "direct",
       "probes": [
@@ -2238,6 +2239,7 @@
       "signals": [
         "actor",
         "denial",
+        "permission_helper",
         "scope_name"
       ],
       "kind": "delegated",
@@ -2250,7 +2252,8 @@
       "symbol": "apps.realtime.scopes.grant_clinic_topic",
       "signals": [
         "denial",
-        "membership"
+        "membership",
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -2261,7 +2264,8 @@
     {
       "symbol": "apps.realtime.scopes.revoke_clinic_topic",
       "signals": [
-        "denial"
+        "denial",
+        "permission_helper"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -3773,7 +3777,6 @@
       "symbol": "apps.workflows.views._authorized_tasks",
       "signals": [
         "decorator",
-        "denial",
         "permission_delegation",
         "permission_helper"
       ],
@@ -3796,15 +3799,6 @@
         "apps.workflows.views._bulk_action#observed"
       ],
       "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
-    },
-    {
-      "symbol": "apps.workflows.views._denied",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Executed by nonstaff_workflow_probes under the authority observer and complete role backstop. This routine renders a fixed denial or returns opaque stored worker references; it does not observe the calling staff actor. Worker execution separately rechecks the immutable stored actor."
     },
     {
       "symbol": "apps.workflows.views._manager",
@@ -3860,7 +3854,6 @@
     {
       "symbol": "apps.workflows.views.tasks",
       "signals": [
-        "denial",
         "permission_delegation"
       ],
       "kind": "direct",
@@ -3869,6 +3862,38 @@
         "apps.workflows.views.tasks#observed"
       ],
       "reason": "Executable workflow authority-channel oracle, not a delegated-label exemption. The separate derived workflow guard matrix executes a permitted case and every non-permitted catalog role, with per-function permission-removal mutants."
+    },
+    {
+      "symbol": "apps.core.patient_context.patient_context_allowed",
+      "signals": [
+        "permission_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.patient_context.patient_context_allowed"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization._staff_topics",
+      "signals": [
+        "permission_helper"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.scopes.register_job_topic",
+      "signals": [
+        "permission_helper"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
     }
   ],
   "probes": [
@@ -3898,8 +3923,8 @@
     "apps.core.integration._resolve_callback_scope",
     "apps.core.integration._resolve_scope",
     "apps.core.navigation.granted_permissions",
+    "apps.core.patient_context.patient_context_allowed",
     "apps.core.views.workspace_home",
-    "apps.core.workspace._links#observed",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
     "apps.ehr.attachment_views._workspace",
@@ -4086,6 +4111,7 @@
     "apps.tenancy.envelope.rewrap_tenant_keys#observed",
     "apps.tenancy.envelope.tenant_key_status#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
+    "apps.tenancy.middleware.TenantMiddleware._response",
     "apps.workflows.access.may_self_claim#observed",
     "apps.workflows.access.owner_matches#observed",
     "apps.workflows.access.require_clinic_access#observed",
@@ -4126,7 +4152,6 @@
     "apps.workflows.views._submit#observed",
     "apps.workflows.views._task_row#observed",
     "apps.workflows.views.tasks#observed",
-    "apps.tenancy.middleware.TenantMiddleware._response",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
     "clinic_app.ehr_assigned",

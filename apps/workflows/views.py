@@ -10,9 +10,7 @@ from zoneinfo import ZoneInfo
 
 from django.db import connection
 from django.db.models import Q
-from django.http import HttpRequest, HttpResponse, HttpResponseBase
 from django.shortcuts import render
-from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -60,12 +58,9 @@ from apps.workflows.services import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from django.http import HttpRequest, HttpResponse, HttpResponseBase
+
     from apps.identity.models import Clinic
-
-
-def _denied() -> HttpResponse:
-    # No request context means the shell cannot select/persist a clinic or pin.
-    return HttpResponse(render_to_string("403.html"), status=403)
 
 
 def _staff_catalog(clinic_id: UUID) -> tuple[tuple[UUID, str], ...]:
@@ -278,7 +273,7 @@ def tasks(
     try:
         require_clinic_access(clinic_id=clinic_id, permission="tasks.view")
     except CurrentActorError:
-        return _denied()
+        return render(request, "403.html", status=403)
     return _authorized_tasks(request, clinic_id, exceptions=exceptions)
 
 
@@ -294,7 +289,7 @@ def _authorized_tasks(
 ) -> HttpResponse:
     clinic, actor = require_clinic_access(clinic_id=clinic_id, permission="tasks.view")
     if request.method not in {"GET", "POST"}:
-        return _denied()
+        return render(request, "403.html", status=403)
     manager = _manager(clinic_id)
     capabilities = set()
     for permission in ("tasks.assign", "tasks.complete"):
@@ -317,7 +312,7 @@ def _authorized_tasks(
                 request, clinic, actor
             )
         except CurrentActorError:
-            return _denied()
+            return render(request, "403.html", status=403)
         except WorkflowConflictError:
             state, status, message = (
                 "conflict",
@@ -335,7 +330,7 @@ def _authorized_tasks(
     staff = dict(_staff_catalog(clinic_id))
     preview_owner_label = _preview_label(preview, staff)
     if preview_owner_label is None:
-        return _denied()
+        return render(request, "403.html", status=403)
     runs = (
         WorkflowRun.objects.filter(clinic_id=clinic_id)
         .filter(

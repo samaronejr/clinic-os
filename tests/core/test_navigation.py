@@ -272,6 +272,7 @@ def test_palette_search_filters_destinations_by_permission(
         "scheduling:agenda",
         "scheduling:availability-list",
         "consent:staff",
+        "workflows:tasks",
         "retention:status",
         "identity:preferences",
     ]
