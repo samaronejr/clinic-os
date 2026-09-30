@@ -10,6 +10,7 @@ import pytest
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 
+from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
@@ -34,9 +35,7 @@ def submit(page: Page, locator: Locator) -> None:
             locator.click()
         assert pending.value.status == 200
     else:
-        with page.expect_navigation() as navigation:
-            locator.click()
-        response = navigation.value
+        response = click_to_navigate(locator)
         assert response is not None
         assert response.status == 200
 
@@ -96,7 +95,7 @@ def test_tasks_lifecycle_native_and_enhanced(
     try:
         _sign_in_physician(page, renewal_base_url, availability_staff)
         url = f"{renewal_base_url}/clinics/{availability_staff['clinic_a']}/tasks/"
-        page.goto(url)
+        goto_settled(page, url)
         expect(
             page.get_by_role("heading", name=gettext("Tasks"), exact=True)
         ).to_be_visible()
@@ -141,7 +140,7 @@ def test_tasks_lifecycle_native_and_enhanced(
         assert [response.status for response in responses] == [403, 403]
         assert responses[0].body() == responses[1].body()
         assert all("set-cookie" not in response.headers for response in responses)
-        page.goto(f"{url}exceptions/")
+        goto_settled(page, f"{url}exceptions/")
         capture(page, renewal_base_url, renewal_artifact_root, "exceptions", width)
     finally:
         context.close()
@@ -158,7 +157,9 @@ def test_native_forms_without_javascript(
     page = context.new_page()
     try:
         _sign_in_physician(page, renewal_base_url, availability_staff)
-        page.goto(f"{renewal_base_url}/clinics/{availability_staff['clinic_a']}/tasks/")
+        goto_settled(
+            page, f"{renewal_base_url}/clinics/{availability_staff['clinic_a']}/tasks/"
+        )
         row = create(page, "2035-06-01T09:00")
         submit(page, row.locator('button[value="assign"]'))
         submit(page, row.locator('button[value="start"]'))
@@ -184,11 +185,11 @@ def test_stale_command_and_network_failure_have_no_false_success(
     try:
         _sign_in_physician(page, renewal_base_url, availability_staff)
         url = f"{renewal_base_url}/clinics/{availability_staff['clinic_a']}/tasks/"
-        page.goto(url)
+        goto_settled(page, url)
         row = create(page, "2035-07-01T09:00")
         identifier = row.get_attribute("data-task")
         second = context.new_page()
-        second.goto(url)
+        goto_settled(second, url)
         remote = second.locator(f'[data-task="{identifier}"]')
         submit(second, remote.locator('button[value="assign"]'))
         submit(second, remote.locator('button[value="start"]'))
@@ -240,7 +241,7 @@ def test_bulk_reassignment_requires_visible_preview(
     page = renewal_page
     page.set_viewport_size({"width": 1280, "height": 900})
     sign_in_manager(page, renewal_base_url, staff, manager)
-    page.goto(f"{renewal_base_url}/clinics/{staff['clinic_a']}/tasks/")
+    goto_settled(page, f"{renewal_base_url}/clinics/{staff['clinic_a']}/tasks/")
     first = create(page, "2035-04-01T09:00")
     second = create(page, "2035-05-01T09:00")
     first.locator('[name="task_ids"]').check()

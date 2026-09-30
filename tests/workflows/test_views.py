@@ -421,3 +421,66 @@ def test_write_permission_without_view_scope_refuses_before_any_write(
                 client.post(own_url, bodies[action], headers=headers), baseline
             )
     assert _queue_snapshot(graph) == before
+
+
+def test_method_selection_form_and_revision_exits_write_nothing(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Every in-view 4xx exit runs over HTTP and leaves no trace.
+
+    A manager is refused for an unsupported method and for a malformed bulk
+    selection with the unknown-clinic bytes; an invalid creation form answers
+    400 and a stale revision 409, and none of them writes.
+    """
+    graph = rbac_graph
+    admin = graph.clinic_admin
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=admin,
+            role=UserClinicRole.Role.CLINIC_ADMIN,
+        )
+    with runtime_role(), tenant_context(admin, graph.organization_a):
+        task = create_task(
+            clinic_id=graph.clinic_a, spec=spec(graph), idempotency_key=uuid4()
+        )
+    before = _queue_snapshot(graph)
+    own_url = reverse("workflows:tasks", kwargs={"clinic_id": graph.clinic_a})
+    with staff_client(admin) as client:
+        baseline = client.get(reverse("workflows:tasks", kwargs={"clinic_id": uuid4()}))
+        assert baseline.status_code == 403
+        assert_refused(client.put(own_url), baseline)
+        for headers in ({}, {"HX-Request": "true"}):
+            assert_refused(
+                client.post(
+                    own_url,
+                    {
+                        "action": "bulk-preview",
+                        "task_ids": "malformed",
+                        "owner": "role:receptionist",
+                    },
+                    headers=headers,
+                ),
+                baseline,
+            )
+            invalid = client.post(
+                own_url,
+                {"action": "create", "kind": "checklist", "priority": "normal"},
+                headers=headers,
+            )
+            assert invalid.status_code == 400
+            assert invalid.wsgi_request.session.modified is False
+            stale = client.post(
+                own_url,
+                {
+                    "action": "assign",
+                    "task_id": str(task.pk),
+                    "expected_revision": "7",
+                    "owner": "me",
+                },
+                headers=headers,
+            )
+            assert stale.status_code == 409
+            assert stale.wsgi_request.session.modified is False
+    assert _queue_snapshot(graph) == before

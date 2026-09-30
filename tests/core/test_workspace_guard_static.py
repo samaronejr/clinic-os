@@ -119,6 +119,12 @@ ALLOWED = Counter(
         ("renewal/test_runtime_paths.py", "setattr with dynamic name"): 1,
         ("renewal/test_browser_runner.py", "setattr with dynamic name"): 1,
         ("renewal/browser/test_workspace.py", "setattr with dynamic target"): 1,
+        # Task 26 mutation proofs, restored in finally: decision-site recorders
+        # and code swaps on apps.workflows functions, and require_permission
+        # replaced in apps.* modules for the guard-removal mutants.
+        ("workflows/decision_sites.py", "assigns __code__"): 2,
+        ("workflows/decision_sites.py", "setattr with dynamic name"): 4,
+        ("workflows/test_authority.py", "setattr with dynamic name"): 1,
     }
 )
 

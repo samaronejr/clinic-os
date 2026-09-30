@@ -421,6 +421,10 @@ DELEGATE_PROBES = {
     "clinic_app.teleconsult_assigned(uuid)": (
         "SELECT clinic_app.teleconsult_assigned(%(session)s)"
     ),
+    # Task 26: a task the physician owns by user id.
+    "clinic_app.workflows_owned(uuid,uuid,text)": (
+        "SELECT clinic_app.workflows_owned(%(clinic)s, %(physician)s, '')"
+    ),
 }
 
 
@@ -463,6 +467,18 @@ GUARD_PROBES = {
         "invalid policy binding",
         "SELECT coalesce(max(version), 0) FROM clinic_app.retention_retentionpolicy"
         " WHERE clinic_id = %(clinic)s AND record_class = 'ehr.encounter'",
+    ),
+    # Task 26: an open, reference-only task created by the acting manager.
+    "clinic_app.workflows_guard()": GuardProbe(
+        "INSERT INTO clinic_app.workflows_task (id, kind, subject_ref, owner_role, "
+        "due_at, priority, state, escalation_policy_version, completion_evidence, "
+        "revision, idempotency_key, fingerprint, last_command_digest, created_at, "
+        "updated_at, clinic_id, created_by_id, organization_id) VALUES (%(id)s, "
+        "'checklist', jsonb_build_object('kind', 'clinic', 'id', %(clinic)s::text), "
+        "'', now() + interval '1 hour', 'normal', 'open', 1, '{}'::jsonb, 1, "
+        "%(id)s, repeat('0', 64), '', now(), now(), %(clinic)s, %(actor)s, "
+        "%(organization)s)",
+        "invalid task",
     ),
     "clinic_app.billing_settlement_guard()": GuardProbe(
         "INSERT INTO clinic_app.billing_settlement (id, confirmation_reference, "
@@ -556,6 +572,7 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
         "encounter": encounter.pk,
         "patient": appointment.patient_id,
         "session": session.pk,
+        "physician": graph.physician,
     }
     invoices = _open_invoices(graph, appointment.patient_id)
     with owner_context(graph.organization_a), connection.cursor() as cursor:

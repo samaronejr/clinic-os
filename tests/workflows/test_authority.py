@@ -248,7 +248,7 @@ def _run(  # noqa: PLR0913 - one cell needs its guard, world and optional setup.
 
 
 def _expected_denial(case: GuardCase, *, state: str = "role") -> Outcome:
-    if case.predicate or case.transport or case.symbol == "apps.workflows.views.tasks":
+    if case.predicate or case.transport:
         return False, None
     if case.symbol == "apps.workflows.external.SyntheticWorkflowAdapter.prepare":
         return False, PermanentSendError

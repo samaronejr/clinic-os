@@ -258,22 +258,27 @@ def _submit(
 
 def _preview_label(
     preview: ReassignmentPreview | None, staff: Mapping[UUID, str]
-) -> str | None:
+) -> str:
     if preview is None:
         return ""
     if preview.owner.user_id is not None:
-        return staff.get(preview.owner.user_id)
+        # preview_reassignment admitted the owner through workflows_owner_valid,
+        # the same active clinic-member set workflows_staff_catalog lists; a
+        # missing label is an invariant break and fails closed (500, rollback).
+        return staff[preview.owner.user_id]
     return _(UserClinicRole.Role(preview.owner.role).label)
 
 
 def tasks(
     request: HttpRequest, clinic_id: UUID, *, exceptions: bool = False
 ) -> HttpResponseBase:
-    """Check clinic authority before auth decorators or any shell/session work."""
-    try:
-        require_clinic_access(clinic_id=clinic_id, permission="tasks.view")
-    except CurrentActorError:
-        return render(request, "403.html", status=403)
+    """Decide clinic authority before auth decorators or any shell/session work.
+
+    Over HTTP the workspace registry's pre-view gate (todo 13) has already
+    answered an actor without tasks.view with the shared 403 page, so this
+    decision only keeps the order for every other caller and fails closed.
+    """
+    require_clinic_access(clinic_id=clinic_id, permission="tasks.view")
     return _authorized_tasks(request, clinic_id, exceptions=exceptions)
 
 
@@ -329,8 +334,6 @@ def _authorized_tasks(
     tasks = list_tasks(clinic_id=clinic_id, exceptions=exceptions, **filters)
     staff = dict(_staff_catalog(clinic_id))
     preview_owner_label = _preview_label(preview, staff)
-    if preview_owner_label is None:
-        return render(request, "403.html", status=403)
     runs = (
         WorkflowRun.objects.filter(clinic_id=clinic_id)
         .filter(
