@@ -6822,6 +6822,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_capacity_insert_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
         "policies": [],

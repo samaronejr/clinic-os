@@ -41,6 +41,7 @@ from django.db import DatabaseError, connection, transaction
 
 from identity.authority_sql import references
 from identity.permission_support import owner_context, permission_actor
+from identity.scheduling_capacity_states import capacity_phase, capacity_states
 from patient_service_support import runtime_role
 from renewal.test_self_booking import _session
 from scheduling.appointment_service_support import seed_appointment_setup
@@ -172,6 +173,7 @@ def _as_actor(
                 "SELECT set_config('app.current_user_id', %s, true)",
                 ["" if actor is None else str(actor)],
             )
+            cursor.execute("SELECT set_config('app.current_patient_session', '', true)")
         yield
         transaction.set_rollback(True)
 
@@ -207,7 +209,9 @@ def _update(booked: Appointment) -> Outcome:
     )
 
 
-def _insert(booked: Appointment) -> Outcome:
+def _insert(
+    booked: Appointment, *, status: str = "scheduled", service: bool = True
+) -> Outcome:
     shift = timedelta(minutes=90)
     copy = Appointment(
         **{
@@ -219,8 +223,16 @@ def _insert(booked: Appointment) -> Outcome:
             "idempotency_key": uuid4(),
             "start_at": booked.start_at + shift,
             "end_at": booked.end_at + shift,
+            "status": status,
+            "cancellation_reason": "clinic_request" if status == "cancelled" else None,
+            "cancelled_at": booked.created_at if status == "cancelled" else None,
         }
     )
+    if not service:
+        copy.service_type_id = None
+        copy.resource_ids = []
+        copy.buffer_before = 0
+        copy.buffer_after = 0
 
     def save() -> None:
         copy.save(force_insert=True)
@@ -322,6 +334,136 @@ def test_capacity_guard_refuses_inactive_actor_on_every_staff_branch(
     assert rows == dict.fromkeys(
         sorted(branches - {PATIENT_BRANCH}), ("passed", CAPACITY_REFUSAL, "passed")
     )
+
+
+def test_capacity_guard_certifies_every_live_operation_phase_and_state(
+    rbac_graph: RbacGraph,
+) -> None:
+    seed = _seed(rbac_graph)
+    population = capacity_states()
+    permissions = derived_branches(CAPACITY) - {PATIENT_BRANCH}
+    rows = {}
+    for permission in sorted(permissions):
+        branch = _branch(permission)
+        # Own permissions must also refuse another professional's row.
+        scopes = (True, False) if branch.own else (False,)
+        for own in scopes:
+            actor = (
+                seed.graph.physician
+                if own
+                else permission_actor(seed.graph, branch.role)[0]
+            )
+            for state in sorted(population):
+                outcomes = []
+                for active in (True, False, True):
+                    _set_active(actor, active=active)
+                    with (
+                        capacity_phase(seed.booked, state) as statement,
+                        _as_actor(
+                            seed,
+                            actor,
+                            branch.role,
+                            _others(branch.role, permission, permissions),
+                        ),
+                    ):
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "SELECT set_config("
+                                "'app.current_patient_session','',true)"
+                            )
+                        outcomes.append(_guarded(statement))
+                deciding = (
+                    permission.startswith("appointment.book")
+                    if state.operation == "INSERT"
+                    else permission.startswith("appointment.move")
+                )
+                granted = deciding and (not branch.own or own)
+                expected: tuple[Outcome, ...] = (
+                    ("passed", CAPACITY_REFUSAL, "passed")
+                    if granted
+                    else (CAPACITY_REFUSAL,) * 3
+                )
+                # AFTER allocates/releases; authorization belongs to BEFORE.
+                # Legacy rows retain their separate original service boundary.
+                if state.phase == "AFTER" or not state.service:
+                    expected = ("passed",) * 3
+                assert tuple(outcomes) == expected, (permission, own, state, outcomes)
+                rows[permission, own, state] = tuple(outcomes)
+    # Reference population is independently re-read from the live catalog/body,
+    # not projected from the cases that happened to execute.
+    assert set(rows) == {
+        (permission, own, state)
+        for permission in permissions
+        for own in ((True, False) if _branch(permission).own else (False,))
+        for state in capacity_states()
+    }
+
+
+def test_service_insert_refuses_inactive_actor_in_every_stored_status(
+    rbac_graph: RbacGraph,
+) -> None:
+    seed = _seed(rbac_graph)
+    branches = derived_branches(CAPACITY)
+    for permission in sorted(branches - {PATIENT_BRANCH}):
+        if not permission.startswith("appointment.book"):
+            continue
+        branch = _branch(permission)
+        actor = _actor(seed, branch)
+        for status in Appointment.Status.values:
+            outcomes = []
+            for active in (True, False, True):
+                _set_active(actor, active=active)
+                with _as_actor(
+                    seed, actor, branch.role, _others(branch.role, permission, branches)
+                ):
+                    outcomes.append(_insert(seed.booked, status=status))
+            assert outcomes == ["passed", CAPACITY_REFUSAL, "passed"], (
+                permission,
+                status,
+                outcomes,
+            )
+
+
+def test_capacity_patient_branch_certifies_every_live_state(
+    rbac_graph: RbacGraph, superuser_database_url: str
+) -> None:
+    seed = _seed(rbac_graph)
+    session = _session(seed.setup)
+    rows = {}
+    for state in sorted(capacity_states()):
+        outcomes = []
+        for valid in (True, False, True):
+            _set_session_valid(superuser_database_url, session, valid=valid)
+            with (
+                capacity_phase(seed.booked, state) as statement,
+                _as_actor(seed, None, "", frozenset()),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "SELECT set_config('app.current_patient_session', %s, true)",
+                    [str(session)],
+                )
+                outcomes.append(_guarded(statement))
+        expected: tuple[Outcome, ...] = ("passed",) * 3
+        if state.phase == "BEFORE" and state.service:
+            expected = (
+                ("passed", CAPACITY_REFUSAL, "passed")
+                if state.operation == "UPDATE"
+                else (CAPACITY_REFUSAL,) * 3
+            )
+        assert tuple(outcomes) == expected, (state, outcomes)
+        rows[state] = tuple(outcomes)
+    assert set(rows) == capacity_states()
+    # The legitimate patient INSERT still goes through the complete real table,
+    # its patient guard, RLS and booking receipt, not only the isolated carrier.
+    with (
+        _as_actor(seed, None, "", frozenset()),
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(
+            "SELECT set_config('app.current_patient_session', %s, true)", [str(session)]
+        )
+        assert _insert(seed.booked, service=False) == "passed"
 
 
 def test_projection_refuses_inactive_actor_on_every_branch(
