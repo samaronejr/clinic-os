@@ -109,11 +109,17 @@ def _granted_permissions(w: LegacyWorld, valid: bool) -> object:
     # Exact value, not presence: the role's v1 bundle within the registry,
     # less the professionally scoped permissions, which need a current
     # professional registration that this world does not seed. An unknown
-    # actor must hold nothing, so the same comparison refuses it.
-    expected = (
-        BUNDLES_V1[w.role] - PROFESSIONAL_PERMISSIONS_V1
-    ) & navigation.REGISTRY_PERMISSIONS
-    return granted == expected
+    # actor must hold exactly nothing; asserting equality with the empty set
+    # refuses any nonempty unauthorized projection instead of converting it
+    # into a denial through the valid role's set.
+    expected: frozenset[str] = (
+        (BUNDLES_V1[w.role] - PROFESSIONAL_PERMISSIONS_V1)
+        & navigation.REGISTRY_PERMISSIONS
+        if valid
+        else frozenset()
+    )
+    assert granted == expected, (granted, expected)
+    return valid
 
 
 def _search_exact(w: LegacyWorld, valid: bool) -> object:
