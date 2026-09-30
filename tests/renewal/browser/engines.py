@@ -232,8 +232,8 @@ SYNTHETIC_MEDIA_BINDING: Final = "__clinicSyntheticMediaGranted"
 # video (it paints its first frame at once) and an oscillator for audio,
 # delivered through a loopback RTCPeerConnection. They are real
 # MediaStreamTracks, so enabled, readyState and stop() behave as they do for
-# devices, and __clinicSyntheticMedia.end(audioTrack) ends the audio the way
-# an unplugged microphone does: the source stops and the track fires a
+# devices, and __clinicSyntheticMedia.end(track) ends audio or video the way
+# an unplugged device does: the source stops and the track fires a
 # genuine "ended". Firefox never delivers a script-dispatched "ended" to a
 # MediaStreamTrack listener. Browsers exempt real capture streams from
 # autoplay restrictions; WebKit does not know these streams are capture
@@ -324,8 +324,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     if (constraints.video) sources.push(videoSource());
     if (constraints.audio) sources.push(audioSource());
     if (!sources.length) throw new TypeError('audio or video must be requested');
-    const tracks = sources.map((source) =>
-      source.kind === 'audio' ? loopback(source) : source);
+    const tracks = sources.map(loopback);
     const stream = new MediaStream(await Promise.all(tracks));
     captured.add(stream);
     return stream;
@@ -418,9 +417,11 @@ def _engine_of(context: BrowserContext) -> str:
     return browser.browser_type.name
 
 
-def install_media(context: BrowserContext, origin: str, *, granted: bool) -> None:
+def install_media(
+    context: BrowserContext, origin: str, *, granted: bool, scripted: bool = False
+) -> None:
     """Set a fresh context's camera/microphone permission (before any page)."""
-    if _engine_of(context) == "chromium":
+    if _engine_of(context) == "chromium" and not scripted:
         if granted:
             context.grant_permissions(list(MEDIA_PERMISSIONS), origin=origin)
         return
@@ -432,7 +433,7 @@ def install_media(context: BrowserContext, origin: str, *, granted: bool) -> Non
 
 def grant_media(context: BrowserContext, origin: str) -> None:
     """Grant camera/microphone later, as a user fixing the permission would."""
-    if _engine_of(context) == "chromium":
+    if _engine_of(context) == "chromium" and context not in _SYNTHETIC_GRANTS:
         context.grant_permissions(list(MEDIA_PERMISSIONS), origin=origin)
         return
     _SYNTHETIC_GRANTS[context]["granted"] = True
@@ -440,7 +441,7 @@ def grant_media(context: BrowserContext, origin: str) -> None:
 
 def media_source(context: BrowserContext) -> str:
     """Describe the capture source a context's media comes from (evidence)."""
-    if _engine_of(context) == "chromium":
+    if context not in _SYNTHETIC_GRANTS:
         return f"chromium {CHROMIUM_FAKE_MEDIA_ARG}"
     return f"{_engine_of(context)} synthetic canvas/oscillator getUserMedia"
 

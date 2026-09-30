@@ -502,7 +502,16 @@
     function watchTracks() {
       tracks("microphone").concat(tracks("camera")).forEach(function (track) {
         track.addEventListener("ended", function () {
-          if (terminal) {
+          if (terminal || !stream || stream.getTracks().indexOf(track) === -1) {
+            return;
+          }
+          if (track.kind === "video" && tracks("microphone").some(function (audio) {
+            return audio.readyState === "live";
+          })) {
+            stream.removeTrack(track);
+            setMedia("partial");
+            setToggle(camButton, "camera", false, false);
+            requestAudioOnly(true, true);
             return;
           }
           setMedia("lost");

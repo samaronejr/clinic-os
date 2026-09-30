@@ -1311,6 +1311,36 @@ V2_TARGETS = (
     '[data-toggle="camera"]',
     "[data-refresh-status]",
 )
+CAMERA_OBSERVER_JS = """() => {
+  const stream = document.querySelector('[data-self-video]').srcObject;
+  const audio = stream.getAudioTracks()[0];
+  const camera = stream.getVideoTracks()[0];
+  const observation = window.__clinicCameraLoss = {
+    stream, audio, camera, audioEnded: 0, cameraEnded: 0, cameraTrusted: false,
+  };
+  audio.addEventListener('ended', () => { observation.audioEnded += 1; });
+  camera.addEventListener('ended', (event) => {
+    observation.cameraEnded += 1;
+    observation.cameraTrusted = event.isTrusted;
+  });
+}"""
+CAMERA_END_JS = """() =>
+  window.__clinicSyntheticMedia.end(window.__clinicCameraLoss.camera)"""
+CAMERA_SURVIVAL_JS = """() => {
+  const before = window.__clinicCameraLoss;
+  const stream = document.querySelector('[data-self-video]').srcObject;
+  return {
+    same_stream: stream === before.stream,
+    same_audio: Boolean(stream) && stream.getAudioTracks()[0] === before.audio,
+    audio_live: before.audio.readyState === 'live',
+    audio_enabled: before.audio.enabled,
+    camera_ended: before.camera.readyState === 'ended',
+    camera_removed: Boolean(stream) && stream.getVideoTracks().length === 0,
+    audio_ended_events: before.audioEnded,
+    camera_ended_events: before.cameraEnded,
+    camera_event_trusted: before.cameraTrusted,
+  };
+}"""
 MIN_TARGET = 44.0
 TARGET_JS = """(selectors) => selectors.flatMap((selector) =>
   Array.from(document.querySelectorAll(selector))
@@ -1456,6 +1486,72 @@ def _v2_audio_only(physician: Page, patient: Page, case: _Case) -> None:
     _axe(patient, case, "room-audio-only")
 
 
+def automatic_audio_response(response: Response) -> bool:
+    """Select the mode write itself, not a concurrent status refetch."""
+    body = response.request.post_data or ""
+    return (
+        response.request.method == "POST"
+        and 'name="action"\r\n\r\naudio_only\r\n' in body
+        and 'name="enabled"\r\n\r\ntrue\r\n' in body
+    )
+
+
+def _v2_camera_loss(
+    physician: Page, patient: Page, case: _Case, session_id: str
+) -> None:
+    """Lose only the camera; both participants retain their original audio."""
+    for page, peer, role in (
+        (physician, patient, "physician"),
+        (patient, physician, "patient"),
+    ):
+        page.locator("[data-audio-only]").click()
+        expect(page.locator("[data-audio-only]")).to_have_attribute(
+            "aria-pressed", "false"
+        )
+        assert page.evaluate(TRACK_JS, "video") == {"enabled": True, "state": "live"}
+        before = session_events(case.staff, session_id).count(("audio_only", role))
+        evaluate_js(page, CAMERA_OBSERVER_JS)
+        try:
+            with page.expect_response(automatic_audio_response) as changed:
+                evaluate_js(page, CAMERA_END_JS)
+            assert changed.value.status == OK
+            expect(page.locator("[data-audio-only]")).to_have_attribute(
+                "aria-pressed", "true"
+            )
+        finally:
+            observation = evaluate_js(page, CAMERA_SURVIVAL_JS)
+            (case.root / f"camera-loss-{role}.json").write_text(
+                json.dumps(observation, sort_keys=True, indent=2) + "\n"
+            )
+            _capture(page, case, f"camera-loss-{role}")
+        assert observation == {
+            "same_stream": True,
+            "same_audio": True,
+            "audio_live": True,
+            "audio_enabled": True,
+            "camera_ended": True,
+            "camera_removed": True,
+            "audio_ended_events": 0,
+            "camera_ended_events": 1,
+            "camera_event_trusted": True,
+        }
+        expect(page.locator('[data-toggle="camera"]')).to_be_disabled()
+        for width in (375, 320):
+            page.set_viewport_size({"width": width, "height": 900})
+            _targets(page, V2_TARGETS[:3], f"camera-loss-{role}-{width}")
+            assert evaluate_js(
+                page, "document.documentElement.scrollWidth <= innerWidth"
+            )
+            full_page_screenshot(page, case.root / f"camera-loss-{role}-{width}.png")
+        page.set_viewport_size({"width": case.width, "height": 900})
+        refresh_status(peer)
+        expect(peer.locator(f"[data-{role}-media]")).to_have_text("Somente áudio")
+        assert (
+            session_events(case.staff, session_id).count(("audio_only", role))
+            == before + 1
+        )
+
+
 def v2_remove_and_return(
     physician: Page, patient: Page, case: _Case, session_id: str
 ) -> None:
@@ -1518,7 +1614,7 @@ def test_clinician_video_v2_devices_audio_only_and_removal(
             for _ in range(2)
         ]
         for context in contexts:
-            install_media(context, base, granted=True)
+            install_media(context, base, granted=True, scripted=True)
         contexts.append(_context(browser, case, media=False))
         physician, patient, admin = [
             _page(context, errors, console) for context in contexts
@@ -1537,6 +1633,7 @@ def test_clinician_video_v2_devices_audio_only_and_removal(
             _axe(physician, case, "workspace")
             _v2_patient_joins(physician, patient)
             _v2_audio_only(physician, patient, case)
+            _v2_camera_loss(physician, patient, case, session_id)
             v2_remove_and_return(physician, patient, case, session_id)
             for width in (375, 320):
                 physician.set_viewport_size({"width": width, "height": 900})
