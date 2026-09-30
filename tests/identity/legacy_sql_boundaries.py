@@ -3,42 +3,23 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from django.db import connection
-from psycopg import sql
 
-from identity.legacy_parity_support import (
-    LEGACY,
-    MANAGERS,
-    PHYSICIAN,
-    Boundary,
-    sql_boolean_decision,
-    sql_rows_allow,
-)
+from identity.legacy_parity_support import LEGACY, MANAGERS, PHYSICIAN, Boundary
+from identity.sql_denial_contracts import SqlArgument, SqlVerdict, probe
 
 if TYPE_CHECKING:
     from identity.legacy_operational_boundaries import OperationalSubjects
     from identity.legacy_parity_support import LegacyWorld
 
 
-def query(
-    name: str, args: list[str | UUID | list[str]], *, boolean: bool = False
-) -> bool:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            sql.SQL("SELECT * FROM clinic_app.{}({})").format(
-                sql.Identifier(name), sql.SQL(",").join(sql.Placeholder() for _ in args)
-            ),
-            args,
-        )
-        rows = cursor.fetchall()
-    if boolean:
-        return sql_boolean_decision(rows)
-    return sql_rows_allow(rows)
+def query(name: str, args: list[SqlArgument]) -> SqlVerdict:
+    return probe(f"clinic_app.{name}", args)
 
 
-def _bound_user(w: LegacyWorld, valid: bool, name: str) -> bool:
+def _bound_user(w: LegacyWorld, valid: bool, name: str) -> SqlVerdict:
     if not valid:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -56,7 +37,6 @@ def boundaries(op: OperationalSubjects) -> tuple[Boundary, ...]:
             lambda w, ok: query(
                 "user_has_org",
                 [w.graph.organization_a if ok else w.graph.organization_b],
-                boolean=True,
             ),
         ),
         Boundary(
@@ -90,7 +70,7 @@ def boundaries(op: OperationalSubjects) -> tuple[Boundary, ...]:
             "sql",
             LEGACY,
             lambda w, ok: query(
-                "questionnaire_staff", [w.clinic_for(ok), list(LEGACY)], boolean=True
+                "questionnaire_staff", [w.clinic_for(ok), list(LEGACY)]
             ),
         ),
         Boundary(
@@ -114,14 +94,13 @@ def boundaries(op: OperationalSubjects) -> tuple[Boundary, ...]:
             lambda w, ok: query(
                 "billing_staff_invoice",
                 [op.invoice.pk if ok else uuid4()],
-                boolean=True,
             ),
         ),
         Boundary(
             "clinic_app.waitlist_staff",
             "sql",
             MANAGERS,
-            lambda w, ok: query("waitlist_staff", [w.clinic_for(ok)], boolean=True),
+            lambda w, ok: query("waitlist_staff", [w.clinic_for(ok)]),
         ),
         Boundary(
             "clinic_app.retention_care",
@@ -130,7 +109,6 @@ def boundaries(op: OperationalSubjects) -> tuple[Boundary, ...]:
             lambda w, ok: query(
                 "retention_care",
                 [w.clinic_for(ok), w.appointment.patient_id],
-                boolean=True,
             ),
         ),
         Boundary(

@@ -12,17 +12,9 @@ from apps.intake import access
 from apps.intake.models import PatientClinicEnrollment
 from apps.prescription import services as prescription
 from apps.retention import services as retention
-from django.db import connection
-from psycopg import sql
 
-from identity.legacy_parity_support import (
-    ADMINS,
-    LEGACY,
-    MANAGERS,
-    PHYSICIAN,
-    Boundary,
-    sql_boolean_decision,
-)
+from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, Boundary
+from identity.sql_denial_contracts import SqlVerdict, probe
 
 if TYPE_CHECKING:
     from identity.legacy_parity_support import LegacyWorld
@@ -45,15 +37,8 @@ def _assignment(w: LegacyWorld, valid: bool) -> object:
         appointment.practitioner_id = original
 
 
-def _sql(w: LegacyWorld, valid: bool, name: str) -> bool:
-    # SQL identifiers are the closed test inventory, never request input.
-    with connection.cursor() as cursor:
-        cursor.execute(
-            sql.SQL("SELECT clinic_app.{}(%s)").format(sql.Identifier(name)),
-            [w.encounter_for(valid)],
-        )
-        rows = cursor.fetchall()
-    return sql_boolean_decision(rows)
+def _sql(w: LegacyWorld, valid: bool, name: str) -> SqlVerdict:
+    return probe(f"clinic_app.{name}", [w.encounter_for(valid)])
 
 
 def _projection(w: LegacyWorld, valid: bool, *, attachment: bool) -> bool:

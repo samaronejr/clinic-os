@@ -13,22 +13,13 @@ from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import _kek
 from django.db import connection
-from psycopg import sql
 
 from identity.legacy_operational_boundaries import seed_operational
 from identity.legacy_owner_boundaries import _owner_call
-from identity.legacy_parity_support import (
-    ADMINS,
-    LEGACY,
-    MANAGERS,
-    PHYSICIAN,
-    sql_boolean_decision,
-    sql_count_allow,
-    sql_rows_allow,
-    world,
-)
+from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
+from identity.sql_denial_contracts import SqlArgument, SqlVerdict, probe
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -43,7 +34,6 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 ALL_ROLES = tuple(UserClinicRole.Role.values)
-type SqlArgument = str | UUID | list[str] | int | None
 
 
 @dataclass(frozen=True)
@@ -106,8 +96,10 @@ class SqlProbe:
     name: str
     roles: tuple[str, ...]
     arguments: Callable[[SqlWorld, bool], list[SqlArgument]]
-    result: str = "rows"
-    refusal_state: str | None = None
+
+    @property
+    def function(self) -> str:
+        return f"clinic_app.{self.name}"
 
 
 def _bound_actor(w: SqlWorld, valid: bool) -> list[SqlArgument]:
@@ -141,22 +133,8 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
     return ["2035-06-03", None] if slots else [w.actor.graph.physician]
 
 
-def call(probe: SqlProbe, w: SqlWorld, valid: bool) -> bool:
-    arguments = probe.arguments(w, valid)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            sql.SQL("SELECT * FROM clinic_app.{}({})").format(
-                sql.Identifier(probe.name),
-                sql.SQL(",").join(sql.Placeholder() for _ in arguments),
-            ),
-            arguments,
-        )
-        rows = cursor.fetchall()
-    if probe.result == "boolean":
-        return sql_boolean_decision(rows)
-    if probe.result == "count":
-        return sql_count_allow(rows)
-    return sql_rows_allow(rows)
+def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
+    return probe(sql_probe.function, sql_probe.arguments(w, valid))
 
 
 PROBES = {
@@ -164,7 +142,6 @@ PROBES = {
         "patient_booking_practitioner",
         ALL_ROLES,
         lambda w, ok: _booking(w, ok, slots=False),
-        "boolean",
     ),
     "patient_booking_slots": SqlProbe(
         "patient_booking_slots",
@@ -184,7 +161,6 @@ PROBES = {
         lambda w, ok: [
             w.actor.graph.organization_a if ok else w.actor.graph.organization_b
         ],
-        "boolean",
     ),
     "list_active_clinic_physicians": SqlProbe(
         "list_active_clinic_physicians",
@@ -195,13 +171,11 @@ PROBES = {
         "questionnaire_staff",
         LEGACY,
         lambda w, ok: [w.actor.clinic_for(ok), list(LEGACY)],
-        "boolean",
     ),
     "questionnaire_staff#explicit_new_role": SqlProbe(
         "questionnaire_staff",
         ALL_ROLES,
         lambda w, ok: [w.actor.clinic_for(ok), [w.actor.role]],
-        "boolean",
     ),
     "questionnaire_completion": SqlProbe(
         "questionnaire_completion",
@@ -212,19 +186,16 @@ PROBES = {
         "ehr_assigned",
         PHYSICIAN,
         lambda w, ok: [w.actor.encounter if ok else uuid4()],
-        "boolean",
     ),
     "ehr_care": SqlProbe(
         "ehr_care",
         PHYSICIAN,
         lambda w, ok: [w.actor.encounter if ok else uuid4()],
-        "boolean",
     ),
     "ehr_history_care": SqlProbe(
         "ehr_history_care",
         PHYSICIAN,
         lambda w, ok: [w.actor.encounter if ok else uuid4()],
-        "boolean",
     ),
     "ehr_version_scope": SqlProbe(
         "ehr_version_scope",
@@ -235,33 +206,26 @@ PROBES = {
         "billing_staff_invoice",
         MANAGERS,
         lambda w, ok: [w.operational.invoice.pk if ok else uuid4()],
-        "boolean",
     ),
     "billing_payment_event_recorder": SqlProbe(
         "billing_payment_event_recorder",
         MANAGERS,
         lambda w, ok: [w.manager_payment if ok else uuid4()],
-        "boolean",
     ),
     "billing_payment_event_recorder#stored_actor": SqlProbe(
         "billing_payment_event_recorder",
         ALL_ROLES,
         lambda w, ok: [w.actor_payment if ok else uuid4()],
-        "boolean",
     ),
     "patient_registry_count": SqlProbe(
         "patient_registry_count",
         MANAGERS,
         lambda w, ok: [_kek(), w.actor.clinic_for(ok), "", None],
-        "count",
-        "42501",
     ),
     "patient_registry_page": SqlProbe(
         "patient_registry_page",
         MANAGERS,
         lambda w, ok: [_kek(), w.actor.clinic_for(ok), "", None, 0, 25],
-        "rows",
-        "42501",
     ),
     "retention_author_label": SqlProbe(
         "retention_author_label",
@@ -272,7 +236,6 @@ PROBES = {
         "retention_care",
         PHYSICIAN,
         lambda w, ok: [w.actor.clinic_for(ok), w.actor.appointment.patient_id],
-        "boolean",
     ),
     "retention_care_patients": SqlProbe(
         "retention_care_patients", PHYSICIAN, lambda w, ok: [w.actor.clinic_for(ok)]
@@ -291,13 +254,11 @@ PROBES = {
         "teleconsult_assigned",
         PHYSICIAN,
         lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
-        "boolean",
     ),
     "teleconsult_fail": SqlProbe(
         "teleconsult_fail",
         PHYSICIAN,
         lambda w, ok: [w.teleconsult.session.pk if ok else uuid4(), "consent_revoked"],
-        "boolean",
     ),
     "teleconsult_session_scope": SqlProbe(
         "teleconsult_session_scope",
@@ -310,7 +271,7 @@ PROBES = {
         lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
     ),
     "waitlist_staff": SqlProbe(
-        "waitlist_staff", MANAGERS, lambda w, ok: [w.actor.clinic_for(ok)], "boolean"
+        "waitlist_staff", MANAGERS, lambda w, ok: [w.actor.clinic_for(ok)]
     ),
     "has_permission": SqlProbe(
         "has_permission",
@@ -322,6 +283,5 @@ PROBES = {
             w.actor.clinic_for(ok),
             None,
         ],
-        "boolean",
     ),
 }
