@@ -99,6 +99,22 @@ def test_tracked_serial_classification_parses() -> None:
     assert len({entry.prefix for entry in entries}) == len(entries)
 
 
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "tests/scheduling/test_world_catalog_columns.py"
+        "::test_maintenance_is_not_semantic_drift",
+        "tests/scheduling/test_world_hints.py::test_lazy_hint_maintenance_is_accepted",
+    ],
+)
+@pytest.mark.parametrize("maintenance", ["ANALYZE", "VACUUM (FREEZE, ANALYZE)"])
+def test_shared_catalog_maintenance_is_serial(prefix: str, maintenance: str) -> None:
+    matches = [
+        entry for entry in load_manifest() if entry.matches(f"{prefix}[{maintenance}]")
+    ]
+    assert matches == [SerialEntry("server-state", prefix)]
+
+
 class FakePhases:
     """Stand in for the pytest children; write the records the plugin writes."""
 
