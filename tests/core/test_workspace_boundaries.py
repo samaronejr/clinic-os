@@ -19,6 +19,7 @@ from apps.core.patient_context import DEMOGRAPHICS_READ, SESSION_PREFIX
 from apps.identity.models import RoleGrant, SavedView, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.identity.saved_views import archive_saved_view, save_view
+from apps.intake.models import PatientClinicEnrollment
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.urls import reverse
@@ -122,6 +123,29 @@ def _pin_patient(client: Client, graph: RbacGraph, user: User, role: str) -> Non
             client,
             reverse("ehr:encounter", kwargs={"clinic_id": graph.clinic_a}),
             {"action": "show", "encounter_id": str(encounter.pk)},
+        )
+        assert response.status_code == 200
+    elif role in {
+        UserClinicRole.Role.SCHEDULER,
+        UserClinicRole.Role.CLINIC_MANAGER,
+    }:
+        # These roles can read demographics, not create patients or use the
+        # legacy manager palette search. Pin through their real authorized read.
+        seed_patients(graph, graph.shared_user, graph.clinic_a, (PATIENT,))
+        with owner_context(graph.organization_a):
+            enrollment_id = next(
+                row.pk
+                for row in PatientClinicEnrollment.objects.filter(
+                    clinic_id=graph.clinic_a
+                ).select_related("patient")
+                if row.patient.full_name == PATIENT
+            )
+        response = _post(
+            client,
+            reverse(
+                "intake:patient-demographics", kwargs={"clinic_id": graph.clinic_a}
+            ),
+            {"action": "manage", "enrollment_id": str(enrollment_id)},
         )
         assert response.status_code == 200
     else:
