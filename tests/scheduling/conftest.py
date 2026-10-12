@@ -22,6 +22,7 @@ from apps.scheduling import (
 )
 from django.db import connection, models
 from django.utils import timezone
+from ops.testing.ci_pytest_plugin import load_manifest
 
 from scheduling.clock_support import frozen_sql_clocks
 
@@ -48,6 +49,28 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Advance ambient scheduling Python and SQL clocks for the full suite.",
     )
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """A world fixture commits shared catalog state even without maintenance."""
+    entries = load_manifest()
+    for item in items:
+        if not item.nodeid.startswith("tests/scheduling/"):
+            continue
+        assert isinstance(item, pytest.Function), item.nodeid
+        if set(item.fixturenames) & {
+            "rbac_graph",
+            "hint_world",
+            "seed_catalog_template",
+        } and not any(
+            entry.category == "server-state" and entry.matches(item.nodeid)
+            for entry in entries
+        ):
+            message = (
+                f"{item.nodeid}: scheduling world fixtures commit pg_database "
+                "state and require a server-state serial classification"
+            )
+            raise pytest.UsageError(message)
 
 
 @pytest.fixture(scope="session")
