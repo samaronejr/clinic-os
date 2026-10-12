@@ -224,8 +224,10 @@ def assert_membership_schema() -> None:
         "organization",
         "clinic",
         "role",
+        "workflow_bundle_version",
     }
     assert not UserClinicRole._meta.get_field("clinic").null
+    assert UserClinicRole._meta.get_field("workflow_bundle_version").default == 1
     assert (
         tuple(
             value

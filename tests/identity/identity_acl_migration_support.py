@@ -53,6 +53,11 @@ def set_tenant(organization_id: UUID) -> None:
 
 
 def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
+    role_model = (
+        MigrationExecutor(connection)
+        .loader.project_state(FOUNDATION_TARGETS)
+        .apps.get_model("identity", "UserClinicRole")
+    )
     encoded = make_password(TEST_CREDENTIAL)
     originals = {
         ZERO_USER: (
@@ -104,14 +109,14 @@ def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
     with transaction.atomic():
         set_tenant(ORG_A)
         for role_id in (UUID(int=30), LOWEST_ROLE, UUID(int=20)):
-            UserClinicRole.objects.create(
+            role_model._default_manager.create(
                 id=role_id,
                 user_id=SINGLE_USER,
                 organization_id=ORG_A,
                 clinic_id=CLINIC_A,
                 role=UserClinicRole.Role.OWNER,
             )
-        UserClinicRole.objects.create(
+        role_model._default_manager.create(
             user_id=SHARED_USER,
             organization_id=ORG_A,
             clinic_id=CLINIC_A,
@@ -119,7 +124,7 @@ def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
         )
     with transaction.atomic():
         set_tenant(ORG_B)
-        UserClinicRole.objects.create(
+        role_model._default_manager.create(
             user_id=SHARED_USER,
             organization_id=ORG_B,
             clinic_id=CLINIC_B,

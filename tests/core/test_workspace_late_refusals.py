@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 from uuid import uuid4
 
 import pytest
@@ -211,10 +211,20 @@ def test_staff_scope_rechecked_after_workspace_gate(
     ):
         with monkeypatch.context() as patch:
             recheck = Mock(side_effect=CurrentActorError())
-            patch.setattr(module, "require_current_actor_clinic_roles", recheck)
+            if module is consent_views:
+                patch.setattr(module, "require_permission", recheck)
+            else:
+                patch.setattr(module, "require_current_actor_clinic_roles", recheck)
             response = _get(
                 client, reverse(route, kwargs={"clinic_id": rbac_graph.clinic_a})
             )
-            recheck.assert_called_once()
+            if module is consent_views:
+                assert recheck.call_args_list == [
+                    call("demographics.read", clinic_id=rbac_graph.clinic_a),
+                    call("configuration.clinic", clinic_id=rbac_graph.clinic_a),
+                    call("configuration.organization", clinic_id=rbac_graph.clinic_a),
+                ]
+            else:
+                recheck.assert_called_once()
             assert response.status_code == 403
             assert not response.cookies

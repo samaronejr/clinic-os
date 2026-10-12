@@ -227,7 +227,11 @@ def test_workflow_candidate_opens_only_delivered_operations(
         ).update(workflow_bundle_version=2)
     response = _get(client, "/auth/protected/")
     assert response.status_code == OK
-    assert _modules(response) == ["operations"]
+    assert _modules(response) == (
+        ["operations", "settings"]
+        if role in {"scheduler", "clinic_manager"}
+        else ["operations"]
+    )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
 
 
