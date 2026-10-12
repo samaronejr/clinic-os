@@ -184,7 +184,8 @@
     {
       "symbol": "apps.consent.services.record_ai_disclosure",
       "signals": [
-        "denial"
+        "denial",
+        "permission"
       ],
       "kind": "direct",
       "reason": "Staff attestation authority boundary under clinic_app.has_permission; the named callable is exercised across the legacy role matrix.",
@@ -195,7 +196,8 @@
     {
       "symbol": "apps.consent.services.acknowledge_participant",
       "signals": [
-        "denial"
+        "denial",
+        "permission"
       ],
       "kind": "direct",
       "reason": "Staff attestation authority boundary under clinic_app.has_permission; the named callable is exercised across the legacy role matrix.",
@@ -242,7 +244,8 @@
     {
       "symbol": "apps.consent.views.staff_consent",
       "signals": [
-        "decorator"
+        "decorator",
+        "permission"
       ],
       "kind": "direct",
       "probes": [
@@ -397,7 +400,8 @@
     {
       "symbol": "apps.core.workspace._visible_clinics",
       "signals": [
-        "membership"
+        "membership",
+        "permission"
       ],
       "kind": "direct",
       "probes": [
@@ -2646,7 +2650,8 @@
     {
       "symbol": "apps.scheduling.agenda_presenter.agenda_screen",
       "signals": [
-        "denial"
+        "denial",
+        "permission"
       ],
       "kind": "delegated",
       "enforced_by": [
@@ -2672,9 +2677,9 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.identity.current_context.list_active_clinic_physicians",
+        "apps.scheduling.resource_booking.service_practitioners",
         "apps.identity.current_context.practitioner_display_label",
-        "apps.scheduling.access.authorized_view_scope"
+        "apps.scheduling.access.authorized_agenda_scope"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -3467,6 +3472,581 @@
       "probes": [
         "apps.realtime.scopes.register_job_topic"
       ]
+    },
+    {
+      "symbol": "apps.consent.services.ai_disclosure_status",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.ai_disclosure_status#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.consent_for_future_use",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.consent_for_future_use#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.publish_notice",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.publish_notice#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.publish_text",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.publish_text#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.staff_receipts",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.staff_receipts#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.staff_refusals",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.staff_refusals#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.core.workspace.WorkspaceClinic.agenda_url",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.workspace.WorkspaceClinic.agenda_url#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.access.authorized_agenda_scope",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.access.authorized_agenda_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_view._transition_view_clinic",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.appointment_view._transition_view_clinic#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_view.authorize_transition_view",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.appointment_view.authorize_transition_view#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_generation._template",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_generation._template#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_generation.require_open_window",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_generation.require_open_window#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_publication.create_closure",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_publication.create_closure#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_publication.create_template",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_publication.create_template#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_publication.retire_definition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_publication.retire_definition#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.authorized_service_clinic",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_booking.authorized_service_clinic#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.authorized_transition_clinic",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_booking.authorized_transition_clinic#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.booking_selection",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_booking.booking_selection#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.require_transition_practitioner",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_booking.require_transition_practitioner#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_booking.service_practitioners",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_booking.service_practitioners#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_definitions._subject",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_definitions._subject#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_definitions.configuration_clinic",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_definitions.configuration_clinic#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.resource_views.resource_settings",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.resource_views.resource_settings#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links",
+      "signals": [
+        "actor",
+        "membership",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.may_self_claim",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.may_self_claim#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.owner_matches",
+      "signals": [
+        "membership",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.owner_matches#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.require_clinic_access",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.require_clinic_access#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.require_manager",
+      "signals": [
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.require_manager#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.require_owner_target",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.require_owner_target#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.require_reference",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.require_reference#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.access.require_task_access",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.access.require_task_access#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.definition_services._definition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.definition_services._definition#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.designer._authorized_designer",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.designer._authorized_designer#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.designer._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.designer._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine._locked_step",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine._locked_step#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine._step_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine._step_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine.due_steps",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine.due_steps#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine.execute_step",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine.execute_step#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.engine.utc_now",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.engine.utc_now#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.external.step_send_eligible",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.external.step_send_eligible#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_control.retry_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_control.retry_run#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_services.cancel_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_services.cancel_run#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_services.start_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_services.start_run#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_views._authorized_runs",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_views._authorized_runs#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.run_views._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.run_views._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_commands._action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_commands._action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_commands._bulk_action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_commands._bulk_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_commands._submit",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_commands._submit#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_services._command",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_services._command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_services._dependency",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_services._dependency#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.tasks.escalate",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.tasks.escalate#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.tasks.scan_due",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.tasks.scan_due#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.views._authorized_tasks",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.views._authorized_tasks#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.views._staff_catalog",
+      "signals": [
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.views._staff_catalog#cut1"
+      ]
     }
   ],
   "probes": [
@@ -3483,13 +4063,19 @@
     "apps.consent.services._patient_audit#observed",
     "apps.consent.services._resolve_offer#observed",
     "apps.consent.services.acknowledge_participant",
+    "apps.consent.services.ai_disclosure_status#cut1",
     "apps.consent.services.consent_for_future_use",
+    "apps.consent.services.consent_for_future_use#cut1",
     "apps.consent.services.patient_authority#observed",
     "apps.consent.services.prepare_acceptance#observed",
+    "apps.consent.services.publish_notice#cut1",
     "apps.consent.services.publish_text",
+    "apps.consent.services.publish_text#cut1",
     "apps.consent.services.record_ai_disclosure",
     "apps.consent.services.revoke_consent#observed",
     "apps.consent.services.staff_receipts",
+    "apps.consent.services.staff_receipts#cut1",
+    "apps.consent.services.staff_refusals#cut1",
     "apps.consent.views.staff_consent",
     "apps.core.api.authentication.StepUpVerified.has_permission",
     "apps.core.api.authentication.StepUpVerified.has_permission#unverified",
@@ -3500,6 +4086,7 @@
     "apps.core.navigation.granted_permissions",
     "apps.core.patient_context.patient_context_allowed",
     "apps.core.views.workspace_home",
+    "apps.core.workspace.WorkspaceClinic.agenda_url#cut1",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
     "apps.core.workspace_access._billing_surface_admitted",
@@ -3640,6 +4227,7 @@
     "apps.retention.views._is_manager",
     "apps.retention.views._is_physician",
     "apps.retention.views.retention_workspace",
+    "apps.scheduling.access.authorized_agenda_scope#cut1",
     "apps.scheduling.access.authorized_appointment_manager_clinic",
     "apps.scheduling.access.authorized_manager_clinic",
     "apps.scheduling.access.authorized_view_scope",
@@ -3649,14 +4237,22 @@
     "apps.scheduling.appointment_transition_state.reload_transition_appointment",
     "apps.scheduling.appointment_values._enrollment",
     "apps.scheduling.appointment_values.require_active_practitioner",
+    "apps.scheduling.appointment_view._transition_view_clinic#cut1",
+    "apps.scheduling.appointment_view.authorize_transition_view#cut1",
     "apps.scheduling.appointment_view.view_appointment_for_transition",
     "apps.scheduling.availability_creation._require_active_physician",
+    "apps.scheduling.availability_generation._template#cut1",
+    "apps.scheduling.availability_generation.require_open_window#cut1",
     "apps.scheduling.availability_presenter.authorized_screen",
     "apps.scheduling.availability_presenter.manager_choices",
+    "apps.scheduling.availability_publication.create_closure#cut1",
+    "apps.scheduling.availability_publication.create_template#cut1",
+    "apps.scheduling.availability_publication.retire_definition#cut1",
     "apps.scheduling.availability_retirement._target",
     "apps.scheduling.availability_retirement.retire_availability",
     "apps.scheduling.booking_queries.prepare_booking",
     "apps.scheduling.booking_views.appointment_create_view",
+    "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle#cut1",
     "apps.scheduling.patient_authority.authorized_appointment_clinic",
     "apps.scheduling.patient_authority.lock_patient_availability#observed",
     "apps.scheduling.patient_authority.patient_booking_scope#observed",
@@ -3664,6 +4260,15 @@
     "apps.scheduling.patient_authority.require_patient_booking_scope#observed",
     "apps.scheduling.patient_booking._slot#observed",
     "apps.scheduling.patient_booking.patient_appointment#observed",
+    "apps.scheduling.resource_booking.authorized_service_clinic#cut1",
+    "apps.scheduling.resource_booking.authorized_transition_clinic#cut1",
+    "apps.scheduling.resource_booking.booking_selection#cut1",
+    "apps.scheduling.resource_booking.require_transition_practitioner#cut1",
+    "apps.scheduling.resource_booking.service_practitioners#cut1",
+    "apps.scheduling.resource_definitions._subject#cut1",
+    "apps.scheduling.resource_definitions.configuration_clinic#cut1",
+    "apps.scheduling.resource_views.resource_settings#cut1",
+    "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links#cut1",
     "apps.scheduling.transition_views.appointment_cancel_view",
     "apps.scheduling.transition_views.appointment_reschedule_view",
     "apps.scheduling.views.availability_list_view",
@@ -3697,6 +4302,36 @@
     "apps.tenancy.envelope.tenant_key_status#observed",
     "apps.tenancy.middleware.TenantMiddleware._patient#observed",
     "apps.tenancy.middleware.TenantMiddleware._response",
+    "apps.workflows.access.may_self_claim#cut1",
+    "apps.workflows.access.owner_matches#cut1",
+    "apps.workflows.access.require_clinic_access#cut1",
+    "apps.workflows.access.require_manager#cut1",
+    "apps.workflows.access.require_owner_target#cut1",
+    "apps.workflows.access.require_reference#cut1",
+    "apps.workflows.access.require_task_access#cut1",
+    "apps.workflows.definition_services._definition#cut1",
+    "apps.workflows.designer._authorized_designer#cut1",
+    "apps.workflows.designer._command#cut1",
+    "apps.workflows.engine._locked_step#cut1",
+    "apps.workflows.engine._step_scope#cut1",
+    "apps.workflows.engine.due_steps#cut1",
+    "apps.workflows.engine.execute_step#cut1",
+    "apps.workflows.engine.utc_now#cut1",
+    "apps.workflows.external.step_send_eligible#cut1",
+    "apps.workflows.run_control.retry_run#cut1",
+    "apps.workflows.run_services.cancel_run#cut1",
+    "apps.workflows.run_services.start_run#cut1",
+    "apps.workflows.run_views._authorized_runs#cut1",
+    "apps.workflows.run_views._command#cut1",
+    "apps.workflows.task_commands._action#cut1",
+    "apps.workflows.task_commands._bulk_action#cut1",
+    "apps.workflows.task_commands._submit#cut1",
+    "apps.workflows.task_services._command#cut1",
+    "apps.workflows.task_services._dependency#cut1",
+    "apps.workflows.tasks.escalate#cut1",
+    "apps.workflows.tasks.scan_due#cut1",
+    "apps.workflows.views._authorized_tasks#cut1",
+    "apps.workflows.views._staff_catalog#cut1",
     "clinic_app.auth_lookup",
     "clinic_app.billing_staff_invoice",
     "clinic_app.ehr_assigned",

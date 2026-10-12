@@ -12,6 +12,7 @@ from django.db import connection, transaction
 
 from auth.stepup_test_support import create_role_actor
 from identity import legacy_guard_inventory as discovery
+from identity.cut1_authority_census import ExecutedProofs
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.permission_support import permission_context
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
@@ -101,6 +102,32 @@ SOURCES = {
     "related_manager": RELATED,
     "aliased_helper": HELPER_ALIAS,
 }
+
+
+def test_merged_authority_probe_requires_actual_callable_execution() -> None:
+    proofs = ExecutedProofs({"apps.identity.current_context.current_actor_id"})
+    proofs.run("unrelated passing oracle", lambda: None)
+    with pytest.raises(AssertionError):
+        proofs.executed()
+
+
+def test_failed_authority_oracle_cannot_issue_an_executed_probe(
+    rbac_graph: RbacGraph,
+) -> None:
+    symbol = "apps.identity.current_context.current_actor_id"
+    proofs = ExecutedProofs({symbol})
+
+    def failed_oracle() -> None:
+        assert current_actor_id() == rbac_graph.physician
+        pytest.fail("the authority assertion failed after entering the callable")
+
+    with (
+        permission_context(rbac_graph, rbac_graph.physician),
+        pytest.raises(pytest.fail.Exception),
+    ):
+        proofs.run("failed real authority oracle", failed_oracle)
+    with pytest.raises(AssertionError):
+        proofs.executed()
 
 
 @pytest.mark.parametrize(

@@ -20,6 +20,7 @@ from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
 from identity import legacy_teleconsult_boundaries as teleconsult
 from identity import legacy_view_boundaries as views
+from identity.cut1_authority_census import run_cut1_census
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
 from identity.legacy_guard_inventory import declared_probes, discover
@@ -101,12 +102,28 @@ def nonstaff_differential_census(
 
 def test_every_authorization_candidate_is_accounted_for(
     nonstaff_differential_census: DifferentialReport,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_secret_backend: Path,
+    superuser_database_url: str,
+    record_property: Callable[[str, object], None],
 ) -> None:
     assert INVENTORY["schema_version"] == 2
     candidates = INVENTORY["candidates"]
     assert len({row["symbol"] for row in candidates}) == len(candidates)
     assert discover() == {row["symbol"]: row["signals"] for row in candidates}
-    declared = declared_probes() | set(nonstaff_differential_census.executed)
+    merged = {
+        row["symbol"]
+        for row in candidates
+        if row.get("probes") == [row["symbol"] + "#cut1"]
+    }
+    executed = run_cut1_census(
+        merged,
+        monkeypatch,
+        synthetic_secret_backend,
+        superuser_database_url,
+        record_property,
+    )
+    declared = declared_probes() | set(nonstaff_differential_census.executed) | executed
     assert sorted(declared) == INVENTORY["probes"]
     sql_oracles = {f"clinic_app.{probe.name}" for probe in PROBES.values()}
     bases = {probe.split("#", 1)[0] for probe in declared} | sql_oracles
