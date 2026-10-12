@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
+from apps.identity.models import UserClinicRole
 from django.db import connection, transaction
 
+from auth.stepup_test_support import create_role_actor
 from identity import legacy_sql_inventory, test_service_principals
 from identity.legacy_guard_inventory import discover_sql
 from identity.legacy_sql_inventory import assert_sql_inventory
 from identity.sql_guard_probes import ALL_ROLES, PROBES
 from identity.test_metrics_guard_parity import METRICS_SQL_ORACLES
 from identity.test_permission_parity import INVENTORY
+from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -44,6 +50,12 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert entry["reason"], name
             assert entry["probes"], name
             machine_oracles[name] = entry["probes"]
+        elif entry["kind"] == "data_operation":
+            assert name == "clinic_app.unaccent"
+            assert entry["probes"] == [
+                "test_unaccent_normalization_is_role_independent"
+            ]
+            assert entry["reason"]
         else:
             assert entry["kind"] in {
                 "migration_only",
@@ -66,6 +78,33 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
         assert oracles == test_service_principals.MACHINE_ORACLES, name
     for oracle in test_service_principals.MACHINE_ORACLES:
         assert callable(getattr(test_service_principals, oracle)), oracle
+
+
+@pytest.mark.parametrize("role", ALL_ROLES)
+def test_unaccent_normalization_is_role_independent(
+    rbac_graph: RbacGraph,
+    role: str,
+) -> None:
+    actor = create_role_actor(rbac_graph, UserClinicRole.Role(role))
+    with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+        for user_id, tenant_id in (
+            (str(actor.pk), str(rbac_graph.organization_a)),
+            ("", ""),
+            (str(uuid4()), "not-a-uuid"),
+            ("not-a-uuid", str(rbac_graph.organization_a)),
+        ):
+            cursor.execute(
+                "SELECT set_config('app.current_user_id',%s,true),"
+                "set_config('app.current_tenant',%s,true)",
+                [user_id, tenant_id],
+            )
+            cursor.execute(
+                "SELECT clinic_app.unaccent(%s::text),"
+                "clinic_app.unaccent('clinic_app.unaccent'::regdictionary,%s::text)",
+                ["S\u00ednt\u00e9tico", "S\u00ednt\u00e9tico"],
+            )
+            assert cursor.fetchone() == ("Sintetico", "Sintetico")
+        transaction.set_rollback(True)
 
 
 def test_omitting_a_deployed_sql_guard_breaks_the_inventory() -> None:

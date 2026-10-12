@@ -9,6 +9,11 @@ app_name = "intake"
 
 urlpatterns: list[URLPattern] = [
     path(
+        "intake/clinics/<uuid:clinic_id>/patients/demographics/",
+        views.patient_demographics_view,
+        name="patient-demographics",
+    ),
+    path(
         "patient/questionnaires/",
         questionnaire_views.patient_questionnaires,
         name="questionnaires",

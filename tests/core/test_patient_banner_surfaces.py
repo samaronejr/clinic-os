@@ -16,6 +16,7 @@ from core.test_workspace_boundaries import remove_permission
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
 from patient_http_support import seed_patients
+from patients.test_patient_cpf_error_contract import _refused_request
 from renewal.test_clinical_history import begin
 from renewal.test_document_artifacts import seed_rendered
 from renewal.test_encounters import physician_client
@@ -105,9 +106,11 @@ def test_each_patient_surface_binds_and_refuses_revocation(
         with physician_client(graph) as client:
             response = client.post(url, data)
     else:
-        assert view in {"intake:patient-contacts", "intake:patient-access"}, (
-            "Uncovered patient surface"
-        )
+        assert view in {
+            "intake:patient-contacts",
+            "intake:patient-access",
+            "intake:patient-demographics",
+        }, "Uncovered patient surface"
         role = "receptionist"
         client, user = _client_for(graph, role)
         seed_patients(graph, user.pk, graph.clinic_a, (PATIENT,))
@@ -118,6 +121,8 @@ def test_each_patient_surface_binds_and_refuses_revocation(
         response = _post(client, url, data)
     assert response.status_code == 200
     assert b"data-patient-banner" in response.content, view
+    if view != "intake:patient-demographics":
+        _refused_request(_client_for(graph, "finance")[0], url, data)
     key = f"workspace.patient.{graph.clinic_a}"
     assert key in client.session
     pinned = client.session[key]

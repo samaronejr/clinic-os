@@ -30,6 +30,7 @@ from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDAR
 from identity.legacy_scope_boundaries import BOUNDARIES as SCOPE_BOUNDARIES
 from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventory
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
+from identity.legacy_workspace_boundaries import BOUNDARIES as WORKSPACE_BOUNDARIES
 from identity.nonstaff_census import run_nonstaff_census
 from identity.permission_support import owner_context
 from identity.sql_denial_contracts import redeem
@@ -54,6 +55,7 @@ CORE = (
     *PREDICATE_BOUNDARIES,
     *SCOPE_BOUNDARIES,
     *OWNER_BOUNDARIES,
+    *WORKSPACE_BOUNDARIES,
 )
 
 
@@ -154,7 +156,10 @@ def fixed_verification_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize("legacy_role", LEGACY)
 @pytest.mark.parametrize("family", sorted({boundary.family for boundary in CORE}))
 def test_actual_legacy_boundaries(
-    rbac_graph: RbacGraph, legacy_role: str, family: str
+    rbac_graph: RbacGraph,
+    legacy_role: str,
+    family: str,
+    record_property: Callable[[str, object], None],
 ) -> None:
     subject = world(rbac_graph, legacy_role)
     if family == "organization":
@@ -168,6 +173,28 @@ def test_actual_legacy_boundaries(
     for boundary in CORE:
         if boundary.family == family:
             exercise(boundary, subject)
+    if family == "workspace_admission":
+        record_property(
+            "executed_authority_probes",
+            json.dumps([boundary.symbol for boundary in WORKSPACE_BOUNDARIES]),
+        )
+
+
+@pytest.mark.parametrize(
+    "role", [role for role in UserClinicRole.Role.values if role not in LEGACY]
+)
+def test_new_permission_admissions_execute_all_remaining_staff_roles(
+    rbac_graph: RbacGraph,
+    role: str,
+    record_property: Callable[[str, object], None],
+) -> None:
+    subject = world(rbac_graph, role)
+    for boundary in WORKSPACE_BOUNDARIES:
+        exercise(boundary, subject)
+    record_property(
+        "executed_authority_probes",
+        json.dumps([boundary.symbol for boundary in WORKSPACE_BOUNDARIES]),
+    )
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)

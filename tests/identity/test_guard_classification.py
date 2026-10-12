@@ -103,6 +103,38 @@ SOURCES = {
 }
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from apps.identity.current_context import require_permission\n"
+        "def admitted(clinic_id):\n"
+        "    require_permission('demographics.billing_read', clinic_id=clinic_id)\n",
+        "from apps.identity import current_context\n"
+        "def admitted(clinic_id):\n"
+        "    return current_context.has_permission('demographics.read', "
+        "clinic_id=clinic_id)\n",
+        "from apps.identity.current_context import require_permission as permitted\n"
+        "def admitted(clinic_id):\n"
+        "    permitted('demographics.billing_read', clinic_id=clinic_id)\n",
+    ],
+    ids=["direct-permission", "qualified-predicate", "aliased-permission"],
+)
+def test_permission_call_admissions_are_automatically_discovered(
+    source: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "apps/example/admission.py"
+    path.parent.mkdir(parents=True)
+    path.write_text(source)
+    monkeypatch.setattr(discovery, "ROOT", tmp_path)
+
+    found = discovery.discover()
+
+    assert "apps.example.admission.admitted" in found
+    assert "permission" in found["apps.example.admission.admitted"]
+
+
 @pytest.mark.parametrize("spelling", SOURCES)
 def test_actual_membership_guard_cannot_claim_nonstaff(
     spelling: str,

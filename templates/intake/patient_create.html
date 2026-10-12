@@ -34,6 +34,15 @@
         <p class="hint" id="patient-create-birth-date-help">{% trans "The birth date cannot be later than today in this clinic." %}</p>
         {% if form.birth_date.errors %}<div class="field-errors" id="{{ form.birth_date.auto_id }}_error">{% for error in form.birth_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
+      {% for field in form.visible_fields %}
+        {% if field.name != "full_name" and field.name != "birth_date" %}
+        <div class="field{% if field.errors %} field--error{% endif %}">
+          {{ field.label_tag }}
+          {{ field }}
+          {% if field.errors %}<div class="field-errors" id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
       <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
       <div class="actions">
         <button type="submit">{% trans "Register patient" %}</button>

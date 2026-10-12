@@ -12,7 +12,7 @@ from apps.audit.services import record_phase1_event
 from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.intake.access import PatientAccessDeniedError, authorized_manager_clinic
-from apps.intake.models import PatientClinicEnrollment
+from apps.intake.models import PatientClinicEnrollment, PatientDemographics
 from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.envelope import _kek
 
@@ -38,7 +38,8 @@ class PatientSearchItem:
 
     enrollment_id: UUID
     full_name: str
-    birth_date: date
+    birth_date: date | None
+    display_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,14 +76,27 @@ def search_patients_exact(
         clinic_id=clinic_id, patient__full_name_index__in=name_indexes(query)
     ).order_by("id")
     total = matches.count()
-    items = (
-        tuple(
-            PatientSearchItem(row.pk, row.patient.full_name, row.patient.birth_date)
-            for row in matches.select_related("patient")[:limit]
-        )
-        if total <= limit
-        else ()
-    )
+    items_list: list[PatientSearchItem] = []
+    if total <= limit:
+        for row in matches.select_related("patient")[:limit]:
+            current = (
+                PatientDemographics.objects.filter(patient_id=row.patient.pk)
+                .order_by("-version")
+                .first()
+            )
+            items_list.append(
+                PatientSearchItem(
+                    row.pk,
+                    row.patient.full_name,
+                    row.patient.birth_date,
+                    (
+                        current.social_name or current.legal_name
+                        if current
+                        else row.patient.full_name
+                    ),
+                )
+            )
+    items = tuple(items_list)
     record_phase1_event(
         "intake.patient.searched", clinic_id=clinic_id, affected_record_id=clinic_id
     )
@@ -122,7 +136,7 @@ def search_patients(
             count_row = cursor.fetchone()
             total = 0 if count_row is None else int(count_row[0])
             cursor.execute(
-                "SELECT enrollment_id, full_name, birth_date "
+                "SELECT enrollment_id, full_name, birth_date, social_name "
                 "FROM clinic_app.patient_registry_page(%s, %s, %s, %s, %s, %s)",
                 [kek, str(clinic_id), normalized_query, birth_date, offset, PAGE_SIZE],
             )
@@ -132,8 +146,9 @@ def search_patients(
                 enrollment_id=enrollment_id,
                 full_name=full_name,
                 birth_date=stored_birth,
+                display_name=social_name or full_name,
             )
-            for enrollment_id, full_name, stored_birth in rows
+            for enrollment_id, full_name, stored_birth, social_name in rows
         )
         record_phase1_event(
             "intake.patient.searched",

@@ -407,7 +407,8 @@
     {
       "symbol": "apps.core.workspace.resolve_workspace",
       "signals": [
-        "authentication"
+        "authentication",
+        "permission"
       ],
       "kind": "direct",
       "probes": [
@@ -938,6 +939,7 @@
       "signals": [
         "actor",
         "membership",
+        "permission",
         "role_helper",
         "scope_name"
       ],
@@ -1222,7 +1224,8 @@
     {
       "symbol": "apps.identity.scope_provisioning._owner_clinic",
       "signals": [
-        "denial"
+        "denial",
+        "permission"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -1422,6 +1425,51 @@
       ]
     },
     {
+      "symbol": "apps.intake.access.authorized_enrollment_for",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.access.authorized_enrollment_for"
+      ]
+    },
+    {
+      "symbol": "apps.intake.demographics._actor_label",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.demographics._actor_label"
+      ]
+    },
+    {
+      "symbol": "apps.intake.demographics.search_patient_identifiers",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.demographics.search_patient_identifiers"
+      ]
+    },
+    {
+      "symbol": "apps.intake.demographics.set_intake_policy",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.demographics.set_intake_policy"
+      ]
+    },
+    {
       "symbol": "apps.intake.contacts._actor_label",
       "signals": [
         "actor",
@@ -1506,7 +1554,8 @@
     {
       "symbol": "apps.intake.patient_search.search_patients_exact",
       "signals": [
-        "denial"
+        "denial",
+        "permission"
       ],
       "kind": "direct",
       "probes": [
@@ -1694,6 +1743,16 @@
       "kind": "direct",
       "probes": [
         "apps.intake.views.patient_access_view"
+      ]
+    },
+    {
+      "symbol": "apps.intake.views.patient_demographics_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.views.patient_demographics_view"
       ]
     },
     {
@@ -2226,6 +2285,7 @@
       "signals": [
         "actor",
         "denial",
+        "permission",
         "scope_name"
       ],
       "kind": "delegated",
@@ -2238,7 +2298,8 @@
       "symbol": "apps.realtime.scopes.grant_clinic_topic",
       "signals": [
         "denial",
-        "membership"
+        "membership",
+        "permission"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -2249,7 +2310,8 @@
     {
       "symbol": "apps.realtime.scopes.revoke_clinic_topic",
       "signals": [
-        "denial"
+        "denial",
+        "permission"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
@@ -3242,6 +3304,18 @@
       ]
     },
     {
+      "symbol": "apps.tenancy.envelope.blind_indexes_with_versions",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The versioned digest oracle executes the real tenant-key resolver and requires observed authority channels; it is not a nonstaff exemption.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes_with_versions#observed"
+      ]
+    },
+    {
       "symbol": "apps.tenancy.envelope.reveal",
       "signals": [
         "resolver"
@@ -3310,6 +3384,89 @@
       "probes": [
         "apps.tenancy.middleware.TenantMiddleware._patient#observed"
       ]
+    },
+    {
+      "symbol": "apps.core.command_search.search_commands",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions"
+      ],
+      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
+    },
+    {
+      "symbol": "apps.core.command_views._change_saved_view",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions"
+      ],
+      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
+    },
+    {
+      "symbol": "apps.core.command_views._switch_patient",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions"
+      ],
+      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
+    },
+    {
+      "symbol": "apps.core.patient_context.patient_context_allowed",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.patient_context.patient_context_allowed"
+      ]
+    },
+    {
+      "symbol": "apps.core.workspace_access._billing_surface_admitted",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.workspace_access._billing_surface_admitted"
+      ]
+    },
+    {
+      "symbol": "apps.core.workspace_access.workspace_denial",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.workspace_access.workspace_denial"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization._staff_topics",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.realtime.authorization._staff_topics"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.scopes.register_job_topic",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.realtime.scopes.register_job_topic"
+      ]
     }
   ],
   "probes": [
@@ -3341,9 +3498,12 @@
     "apps.core.integration._resolve_callback_scope",
     "apps.core.integration._resolve_scope",
     "apps.core.navigation.granted_permissions",
+    "apps.core.patient_context.patient_context_allowed",
     "apps.core.views.workspace_home",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
+    "apps.core.workspace_access._billing_surface_admitted",
+    "apps.core.workspace_access.workspace_denial",
     "apps.ehr.attachment_views._workspace",
     "apps.ehr.attachment_views.attachment_workspace",
     "apps.ehr.attachments.attachment_context",
@@ -3416,8 +3576,12 @@
     "apps.identity.stepup_views.step_up_view",
     "apps.identity.views.protected_view",
     "apps.intake.access.authorized_enrollment",
+    "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
     "apps.intake.contacts._actor_label",
+    "apps.intake.demographics._actor_label",
+    "apps.intake.demographics.search_patient_identifiers",
+    "apps.intake.demographics.set_intake_policy",
     "apps.intake.patient_access._actor_label",
     "apps.intake.patient_access.end_patient_session#observed",
     "apps.intake.patient_access.patient_session_context#observed",
@@ -3440,6 +3604,7 @@
     "apps.intake.views.patient_access_view",
     "apps.intake.views.patient_contacts_view",
     "apps.intake.views.patient_create_view",
+    "apps.intake.views.patient_demographics_view",
     "apps.intake.views.patient_list_view",
     "apps.prescription.services._authorize_document_care",
     "apps.prescription.services._scope",
@@ -3460,7 +3625,9 @@
     "apps.prescription.views.review_view",
     "apps.prescription.views.signing_status_view",
     "apps.realtime.authorization._patient_topics#observed",
+    "apps.realtime.authorization._staff_topics",
     "apps.realtime.hooks.permission_changed#observed",
+    "apps.realtime.scopes.register_job_topic",
     "apps.retention.services._clinic",
     "apps.retention.services._denied",
     "apps.retention.services._record_patient_view#observed",
@@ -3519,6 +3686,7 @@
     "apps.tenancy.db.service_principal_context#observed",
     "apps.tenancy.db.tenant_context",
     "apps.tenancy.envelope.blind_indexes#observed",
+    "apps.tenancy.envelope.blind_indexes_with_versions#observed",
     "apps.tenancy.envelope.decrypt#observed",
     "apps.tenancy.envelope.encrypt#observed",
     "apps.tenancy.envelope.issue_tenant_key#observed",
@@ -5268,6 +5436,86 @@
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
+    "clinic_app.intake_correction_guard_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0013_patient_demographics.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Binds a correction receipt to its exact patient, clinic, produced version and superseded version. It grants no staff role; demographic raw-write tests exercise the constraint."
+    },
+    "clinic_app.intake_demographics_receipt_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0013_patient_demographics.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Deferred row-integrity check requires the receipt for each appended demographics version. It grants no staff role; missing-receipt raw-write tests cover commit-time refusal."
+    },
+    "clinic_app.intake_identity_append_only_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0013_patient_demographics.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Always refuses mutation of versioned identity history, without actor or role branches. Raw UPDATE/DELETE refusal tests preserve append-only rows."
+    },
+    "clinic_app.intake_patient_mirror_guard_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0013_patient_demographics.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Binds an immutable registry identity to the exact latest name/date/HMAC version in the same transaction. Source-owned typed guard/mirror proofs cover changed and refused unchanged rows; this grants no role or common UPDATE approval."
+    },
     "clinic_app.intake_contact_event_immutable_v1": {
       "discovery": {
         "signatures": [
@@ -5525,6 +5773,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/0013_patient_demographics.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
@@ -5547,6 +5796,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/0013_patient_demographics.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
@@ -5570,7 +5820,8 @@
         ],
         "migrations": [
           "apps/intake/migrations/0003_patient_access.py",
-          "apps/intake/migrations/0011_protected_fields.py"
+          "apps/intake/migrations/0011_protected_fields.py",
+          "apps/intake/migrations/0013_patient_demographics.py"
         ],
         "policies": [],
         "resolvers": []
@@ -7098,6 +7349,35 @@
       "kind": "patient_principal",
       "probes": [],
       "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.unaccent": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "regdictionary, text",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": false
+          },
+          {
+            "arguments": "text",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.patient_registry_count",
+          "clinic_app.patient_registry_page"
+        ]
+      },
+      "kind": "data_operation",
+      "probes": [
+        "test_unaccent_normalization_is_role_independent"
+      ],
+      "reason": "Installed text-normalization overloads transform caller-supplied text, without a staff decision. The named real-PG oracle covers both overloads, every stored staff role and unknown/absent/malformed actor and tenant GUCs."
     },
     "clinic_app.user_has_org": {
       "discovery": {

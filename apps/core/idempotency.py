@@ -87,7 +87,7 @@ def _canonical_scalar(field: str, value: str) -> bool:
     if field.endswith("_utc"):
         return _canonical_utc_minute(value)
     named = {
-        "birth_date": _canonical_date,
+        "birth_date": _canonical_optional_date,
         "full_name": _canonical_name,
         "amount_minor": _canonical_minor_amount,
         "currency": _canonical_currency,
@@ -100,6 +100,10 @@ def _canonical_uuid(value: str) -> bool:
         return str(UUID(value)) == value
     except ValueError:
         return False
+
+
+def _canonical_optional_date(value: str) -> bool:
+    return value == "" or _canonical_date(value)
 
 
 def _canonical_date(value: str) -> bool:

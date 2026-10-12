@@ -11,6 +11,13 @@ INTAKE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
         ("intake_patientcontactevent", "organization_id"),
         ("intake_patientaccessgrant", "organization_id"),
         ("intake_patientsession", "organization_id"),
+        ("intake_patientdemographics", "organization_id"),
+        ("intake_demographicscorrection", "organization_id"),
+        ("intake_patientidentifier", "organization_id"),
+        ("intake_patientaddress", "organization_id"),
+        ("intake_emergencycontact", "organization_id"),
+        ("intake_insurancemembership", "organization_id"),
+        ("intake_clinicintakepolicy", "organization_id"),
     }
 )
 
@@ -38,10 +45,20 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "intake_questionnairetemplate": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireresponse": frozenset({"SELECT", "INSERT"}),
     "intake_questionnaireevent": frozenset({"SELECT"}),
+    "intake_patientdemographics": frozenset({"SELECT", "INSERT"}),
+    "intake_demographicscorrection": frozenset({"SELECT", "INSERT"}),
+    "intake_patientidentifier": frozenset({"SELECT", "INSERT"}),
+    "intake_patientaddress": frozenset({"SELECT", "INSERT"}),
+    "intake_emergencycontact": frozenset({"SELECT", "INSERT"}),
+    "intake_insurancemembership": frozenset({"SELECT", "INSERT"}),
+    "intake_clinicintakepolicy": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
+        ("intake_patient", "full_name", "UPDATE"),
+        ("intake_patient", "full_name_index", "UPDATE"),
+        ("intake_patient", "birth_date", "UPDATE"),
         ("intake_patientaccessgrant", "revoked_at", "UPDATE"),
         ("intake_patientchannelpreference", "opted_in", "UPDATE"),
         ("intake_patientchannelpreference", "updated_at", "UPDATE"),

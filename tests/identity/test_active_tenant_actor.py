@@ -91,9 +91,14 @@ def test_active_actor_migration_reverses_without_changing_membership_or_posture(
         cursor.execute(CATALOG_QUERY)
         posture = cursor.fetchone()
     executor = MigrationExecutor(connection)
-    targets = executor.loader.graph.leaf_nodes()
+    migration = executor.loader.get_migration("tenancy", "0005_active_tenant_actor")
+    # This resolver-only migration is reversible. Later encrypted intake
+    # migrations are not; reverse this operation through the real executor
+    # rather than trying to discard every descendant's protected data.
+    state = executor.loader.project_state()
+    restored = False
     try:
-        executor.migrate([("tenancy", "0004_protected_fields")])
+        executor.unapply_migration(state, migration)
         with psycopg.connect(app_database_url) as runtime:
             runtime.execute(
                 "SELECT set_config('app.current_user_id', %s, true)",
@@ -102,7 +107,8 @@ def test_active_actor_migration_reverses_without_changing_membership_or_posture(
             assert runtime.execute(
                 "SELECT clinic_app.user_has_org(%s)", [graph.organization_a]
             ).fetchone() == (True,)
-        MigrationExecutor(connection).migrate(targets)
+        executor.apply_migration(state, migration)
+        restored = True
         with psycopg.connect(app_database_url) as runtime:
             runtime.execute(
                 "SELECT set_config('app.current_user_id', %s, true)",
@@ -121,4 +127,5 @@ def test_active_actor_migration_reverses_without_changing_membership_or_posture(
                 == memberships
             )
     finally:
-        MigrationExecutor(connection).migrate(targets)
+        if not restored:
+            executor.apply_migration(state, migration)

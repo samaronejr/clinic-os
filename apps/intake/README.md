@@ -15,6 +15,12 @@ No plaintext shadow, decrypted predicate, or decrypt-and-filter fallback exists
 on the palette path. Raw owner fixture inserts must supply the digest to be
 searchable by the palette; production registration always supplies it.
 
+Name search keys are exactly legal name and social name: the staff
+registry substring page matches `full_name` and the latest demographics
+`social_name` only. `preferred_name` is a display/demographics field and
+is not a search key; a preferred-name-only query returns no rows by
+contract, not by defect.
+
 Contacts and messaging preferences extend the same boundary: destinations
 are organization-level patient data verified per destination version,
 preferences are clinic-scoped versioned opt-in states per purpose and
@@ -51,3 +57,12 @@ completion-only resolver. See [questionnaire policy](../../docs/clinical/questio
 All current patient workflows are
 synthetic-only; see [the architecture](../../docs/ARCHITECTURE.md) and
 [the live-data gate](../../docs/compliance/LIVE-DATA-GATE.md).
+
+Provenance surfaces: the demographics screen labels every correction row
+with its source (`patient_reported` renders "Patient-reported") and marks a
+current patient-reported version "Reported by the patient; not verified by
+staff." Any authorized reader, physicians included, sees the same labels; the
+physician encounter view carries document provenance (template version,
+document version, revision, amendment chain, finalization timestamp, content
+digest and linked intake submission references) and no separate physician
+provenance panel exists for demographics — that is the contract, not a gap.

@@ -114,6 +114,8 @@ ALLOWED = Counter(
         ("identity/test_nonstaff_differential.py", "mutates __dict__"): 1,
         # Records every current_context function it wraps (todo 6 census).
         ("identity/authority_observer.py", "setattr with dynamic name"): 1,
+        # Mutate issued probe contents and verdict rows the contracts forbid.
+        ("identity/test_sql_dml_contracts.py", "calls __setattr__"): 4,
         # Patch a module attribute named by the test parameter or module name.
         ("core/test_workspace_late_refusals.py", "setattr with dynamic name"): 2,
         ("renewal/test_runtime_paths.py", "setattr with dynamic name"): 1,

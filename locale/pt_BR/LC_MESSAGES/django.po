@@ -3006,3 +3006,15 @@ msgstr "Tipo de atendimento"
 
 msgid "Service bookings require an eligible professional."
 msgstr "Agendamentos com tipo de atendimento exigem um profissional habilitado."
+
+msgid "Reported by the patient; not verified by staff."
+msgstr "Informado pelo paciente; não verificado pela equipe."
+
+msgid "Source"
+msgstr "Origem"
+
+msgid "Patient-reported"
+msgstr "Informado pelo paciente"
+
+msgid "Staff-recorded"
+msgstr "Registrado pela equipe"

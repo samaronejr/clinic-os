@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
+from django import forms
 from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
@@ -18,15 +20,43 @@ from django.views.decorators.http import require_http_methods
 from apps.core.patient_context import bind_patient_context
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import authorized_manager_clinic
+from apps.intake.demographics import (
+    DemographicsInputError,
+    DemographicsNameRequiredError,
+    DemographicsRequiredError,
+    DemographicsStaleError,
+    IdentifierConflictError,
+    IdentifierInputError,
+    add_identifier,
+    billing_demographics,
+    demographics_profile,
+    register_patient,
+    registration_required_fields,
+    retire_identifier,
+    save_emergency_contact,
+    save_insurance_membership,
+    save_patient_address,
+    search_patient_identifiers,
+    update_demographics,
+)
 from apps.intake.forms import (
+    ADDRESS_KIND_LABELS,
     CONFLICTING_KEY_MESSAGE,
+    DEMOGRAPHIC_FIELD_LABELS,
+    IDENTIFIER_KIND_LABELS,
     INVALID_CREATE_MESSAGE,
     AccessRevokeForm,
+    AddressForm,
     ContactChannelForm,
     ContactDestinationForm,
     ContactPreferenceForm,
     ContactVerifyForm,
+    DemographicsForm,
+    EmergencyContactForm,
     EnrollmentForm,
+    IdentifierAddForm,
+    IdentifierRetireForm,
+    MembershipForm,
     PatientAccessForm,
     PatientCreateForm,
     PatientSearchForm,
@@ -55,7 +85,6 @@ from apps.intake.services import (
     access_overview,
     contact_for_edit,
     contact_overview,
-    create_patient,
     issue_invitation,
     revoke_patient_access,
     save_contact_destination,
@@ -69,6 +98,7 @@ if TYPE_CHECKING:
 
     from django.http import HttpRequest
 
+    from apps.intake.demographics import DemographicsProfile
     from apps.intake.services import (
         AccessOverview,
         ContactEditTarget,
@@ -80,6 +110,7 @@ SEE_OTHER: Final = 303
 NO_CONTENT: Final = 204
 RESULTS_PARTIAL: Final = "intake/partials/patient_results.html"
 REGISTERED_MESSAGE: Final = "intake.patient.registered"
+DUPLICATE_MESSAGE: Final = "intake.patient.possible_duplicate"
 CONTACTS_TEMPLATE: Final = "intake/patient_contacts.html"
 CONTACT_EDIT_TEMPLATE: Final = "intake/patient_contact_edit.html"
 CONTACT_SAVED_MESSAGE: Final = _("Contact saved.")
@@ -192,6 +223,7 @@ def _search_context(
     birth_date: date | None,
 ) -> dict[str, object]:
     query = form.data.get("q", "") if results is not None else ""
+    identifier_kind = form.data.get("identifier_kind", "")
     return {
         "access_url": patient_access_url(clinic_id),
         "birth_date_value": birth_date.isoformat() if birth_date else "",
@@ -211,7 +243,11 @@ def _search_context(
         ),
         "query": query,
         "results": results,
-        "status": _results_status(results, query),
+        "status": (
+            _("No patient with this document in this clinic.")
+            if identifier_kind and results is not None and results.total == 0
+            else _results_status(results, query)
+        ),
     }
 
 
@@ -241,14 +277,24 @@ def patient_list_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
     if form.is_valid():
         birth_date = form.cleaned_data["birth_date"]
         try:
-            results = search_patients(
-                clinic_id=clinic_id,
-                query=form.cleaned_data["q"],
-                page=form.selected_page(),
-                birth_date=birth_date,
-            )
+            if form.cleaned_data["identifier_kind"]:
+                _require_clinic(clinic_id)
+                results = search_patient_identifiers(
+                    clinic_id=clinic_id,
+                    kind=form.cleaned_data["identifier_kind"],
+                    value=form.cleaned_data["identifier_value"],
+                )
+            else:
+                results = search_patients(
+                    clinic_id=clinic_id,
+                    query=form.cleaned_data["q"],
+                    page=form.selected_page(),
+                    birth_date=birth_date,
+                )
         except PatientAccessDeniedError as error:
             raise Http404 from error
+        except DemographicsInputError:
+            form.add_error("identifier_value", _("Enter a valid document number."))
         except PatientSearchInputError:
             form.add_error(None, INVALID_CREATE_MESSAGE)
     return _render_search(
@@ -287,47 +333,474 @@ def _created_response(
         response: HttpResponseBase = HttpResponse(status=NO_CONTENT)
         response.headers["HX-Redirect"] = target
         return response
-    return redirect(target, permanent=False)
+    response = redirect(target, permanent=False)
+    response.status_code = SEE_OTHER
+    return response
 
 
 @privileged_totp_required(patient_create_continuation)
 @require_http_methods(["GET", "POST"])
 def patient_create_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     """Issue one registration key on GET and register one patient on POST."""
+    try:
+        required_fields = registration_required_fields(clinic_id=clinic_id)
+    except PatientAccessDeniedError as denied:
+        raise Http404 from denied
     if request.method != "POST":
         _require_clinic(clinic_id)
-        blank = PatientCreateForm()
+        blank = PatientCreateForm(required_fields=required_fields)
         return render(
             request,
             "intake/patient_create.html",
             _create_context(clinic_id, blank, str(uuid4())),
         )
     submitted_key = request.POST.get("idempotency_key", "")
-    form = PatientCreateForm(data=request.POST)
+    form = PatientCreateForm(data=request.POST, required_fields=required_fields)
     if form.is_valid():
         try:
-            create_patient(
+            inputs = form.registration_inputs()
+            outcome = register_patient(
                 clinic_id=clinic_id,
-                full_name=form.cleaned_data["full_name"],
-                birth_date=form.cleaned_data["birth_date"],
-                idempotency_key=form.cleaned_data["idempotency_key"],
+                legal_name=inputs.legal_name,
+                social_name=inputs.social_name,
+                birth_date=inputs.birth_date,
+                idempotency_key=inputs.idempotency_key,
+                changes=inputs.changes,
+                unknown=inputs.unknown,
+                identifier_kind=inputs.identifier_kind,
+                identifier_value=inputs.identifier_value,
             )
         except PatientAccessDeniedError as error:
             raise Http404 from error
         except PatientIdempotencyConflictError:
             form.add_error(None, CONFLICTING_KEY_MESSAGE)
-        except (PatientBirthDateError, PatientCreateInputError):
-            form.add_error(None, INVALID_CREATE_MESSAGE)
+        except DemographicsRequiredError:
+            form.add_error(
+                None,
+                _("Complete the required fields or record why they are unanswered."),
+            )
+        except (
+            DemographicsInputError,
+            PatientBirthDateError,
+            PatientCreateInputError,
+        ) as error:
+            _bind_registration_error(form, error)
         else:
-            response = _created_response(request, clinic_id)
-            if response.status_code != NO_CONTENT:
-                response.status_code = SEE_OTHER
-            return response
+            if outcome.matching_enrollment_id is not None:
+                messages.warning(
+                    request,
+                    _("Possible duplicate. The registration was saved."),
+                    extra_tags=DUPLICATE_MESSAGE,
+                )
+            return _created_response(request, clinic_id)
     return render(
         request,
         "intake/patient_create.html",
         _create_context(clinic_id, form, submitted_key),
     )
+
+
+def _registration_error(
+    error: PatientBirthDateError | PatientCreateInputError,
+) -> str:
+    """Present the existing birth-date refusal separately from other input."""
+    if isinstance(error, PatientBirthDateError) or isinstance(
+        error.__cause__, PatientBirthDateError
+    ):
+        return _("Enter a patient name and a valid birth date.")
+    return str(INVALID_CREATE_MESSAGE)
+
+
+def _bind_registration_error(
+    form: PatientCreateForm,
+    error: DemographicsInputError | PatientBirthDateError | PatientCreateInputError,
+) -> None:
+    """Bind one handled registration error to the field or the whole form."""
+    if isinstance(error, IdentifierInputError):
+        form.add_error("identifier_value", _("Enter a valid document number."))
+        return
+    if isinstance(error, DemographicsInputError):
+        if error.field is not None:
+            field = "full_name" if error.field == "legal_name" else error.field
+            form.add_error(field, _("Check the entered values."))
+            return
+        form.add_error(None, INVALID_CREATE_MESSAGE)
+        return
+    form.add_error(None, _registration_error(error))
+
+
+def _demographics_context(
+    clinic_id: UUID, profile: DemographicsProfile
+) -> dict[str, object]:
+    """Build separately versioned POST forms from the authorized profile."""
+    demographics = DemographicsForm()
+    demographics.initial = {
+        **profile.values,
+        **{f"{field}_status": value for field, value in profile.unknown.items()},
+        "enrollment_id": profile.enrollment_id,
+        "expected_version": profile.version,
+    }
+    identifier = IdentifierAddForm()
+    identifier.initial = {"enrollment_id": profile.enrollment_id}
+    identifier.auto_id = "identifier-new-%s"
+    addresses: list[dict[str, object]] = []
+    for address in profile.addresses:
+        address_form = AddressForm()
+        address_form.initial = {
+            **asdict(address),
+            "enrollment_id": profile.enrollment_id,
+            "expected_version": address.version,
+        }
+        address_form.auto_id = f"address-{address.kind}-%s"
+        address_form.fields["kind"].widget = forms.HiddenInput()
+        addresses.append(
+            {"label": ADDRESS_KIND_LABELS[address.kind], "form": address_form}
+        )
+    new_address = AddressForm()
+    new_address.initial = {
+        "enrollment_id": profile.enrollment_id,
+        "expected_version": 0,
+    }
+    new_address.auto_id = "address-new-%s"
+    new_address.fields["kind"] = forms.ChoiceField(
+        label=_("Address type"),
+        choices=tuple(
+            (kind, ADDRESS_KIND_LABELS[kind]) for kind in profile.free_address_kinds
+        ),
+    )
+    contacts: list[dict[str, object]] = []
+    for contact in profile.emergency_contacts:
+        contact_form = EmergencyContactForm()
+        contact_form.initial = {
+            **asdict(contact),
+            "enrollment_id": profile.enrollment_id,
+            "expected_version": contact.version,
+        }
+        contact_form.auto_id = f"contact-{contact.sequence}-%s"
+        contact_form.fields["sequence"].widget = forms.HiddenInput()
+        contacts.append({"form": contact_form})
+    new_contact = EmergencyContactForm()
+    new_contact.initial = {
+        "enrollment_id": profile.enrollment_id,
+        "expected_version": 0,
+    }
+    new_contact.auto_id = "contact-new-%s"
+    new_contact.fields["sequence"] = forms.TypedChoiceField(
+        label=_("Contact slot"),
+        choices=tuple((str(slot), str(slot)) for slot in profile.free_contact_slots),
+        coerce=int,
+    )
+    memberships: list[dict[str, object]] = []
+    for membership in profile.memberships:
+        membership_form = MembershipForm()
+        membership_form.initial = {
+            **asdict(membership),
+            "enrollment_id": profile.enrollment_id,
+            "expected_version": membership.version,
+        }
+        membership_form.auto_id = f"membership-{membership.sequence}-%s"
+        membership_form.fields["sequence"].widget = forms.HiddenInput()
+        memberships.append({"form": membership_form})
+    new_membership = MembershipForm()
+    new_membership.initial = {
+        "enrollment_id": profile.enrollment_id,
+        "expected_version": 0,
+    }
+    new_membership.auto_id = "membership-new-%s"
+    new_membership.fields["sequence"] = forms.TypedChoiceField(
+        label=_("Membership slot"),
+        choices=tuple((str(slot), str(slot)) for slot in profile.free_membership_slots),
+        coerce=int,
+    )
+    return {
+        "profile": profile,
+        "demographics_form": demographics,
+        "identifier_form": identifier,
+        "identifier_rows": [
+            {"record": record, "label": IDENTIFIER_KIND_LABELS[record.kind]}
+            for record in profile.identifiers
+        ],
+        "addresses": addresses,
+        "new_address": new_address,
+        "contacts": contacts,
+        "new_contact": new_contact,
+        "memberships": memberships,
+        "new_membership": new_membership,
+        "corrections": [
+            {
+                "record": correction,
+                "fields": [
+                    DEMOGRAPHIC_FIELD_LABELS[field]
+                    for field in correction.changed_fields
+                ],
+            }
+            for correction in profile.corrections
+        ],
+        "manage_url": reverse("intake:patient-demographics", args=(clinic_id,)),
+        "list_url": patient_list_continuation(clinic_id),
+    }
+
+
+def _identifier_action(
+    request: HttpRequest,
+    clinic_id: UUID,
+    action: str,
+    holder: dict[str, forms.Form],
+) -> forms.Form:
+    """Add or retire a document through the scoped versioned service."""
+    if action == "add_identifier":
+        form = IdentifierAddForm(data=request.POST)
+        holder["form"] = form
+        if form.is_valid():
+            result = add_identifier(
+                clinic_id=clinic_id,
+                enrollment_id=form.selected_enrollment(),
+                kind=form.selected_kind(),
+                value=str(form.cleaned_data["value"]),
+                issuer=str(form.cleaned_data["issuer"]),
+            )
+            if result.matching_enrollment_id is not None:
+                messages.warning(
+                    request, _("Possible duplicate. The document was saved.")
+                )
+        return form
+    retirement = IdentifierRetireForm(data=request.POST)
+    holder["form"] = retirement
+    if retirement.is_valid():
+        retire_identifier(
+            clinic_id=clinic_id,
+            enrollment_id=retirement.selected_enrollment(),
+            kind=retirement.selected_kind(),
+            expected_version=retirement.selected_version(),
+        )
+    return retirement
+
+
+def _section_action(
+    request: HttpRequest,
+    clinic_id: UUID,
+    action: str,
+    holder: dict[str, forms.Form],
+) -> forms.Form:
+    """Save or retire one address, emergency contact or membership version."""
+    match action:
+        case "save_address" | "retire_address":
+            address = AddressForm(data=request.POST)
+            holder["form"] = address
+            if address.is_valid():
+                save_patient_address(
+                    clinic_id=clinic_id,
+                    enrollment_id=address.selected_enrollment(),
+                    kind=address.selected_kind(),
+                    expected_version=address.selected_version(),
+                    address=(
+                        None if action == "retire_address" else address.section_values()
+                    ),
+                )
+            return address
+        case "save_contact" | "retire_contact":
+            contact = EmergencyContactForm(data=request.POST)
+            holder["form"] = contact
+            if contact.is_valid():
+                save_emergency_contact(
+                    clinic_id=clinic_id,
+                    enrollment_id=contact.selected_enrollment(),
+                    sequence=contact.selected_sequence(),
+                    expected_version=contact.selected_version(),
+                    contact=(
+                        None if action == "retire_contact" else contact.section_values()
+                    ),
+                )
+            return contact
+        case "save_membership" | "retire_membership":
+            membership = MembershipForm(data=request.POST)
+            holder["form"] = membership
+            if membership.is_valid():
+                save_insurance_membership(
+                    clinic_id=clinic_id,
+                    enrollment_id=membership.selected_enrollment(),
+                    sequence=membership.selected_sequence(),
+                    expected_version=membership.selected_version(),
+                    membership=(
+                        None
+                        if action == "retire_membership"
+                        else membership.section_values()
+                    ),
+                )
+            return membership
+        case _:
+            raise Http404
+
+
+@privileged_totp_required(patient_list_continuation)
+@require_http_methods(["POST"])
+def patient_demographics_view(
+    request: HttpRequest, clinic_id: UUID
+) -> HttpResponseBase:
+    """Read or mutate one exact enrollment selected only in the POST body."""
+    selection = EnrollmentForm(data=request.POST)
+    if not selection.is_valid():
+        raise Http404
+    enrollment_id = selection.selected_enrollment()
+    action = request.POST.get("action", "manage")
+    try:
+        # Access preflight only: the returned profile is superseded by the
+        # post-mutation read below, so it must not write a viewed event.
+        demographics_profile(
+            clinic_id=clinic_id,
+            enrollment_id=enrollment_id,
+            record_view=False,
+        )
+    except PatientAccessDeniedError as error:
+        if action != "manage":
+            raise Http404 from error
+        try:
+            minimal = billing_demographics(
+                clinic_id=clinic_id, enrollment_id=enrollment_id
+            )
+        except PatientAccessDeniedError as denied:
+            raise Http404 from denied
+        return render(
+            request,
+            "intake/patient_demographics_minimal.html",
+            {"identity": minimal, "list_url": patient_list_continuation(clinic_id)},
+        )
+    bound_form, rejected = _profile_feedback(request, clinic_id, enrollment_id, action)
+    profile = demographics_profile(
+        clinic_id=clinic_id,
+        enrollment_id=enrollment_id,
+        record_view=not rejected,
+    )
+    bind_patient_context(
+        request,
+        clinic_id=clinic_id,
+        enrollment_id=enrollment_id,
+        record_view=not rejected,
+    )
+    context = _demographics_context(clinic_id, profile)
+    if bound_form is not None and bound_form.errors:
+        bound_form.auto_id = "rejected-%s"
+        context.update({"rejected_form": bound_form, "rejected_action": action})
+    return render(request, "intake/patient_demographics.html", context)
+
+
+def _profile_action(
+    request: HttpRequest,
+    clinic_id: UUID,
+    enrollment_id: UUID,
+    action: str,
+    holder: dict[str, forms.Form],
+) -> forms.Form | None:
+    """Route one explicit action to the corresponding scoped service."""
+    match action:
+        case "manage":
+            return None
+        case "save":
+            correction = DemographicsForm(data=request.POST)
+            holder["form"] = correction
+            if correction.is_valid():
+                update_demographics(
+                    clinic_id=clinic_id,
+                    enrollment_id=enrollment_id,
+                    expected_version=correction.selected_version(),
+                    changes=correction.cleaned_changes(),
+                    unknown=correction.cleaned_unknown(),
+                    reason=str(correction.cleaned_data["reason"]),
+                )
+            return correction
+        case "add_identifier" | "retire_identifier":
+            return _identifier_action(request, clinic_id, action, holder)
+        case _:
+            return _section_action(request, clinic_id, action, holder)
+
+
+_PROFILE_ERROR_FEEDBACK: Final = (
+    (
+        DemographicsNameRequiredError,
+        "legal_name",
+        "Enter a legal or a social name.",
+        "Enter a legal or a social name.",
+    ),
+    (
+        IdentifierInputError,
+        "value",
+        "Enter a valid document number.",
+        "Enter a valid document number.",
+    ),
+    (
+        DemographicsRequiredError,
+        None,
+        "Check the entered values.",
+        "Check the entered values and try again.",
+    ),
+    (
+        PatientCreateInputError,
+        None,
+        "Check the entered values.",
+        "Check the entered values and try again.",
+    ),
+    (
+        DemographicsInputError,
+        None,
+        "Check the entered values.",
+        "Check the entered values and try again.",
+    ),
+)
+
+
+def _profile_error_feedback(
+    error: ValueError,
+) -> tuple[str | None, str, str]:
+    """Return (field, form message, flash) for one rejected write."""
+    for kind, field, message, flash in _PROFILE_ERROR_FEEDBACK:
+        if isinstance(error, kind):
+            return field, message, flash
+    return None, "Check the entered values.", "Check the entered values and try again."
+
+
+def _profile_feedback(
+    request: HttpRequest, clinic_id: UUID, enrollment_id: UUID, action: str
+) -> tuple[forms.Form | None, bool]:
+    """Preserve validation feedback and exact denial/conflict distinctions."""
+    holder: dict[str, forms.Form] = {}
+    bound_form: forms.Form | None = None
+    rejected = False
+    try:
+        bound_form = _profile_action(request, clinic_id, enrollment_id, action, holder)
+    except PatientAccessDeniedError as denied:
+        raise Http404 from denied
+    except DemographicsStaleError:
+        rejected = True
+        messages.error(request, _("This record changed. Reload it before editing."))
+    except IdentifierConflictError:
+        rejected = True
+        messages.error(
+            request, _("This document already exists. Reload it before editing.")
+        )
+    except (
+        DemographicsInputError,
+        DemographicsNameRequiredError,
+        DemographicsRequiredError,
+        IdentifierInputError,
+        PatientCreateInputError,
+    ) as invalid:
+        rejected = True
+        bound_form = bound_form or holder.get("form")
+        field, message, flash = _profile_error_feedback(invalid)
+        if bound_form is not None:
+            bound_form.add_error(field, _(message))
+        messages.error(request, _(flash))
+    else:
+        if bound_form is not None and not bound_form.errors:
+            message = (
+                _("Record removed. Earlier versions stay in history.")
+                if action.startswith("retire_")
+                else (
+                    _("Demographics saved.") if action == "save" else _("Record saved.")
+                )
+            )
+            messages.success(request, message)
+    return bound_form, rejected or bool(bound_form is not None and bound_form.errors)
 
 
 # --------------------------------------------------------------------------

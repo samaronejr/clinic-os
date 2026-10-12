@@ -38,7 +38,7 @@ def test_patient_service_rechecks(
     cases = (
         (
             "intake:patient-create",
-            "create_patient",
+            "register_patient",
             PatientAccessDeniedError(),
             {
                 "full_name": "Sintetico Refusal",
