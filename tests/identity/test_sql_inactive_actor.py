@@ -431,6 +431,10 @@ class GuardProbe:
     refusal: str
     # Owner query for the latest version the insert must follow, if versioned.
     latest: str | None = None
+    # (sqlstate, message) an inactive actor raises when the guard checks staff
+    # authority before validating the record; None means the validation
+    # refusal ("23514", refusal) is raised first.
+    inactive_denial: tuple[str, str] | None = None
 
 
 GUARD_PROBES = {
@@ -454,6 +458,9 @@ GUARD_PROBES = {
         "invalid consent publication",
         "SELECT coalesce(max(version), 0) FROM clinic_app.consent_consenttext"
         " WHERE clinic_id = %(clinic)s AND purpose = 'teleconsultation'",
+        # consent_guard checks configuration authority before validating the
+        # publication, so an inactive actor is denied 42501 first.
+        inactive_denial=("42501", "consent staff authority required"),
     ),
     "clinic_app.retention_guard()": GuardProbe(
         "INSERT INTO clinic_app.retention_retentionpolicy (id, record_class, "
@@ -588,7 +595,11 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
     assert {name: tuple(row) for name, row in rows.items()} == {
         **dict.fromkeys(DELEGATE_PROBES, (True, False, True)),
         **{
-            name: ("inserted", ("23514", probe.refusal, name), "inserted")
+            name: (
+                "inserted",
+                (probe.inactive_denial or ("23514", probe.refusal)) + (name,),
+                "inserted",
+            )
             for name, probe in GUARD_PROBES.items()
         },
     }

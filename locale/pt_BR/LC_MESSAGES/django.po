@@ -2517,3 +2517,297 @@ msgstr "Remover visão salva: %(name)s"
 
 msgid "Save this view: %(name)s"
 msgstr "Salvar esta visão: %(name)s"
+
+msgid "Teleconsultation"
+msgstr "Teleconsulta"
+
+msgid "Consultation recording"
+msgstr "Gravação da consulta"
+
+msgid "AI assistance"
+msgstr "Apoio de IA"
+
+msgid "Research and model improvement"
+msgstr "Pesquisa e melhoria de modelos"
+
+msgid "Transactional messaging"
+msgstr "Mensagens transacionais"
+
+msgid "Care data processing"
+msgstr "Tratamento de dados no atendimento"
+
+msgid "Use of AI in care"
+msgstr "Uso de IA no atendimento"
+
+msgid "Caregiver"
+msgstr "Cuidador"
+
+msgid "Companion"
+msgstr "Acompanhante"
+
+msgid "Interpreter"
+msgstr "Intérprete"
+
+msgid "Full text (pt-BR)"
+msgstr "Texto integral (pt-BR)"
+
+msgid "Look up receipts"
+msgstr "Consultar comprovantes"
+
+msgid "Clinic enrollment identifier"
+msgstr "Identificador do vínculo com a clínica"
+
+msgid "No consent recorded. Read the text and select the checkbox only if you wish to accept."
+msgstr "Nenhum consentimento registrado. Leia o texto e marque a opção somente se desejar aceitar."
+
+msgid "Consent revoked. Clinical history and the receipt were preserved."
+msgstr "Consentimento revogado. O histórico clínico e o comprovante foram preservados."
+
+msgid "Version %(version)s published. Previous texts were preserved."
+msgstr "Versão %(version)s publicada. Os textos anteriores foram preservados."
+
+msgid "Notice topic"
+msgstr "Tema do aviso"
+
+msgid "Notice text"
+msgstr "Texto do aviso"
+
+msgid "Encounter"
+msgstr "Atendimento"
+
+msgid "Teleconsultation session"
+msgstr "Sessão de teleconsulta"
+
+msgid "Participant kind"
+msgstr "Tipo de participante"
+
+msgid "I have read this version and consent to this purpose."
+msgstr "Li esta versão e autorizo esta finalidade."
+
+msgid "I informed the patient about AI assistance."
+msgstr "Informei o paciente sobre o apoio de IA."
+
+msgid "The patient refused AI assistance."
+msgstr "O paciente recusou o apoio de IA."
+
+msgid "Your consent choices"
+msgstr "Suas escolhas de consentimento"
+
+msgid "Decide separately for each purpose. Recording, AI assistance, messages, marketing, and research are independent choices."
+msgstr "Decida separadamente sobre cada finalidade. Gravação, apoio de IA, mensagens, marketing e pesquisa são escolhas independentes."
+
+msgid "Refusing optional uses does not prevent care or manual clinical notes. Revocation blocks future uses without erasing clinical records or receipts."
+msgstr "Recusar usos opcionais não impede o atendimento nem as anotações clínicas manuais. A revogação bloqueia usos futuros sem apagar registros clínicos ou comprovantes."
+
+msgid "Read the current text again before making a decision."
+msgstr "Leia o texto atual novamente antes de decidir."
+
+msgid "Information notices"
+msgstr "Avisos informativos"
+
+msgid "These notices explain care and AI use. Reading them is not consent to any optional purpose."
+msgstr "Estes avisos explicam o atendimento e o uso de IA. A leitura não autoriza nenhuma finalidade opcional."
+
+msgid "Available texts"
+msgstr "Textos disponíveis"
+
+msgid "Read the current text"
+msgstr "Ler o texto atual"
+
+msgid "No current text is available."
+msgstr "Nenhum texto atual disponível."
+
+msgid "To accept, select the checkbox. To refuse, leave it clear. Neither choice grants permission for another purpose."
+msgstr "Para aceitar, marque a opção. Para recusar, deixe-a desmarcada. Nenhuma escolha autoriza outra finalidade."
+
+msgid "Accept this purpose"
+msgstr "Aceitar esta finalidade"
+
+msgid "Refuse this purpose"
+msgstr "Recusar esta finalidade"
+
+msgid "Refusals"
+msgstr "Recusas"
+
+msgid "A refusal is retained separately from an acceptance. It does not block care."
+msgstr "A recusa é preservada separadamente de uma aceitação. Ela não bloqueia o atendimento."
+
+msgid "Refused"
+msgstr "Recusado"
+
+msgid "Read the refused text"
+msgstr "Ler o texto recusado"
+
+msgid "AI-use disclosures"
+msgstr "Informações sobre o uso de IA"
+
+msgid "These clinician records describe one encounter. They are not your consent to AI assistance."
+msgstr "Estes registros do profissional descrevem um atendimento. Eles não representam seu consentimento para o apoio de IA."
+
+msgid "Patient informed"
+msgstr "Paciente informado"
+
+msgid "Patient refused AI assistance"
+msgstr "Paciente recusou o apoio de IA"
+
+msgid "Back to the portal"
+msgstr "Voltar ao portal"
+
+msgid "Consent choices and notices"
+msgstr "Escolhas de consentimento e avisos"
+
+msgid "Publish versioned texts without changing patient decisions. Previous texts and receipts remain available."
+msgstr "Publique textos versionados sem alterar as decisões do paciente. Textos anteriores e comprovantes permanecem disponíveis."
+
+msgid "Publish consent text"
+msgstr "Publicar texto de consentimento"
+
+msgid "Publish a new version"
+msgstr "Publicar nova versão"
+
+msgid "Publish an information notice"
+msgstr "Publicar aviso informativo"
+
+msgid "A notice explains care or AI use. It is not an optional consent choice."
+msgstr "O aviso explica o atendimento ou o uso de IA. Ele não é uma escolha de consentimento opcional."
+
+msgid "Publish notice"
+msgstr "Publicar aviso"
+
+msgid "Record an AI-use disclosure"
+msgstr "Registrar informação sobre o uso de IA"
+
+msgid "Only an authorized clinician can record this encounter-specific disclosure. It never substitutes for the patient's consent."
+msgstr "Somente um profissional autorizado pode registrar esta informação do atendimento. Ela nunca substitui o consentimento do paciente."
+
+msgid "Record disclosure"
+msgstr "Registrar informação"
+
+msgid "Record a participant acknowledgment"
+msgstr "Registrar ciência de participante"
+
+msgid "Notify caregivers, companions, and interpreters without creating a patient or recording their name. This does not authorize recording or AI assistance."
+msgstr "Informe cuidadores, acompanhantes e intérpretes sem criar um paciente nem registrar seus nomes. Isso não autoriza a gravação nem o apoio de IA."
+
+msgid "Record acknowledgment"
+msgstr "Registrar ciência"
+
+msgid "Back to the workspace"
+msgstr "Voltar ao espaço de trabalho"
+
+msgid "Consent receipts"
+msgstr "Comprovantes de consentimento"
+
+msgid "Accepted by explicit patient action"
+msgstr "Aceito por ação explícita do paciente"
+
+msgid "Inspect text and provenance"
+msgstr "Inspecionar texto e proveniência"
+
+msgid "Text SHA-256"
+msgstr "SHA-256 do texto"
+
+msgid "Proof SHA-256"
+msgstr "SHA-256 da prova"
+
+msgid "Receipt"
+msgstr "Comprovante"
+
+msgid "Terms read"
+msgstr "Leitura dos termos"
+
+msgid "Revocation blocks future uses without erasing clinical records or this receipt."
+msgstr "A revogação bloqueia usos futuros sem apagar registros clínicos nem este comprovante."
+
+msgid "Revoke consent"
+msgstr "Revogar consentimento"
+
+msgid "No consent has been recorded for this appointment."
+msgstr "Nenhum consentimento registrado para esta consulta."
+
+msgid "Consent refusal recorded."
+msgstr "Recusa de consentimento registrada."
+
+msgid "Information notice published."
+msgstr "Aviso informativo publicado."
+
+msgid "AI-use disclosure recorded."
+msgstr "Informação sobre o uso de IA registrada."
+
+msgid "Participant acknowledgment recorded."
+msgstr "Ciência de participante registrada."
+
+msgid "Yes,No"
+msgstr "Sim,Não"
+
+msgid "Organization"
+msgstr "Organização"
+
+msgid "Enrollment"
+msgstr "Vínculo do paciente"
+
+msgid "Actor"
+msgstr "Responsável pela ação"
+
+msgid "A newer version requires a new reading and acceptance for future use."
+msgstr "Uma versão mais recente exige nova leitura e aceitação para uso futuro."
+
+msgid "Explicit patient action in the portal"
+msgstr "Ação explícita do paciente no portal"
+
+msgid "Revocation event"
+msgstr "Evento de revogação"
+
+msgid "Staff"
+msgstr "Equipe"
+
+msgid "Authority"
+msgstr "Autoridade"
+
+msgid "A disclosure is already recorded for this encounter."
+msgstr "Já existe um registro sobre o uso de IA neste atendimento."
+
+msgid "Check the box only if you wish to consent."
+msgstr "Marque a opção somente se desejar consentir."
+
+msgid "Consent recorded. Your receipt remains available below."
+msgstr "Consentimento registrado. Seu comprovante permanece disponível abaixo."
+
+msgid "Invalid AI-use disclosure."
+msgstr "Registro sobre o uso de IA inválido."
+
+msgid "Invalid participant kind."
+msgstr "Tipo de participante inválido."
+
+msgid "Invalid text, purpose or language."
+msgstr "Texto, finalidade ou idioma inválido."
+
+msgid "Invalid text, topic or language."
+msgstr "Texto, tema ou idioma inválido."
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Marketing"
+msgstr "Marketing"
+
+msgid "Non-patient participant notice recorded."
+msgstr "Ciência do participante não paciente registrada."
+
+msgid "Purpose outside the consent taxonomy."
+msgstr "Finalidade fora da taxonomia de consentimento."
+
+msgid "Refusal recorded. Your care remains available."
+msgstr "Recusa registrada. Seu atendimento permanece disponível."
+
+msgid "Select the checkbox to accept; leave it clear to refuse."
+msgstr "Marque a opção para aceitar; deixe-a desmarcada para recusar."
+
+msgid "The text changed. Read the current version before consenting."
+msgstr "O texto mudou. Leia a versão atual antes de consentir."
+
+msgid "This consent is already accepted. Revoke it instead of recording a refusal."
+msgstr "Este consentimento já foi aceito. Revogue-o em vez de registrar uma recusa."
+
+msgid "This consent was revoked. The receipt remains available."
+msgstr "Este consentimento foi revogado. O comprovante permanece disponível."

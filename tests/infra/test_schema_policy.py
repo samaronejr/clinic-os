@@ -106,6 +106,10 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "consent_consenttext",
         "consent_consentacceptance",
         "consent_consentrevocation",
+        "consent_aiusedisclosure",
+        "consent_noticeversion",
+        "consent_participantacknowledgment",
+        "consent_refusalrecord",
         "scheduling_patientbookingevent",
         # Task-18 manager/patient policies are checked exactly in test_waitlist.
         "scheduling_waitlistentry",

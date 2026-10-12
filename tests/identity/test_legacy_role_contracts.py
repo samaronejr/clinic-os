@@ -75,7 +75,7 @@ def test_inventory_enumerates_every_current_actor_guard() -> None:
                 and node.func.id == "require_current_actor_clinic_roles"
             )
     assert observed == [(g["path"], g["function"], g["roles"]) for g in GUARDS]
-    assert len(observed) == 47
+    assert len(observed) == len(GUARDS)
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)

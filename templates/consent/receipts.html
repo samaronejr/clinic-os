@@ -1,29 +1,34 @@
+{% load i18n %}
 <section class="panel" aria-labelledby="receipts-title">
-  <h2 id="receipts-title">Comprovantes de consentimento</h2>
+  <h2 id="receipts-title">{% translate "Consent receipts" %}</h2>
   {% for receipt in receipts %}
-  <article class="field" data-receipt="{{ receipt.pk }}" data-state="{% if receipt.revocation %}revoked{% else %}accepted{% endif %}">
-    <h3>{{ receipt.text.get_purpose_display }} · Versão {{ receipt.text.version }}</h3>
-    <p>{% if receipt.revocation %}<strong>Revogado</strong> em {{ receipt.revocation.revoked_at|date:"d/m/Y H:i:s" }}.{% else %}<strong>Aceito</strong>. Uma versão mais recente exige nova leitura e aceitação para uso futuro.{% endif %}</p>
-    <p>Aceito por ação explícita do paciente em {{ receipt.accepted_at|date:"d/m/Y H:i:s" }} · {{ receipt.text.language }}</p>
+  <article class="field consent-receipt" data-receipt="{{ receipt.pk }}" data-state="{% if receipt.revocation %}revoked{% else %}accepted{% endif %}">
+    <h3>{{ receipt.text.get_purpose_display }} · {% translate "Version" %} {{ receipt.text.version }}</h3>
+    <p>{% if receipt.revocation %}<strong>{% translate "Revoked" %}</strong> {{ receipt.revocation.revoked_at|date:"d/m/Y H:i:s" }}.{% else %}<strong>{% translate "Active" %}</strong>. {% translate "A newer version requires a new reading and acceptance for future use." %}{% endif %}</p>
+    <p>{% translate "Accepted by explicit patient action" %} {{ receipt.accepted_at|date:"d/m/Y H:i:s" }} · {{ receipt.text.language }}</p>
     <details class="consent-provenance">
-      <summary>Inspecionar texto e proveniência</summary>
-      <div class="accepted-text consent-text">{{ receipt.text.text }}</div>
-      <dl class="patient-details">
-        <div><dt>Comprovante</dt><dd>{{ receipt.pk }}</dd></div>
-        <div><dt>Resumo SHA-256 do texto UTF-8</dt><dd>{{ receipt.text.digest }}</dd></div>
-        <div><dt>Paciente</dt><dd>{{ receipt.patient_id }}</dd></div>
-        <div><dt>Vínculo com a clínica</dt><dd>{{ receipt.enrollment_id }}</dd></div>
-        <div><dt>Autoridade</dt><dd>Ação explícita do paciente no portal</dd></div>
-        {% if receipt.revocation %}<div><dt>Evento de revogação</dt><dd>{{ receipt.revocation.pk }}</dd></div>{% endif %}
+      <summary>{% translate "Inspect text and provenance" %}</summary>
+      <dl>
+        <dt>{% translate "Text SHA-256" %}</dt><dd><code>{{ receipt.text.digest }}</code></dd>
+        <dt>{% translate "Version" %}</dt><dd>{{ receipt.text.version }}</dd>
+        <dt>{% translate "Language" %}</dt><dd>{{ receipt.text.language }}</dd>
+        <dt>{% translate "Receipt" %}</dt><dd><code>{{ receipt.pk }}</code></dd>
+        <dt>{% translate "Organization" %}</dt><dd><code>{{ receipt.organization_id }}</code></dd>
+        <dt>{% translate "Clinic" %}</dt><dd><code>{{ receipt.clinic_id }}</code></dd>
+        <dt>{% translate "Enrollment" %}</dt><dd><code>{{ receipt.enrollment_id }}</code></dd>
+        <dt>{% translate "Patient" %}</dt><dd><code>{{ receipt.patient_id }}</code></dd>
+        <dt>{% translate "Authority" %}</dt><dd>{% translate "Explicit patient action in the portal" %}</dd>
+        {% if receipt.revocation %}<dt>{% translate "Revocation event" %}</dt><dd><code>{{ receipt.revocation.pk }}</code></dd>{% endif %}
       </dl>
+      <div class="accepted-text consent-text">{{ receipt.text.text }}</div>
     </details>
     {% if patient and not receipt.revocation %}
-    <form method="post">
+    <form method="post" class="consent-revoke">
       {% csrf_token %}<input type="hidden" name="acceptance_id" value="{{ receipt.pk }}">
-      <p>Revogar bloqueia usos futuros, sem apagar o histórico clínico ou este comprovante.</p>
-      <button class="button button--danger" type="submit" name="action" value="revoke">Revogar consentimento</button>
+      <p>{% translate "Revocation blocks future uses without erasing clinical records or this receipt." %}</p>
+      <button class="button button--danger" type="submit" name="action" value="revoke">{% translate "Revoke consent" %}</button>
     </form>
     {% endif %}
   </article>
-  {% empty %}<p>Nenhum consentimento registrado para esta consulta.</p>{% endfor %}
+  {% empty %}<p>{% translate "No consent has been recorded for this appointment." %}</p>{% endfor %}
 </section>
