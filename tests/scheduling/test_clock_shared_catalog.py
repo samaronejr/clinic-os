@@ -7,7 +7,7 @@ import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from django.db import connection, migrations
@@ -22,7 +22,6 @@ from .clock_support import frozen_sql_clocks
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from typing import LiteralString
 
     from django.db.migrations.operations.base import Operation
 
@@ -77,11 +76,7 @@ def test_intake_dependency_clocks_use_the_authority_axis(
                 r"COALESCE\([^;\n]*transaction_timestamp\(\)\)\)", row[0]
             )
             assert expression is not None, signature
-            cursor.execute(
-                sql.SQL("SELECT {}").format(
-                    sql.SQL(cast("LiteralString", expression.group()))
-                )
-            )
+            cursor.execute(sql.SQL("SELECT {}").format(sql.SQL(expression.group())))
             assert cursor.fetchone() == (authority,)
             assert authority not in (reference, ambient)
 
