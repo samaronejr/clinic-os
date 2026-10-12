@@ -11,10 +11,12 @@ from uuid import uuid4
 
 import pytest
 from apps.core.api.errors import UI_API_PREFIX
+from apps.identity.models import UserClinicRole
 from django.urls import get_resolver
 
 from core.test_navigation import _client_for, _csrf, _get
 from core.test_workspace_boundaries import _pin_patient, _restore_session
+from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time, runtime_role
 from workspace_refusal_support import workspace_routes
 
@@ -58,6 +60,27 @@ def _requests(
             )
         yield "GET", {}, htmx
         yield "POST", {}, htmx
+        yield (
+            "POST",
+            {
+                "action": "retire",
+                "retire-kind": "resource",
+                "retire-record_id": unknown,
+            },
+            htmx,
+        )
+        yield (
+            "POST",
+            {
+                "action": "cancel",
+                "task_id": unknown,
+                "run_id": unknown,
+                "definition_id": unknown,
+                "expected_revision": "1",
+                "idempotency_key": str(uuid4()),
+            },
+            htmx,
+        )
         yield (
             "POST",
             {"action": "invalid", "token": "invalid", "clinic_id": "invalid"},
@@ -149,6 +172,7 @@ def test_authorised_in_view_refusals_are_session_read_only(
     monkeypatch.setattr(
         "apps.core.navigation.clinic_local_today", lambda _zone: "2033-05-18"
     )
+    monkeypatch.setattr("apps.identity.stepup._utc_now_seconds", lambda: 2_000_000_000)
     routes = tuple(workspace_routes(get_resolver()))
     names = {route.name for route in routes}
     assert len(routes) == len(names)
@@ -156,11 +180,36 @@ def test_authorised_in_view_refusals_are_session_read_only(
     observed: dict[str, int] = dict.fromkeys(names, 0)
     statuses: dict[str, set[int]] = {name: set() for name in names}
     profiles = [
-        *product(("receptionist", "physician", "clinic_admin"), (False, True)),
-        ("finance", False),
+        *(
+            (role, pinned, 1)
+            for role, pinned in product(
+                ("receptionist", "physician", "clinic_admin"), (False, True)
+            )
+        ),
+        ("finance", False, 1),
+        ("clinic_admin", False, 2),
+        ("clinic_admin", True, 2),
     ]
-    for role, pinned in profiles:
+    authorized_targets = {
+        "scheduling:resource-settings",
+        "workflows:designer",
+        "workflows:exceptions",
+        "workflows:run-exceptions",
+        "workflows:runs",
+        "workflows:tasks",
+    }
+    for role, pinned, bundle in profiles:
         client, user = _client_for(rbac_graph, role)
+        if bundle == 2:
+            # Owner-side issuance is enforced by the real database trigger.
+            # _client_for performs real confirmed-device HTTP verification.
+            with owner_context(rbac_graph.organization_a):
+                assert (
+                    UserClinicRole.objects.filter(
+                        user_id=user.pk, clinic_id=rbac_graph.clinic_a
+                    ).update(workflow_bundle_version=bundle)
+                    == 1
+                )
         # Finance is authenticated but has no visible workspace clinic. This
         # executes _require_clinic's refusal inside the session-scoped views.
         assert _get(client, "/auth/protected/").status_code == 200
@@ -169,6 +218,8 @@ def test_authorised_in_view_refusals_are_session_read_only(
             if role == "physician":
                 assert f"ehr.encounter.{rbac_graph.clinic_a}" in client.session
         for route in routes:
+            if bundle == 2 and route.name in authorized_targets:
+                assert _get(client, route.url(rbac_graph.clinic_a)).status_code == 200
             refused, codes = _probe_route(route, client, rbac_graph, monkeypatch)
             observed[route.name] += refused
             statuses[route.name].update(codes)

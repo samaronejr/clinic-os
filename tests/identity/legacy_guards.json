@@ -5269,21 +5269,22 @@
     },
     "clinic_app.gen_random_uuid": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "uuid",
-            "set_returning": false,
-            "security_definer": false
-          }
-        ],
         "migrations": [],
         "policies": [],
         "resolvers": [
           "clinic_app.billing_revision_snapshot",
           "clinic_app.billing_settlement_receipt",
           "clinic_app.patient_booking_receipt",
-          "clinic_app.questionnaire_receipt"
+          "clinic_app.questionnaire_receipt",
+          "clinic_app.scheduling_capacity_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "security_definer": false,
+            "set_returning": false
+          }
         ]
       },
       "kind": "crypto_protocol",
@@ -5292,16 +5293,9 @@
     },
     "clinic_app.has_permission": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "perm text, clinic uuid, enrollment uuid",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
-          "apps/identity/migrations/_permission_sql.py"
+          "apps/identity/migrations/_permission_sql.py",
+          "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
         "policies": [
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_insert",
@@ -5317,10 +5311,34 @@
           "clinic_app.consent_refusalrecord:consent_refusal_read",
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_professionalregistration:scope_read",
-          "clinic_app.identity_rolegrant:scope_read"
+          "clinic_app.identity_rolegrant:scope_read",
+          "clinic_app.workflows_task:workflow_read",
+          "clinic_app.workflows_task:workflow_update",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_read",
+          "clinic_app.workflows_workflowdefinitionversion:workflow_update",
+          "clinic_app.workflows_workflowrun:workflow_read",
+          "clinic_app.workflows_workflowrun:workflow_update",
+          "clinic_app.workflows_workflowstep:workflow_update"
         ],
         "resolvers": [
-          "clinic_app.consent_guard"
+          "clinic_app.consent_guard",
+          "clinic_app.scheduling_capacity_guard",
+          "clinic_app.scheduling_definition_guard",
+          "clinic_app.scheduling_generated_block_guard",
+          "clinic_app.scheduling_service_practitioners",
+          "clinic_app.workflows_guard",
+          "clinic_app.workflows_owned",
+          "clinic_app.workflows_owner_valid",
+          "clinic_app.workflows_predecessor_ready",
+          "clinic_app.workflows_staff_catalog"
+        ],
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
         ]
       },
       "kind": "staff_guard",
@@ -5622,19 +5640,20 @@
     },
     "clinic_app.patient_booking_guard": {
       "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py",
+          "apps/scheduling/migrations/_resource_slots_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
-        ],
-        "migrations": [
-          "apps/scheduling/migrations/_patient_booking_sql.py"
-        ],
-        "policies": [],
-        "resolvers": []
+        ]
       },
       "kind": "row_integrity",
       "probes": [],
@@ -5706,14 +5725,6 @@
     },
     "clinic_app.patient_booking_scope": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "record",
-            "set_returning": true,
-            "security_definer": true
-          }
-        ],
         "migrations": [
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
@@ -5733,7 +5744,16 @@
           "clinic_app.patient_booking_practitioner",
           "clinic_app.patient_booking_receipt",
           "clinic_app.patient_booking_slots",
-          "clinic_app.scheduling_appointment_guard_v1"
+          "clinic_app.scheduling_appointment_guard_v1",
+          "clinic_app.scheduling_capacity_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
         ]
       },
       "kind": "patient_principal",
@@ -5742,19 +5762,20 @@
     },
     "clinic_app.patient_booking_slots": {
       "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_patient_booking_sql.py",
+          "apps/scheduling/migrations/_resource_slots_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_day date, ignored_appointment uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
-        ],
-        "migrations": [
-          "apps/scheduling/migrations/_patient_booking_sql.py"
-        ],
-        "policies": [],
-        "resolvers": []
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -6970,6 +6991,123 @@
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
+    "clinic_app.scheduling_capacity_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_capacity_insert_sql.py",
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "capacity_insert_trigger",
+        "capacity_update_trigger"
+      ],
+      "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
+    },
+    "clinic_app.scheduling_definition_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "definition_trigger"
+      ],
+      "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
+    },
+    "clinic_app.scheduling_effective_interval": {
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.patient_booking_slots",
+          "clinic_app.scheduling_capacity_guard",
+          "clinic_app.scheduling_definition_guard",
+          "clinic_app.scheduling_generated_block_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "starts timestamp with time zone, ends timestamp with time zone, before_minutes integer, after_minutes integer",
+            "returns": "tstzrange",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_effective_interval_is_actor_invariant"
+      ],
+      "reason": "Immutable buffered interval, executed for every catalog role, absent and inactive actors."
+    },
+    "clinic_app.scheduling_generated_block_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "generated_block_trigger"
+      ],
+      "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
+    },
+    "clinic_app.scheduling_service_practitioners": {
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "projection"
+      ],
+      "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
+    },
     "clinic_app.teleconsult_assigned": {
       "discovery": {
         "signatures": [
@@ -7472,6 +7610,307 @@
         "waitlist_staff"
       ],
       "reason": "Direct callable SQL decision with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.workflows_bundle_selection_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_workflow_eligibility_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_bundle_issuance_requires_the_owner_login_for_every_role"
+      ],
+      "reason": "Only an actual owner database login may issue v2; every staff role is refused on the app login by the native guard."
+    },
+    "clinic_app.workflows_due_steps": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "due_at timestamp with time zone",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_due_steps"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_due_tasks": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "due_at timestamp with time zone",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_due_tasks"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/0004_task_completion_gate.py",
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_guard"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_now": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_now"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_owned": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [
+          "clinic_app.workflows_task:workflow_read",
+          "clinic_app.workflows_task:workflow_update"
+        ],
+        "resolvers": [
+          "clinic_app.workflows_guard",
+          "clinic_app.workflows_predecessor_ready"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, owner_user uuid, owner_role text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_owned"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_owner_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, owner_user uuid, owner_role text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_owner_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_predecessor_ready": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/0002_predecessor_eligibility.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_task uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_predecessor_ready"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_reference_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "ref jsonb, tenant uuid, clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_reference_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_staff_catalog": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_staff_catalog"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_step_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_step uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_step_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_steps_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "steps jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_steps_valid"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.workflows_task_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_task uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "clinic_app.workflows_task_scope"
+      ],
+      "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
     }
   },
   "sql_method": [

@@ -11,6 +11,7 @@ from django.db import connection, transaction
 
 from auth.stepup_test_support import create_role_actor
 from identity import legacy_sql_inventory, test_service_principals
+from identity.domain_sql_oracles import assert_executable_protocol_oracles
 from identity.legacy_guard_inventory import discover_sql
 from identity.legacy_sql_inventory import assert_sql_inventory
 from identity.sql_guard_probes import ALL_ROLES, PROBES
@@ -32,6 +33,7 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
     listed = set()
     operation_oracles = {}
     machine_oracles = {}
+    protocol_oracles = {}
     for name, entry in entries.items():
         if entry["kind"] == "staff_guard":
             assert len(entry["discovery"]["signatures"]) == 1, name
@@ -42,6 +44,10 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
                 assert probe.roles
                 assert set(probe.roles) <= set(ALL_ROLES)
                 listed.add(key)
+        elif entry["kind"] == "domain_protocol":
+            assert entry["reason"], name
+            assert entry["probes"], name
+            protocol_oracles[name] = entry["probes"]
         elif entry["kind"] == "operations_aggregate":
             assert entry["reason"], name
             assert entry["probes"], name
@@ -71,6 +77,7 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             assert not entry["probes"], name
     assert listed == set(PROBES)
     assert operation_oracles == METRICS_SQL_ORACLES
+    assert_executable_protocol_oracles(protocol_oracles)
     # Membership is the registry label itself; the oracles derive their member
     # set from it, so every labelled function is executed, not hand-listed.
     assert sorted(machine_oracles) == test_service_principals.machine_members()

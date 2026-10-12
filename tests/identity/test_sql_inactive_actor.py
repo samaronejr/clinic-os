@@ -20,6 +20,7 @@ from apps.ehr.history import HistoryChange, save_history
 from apps.ehr.models import SpecialtyTemplate
 from apps.ehr.services import create_draft
 from apps.identity.models import User, UserClinicRole
+from apps.scheduling.resource_services import ServiceInput, create_service_type
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
@@ -101,6 +102,10 @@ PROBES = {
     "clinic_app.list_active_clinic_physicians(uuid)": Probe(
         "SELECT %(physician)s IN (SELECT user_id FROM "
         "clinic_app.list_active_clinic_physicians(%(clinic)s))"
+    ),
+    "clinic_app.scheduling_service_practitioners(uuid)": Probe(
+        "SELECT %(physician)s IN (SELECT user_id FROM "
+        "clinic_app.scheduling_service_practitioners(%(clinic)s))"
     ),
     "clinic_app.patient_registry_count(text,uuid,text,date)": Probe(
         "SELECT clinic_app.patient_registry_count("
@@ -331,7 +336,7 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
 def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
-    assert own == set(PROBES)
+    assert own == set(PROBES) | set(OWN_GUARD_PROBES)
     assert set(readers) - own - delegating == set(JUSTIFIED)
     # Every derived delegator is executed below; a new one needs a probe.
     assert set(DELEGATE_PROBES) | set(GUARD_PROBES) == delegating
@@ -345,6 +350,7 @@ def _staff_actor(graph: RbacGraph) -> UUID:
             clinic_id=graph.clinic_a,
             user=actor,
             role=UserClinicRole.Role.CLINIC_ADMIN,
+            workflow_bundle_version=2,
         )
     return actor.pk
 
@@ -421,6 +427,9 @@ DELEGATE_PROBES = {
     "clinic_app.teleconsult_assigned(uuid)": (
         "SELECT clinic_app.teleconsult_assigned(%(session)s)"
     ),
+    "clinic_app.workflows_owned(uuid,uuid,text)": (
+        "SELECT clinic_app.workflows_owned(%(clinic)s, %(physician)s, '')"
+    ),
 }
 
 
@@ -478,6 +487,36 @@ GUARD_PROBES = {
         "now(), %(invoice)s, %(organization)s)",
         "invalid confirmed settlement",
     ),
+    "clinic_app.workflows_guard()": GuardProbe(
+        "INSERT INTO clinic_app.workflows_task (id, organization_id, clinic_id, "
+        "kind, subject_ref, created_by_id, owner_user_id, owner_role, due_at, "
+        "priority, state, escalation_policy_version, escalated_at, depends_on_id, "
+        "completion_evidence, revision, idempotency_key, fingerprint, "
+        "last_command_key, last_command_digest, created_at, updated_at) VALUES "
+        "(%(id)s, %(organization)s, %(clinic)s, 'checklist', "
+        "jsonb_build_object('kind', 'clinic', 'id', %(clinic)s::text), %(actor)s, "
+        "NULL, '', now() + interval '1 hour', 'normal', 'open', 1, NULL, NULL, "
+        "'{}'::jsonb, 1, %(id)s, repeat('0', 64), NULL, '', now(), now())",
+        "invalid task",
+    ),
+}
+# These guards contain their own is_active query (including professional
+# eligibility), rather than being classified solely through a delegated gate.
+# Their native INSERT still has to prove the current actor's refusal.
+OWN_GUARD_PROBES = {
+    "clinic_app.scheduling_capacity_guard()": GuardProbe(
+        "INSERT INTO clinic_app.scheduling_appointment (id, organization_id, "
+        "clinic_id, patient_id, practitioner_id, service_type_id, resource_ids, "
+        "buffer_before, buffer_after, start_at, end_at, idempotency_key, "
+        "create_fingerprint, status, cancellation_reason, cancelled_at, "
+        "created_at, updated_at) VALUES (%(id)s, %(organization)s, %(clinic)s, "
+        "%(patient)s, %(physician)s, %(service)s, '{}'::uuid[], 0, 0, "
+        "'2035-06-03 10:00:00+00', '2035-06-03 11:00:00+00', %(id)s, "
+        "decode(repeat('00',32),'hex'), 'cancelled', 'clinic_request', now(), "
+        "now(), now())",
+        "scheduling access denied",
+        inactive_denial=("42501", "scheduling access denied"),
+    ),
 }
 GUARD_RAISE = re.compile(
     r"PL/pgSQL function (?:clinic_app\.)?(\w+)\(\) line \d+ at RAISE"
@@ -500,6 +539,7 @@ def _insert(
         try:
             with transaction.atomic():
                 cursor.execute(probe.insert, params)
+                assert cursor.rowcount == 1
         except DatabaseError as error:
             cause = error.__cause__
             if not isinstance(cause, psycopg.Error):
@@ -534,6 +574,18 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
     graph = rbac_graph
     appointment, encounter, _consent, _patient, _manager = teleconsult_seed(graph)
     session = teleconsult_create(graph, encounter)
+    with owner_context(graph.organization_a):
+        assert (
+            UserClinicRole.objects.filter(
+                user_id=graph.physician, clinic_id=graph.clinic_a
+            ).update(workflow_bundle_version=2)
+            == 1
+        )
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        service = create_service_type(
+            clinic_id=graph.clinic_a,
+            content=ServiceInput(name="Sintetico inactive actor", duration_min=60),
+        )
     # A history author reaches ehr_history_care's second branch, whose own
     # questionnaire_staff call is the only refusal once ehr_care is false.
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
@@ -563,17 +615,20 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
         "encounter": encounter.pk,
         "patient": appointment.patient_id,
         "session": session.pk,
+        "physician": graph.physician,
+        "service": service.pk,
     }
     invoices = _open_invoices(graph, appointment.patient_id)
+    guards = {**GUARD_PROBES, **OWN_GUARD_PROBES}
     with owner_context(graph.organization_a), connection.cursor() as cursor:
         latest = {}
-        for function, probe in GUARD_PROBES.items():
+        for function, probe in guards.items():
             if probe.latest is not None:
                 cursor.execute(probe.latest, scope)
                 ((latest[function],),) = cursor.fetchall()
     manager = _staff_actor(graph)
     rows: dict[str, list[bool | Outcome]] = {
-        name: [] for name in [*DELEGATE_PROBES, *GUARD_PROBES]
+        name: [] for name in [*DELEGATE_PROBES, *guards]
     }
     # The inactive and reactivated attempts differ only in the new row id.
     for phase, active in enumerate((True, False, True)):
@@ -581,7 +636,7 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
         _set_active(manager, active=active)
         for function, statement in DELEGATE_PROBES.items():
             rows[function].append(_decide(graph, graph.physician, statement, scope))
-        for function, probe in GUARD_PROBES.items():
+        for function, probe in guards.items():
             params = {
                 **scope,
                 "id": uuid4(),
@@ -600,6 +655,6 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
                 (probe.inactive_denial or ("23514", probe.refusal)) + (name,),
                 "inserted",
             )
-            for name, probe in GUARD_PROBES.items()
+            for name, probe in guards.items()
         },
     }
