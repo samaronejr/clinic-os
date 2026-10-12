@@ -88,6 +88,10 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("teleconsult_teleconsultevent", "SELECT"),
     ("teleconsult_teleconsultroom", "SELECT"),
     ("teleconsult_teleconsultsession", "SELECT"),
+    ("workflows_task", "SELECT"),
+    ("workflows_workflowdefinitionversion", "SELECT"),
+    ("workflows_workflowrun", "SELECT"),
+    ("workflows_workflowstep", "SELECT"),
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     ("billing_invoice", "state", "UPDATE"),
@@ -222,6 +226,13 @@ POSTURE_OVERRIDES: Final = {
     ),
     "touch_patient_session": ("v", True, ["clinic_app", "clinic_resolver"]),
     "waitlist_binding": ("v", False, ["clinic_resolver"]),
+    "workflows_bundle_selection_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_guard": ("v", False, ["clinic_resolver"]),
+    "workflows_owner_valid": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_predecessor_ready": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_reference_valid": ("s", False, ["clinic_resolver"]),
+    "workflows_staff_catalog": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
     ("scheduling_capacity_guard", ""),
@@ -366,6 +377,19 @@ FUNCTION_SIGNATURES: Final = {
     ("user_organizations", ""),
     ("waitlist_binding", ""),
     ("waitlist_staff", "requested_clinic uuid"),
+    ("workflows_bundle_selection_guard", ""),
+    ("workflows_due_steps", "due_at timestamp with time zone"),
+    ("workflows_due_tasks", "due_at timestamp with time zone"),
+    ("workflows_guard", ""),
+    ("workflows_now", ""),
+    ("workflows_owned", "clinic uuid, owner_user uuid, owner_role text"),
+    ("workflows_owner_valid", "clinic uuid, owner_user uuid, owner_role text"),
+    ("workflows_predecessor_ready", "clinic uuid, requested_task uuid"),
+    ("workflows_reference_valid", "ref jsonb, tenant uuid, clinic uuid"),
+    ("workflows_staff_catalog", "clinic uuid"),
+    ("workflows_step_scope", "requested_step uuid"),
+    ("workflows_steps_valid", "steps jsonb"),
+    ("workflows_task_scope", "requested_task uuid"),
 }
 FUNCTION_RESULTS: Final = {
     ("scheduling_capacity_guard", ""): "trigger",
@@ -600,6 +624,28 @@ FUNCTION_RESULTS: Final = {
     ("user_organizations", ""): "SETOF uuid",
     ("waitlist_binding", ""): "trigger",
     ("waitlist_staff", "requested_clinic uuid"): "boolean",
+    ("workflows_bundle_selection_guard", ""): "trigger",
+    ("workflows_due_steps", "due_at timestamp with time zone"): "TABLE(step_id uuid)",
+    ("workflows_due_tasks", "due_at timestamp with time zone"): "TABLE(task_id uuid)",
+    ("workflows_guard", ""): "trigger",
+    ("workflows_now", ""): "timestamp with time zone",
+    ("workflows_owned", "clinic uuid, owner_user uuid, owner_role text"): "boolean",
+    ("workflows_owner_valid", "clinic uuid, owner_user uuid, owner_role text"): (
+        "boolean"
+    ),
+    ("workflows_predecessor_ready", "clinic uuid, requested_task uuid"): "boolean",
+    ("workflows_reference_valid", "ref jsonb, tenant uuid, clinic uuid"): "boolean",
+    (
+        "workflows_staff_catalog",
+        "clinic uuid",
+    ): "TABLE(user_id uuid, display_label text)",
+    ("workflows_step_scope", "requested_step uuid"): (
+        "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
+    ),
+    ("workflows_steps_valid", "steps jsonb"): "boolean",
+    ("workflows_task_scope", "requested_task uuid"): (
+        "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
+    ),
 }
 
 

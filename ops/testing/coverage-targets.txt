@@ -17,3 +17,4 @@
 --cov=apps.scheduling
 --cov=apps.teleconsult
 --cov=apps.tenancy
+--cov=apps.workflows

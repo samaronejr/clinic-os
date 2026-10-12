@@ -109,6 +109,11 @@ DOMAIN_RELATIONS: Final = (
     "teleconsult_teleconsultroom",
     "teleconsult_teleconsultsession",
     "tenancy_tenantdatakey",
+    "workflows_task",
+    "workflows_taskcomment",
+    "workflows_workflowdefinitionversion",
+    "workflows_workflowrun",
+    "workflows_workflowstep",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 SEQUENCE_TARGETS: Final = {

@@ -42,6 +42,8 @@ BYPASS_PATHS: Final = frozenset(
 BYPASS_PREFIXES: Final = (
     "/static/",
     "/rt/",  # Ticket endpoint owns a short, independently authenticated txn.
+    "/workflows/synthetic/callback/",  # HMAC before stored-scope resolution.
+    "/workflows/synthetic/callback/",  # HMAC before stored-scope resolution.
     "/prescription/signing/callback/",
     "/prescription/verify/",
 )

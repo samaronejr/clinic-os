@@ -57,6 +57,7 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.scheduling.apps.SchedulingConfig",
         "apps.teleconsult.apps.TeleconsultConfig",
         "apps.tenancy.apps.TenancyConfig",
+        "apps.workflows.apps.WorkflowsConfig",
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (

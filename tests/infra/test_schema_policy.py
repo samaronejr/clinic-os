@@ -141,6 +141,12 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "billing_pixcharge",
         # Append-only authenticated payment events: test_payment_reconciliation.
         "billing_paymentevent",
+        # Exact owner/task/run policies and ACLs: tests/workflows/test_posture.py.
+        "workflows_task",
+        "workflows_taskcomment",
+        "workflows_workflowdefinitionversion",
+        "workflows_workflowrun",
+        "workflows_workflowstep",
     }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS

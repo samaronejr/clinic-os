@@ -45,6 +45,13 @@ _ROLE = UserClinicRole.Role
 STAFF_ROUTE: Final = frozenset(
     {_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST, _ROLE.PHYSICIAN}
 )
+TASK_ROUTE: Final = STAFF_ROUTE | {
+    _ROLE.NURSE,
+    _ROLE.ALLIED_PROFESSIONAL,
+    _ROLE.SCHEDULER,
+    _ROLE.CLINIC_MANAGER,
+    _ROLE.FINANCE,
+}
 MANAGER_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST})
 ADMIN_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN})
 
@@ -189,6 +196,30 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 "retention:status",
                 ("demographics.read", *_CONFIGURATION),
                 views=frozenset({"retention:status"}),
+            ),
+            Destination(
+                "tasks",
+                gettext_noop("Tasks"),
+                "workflows:tasks",
+                ("tasks.view",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:tasks", "workflows:exceptions"}),
+            ),
+            Destination(
+                "workflow-runs",
+                gettext_noop("Workflow runs"),
+                "workflows:runs",
+                ("tasks.view",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:runs", "workflows:run-exceptions"}),
+            ),
+            Destination(
+                "workflow-designer",
+                gettext_noop("Workflow designer"),
+                "workflows:designer",
+                ("tasks.reassign",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:designer"}),
             ),
         ),
     ),

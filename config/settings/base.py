@@ -74,7 +74,13 @@ INSTALLED_APPS: list[str] = [
     "apps.interop.apps.InteropConfig",
     "apps.providers.apps.ProvidersConfig",
     "apps.realtime.apps.RealtimeConfig",
+    "apps.workflows.apps.WorkflowsConfig",
 ]
+
+# Rehearsal is explicit and cannot activate a real provider.
+WORKFLOWS_SYNTHETIC_ENABLED: bool = env.bool(
+    "WORKFLOWS_SYNTHETIC_ENABLED", default=False
+)
 
 AUTH_USER_MODEL: str = "identity.User"
 AUTHENTICATION_BACKENDS: list[str] = [

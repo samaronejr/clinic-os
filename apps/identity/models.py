@@ -164,6 +164,7 @@ class UserClinicRole(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
     clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE)
     role = models.CharField(max_length=20, choices=Role.choices)
+    workflow_bundle_version = models.PositiveSmallIntegerField(default=1)
 
     class Meta:
         """Prevent duplicate exact role assignments."""
@@ -172,7 +173,11 @@ class UserClinicRole(models.Model):
             models.UniqueConstraint(
                 fields=("organization", "clinic", "user", "role"),
                 name="identity_userclinicrole_assignment_uniq",
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(workflow_bundle_version__in=(1, 2)),
+                name="identity_workflow_bundle_version",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -347,7 +352,7 @@ class RoleGrant(TenantScopedModel):
 
         constraints: ClassVar[list[BaseConstraint]] = [
             models.CheckConstraint(
-                condition=models.Q(effect="remove", bundle_version=1),
+                condition=models.Q(effect="remove", bundle_version__in=(1, 2)),
                 name="identity_rolegrant_remove_only",
             ),
             models.CheckConstraint(

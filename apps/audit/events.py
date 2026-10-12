@@ -46,6 +46,81 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "workflows.task.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "created"
+        ),
+        "workflows.task.assigned": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "assigned"
+        ),
+        "workflows.task.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "started"
+        ),
+        "workflows.task.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "completed"
+        ),
+        "workflows.task.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "cancelled"
+        ),
+        "workflows.task.escalated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.task", "escalated"
+        ),
+        "workflows.comment.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task_comment", "created"
+        ),
+        "workflows.definition.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "created"
+        ),
+        "workflows.definition.revised": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "revised"
+        ),
+        "workflows.definition.validated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "validated"
+        ),
+        "workflows.definition.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "published"
+        ),
+        "workflows.definition.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.definition_version", "retired"
+        ),
+        "workflows.run.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.run", "started"
+        ),
+        "workflows.run.running": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "running"
+        ),
+        "workflows.run.waiting": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "waiting"
+        ),
+        "workflows.run.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "completed"
+        ),
+        "workflows.run.failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.run", "failed"
+        ),
+        "workflows.run.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.run", "cancelled"
+        ),
+        "workflows.run.retried": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.run", "retried"
+        ),
+        "workflows.step.claimed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "claimed"
+        ),
+        "workflows.step.waiting": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "waiting"
+        ),
+        "workflows.step.completed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "completed"
+        ),
+        "workflows.step.failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "workflows.step", "failed"
+        ),
+        "workflows.step.cancelled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.step", "cancelled"
+        ),
+        "workflows.step.retried": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.step", "retried"
+        ),
         "realtime.subscription.authorized": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic", "authorized"
         ),

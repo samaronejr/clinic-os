@@ -3018,3 +3018,389 @@ msgstr "Informado pelo paciente"
 
 msgid "Staff-recorded"
 msgstr "Registrado pela equipe"
+
+msgid "Add comment"
+msgstr "Adicionar comentário"
+
+msgid "Add step"
+msgstr "Adicionar etapa"
+
+msgid "All kinds"
+msgstr "Todos os tipos"
+
+msgid "All priorities"
+msgstr "Todas as prioridades"
+
+msgid "All statuses"
+msgstr "Todas as situações"
+
+msgid "Apply reassignment"
+msgstr "Aplicar reatribuição"
+
+msgid "Appointment"
+msgstr "Consulta"
+
+msgid "Appointment and discharge checklist"
+msgstr "Lista de verificação de consulta e alta"
+
+msgid "Assign to me"
+msgstr "Atribuir a mim"
+
+msgid "Assigned"
+msgstr "Atribuída"
+
+msgid "Build a checklist, validate it, then publish a version. Running workflows keep the version they started with."
+msgstr "Monte uma lista de verificação, valide e publique uma versão. Os fluxos em andamento mantêm a versão inicial."
+
+msgid "Cancel run"
+msgstr "Cancelar execução"
+
+msgid "Cancel task"
+msgstr "Cancelar tarefa"
+
+msgid "Check the workflow details."
+msgstr "Confira os detalhes do fluxo."
+
+msgid "Checklist"
+msgstr "Lista de verificação"
+
+msgid "Clinic time zone"
+msgstr "Fuso da clínica"
+
+msgid "Comments"
+msgstr "Comentários"
+
+msgid "Complete with evidence"
+msgstr "Concluir com evidência"
+
+msgid "Connection unavailable. Your task has not been saved. Try again when connected."
+msgstr "Conexão indisponível. A tarefa não foi salva. Tente novamente quando estiver conectado."
+
+msgid "Create draft"
+msgstr "Criar rascunho"
+
+msgid "Create task"
+msgstr "Criar tarefa"
+
+msgid "Custom task workflow"
+msgstr "Fluxo de tarefas personalizado"
+
+msgid "Delivery failed. Review the existing operation; a retry cannot resend it."
+msgstr "A entrega falhou. Revise a operação existente; uma nova tentativa não pode reenviá-la."
+
+msgid "Delivery outcome is unknown. Reconcile the existing operation before continuing."
+msgstr "O resultado da entrega é desconhecido. Reconcilie a operação existente antes de continuar."
+
+msgid "Depends on task"
+msgstr "Depende da tarefa"
+
+msgid "Designer"
+msgstr "Editor de fluxos"
+
+msgid "Do not include clinical information."
+msgstr "Não inclua informações clínicas."
+
+msgid "Done"
+msgstr "Concluída"
+
+msgid "Due"
+msgstr "Prazo"
+
+msgid "Due date and time"
+msgstr "Data e hora do prazo"
+
+msgid "Each run keeps its published version. Failed steps require an explicit, safe retry."
+msgstr "Cada execução mantém sua versão publicada. Etapas com falha exigem uma nova tentativa explícita e segura."
+
+msgid "Escalated"
+msgstr "Encaminhada"
+
+msgid "Escalated for manager review"
+msgstr "Encaminhada para revisão do gestor"
+
+msgid "Evidence reference"
+msgstr "Referência da evidência"
+
+msgid "Evidence type"
+msgstr "Tipo de evidência"
+
+msgid "Exception queue"
+msgstr "Fila de exceções"
+
+msgid "Exceptions"
+msgstr "Exceções"
+
+msgid "Failed"
+msgstr "Falhou"
+
+msgid "Failed or delayed runs require review. Active runs keep their published version."
+msgstr "Execuções com falha ou atraso exigem revisão. As execuções ativas mantêm sua versão publicada."
+
+msgid "Filter tasks"
+msgstr "Filtrar tarefas"
+
+msgid "Follow-up"
+msgstr "Acompanhamento"
+
+msgid "High"
+msgstr "Alta"
+
+msgid "I checked the task requirements."
+msgstr "Verifiquei os requisitos da tarefa."
+
+msgid "In progress"
+msgstr "Em andamento"
+
+msgid "Low"
+msgstr "Baixa"
+
+msgid "New owner"
+msgstr "Novo responsável"
+
+msgid "New workflow"
+msgstr "Novo fluxo"
+
+msgid "Next check"
+msgstr "Próxima verificação"
+
+msgid "No comments yet."
+msgstr "Ainda não há comentários."
+
+msgid "No tasks in this queue."
+msgstr "Nenhuma tarefa nesta fila."
+
+msgid "No workflow exceptions."
+msgstr "Nenhuma exceção de fluxo."
+
+msgid "No workflow runs yet."
+msgstr "Ainda não há execuções de fluxo."
+
+msgid "No workflow versions yet. Create a draft to begin."
+msgstr "Ainda não há versões de fluxo. Crie um rascunho para começar."
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Open"
+msgstr "Aberta"
+
+msgid "Operational comment"
+msgstr "Comentário operacional"
+
+msgid "Outcome"
+msgstr "Resultado"
+
+msgid "Owner"
+msgstr "Responsável"
+
+msgid "Patient enrollment"
+msgstr "Vínculo do paciente"
+
+msgid "Pending"
+msgstr "Pendente"
+
+msgid "Preview reassignment"
+msgstr "Prévia da reatribuição"
+
+msgid "Priority"
+msgstr "Prioridade"
+
+msgid "Publish a workflow version before starting a run."
+msgstr "Publique uma versão de fluxo antes de iniciar uma execução."
+
+msgid "Publish version"
+msgstr "Publicar versão"
+
+msgid "Published version"
+msgstr "Versão publicada"
+
+msgid "Reassignment preview"
+msgstr "Prévia da reatribuição"
+
+msgid "Reference"
+msgstr "Referência"
+
+msgid "Reference identifier"
+msgstr "Identificador da referência"
+
+msgid "Reference index"
+msgstr "Índice da referência"
+
+msgid "Reference type"
+msgstr "Tipo de referência"
+
+msgid "Remove last step"
+msgstr "Remover última etapa"
+
+msgid "Resolved"
+msgstr "Resolvida"
+
+msgid "Responsible role"
+msgstr "Papel responsável"
+
+msgid "Retire version"
+msgstr "Encerrar versão"
+
+msgid "Retry safely"
+msgstr "Tentar novamente com segurança"
+
+msgid "Review"
+msgstr "Revisão"
+
+msgid "Reviewed"
+msgstr "Revisada"
+
+msgid "Revision"
+msgstr "Revisão"
+
+msgid "Role"
+msgstr "Papel"
+
+msgid "Run history"
+msgstr "Histórico de execuções"
+
+msgid "Running"
+msgstr "Em execução"
+
+msgid "Runs"
+msgstr "Execuções"
+
+msgid "Save step"
+msgstr "Salvar etapa"
+
+msgid "Saving task changes..."
+msgstr "Salvando alterações da tarefa..."
+
+msgid "Select for reassignment"
+msgstr "Selecionar para reatribuição"
+
+msgid "Start a workflow"
+msgstr "Iniciar um fluxo"
+
+msgid "Start pinned run"
+msgstr "Iniciar execução nesta versão"
+
+msgid "Start task"
+msgstr "Iniciar tarefa"
+
+msgid "Starting point"
+msgstr "Ponto de partida"
+
+msgid "Step"
+msgstr "Etapa"
+
+msgid "Step type"
+msgstr "Tipo de etapa"
+
+msgid "Synthetic external action"
+msgstr "Ação externa em simulação"
+
+msgid "Task"
+msgstr "Tarefa"
+
+msgid "Task changes saved."
+msgstr "Alterações da tarefa salvas."
+
+msgid "Task due in seconds"
+msgstr "Prazo da tarefa em segundos"
+
+msgid "Task kind"
+msgstr "Tipo de tarefa"
+
+msgid "Task queues"
+msgstr "Filas de tarefas"
+
+msgid "Tasks"
+msgstr "Tarefas"
+
+msgid "The assigned task was cancelled."
+msgstr "A tarefa atribuída foi cancelada."
+
+msgid "The step was rejected without an effect."
+msgstr "A etapa foi recusada sem produzir efeito."
+
+msgid "The task changed. Review the current version and try again."
+msgstr "A tarefa mudou. Revise a versão atual e tente novamente."
+
+msgid "This run changed or cannot be retried safely. Review its steps."
+msgstr "Esta execução mudou ou não permite uma nova tentativa segura. Revise as etapas."
+
+msgid "This version changed. Review it before continuing."
+msgstr "Esta versão mudou. Revise antes de continuar."
+
+msgid "Timer"
+msgstr "Temporizador"
+
+msgid "Timer seconds"
+msgstr "Segundos do temporizador"
+
+msgid "Unassigned"
+msgstr "Sem responsável"
+
+msgid "Urgent"
+msgstr "Urgente"
+
+msgid "Use references only. Do not enter clinical information here."
+msgstr "Use apenas referências. Não inclua informações clínicas aqui."
+
+msgid "Validate version"
+msgstr "Validar versão"
+
+msgid "Versions"
+msgstr "Versões"
+
+msgid "Waiting"
+msgstr "Aguardando"
+
+msgid "Waiting for an authorized worker or reconciliation"
+msgstr "Aguardando execução autorizada ou reconciliação"
+
+msgid "Workflow designer"
+msgstr "Editor de fluxos"
+
+msgid "Workflow exceptions"
+msgstr "Exceções de fluxo"
+
+msgid "Workflow key"
+msgstr "Chave do fluxo"
+
+msgid "Workflow navigation"
+msgstr "Navegação de fluxos"
+
+msgid "Workflow runs"
+msgstr "Execuções de fluxo"
+
+msgid "Workflow version"
+msgstr "Versão do fluxo"
+
+msgid "seconds"
+msgstr "segundos"
+
+msgid "Draft"
+msgstr "Rascunho"
+
+msgid "Validated"
+msgstr "Validada"
+
+msgid "Published"
+msgstr "Publicada"
+
+msgid "Receptionist"
+msgstr "Recepcionista"
+
+msgid "Clinic admin"
+msgstr "Administrador da clínica"
+
+msgid "Scheduler"
+msgstr "Agendador"
+
+msgid "Clinic manager"
+msgstr "Gestor da clínica"
+
+msgid "Organization admin"
+msgstr "Administrador da organização"
+
+msgid "One task will be reassigned."
+msgid_plural "%(count)s tasks will be reassigned."
+msgstr[0] "Uma tarefa será reatribuída."
+msgstr[1] "%(count)s tarefas serão reatribuídas."

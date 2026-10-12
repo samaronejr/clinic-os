@@ -42,6 +42,14 @@ AUTH_FLOW_VIEWS: Final = frozenset(
     }
 )
 _STAFF_ROLES: Final = (*MANAGER_ROLES, UserClinicRole.Role.PHYSICIAN)
+_SHELL_ROLES: Final = (
+    *_STAFF_ROLES,
+    UserClinicRole.Role.NURSE,
+    UserClinicRole.Role.ALLIED_PROFESSIONAL,
+    UserClinicRole.Role.SCHEDULER,
+    UserClinicRole.Role.CLINIC_MANAGER,
+    UserClinicRole.Role.FINANCE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,12 +118,17 @@ def _parse_uuid(raw_value: object) -> UUID | None:
 def _visible_clinics(user_id: UUID) -> tuple[WorkspaceClinic, ...]:
     grouped: dict[UUID, tuple[str, str, set[str]]] = {}
     assignments = (
-        UserClinicRole.objects.filter(user_id=user_id, role__in=_STAFF_ROLES)
+        UserClinicRole.objects.filter(user_id=user_id, role__in=_SHELL_ROLES)
         .select_related("clinic")
         .order_by("clinic__name", "clinic_id")
     )
     for assignment in assignments:
         clinic = assignment.clinic
+        if (
+            assignment.role not in _STAFF_ROLES
+            and "tasks.view" not in granted_permissions(clinic.pk)
+        ):
+            continue
         # The database rejects blank zones; str() only narrows the field type.
         zone = str(clinic.timezone)
         entry = grouped.setdefault(clinic.pk, (clinic.name, zone, set()))

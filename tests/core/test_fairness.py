@@ -261,7 +261,7 @@ def test_route_table_maps_task_modules_to_queues() -> None:
     assert routed["queue"].name == "ai-batch"
 
 
-def test_beat_schedule_is_unchanged() -> None:
+def test_beat_schedule_has_exact_durable_scanners() -> None:
     assert celery_app.conf.beat_schedule == {
         "appointment-reminders": {
             "task": "comms.dispatch_due_reminders",
@@ -269,6 +269,10 @@ def test_beat_schedule_is_unchanged() -> None:
         },
         "pending-operation-recovery": {
             "task": "comms.recover_pending_operations",
+            "schedule": 60.0,
+        },
+        "workflow-due-scanner": {
+            "task": "apps.workflows.tasks.scan_due",
             "schedule": 60.0,
         },
     }

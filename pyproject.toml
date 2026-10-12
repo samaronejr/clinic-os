@@ -51,6 +51,7 @@ package = false
 target-version = "py312"
 line-length = 88
 src = ["tests"]
+namespace-packages = ["tests"]
 
 [tool.ruff.lint]
 select = ["ALL"]

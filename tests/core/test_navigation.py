@@ -214,6 +214,23 @@ def test_destination_links_lead_to_the_first_open_place(
     assert receptionist_links["finance"] == f"/billing/clinics/{clinic}/charges/"
 
 
+@pytest.mark.parametrize(
+    "role", ["nurse", "allied_professional", "scheduler", "clinic_manager", "finance"]
+)
+def test_workflow_candidate_opens_only_delivered_operations(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, user = _client_for(rbac_graph, role)
+    with owner_context(rbac_graph.organization_a):
+        UserClinicRole.objects.filter(
+            user=user, clinic_id=rbac_graph.clinic_a, role=role
+        ).update(workflow_bundle_version=2)
+    response = _get(client, "/auth/protected/")
+    assert response.status_code == OK
+    assert _modules(response) == ["operations"]
+    assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
+
+
 def test_section_row_lists_open_places_and_marks_the_current_one(
     rbac_graph: RbacGraph,
 ) -> None:
