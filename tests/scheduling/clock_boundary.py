@@ -68,6 +68,11 @@ def _word_violations(
     if (
         word == "language"
         and following
+        and (
+            stream[index + 1][0] in tokens.Name
+            or stream[index + 1][0] in tokens.Keyword
+            or stream[index + 1][0] in tokens.Literal.String.Single
+        )
         and following.strip("'\"").lower() not in {"sql", "plpgsql"}
     ):
         return {"unsupported-language"}
@@ -163,7 +168,7 @@ def application_boundary(root: Path) -> dict[str, list[str]]:
         if tree is None:
             fragments = [source]
         else:
-            fragments = source_fragments(tree)
+            fragments = source_fragments(tree, decoder.bindings(path))
             fragments.extend(decoder.fragments(path, tree))
         violations = set().union(*(sql_boundary_violations(text) for text in fragments))
         if tree is not None and any(
@@ -203,7 +208,7 @@ def repository_event_trigger_boundary(root: Path) -> dict[str, list[str]]:
     for path, source in source_files(root):
         if path.suffix == ".py":
             tree = parsed_source(source)
-            fragments = source_fragments(tree)
+            fragments = source_fragments(tree, decoder.bindings(path))
             fragments.extend(decoder.fragments(path, tree))
         else:
             fragments = [source]

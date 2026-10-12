@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 # readers and expression surfaces from PostgreSQL and follows helper calls.
 SQL_TIME: Final = re.compile(
     r"\b(?:pg_catalog\.)?(?:"
-    r"(?:statement_timestamp|clock_timestamp|now)\s*\(\s*\)|"
+    r"(?:statement_timestamp|transaction_timestamp|clock_timestamp|now)\s*\(\s*\)|"
     r"current_date\b|(?:current_timestamp|localtimestamp)\b(?:\s*\(\s*\d+\s*\))?)",
     re.IGNORECASE,
 )
@@ -38,7 +38,16 @@ SOURCE_CLOCKS: Final = {
     "_resource_slots_sql.py": {"statement_timestamp()": 1},
     "_resources_sql.py": {"statement_timestamp()": 4},
 }
-AUTHORITY_CLOCKS: Final = frozenset({"patient_booking_scope()"})
+# The merged FK closure reaches these intake guards. Their transaction clock
+# binds a registry mirror to its new immutable demographics version; it must
+# retain the independent authority-time axis, not the scheduling calendar.
+DEPENDENCY_CLOCKS: Final = {
+    "intake_patientdemographics_version_guard_v1()": {"transaction_timestamp()": 1},
+    "intake_correction_guard_v1()": {"transaction_timestamp()": 1},
+    "intake_patient_mirror_guard_v1()": {"transaction_timestamp()": 1},
+}
+CONTROLLED_CLOCKS: Final = SQL_CLOCKS | DEPENDENCY_CLOCKS
+AUTHORITY_CLOCKS: Final = frozenset({"patient_booking_scope()", *DEPENDENCY_CLOCKS})
 SQL_CLOCKS_CONTROLLED: ContextVar[bool] = ContextVar(
     "scheduling_sql_clocks_controlled", default=False
 )
@@ -72,7 +81,7 @@ def frozen_sql_clocks(
         authority_now = row[0]
         assert isinstance(authority_now, datetime)
         try:
-            for signature, expected in SQL_CLOCKS.items():
+            for signature, expected in CONTROLLED_CLOCKS.items():
                 row = owner.execute(
                     "SELECT pg_get_functiondef(%s::regprocedure)",
                     [f"clinic_app.{signature}"],

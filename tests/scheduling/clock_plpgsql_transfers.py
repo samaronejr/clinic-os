@@ -134,10 +134,38 @@ class Transfers:
         if not oids or 0 in oids:
             self.unknown.append("unresolved-target")
         elif any(oid in self.types.temporal for oid in oids):
-            if len(oids) != 1 or not query or query[0].lower() != "select":
+            if not query or query[0].lower() != "select":
                 self.unknown.append("unanalysed-query-target-list")
-            else:
+            elif len(oids) == 1:
                 self.project(query, oids[0])
+            else:
+                # PostgreSQL assigns SELECT INTO targets by position. Analyse
+                # each temporal destination against that same result column,
+                # retaining the complete query in the rolled-back analyser.
+                columns = [f"clock_result_{index}" for index in range(len(oids))]
+                names = tuple(
+                    part
+                    for index, name in enumerate(columns)
+                    for part in ((",", name) if index else (name,))
+                )
+                for column, oid in zip(columns, oids, strict=True):
+                    if oid in self.types.temporal:
+                        self.project(
+                            (
+                                "SELECT",
+                                column,
+                                "FROM",
+                                "(",
+                                *query,
+                                ")",
+                                "AS",
+                                "clock_query",
+                                "(",
+                                *names,
+                                ")",
+                            ),
+                            oid,
+                        )
 
     def project(self, query: tuple[str, ...], oid: int) -> None:
         expression = query_expression(query, oid, self.types)

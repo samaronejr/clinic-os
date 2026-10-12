@@ -10,6 +10,7 @@ from django.db import connection
 
 from scheduling.clock_catalog import catalog_readers, functions, live_clock_inventory
 from scheduling.clock_support import (
+    CONTROLLED_CLOCKS,
     SOURCE_CLOCKS,
     SQL_CLOCKS,
     SQL_CLOCKS_CONTROLLED,
@@ -55,7 +56,7 @@ def test_all_live_scheduling_sql_time_reads_are_controlled() -> None:
         )
         assert set(controlled) == {
             "function:clinic_app." + signature.replace(",", ", ")
-            for signature in SQL_CLOCKS
+            for signature in CONTROLLED_CLOCKS
         }
         expected.update(controlled)
     assert live_clock_inventory() == expected
@@ -105,6 +106,7 @@ def test_catalog_reader_set_contains_the_explicit_clock_cross_check() -> None:
         ("CURRENT_TIMESTAMP", "current_timestamp"),
         ("CURRENT_TIMESTAMP(3)", "current_timestamp(3)"),
         ("clock_timestamp()", "clock_timestamp()"),
+        ("pg_catalog.transaction_timestamp ()", "transaction_timestamp()"),
         ("LOCALTIMESTAMP", "localtimestamp"),
         ("localtimestamp(6)", "localtimestamp(6)"),
     ],

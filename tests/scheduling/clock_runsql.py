@@ -70,6 +70,38 @@ class SQLDecoder:
     def __init__(self, root: Path) -> None:
         self.modules = Modules(root, evaluate, statements)
 
+    def bindings(self, path: Path) -> tuple[tuple[str, str], ...]:
+        """Resolve module strings with the same finite, import-free decoder."""
+        module = self.modules.load(path)
+        assert module is not None
+        bindings = {
+            name: value
+            for name in sorted(module.scope.values.keys() | module.scope.expressions)
+            if isinstance(value := module.scope.get(name), str)
+        }
+        parents = {
+            child: parent
+            for parent in ast.walk(module.tree)
+            for child in ast.iter_child_nodes(parent)
+        }
+        for comprehension in ast.walk(module.tree):
+            if not isinstance(
+                comprehension, (ast.ListComp, ast.GeneratorExp, ast.SetComp)
+            ):
+                continue
+            for node in ast.walk(comprehension.elt):
+                if not isinstance(node, ast.Call):
+                    continue
+                values = [
+                    evaluate(node, scope)
+                    for scope in _scopes(node, parents, module.scope)
+                ]
+                if values and all(isinstance(value, str) for value in values):
+                    bindings[f"@{node.lineno}:{node.col_offset}"] = ";\n".join(
+                        sorted({str(value) for value in values})
+                    )
+        return tuple(sorted(bindings.items()))
+
     def fragments(self, path: Path, tree: ast.Module) -> list[str]:
         try:
             return self._fragments(path, tree)

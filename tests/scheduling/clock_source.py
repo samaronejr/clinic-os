@@ -25,9 +25,12 @@ def _text(node: ast.AST, values: dict[str, str]) -> str:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         return _text(node.left, values) + _text(node.right, values)
     if isinstance(node, ast.Call):
+        decoded = values.get(f"@{node.lineno}:{node.col_offset}")
         formatted = isinstance(node.func, ast.Attribute) and node.func.attr == "format"
         return (
-            "".join(
+            decoded
+            if decoded is not None
+            else "".join(
                 literal + (DYNAMIC if field is not None else "")
                 for literal, field, _, _ in Formatter().parse(
                     _text(node.func.value, values)
@@ -141,46 +144,56 @@ def _bound_query(
     ]
 
 
-def _contexts(tree: ast.Module) -> dict[ast.AST, list[dict[str, str]]]:
+def _contexts(
+    tree: ast.Module, bindings: tuple[tuple[str, str], ...]
+) -> dict[ast.AST, list[dict[str, str]]]:
     """Expand finite literal arguments of local SQL-template builders."""
     constants = {
         name: value.value
         for name, value in _assignments(tree).items()
         if isinstance(value, ast.Constant) and isinstance(value.value, str)
-    }
+    } | dict(bindings)
     nodes = tuple(ast.walk(tree))
     local_calls: dict[str, list[ast.Call]] = defaultdict(list)
     for node in nodes:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             local_calls[node.func.id].append(node)
-    for function in nodes:
-        if isinstance(function, ast.FunctionDef):
-            returns = [
-                node.value
-                for node in ast.walk(function)
-                if isinstance(node, ast.Return) and node.value is not None
-            ]
-            if len(returns) == 1:
-                constants[function.name + "()"] = _text(returns[0], constants)
-    contexts = {node: [constants] for node in nodes}
-    for function in nodes:
-        if not isinstance(function, ast.FunctionDef):
-            continue
-        calls = local_calls[function.name]
-        bindings = [
-            constants
-            | {
-                parameter.arg: _text(argument, constants)
-                for parameter, argument in zip(
-                    function.args.args, call.args, strict=False
-                )
-            }
-            for call in calls
+    functions = [node for node in nodes if isinstance(node, ast.FunctionDef)]
+    for function in functions:
+        returns = [
+            node.value
+            for node in ast.walk(function)
+            if isinstance(node, ast.Return) and node.value is not None
         ]
-        if bindings:
-            for node in ast.walk(function):
-                contexts[node] = bindings
-    return contexts
+        if len(returns) == 1:
+            constants[function.name + "()"] = _text(returns[0], constants)
+    contexts = {node: [constants] for node in nodes}
+    children = {function: tuple(ast.walk(function)) for function in functions}
+    for _ in range(len(functions) + 1):
+        changed = False
+        for function in functions:
+            arguments = {
+                tuple(
+                    (parameter.arg, _text(argument, values))
+                    for parameter, argument in zip(
+                        function.args.args, call.args, strict=False
+                    )
+                )
+                for call in local_calls[function.name]
+                for values in contexts[call]
+            }
+            # A caller's unrelated local bindings do not belong to the callee.
+            # Equal arguments are one abstract state, even across diamond
+            # call graphs; retaining duplicate rows multiplies every pass.
+            supplied = [constants | dict(values) for values in sorted(arguments)]
+            if supplied and contexts[function] != supplied:
+                changed = True
+                for node in children[function]:
+                    contexts[node] = supplied
+        if not changed:
+            return contexts
+    # A recursive/non-finite forwarding chain cannot establish a query value.
+    return {node: [constants] for node in nodes}
 
 
 def _ordinary_fragments(node: ast.AST, contexts: list[dict[str, str]]) -> list[str]:
@@ -198,18 +211,22 @@ def _ordinary_fragments(node: ast.AST, contexts: list[dict[str, str]]) -> list[s
     return []
 
 
-def source_fragments(tree: ast.Module) -> list[str]:
-    return list(_cached_fragments(tree))
+def source_fragments(
+    tree: ast.Module, bindings: tuple[tuple[str, str], ...] = ()
+) -> list[str]:
+    return list(_cached_fragments(tree, bindings))
 
 
 @lru_cache(maxsize=2048)
-def _cached_fragments(tree: ast.Module) -> tuple[str, ...]:
+def _cached_fragments(
+    tree: ast.Module, bindings: tuple[tuple[str, str], ...]
+) -> tuple[str, ...]:
     parents = {
         child: parent
         for parent in ast.walk(tree)
         for child in ast.iter_child_nodes(parent)
     }
-    contexts = _contexts(tree)
+    contexts = _contexts(tree, bindings)
     skipped: set[ast.AST] = set()
     result = []
     for node in ast.walk(tree):

@@ -69,6 +69,29 @@ def test_typed_composite_domain_remains_supported(
         request.node.stash[RESTORATION]["typed_control"] = "true"
 
 
+@pytest.mark.parametrize("source_type", ["timestamptz", "text"])
+def test_select_into_checks_each_positional_temporal_target(
+    source_type: str,
+    superuser_database_url: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    probe = expression(
+        f"DECLARE p {source_type}:='2001-01-01'; label text; x timestamptz; "
+        "BEGIN SELECT 'Sintetico', p INTO label, x; RETURN x; END",
+        language="plpgsql",
+        result="=TIMESTAMPTZ '2001-01-01'",
+    )
+    with installed_probe(superuser_database_url, probe, request):
+        direct = live_clock_inventory()["function:clinic_app.scheduling_r8_root()"][
+            "direct"
+        ]
+        assert not any(key.startswith("unanalysed-plpgsql:") for key in direct)
+        assert bool(direct.get("unresolved-temporal-coercion")) is (
+            source_type == "text"
+        )
+        request.node.stash[RESTORATION]["positional_target_proven"] = "true"
+
+
 @pytest.mark.parametrize(
     "statement",
     [

@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import inspect
+import re
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from django.db import connection, migrations
 from django.db.migrations.loader import MigrationLoader
+from psycopg import sql
 
 from . import clock_catalog_cache as cache
 from .clock_catalog import live_clock_inventory
@@ -20,6 +22,7 @@ from .clock_support import frozen_sql_clocks
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+    from typing import LiteralString
 
     from django.db.migrations.operations.base import Operation
 
@@ -48,6 +51,39 @@ def test_only_exact_fixture_definitions_share_across_reference_values(
     with frozen_sql_clocks(superuser_database_url, datetime(2036, 7, 2, tzinfo=UTC)):
         assert live_clock_inventory() == expected
         assert cache.CACHE_STATS["builds"] == builds
+
+
+def test_intake_dependency_clocks_use_the_authority_axis(
+    superuser_database_url: str,
+) -> None:
+    reference = datetime(2035, 6, 1, tzinfo=UTC)
+    ambient = datetime(2045, 7, 2, tzinfo=UTC)
+    with (
+        frozen_sql_clocks(superuser_database_url, reference, ambient) as authority,
+        connection.cursor() as cursor,
+    ):
+        for signature in (
+            "intake_patientdemographics_version_guard_v1()",
+            "intake_correction_guard_v1()",
+            "intake_patient_mirror_guard_v1()",
+        ):
+            cursor.execute(
+                "SELECT prosrc FROM pg_proc WHERE oid=%s::regprocedure",
+                [f"clinic_app.{signature}"],
+            )
+            row = cursor.fetchone()
+            assert row is not None
+            expression = re.search(
+                r"COALESCE\([^;\n]*transaction_timestamp\(\)\)\)", row[0]
+            )
+            assert expression is not None, signature
+            cursor.execute(
+                sql.SQL("SELECT {}").format(
+                    sql.SQL(cast("LiteralString", expression.group()))
+                )
+            )
+            assert cursor.fetchone() == (authority,)
+            assert authority not in (reference, ambient)
 
 
 def _operations(operations: Iterable[Operation]) -> Iterator[migrations.RunSQL]:

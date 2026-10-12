@@ -12,7 +12,7 @@ from scheduling.clock_boundary import (
     repository_event_trigger_boundary,
 )
 from scheduling.clock_residual_probes import EVENTS
-from scheduling.clock_source import source_fragments
+from scheduling.clock_source import _contexts, source_fragments
 
 APPS = Path(__file__).resolve().parents[2] / "apps"
 PROBES = {
@@ -197,9 +197,90 @@ SQL += "AS $$ SELECT current_setting('app.current_tenant', true) IS NOT NULL $$;
 SQL += "GRANT EXECUTE ON FUNCTION clinic_app.f() TO clinic_app;"
 SQL += "CREATE TRIGGER t BEFORE INSERT ON tab FOR EACH ROW EXECUTE FUNCTION f();"
 MODE = "prepare"
+message = "Invalid text, purpose or language."
 label = f"{label} ({minutes} min)"
 for setting, value in (("app.current_tenant", tenant), ("app.current_user_id", user)):
     cursor.execute("SELECT set_config(%s, %s, true)", [setting, value])
 """
     (tmp_path / "safe.py").write_text(source)
     assert application_boundary(tmp_path) == {}
+
+
+@pytest.mark.parametrize("statement", ["SELECT 1", "PREPARE hidden AS SELECT now()"])
+def test_finite_queries_follow_nested_migration_factories(
+    tmp_path: Path, statement: str
+) -> None:
+    source = f"""
+SCRIPTS = {{'install': {statement!r}}}
+QUERY = SCRIPTS['install']
+def sql_step(query):
+    def run():
+        cursor.execute(query)
+    return run
+def step(query):
+    return sql_step(query)
+operations = [step(QUERY)]
+"""
+    (tmp_path / "migration.py").write_text(source)
+    assert application_boundary(tmp_path) == (
+        {} if statement == "SELECT 1" else {"migration.py": ["server-prepare"]}
+    )
+
+
+def test_finite_forwarding_does_not_duplicate_identical_contexts() -> None:
+    functions = ["def leaf(query):\n    cursor.execute(query)"]
+    previous = "leaf"
+    for index in range(8):
+        name = f"hop_{index}"
+        functions.append(
+            f"def {name}(query):\n    {previous}(query)\n    {previous}(query)"
+        )
+        previous = name
+    tree = ast.parse("\n".join([*functions, f'{previous}("SELECT 1")']))
+    contexts = _contexts(tree, ())
+    assert all(len(values) == 1 for values in contexts.values())
+    assert "SELECT 1" in source_fragments(tree)
+
+
+@pytest.mark.parametrize("statement", ["SELECT 1", "PREPARE hidden AS SELECT now()"])
+def test_finite_comprehension_queries_reach_migration_factories(
+    tmp_path: Path, statement: str
+) -> None:
+    source = f"""
+TABLES = ("first", "second")
+STATEMENT = {statement!r}
+def build(table):
+    return STATEMENT + " FROM " + table
+def sql_step(query):
+    def run():
+        cursor.execute(query)
+    return run
+operations = [sql_step(build(table)) for table in TABLES]
+"""
+    (tmp_path / "migration.py").write_text(source)
+    assert application_boundary(tmp_path) == (
+        {} if statement == "SELECT 1" else {"migration.py": ["server-prepare"]}
+    )
+
+
+def test_non_sql_type_alias_is_not_a_finite_value(tmp_path: Path) -> None:
+    (tmp_path / "typed.py").write_text(
+        "from datetime import date, datetime\n"
+        "Temporal = date | datetime\n"
+        'SQL = "SELECT 1"\n'
+    )
+    assert application_boundary(tmp_path) == {}
+
+
+@pytest.mark.parametrize("query", ['"SELECT 1"', "BROKEN"])
+def test_unsupported_fixture_value_refuses_only_sql_use(
+    tmp_path: Path, query: str
+) -> None:
+    (tmp_path / "fixture.py").write_text(
+        "from django.db import migrations\n"
+        'BROKEN = {{"metadata": "fixture"}}\n'
+        f"class Migration:\n operations = [migrations.RunSQL({query})]\n"
+    )
+    assert application_boundary(tmp_path) == (
+        {} if query == '"SELECT 1"' else {"fixture.py": ["unresolved-runsql"]}
+    )

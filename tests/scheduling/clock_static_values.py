@@ -148,15 +148,20 @@ def _operation(node: ast.AST, scope: Scope) -> object:
 
 
 def evaluate(node: ast.AST, scope: Scope) -> object:
-    if isinstance(node, ast.Constant):
-        return node.value
-    if isinstance(node, ast.Name):
-        return scope.get(node.id)
-    if isinstance(node, ast.Attribute):
-        return _attribute(node, scope)
-    if isinstance(node, ast.Call):
-        return _call(node, scope)
-    return _compound(node, scope)
+    try:
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return scope.get(node.id)
+        if isinstance(node, ast.Attribute):
+            return _attribute(node, scope)
+        if isinstance(node, ast.Call):
+            return _call(node, scope)
+        return _compound(node, scope)
+    except (TypeError, ValueError, IndexError, RecursionError):
+        # Unsupported fixture/type values are not executable SQL. If one is
+        # used as SQL, UNKNOWN propagates to the existing refusal sentinel.
+        return UNKNOWN
 
 
 def _formatted(node: ast.FormattedValue, scope: Scope) -> object:
@@ -218,6 +223,8 @@ def _compound(node: ast.AST, scope: Scope) -> object:
 
 
 def _subscript(value: object, index: object) -> object:
+    if isinstance(value, dict) and isinstance(index, (str, int)):
+        return value.get(index, UNKNOWN)
     if not isinstance(value, (str, tuple, list)):
         return UNKNOWN
     if isinstance(index, int):
