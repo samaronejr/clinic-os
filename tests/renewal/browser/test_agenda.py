@@ -217,8 +217,8 @@ def agenda_staff(renewal_base_url: str) -> dict[str, str]:
         for user_id, clinic_id, role in roles:
             connection.execute(
                 "INSERT INTO clinic_app.identity_userclinicrole "
-                "(id, user_id, organization_id, clinic_id, role) "
-                "VALUES (%s, %s, %s, %s, %s)",
+                "(id, user_id, organization_id, clinic_id, role, "
+                "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [str(uuid4()), user_id, values["organization"], clinic_id, role],
             )
         connection.execute("SET ROLE clinic_app")

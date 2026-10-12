@@ -71,8 +71,8 @@ def locale_staff(renewal_base_url: str) -> dict[str, str]:
             )
             connection.execute(
                 "INSERT INTO clinic_app.identity_userclinicrole "
-                "(id, user_id, organization_id, clinic_id, role) "
-                "VALUES (%s, %s, %s, %s, %s)",
+                "(id, user_id, organization_id, clinic_id, role, "
+                "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [str(uuid4()), user_id, values["organization"], values["clinic"], role],
             )
     return values
