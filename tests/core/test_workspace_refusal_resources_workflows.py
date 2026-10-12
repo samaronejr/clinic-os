@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from functools import wraps
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
@@ -9,6 +10,9 @@ from uuid import uuid4
 import psycopg
 import pytest
 from apps.identity.models import UserClinicRole
+from apps.intake.services import create_patient
+from apps.scheduling.models import Appointment
+from apps.scheduling.resource_services import ServiceInput, create_service_type
 from apps.tenancy.db import tenant_context
 from apps.workflows.models import WorkflowDefinitionVersion
 from django.conf import settings
@@ -210,3 +214,65 @@ def test_workflow_invalid_creation_reaches_the_authorized_form_refusal(
     assert settings.SESSION_COOKIE_NAME not in response.cookies
     assert response.wsgi_request.session.modified is False
     assert dict(client.session) == snapshot
+
+
+@pytest.mark.parametrize("refusal", ["extra_field", "unknown_record"])
+def test_resource_commands_refuse_inside_the_authorized_form(
+    rbac_graph: RbacGraph, issued_manager: tuple[Client, User], refusal: str
+) -> None:
+    client, _user = issued_manager
+    url = reverse("scheduling:resource-settings", args=(rbac_graph.clinic_a,))
+    assert _get(client, url).status_code == 200
+    body = (
+        {"action": "resource", "unknown_field": "synthetic"}
+        if refusal == "extra_field"
+        else {
+            "action": "retire",
+            "retire-kind": "resource",
+            "retire-record_id": str(uuid4()),
+        }
+    )
+    snapshot = dict(client.session)
+    response = _post(client, url, body)
+    assert response.status_code == (400 if refusal == "extra_field" else 403)
+    assert settings.SESSION_COOKIE_NAME not in response.cookies
+    assert response.wsgi_request.session.modified is False
+    assert dict(client.session) == snapshot
+
+
+def test_booking_preparation_refuses_a_missing_required_resource(
+    rbac_graph: RbacGraph, issued_manager: tuple[Client, User]
+) -> None:
+    client, user = issued_manager
+    assert _get(client, "/auth/protected/").status_code == 200
+    with runtime_role(), tenant_context(user.pk, rbac_graph.organization_a):
+        patient = create_patient(
+            clinic_id=rbac_graph.clinic_a,
+            full_name="Synthetic Refusal Booking",
+            birth_date=date(2000, 1, 1),
+            idempotency_key=uuid4(),
+        )
+        service = create_service_type(
+            clinic_id=rbac_graph.clinic_a,
+            content=ServiceInput(
+                name="Synthetic Required Room",
+                duration_min=30,
+                required_resource_kinds=("room",),
+            ),
+        )
+    snapshot = dict(client.session)
+    response = _post(
+        client,
+        reverse("scheduling:appointment-create", args=(rbac_graph.clinic_a,)),
+        {
+            "mode": "prepare",
+            "enrollment_id": str(patient.enrollment.pk),
+            "service_type_id": str(service.pk),
+        },
+    )
+    assert response.status_code == 409
+    assert settings.SESSION_COOKIE_NAME not in response.cookies
+    assert response.wsgi_request.session.modified is False
+    assert dict(client.session) == snapshot
+    with runtime_role(), tenant_context(user.pk, rbac_graph.organization_a):
+        assert not Appointment.objects.filter(clinic_id=rbac_graph.clinic_a).exists()
