@@ -213,6 +213,16 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         _CONFIGURATION,
         route_roles=ADMIN_ROUTE,
         views=frozenset({"identity:clinic-settings"}),
+        entries=(
+            Destination(
+                "scheduling-settings",
+                gettext_noop("Scheduling settings"),
+                "scheduling:resource-settings",
+                ("appointment.book", "configuration.organization"),
+                route_roles=None,
+                views=frozenset({"scheduling:resource-settings"}),
+            ),
+        ),
     ),
 )
 

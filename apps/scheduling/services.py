@@ -12,7 +12,11 @@ from apps.scheduling.agenda_queries import (
     view_agenda,
 )
 from apps.scheduling.appointment_cancellation import cancel_appointment
-from apps.scheduling.appointment_creation import create_appointment
+from apps.scheduling.appointment_creation import (
+    ServiceBooking,
+    create_appointment,
+    create_service_appointment,
+)
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
     AppointmentCancellationConflictError,
@@ -48,6 +52,7 @@ from apps.scheduling.booking_queries import (
     BookingPreparation,
     prepare_booking,
 )
+from apps.scheduling.resource_errors import SchedulingRuleError
 
 __all__ = (
     "AGENDA_PAGE_SIZE",
@@ -75,10 +80,13 @@ __all__ = (
     "BookingAvailabilityWindow",
     "BookingPractitioner",
     "BookingPreparation",
+    "SchedulingRuleError",
+    "ServiceBooking",
     "SlotConflict",
     "cancel_appointment",
     "create_appointment",
     "create_availability",
+    "create_service_appointment",
     "prepare_booking",
     "reschedule_appointment",
     "retire_availability",

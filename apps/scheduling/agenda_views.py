@@ -62,13 +62,19 @@ def _context(
         "realtime_enabled": settings.REALTIME_ENABLED,
         "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
         "can_manage": screen.can_manage,
+        "can_transition": screen.can_manage or screen.can_move_services,
         "clinic_id": clinic_id,
         "days": (),
         "timezone_key": screen.timezone_key,
         "today_url": reverse("scheduling:agenda", args=(clinic_id,)),
     }
     if agenda is not None:
-        context["days"] = presented_days(agenda, can_manage=screen.can_manage)
+        context["days"] = presented_days(
+            agenda,
+            can_manage=screen.can_manage,
+            can_move_services=screen.can_move_services,
+            service_practitioner_id=screen.service_practitioner_id,
+        )
         context.update(navigation(clinic_id, agenda, today=today))
     return context
 

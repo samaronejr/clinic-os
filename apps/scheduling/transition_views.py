@@ -36,7 +36,9 @@ from apps.scheduling.appointment_forms import (
     AppointmentCancelForm,
     AppointmentRescheduleForm,
 )
+from apps.scheduling.appointment_view import authorize_transition_view
 from apps.scheduling.models import Appointment
+from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
@@ -141,6 +143,8 @@ def _rescheduled(form: AppointmentRescheduleForm, appointment_id: UUID) -> bool:
             appointment_id=appointment_id,
             local_range=form.local_range(),
         )
+    except SchedulingRuleError as error:
+        form.add_error(None, str(error.message))
     except AppointmentTerminalError:
         form.add_error(None, TERMINAL_MESSAGE)
     except SlotConflict:
@@ -180,6 +184,8 @@ def appointment_reschedule_view(
     """Show one audited appointment and move it inside its own window."""
     try:
         if request.method == "POST":
+            # Authorize the page this POST re-renders or redirects to first.
+            authorize_transition_view(appointment_id=appointment_id)
             form = AppointmentRescheduleForm(request.POST)
             if form.is_valid() and _rescheduled(form, appointment_id):
                 return _completed(
@@ -205,6 +211,8 @@ def appointment_cancel_view(
     """Show one audited appointment and cancel it with a closed reason."""
     try:
         if request.method == "POST":
+            # Authorize the page this POST re-renders or redirects to first.
+            authorize_transition_view(appointment_id=appointment_id)
             form = AppointmentCancelForm(request.POST)
             if form.is_valid() and _cancelled(form, appointment_id):
                 return _completed(

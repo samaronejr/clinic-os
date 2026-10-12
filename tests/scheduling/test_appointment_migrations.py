@@ -75,6 +75,8 @@ def test_appointment_migration_catalog_is_immediate_versioned_and_indexed() -> N
             ("patient_booking_receipt", "O"),
             ("scheduling_appointment_guard", "O"),
             ("scheduling_appointment_no_delete", "O"),
+            ("scheduling_capacity_after", "O"),
+            ("scheduling_capacity_before", "O"),
         ]
         cursor.execute(
             "SELECT proname, proowner::regrole::text, "

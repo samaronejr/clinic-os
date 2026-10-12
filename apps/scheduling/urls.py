@@ -8,6 +8,7 @@ from apps.scheduling import (
     agenda_views,
     booking_views,
     patient_views,
+    resource_views,
     transition_views,
     views,
     waitlist_views,
@@ -16,6 +17,11 @@ from apps.scheduling import (
 app_name = "scheduling"
 
 urlpatterns: list[URLPattern] = [
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/settings/",
+        resource_views.resource_settings,
+        name="resource-settings",
+    ),
     path(
         "scheduling/clinics/<uuid:clinic_id>/reminders/",
         reminders_view,

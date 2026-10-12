@@ -15,8 +15,10 @@ from typing import TYPE_CHECKING, Final
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.identity.current_context import CurrentActorError, require_permission
 from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
+    authorized_agenda_scope,
     authorized_view_scope,
 )
 from apps.scheduling.models import Appointment
@@ -42,6 +44,8 @@ class AgendaScreen:
 
     timezone_key: str
     can_manage: bool
+    can_move_services: bool = False
+    service_practitioner_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,13 +83,32 @@ class BookingWindowRow:
 
 def agenda_screen(clinic_id: UUID) -> AgendaScreen:
     """Authorize the clinic once and derive manager-versus-physician controls."""
-    scope = authorized_view_scope(clinic_id)
+    scope = authorized_agenda_scope(clinic_id)
     timezone_key = scope.clinic.timezone
     if not isinstance(timezone_key, str) or not timezone_key:
         raise AvailabilityAccessDeniedError
+    try:
+        can_manage = authorized_view_scope(clinic_id).practitioner_id is None
+    except AvailabilityAccessDeniedError:
+        can_manage = False
+    can_move_services = False
+    practitioner_id = None
+    try:
+        require_permission("appointment.move", clinic_id=clinic_id)
+        can_move_services = True
+    except CurrentActorError:
+        try:
+            practitioner_id = require_permission(
+                "appointment.move_own", clinic_id=clinic_id
+            )
+            can_move_services = True
+        except CurrentActorError:
+            pass
     return AgendaScreen(
         timezone_key=timezone_key,
-        can_manage=scope.practitioner_id is None,
+        can_manage=can_manage,
+        can_move_services=can_move_services,
+        service_practitioner_id=practitioner_id,
     )
 
 
@@ -100,36 +123,65 @@ def agenda_url(clinic_id: UUID, view: str, day: str, page: int) -> str:
     return reverse("scheduling:agenda-at", args=(clinic_id, view, day, page))
 
 
-def presented_rows(page: AgendaPage, *, can_manage: bool) -> tuple[AgendaRow, ...]:
+def presented_rows(
+    page: AgendaPage,
+    *,
+    can_manage: bool,
+    can_move_services: bool = False,
+    service_practitioner_id: UUID | None = None,
+) -> tuple[AgendaRow, ...]:
     """Bind every visible appointment to its transition routes when allowed."""
-    return tuple(
-        AgendaRow(
-            item=item,
-            status_label=STATUS_LABELS.get(item.status, item.status),
-            reschedule_url=(
-                reverse(
-                    "scheduling:appointment-reschedule", args=(item.appointment_id,)
-                )
-                if can_manage
-                else ""
-            ),
-            cancel_url=(
-                reverse("scheduling:appointment-cancel", args=(item.appointment_id,))
-                if can_manage
-                else ""
-            ),
-            is_scheduled=item.status == Appointment.Status.SCHEDULED,
-            start_time=item.start_local[LOCAL_TIME_SLICE],
-            end_time=item.end_local[LOCAL_TIME_SLICE],
+    rows = []
+    for item in page.items:
+        can_transition = can_manage or (
+            can_move_services
+            and item.service_type_id is not None
+            and (
+                service_practitioner_id is None
+                or service_practitioner_id == item.practitioner_id
+            )
         )
-        for item in page.items
-    )
+        rows.append(
+            AgendaRow(
+                item=item,
+                status_label=STATUS_LABELS.get(item.status, item.status),
+                reschedule_url=(
+                    reverse(
+                        "scheduling:appointment-reschedule", args=(item.appointment_id,)
+                    )
+                    if can_transition
+                    else ""
+                ),
+                cancel_url=(
+                    reverse(
+                        "scheduling:appointment-cancel", args=(item.appointment_id,)
+                    )
+                    if can_transition
+                    else ""
+                ),
+                is_scheduled=item.status == Appointment.Status.SCHEDULED,
+                start_time=item.start_local[LOCAL_TIME_SLICE],
+                end_time=item.end_local[LOCAL_TIME_SLICE],
+            )
+        )
+    return tuple(rows)
 
 
-def presented_days(page: AgendaPage, *, can_manage: bool) -> tuple[AgendaDay, ...]:
+def presented_days(
+    page: AgendaPage,
+    *,
+    can_manage: bool,
+    can_move_services: bool = False,
+    service_practitioner_id: UUID | None = None,
+) -> tuple[AgendaDay, ...]:
     """Group the page's rows by the clinic-local civil day they start on."""
     days: list[AgendaDay] = []
-    for row in presented_rows(page, can_manage=can_manage):
+    for row in presented_rows(
+        page,
+        can_manage=can_manage,
+        can_move_services=can_move_services,
+        service_practitioner_id=service_practitioner_id,
+    ):
         civil = date.fromisoformat(row.item.start_local[:LOCAL_DATE_LENGTH])
         if days and days[-1].date == civil:
             days[-1] = AgendaDay(civil, (*days[-1].rows, row))

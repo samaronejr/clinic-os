@@ -171,6 +171,7 @@ def test_migrated_accented_soap_note_amends_and_finalizes(
             [
                 ("ehr", "0009_protected_fields"),
                 ("intake", "0011_protected_fields"),
+                ("scheduling", "0006_capacity_insert_authorization"),
             ]
         )
 

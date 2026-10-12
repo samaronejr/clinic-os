@@ -1,7 +1,7 @@
-{% load static i18n workspace clinic_branding ui_preferences %}
+{% load static i18n workspace clinic_branding ui_preferences scheduling_navigation %}
 {% get_current_language as LANGUAGE_CODE %}
 {% block workspace_refusal %}{% endblock %}{% workspace_context as workspace %}
-{% if workspace %}{% ui_preferences as ui %}{% endif %}
+{% if workspace %}{% ui_preferences as ui %}{% scheduling_settings_links as scheduling_clinics %}{% endif %}
 <!doctype html>
 <html lang="{{ LANGUAGE_CODE }}"{% if workspace %} data-service-worker="/sw.js" data-theme="{{ ui.theme }}" data-density="{{ ui.density }}"{% endif %}>
   <head>
@@ -57,6 +57,11 @@
               <span class="nav-context-label">{% trans "Clinic" %}</span>
               <strong class="nav-clinic">{{ workspace.clinic.name }}</strong>
             </p>
+          {% elif scheduling_clinics %}
+            <p class="nav-context">
+              <span class="nav-context-label">{% trans "Clinic" %}</span>
+              <strong class="nav-clinic">{{ scheduling_clinics.0.name }}</strong>
+            </p>
           {% else %}
             <p class="nav-context"><strong class="nav-clinic">{% trans "No clinic assigned" %}</strong></p>
           {% endif %}
@@ -67,6 +72,11 @@
             {% for link in workspace.links %}
               <li><a class="nav-link" href="{{ link.url }}" data-module="{{ link.key }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}{% if link.badge %} <span class="nav-badge">{{ link.badge }}</span>{% endif %}</a></li>
             {% endfor %}
+            {% if not workspace.clinic %}
+              {% for clinic in scheduling_clinics %}
+                <li><a class="nav-link" href="{{ clinic.url }}" data-module="settings">{% trans "Settings" %}{% if scheduling_clinics|length > 1 %} · {{ clinic.name }}{% endif %}</a></li>
+              {% endfor %}
+            {% endif %}
             <li class="nav-account">
               <span class="nav-user">{{ workspace.username }}</span>
               <a class="nav-link" href="/auth/logout/">{% trans "Sign out" %}</a>

@@ -68,18 +68,19 @@ NAV_LINK: Final = re.compile(
 PRIVILEGED: Final = frozenset({"physician", "clinic_admin", "owner"})
 # The exact top-level set per role (plan annex IA, RP bundles v1, and the
 # route guards the destinations lead to today). Roles whose routes are not
-# migrated to permissions yet have no workspace clinic and no destinations.
+# migrated to permissions yet keep their narrower workspace. RP configuration
+# actors can still discover scheduling Settings without patient administration.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
     "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": ["agenda", "patients", "finance", "operations"],
+    "receptionist": ["agenda", "patients", "finance", "operations", "settings"],
     "physician": ["agenda", "patients", "operations"],
     "nurse": [],
     "allied_professional": [],
-    "scheduler": [],
-    "clinic_manager": [],
+    "scheduler": ["settings"],
+    "clinic_manager": ["settings"],
     "finance": [],
-    "org_admin": [],
+    "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
 UNDELIVERED: Final = frozenset({"today", "inbox", "messages", "automations", "reports"})
@@ -161,8 +162,29 @@ def test_each_role_sees_its_exact_destination_set(
     html = response.content.decode()
     assert not UNDELIVERED.intersection(_modules(response))
     # The palette exists exactly when a workspace clinic does.
-    assert ('data-command-open="command-palette"' in html) is bool(EXPECTED[role])
-    assert ('id="command-palette"' in html) is bool(EXPECTED[role])
+    has_workspace = any(module != "settings" for module in EXPECTED[role])
+    assert ('data-command-open="command-palette"' in html) is has_workspace
+    assert ('id="command-palette"' in html) is has_workspace
+
+
+@pytest.mark.parametrize("role", ["scheduler", "clinic_manager", "receptionist"])
+def test_booking_staff_discover_actual_settings_without_administrative_forms(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, _user = _client_for(rbac_graph, role)
+    clinic = rbac_graph.clinic_a
+    home = _get(client, "/auth/protected/")
+    links = {module: href for href, module in NAV_LINK.findall(home.content.decode())}
+    assert links["settings"] == f"/scheduling/clinics/{clinic}/settings/"
+    settings_page = _get(client, links["settings"])
+    assert settings_page.status_code == OK
+    assert 'data-resource-form="resource"' in settings_page.content.decode()
+    assert 'data-resource-form="service"' in settings_page.content.decode()
+    assert 'data-resource-form="template"' in settings_page.content.decode()
+    assert 'data-resource-form="closure"' in settings_page.content.decode()
+    assert "data-settings-form" not in settings_page.content.decode()
+    if role in {"scheduler", "clinic_manager"}:
+        assert _get(client, f"/clinics/{clinic}/settings/").status_code == FORBIDDEN
 
 
 def test_destination_links_lead_to_the_first_open_place(
@@ -232,6 +254,7 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
         "agenda",
         "patients",
         "operations",
+        "settings",
     ]
 
 

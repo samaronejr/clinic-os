@@ -34,6 +34,7 @@ def view_availability(*, clinic_id: UUID) -> tuple[AvailabilityViewItem, ...]:
             organization_id=scope.clinic.organization_id,
             clinic_id=clinic_id,
             retired_at__isnull=True,
+            practitioner__isnull=False,
         )
         if scope.practitioner_id is not None:
             rows = rows.filter(practitioner_id=scope.practitioner_id)
@@ -46,6 +47,7 @@ def view_availability(*, clinic_id: UUID) -> tuple[AvailabilityViewItem, ...]:
                 end_at=row.end_at,
             )
             for row in ordered
+            if row.practitioner_id is not None
         )
         record_phase1_event(
             "scheduling.availability.viewed",
