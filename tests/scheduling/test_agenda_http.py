@@ -222,6 +222,7 @@ def test_physician_sees_only_their_own_rows_without_any_control(
     actions = re.findall(rb'<button[^>]*name="action" value="([^"]+)"', body)
     assert actions
     assert all(value in {b"open", b"appointment"} for value in actions)
+    assert b'class="agenda-actions"' not in body
     assert b"/reschedule/" not in body
     assert b"/cancel/" not in body
     assert b"1988-04-05" not in body

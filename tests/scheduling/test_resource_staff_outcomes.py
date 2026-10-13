@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from apps.identity.models import UserClinicRole
+from apps.identity.models import User, UserClinicRole
 from apps.scheduling.models import Appointment, AppointmentResource
 from apps.scheduling.timezones import parse_local_minute
 from apps.tenancy.db import tenant_context
@@ -17,6 +17,7 @@ from auth.stepup_test_support import create_role_actor
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import seed_appointment_setup
 from scheduling.test_resource_role_matrix import _verified_client
+from scheduling.test_resource_rules import book
 from scheduling.test_resources import _catalog
 
 if TYPE_CHECKING:
@@ -26,6 +27,38 @@ pytestmark = [
     pytest.mark.django_db(transaction=True),
     pytest.mark.usefixtures("resource_clock"),
 ]
+
+
+def test_physician_service_agenda_keeps_only_own_service_transition_links(
+    rbac_graph: RbacGraph,
+) -> None:
+    # Given an own service booking and a physician's existing legacy authority.
+    setup = seed_appointment_setup(rbac_graph)
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        resources = _catalog(setup)
+        appointment = book(setup, resources, start="09:00")
+    client = _verified_client(User.objects.get(pk=rbac_graph.physician))
+
+    # When the physician reads the service booking's clinic-local agenda.
+    with runtime_role():
+        response = client.get(
+            reverse(
+                "scheduling:agenda-at",
+                args=(setup.clinic_id, "day", "2035-06-02", 1),
+            )
+        )
+
+    # Then service transition controls remain available for that own booking.
+    assert response.status_code == 200
+    assert b'class="agenda-actions"' in response.content
+    assert (
+        reverse("scheduling:appointment-reschedule", args=(appointment.pk,)).encode()
+        in response.content
+    )
+    assert (
+        reverse("scheduling:appointment-cancel", args=(appointment.pk,)).encode()
+        in response.content
+    )
 
 
 @pytest.mark.parametrize(
