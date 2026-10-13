@@ -29,7 +29,12 @@ __all__ = ("availability_staff",)
 PATH = "/patient/appointments/"
 
 
-def _seed(staff: dict[str, str], day: str) -> dict[str, str]:
+def _seed(
+    staff: dict[str, str],
+    day: str,
+    *,
+    name: str = "Paciente Sintético Agendamento",
+) -> dict[str, str]:
     data = {
         key: str(uuid4()) for key in ("patient", "enrollment", "grant", "availability")
     }
@@ -49,7 +54,7 @@ def _seed(staff: dict[str, str], day: str) -> dict[str, str]:
                 encrypt(
                     conn,
                     "intake.patient.full_name",
-                    "Paciente Sintético Agendamento".encode(),
+                    name.encode(),
                 ),
                 encrypt(conn, "intake.patient.birth_date", b"1990-01-01"),
             ],
