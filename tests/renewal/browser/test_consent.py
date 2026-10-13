@@ -20,7 +20,12 @@ from renewal.browser.engines import full_page_screenshot, zoom_200
 from renewal.browser.test_availability import availability_staff
 from renewal.browser.test_encounter import press, press_in_view
 from renewal.browser.test_patient_access import _redeem, _watch_errors
-from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
+from renewal.browser.test_retention import (
+    csrf,
+    post_action,
+    seed_manager,
+    sign_in_manager,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -243,6 +248,36 @@ def replay_denied(page: Page, token: str, root: Path, width: int) -> None:
     capture(page, root, "cross-patient-denied", width)
 
 
+def assert_purpose_refusals(patient: Page, token: str) -> None:
+    """Distinguish an application-bound offer from invalid form taxonomy."""
+    mismatched = patient.request.post(
+        patient.url,
+        form={
+            "csrfmiddlewaretoken": csrf(patient),
+            "action": "accept",
+            "offer": token,
+            "purpose": "marketing",
+            "accepted": "on",
+        },
+        max_redirects=0,
+    )
+    assert mismatched.status == 403
+    assert 'id="consent-denied-title"' in mismatched.text()
+    assert (
+        post_action(
+            patient,
+            patient.url,
+            {
+                "action": "accept",
+                "offer": token,
+                "purpose": "blanket_care",
+                "accepted": "on",
+            },
+        )
+        == 400
+    )
+
+
 @pytest.mark.parametrize("width", [1280, 768, 375])
 def test_accept_revoke_receipt_and_replay_denials(
     renewal_page: Page,
@@ -296,19 +331,7 @@ def test_accept_revoke_receipt_and_replay_denials(
             post_action(admin, staff_url, {"action": "accept", "offer": token}) == 403
         )
         # A token cannot be used for a different purpose.
-        assert (
-            post_action(
-                patient,
-                patient.url,
-                {
-                    "action": "accept",
-                    "offer": token,
-                    "purpose": "marketing",
-                    "accepted": "on",
-                },
-            )
-            == 400
-        )
+        assert_purpose_refusals(patient, token)
         press(patient, "read")
         token = patient.locator("#id_offer").input_value()
         with browser.new_context(
