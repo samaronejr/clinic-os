@@ -47,7 +47,13 @@ TEXT = (
 )
 
 
-def _seed(staff: dict[str, str], day: str, hour: int) -> dict[str, str]:
+def _seed(
+    staff: dict[str, str],
+    day: str,
+    hour: int,
+    *,
+    name: str = "Paciente Sintético Teleconsulta",
+) -> dict[str, str]:
     """Seed one patient, enrollment, teleconsult grant and appointment."""
     data = {key: str(uuid4()) for key in ("patient", "enrollment", "grant")}
     data["code"] = new_access_code()
@@ -66,7 +72,7 @@ def _seed(staff: dict[str, str], day: str, hour: int) -> dict[str, str]:
                 encrypt(
                     conn,
                     "intake.patient.full_name",
-                    "Paciente Sintético Teleconsulta".encode(),
+                    name.encode(),
                 ),
                 encrypt(conn, "intake.patient.birth_date", b"1990-01-01"),
             ],
