@@ -438,7 +438,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
 
     _sign_in_receptionist(page, renewal_base_url, workspace_staff)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
-    assert _modules(page) == ["agenda", "patients", "finance", "operations"]
+    assert _modules(page) == ["agenda", "patients", "finance", "operations", "settings"]
     _capture(page, root, "receptionist-landing-1280")
 
     # Brand link and Agenda entry both land on today's agenda of this clinic.
@@ -477,7 +477,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
         {
             "surface": "workspace",
             "assertion": "receptionist modules, agenda entry, clinic switcher",
-            "modules": ["agenda", "patients", "finance", "operations"],
+            "modules": ["agenda", "patients", "finance", "operations", "settings"],
             "console_errors": errors,
         }
     )
@@ -498,7 +498,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
     # sign out, then the Agenda section row (Agenda, Availability).
     goto_settled(page, f"{renewal_base_url}{agenda_a}")
     order: list[str] = []
-    for _ in range(11):
+    for _ in range(12):
         page.keyboard.press("Tab")
         order.append(
             page.evaluate(
@@ -515,6 +515,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         "patients",
         "finance",
         "operations",
+        "settings",
         "nav-link",
         "tab",
         "tab",

@@ -56,18 +56,21 @@ NOT_FOUND: Final = 404
 ENCOUNTER_DAY: Final = "2035-07-03"
 AXE_URL: Final = "/static/vendor/axe/axe.min.js"
 PRIVILEGED: Final = frozenset({"physician", "clinic_admin", "owner"})
+COMMAND_TRIGGER_ROLES: Final = frozenset(
+    {"owner", "clinic_admin", "receptionist", "physician"}
+)
 # Plan annex IA x RP bundles v1 x the route guards the destinations lead to.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
     "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": ["agenda", "patients", "finance", "operations"],
+    "receptionist": ["agenda", "patients", "finance", "operations", "settings"],
     "physician": ["agenda", "patients", "operations"],
     "nurse": [],
     "allied_professional": [],
-    "scheduler": [],
-    "clinic_manager": [],
+    "scheduler": ["settings"],
+    "clinic_manager": ["settings"],
     "finance": [],
-    "org_admin": [],
+    "org_admin": ["settings"],
 }
 AXE_RUN_JS: Final = """async (include) => {
   const result = await axe.run(include ? {include} : document, {
@@ -361,7 +364,9 @@ def test_every_role_sees_exactly_its_destinations(
             _sign_in(page, renewal_base_url, nav_staff, role)
             observed[role] = _modules(page)
             assert observed[role] == expected, role
-            expect(page.locator(".nav-command")).to_have_count(1 if expected else 0)
+            expect(page.locator(".nav-command")).to_have_count(
+                1 if role in COMMAND_TRIGGER_ROLES else 0
+            )
             for key in ("today", "inbox", "messages", "automations", "reports"):
                 expect(page.locator(f'[data-module="{key}"]')).to_have_count(0)
             violations = _axe(page, renewal_base_url)
