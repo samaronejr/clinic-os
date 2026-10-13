@@ -59,6 +59,7 @@ BYPASS_PREFIXES: Final = (
 PATIENT_ACCESS_PREFIX: Final = "/patient/access/"
 PATIENT_PREFIX: Final = "/patient/"
 SERVER_ERROR_STATUS: Final = 500
+HANDLED_REJECTION_ATTR: Final = "clinic_handled_rejection"
 
 
 class TenantStreamingResponseError(RuntimeError):
@@ -169,8 +170,13 @@ class TenantMiddleware:
                     transaction.set_rollback(True)
                 elif response.status_code not in {403, 404}:
                     persist_bound_patient_context(request)
+                    # None uses the existing no-write path for marked rejections.
                     touch_session(
-                        session_key=request.session.session_key,
+                        session_key=(
+                            None
+                            if getattr(response, HANDLED_REJECTION_ATTR, False)
+                            else request.session.session_key
+                        ),
                         http_status=response.status_code,
                     )
                 return response

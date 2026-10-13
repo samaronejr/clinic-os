@@ -26,7 +26,7 @@ from django.urls import resolve, reverse
 from django.utils.translation import gettext
 from psycopg import sql
 
-from core.test_navigation import _client_for, _get, _post
+from core.test_navigation import _client_for, _get, _post, _reauthenticate
 from database_urls import database_url_for_name
 from identity.permission_support import permission_context
 from otp_test_support import runtime_role
@@ -142,8 +142,20 @@ def test_create_post_unprocessable_name_returns_a_handled_error(
     assert b"intake-errors" in response.content
 
 
+def test_create_get_success_still_touches_session(rbac_graph: RbacGraph) -> None:
+    client, _ = receptionist_client(rbac_graph)
+    session_rows_before = _physical_rows()["identity_sessionrecord"]
+
+    with runtime_role():
+        response = client.get(patient_create_url(rbac_graph.clinic_a))
+
+    assert response.status_code == 200
+    assert _physical_rows()["identity_sessionrecord"] != session_rows_before
+
+
 def test_create_post_valid_cpf_still_registers(rbac_graph: RbacGraph) -> None:
     client, _ = receptionist_client(rbac_graph)
+    session_rows_before = _physical_rows()["identity_sessionrecord"]
 
     with runtime_role():
         response = client.post(
@@ -157,6 +169,7 @@ def test_create_post_valid_cpf_still_registers(rbac_graph: RbacGraph) -> None:
     assert response.status_code == 303
     assert response.headers["Location"].endswith("/patients/")
     assert _VALID_CPF not in response.headers["Location"]
+    assert _physical_rows()["identity_sessionrecord"] != session_rows_before
 
 
 # --- Todo 17 R5 repair: edit-path handled-error contract ---
@@ -804,6 +817,7 @@ def test_billing_admission_rechecks_authority_on_same_connection_and_next_reques
         with connection.cursor() as cursor:
             cursor.execute("SELECT pg_backend_pid()")
             assert cursor.fetchone() == backend_before
+    _reauthenticate(client, actor.pk, "finance")
     physical_before = _physical_rows()
     session_before = dict(client.session)
     refused = _post(client, url, payload)

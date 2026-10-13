@@ -65,8 +65,12 @@ def test_populated_downgrade_refuses_atomically_without_losing_history(
             content=ResourceInput(name="Sintetico retained resource", kind="room"),
         )
     executor = MigrationExecutor(connection)
+    migration = executor.loader.get_migration("scheduling", "0005_resources_templates")
+    state = executor.loader.project_state(
+        ("scheduling", "0005_resources_templates"), at_end=False
+    )
     with pytest.raises(IntegrityError) as error:
-        executor.migrate([("scheduling", "0004_waitlistentry_waitlistoffer_and_more")])
+        _ = executor.unapply_migration(state, migration)
     assert _constraint_name(error.value) == "scheduling_populated_rollback"
     with (
         runtime_role(),

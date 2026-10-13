@@ -874,4 +874,5 @@ def test_staff_clinical_actions_require_physician_and_deny_identically(
     # A patient session never reaches the staff surface.
     session, _ = _patient_session(graph)
     patient = patient_client(session)
-    assert patient.post(url, payload(str(encounter_id))).status_code == 403
+    with runtime_role():
+        assert patient.post(url, payload(str(encounter_id))).status_code == 403

@@ -40,7 +40,6 @@ def test_physician_service_http_authority_matrix(
     with runtime_role(), tenant_context(own.actor_id, own.organization_id):
         room, equipment, service = _catalog(own)
         _, _, foreign_service = _catalog(foreign)
-    client = verified_physician_client(rbac_graph)
     if not authorized:
         with owner_context(own.organization_id):
             RoleGrant.objects.create(
@@ -50,6 +49,7 @@ def test_physician_service_http_authority_matrix(
                 permission="appointment.book_own",
                 valid_from=timezone.now() - timedelta(days=1),
             )
+    client = verified_physician_client(rbac_graph)
     service_id = {
         "own": service.pk,
         "other_clinician": service.pk,

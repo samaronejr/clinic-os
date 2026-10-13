@@ -49,7 +49,7 @@ urlpatterns: list[URLPattern] = [
         name="reset-request",
     ),
     path(
-        "clinics/<uuid:clinic_id>/settings/staff/reset/execute/",
+        "clinics/<uuid:clinic_id>/settings/staff/reset/apply/",
         staff_views.reset_execute_view,
         name="reset-execute",
     ),

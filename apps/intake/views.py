@@ -92,6 +92,7 @@ from apps.intake.services import (
     set_purpose_channel,
     verify_contact,
 )
+from apps.tenancy.middleware import HANDLED_REJECTION_ATTR
 
 if TYPE_CHECKING:
     from datetime import date
@@ -393,11 +394,13 @@ def patient_create_view(request: HttpRequest, clinic_id: UUID) -> HttpResponseBa
                     extra_tags=DUPLICATE_MESSAGE,
                 )
             return _created_response(request, clinic_id)
-    return render(
+    response = render(
         request,
         "intake/patient_create.html",
         _create_context(clinic_id, form, submitted_key),
     )
+    setattr(response, HANDLED_REJECTION_ATTR, True)
+    return response
 
 
 def _registration_error(
@@ -681,7 +684,10 @@ def patient_demographics_view(
     if bound_form is not None and bound_form.errors:
         bound_form.auto_id = "rejected-%s"
         context.update({"rejected_form": bound_form, "rejected_action": action})
-    return render(request, "intake/patient_demographics.html", context)
+    response = render(request, "intake/patient_demographics.html", context)
+    if rejected:
+        setattr(response, HANDLED_REJECTION_ATTR, True)
+    return response
 
 
 def _profile_action(
