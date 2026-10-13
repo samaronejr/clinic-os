@@ -238,6 +238,9 @@ msgstr "Buscar pacientes"
 msgid "Search this clinic by name. Search terms stay in the request body and never reach the address bar or server logs."
 msgstr "Busque pelo nome do paciente nesta clínica. Se necessário, refine pela data de nascimento."
 
+msgid "Search this clinic by name, with an optional birth date, or by an exact document number."
+msgstr "Busque nesta clínica pelo nome, com a data de nascimento opcional, ou pelo número completo de um documento."
+
 msgid "We could not run that search"
 msgstr "Não foi possível realizar a busca"
 
@@ -3404,3 +3407,27 @@ msgid "One task will be reassigned."
 msgid_plural "%(count)s tasks will be reassigned."
 msgstr[0] "Uma tarefa será reatribuída."
 msgstr[1] "%(count)s tarefas serão reatribuídas."
+
+msgid "Or search by exact document number."
+msgstr "Ou busque pelo número completo do documento."
+
+msgid "Document type"
+msgstr "Tipo de documento"
+
+msgid "Document number"
+msgstr "Número do documento"
+
+msgid "Choose the document type."
+msgstr "Selecione o tipo de documento."
+
+msgid "Enter the complete document number. This search uses an exact match."
+msgstr "Informe o número completo do documento. Esta busca exige uma correspondência exata."
+
+msgid "Passport"
+msgstr "Passaporte"
+
+msgid "Other document"
+msgstr "Outro documento"
+
+msgid "Search by name or by document, not both."
+msgstr "Busque pelo nome ou pelo documento, não pelos dois."
