@@ -13,6 +13,8 @@ from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpRe
 from django.test import Client, override_settings
 from django.urls import path
 
+from otp_test_support import runtime_role
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from uuid import UUID
@@ -71,6 +73,8 @@ def _assert_gucs_empty() -> None:
 
 def _seed_session(client: Client, graph: TenantGraph, org_id: UUID) -> None:
     user = User.objects.get(pk=graph.user_a)
+    with runtime_role():
+        client.force_login(user, backend="apps.identity.backends.ClinicBackend")
     session = client.session
     session[SESSION_KEY] = str(graph.user_a)
     session[BACKEND_SESSION_KEY] = BACKEND_PATH
@@ -200,8 +204,9 @@ def test_inactive_session_cleanup_never_exposes_a_staff_tenant(
     with _poisoned_runtime_connection():
         response = client.get("/authorized/")
         _assert_gucs_empty()
-    # Even an unprotected handler gets only the anonymous, unscoped surface.
-    assert response.json() == {"user": "None", "probe_count": 0}
+    # The retained session tombstone refuses before the unprotected handler.
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/auth/login/")
 
 
 @override_settings(ROOT_URLCONF=__name__)

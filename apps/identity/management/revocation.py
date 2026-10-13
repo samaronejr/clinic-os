@@ -39,8 +39,9 @@ def revoke_staff_role(
     context: LifecycleContext,
     request: RevokeStaffRoleRequest,
 ) -> None:
-    """Delete one guarded role and append its exact tenant event."""
+    """Retire one guarded role and append its exact retained-history event."""
     keys = (
+        f"clinic-lock-v1:identity-owner:{context.organization_id}",
         clinic_lock_key(context.clinic_id),
         *user_lock_keys((request.target_user_id,)),
     )
@@ -92,7 +93,8 @@ def revoke_staff_role(
         ):
             raise LifecycleCommandError
         role_id = role.pk
-        role.delete()
+        role.revoked_at = timezone.now()
+        role.save(update_fields=("revoked_at",))
         record_phase1_event(
             "identity.staff_role.revoked",
             clinic_id=context.clinic_id,

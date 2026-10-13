@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from django.db import connection
 
-from identity.authority_sql import references
+from identity.authority_sql import non_callable_keywords, references
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -157,6 +157,7 @@ class Catalog:
     """Snapshot live definitions, dependencies, rewrite rules and RLS expressions."""
 
     def __init__(self) -> None:
+        self.syntax_keywords = non_callable_keywords()
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT p.oid, n.nspname||'.'||p.proname, l.lanname,
@@ -391,7 +392,7 @@ class Catalog:
         return self._statement(text, bypass=bypass, seen=set())
 
     def _statement(self, text: str, *, bypass: bool, seen: set[Node]) -> Reads:
-        parsed = references(text)
+        parsed = references(text, syntax_keywords=self.syntax_keywords)
         result = Reads(settings=parsed.settings, opaque=parsed.opaque)
         functions = self._function_references(parsed, result)
         relations = set()

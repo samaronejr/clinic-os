@@ -61,7 +61,7 @@ def _manager(clinic_id: UUID) -> bool:
 
 
 def _task_row(task: Task, staff: Mapping[UUID, str]) -> dict[str, object]:
-    roles = {value: _(label) for value, label in UserClinicRole.Role.choices}
+    roles = dict(UserClinicRole.Role.choices)
     return {
         "record": task,
         "kind": dict(KIND_CHOICES)[task.kind],
@@ -87,7 +87,7 @@ def _preview_label(
         # the same active clinic-member set workflows_staff_catalog lists; a
         # missing label is an invariant break and fails closed (500, rollback).
         return staff[preview.owner.user_id]
-    return _(UserClinicRole.Role(preview.owner.role).label)
+    return str(UserClinicRole.Role(preview.owner.role).label)
 
 
 def tasks(
@@ -192,9 +192,7 @@ def _authorized_tasks(
         "preview_owner_label": preview_owner_label,
         "date_state": "error" if create_form.errors else "default",
         "staff": tuple(staff.items()),
-        "roles": tuple(
-            (value, _(label)) for value, label in UserClinicRole.Role.choices
-        ),
+        "roles": tuple(UserClinicRole.Role.choices),
         "references": REFERENCE_CHOICES,
         "state": state,
         "message": message,

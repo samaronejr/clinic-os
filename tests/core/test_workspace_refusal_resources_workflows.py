@@ -19,7 +19,7 @@ from django.conf import settings
 from django.db import connection
 from django.urls import get_resolver, reverse
 
-from core.test_navigation import _client_for, _csrf, _get, _post
+from core.test_navigation import _client_for, _csrf, _get, _post, _reauthenticate
 from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time, runtime_role
 from workspace_refusal_support import workspace_routes
@@ -49,6 +49,7 @@ def issued_manager(
             ).update(workflow_bundle_version=2)
             == 1
         )
+    _reauthenticate(client, user.pk, "clinic_admin")
     return client, user
 
 

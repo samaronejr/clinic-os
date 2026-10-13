@@ -41,6 +41,7 @@ from apps.intake.services import issue_invitation
 from apps.scheduling.services import cancel_appointment
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 from django.test import Client
 
 from otp_test_support import create_totp_device, fixed_otp_time, token_for
@@ -378,7 +379,7 @@ def test_other_physician_cross_clinic_tenant_and_revocation_fail_closed(
         )
         UserClinicRole.objects.filter(
             user_id=rbac_graph.physician, role="physician"
-        ).delete()
+        ).update(revoked_at=Now())
     with (
         runtime_role(),
         tenant_context(rbac_graph.physician, rbac_graph.organization_a),

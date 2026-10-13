@@ -29,6 +29,7 @@ from apps.identity.physician_verification import (
 from apps.identity.stepup import STEP_UP_SESSION_KEY, StepUpRequired
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
+from django.db.models.functions import Now
 from django.test import override_settings
 
 from auth.stepup_test_support import verified_request
@@ -304,9 +305,9 @@ def test_canonical_role_removal_overrides_regular_registration(
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         setup.verify()
     with owner_scope(graph.organization_a):
-        UserClinicRole.objects.filter(
-            user_id=graph.physician, role="physician"
-        ).delete()
+        UserClinicRole.objects.filter(user_id=graph.physician, role="physician").update(
+            revoked_at=Now()
+        )
         UserClinicRole.objects.create(
             user_id=graph.physician,
             clinic_id=graph.clinic_a,

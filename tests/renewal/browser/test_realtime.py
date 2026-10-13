@@ -174,8 +174,9 @@ def _ticket_replay(page: Page) -> None:
     assert status == [200, 403]
 
 
-def _degraded(page: Page, base_url: str, clinic_id: str, root: Path) -> None:
-    goto_settled(page, base_url + f"/scheduling/clinics/{clinic_id}/agenda/")
+def _degraded(page: Page, base_url: str, staff: dict[str, str], root: Path) -> None:
+    _sign_in_receptionist(page, base_url, staff)
+    goto_settled(page, base_url + f"/scheduling/clinics/{staff['clinic_b']}/agenda/")
     _connected(page)
     page.clock.install()
     assert page.request.post(base_url + "/_realtime-test/stop").status == 204
@@ -198,9 +199,9 @@ def _denied_after_revocation(
     agenda_staff: dict[str, str],
     tap: _RealtimeTap,
 ) -> list[tuple[str, int]]:
-    # Owner SQL fixture revokes the clinic assignment. Logout is the real
-    # immediate control event; unit tests independently prove role-delete
-    # signals and periodic reauth when an event is lost.
+    # Owner SQL revocation invalidates every session for this account.
+    # The next staff request flushes the revoked session and publishes its
+    # immediate control event; unit tests also prove periodic reauthorization.
     # The refusal wait is armed before the revocation: b's stream can also
     # close for other reasons (a transport drop and its backoff retry, the
     # periodic reauthorization), and a refused request that lands before a
@@ -216,14 +217,13 @@ def _denied_after_revocation(
                 [agenda_staff["organization"]],
             )
             owner.execute(
-                "DELETE FROM clinic_app.identity_userclinicrole "
+                "UPDATE clinic_app.identity_userclinicrole SET revoked_at=now() "
                 "WHERE clinic_id = %s AND user_id = %s",
                 [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
             )
-        # Leaving the connection context committed the delete.
+        # Leaving the connection context committed the revocation.
         goto_settled(a, base_url + "/auth/logout/")
-        with expect_document(a):
-            a.locator("form button[type=submit]").click()
+        expect(a.locator("#id_username")).to_be_visible()
     # The client closes its EventSource before every new ticket request, and
     # its denied state follows the refused response: once denied is visible,
     # every earlier realtime event has been dispatched to the tap.
@@ -329,10 +329,11 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
             "403; ticket replay 403\n"
         )
 
-        # Clinic B membership remains: ordinary work continues during an actual
-        # stopped uvicorn process. Advance the browser clock, not wall time.
-        _degraded(b, renewal_base_url, agenda_staff["clinic_b"], root)
-        video = b.video
+        # Clinic B membership remains, but the old sessions are both revoked.
+        # A fresh login restores only the remaining scope before process loss.
+        # Advance the browser clock, not wall time.
+        _degraded(a, renewal_base_url, agenda_staff, root)
+        video = a.video
         assert video is not None
     video.save_as(root / "realtime-2ctx.webm")
     (root / "latency.json").write_text(

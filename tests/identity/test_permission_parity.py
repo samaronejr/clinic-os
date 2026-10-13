@@ -14,6 +14,7 @@ from django.db import transaction
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
+from auth.test_reset_delay import reset_db_clock
 from identity import legacy_guard_inventory
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
@@ -25,6 +26,8 @@ from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
 from identity.legacy_guard_inventory import declared_probes, discover
 from identity.legacy_identity_boundaries import BOUNDARIES as IDENTITY_BOUNDARIES
+from identity.legacy_lifecycle_boundaries import BOUNDARIES as LIFECYCLE_BOUNDARIES
+from identity.legacy_lifecycle_boundaries import lifecycle_world
 from identity.legacy_owner_boundaries import BOUNDARIES as OWNER_BOUNDARIES
 from identity.legacy_parity_support import LEGACY, exercise, target_code, world
 from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDARIES
@@ -46,7 +49,7 @@ if TYPE_CHECKING:
     from identity.nonstaff_differential import DifferentialReport
     from rbac_fixtures import RbacGraph
 
-__all__ = ("agent_password",)
+__all__ = ("agent_password", "reset_db_clock")
 # The census drives the machine-principal boundary through a real agent login
 # (nonstaff_differential_census requests agent_password).
 pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
@@ -57,6 +60,7 @@ CORE = (
     *SCOPE_BOUNDARIES,
     *OWNER_BOUNDARIES,
     *WORKSPACE_BOUNDARIES,
+    *LIFECYCLE_BOUNDARIES,
 )
 
 
@@ -177,8 +181,14 @@ def test_actual_legacy_boundaries(
     legacy_role: str,
     family: str,
     record_property: Callable[[str, object], None],
+    request: pytest.FixtureRequest,
 ) -> None:
     subject = world(rbac_graph, legacy_role)
+    if family == "lifecycle":
+        with override_settings(COMMS_SYNTHETIC_CHANNELS=("email",)):
+            subject = lifecycle_world(
+                subject, request.getfixturevalue("reset_db_clock")
+            )
     if family == "organization":
         with owner_context(rbac_graph.organization_a):
             UserClinicRole.objects.get_or_create(

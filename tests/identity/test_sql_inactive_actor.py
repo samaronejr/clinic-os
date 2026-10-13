@@ -28,6 +28,10 @@ from sqlparse import tokens
 
 from identity.authority_sql import _tokenize, references
 from identity.permission_support import owner_context
+from identity.test_lifecycle_sql_readers import (
+    ACTOR_PROTOCOL_ORACLES,
+    assert_lifecycle_oracles,
+)
 from patient_service_support import runtime_role
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
@@ -336,10 +340,18 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
 def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
-    assert own == set(PROBES) | set(OWN_GUARD_PROBES)
-    assert set(readers) - own - delegating == set(JUSTIFIED)
+    protocols = set(ACTOR_PROTOCOL_ORACLES)
+    # A lexical is_active occurrence may be a pending-account predicate or an
+    # INSERT of an inactive account. It is not an active-caller proof. Those
+    # readers need executable capability/creation/cleanup contracts instead.
+    assert protocols <= set(readers)
+    assert own - protocols == set(PROBES) | set(OWN_GUARD_PROBES)
+    assert set(readers) - own - delegating - protocols == set(JUSTIFIED)
     # Every derived delegator is executed below; a new one needs a probe.
-    assert set(DELEGATE_PROBES) | set(GUARD_PROBES) == delegating
+    assert (set(DELEGATE_PROBES) | set(GUARD_PROBES)) - protocols == (
+        delegating - protocols
+    )
+    assert_lifecycle_oracles(ACTOR_PROTOCOL_ORACLES.values())
 
 
 def _staff_actor(graph: RbacGraph) -> UUID:
@@ -499,6 +511,14 @@ GUARD_PROBES = {
         "'{}'::jsonb, 1, %(id)s, repeat('0', 64), NULL, '', now(), now())",
         "invalid task",
     ),
+    "clinic_app.identity_reset_guard()": GuardProbe(
+        "INSERT INTO clinic_app.identity_authenticatorreset "
+        "(id, organization_id, clinic_id, user_id, requested_by_id, created_at, "
+        "notification_operation_id, notified_at, available_at, executed_at) "
+        "VALUES (%(id)s, %(organization)s, %(clinic)s, %(reset_user)s, "
+        "%(actor)s, now(), NULL, NULL, NULL, NULL)",
+        "reset starts without notification or execution",
+    ),
 }
 # These guards contain their own is_active query (including professional
 # eligibility), rather than being classified solely through a delegated gate.
@@ -617,6 +637,7 @@ def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
         "session": session.pk,
         "physician": graph.physician,
         "service": service.pk,
+        "reset_user": graph.shared_user,
     }
     invoices = _open_invoices(graph, appointment.patient_id)
     guards = {**GUARD_PROBES, **OWN_GUARD_PROBES}

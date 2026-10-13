@@ -18,12 +18,13 @@ from apps.identity.models import User, UserClinicRole
 from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.staticfiles import finders
 from django.db import connection, transaction
+from django.db.models.functions import Now
 from django.http import HttpResponse
 from django.test import Client, RequestFactory
 from django.utils.translation import gettext
 
 from otp_test_support import runtime_role
-from patient_http_support import receptionist_client, verified_physician_client
+from patient_http_support import receptionist_client, relogin, verified_physician_client
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -83,7 +84,9 @@ def _revoke(graph: RbacGraph, user_id: UUID, clinic_id: UUID) -> None:
             "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
             [str(graph.organization_a)],
         )
-        UserClinicRole.objects.filter(user_id=user_id, clinic_id=clinic_id).delete()
+        UserClinicRole.objects.filter(user_id=user_id, clinic_id=clinic_id).update(
+            revoked_at=Now()
+        )
 
 
 def test_receptionist_sees_manager_modules_for_the_url_clinic(
@@ -214,6 +217,7 @@ def test_revoked_role_drops_the_remembered_clinic_and_denies_its_routes(
 ) -> None:
     client, receptionist = receptionist_client(rbac_graph)
     _grant(rbac_graph, receptionist.pk, rbac_graph.clinic_b, "receptionist")
+    relogin(client, receptionist.pk)
     agenda_b = f"/scheduling/clinics/{rbac_graph.clinic_b}/agenda/"
 
     with runtime_role():
@@ -224,6 +228,11 @@ def test_revoked_role_drops_the_remembered_clinic_and_denies_its_routes(
     assert client.session[ACTIVE_CLINIC_SESSION_KEY] == str(rbac_graph.clinic_b)
 
     _revoke(rbac_graph, receptionist.pk, rbac_graph.clinic_b)
+    with runtime_role():
+        revoked = client.get("/auth/protected/")
+    assert revoked.status_code == FOUND
+    assert revoked.headers["Location"].startswith("/auth/login/")
+    relogin(client, receptionist.pk)
     with runtime_role():
         landing = client.get("/auth/protected/")
         denied = client.get(agenda_b)
@@ -251,6 +260,11 @@ def test_workspace_home_opens_todays_agenda_or_explains_the_missing_clinic(
     # Losing the last role also loses tenant membership: the tenant boundary
     # answers before the workspace can, so the account is refused outright.
     _revoke(rbac_graph, receptionist.pk, rbac_graph.clinic_a)
+    with runtime_role():
+        revoked = client.get("/workspace/")
+    assert revoked.status_code == FOUND
+    assert revoked.headers["Location"].startswith("/auth/login/")
+    relogin(client, receptionist.pk)
     with runtime_role():
         orphaned = client.get("/workspace/")
     assert orphaned.status_code == FORBIDDEN
@@ -287,20 +301,15 @@ def test_workspace_home_explains_a_membership_without_any_clinic_role(
     assert ACTIVE_CLINIC_SESSION_KEY not in request.session
 
 
-def test_index_greets_visitors_and_forwards_sessions() -> None:
+def test_index_greets_visitors_and_forwards_sessions(rbac_graph: RbacGraph) -> None:
     anonymous = Client().get("/")
     assert anonymous.status_code == OK
     assert b'href="/auth/login/"' in anonymous.content
     assert b'class="nav-list"' not in anonymous.content
 
-    session = Client().session
-    session["_auth_user_id"] = str(uuid4())
-    session["active_org_id"] = str(uuid4())
-    session.save()
-    assert session.session_key is not None
-    holder = Client()
-    holder.cookies["sessionid"] = session.session_key
-    forwarded = holder.get("/")
+    holder, _receptionist = receptionist_client(rbac_graph)
+    with runtime_role():
+        forwarded = holder.get("/")
     assert forwarded.status_code == FOUND
     assert forwarded.headers["Location"] == "/workspace/"
 

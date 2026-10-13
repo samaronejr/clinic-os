@@ -39,6 +39,7 @@ ORM = """def require_future_owner(*, clinic_id):
     actor = current_actor_id()
     if not Clinic.objects.filter(
         pk=clinic_id, userclinicrole__user_id=actor, userclinicrole__role="owner",
+        userclinicrole__revoked_at__isnull=True,
     ).exists():
         raise CurrentActorError
     return actor
@@ -48,7 +49,8 @@ RAW_SQL = """def require_future_owner(*, clinic_id):
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT EXISTS (SELECT 1 FROM clinic_app.identity_userclinicrole "
-            "WHERE user_id=%s AND clinic_id=%s AND role='owner')",
+            "WHERE user_id=%s AND clinic_id=%s AND role='owner' "
+            "AND revoked_at IS NULL)",
             [actor, clinic_id],
         )
         if not cursor.fetchone()[0]:

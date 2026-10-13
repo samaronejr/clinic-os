@@ -5,7 +5,7 @@ import importlib.util
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
-from apps.identity.models import Organization, User, UserClinicRole
+from apps.identity.models import UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
@@ -53,11 +53,12 @@ def set_tenant(organization_id: UUID) -> None:
 
 
 def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
-    role_model = (
-        MigrationExecutor(connection)
-        .loader.project_state(FOUNDATION_TARGETS)
-        .apps.get_model("identity", "UserClinicRole")
+    historical = (
+        MigrationExecutor(connection).loader.project_state(FOUNDATION_TARGETS).apps
     )
+    user_model = historical.get_model("identity", "User")
+    organization_model = historical.get_model("identity", "Organization")
+    role_model = historical.get_model("identity", "UserClinicRole")
     encoded = make_password(TEST_CREDENTIAL)
     originals = {
         ZERO_USER: (
@@ -77,7 +78,7 @@ def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
         ),
     }
     for user_id, (username, email, password) in originals.items():
-        User.objects.create(
+        user_model.objects.create(
             id=user_id,
             username=username,
             email=email,
@@ -90,7 +91,7 @@ def seed_foundation_graph() -> dict[UUID, tuple[str, str, str]]:
     ):
         with transaction.atomic():
             set_tenant(organization_id)
-            organization = Organization.objects.create(
+            organization = organization_model.objects.create(
                 id=organization_id,
                 name=f"Synthetic Organization {suffix}",
                 cnpj=f"{int(organization_id):014d}",

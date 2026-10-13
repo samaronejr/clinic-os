@@ -55,7 +55,9 @@ FORBIDDEN: Final = 403
 NOT_FOUND: Final = 404
 ENCOUNTER_DAY: Final = "2035-07-03"
 AXE_URL: Final = "/static/vendor/axe/axe.min.js"
-PRIVILEGED: Final = frozenset({"physician", "clinic_admin", "owner"})
+PRIVILEGED: Final = frozenset(
+    {"physician", "clinic_admin", "owner", "clinic_manager", "org_admin"}
+)
 COMMAND_TRIGGER_ROLES: Final = frozenset(
     {"owner", "clinic_admin", "receptionist", "physician"}
 )

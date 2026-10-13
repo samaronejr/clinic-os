@@ -94,7 +94,9 @@ def _set_role(
 ) -> None:
     User.objects.filter(pk=world.actor).update(is_active=active)
     with owner_context(world.graph.organization_a):
-        UserClinicRole.objects.filter(user_id=world.actor).delete()
+        UserClinicRole.objects.filter(user_id=world.actor).update(
+            revoked_at=timezone.now()
+        )
         if role is not None:
             UserClinicRole.objects.create(
                 organization_id=world.graph.organization_a,

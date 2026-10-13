@@ -40,6 +40,7 @@ from apps.scheduling.services import (
 )
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 from django.test import Client
 from django.utils import timezone
 
@@ -503,7 +504,7 @@ def test_physician_revocation_blocks_new_booking_but_preserves_equal_replay(
             clinic_id=setup.clinic_id,
             user_id=setup.practitioner_id,
             role=UserClinicRole.Role.PHYSICIAN,
-        ).delete()
+        ).update(revoked_at=Now())
     with runtime_role(), patient_session_context(session_id):
         assert patient_slots(DAY) == ()
         assert (

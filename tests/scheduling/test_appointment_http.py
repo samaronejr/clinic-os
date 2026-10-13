@@ -13,6 +13,7 @@ from patient_http_support import (
     audit_event_types,
     patient_list_url,
     receptionist_client,
+    relogin,
     verified_physician_client,
 )
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
@@ -195,6 +196,7 @@ def test_foreign_unknown_and_malformed_selections_are_indistinguishable(
 ) -> None:
     client, actor, enrollment_id = _booked_clinic(rbac_graph)
     foreign = create_dst_clinic(rbac_graph, actor, rbac_graph.physician)
+    relogin(client, actor)
     url = appointment_create_url(rbac_graph.clinic_a)
 
     with runtime_role():

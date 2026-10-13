@@ -40,6 +40,7 @@ from apps.intake.patient_access import (
 from apps.intake.services import create_patient
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 from django.utils import timezone
 from psycopg import sql
 
@@ -451,7 +452,7 @@ def test_canonical_billing_roles_and_revocation(
         invoice = charge(setup)
         assert [i.pk for i in list_invoices(clinic_id=setup.clinic_id)] == [invoice.pk]
     with fixture_scope(setup.organization_id):
-        assignment.delete()
+        UserClinicRole.objects.filter(pk=assignment.pk).update(revoked_at=Now())
     with runtime_role(), tenant_context(rbac_graph.clinic_admin, setup.organization_id):
         assert not Invoice.objects.exists()
         with pytest.raises(BillingAccessDeniedError):

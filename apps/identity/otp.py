@@ -22,6 +22,7 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.identity import redirects as _redirects
 from apps.identity.models import User
+from apps.identity.session_inventory import record_verified_session
 from apps.identity.stepup import stamp_step_up_verification
 
 if TYPE_CHECKING:
@@ -220,9 +221,19 @@ def record_otp_verification(request: HttpRequest, device: TotpDevice) -> None:
     if not device.confirmed or device.user_id != request.user.pk:
         msg = "a confirmed TOTP device for the current user is required"
         raise ValueError(msg)
+    old_key = request.session.session_key
     request.session.cycle_key()
     otp_login(request, device)
     stamp_step_up_verification(request)
+    new_key = request.session.session_key
+    if new_key is None:
+        msg = "verification requires a rotated session"
+        raise ValueError(msg)
+    record_verified_session(
+        request=request,
+        device_id=device.pk,
+        old_key=old_key,
+    )
 
 
 def privileged_totp_required[**P](

@@ -7,6 +7,9 @@
   <h1 id="settings-title">Configurações da clínica</h1>
   <div class="actions">
     <a class="button button--secondary" href="{% url 'scheduling:resource-settings' clinic.pk %}">{% trans "Scheduling settings" %}</a>
+    <a class="button button--secondary" href="{% url 'identity:onboarding' clinic_id=clinic.pk %}">{% trans "First steps" %}</a>
+    <a class="button button--secondary" href="{% url 'identity:staff' clinic_id=clinic.pk %}">{% trans "Staff and account security" %}</a>
+    <a class="button button--secondary" href="{% url 'identity:sessions' %}">{% trans "Your sessions" %}</a>
   </div>
   <p class="lede">Alterações valem somente para esta clínica. Documentos finalizados, assinaturas, consentimentos aceitos e lembretes já agendados permanecem inalterados.</p>
   <p role="note">Fuso horário: <strong>{{ clinic.timezone }}</strong>. A alteração continua exclusiva da operação controlada pelo titular, em clínica vazia. Esta tela não altera fuso, permissões, alertas ou auditoria.</p>

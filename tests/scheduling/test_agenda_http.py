@@ -12,6 +12,7 @@ from otp_test_support import runtime_role
 from patient_http_support import (
     audit_event_types,
     receptionist_client,
+    relogin,
     verified_physician_client,
 )
 from scheduling.appointment_http_support import (
@@ -116,6 +117,7 @@ def test_daylight_gap_and_fold_days_carry_their_real_civil_bounds(
     clinic_id = create_zone_clinic(
         rbac_graph, receptionist.pk, rbac_graph.physician, "America/New_York"
     )
+    relogin(client, receptionist.pk)
     context = BookingContext(rbac_graph, receptionist.pk, clinic_id)
     enrollment_id = seed_enrollment(rbac_graph, receptionist.pk, clinic_id)
     schedule = ((GAP_DATE, ("01:00", "01:45")), (FOLD_DATE, ("00:15", "00:45")))
@@ -149,6 +151,7 @@ def test_a_nonexistent_local_minute_is_never_booked(rbac_graph: RbacGraph) -> No
     clinic_id = create_zone_clinic(
         rbac_graph, receptionist.pk, rbac_graph.physician, "America/New_York"
     )
+    relogin(client, receptionist.pk)
     enrollment_id = seed_enrollment(rbac_graph, receptionist.pk, clinic_id)
 
     with runtime_role():
@@ -173,6 +176,7 @@ def test_a_completely_skipped_civil_date_renders_an_empty_agenda(
     clinic_id = create_zone_clinic(
         rbac_graph, receptionist.pk, rbac_graph.physician, "Pacific/Apia"
     )
+    relogin(client, receptionist.pk)
 
     with runtime_role():
         response = client.get(agenda_at_url(clinic_id, "day", SKIPPED_DATE))
@@ -298,6 +302,7 @@ def test_agenda_is_readable_by_a_second_clinic_manager_only_for_its_own_clinic(
         rbac_graph.clinic_b,
         UserClinicRole.Role.RECEPTIONIST,
     )
+    relogin(client, context.actor)
 
     with runtime_role():
         response = client.get(agenda_url(rbac_graph.clinic_b))

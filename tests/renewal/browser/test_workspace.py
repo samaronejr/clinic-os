@@ -793,12 +793,21 @@ def test_stale_clinic_context_is_dropped_after_revocation(
             [workspace_staff["organization"]],
         )
         connection.execute(
-            "DELETE FROM clinic_app.identity_userclinicrole "
+            "UPDATE clinic_app.identity_userclinicrole SET revoked_at=now() "
             "WHERE user_id = %s AND clinic_id = %s",
             [workspace_staff["receptionist_id"], workspace_staff["clinic_b"]],
         )
 
     goto_settled(page, f"{renewal_base_url}/auth/protected/")
+    expect(page.locator("#id_username")).to_be_visible()
+    _capture(page, renewal_artifact_root, "revoked-session-login-1280")
+    _sign_in(
+        page,
+        renewal_base_url,
+        workspace_staff["receptionist"],
+        workspace_staff["password"],
+    )
+    wait_for_signed_in(page)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     assert CLINIC_B not in page.content()
     expect(page.locator(".nav-switch")).to_have_count(0)

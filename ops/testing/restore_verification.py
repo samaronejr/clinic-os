@@ -250,10 +250,10 @@ def seed_foreign_probe_tenant(client: _SqlClient) -> None:
     visibility, never content.
     """
     client.sql(
-        "INSERT INTO clinic_app.identity_organization (id, name, cnpj) "
+        "INSERT INTO clinic_app.identity_organization (id, name, cnpj, status) "
         "VALUES ('"
         + FOREIGN_PROBE_ORGANIZATION
-        + "', 'Foreign Probe Organization', '99999999999999') "
+        + "', 'Foreign Probe Organization', '99999999999999', 'active') "
         "ON CONFLICT (id) DO NOTHING"
     )
     client.sql(

@@ -15,6 +15,11 @@ from identity.domain_sql_oracles import assert_executable_protocol_oracles
 from identity.legacy_guard_inventory import discover_sql
 from identity.legacy_sql_inventory import assert_sql_inventory
 from identity.sql_guard_probes import ALL_ROLES, PROBES
+from identity.test_lifecycle_sql_guards import STAFF_PROTOCOL_GUARDS
+from identity.test_lifecycle_sql_readers import (
+    SQL_PROTOCOL_ORACLES,
+    assert_lifecycle_oracles,
+)
 from identity.test_metrics_guard_parity import METRICS_SQL_ORACLES
 from identity.test_permission_parity import INVENTORY
 from patient_service_support import runtime_role
@@ -31,20 +36,34 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
     entries = INVENTORY["sql_guards"]
     assert_sql_inventory(entries)
     listed = set()
+    for name, entry in entries.items():
+        if entry["kind"] != "staff_guard":
+            continue
+        assert len(entry["discovery"]["signatures"]) == 1, name
+        assert entry["probes"], name
+        for key in entry["probes"]:
+            probe = PROBES[key]
+            assert name == f"clinic_app.{probe.name}"
+            assert probe.roles
+            assert set(probe.roles) <= set(ALL_ROLES)
+            listed.add(key)
+    assert listed == set(PROBES)
+
+
+def test_sql_protocol_inventory_has_exact_executable_oracles() -> None:
+    entries = INVENTORY["sql_guards"]
+    assert_sql_inventory(entries)
     operation_oracles = {}
     machine_oracles = {}
     protocol_oracles = {}
-    for name, entry in entries.items():
-        if entry["kind"] == "staff_guard":
-            assert len(entry["discovery"]["signatures"]) == 1, name
-            assert entry["probes"], name
-            for key in entry["probes"]:
-                probe = PROBES[key]
-                assert name == f"clinic_app.{probe.name}"
-                assert probe.roles
-                assert set(probe.roles) <= set(ALL_ROLES)
-                listed.add(key)
-        elif entry["kind"] == "domain_protocol":
+    staff_protocols = set()
+    lifecycle_protocols = {}
+    for name, entry in (
+        (name, entry)
+        for name, entry in entries.items()
+        if entry["kind"] != "staff_guard"
+    ):
+        if entry["kind"] == "domain_protocol":
             assert entry["reason"], name
             assert entry["probes"], name
             protocol_oracles[name] = entry["probes"]
@@ -62,6 +81,14 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
                 "test_unaccent_normalization_is_role_independent"
             ]
             assert entry["reason"]
+        elif entry["kind"] == "staff_protocol":
+            assert entry["probes"] == ["test_current_staff_protocol_guards"], name
+            assert entry["reason"], name
+            staff_protocols.add(name)
+        elif entry["kind"] == "lifecycle_protocol":
+            assert entry["reason"], name
+            assert entry["probes"], name
+            lifecycle_protocols[name] = tuple(entry["probes"])
         else:
             assert entry["kind"] in {
                 "migration_only",
@@ -75,7 +102,9 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
             }, name
             assert entry["reason"], name
             assert not entry["probes"], name
-    assert listed == set(PROBES)
+    assert staff_protocols == set(STAFF_PROTOCOL_GUARDS)
+    assert lifecycle_protocols == SQL_PROTOCOL_ORACLES
+    assert_lifecycle_oracles(SQL_PROTOCOL_ORACLES.values())
     assert operation_oracles == METRICS_SQL_ORACLES
     assert_executable_protocol_oracles(protocol_oracles)
     # Membership is the registry label itself; the oracles derive their member

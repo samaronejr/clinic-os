@@ -45,6 +45,7 @@ def _private(path: Path) -> Path:
 
 def test_suite_registry_is_closed_and_registered_files_exist() -> None:
     assert set(runner.SUITES) == {
+        "onboarding",
         "agenda",
         "realtime",
         "amendments",
@@ -1271,6 +1272,7 @@ def test_pytest_environment_exports_only_the_private_fixture_inputs(
         engine="webkit",
         username="renewal-owner-x",
         password="secret-password",  # noqa: S106 - synthetic fixture value.
+        secret_key=secrets.token_urlsafe(48),
     )
     assert environment["CLINIC_BROWSER_ENGINE"] == "webkit"
     assert environment["CLINIC_RENEWAL_BASE_URL"] == "http://127.0.0.1:48000"
@@ -1883,6 +1885,7 @@ def test_secret_runner_inputs_are_the_redacted_environment() -> None:
         engine="chromium",
         username="user",
         password=sentinel,
+        secret_key=sentinel,
     )
     derived = {name for name, value in exported.items() if value == sentinel}
     tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
@@ -1913,3 +1916,67 @@ def test_secret_runner_inputs_are_the_redacted_environment() -> None:
         for path, lines in readers.items()
         if lines and path not in SECRET_READER_EXEMPTIONS
     } == {}
+
+
+def test_server_signing_key_reaches_only_synthetic_fixture_environment(
+    tmp_path: Path,
+) -> None:
+    # Given the key minted by the actual server environment constructor.
+    server = runner._server_environment(
+        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic"
+    )
+    key = fixture_secrets.FixtureSecret(server["SECRET_KEY"])
+    server["SECRET_KEY"] = key
+    root = _private(tmp_path / "signing-key")
+    (root / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (root / "test_signing_key.py").write_text(
+        "import os\n"
+        "def test_failure():\n"
+        "    print(os.environ['SECRET_KEY'])\n"
+        "    raise RuntimeError(os.environ['SECRET_KEY'])\n",
+        encoding="utf-8",
+    )
+    environment = runner._pytest_environment(
+        base_url="http://127.0.0.1:1",
+        artifact_root=root,
+        browser="/usr/bin/true",
+        engine="chromium",
+        username="user",
+        password=fixture_secrets.new_password(),
+        secret_key=key,
+    )
+    environment["PYTHONPATH"] = f"{REPOSITORY / 'tests'}{os.pathsep}{REPOSITORY}"
+    assert environment["SECRET_KEY"] == key
+    assert environment["CLINIC_DATA_MODE"] == "synthetic"
+    # When a fixture failure tries to print and raise with that same key.
+    code = runner._run_bounded(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(root / "pytest.ini"),
+            "--rootdir",
+            str(root),
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "renewal.browser._fixture_secrets",
+            "--showlocals",
+            f"--junitxml={root / 'junit.xml'}",
+            str(root / "test_signing_key.py"),
+        ],
+        environment,
+        root / "pytest.log",
+        cwd=root,
+        timeout=120,
+    )
+    # Then it remains an actual failure, but every emitted artifact is scrubbed.
+    assert code == 1
+    leaking_paths = [
+        path.name
+        for path in root.rglob("*")
+        if path.is_file() and key.encode() in path.read_bytes()
+    ]
+    assert leaking_paths == []
+    assert fixture_secrets.REDACTED in (root / "pytest.log").read_text()

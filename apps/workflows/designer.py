@@ -87,9 +87,7 @@ def _authorized_designer(request: HttpRequest, clinic_id: UUID) -> HttpResponseB
                     "steps": tuple(
                         {
                             **step,
-                            "owner_label": _(
-                                UserClinicRole.Role(step["owner_role"]).label
-                            )
+                            "owner_label": UserClinicRole.Role(step["owner_role"]).label
                             if step["handler"] == "task"
                             else "",
                         }

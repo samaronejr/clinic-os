@@ -102,11 +102,10 @@ def set_memberships(actor: User, scope: ReplayScope, state: StaffState) -> None:
         )
     assignments = [(c, role) for c in clinics for role in state.roles]
     with owner_context(scope.organization):
-        UserClinicRole.objects.filter(user=actor).delete()
+        UserClinicRole.objects.filter(user=actor).update(revoked_at=timezone.now())
         UserClinicRole.objects.bulk_create(
             [
                 UserClinicRole(
-                    id=uuid5(actor.pk, f"{c}/{role}"),
                     user=actor,
                     organization_id=scope.organization,
                     clinic_id=c,
@@ -225,6 +224,7 @@ def assert_membership_schema() -> None:
         "clinic",
         "role",
         "workflow_bundle_version",
+        "revoked_at",
     }
     assert not UserClinicRole._meta.get_field("clinic").null
     assert UserClinicRole._meta.get_field("workflow_bundle_version").default == 1

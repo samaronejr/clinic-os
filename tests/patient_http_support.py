@@ -48,6 +48,14 @@ def receptionist_client(graph: RbacGraph) -> tuple[Client, User]:
     return client, receptionist
 
 
+def relogin(client: Client, user_id: UUID) -> None:
+    """Authenticate reception again after a fixture changes its role assignments."""
+    user = User.objects.get(pk=user_id)
+    with runtime_role():
+        client.logout()
+        assert client.login(username=user.username, password=OTP_RAW_CREDENTIAL)
+
+
 def verified_physician_client(graph: RbacGraph) -> Client:
     create_totp_device(graph.physician, confirmed=True)
     username = User.objects.get(pk=graph.physician).username

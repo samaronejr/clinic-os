@@ -46,20 +46,29 @@ DOMAIN_RELATIONS: Final = (
     "ehr_historyassessment",
     "ehr_problem",
     "ehr_specialtytemplate",
+    # Task-15 protected captures, recovery hashes and retained lifecycle history.
+    "identity_authenticatorreset",
+    "identity_authenticatorretirement",
     # Tenant authority/history is recovery data, never a framework exclusion.
     "identity_careteammembership",
     "identity_clinic",
     "identity_clinicconfiguration",
+    "identity_onboardingprogress",
     "identity_organization",
     "identity_physicianevidence",
     "identity_physicianprofile",
     "identity_professionalregistration",
+    "identity_recoverybatch",
+    "identity_recoverycode",
     "identity_rolegrant",
     # User-owned view preferences, including terminal archival, are durable data.
     "identity_savedview",
     # Machine principals and grants, revoked history included (todo 7).
     "identity_serviceprincipal",
     "identity_serviceprincipalgrant",
+    "identity_sessionrecord",
+    "identity_signupregistration",
+    "identity_staffinvitation",
     "identity_user",
     "identity_userclinicrole",
     "identity_userpreference",
@@ -80,6 +89,7 @@ DOMAIN_RELATIONS: Final = (
     "intake_questionnaireevent",
     "intake_questionnaireresponse",
     "intake_questionnairetemplate",
+    "otp_static_staticdevice",
     "otp_totp_totpdevice",
     "prescription_prescriptiondocument",
     "prescription_prescriptiondocumentrelease",
@@ -118,6 +128,7 @@ DOMAIN_RELATIONS: Final = (
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 SEQUENCE_TARGETS: Final = {
     "audit_event_seq_seq": ("audit_event", "seq"),
+    "otp_static_staticdevice_id_seq": ("otp_static_staticdevice", "id"),
     "otp_totp_totpdevice_id_seq": ("otp_totp_totpdevice", "id"),
     "scheduling_waitlistentry_id_seq": ("scheduling_waitlistentry", "id"),
     "teleconsult_teleconsultevent_id_seq": ("teleconsult_teleconsultevent", "id"),
@@ -126,7 +137,6 @@ SEQUENCE_SET: Final = tuple(f"clinic_app.{name}" for name in sorted(SEQUENCE_TAR
 REQUIRED_EMPTY: Final = (
     "identity_user_groups",
     "identity_user_user_permissions",
-    "otp_static_staticdevice",
     "otp_static_statictoken",
     # Owner-CLI provider decisions: the fixed manifest does not carry them, so
     # a source holding any is refused before dump instead of losing them.

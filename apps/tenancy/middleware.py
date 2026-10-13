@@ -5,7 +5,7 @@ from http import HTTPStatus
 from typing import Final
 from uuid import UUID
 
-from django.contrib.auth import SESSION_KEY
+from django.contrib.auth import SESSION_KEY, logout
 from django.db import connection, transaction
 from django.http import HttpRequest
 from django.http.response import HttpResponseBase
@@ -15,6 +15,12 @@ from apps.core.api.errors import UI_API_PREFIX, ui_api_denial_response
 from apps.core.patient_context import persist_bound_patient_context
 from apps.core.workspace import finish_clinic_selection
 from apps.core.workspace_access import workspace_denial
+from apps.identity.otp import auth_redirect
+from apps.identity.session_inventory import (
+    session_cookie_is_revoked,
+    session_is_active,
+    touch_session,
+)
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     patient_session_context,
@@ -33,6 +39,9 @@ BYPASS_PATHS: Final = frozenset(
         "/readyz",
         "/readyz/",
         "/auth/login/",
+        "/auth/signup/",
+        "/auth/invitation/",
+        "/auth/identity-notification/callback/",
         # Sessionless ops scrape endpoint; authenticates with its own bearer
         # token plus a network allowlist (D-19, apps.core.telemetry).
         "/internal/metrics",
@@ -90,6 +99,34 @@ class TenantMiddleware:
         """Commit clinic selection only after the response and transaction succeed."""
         accepted = False
         try:
+            # These entrypoints authenticate independently and must retain
+            # their side-effect-free denial rather than mutate a staff session.
+            if request.path_info.startswith((*BYPASS_PREFIXES, PATIENT_PREFIX)):
+                return self._response(request)
+            incoming_key = request.session.session_key
+            raw_session_user = request.session.get(SESSION_KEY)
+            key = request.session.session_key
+            if isinstance(raw_session_user, str) and key is not None:
+                signed_user_id = _parse_uuid(raw_session_user)
+                if signed_user_id is not None:
+                    clear_connection_tenant_gucs()
+                    if not session_is_active(user_id=signed_user_id, session_key=key):
+                        if request.path_info.startswith(UI_API_PREFIX):
+                            return ui_api_denial_response()
+                        logout(request)
+                        if request.path_info not in BYPASS_PATHS:
+                            return auth_redirect(request, "/auth/login/")
+            elif incoming_key is not None and incoming_key.isascii():
+                clear_connection_tenant_gucs()
+                if (
+                    session_cookie_is_revoked(session_key=incoming_key)
+                    and request.path_info not in BYPASS_PATHS
+                ):
+                    if request.path_info.startswith(UI_API_PREFIX):
+                        return ui_api_denial_response()
+                    # No payload remains to log out. Do not delete a newer
+                    # cookie that the browser may already hold after rotation.
+                    return auth_redirect(request, "/auth/login/")
             response = self._response(request)
             accepted = response.status_code < HTTPStatus.BAD_REQUEST
             return response
@@ -132,6 +169,10 @@ class TenantMiddleware:
                     transaction.set_rollback(True)
                 elif response.status_code not in {403, 404}:
                     persist_bound_patient_context(request)
+                    touch_session(
+                        session_key=request.session.session_key,
+                        http_status=response.status_code,
+                    )
                 return response
         except TenantAccessDeniedError:
             # Resolve account status without opening a tenant. An inactive

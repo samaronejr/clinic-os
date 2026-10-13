@@ -31,6 +31,10 @@ def test_capacity_authorization_reverse_restores_exact_body_and_posture() -> Non
         reversed_body = cursor.fetchone()
         assert reversed_body == (previous,)
         cursor.execute(operation.sql)
+        current_membership = import_module(
+            "apps.identity.migrations.0031_cut2_current_membership"
+        )
+        cursor.execute(current_membership.SQL)
         cursor.execute(
             "SELECT pg_get_functiondef(oid), proowner, proacl, prosecdef, proconfig "
             "FROM pg_proc WHERE oid="

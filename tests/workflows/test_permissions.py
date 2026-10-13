@@ -87,3 +87,24 @@ def test_bundle_removal_blocks_task_permission_without_changing_other_actions(
         )
         with pytest.raises(CurrentActorError):
             require_permission("tasks.complete", clinic_id=graph.clinic_a)
+
+
+@pytest.mark.parametrize("permission", ACTIONS)
+def test_retained_revocation_denies_previously_issued_workflow_permission(
+    rbac_graph: RbacGraph, permission: str
+) -> None:
+    graph = rbac_graph
+    actor, _enrollment = permission_actor(graph, "clinic_manager")
+    with permission_context(graph, actor):
+        assert require_permission(permission, clinic_id=graph.clinic_a) == actor
+    with owner_context(graph.organization_a):
+        membership = UserClinicRole.objects.get(clinic_id=graph.clinic_a, user_id=actor)
+        assert (
+            UserClinicRole.objects.filter(pk=membership.pk).update(
+                revoked_at=timezone.now()
+            )
+            == 1
+        )
+        assert UserClinicRole.all_objects.get(pk=membership.pk).revoked_at is not None
+    with permission_context(graph, actor), pytest.raises(CurrentActorError):
+        require_permission(permission, clinic_id=graph.clinic_a)

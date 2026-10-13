@@ -9,9 +9,10 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
-from apps.tenancy.fields import EncryptedTextField
+from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
 if TYPE_CHECKING:
@@ -39,6 +40,8 @@ class User(AbstractUser):
             role__in=(
                 UserClinicRole.Role.OWNER,
                 UserClinicRole.Role.CLINIC_ADMIN,
+                UserClinicRole.Role.CLINIC_MANAGER,
+                UserClinicRole.Role.ORG_ADMIN,
             ),
         ).exists()
 
@@ -46,9 +49,31 @@ class User(AbstractUser):
 class Organization(models.Model):
     """Root tenant organization."""
 
+    class Status(models.TextChoices):
+        """Pending self-signup grants no runtime clinic authority."""
+
+        ACTIVE = "active", _("Active")
+        PENDING_ACTIVATION = "pending_activation", _("Pending activation")
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     cnpj = models.CharField(max_length=14)
+    status = models.CharField(max_length=20, choices=Status, default=Status.ACTIVE)
+
+    class Meta:
+        """Keep pending capture out of the legacy plaintext identity fields."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=("active", "pending_activation")),
+                name="identity_organization_status",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(status="pending_activation")
+                | models.Q(name="", cnpj=""),
+                name="identity_pending_capture_protected",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Return the organization name."""
@@ -59,6 +84,7 @@ class Clinic(models.Model):
     """Clinic owned by one organization."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization_id: uuid.UUID
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     crm_uf = models.CharField(max_length=2)
@@ -142,36 +168,51 @@ class ClinicConfiguration(models.Model):
         return str(self.pk)
 
 
+class CurrentMembershipManager(models.Manager["UserClinicRole"]):
+    """Expose current assignments while retained history stays explicit."""
+
+    def get_queryset(self) -> models.QuerySet[UserClinicRole]:
+        """Exclude revoked assignments from authority-bearing ORM readers."""
+        return super().get_queryset().filter(revoked_at__isnull=True)
+
+
 class UserClinicRole(models.Model):
     """Canonical clinic membership role assignment."""
 
     class Role(models.TextChoices):
         """Stored role values."""
 
-        OWNER = "owner", "Owner"
-        PHYSICIAN = "physician", "Physician"
-        RECEPTIONIST = "receptionist", "Receptionist"
-        CLINIC_ADMIN = "clinic_admin", "Clinic admin"
-        NURSE = "nurse", "Nurse"
-        ALLIED_PROFESSIONAL = "allied_professional", "Allied professional"
-        SCHEDULER = "scheduler", "Scheduler"
-        CLINIC_MANAGER = "clinic_manager", "Clinic manager"
-        FINANCE = "finance", "Finance"
-        ORG_ADMIN = "org_admin", "Organization admin"
+        OWNER = "owner", pgettext_lazy("account owner", "Owner")
+        PHYSICIAN = "physician", _("Physician")
+        RECEPTIONIST = "receptionist", _("Receptionist")
+        CLINIC_ADMIN = "clinic_admin", _("Clinic admin")
+        NURSE = "nurse", _("Nurse")
+        ALLIED_PROFESSIONAL = "allied_professional", _("Allied professional")
+        SCHEDULER = "scheduler", _("Scheduler")
+        CLINIC_MANAGER = "clinic_manager", _("Clinic manager")
+        FINANCE = "finance", _("Finance")
+        ORG_ADMIN = "org_admin", _("Organization admin")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE)
-    clinic = models.ForeignKey(Clinic, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
     role = models.CharField(max_length=20, choices=Role.choices)
     workflow_bundle_version = models.PositiveSmallIntegerField(default=1)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    objects = CurrentMembershipManager()
+    all_objects = models.Manager["UserClinicRole"]()
 
     class Meta:
         """Prevent duplicate exact role assignments."""
 
+        base_manager_name = "all_objects"
+        default_manager_name = "objects"
         constraints: ClassVar[list[BaseConstraint]] = [
             models.UniqueConstraint(
                 fields=("organization", "clinic", "user", "role"),
+                condition=models.Q(revoked_at__isnull=True),
                 name="identity_userclinicrole_assignment_uniq",
             ),
             models.CheckConstraint(
@@ -506,4 +547,265 @@ class SavedView(TenantScopedModel):
 
     def __str__(self) -> str:
         """Return only the stable record identifier."""
+        return str(self.pk)
+
+
+class SignupRegistration(TenantScopedModel):
+    """Owner-only protected capture awaiting the real subscription activation.
+
+    The first administrator has an inactive login and no membership. Desired
+    login, legal and professional identity live only in the encrypted payload
+    until the owning activation service accepts the registration.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization_id: uuid.UUID
+    first_admin_id: uuid.UUID
+    organization = models.OneToOneField(Organization, on_delete=models.PROTECT)
+    first_admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    idempotency_key = models.UUIDField(unique=True)
+    payload = EncryptedJSONField(purpose="identity.signup.capture")
+    payload_fingerprint = models.BinaryField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        """Return only the opaque registration identity."""
+        return str(self.pk)
+
+
+class OnboardingProgress(TenantScopedModel):
+    """Resumable, non-clinical completion receipts for registered clinic steps."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization_id: uuid.UUID
+    clinic_id: uuid.UUID
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    step_key = models.CharField(max_length=80)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_fingerprint = models.BinaryField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Keep exactly one persisted receipt per clinic and startup key."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("clinic", "step_key"),
+                name="identity_onboarding_clinic_step_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the opaque receipt identifier."""
+        return str(self.pk)
+
+
+class StaffInvitation(TenantScopedModel):
+    """Protected invitation and interrupted enrollment, never a bearer grant."""
+
+    class State(models.TextChoices):
+        """Only pending invitations can complete their enrollment."""
+
+        PENDING = "pending", _("Pending")
+        ACCEPTED = "accepted", _("Accepted")
+        EXPIRED = "expired", _("Expired")
+        REVOKED = "revoked", _("Revoked")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization_id: uuid.UUID
+    clinic_id: uuid.UUID
+    pending_user_id: uuid.UUID
+    invited_by_id: uuid.UUID
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    email_hash = models.BinaryField()
+    email = EncryptedTextField(purpose="identity.staff.invitation.email")
+    bundle = models.CharField(max_length=32, choices=UserClinicRole.Role)
+    token_hash = models.BinaryField(unique=True)
+    token_nonce = models.UUIDField(default=uuid.uuid4, editable=False)
+    state = models.CharField(max_length=16, choices=State, default=State.PENDING)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="issued_staff_invitations",
+    )
+    pending_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="staff_invitations",
+    )
+    desired_username = EncryptedTextField(
+        purpose="identity.staff.invitation.username", blank=True, null=True
+    )
+    password_set_at = models.DateTimeField(null=True, blank=True)
+    device = models.OneToOneField(
+        "otp_totp.TOTPDevice", on_delete=models.PROTECT, null=True, blank=True
+    )
+
+    class Meta:
+        """Bind complete state vocabulary and coherent terminal receipts."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    state__in=("pending", "accepted", "expired", "revoked")
+                ),
+                name="identity_invitation_state",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(expires_at__gt=models.F("created_at")),
+                name="identity_invitation_expiry",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        state="accepted",
+                        accepted_at__isnull=False,
+                        password_set_at__isnull=False,
+                        device__isnull=False,
+                    )
+                    | (~models.Q(state="accepted") & models.Q(accepted_at__isnull=True))
+                ),
+                name="identity_invitation_acceptance",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the invitation id; email/token are never reflected."""
+        return str(self.pk)
+
+
+class RecoveryBatch(models.Model):
+    """One hash-only recovery enrollment tied to a confirmed authenticator."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id: uuid.UUID
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    device = models.ForeignKey("otp_totp.TOTPDevice", on_delete=models.PROTECT)
+    static_device = models.OneToOneField(
+        "otp_static.StaticDevice", on_delete=models.PROTECT
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        """Return only the recovery batch identifier."""
+        return str(self.pk)
+
+
+class RecoveryCode(models.Model):
+    """One atomic one-use digest; plaintext codes have no storage column."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(RecoveryBatch, on_delete=models.PROTECT)
+    code_hash = models.BinaryField(unique=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        """Return only the code record id."""
+        return str(self.pk)
+
+
+class AuthenticatorRetirement(models.Model):
+    """Retained retirement prevents an old unconfirmed seed from being resumed."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id: uuid.UUID
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    device = models.OneToOneField(
+        "otp_totp.TOTPDevice",
+        on_delete=models.PROTECT,
+        related_name="lifecycle_retirement",
+    )
+    retired_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        """Return only the retirement record id."""
+        return str(self.pk)
+
+
+class AuthenticatorReset(TenantScopedModel):
+    """Audited reset whose full delay starts only after actual user notification."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization_id: uuid.UUID
+    clinic_id: uuid.UUID
+    user_id: uuid.UUID
+    requested_by_id: uuid.UUID
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="authenticator_resets",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="requested_authenticator_resets",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    notified_at = models.DateTimeField(null=True, blank=True)
+    available_at = models.DateTimeField(null=True, blank=True)
+    executed_at = models.DateTimeField(null=True, blank=True)
+    notification_operation = models.OneToOneField(
+        "comms.IntegrationOperation", on_delete=models.PROTECT, null=True, blank=True
+    )
+
+    def __str__(self) -> str:
+        """Return only the reset request id."""
+        return str(self.pk)
+
+
+class SessionRecord(models.Model):
+    """User-owned, hash-only session inventory with coarse network/client metadata."""
+
+    class UserAgentFamily(models.TextChoices):
+        """No version, platform or raw User-Agent is retained."""
+
+        CHROMIUM = "chromium", _("Chromium")
+        FIREFOX = "firefox", _("Firefox")
+        SAFARI = "safari", _("Safari")
+        OTHER = "other", _("Other browser")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_id: uuid.UUID
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    session_key_hash = models.BinaryField(unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now_add=True)
+    ip_network = models.CharField(max_length=48, blank=True)
+    user_agent_family = models.CharField(
+        max_length=16,
+        choices=UserAgentFamily,
+        default=UserAgentFamily.OTHER,
+    )
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    superseded_at = models.DateTimeField(null=True, editable=False)
+    verification_device = models.ForeignKey(
+        "otp_totp.TOTPDevice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Distinguish superseded keys without weakening revocation."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(superseded_at__isnull=True)
+                    | models.Q(revoked_at__isnull=False)
+                ),
+                name="identity_session_superseded_is_revoked",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """Return only the session record id, never its hash or metadata."""
         return str(self.pk)

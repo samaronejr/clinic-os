@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 from apps.core.patient_context import PATIENT_BOUND_VIEWS
 from apps.intake.models import PatientClinicEnrollment
 from apps.prescription.signing import initiate_signature
 from apps.tenancy.db import tenant_context
+from django.contrib.auth import SESSION_KEY
 from django.urls import reverse
 
-from core.test_navigation import PATIENT, _client_for, _get, _post
+from core.test_navigation import PATIENT, _client_for, _get, _post, _reauthenticate
 from core.test_workspace_boundaries import remove_permission
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
@@ -85,8 +87,7 @@ def test_each_patient_surface_binds_and_refuses_revocation(
     settings: SettingsWrapper,
     synthetic_provider: object,
 ) -> None:
-    graph = rbac_graph
-    role = "physician"
+    graph, role = rbac_graph, "physician"
     if view.startswith("ehr:"):
         client, url, data, response = _ehr_surface(graph, view)
     elif view.startswith("prescription:"):
@@ -129,6 +130,7 @@ def test_each_patient_surface_binds_and_refuses_revocation(
     with owner_context(graph.organization_a):
         name = str(PatientClinicEnrollment.objects.get(pk=pinned).patient.full_name)
     remove_permission(graph, role, "demographics.read")
+    _reauthenticate(client, UUID(client.session[SESSION_KEY]), role)
     refused = _post(client, url, data) if data else _get(client, url)
     assert refused.status_code in {403, 404}
     assert b"data-patient-banner" not in refused.content

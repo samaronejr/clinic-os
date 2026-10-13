@@ -8,6 +8,7 @@ import pytest
 from otp_test_support import runtime_role
 from patient_http_support import (
     receptionist_client,
+    relogin,
     verified_physician_client,
 )
 from scheduling.availability_http_support import (
@@ -56,6 +57,7 @@ def test_manager_get_never_lists_a_foreign_clinic_window(
     seed_block(rbac_graph, actor, rbac_graph.clinic_a, rbac_graph.physician)
     foreign = create_dst_clinic(rbac_graph, actor, rbac_graph.physician)
     seed_block(rbac_graph, actor, foreign, rbac_graph.physician, ADJACENT)
+    relogin(client, actor)
 
     with runtime_role():
         response = client.get(url)

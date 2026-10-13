@@ -17,18 +17,18 @@
     "returns": "integer",
     "volatility": "i"
   },
-  "pg_catalog.array_position(anycompatiblearray, anycompatible)": {
+  "pg_catalog.array_position(anycompatiblearray, anycompatible, integer)": {
     "extension": "",
-    "implementation": "array_position",
+    "implementation": "array_position_start",
     "language": "internal",
     "library": "",
     "reason": "Required lookup of values within supplied arrays; admits this exact array-search implementation.",
     "returns": "integer",
     "volatility": "i"
   },
-  "pg_catalog.array_position(anycompatiblearray, anycompatible, integer)": {
+  "pg_catalog.array_position(anycompatiblearray, anycompatible)": {
     "extension": "",
-    "implementation": "array_position_start",
+    "implementation": "array_position",
     "language": "internal",
     "library": "",
     "reason": "Required lookup of values within supplied arrays; admits this exact array-search implementation.",
@@ -53,18 +53,18 @@
     "returns": "bytea",
     "volatility": "i"
   },
-  "pg_catalog.btrim(text)": {
+  "pg_catalog.btrim(text, text)": {
     "extension": "",
-    "implementation": "btrim1",
+    "implementation": "btrim",
     "language": "internal",
     "library": "",
     "reason": "Reached relation string-domain constraints; conservative overload resolution retains this exact trimming implementation as opaque risk.",
     "returns": "text",
     "volatility": "i"
   },
-  "pg_catalog.btrim(text, text)": {
+  "pg_catalog.btrim(text)": {
     "extension": "",
-    "implementation": "btrim",
+    "implementation": "btrim1",
     "language": "internal",
     "library": "",
     "reason": "Reached relation string-domain constraints; conservative overload resolution retains this exact trimming implementation as opaque risk.",
@@ -107,15 +107,6 @@
     "returns": "bigint",
     "volatility": "i"
   },
-  "pg_catalog.current_setting(text)": {
-    "extension": "",
-    "implementation": "show_config_by_name",
-    "language": "internal",
-    "library": "",
-    "reason": "Required literal tenant/actor/configuration lookups. Dynamic names are forbidden by the repo guard; this is not a claim that arbitrary GUCs are clock independent.",
-    "returns": "text",
-    "volatility": "s"
-  },
   "pg_catalog.current_setting(text, boolean)": {
     "extension": "",
     "implementation": "show_config_by_name_missing_ok",
@@ -125,14 +116,23 @@
     "returns": "text",
     "volatility": "s"
   },
-  "pg_catalog.date(timestamp without time zone)": {
+  "pg_catalog.current_setting(text)": {
     "extension": "",
-    "implementation": "timestamp_date",
+    "implementation": "show_config_by_name",
     "language": "internal",
     "library": "",
-    "reason": "PL/pgSQL date type/name is also a function identifier; retain this exact timestamp-to-date conversion candidate as opaque risk.",
-    "returns": "date",
-    "volatility": "i"
+    "reason": "Required literal tenant/actor/configuration lookups. Dynamic names are forbidden by the repo guard; this is not a claim that arbitrary GUCs are clock independent.",
+    "returns": "text",
+    "volatility": "s"
+  },
+  "pg_catalog.current_user()": {
+    "extension": "",
+    "implementation": "current_user",
+    "language": "internal",
+    "library": "",
+    "returns": "name",
+    "volatility": "s",
+    "reason": "Recovery, authenticator-reset and session-change guards test the effective PostgreSQL role to authorize their resolver-only write paths. Admit only the exact PostgreSQL current-role identity implementation; it is not a temporal input."
   },
   "pg_catalog.date_ge(date, date)": {
     "extension": "",
@@ -168,6 +168,15 @@
     "library": "",
     "reason": "Required minute-boundary normalization of supplied values; potential temporal dependency remains visible.",
     "returns": "timestamp without time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.date(timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_date",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL date type/name is also a function identifier; retain this exact timestamp-to-date conversion candidate as opaque risk.",
+    "returns": "date",
     "volatility": "i"
   },
   "pg_catalog.decode(text, text)": {
@@ -242,15 +251,6 @@
     "returns": "uuid",
     "volatility": "v"
   },
-  "pg_catalog.generate_series(bigint, bigint)": {
-    "extension": "",
-    "implementation": "generate_series_int8",
-    "language": "internal",
-    "library": "",
-    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
-    "returns": "bigint",
-    "volatility": "i"
-  },
   "pg_catalog.generate_series(bigint, bigint, bigint)": {
     "extension": "",
     "implementation": "generate_series_step_int8",
@@ -260,13 +260,13 @@
     "returns": "bigint",
     "volatility": "i"
   },
-  "pg_catalog.generate_series(integer, integer)": {
+  "pg_catalog.generate_series(bigint, bigint)": {
     "extension": "",
-    "implementation": "generate_series_int4",
+    "implementation": "generate_series_int8",
     "language": "internal",
     "library": "",
     "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
-    "returns": "integer",
+    "returns": "bigint",
     "volatility": "i"
   },
   "pg_catalog.generate_series(integer, integer, integer)": {
@@ -278,18 +278,27 @@
     "returns": "integer",
     "volatility": "i"
   },
-  "pg_catalog.generate_series(numeric, numeric)": {
+  "pg_catalog.generate_series(integer, integer)": {
     "extension": "",
-    "implementation": "generate_series_numeric",
+    "implementation": "generate_series_int4",
+    "language": "internal",
+    "library": "",
+    "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.generate_series(numeric, numeric, numeric)": {
+    "extension": "",
+    "implementation": "generate_series_step_numeric",
     "language": "internal",
     "library": "",
     "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
     "returns": "numeric",
     "volatility": "i"
   },
-  "pg_catalog.generate_series(numeric, numeric, numeric)": {
+  "pg_catalog.generate_series(numeric, numeric)": {
     "extension": "",
-    "implementation": "generate_series_step_numeric",
+    "implementation": "generate_series_numeric",
     "language": "internal",
     "library": "",
     "reason": "Required bounded supplied range expansion for slots/capacity units; admits the exact native overload.",
@@ -944,18 +953,18 @@
     "volatility": "s",
     "reason": "Workflow bundle issuance tests the authenticated database login, not the effective role. Admit only the exact PostgreSQL login-identity implementation; it is not a temporal input."
   },
-  "pg_catalog.similar_to_escape(text)": {
+  "pg_catalog.similar_to_escape(text, text)": {
     "extension": "",
-    "implementation": "similar_to_escape_1",
+    "implementation": "similar_to_escape_2",
     "language": "internal",
     "library": "",
     "reason": "Reached SIMILAR TO constraints lower to this exact native escape implementation; retained risk.",
     "returns": "text",
     "volatility": "i"
   },
-  "pg_catalog.similar_to_escape(text, text)": {
+  "pg_catalog.similar_to_escape(text)": {
     "extension": "",
-    "implementation": "similar_to_escape_2",
+    "implementation": "similar_to_escape_1",
     "language": "internal",
     "library": "",
     "reason": "Reached SIMILAR TO constraints lower to this exact native escape implementation; retained risk.",
@@ -980,15 +989,6 @@
     "returns": "text",
     "volatility": "i"
   },
-  "pg_catalog.substring(bit, integer)": {
-    "extension": "",
-    "implementation": "bitsubstr_no_len",
-    "language": "internal",
-    "library": "",
-    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
-    "returns": "bit",
-    "volatility": "i"
-  },
   "pg_catalog.substring(bit, integer, integer)": {
     "extension": "",
     "implementation": "bitsubstr",
@@ -998,13 +998,13 @@
     "returns": "bit",
     "volatility": "i"
   },
-  "pg_catalog.substring(bytea, integer)": {
+  "pg_catalog.substring(bit, integer)": {
     "extension": "",
-    "implementation": "bytea_substr_no_len",
+    "implementation": "bitsubstr_no_len",
     "language": "internal",
     "library": "",
     "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
-    "returns": "bytea",
+    "returns": "bit",
     "volatility": "i"
   },
   "pg_catalog.substring(bytea, integer, integer)": {
@@ -1016,18 +1016,27 @@
     "returns": "bytea",
     "volatility": "i"
   },
-  "pg_catalog.substring(text, integer)": {
+  "pg_catalog.substring(bytea, integer)": {
     "extension": "",
-    "implementation": "text_substr_no_len",
+    "implementation": "bytea_substr_no_len",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
+    "returns": "bytea",
+    "volatility": "i"
+  },
+  "pg_catalog.substring(text, integer, integer)": {
+    "extension": "",
+    "implementation": "text_substr",
     "language": "internal",
     "library": "",
     "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
     "returns": "text",
     "volatility": "i"
   },
-  "pg_catalog.substring(text, integer, integer)": {
+  "pg_catalog.substring(text, integer)": {
     "extension": "",
-    "implementation": "text_substr",
+    "implementation": "text_substr_no_len",
     "language": "internal",
     "library": "",
     "reason": "Reached string-field validation resolves every substring overload conservatively; retained exact implementation risk.",
@@ -1133,6 +1142,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.time_gt(time without time zone, time without time zone)": {
+    "extension": "",
+    "implementation": "time_gt",
+    "language": "internal",
+    "library": "",
+    "reason": "Required comparison of supplied local times.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.time(interval)": {
     "extension": "",
     "implementation": "interval_time",
@@ -1169,33 +1187,6 @@
     "returns": "time without time zone",
     "volatility": "i"
   },
-  "pg_catalog.time_gt(time without time zone, time without time zone)": {
-    "extension": "",
-    "implementation": "time_gt",
-    "language": "internal",
-    "library": "",
-    "reason": "Required comparison of supplied local times.",
-    "returns": "boolean",
-    "volatility": "i"
-  },
-  "pg_catalog.timestamptz(date, time with time zone)": {
-    "extension": "",
-    "implementation": "datetimetz_timestamptz",
-    "language": "internal",
-    "library": "",
-    "reason": "PL/pgSQL temporal declarations also match callable identifiers; retain this exact construction/precision overload as opaque risk.",
-    "returns": "timestamp with time zone",
-    "volatility": "i"
-  },
-  "pg_catalog.timestamptz(timestamp with time zone, integer)": {
-    "extension": "",
-    "implementation": "timestamptz_scale",
-    "language": "internal",
-    "library": "",
-    "reason": "PL/pgSQL temporal declarations also match callable identifiers; retain this exact construction/precision overload as opaque risk.",
-    "returns": "timestamp with time zone",
-    "volatility": "i"
-  },
   "pg_catalog.timestamptz_eq(timestamp with time zone, timestamp with time zone)": {
     "extension": "",
     "implementation": "timestamp_eq",
@@ -1221,6 +1212,24 @@
     "library": "",
     "reason": "Required ordering of supplied instants.",
     "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz(date, time with time zone)": {
+    "extension": "",
+    "implementation": "datetimetz_timestamptz",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL temporal declarations also match callable identifiers; retain this exact construction/precision overload as opaque risk.",
+    "returns": "timestamp with time zone",
+    "volatility": "i"
+  },
+  "pg_catalog.timestamptz(timestamp with time zone, integer)": {
+    "extension": "",
+    "implementation": "timestamptz_scale",
+    "language": "internal",
+    "library": "",
+    "reason": "PL/pgSQL temporal declarations also match callable identifiers; retain this exact construction/precision overload as opaque risk.",
+    "returns": "timestamp with time zone",
     "volatility": "i"
   },
   "pg_catalog.timezone(interval, time with time zone)": {
@@ -1277,18 +1286,18 @@
     "returns": "jsonb",
     "volatility": "s"
   },
-  "pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)": {
+  "pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)": {
     "extension": "",
-    "implementation": "range_constructor2",
+    "implementation": "range_constructor3",
     "language": "internal",
     "library": "",
     "reason": "Required half-open range construction from supplied appointment/availability bounds.",
     "returns": "tstzrange",
     "volatility": "i"
   },
-  "pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone, text)": {
+  "pg_catalog.tstzrange(timestamp with time zone, timestamp with time zone)": {
     "extension": "",
-    "implementation": "range_constructor3",
+    "implementation": "range_constructor2",
     "language": "internal",
     "library": "",
     "reason": "Required half-open range construction from supplied appointment/availability bounds.",

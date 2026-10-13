@@ -9,6 +9,7 @@ import pytest
 from apps.identity.models import User, UserClinicRole
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.db import connection, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 
@@ -141,7 +142,7 @@ def test_equal_replay_survives_one_manager_role_removal(
             clinic_id=rbac_graph.clinic_a,
             user_id=rbac_graph.shared_user,
             role=UserClinicRole.Role.RECEPTIONIST,
-        ).delete()
+        ).update(revoked_at=Now())
 
     with (
         runtime_role(),

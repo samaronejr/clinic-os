@@ -68,6 +68,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "identity_clinicconfiguration",
         # Exact user-bound saved-view policy/ACLs: tests/core/test_saved_views.py.
         "identity_savedview",
+        # Protected pending captures: tests/identity/test_onboarding.py.
+        "identity_signupregistration",
+        "identity_onboardingprogress",
+        "identity_staffinvitation",
+        "identity_authenticatorreset",
         # Exact v1 scope policies: tests/identity/test_permission_scope.py.
         "identity_rolegrant",
         # Task 7 owner-only machine authority: test_agent_posture.
@@ -154,6 +159,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     assert policies == {
         (table, "tenant_isolation") for table in EXPECTED_TENANT_COLUMNS
     } | {
+        ("identity_organization", "active_organization_runtime"),
         ("scheduling_availabilityblock", "patient_booking_read"),
         ("scheduling_availabilityblock", "agent_grant"),
         ("scheduling_appointment", "patient_booking_read"),

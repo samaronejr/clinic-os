@@ -37,7 +37,7 @@
   {% for row in task_rows %}{% with task=row.record %}
     <article class="task-row" data-task="{{ task.pk }}" data-task-state="{{ task.state }}" data-revision="{{ task.revision }}">
       <header><h2>{{ row.kind }}</h2><span class="badge">{{ row.state }}</span></header>
-      <dl class="task-facts"><div><dt>{% trans "Owner" %}</dt><dd>{{ row.owner }}</dd></div><div><dt>{% trans "Due" %}</dt><dd>{% timezone clinic.timezone %}{{ task.due_at|date:"d/m/Y H:i" }}{% endtimezone %}</dd></div><div><dt>{% trans "Priority" %}</dt><dd>{{ row.priority }}</dd></div></dl>
+      <dl class="task-facts"><div><dt>{% trans "Owner" context "task owner" %}</dt><dd>{{ row.owner }}</dd></div><div><dt>{% trans "Due" %}</dt><dd>{% timezone clinic.timezone %}{{ task.due_at|date:"d/m/Y H:i" }}{% endtimezone %}</dd></div><div><dt>{% trans "Priority" %}</dt><dd>{{ row.priority }}</dd></div></dl>
       {% if task.escalated_at %}<p class="feedback feedback--muted">{% trans "Escalated for manager review" %}</p>{% endif %}
       {% if manager and row.active %}<label class="task-select"><input type="checkbox" name="task_ids" value="{{ task.pk }}" form="bulk-reassign">{% trans "Select for reassignment" %}</label>{% endif %}
       {% if task.state == 'open' and can_assign %}

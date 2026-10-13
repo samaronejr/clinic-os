@@ -1,18 +1,6 @@
 {
   "candidates": [
     {
-      "symbol": "apps.audit.services.record_event",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.audit.services.record_event#observed"
-      ]
-    },
-    {
       "symbol": "apps.audit.services._record_system_event",
       "signals": [
         "resolver"
@@ -22,6 +10,18 @@
       "observe": true,
       "probes": [
         "apps.audit.services._record_system_event#observed"
+      ]
+    },
+    {
+      "symbol": "apps.audit.services.record_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.audit.services.record_event#observed"
       ]
     },
     {
@@ -55,14 +55,6 @@
       ]
     },
     {
-      "symbol": "apps.billing.reconciliation._resolve_charge",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "provider",
-      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
-    },
-    {
       "symbol": "apps.billing.reconciliation._event_seen",
       "signals": [
         "resolver"
@@ -71,7 +63,7 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
-      "symbol": "apps.billing.reconciliation._superseded",
+      "symbol": "apps.billing.reconciliation._recovered",
       "signals": [
         "resolver"
       ],
@@ -79,7 +71,15 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
-      "symbol": "apps.billing.reconciliation._recovered",
+      "symbol": "apps.billing.reconciliation._resolve_charge",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+    },
+    {
+      "symbol": "apps.billing.reconciliation._superseded",
       "signals": [
         "resolver"
       ],
@@ -156,17 +156,15 @@
       ]
     },
     {
-      "symbol": "apps.consent.services.patient_authority",
+      "symbol": "apps.consent.services._patient_audit",
       "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
+        "resolver"
       ],
       "kind": "direct",
       "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
       "observe": true,
       "probes": [
-        "apps.consent.services.patient_authority#observed"
+        "apps.consent.services._patient_audit#observed"
       ]
     },
     {
@@ -182,18 +180,6 @@
       ]
     },
     {
-      "symbol": "apps.consent.services.record_ai_disclosure",
-      "signals": [
-        "denial",
-        "permission"
-      ],
-      "kind": "direct",
-      "reason": "Staff attestation authority boundary under clinic_app.has_permission; the named callable is exercised across the legacy role matrix.",
-      "probes": [
-        "apps.consent.services.record_ai_disclosure"
-      ]
-    },
-    {
       "symbol": "apps.consent.services.acknowledge_participant",
       "signals": [
         "denial",
@@ -203,6 +189,40 @@
       "reason": "Staff attestation authority boundary under clinic_app.has_permission; the named callable is exercised across the legacy role matrix.",
       "probes": [
         "apps.consent.services.acknowledge_participant"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.ai_disclosure_status",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.ai_disclosure_status#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.consent_for_future_use",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.consent_for_future_use#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.patient_authority",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.consent.services.patient_authority#observed"
       ]
     },
     {
@@ -218,15 +238,35 @@
       ]
     },
     {
-      "symbol": "apps.consent.services._patient_audit",
+      "symbol": "apps.consent.services.publish_notice",
       "signals": [
-        "resolver"
+        "permission"
       ],
       "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
       "probes": [
-        "apps.consent.services._patient_audit#observed"
+        "apps.consent.services.publish_notice#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.publish_text",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.publish_text#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.record_ai_disclosure",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "reason": "Staff attestation authority boundary under clinic_app.has_permission; the named callable is exercised across the legacy role matrix.",
+      "probes": [
+        "apps.consent.services.record_ai_disclosure"
       ]
     },
     {
@@ -239,6 +279,26 @@
       "observe": true,
       "probes": [
         "apps.consent.services.revoke_consent#observed"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.staff_receipts",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.staff_receipts#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.consent.services.staff_refusals",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services.staff_refusals#cut1"
       ]
     },
     {
@@ -265,34 +325,96 @@
       ]
     },
     {
+      "symbol": "apps.core.command_search.search_commands",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions"
+      ],
+      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
+    },
+    {
+      "symbol": "apps.core.command_views._change_saved_view",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions"
+      ],
+      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
+    },
+    {
+      "symbol": "apps.core.command_views._switch_patient",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions"
+      ],
+      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
+    },
+    {
+      "symbol": "apps.core.command_views.command_options",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions",
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.is_privileged_user"
+      ]
+    },
+    {
+      "symbol": "apps.core.command_views.command_page",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions",
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required"
+      ]
+    },
+    {
+      "symbol": "apps.core.command_views.command_run",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.navigation.granted_permissions",
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required"
+      ]
+    },
+    {
+      "symbol": "apps.core.command_views.patient_close",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.core.workspace._visible_clinics",
+        "apps.identity.otp.privileged_totp_required"
+      ]
+    },
+    {
       "symbol": "apps.core.fairness._organization_quotas",
       "signals": [
         "resolver"
       ],
       "kind": "infrastructure",
       "reason": "Worker admission-quota projection, not a staff-role grant. Organization-wide writes use require_current_actor_org_admin; tests/core/test_fairness.py covers the resolver and admission behavior."
-    },
-    {
-      "symbol": "apps.core.integration._resolve_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.integration._resolve_scope"
-      ]
-    },
-    {
-      "symbol": "apps.core.integration._resolve_callback_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.integration._resolve_callback_scope"
-      ]
     },
     {
       "symbol": "apps.core.integration._actor_has_clinic_authority",
@@ -314,6 +436,28 @@
       "kind": "direct",
       "probes": [
         "apps.core.integration._prepare_with_authority"
+      ]
+    },
+    {
+      "symbol": "apps.core.integration._resolve_callback_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.integration._resolve_callback_scope"
+      ]
+    },
+    {
+      "symbol": "apps.core.integration._resolve_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.integration._resolve_scope"
       ]
     },
     {
@@ -342,6 +486,26 @@
         "apps.tenancy.db.tenant_context"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.core.navigation.granted_permissions",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.navigation.granted_permissions"
+      ]
+    },
+    {
+      "symbol": "apps.core.patient_context.patient_context_allowed",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.patient_context.patient_context_allowed"
+      ]
     },
     {
       "symbol": "apps.core.telemetry._allowed_networks",
@@ -398,6 +562,16 @@
       ]
     },
     {
+      "symbol": "apps.core.workspace.WorkspaceClinic.agenda_url",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.workspace.WorkspaceClinic.agenda_url#cut1"
+      ]
+    },
+    {
       "symbol": "apps.core.workspace._visible_clinics",
       "signals": [
         "membership",
@@ -405,6 +579,17 @@
       ],
       "kind": "direct",
       "probes": [
+        "apps.core.workspace._visible_clinics"
+      ]
+    },
+    {
+      "symbol": "apps.core.workspace.current_clinic",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
         "apps.core.workspace._visible_clinics"
       ]
     },
@@ -420,75 +605,23 @@
       ]
     },
     {
-      "symbol": "apps.core.command_views.command_page",
+      "symbol": "apps.core.workspace_access._billing_surface_admitted",
       "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.core.navigation.granted_permissions",
-        "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.privileged_totp_required"
-      ]
-    },
-    {
-      "symbol": "apps.core.command_views.command_options",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.core.navigation.granted_permissions",
-        "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.is_privileged_user"
-      ]
-    },
-    {
-      "symbol": "apps.core.command_views.command_run",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.core.navigation.granted_permissions",
-        "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.privileged_totp_required"
-      ]
-    },
-    {
-      "symbol": "apps.core.command_views.patient_close",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.core.workspace._visible_clinics",
-        "apps.identity.otp.privileged_totp_required"
-      ]
-    },
-    {
-      "symbol": "apps.core.navigation.granted_permissions",
-      "signals": [
-        "resolver"
+        "permission"
       ],
       "kind": "direct",
       "probes": [
-        "apps.core.navigation.granted_permissions"
+        "apps.core.workspace_access._billing_surface_admitted"
       ]
     },
     {
-      "symbol": "apps.core.workspace.current_clinic",
+      "symbol": "apps.core.workspace_access.workspace_denial",
       "signals": [
-        "authentication"
+        "permission"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.core.workspace._visible_clinics"
+      "kind": "direct",
+      "probes": [
+        "apps.core.workspace_access.workspace_denial"
       ]
     },
     {
@@ -513,6 +646,16 @@
       ]
     },
     {
+      "symbol": "apps.ehr.attachments.attachment_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.attachments.attachment_context"
+      ]
+    },
+    {
       "symbol": "apps.ehr.attachments.authorize_attachment_encounter",
       "signals": [
         "denial",
@@ -526,24 +669,13 @@
       ]
     },
     {
-      "symbol": "apps.ehr.attachments.attachment_context",
+      "symbol": "apps.ehr.attachments.download_attachment",
       "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.attachments.attachment_context"
-      ]
-    },
-    {
-      "symbol": "apps.ehr.attachments.upload_attachment",
-      "signals": [
-        "actor"
+        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ehr.attachments.authorize_attachment_encounter",
-        "apps.identity.current_context.current_actor_id"
+        "apps.ehr.attachments.authorize_attachment_encounter"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -559,24 +691,16 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.ehr.attachments.download_attachment",
+      "symbol": "apps.ehr.attachments.upload_attachment",
       "signals": [
-        "denial"
+        "actor"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ehr.attachments.authorize_attachment_encounter"
+        "apps.ehr.attachments.authorize_attachment_encounter",
+        "apps.identity.current_context.current_actor_id"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.ehr.finalization._next_version",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "data_operation",
-      "reason": "Version allocation behind the already authorized document; no staff-role decision."
     },
     {
       "symbol": "apps.ehr.finalization._author_version",
@@ -589,14 +713,13 @@
       ]
     },
     {
-      "symbol": "apps.ehr.finalization.finalize_version",
+      "symbol": "apps.ehr.finalization._next_version",
       "signals": [
-        "authentication"
+        "denial",
+        "resolver"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.finalization.finalize_version"
-      ]
+      "kind": "data_operation",
+      "reason": "Version allocation behind the already authorized document; no staff-role decision."
     },
     {
       "symbol": "apps.ehr.finalization.close_encounter",
@@ -611,16 +734,13 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.ehr.history.authorize_history",
+      "symbol": "apps.ehr.finalization.finalize_version",
       "signals": [
-        "denial",
-        "resolver",
-        "role_helper",
-        "scope_name"
+        "authentication"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ehr.history.authorize_history"
+        "apps.ehr.finalization.finalize_version"
       ]
     },
     {
@@ -631,6 +751,19 @@
       "kind": "direct",
       "probes": [
         "apps.ehr.history._context"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.history.authorize_history",
+      "signals": [
+        "denial",
+        "resolver",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.history.authorize_history"
       ]
     },
     {
@@ -689,17 +822,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services._denied",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services._denied"
-      ]
-    },
-    {
       "symbol": "apps.ehr.services._appointment",
       "signals": [
         "actor",
@@ -724,13 +846,25 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.publish_template",
+      "symbol": "apps.ehr.services._denied",
       "signals": [
-        "role_helper"
+        "denial",
+        "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ehr.services.publish_template"
+        "apps.ehr.services._denied"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.create_draft",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services.create_draft"
       ]
     },
     {
@@ -744,14 +878,23 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.create_draft",
+      "symbol": "apps.ehr.services.publish_template",
       "signals": [
-        "denial",
-        "resolver"
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.ehr.services.create_draft"
+        "apps.ehr.services.publish_template"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.record_clinical_note",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services.record_clinical_note"
       ]
     },
     {
@@ -768,16 +911,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.record_clinical_note",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services.record_clinical_note"
-      ]
-    },
-    {
       "symbol": "apps.ehr.views._close",
       "signals": [
         "denial"
@@ -789,6 +922,17 @@
         "apps.ehr.services.view_version"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.ehr.views._resume",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.views._resume"
+      ]
     },
     {
       "symbol": "apps.ehr.views._review",
@@ -822,17 +966,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.views._resume",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.views._resume"
-      ]
-    },
-    {
       "symbol": "apps.ehr.views.encounter_workspace",
       "signals": [
         "decorator"
@@ -840,6 +973,17 @@
       "kind": "direct",
       "probes": [
         "apps.ehr.views.encounter_workspace"
+      ]
+    },
+    {
+      "symbol": "apps.identity.account_views.recovery_view",
+      "signals": [
+        "actor",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.account_views.recovery_view"
       ]
     },
     {
@@ -873,6 +1017,17 @@
       ]
     },
     {
+      "symbol": "apps.identity.clinic_settings_views.clinic_logo",
+      "signals": [
+        "decorator",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.clinic_settings_views.clinic_logo"
+      ]
+    },
+    {
       "symbol": "apps.identity.clinic_settings_views.clinic_settings",
       "signals": [
         "decorator",
@@ -884,14 +1039,13 @@
       ]
     },
     {
-      "symbol": "apps.identity.clinic_settings_views.clinic_logo",
+      "symbol": "apps.identity.current_context._active_clinic_physicians",
       "signals": [
-        "decorator",
-        "role_helper"
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.clinic_settings_views.clinic_logo"
+        "apps.identity.current_context._active_clinic_physicians"
       ]
     },
     {
@@ -923,6 +1077,27 @@
       "kind": "direct",
       "probes": [
         "apps.identity.current_context.current_actor_username"
+      ]
+    },
+    {
+      "symbol": "apps.identity.current_context.list_active_clinic_physicians",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.current_context.list_active_clinic_physicians"
+      ]
+    },
+    {
+      "symbol": "apps.identity.current_context.practitioner_display_label",
+      "signals": [
+        "actor",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.current_context.practitioner_display_label"
       ]
     },
     {
@@ -966,34 +1141,38 @@
       ]
     },
     {
-      "symbol": "apps.identity.current_context._active_clinic_physicians",
+      "symbol": "apps.identity.invitations.enroll_invitation",
       "signals": [
         "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.current_context._active_clinic_physicians"
-      ]
+        "apps.identity.invitations.enroll_invitation#observed"
+      ],
+      "reason": "Actual private pending-token and confirmed-TOTP enrollment rechecks the stored inviter current permission.",
+      "observe": true
     },
     {
-      "symbol": "apps.identity.current_context.list_active_clinic_physicians",
+      "symbol": "apps.identity.invitations.invite_staff",
       "signals": [
-        "role_helper"
+        "permission",
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.current_context.list_active_clinic_physicians"
+        "apps.identity.invitations.invite_staff"
       ]
     },
     {
-      "symbol": "apps.identity.current_context.practitioner_display_label",
+      "symbol": "apps.identity.lifecycle_authority.require_staff_management",
       "signals": [
         "actor",
-        "membership"
+        "resolver",
+        "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.current_context.practitioner_display_label"
+        "apps.identity.lifecycle_authority.require_staff_management"
       ]
     },
     {
@@ -1067,6 +1246,16 @@
       ]
     },
     {
+      "symbol": "apps.identity.models.User.is_clinic_admin_anywhere",
+      "signals": [
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.models.User.is_clinic_admin_anywhere"
+      ]
+    },
+    {
       "symbol": "apps.identity.models.User.is_physician_anywhere",
       "signals": [
         "membership"
@@ -1077,13 +1266,84 @@
       ]
     },
     {
-      "symbol": "apps.identity.models.User.is_clinic_admin_anywhere",
+      "symbol": "apps.identity.notifications.IdentityEmailAdapter.prepare",
       "signals": [
-        "membership"
+        "resolver"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.models.User.is_clinic_admin_anywhere"
+        "apps.identity.notifications.IdentityEmailAdapter.prepare"
+      ]
+    },
+    {
+      "symbol": "apps.identity.notifications.reset_send_eligible",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.notifications.reset_send_eligible"
+      ]
+    },
+    {
+      "symbol": "apps.identity.offboarding.offboard_staff",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.offboarding.offboard_staff"
+      ]
+    },
+    {
+      "symbol": "apps.identity.onboarding._recovery_enrollment",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "The actual current active user owns this recovery or session metadata; no clinic permission is granted."
+    },
+    {
+      "symbol": "apps.identity.onboarding.onboarding_progress",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.onboarding.onboarding_progress"
+      ]
+    },
+    {
+      "symbol": "apps.identity.onboarding_views.onboarding_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.onboarding_views.onboarding_view"
+      ]
+    },
+    {
+      "symbol": "apps.identity.onboarding_views.provider_review",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.onboarding_views.provider_review"
+      ]
+    },
+    {
+      "symbol": "apps.identity.otp.is_confirmed_verified_user",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.otp.is_confirmed_verified_user"
       ]
     },
     {
@@ -1095,16 +1355,6 @@
       "kind": "direct",
       "probes": [
         "apps.identity.otp.is_privileged_user"
-      ]
-    },
-    {
-      "symbol": "apps.identity.otp.is_confirmed_verified_user",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.otp.is_confirmed_verified_user"
       ]
     },
     {
@@ -1216,6 +1466,49 @@
       ]
     },
     {
+      "symbol": "apps.identity.recovery.execute_authenticator_reset",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.recovery.execute_authenticator_reset"
+      ]
+    },
+    {
+      "symbol": "apps.identity.recovery.issue_recovery_codes",
+      "signals": [
+        "actor",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.recovery.issue_recovery_codes"
+      ]
+    },
+    {
+      "symbol": "apps.identity.recovery.recover_authenticator",
+      "signals": [
+        "actor",
+        "resolver",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.recovery.recover_authenticator"
+      ]
+    },
+    {
+      "symbol": "apps.identity.recovery.request_authenticator_reset",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.recovery.request_authenticator_reset"
+      ]
+    },
+    {
       "symbol": "apps.identity.saved_views.save_view",
       "signals": [
         "actor"
@@ -1293,13 +1586,13 @@
       ]
     },
     {
-      "symbol": "apps.identity.services.role_assignments_for_user",
+      "symbol": "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
       "signals": [
-        "membership"
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.services.role_assignments_for_user"
+        "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user"
       ]
     },
     {
@@ -1324,16 +1617,6 @@
       ]
     },
     {
-      "symbol": "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user"
-      ]
-    },
-    {
       "symbol": "apps.identity.services.resolve_login_organization",
       "signals": [
         "resolver"
@@ -1341,6 +1624,199 @@
       "kind": "direct",
       "probes": [
         "apps.identity.services.resolve_login_organization"
+      ]
+    },
+    {
+      "symbol": "apps.identity.services.role_assignments_for_user",
+      "signals": [
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.services.role_assignments_for_user"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.own_sessions",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.own_sessions"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.record_verified_session",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.record_verified_session"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.register_session",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.register_session"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.require_session_step_up",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.require_session_step_up"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.require_verified_session",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.require_verified_session"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.revoke_session",
+      "signals": [
+        "actor",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.revoke_session"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.revoke_session_hash",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.revoke_session_hash"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.session_cookie_is_revoked",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.session_cookie_is_revoked"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.session_is_active",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.session_is_active"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.supersede_session_hash",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.supersede_session_hash"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.touch_session",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id"
+      ],
+      "reason": "The actual current active user owns this recovery or session metadata; no clinic permission is granted."
+    },
+    {
+      "symbol": "apps.identity.signup.submit_signup",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "Public signup creates an inactive pending administrator and pending organization, never a membership or activation.",
+      "observe": true
+    },
+    {
+      "symbol": "apps.identity.staff_directory.staff_directory",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.staff_directory.staff_directory"
+      ]
+    },
+    {
+      "symbol": "apps.identity.staff_views.invitation_revoke_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.staff_views.invitation_revoke_view"
+      ]
+    },
+    {
+      "symbol": "apps.identity.staff_views.offboarding_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.staff_views.offboarding_view"
+      ]
+    },
+    {
+      "symbol": "apps.identity.staff_views.reset_execute_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.staff_views.reset_execute_view"
+      ]
+    },
+    {
+      "symbol": "apps.identity.staff_views.reset_request_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.staff_views.reset_request_view"
+      ]
+    },
+    {
+      "symbol": "apps.identity.staff_views.staff_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.staff_views.staff_view"
       ]
     },
     {
@@ -1405,18 +1881,6 @@
       ]
     },
     {
-      "symbol": "apps.intake.access.authorized_manager_clinic",
-      "signals": [
-        "denial",
-        "role_helper",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.access.authorized_manager_clinic"
-      ]
-    },
-    {
       "symbol": "apps.intake.access.authorized_enrollment",
       "signals": [
         "denial",
@@ -1438,6 +1902,29 @@
       "kind": "direct",
       "probes": [
         "apps.intake.access.authorized_enrollment_for"
+      ]
+    },
+    {
+      "symbol": "apps.intake.access.authorized_manager_clinic",
+      "signals": [
+        "denial",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.access.authorized_manager_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.intake.contacts._actor_label",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.contacts._actor_label"
       ]
     },
     {
@@ -1474,17 +1961,6 @@
       ]
     },
     {
-      "symbol": "apps.intake.contacts._actor_label",
-      "signals": [
-        "actor",
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.contacts._actor_label"
-      ]
-    },
-    {
       "symbol": "apps.intake.patient_access._actor_label",
       "signals": [
         "actor",
@@ -1496,18 +1972,7 @@
       ]
     },
     {
-      "symbol": "apps.intake.patient_access.revoke_patient_access",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.patient_access.revoke_patient_access"
-      ]
-    },
-    {
-      "symbol": "apps.intake.patient_access.redeem_invitation",
+      "symbol": "apps.intake.patient_access.end_patient_session",
       "signals": [
         "resolver"
       ],
@@ -1515,7 +1980,7 @@
       "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
       "observe": true,
       "probes": [
-        "apps.intake.patient_access.redeem_invitation#observed"
+        "apps.intake.patient_access.end_patient_session#observed"
       ]
     },
     {
@@ -1544,7 +2009,7 @@
       ]
     },
     {
-      "symbol": "apps.intake.patient_access.end_patient_session",
+      "symbol": "apps.intake.patient_access.redeem_invitation",
       "signals": [
         "resolver"
       ],
@@ -1552,18 +2017,18 @@
       "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
       "observe": true,
       "probes": [
-        "apps.intake.patient_access.end_patient_session#observed"
+        "apps.intake.patient_access.redeem_invitation#observed"
       ]
     },
     {
-      "symbol": "apps.intake.patient_search.search_patients_exact",
+      "symbol": "apps.intake.patient_access.revoke_patient_access",
       "signals": [
         "denial",
-        "permission"
+        "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.intake.patient_search.search_patients_exact"
+        "apps.intake.patient_access.revoke_patient_access"
       ]
     },
     {
@@ -1576,6 +2041,17 @@
         "apps.intake.access.authorized_manager_clinic"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.intake.patient_search.search_patients_exact",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.patient_search.search_patients_exact"
+      ]
     },
     {
       "symbol": "apps.intake.questionnaire_views._denied",
@@ -1612,37 +2088,6 @@
       ]
     },
     {
-      "symbol": "apps.intake.questionnaires.publish_template",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.questionnaires.publish_template"
-      ]
-    },
-    {
-      "symbol": "apps.intake.questionnaires.assign_questionnaire",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.questionnaires.assign_questionnaire"
-      ]
-    },
-    {
-      "symbol": "apps.intake.questionnaires.published_templates",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.questionnaires.published_templates"
-      ]
-    },
-    {
       "symbol": "apps.intake.questionnaires.appointment_enrollment",
       "signals": [
         "denial",
@@ -1654,28 +2099,14 @@
       ]
     },
     {
-      "symbol": "apps.intake.questionnaires.patient_responses",
+      "symbol": "apps.intake.questionnaires.assign_questionnaire",
       "signals": [
         "denial",
-        "resolver"
+        "role_helper"
       ],
       "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
       "probes": [
-        "apps.intake.questionnaires.patient_responses#observed"
-      ]
-    },
-    {
-      "symbol": "apps.intake.questionnaires.patient_response",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.intake.questionnaires.patient_response#observed"
+        "apps.intake.questionnaires.assign_questionnaire"
       ]
     },
     {
@@ -1700,33 +2131,48 @@
       ]
     },
     {
-      "symbol": "apps.intake.views.patient_list_view",
+      "symbol": "apps.intake.questionnaires.patient_response",
       "signals": [
-        "decorator"
+        "denial"
       ],
       "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
       "probes": [
-        "apps.intake.views.patient_list_view"
+        "apps.intake.questionnaires.patient_response#observed"
       ]
     },
     {
-      "symbol": "apps.intake.views.patient_create_view",
+      "symbol": "apps.intake.questionnaires.patient_responses",
       "signals": [
-        "decorator"
+        "denial",
+        "resolver"
       ],
       "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
       "probes": [
-        "apps.intake.views.patient_create_view"
+        "apps.intake.questionnaires.patient_responses#observed"
       ]
     },
     {
-      "symbol": "apps.intake.views.patient_contacts_view",
+      "symbol": "apps.intake.questionnaires.publish_template",
       "signals": [
-        "decorator"
+        "role_helper"
       ],
       "kind": "direct",
       "probes": [
-        "apps.intake.views.patient_contacts_view"
+        "apps.intake.questionnaires.publish_template"
+      ]
+    },
+    {
+      "symbol": "apps.intake.questionnaires.published_templates",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.questionnaires.published_templates"
       ]
     },
     {
@@ -1750,6 +2196,26 @@
       ]
     },
     {
+      "symbol": "apps.intake.views.patient_contacts_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.views.patient_contacts_view"
+      ]
+    },
+    {
+      "symbol": "apps.intake.views.patient_create_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.views.patient_create_view"
+      ]
+    },
+    {
       "symbol": "apps.intake.views.patient_demographics_view",
       "signals": [
         "decorator"
@@ -1757,6 +2223,51 @@
       "kind": "direct",
       "probes": [
         "apps.intake.views.patient_demographics_view"
+      ]
+    },
+    {
+      "symbol": "apps.intake.views.patient_list_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.views.patient_list_view"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services._authorize_document_care",
+      "signals": [
+        "denial",
+        "resolver",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.services._authorize_document_care"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services._frozen_input",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.services._scope",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.services._scope"
       ]
     },
     {
@@ -1772,15 +2283,15 @@
       ]
     },
     {
-      "symbol": "apps.prescription.services._scope",
+      "symbol": "apps.prescription.services.download_document",
       "signals": [
-        "denial",
-        "scope_name"
+        "denial"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.services._scope"
-      ]
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.prescription.services._authorize_document_care"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.services.view_draft",
@@ -1795,41 +2306,6 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.services._frozen_input",
-      "signals": [
-        "actor",
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.prescription.services._authorize_document_care",
-      "signals": [
-        "denial",
-        "resolver",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.services._authorize_document_care"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.services.download_document",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.prescription.services._authorize_document_care"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
       "symbol": "apps.prescription.signing._document_for_signing",
       "signals": [
         "denial"
@@ -1837,16 +2313,6 @@
       "kind": "direct",
       "probes": [
         "apps.prescription.signing._document_for_signing"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.signing.initiate_signature",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.signing.initiate_signature"
       ]
     },
     {
@@ -1860,15 +2326,6 @@
       ]
     },
     {
-      "symbol": "apps.prescription.signing._resolve_operation_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "provider",
-      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
-    },
-    {
       "symbol": "apps.prescription.signing._resolve_callback_scope",
       "signals": [
         "resolver",
@@ -1878,14 +2335,13 @@
       "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
-      "symbol": "apps.prescription.signing.signature_status",
+      "symbol": "apps.prescription.signing._resolve_operation_scope",
       "signals": [
-        "denial"
+        "resolver",
+        "scope_name"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.signing.signature_status"
-      ]
+      "kind": "provider",
+      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
     },
     {
       "symbol": "apps.prescription.signing.download_signed_document",
@@ -1899,15 +2355,27 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.verification._allowance",
+      "symbol": "apps.prescription.signing.initiate_signature",
       "signals": [
-        "resolver"
+        "denial"
       ],
-      "kind": "provider",
-      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.signing.initiate_signature"
+      ]
     },
     {
-      "symbol": "apps.prescription.verification._verify_row",
+      "symbol": "apps.prescription.signing.signature_status",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.signing.signature_status"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.verification._allowance",
       "signals": [
         "resolver"
       ],
@@ -1926,22 +2394,65 @@
       ]
     },
     {
+      "symbol": "apps.prescription.verification._patient_session_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
+      "symbol": "apps.prescription.verification._record_patient_download",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.prescription.verification._record_patient_download#observed"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.verification._verify_row",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "provider",
+      "reason": "Provider capability, authenticated callback bootstrap or anonymous verification/rate-limit boundary; no legacy staff-role decision."
+    },
+    {
+      "symbol": "apps.prescription.verification.patient_document_download",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.prescription.verification.patient_document_download#observed"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.verification.patient_documents",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.prescription.verification.patient_documents#observed"
+      ]
+    },
+    {
       "symbol": "apps.prescription.verification.release_document",
       "signals": [
         "actor"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_id",
-        "apps.prescription.verification._issuer_document"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.prescription.verification.revoke_document_release",
-      "signals": [
-        "actor",
-        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
@@ -1964,63 +2475,27 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.verification.patient_documents",
+      "symbol": "apps.prescription.verification.revoke_document_release",
       "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.prescription.verification.patient_documents#observed"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.verification._record_patient_download",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.prescription.verification._record_patient_download#observed"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.verification._patient_session_scope",
-      "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.prescription.verification.patient_document_download",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.prescription.verification.patient_document_download#observed"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.views._subject",
-      "signals": [
-        "actor"
+        "actor",
+        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.identity.current_context.current_actor_username"
+        "apps.identity.current_context.current_actor_id",
+        "apps.prescription.verification._issuer_document"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.views._draft_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.views._draft_document"
+      ]
     },
     {
       "symbol": "apps.prescription.views._identity_state",
@@ -2031,14 +2506,25 @@
       "reason": "Signing readiness presentation; enforcement is verify_physician_for_signing and _prepare_signature."
     },
     {
-      "symbol": "apps.prescription.views._save_bound_form",
+      "symbol": "apps.prescription.views._issuer_document",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.views._issuer_document"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.views._open_or_sign",
       "signals": [
         "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.prescription.services._scope",
-        "apps.prescription.services.authorize_encounter"
+        "apps.prescription.signing._prepare_signature",
+        "apps.prescription.signing.initiate_signature",
+        "apps.prescription.views._draft_document"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -2056,27 +2542,45 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.views._open_or_sign",
+      "symbol": "apps.prescription.views._restart_signature",
       "signals": [
         "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
+        "apps.identity.current_context.current_actor_username",
+        "apps.prescription.services.authorize_encounter",
         "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature",
-        "apps.prescription.views._draft_document"
+        "apps.prescription.signing.initiate_signature"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.views._draft_document",
+      "symbol": "apps.prescription.views._review_action",
       "signals": [
         "denial"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.views._draft_document"
-      ]
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username",
+        "apps.prescription.services._authorize_document_care",
+        "apps.prescription.services.authorize_encounter",
+        "apps.prescription.signing._prepare_signature",
+        "apps.prescription.signing.initiate_signature"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.views._save_bound_form",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.prescription.services._scope",
+        "apps.prescription.services.authorize_encounter"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.views._selected_encounter",
@@ -2087,6 +2591,33 @@
       "probes": [
         "apps.prescription.views._selected_encounter"
       ]
+    },
+    {
+      "symbol": "apps.prescription.views._signing_action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username",
+        "apps.prescription.services._authorize_document_care",
+        "apps.prescription.services.authorize_encounter",
+        "apps.prescription.signing._prepare_signature",
+        "apps.prescription.signing.initiate_signature",
+        "apps.prescription.signing.signature_status"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.prescription.views._subject",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_username"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.views._workspace",
@@ -2110,31 +2641,6 @@
       ]
     },
     {
-      "symbol": "apps.prescription.views._issuer_document",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.views._issuer_document"
-      ]
-    },
-    {
-      "symbol": "apps.prescription.views._review_action",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username",
-        "apps.prescription.services._authorize_document_care",
-        "apps.prescription.services.authorize_encounter",
-        "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
       "symbol": "apps.prescription.views.review_view",
       "signals": [
         "decorator",
@@ -2144,36 +2650,6 @@
       "probes": [
         "apps.prescription.views.review_view"
       ]
-    },
-    {
-      "symbol": "apps.prescription.views._restart_signature",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username",
-        "apps.prescription.services.authorize_encounter",
-        "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.prescription.views._signing_action",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_username",
-        "apps.prescription.services._authorize_document_care",
-        "apps.prescription.services.authorize_encounter",
-        "apps.prescription.signing._prepare_signature",
-        "apps.prescription.signing.initiate_signature",
-        "apps.prescription.signing.signature_status"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.prescription.views.signing_status_view",
@@ -2187,7 +2663,7 @@
       ]
     },
     {
-      "symbol": "apps.providers.lifecycle.propose_version",
+      "symbol": "apps.providers.lifecycle.activate_version",
       "signals": [
         "authentication"
       ],
@@ -2209,7 +2685,7 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
-      "symbol": "apps.providers.lifecycle.activate_version",
+      "symbol": "apps.providers.lifecycle.degrade_version",
       "signals": [
         "authentication"
       ],
@@ -2220,7 +2696,7 @@
       "reason": "Platform-level owner-connection lifecycle, not a staff-role grant. Each entry directly checks the executable database-role guard; lifecycle and system-chain transitions are covered by tests/providers/test_capability_lifecycle.py."
     },
     {
-      "symbol": "apps.providers.lifecycle.degrade_version",
+      "symbol": "apps.providers.lifecycle.propose_version",
       "signals": [
         "authentication"
       ],
@@ -2262,6 +2738,39 @@
       "observe": true,
       "probes": [
         "apps.realtime.authorization._patient_topics#observed"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization._staff_topics",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.realtime.authorization._staff_topics"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization._verified_staff",
+      "signals": [
+        "authentication",
+        "tenant_boundary"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.realtime.authorization.authorize_topics_sync",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.has_permission"
       ]
     },
     {
@@ -2312,6 +2821,16 @@
       ]
     },
     {
+      "symbol": "apps.realtime.scopes.register_job_topic",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.realtime.scopes.register_job_topic"
+      ]
+    },
+    {
       "symbol": "apps.realtime.scopes.revoke_clinic_topic",
       "signals": [
         "denial",
@@ -2324,26 +2843,25 @@
       ]
     },
     {
-      "symbol": "apps.realtime.authorization._verified_staff",
+      "symbol": "apps.retention.services._author_label",
       "signals": [
-        "authentication",
-        "tenant_boundary"
+        "denial",
+        "resolver"
       ],
       "kind": "delegated",
       "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
       "enforced_by": [
-        "clinic_app.has_permission"
+        "clinic_app.retention_author_label"
       ]
     },
     {
-      "symbol": "apps.realtime.authorization.authorize_topics_sync",
+      "symbol": "apps.retention.services._clinic",
       "signals": [
-        "scope_name"
+        "denial"
       ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "clinic_app.has_permission"
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services._clinic"
       ]
     },
     {
@@ -2358,13 +2876,16 @@
       ]
     },
     {
-      "symbol": "apps.retention.services._clinic",
+      "symbol": "apps.retention.services._record_patient_view",
       "signals": [
-        "denial"
+        "denial",
+        "resolver"
       ],
       "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
       "probes": [
-        "apps.retention.services._clinic"
+        "apps.retention.services._record_patient_view#observed"
       ]
     },
     {
@@ -2391,6 +2912,16 @@
       ]
     },
     {
+      "symbol": "apps.retention.services._session_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "nonstaff",
+      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+    },
+    {
       "symbol": "apps.retention.services.approve_policy",
       "signals": [
         "actor",
@@ -2404,17 +2935,28 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services.retire_policy",
+      "symbol": "apps.retention.services.export_staff_records",
       "signals": [
-        "actor",
-        "denial"
+        "denial",
+        "resolver",
+        "role_helper"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.current_actor_id",
-        "apps.retention.services._require_manager"
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services.export_staff_records"
+      ]
+    },
+    {
+      "symbol": "apps.retention.services.patient_released_records",
+      "signals": [
+        "resolver"
       ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.retention.services.patient_released_records#observed"
+      ]
     },
     {
       "symbol": "apps.retention.services.place_hold",
@@ -2425,6 +2967,18 @@
       "kind": "delegated",
       "enforced_by": [
         "apps.identity.current_context.current_actor_id",
+        "apps.retention.services._record_scope",
+        "apps.retention.services._require_manager"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.retention.services.record_disposition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
         "apps.retention.services._record_scope",
         "apps.retention.services._require_manager"
       ],
@@ -2444,16 +2998,14 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services.record_disposition",
+      "symbol": "apps.retention.services.release_version",
       "signals": [
         "denial"
       ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.retention.services._record_scope",
-        "apps.retention.services._require_manager"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services.release_version"
+      ]
     },
     {
       "symbol": "apps.retention.services.request_disposal",
@@ -2468,14 +3020,17 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services.release_version",
+      "symbol": "apps.retention.services.retire_policy",
       "signals": [
+        "actor",
         "denial"
       ],
-      "kind": "direct",
-      "probes": [
-        "apps.retention.services.release_version"
-      ]
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.current_actor_id",
+        "apps.retention.services._require_manager"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.retention.services.revoke_release",
@@ -2492,65 +3047,6 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.retention.services._author_label",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "clinic_app.retention_author_label"
-      ]
-    },
-    {
-      "symbol": "apps.retention.services._session_scope",
-      "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
-    },
-    {
-      "symbol": "apps.retention.services._record_patient_view",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.retention.services._record_patient_view#observed"
-      ]
-    },
-    {
-      "symbol": "apps.retention.services.patient_released_records",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.retention.services.patient_released_records#observed"
-      ]
-    },
-    {
-      "symbol": "apps.retention.services.export_staff_records",
-      "signals": [
-        "denial",
-        "resolver",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.retention.services.export_staff_records"
-      ]
-    },
-    {
       "symbol": "apps.retention.services.verify_stored_export",
       "signals": [
         "denial",
@@ -2561,6 +3057,18 @@
       "probes": [
         "apps.retention.services.verify_stored_export"
       ]
+    },
+    {
+      "symbol": "apps.retention.views._context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.retention.views._is_manager",
+        "apps.retention.views._is_physician"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
       "symbol": "apps.retention.views._is_manager",
@@ -2587,18 +3095,6 @@
       ]
     },
     {
-      "symbol": "apps.retention.views._context",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.retention.views._is_manager",
-        "apps.retention.views._is_physician"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
       "symbol": "apps.retention.views.retention_workspace",
       "signals": [
         "decorator",
@@ -2610,15 +3106,15 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.access.authorized_manager_clinic",
+      "symbol": "apps.scheduling.access.authorized_agenda_scope",
       "signals": [
         "denial",
-        "role_helper",
+        "permission",
         "scope_name"
       ],
       "kind": "direct",
       "probes": [
-        "apps.scheduling.access.authorized_manager_clinic"
+        "apps.scheduling.access.authorized_agenda_scope#cut1"
       ]
     },
     {
@@ -2631,6 +3127,18 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.access.authorized_appointment_manager_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.access.authorized_manager_clinic",
+      "signals": [
+        "denial",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.access.authorized_manager_clinic"
       ]
     },
     {
@@ -2714,16 +3222,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.appointment_values.require_active_practitioner",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.appointment_values.require_active_practitioner"
-      ]
-    },
-    {
       "symbol": "apps.scheduling.appointment_values._enrollment",
       "signals": [
         "denial"
@@ -2734,6 +3232,37 @@
       ]
     },
     {
+      "symbol": "apps.scheduling.appointment_values.require_active_practitioner",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.appointment_values.require_active_practitioner"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_view._transition_view_clinic",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.appointment_view._transition_view_clinic#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_view.authorize_transition_view",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.appointment_view.authorize_transition_view#cut1"
+      ]
+    },
+    {
       "symbol": "apps.scheduling.appointment_view.view_appointment_for_transition",
       "signals": [
         "denial"
@@ -2741,6 +3270,26 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.appointment_view.view_appointment_for_transition"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_generation._template",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_generation._template#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_generation.require_open_window",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_generation.require_open_window#cut1"
       ]
     },
     {
@@ -2762,6 +3311,36 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.availability_presenter.manager_choices"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_publication.create_closure",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_publication.create_closure#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_publication.create_template",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_publication.create_template#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.availability_publication.retire_definition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.availability_publication.retire_definition#cut1"
       ]
     },
     {
@@ -2805,30 +3384,13 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.patient_authority.patient_booking_scope",
+      "symbol": "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle",
       "signals": [
-        "denial",
-        "resolver",
-        "scope_name"
+        "tenant_boundary"
       ],
       "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
       "probes": [
-        "apps.scheduling.patient_authority.patient_booking_scope#observed"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.patient_authority.require_patient_booking_scope",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.scheduling.patient_authority.require_patient_booking_scope#observed"
+        "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle#cut1"
       ]
     },
     {
@@ -2840,6 +3402,32 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.patient_authority.lock_patient_availability",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_authority.lock_patient_availability#observed"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.patient_authority.patient_booking_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.scheduling.patient_authority.patient_booking_scope#observed"
       ]
     },
     {
@@ -2867,26 +3455,16 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.patient_authority.lock_patient_availability",
+      "symbol": "apps.scheduling.patient_authority.require_patient_booking_scope",
       "signals": [
-        "resolver"
+        "denial",
+        "scope_name"
       ],
       "kind": "direct",
       "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
       "observe": true,
       "probes": [
-        "apps.scheduling.patient_authority.lock_patient_availability#observed"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.patient_booking.patient_slots",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "clinic_app.patient_booking_slots"
+        "apps.scheduling.patient_authority.require_patient_booking_scope#observed"
       ]
     },
     {
@@ -2914,6 +3492,17 @@
       ]
     },
     {
+      "symbol": "apps.scheduling.patient_booking.patient_slots",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.patient_booking_slots"
+      ]
+    },
+    {
       "symbol": "apps.scheduling.patient_booking.reschedule_patient_appointment",
       "signals": [
         "denial"
@@ -2935,705 +3524,6 @@
       "differential": true,
       "enforced_by": [
         "apps.scheduling.patient_authority.authorized_appointment_clinic"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.transition_views.appointment_reschedule_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.transition_views.appointment_reschedule_view"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.transition_views.appointment_cancel_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.transition_views.appointment_cancel_view"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.views.availability_list_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.views.availability_list_view"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.views.availability_retire_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.views.availability_retire_view"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.waitlist.add_waitlist_entry",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.current_context.practitioner_display_label",
-        "apps.scheduling.access.authorized_appointment_manager_clinic",
-        "apps.scheduling.appointment_values.require_active_practitioner"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.scheduling.waitlist.respond_to_offer",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
-      "differential": true,
-      "enforced_by": [
-        "apps.scheduling.patient_authority.authorized_appointment_clinic"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.waitlist_views.waitlist_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.waitlist_views.waitlist_view"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.waitlist_views._patient_submit",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
-      "differential": true,
-      "enforced_by": [
-        "apps.scheduling.patient_authority.authorized_appointment_clinic"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._denied",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._denied"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._session_scope",
-      "signals": [
-        "resolver",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._session_scope"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._room_state",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._room_state"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._assigned_physician",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._assigned_physician"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._staff_session",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._staff_session"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._fail",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "clinic_app.teleconsult_fail"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services.create_session",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services.create_session"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services.request_patient_join",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "clinic_app.teleconsult_fail"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._enter_as_physician",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services._enter_as_physician"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services._enter_as_patient",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.teleconsult.services._enter_as_patient#observed"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services.enter_room",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.teleconsult.services._enter_as_physician",
-        "apps.teleconsult.services._room_state",
-        "apps.teleconsult.services._session_scope"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.teleconsult.services.staff_sessions",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services.staff_sessions"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services.open_encounters",
-      "signals": [
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.services.open_encounters"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.services.patient_session_events",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.teleconsult.services.patient_session_events#observed"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.views.staff_teleconsult",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.views.staff_teleconsult"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.views._patient_status",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.teleconsult.views._patient_status#observed"
-      ]
-    },
-    {
-      "symbol": "apps.teleconsult.workspace._session_version",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.teleconsult.workspace._session_version"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.db.tenant_context",
-      "signals": [
-        "denial",
-        "resolver",
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.tenancy.db.tenant_context"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.db.service_principal_context",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Machine-login boundary on the agent alias. Its resolver reads the actor GUC to refuse mixed human context, so the census observes an authority channel and it is an observed boundary, not an absence certificate. Grant, clinic, revocation and forged-actor behaviour are in test_service_principals.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.db.service_principal_context#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.issue_tenant_key",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.issue_tenant_key#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.encrypt",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.encrypt#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.decrypt",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.decrypt#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.reencrypt",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.reencrypt#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.protect",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.protect#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.blind_indexes",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.blind_indexes#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.blind_indexes_with_versions",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "The versioned digest oracle executes the real tenant-key resolver and requires observed authority channels; it is not a nonstaff exemption.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.blind_indexes_with_versions#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.reveal",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.reveal#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.rewrap_tenant_keys",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.rewrap_tenant_keys#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.envelope.tenant_key_status",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.tenant_key_status#observed"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.management.TenantCommand.handle",
-      "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.tenancy.db.tenant_context"
-      ],
-      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.tenancy.middleware.TenantMiddleware._response",
-      "signals": [
-        "resolver",
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.tenancy.middleware.TenantMiddleware._response"
-      ]
-    },
-    {
-      "symbol": "apps.tenancy.middleware.TenantMiddleware._patient",
-      "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "reason": "The patient context reaches clinic and enrollment relations through catalog constraints; this is an observed boundary, not an absence certificate.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.middleware.TenantMiddleware._patient#observed"
-      ]
-    },
-    {
-      "symbol": "apps.core.command_search.search_commands",
-      "signals": [
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.core.navigation.granted_permissions"
-      ],
-      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
-    },
-    {
-      "symbol": "apps.core.command_views._change_saved_view",
-      "signals": [
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.core.navigation.granted_permissions"
-      ],
-      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
-    },
-    {
-      "symbol": "apps.core.command_views._switch_patient",
-      "signals": [
-        "permission"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.core.navigation.granted_permissions"
-      ],
-      "reason": "The admission reloads the clinic grant projection through the reachable executable navigation authority boundary."
-    },
-    {
-      "symbol": "apps.core.patient_context.patient_context_allowed",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.patient_context.patient_context_allowed"
-      ]
-    },
-    {
-      "symbol": "apps.core.workspace_access._billing_surface_admitted",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.workspace_access._billing_surface_admitted"
-      ]
-    },
-    {
-      "symbol": "apps.core.workspace_access.workspace_denial",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.workspace_access.workspace_denial"
-      ]
-    },
-    {
-      "symbol": "apps.realtime.authorization._staff_topics",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.realtime.authorization._staff_topics"
-      ]
-    },
-    {
-      "symbol": "apps.realtime.scopes.register_job_topic",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.realtime.scopes.register_job_topic"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.ai_disclosure_status",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.ai_disclosure_status#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.consent_for_future_use",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.consent_for_future_use#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.publish_notice",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.publish_notice#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.publish_text",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.publish_text#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.staff_receipts",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.staff_receipts#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.consent.services.staff_refusals",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.consent.services.staff_refusals#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.core.workspace.WorkspaceClinic.agenda_url",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.workspace.WorkspaceClinic.agenda_url#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.access.authorized_agenda_scope",
-      "signals": [
-        "denial",
-        "permission",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.access.authorized_agenda_scope#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.appointment_view._transition_view_clinic",
-      "signals": [
-        "actor"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.appointment_view._transition_view_clinic#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.appointment_view.authorize_transition_view",
-      "signals": [
-        "denial",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.appointment_view.authorize_transition_view#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.availability_generation._template",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.availability_generation._template#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.availability_generation.require_open_window",
-      "signals": [
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.availability_generation.require_open_window#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.availability_publication.create_closure",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.availability_publication.create_closure#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.availability_publication.create_template",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.availability_publication.create_template#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.availability_publication.retire_definition",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.availability_publication.retire_definition#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle",
-      "signals": [
-        "tenant_boundary"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.management.commands.generate_scheduling_availability.Command.handle#cut1"
       ]
     },
     {
@@ -3732,6 +3622,459 @@
       "kind": "direct",
       "probes": [
         "apps.scheduling.templatetags.scheduling_navigation.scheduling_settings_links#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.transition_views.appointment_cancel_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.transition_views.appointment_cancel_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.transition_views.appointment_reschedule_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.transition_views.appointment_reschedule_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.views.availability_list_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.views.availability_list_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.views.availability_retire_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.views.availability_retire_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.waitlist.add_waitlist_entry",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.practitioner_display_label",
+        "apps.scheduling.access.authorized_appointment_manager_clinic",
+        "apps.scheduling.appointment_values.require_active_practitioner"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.scheduling.waitlist.respond_to_offer",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.waitlist_views._patient_submit",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.waitlist_views.waitlist_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.waitlist_views.waitlist_view"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._assigned_physician",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._assigned_physician"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._denied",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._denied"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._enter_as_patient",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.services._enter_as_patient#observed"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._enter_as_physician",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._enter_as_physician"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._fail",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.teleconsult_fail"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._room_state",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._room_state"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._session_scope",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._session_scope"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services._staff_session",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services._staff_session"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services.create_session",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services.create_session"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services.enter_room",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.teleconsult.services._enter_as_physician",
+        "apps.teleconsult.services._room_state",
+        "apps.teleconsult.services._session_scope"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.teleconsult.services.open_encounters",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services.open_encounters"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services.patient_session_events",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.services.patient_session_events#observed"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services.request_patient_join",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "clinic_app.teleconsult_fail"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.services.staff_sessions",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.services.staff_sessions"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.views._patient_status",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.views._patient_status#observed"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.views.staff_teleconsult",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.views.staff_teleconsult"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.workspace._session_version",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.workspace._session_version"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.db.service_principal_context",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Machine-login boundary on the agent alias. Its resolver reads the actor GUC to refuse mixed human context, so the census observes an authority channel and it is an observed boundary, not an absence certificate. Grant, clinic, revocation and forged-actor behaviour are in test_service_principals.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.db.service_principal_context#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.db.tenant_context",
+      "signals": [
+        "denial",
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.tenancy.db.tenant_context"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.blind_indexes",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.blind_indexes_with_versions",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The versioned digest oracle executes the real tenant-key resolver and requires observed authority channels; it is not a nonstaff exemption.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes_with_versions#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.decrypt",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.decrypt#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.encrypt",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.encrypt#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.issue_tenant_key",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.issue_tenant_key#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.protect",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.protect#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.reencrypt",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.reencrypt#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.reveal",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.reveal#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.rewrap_tenant_keys",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.rewrap_tenant_keys#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.tenant_key_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.tenant_key_status#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.management.TenantCommand.handle",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.tenancy.db.tenant_context"
+      ],
+      "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.tenancy.middleware.TenantMiddleware._patient",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "reason": "The patient context reaches clinic and enrollment relations through catalog constraints; this is an observed boundary, not an absence certificate.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.middleware.TenantMiddleware._patient#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.middleware.TenantMiddleware._response",
+      "signals": [
+        "resolver",
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.tenancy.middleware.TenantMiddleware._response"
       ]
     },
     {
@@ -4049,6 +4392,12 @@
       ]
     }
   ],
+  "method": [
+    "AST census of every apps/**/*.py runtime function and class method, excluding numbered migration bodies",
+    "Signals: role helpers, membership queries/properties, actor binding, resolver SQL, denial branches, scope/access names, authentication checks, view decorators and tenant boundaries",
+    "Manual classification of each detected candidate, explicit call-graph edges for composed consumers, and concrete probes for polymorphic hooks",
+    "Each direct probe invokes the real named callable or SQL resolver under clinic_app (owner-connection guards use clinic_owner); no authorization return value is mocked"
+  ],
   "probes": [
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
@@ -4115,6 +4464,7 @@
     "apps.ehr.views._selected",
     "apps.ehr.views._show",
     "apps.ehr.views.encounter_workspace",
+    "apps.identity.account_views.recovery_view",
     "apps.identity.auth_backends.ClinicBackend.authenticate",
     "apps.identity.auth_backends.ClinicBackend.get_user",
     "apps.identity.clinic_configuration.publish_configuration",
@@ -4128,6 +4478,11 @@
     "apps.identity.current_context.practitioner_display_label",
     "apps.identity.current_context.require_current_actor_clinic_roles",
     "apps.identity.current_context.require_current_actor_org_admin",
+    "apps.identity.invitation_management.expire_pending_invitations",
+    "apps.identity.invitation_management.revoke_invitation",
+    "apps.identity.invitations.enroll_invitation#observed",
+    "apps.identity.invitations.invite_staff",
+    "apps.identity.lifecycle_authority.require_staff_management",
     "apps.identity.management.base.assert_owner_database_role",
     "apps.identity.management.bootstrap.bootstrap_clinic#observed",
     "apps.identity.management.context.assume_runtime_owner",
@@ -4136,6 +4491,12 @@
     "apps.identity.models.User._has_role",
     "apps.identity.models.User.is_clinic_admin_anywhere",
     "apps.identity.models.User.is_physician_anywhere",
+    "apps.identity.notifications.IdentityEmailAdapter.prepare",
+    "apps.identity.notifications.reset_send_eligible",
+    "apps.identity.offboarding.offboard_staff",
+    "apps.identity.onboarding.onboarding_progress",
+    "apps.identity.onboarding_views.onboarding_view",
+    "apps.identity.onboarding_views.provider_review",
     "apps.identity.otp.is_confirmed_verified_user",
     "apps.identity.otp.is_privileged_user",
     "apps.identity.otp.privileged_totp_required",
@@ -4150,12 +4511,33 @@
     "apps.identity.physician_verification.verify_physician_for_signing",
     "apps.identity.preferences.save_ui_preferences",
     "apps.identity.preferences_views.preferences_view",
+    "apps.identity.recovery.execute_authenticator_reset",
+    "apps.identity.recovery.issue_recovery_codes",
+    "apps.identity.recovery.recover_authenticator",
+    "apps.identity.recovery.request_authenticator_reset",
     "apps.identity.saved_views.save_view",
     "apps.identity.services.ClinicRoleQuerySetMixin.clinics_for_user",
     "apps.identity.services.clinics_for_user_roles",
     "apps.identity.services.has_clinic_role",
     "apps.identity.services.resolve_login_organization",
     "apps.identity.services.role_assignments_for_user",
+    "apps.identity.session_inventory.own_sessions",
+    "apps.identity.session_inventory.record_verified_session",
+    "apps.identity.session_inventory.register_session",
+    "apps.identity.session_inventory.require_session_step_up",
+    "apps.identity.session_inventory.require_verified_session",
+    "apps.identity.session_inventory.revoke_session",
+    "apps.identity.session_inventory.revoke_session_hash",
+    "apps.identity.session_inventory.session_cookie_is_revoked",
+    "apps.identity.session_inventory.session_is_active",
+    "apps.identity.session_inventory.supersede_session_hash",
+    "apps.identity.signup.submit_signup#observed",
+    "apps.identity.staff_directory.staff_directory",
+    "apps.identity.staff_views.invitation_revoke_view",
+    "apps.identity.staff_views.offboarding_view",
+    "apps.identity.staff_views.reset_execute_view",
+    "apps.identity.staff_views.reset_request_view",
+    "apps.identity.staff_views.staff_view",
     "apps.identity.stepup._freshness_is_valid",
     "apps.identity.stepup.assert_step_up",
     "apps.identity.stepup.require_recent_verification",
@@ -4348,388 +4730,415 @@
     "clinic_app.user_organizations",
     "clinic_app.waitlist_staff"
   ],
-  "schema_version": 2,
-  "method": [
-    "AST census of every apps/**/*.py runtime function and class method, excluding numbered migration bodies",
-    "Signals: role helpers, membership queries/properties, actor binding, resolver SQL, denial branches, scope/access names, authentication checks, view decorators and tenant boundaries",
-    "Manual classification of each detected candidate, explicit call-graph edges for composed consumers, and concrete probes for polymorphic hooks",
-    "Each direct probe invokes the real named callable or SQL resolver under clinic_app (owner-connection guards use clinic_owner); no authorization return value is mocked"
-  ],
   "role_calls": [
     {
-      "path": "apps/billing/pix.py",
       "function": "prepare_pix_charge",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
+      ],
+      "path": "apps/billing/pix.py",
+      "roles": "MANAGER_ROLES"
     },
     {
-      "path": "apps/billing/services.py",
       "function": "_clinic",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
+      ],
+      "path": "apps/billing/services.py",
+      "roles": "MANAGER_ROLES"
     },
     {
+      "function": "_workspace",
+      "legacy_allowed": [
+        "physician"
+      ],
       "path": "apps/ehr/attachment_views.py",
-      "function": "_workspace",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
-      "legacy_allowed": [
-        "physician"
-      ]
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/ehr/attachments.py",
       "function": "authorize_attachment_encounter",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/ehr/attachments.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/ehr/history.py",
       "function": "authorize_history",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
-    },
-    {
+      ],
       "path": "apps/ehr/history.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "save_history",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/ehr/history.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/ehr/history_views.py",
       "function": "_workspace",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/ehr/history_views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/ehr/services.py",
       "function": "_assigned",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/ehr/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/ehr/services.py",
       "function": "publish_template",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
       "legacy_allowed": [
         "owner",
         "clinic_admin"
-      ]
-    },
-    {
+      ],
       "path": "apps/ehr/services.py",
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)"
+    },
+    {
       "function": "view_version",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/ehr/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/ehr/views.py",
       "function": "_show",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
-    },
-    {
+      ],
       "path": "apps/ehr/views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "_resume",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/ehr/views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/identity/clinic_configuration.py",
-      "function": "publish_configuration",
-      "roles": "CONFIGURATION_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/identity/clinic_settings_views.py",
-      "function": "clinic_settings",
-      "roles": "CONFIGURATION_ROLES",
-      "legacy_allowed": [
-        "owner",
-        "clinic_admin"
-      ]
-    },
-    {
-      "path": "apps/identity/clinic_settings_views.py",
-      "function": "clinic_logo",
-      "roles": "tuple(UserClinicRole.Role)",
+      "function": "recovery_view",
       "legacy_allowed": [
         "owner",
         "physician",
         "receptionist",
         "clinic_admin"
-      ]
+      ],
+      "path": "apps/identity/account_views.py",
+      "roles": "tuple(UserClinicRole.Role)"
     },
     {
-      "path": "apps/identity/current_context.py",
+      "function": "publish_configuration",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/clinic_configuration.py",
+      "roles": "CONFIGURATION_ROLES"
+    },
+    {
+      "function": "clinic_settings",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/clinic_settings_views.py",
+      "roles": "CONFIGURATION_ROLES"
+    },
+    {
+      "function": "clinic_logo",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/clinic_settings_views.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
       "function": "list_active_clinic_physicians",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
+      ],
+      "path": "apps/identity/current_context.py",
+      "roles": "MANAGER_ROLES"
     },
     {
-      "path": "apps/identity/management/context.py",
       "function": "assume_runtime_owner",
-      "roles": "(UserClinicRole.Role.OWNER,)",
       "legacy_allowed": [
         "owner"
-      ]
+      ],
+      "path": "apps/identity/management/context.py",
+      "roles": "(UserClinicRole.Role.OWNER,)"
     },
     {
-      "path": "apps/identity/physician_verification.py",
       "function": "_assigned_encounter",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/identity/physician_verification.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/intake/access.py",
+      "function": "issue_recovery_codes",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/recovery.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
+      "function": "recover_authenticator",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/recovery.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
       "function": "authorized_manager_clinic",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
+      ],
+      "path": "apps/intake/access.py",
+      "roles": "MANAGER_ROLES"
     },
     {
-      "path": "apps/intake/access.py",
       "function": "authorized_enrollment",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
+      ],
+      "path": "apps/intake/access.py",
+      "roles": "MANAGER_ROLES"
     },
     {
-      "path": "apps/intake/questionnaires.py",
       "function": "publish_template",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)",
       "legacy_allowed": [
         "owner",
         "clinic_admin"
-      ]
+      ],
+      "path": "apps/intake/questionnaires.py",
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)"
     },
     {
-      "path": "apps/intake/questionnaires.py",
       "function": "assign_questionnaire",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/intake/questionnaires.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/intake/questionnaires.py",
       "function": "published_templates",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/intake/questionnaires.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/intake/questionnaires.py",
       "function": "appointment_enrollment",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
-    },
-    {
+      ],
       "path": "apps/intake/questionnaires.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "clinical_response",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/intake/questionnaires.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/prescription/services.py",
       "function": "authorize_encounter",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
-    },
-    {
+      ],
       "path": "apps/prescription/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "_authorize_document_care",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/prescription/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/prescription/verification.py",
       "function": "_issuer_document",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/prescription/verification.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/prescription/views.py",
       "function": "_workspace",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/prescription/views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/prescription/views.py",
       "function": "review_view",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
-    },
-    {
+      ],
       "path": "apps/prescription/views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "signing_status_view",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/prescription/views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/retention/services.py",
       "function": "_require_manager",
-      "roles": "POLICY_ROLES",
       "legacy_allowed": [
         "owner",
         "clinic_admin"
-      ]
+      ],
+      "path": "apps/retention/services.py",
+      "roles": "POLICY_ROLES"
     },
     {
-      "path": "apps/retention/services.py",
       "function": "export_staff_records",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
-    },
-    {
+      ],
       "path": "apps/retention/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "verify_stored_export",
-      "roles": "POLICY_ROLES",
       "legacy_allowed": [
         "owner",
         "clinic_admin"
-      ]
+      ],
+      "path": "apps/retention/services.py",
+      "roles": "POLICY_ROLES"
     },
     {
-      "path": "apps/retention/views.py",
       "function": "retention_workspace",
-      "roles": "STAFF_ROLES",
       "legacy_allowed": [
         "physician",
         "receptionist",
         "owner",
         "clinic_admin"
-      ]
+      ],
+      "path": "apps/retention/views.py",
+      "roles": "STAFF_ROLES"
     },
     {
-      "path": "apps/scheduling/access.py",
       "function": "authorized_manager_clinic",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
-    },
-    {
+      ],
       "path": "apps/scheduling/access.py",
+      "roles": "MANAGER_ROLES"
+    },
+    {
       "function": "authorized_appointment_manager_clinic",
-      "roles": "MANAGER_ROLES",
       "legacy_allowed": [
         "clinic_admin",
         "owner",
         "receptionist"
-      ]
+      ],
+      "path": "apps/scheduling/access.py",
+      "roles": "MANAGER_ROLES"
     },
     {
-      "path": "apps/teleconsult/services.py",
       "function": "_assigned_physician",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/teleconsult/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/teleconsult/services.py",
       "function": "_staff_session",
-      "roles": "tuple(UserClinicRole.Role)",
       "legacy_allowed": [
         "owner",
         "physician",
         "receptionist",
         "clinic_admin"
-      ]
+      ],
+      "path": "apps/teleconsult/services.py",
+      "roles": "tuple(UserClinicRole.Role)"
     },
     {
-      "path": "apps/teleconsult/services.py",
       "function": "create_session",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/teleconsult/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/teleconsult/services.py",
       "function": "_enter_as_physician",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/teleconsult/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/teleconsult/services.py",
       "function": "staff_sessions",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/teleconsult/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
-      "path": "apps/teleconsult/services.py",
       "function": "open_encounters",
-      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
-      ]
+      ],
+      "path": "apps/teleconsult/services.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     }
   ],
+  "schema_version": 2,
   "sql_guards": {
     "clinic_app.__function_name__": {
       "discovery": {
@@ -4744,6 +5153,19 @@
       "kind": "migration_only",
       "probes": [],
       "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
+    },
+    "clinic_app.__name__": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": []
+      },
+      "kind": "migration_only",
+      "probes": [],
+      "reason": "The source scanner conservatively retains the literal factory placeholder in _lifecycle_authority_sql.py. The factory replaces it before execution; its four generated writer names are independently discovered and executed, and no literal placeholder signature is deployed."
     },
     "clinic_app._phase1a_identity_canonicalization_candidates": {
       "discovery": {
@@ -4852,18 +5274,19 @@
     },
     "clinic_app.audit_append_system_unchecked_v2": {
       "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_system",
+          "clinic_app.identity_signup_register"
+        ],
         "signatures": [
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
-        ],
-        "migrations": [],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.audit_append_system"
         ]
       },
       "kind": "audit_protocol",
@@ -5596,20 +6019,6 @@
     },
     "clinic_app.digest": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "bytea, text",
-            "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
-          },
-          {
-            "arguments": "text, text",
-            "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
-          }
-        ],
         "migrations": [],
         "policies": [],
         "resolvers": [
@@ -5618,11 +6027,26 @@
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
           "clinic_app.consent_audit",
+          "clinic_app.identity_signup_register",
           "clinic_app.prescription_document_viewed",
           "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_verify",
           "clinic_app.prescription_verify_synthetic",
           "clinic_app.retention_record_viewed"
+        ],
+        "signatures": [
+          {
+            "arguments": "bytea, text",
+            "returns": "bytea",
+            "security_definer": false,
+            "set_returning": false
+          },
+          {
+            "arguments": "text, text",
+            "returns": "bytea",
+            "security_definer": false,
+            "set_returning": false
+          }
         ]
       },
       "kind": "crypto_protocol",
@@ -5909,6 +6333,10 @@
         "resolvers": [
           "clinic_app.billing_revision_snapshot",
           "clinic_app.billing_settlement_receipt",
+          "clinic_app.identity_invitation_accept",
+          "clinic_app.identity_invitation_finish",
+          "clinic_app.identity_retire_authenticators",
+          "clinic_app.identity_session_register",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
           "clinic_app.scheduling_capacity_guard"
@@ -5929,6 +6357,8 @@
     "clinic_app.has_permission": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/0030_workflow_current_membership.py",
+          "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/migrations/_permission_sql.py",
           "apps/identity/migrations/_workflow_eligibility_sql.py"
         ],
@@ -5944,9 +6374,12 @@
           "clinic_app.consent_participantacknowledgment:consent_participant_insert",
           "clinic_app.consent_participantacknowledgment:consent_participant_read",
           "clinic_app.consent_refusalrecord:consent_refusal_read",
+          "clinic_app.identity_authenticatorreset:manager",
           "clinic_app.identity_careteammembership:scope_read",
+          "clinic_app.identity_onboardingprogress:manager",
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
+          "clinic_app.identity_staffinvitation:manager",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update",
           "clinic_app.workflows_workflowdefinitionversion:workflow_read",
@@ -5957,6 +6390,14 @@
         ],
         "resolvers": [
           "clinic_app.consent_guard",
+          "clinic_app.identity_invitation_accept",
+          "clinic_app.identity_invitation_account",
+          "clinic_app.identity_invitation_finish",
+          "clinic_app.identity_invitation_user",
+          "clinic_app.identity_offboarding_clinics",
+          "clinic_app.identity_reset_target",
+          "clinic_app.identity_session_step_up",
+          "clinic_app.identity_staff_directory",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -6009,6 +6450,312 @@
       "probes": [],
       "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
     },
+    "clinic_app.identity_invitation_accept": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_accept_rechecks_the_stored_sender"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_account": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "identity_invitation_account"
+      ],
+      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
+    },
+    "clinic_app.identity_invitation_begin": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_claim": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py",
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_claim_and_password_require_their_exact_context"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_finish": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py",
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_password": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_claim_and_password_require_their_exact_context"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_user": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_membership_history_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Retained membership revocation is irreversible and membership rows cannot be deleted. This invoker row-integrity trigger grants no staff authority."
+    },
+    "clinic_app.identity_no_delete_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Unconditional protected-history deletion denial. This invoker row-integrity trigger does not read actor, role or membership authority."
+    },
+    "clinic_app.identity_offboarding_clinics": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_offboarding_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "_uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "Direct current staff-management authority limits the complete offboarding clinic set to an authorized actor and scope; real ordinary-role SQL allow/deny probes cover all stored roles."
+    },
+    "clinic_app.identity_offboarding_execute": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py",
+          "apps/identity/migrations/_lifecycle_offboarding_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_offboarding_revoke": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "Current actor and clinic staff-management authority are rechecked before offboarding; direct ordinary-role SQL probes cover all stored roles and wrong clinic."
+    },
+    "clinic_app.identity_pending_authority_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
+        "identity.test_lifecycle_sql_readers.test_pending_authority_and_capture_history_refuse_writes"
+      ],
+      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
+    },
     "clinic_app.identity_principal_immutable": {
       "discovery": {
         "signatures": [
@@ -6049,6 +6796,213 @@
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
     },
+    "clinic_app.identity_recovery_consume": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_recovery_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_reset_execute": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_reset uuid, requested_session bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "A real delivered reset requires current staff-management authority and a fresh verified bound session; direct ordinary-role SQL probes cover all stored roles and a missing selector."
+    },
+    "clinic_app.identity_reset_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_reset_notification_clock": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_reset_recipient": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_reset uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "The real reset recipient is returned only to a current authorized staff manager; direct ordinary-role SQL probes cover all stored roles and a missing selector."
+    },
+    "clinic_app.identity_reset_target": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_reset_guard",
+          "clinic_app.identity_reset_recipient"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "identity_reset_target"
+      ],
+      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
+    },
+    "clinic_app.identity_retire_authenticators": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke",
+          "clinic_app.identity_recovery_consume",
+          "clinic_app.identity_reset_execute"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities",
+        "auth.test_recovery_codes.test_recovery_codes_are_once_shown_hash_only_and_one_use"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_revoke_changed_sessions": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
     "clinic_app.identity_savedview_transition": {
       "discovery": {
         "signatures": [
@@ -6071,16 +7025,309 @@
     },
     "clinic_app.identity_scope_guard": {
       "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
+          "apps/identity/migrations/_permission_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.identity_session_active": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_change_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py",
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_register": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_revoke_hash": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/0027_session_revoke_scope.py",
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_revoked_cookie": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_rotate_hash": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_step_up": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_reset_execute"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_verified": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_session_step_up"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_verify": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_device integer",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_signup_immutable": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
+        "identity.test_lifecycle_sql_readers.test_pending_authority_and_capture_history_refuse_writes"
+      ],
+      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
+    },
+    "clinic_app.identity_signup_register": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "registration_id uuid, requested_organization_id uuid, requested_admin_id uuid, request_key uuid, capture jsonb, encoded_password text, fingerprint bytea, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_onboarding.test_signup_is_protected_pending_and_confers_no_runtime_membership",
+        "identity.test_onboarding.test_signup_refuses_ambient_identity_or_tenant_authority"
+      ],
+      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
+    },
+    "clinic_app.identity_staff_directory": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_surface_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "identity_staff_directory"
+      ],
+      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
+    },
+    "clinic_app.intake_contact_event_immutable_v1": {
+      "discovery": {
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
             "set_returning": false,
-            "security_definer": true
+            "security_definer": false
           }
         ],
         "migrations": [
-          "apps/identity/migrations/_permission_sql.py"
+          "apps/intake/migrations/0002_contacts_and_preferences.py"
         ],
         "policies": [],
         "resolvers": []
@@ -6169,41 +7416,22 @@
       "probes": [],
       "reason": "Binds an immutable registry identity to the exact latest name/date/HMAC version in the same transaction. Source-owned typed guard/mirror proofs cover changed and refused unchanged rows; this grants no role or common UPDATE approval."
     },
-    "clinic_app.intake_contact_event_immutable_v1": {
-      "discovery": {
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
-          }
-        ],
-        "migrations": [
-          "apps/intake/migrations/0002_contacts_and_preferences.py"
-        ],
-        "policies": [],
-        "resolvers": []
-      },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
-    },
     "clinic_app.list_active_clinic_physicians": {
       "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
+          "apps/identity/phase1a_identity_acl_migration.py"
+        ],
+        "policies": [],
+        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_clinic uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
-        ],
-        "migrations": [
-          "apps/identity/phase1a_identity_acl_migration.py"
-        ],
-        "policies": [],
-        "resolvers": []
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -6316,20 +7544,21 @@
     },
     "clinic_app.patient_booking_practitioner": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "requested_practitioner uuid",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.patient_booking_slots"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_practitioner uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
         ]
       },
       "kind": "staff_guard",
@@ -6420,20 +7649,21 @@
     },
     "clinic_app.patient_registry_count": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date",
-            "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
+          "apps/identity/migrations/_lifecycle_registry_sql.py",
           "apps/intake/migrations/0013_patient_demographics.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
-        "resolvers": []
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -6443,20 +7673,21 @@
     },
     "clinic_app.patient_registry_page": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date, page_offset integer, page_limit integer",
-            "returns": "record",
-            "set_returning": true,
-            "security_definer": true
-          }
-        ],
         "migrations": [
+          "apps/identity/migrations/_lifecycle_registry_sql.py",
           "apps/intake/migrations/0013_patient_demographics.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
-        "resolvers": []
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date, page_offset integer, page_limit integer",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -7290,15 +8521,8 @@
     },
     "clinic_app.questionnaire_staff": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, roles text[]",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
           "apps/intake/migrations/_questionnaire_sql.py"
         ],
         "policies": [
@@ -7346,6 +8570,14 @@
           "clinic_app.retention_guard",
           "clinic_app.retention_record_scope",
           "clinic_app.teleconsult_assigned"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, roles text[]",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
         ]
       },
       "kind": "staff_guard",
@@ -7629,6 +8861,7 @@
     "clinic_app.scheduling_capacity_guard": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/scheduling/migrations/_capacity_insert_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
@@ -7653,6 +8886,7 @@
     "clinic_app.scheduling_definition_guard": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
         "policies": [],
@@ -7724,6 +8958,7 @@
     "clinic_app.scheduling_service_practitioners": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
         "policies": [],
@@ -7954,22 +9189,23 @@
     },
     "clinic_app.tenant_decrypt": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "kek text, expected_purpose text, envelope bytea",
-            "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
           "apps/tenancy/migrations/_envelope_sql.py"
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.identity_signup_register",
           "clinic_app.prescription_document_open",
           "clinic_app.protected_decrypt",
           "clinic_app.tenant_reencrypt"
+        ],
+        "signatures": [
+          {
+            "arguments": "kek text, expected_purpose text, envelope bytea",
+            "returns": "bytea",
+            "security_definer": true,
+            "set_returning": false
+          }
         ]
       },
       "kind": "crypto_protocol",
@@ -7978,19 +9214,21 @@
     },
     "clinic_app.tenant_dek_issue": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "kek text",
-            "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
           "apps/tenancy/migrations/_envelope_sql.py"
         ],
         "policies": [],
-        "resolvers": []
+        "resolvers": [
+          "clinic_app.identity_signup_register"
+        ],
+        "signatures": [
+          {
+            "arguments": "kek text",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       },
       "kind": "crypto_protocol",
       "probes": [],
@@ -8042,21 +9280,22 @@
     },
     "clinic_app.tenant_encrypt": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "kek text, purpose text, plaintext bytea",
-            "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
           "apps/tenancy/migrations/_envelope_sql.py"
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.identity_signup_register",
           "clinic_app.protected_encrypt",
           "clinic_app.tenant_reencrypt"
+        ],
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, plaintext bytea",
+            "returns": "bytea",
+            "security_definer": true,
+            "set_returning": false
+          }
         ]
       },
       "kind": "crypto_protocol",
@@ -8154,20 +9393,21 @@
     },
     "clinic_app.user_has_org": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "requested_org uuid",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
           "apps/tenancy/migrations/0002_rls_and_resolvers.py",
           "apps/tenancy/migrations/0005_active_tenant_actor.py"
         ],
         "policies": [],
-        "resolvers": []
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -8177,19 +9417,20 @@
     },
     "clinic_app.user_organizations": {
       "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
+          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
+        ],
+        "policies": [],
+        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
-        ],
-        "migrations": [
-          "apps/tenancy/migrations/0002_rls_and_resolvers.py"
-        ],
-        "policies": [],
-        "resolvers": []
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -8219,15 +9460,8 @@
     },
     "clinic_app.waitlist_staff": {
       "discovery": {
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
-        ],
         "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_waitlist_sql.py"
         ],
         "policies": [
@@ -8238,7 +9472,15 @@
           "clinic_app.scheduling_waitlistoffer:waitlist_read",
           "clinic_app.scheduling_waitlistoffer:waitlist_update"
         ],
-        "resolvers": []
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -8362,6 +9604,7 @@
     "clinic_app.workflows_owned": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [
@@ -8390,6 +9633,7 @@
     "clinic_app.workflows_owner_valid": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
@@ -8460,6 +9704,7 @@
     "clinic_app.workflows_staff_catalog": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],

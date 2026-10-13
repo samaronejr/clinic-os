@@ -24,6 +24,14 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "identity_physicianevidence",
         "identity_userpreference",
         "identity_savedview",
+        "identity_signupregistration",
+        "identity_onboardingprogress",
+        "identity_staffinvitation",
+        "identity_authenticatorreset",
+        "identity_authenticatorretirement",
+        "identity_recoverybatch",
+        "identity_recoverycode",
+        "identity_sessionrecord",
     }
 )
 # identity_user is reachable only through resolver-owned functions; the
@@ -41,6 +49,14 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "identity_physicianevidence": frozenset({"SELECT", "INSERT"}),
     "identity_userpreference": frozenset({"SELECT", "INSERT"}),
     "identity_savedview": frozenset({"SELECT", "INSERT"}),
+    "identity_signupregistration": frozenset(),
+    "identity_onboardingprogress": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_staffinvitation": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_authenticatorreset": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_authenticatorretirement": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_recoverybatch": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_recoverycode": frozenset({"SELECT", "INSERT", "UPDATE"}),
+    "identity_sessionrecord": frozenset({"SELECT", "UPDATE"}),
 }
 # New authorization tables have no runtime column writes: provisioning remains
 # owner-controlled. Column grants below belong to physician checks and preferences.

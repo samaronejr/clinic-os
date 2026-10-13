@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, tzinfo
 from hashlib import sha256
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, assert_never
 from uuid import UUID, uuid4
 
 import psycopg
@@ -425,7 +425,9 @@ def test_publication_member_decides_every_current_role(
 
 @pytest.mark.parametrize("field", ["function", "allowed", "observed", "member"])
 def test_issued_contents_cannot_be_forged_after_issuance(
-    dml_world: World, field: str
+    dml_world: World,
+    field: Literal["function", "allowed", "observed", "member"],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     w = dml_world
     changed: dict[str, object] = {
@@ -437,7 +439,39 @@ def test_issued_contents_cannot_be_forged_after_issuance(
     with runtime_role(), transaction.atomic():
         bind(w, TEXT_MEMBER, valid=True)
         issued = probe_dml(TEXT_MEMBER, row_for(TEXT_MEMBER, w))
-        object.__setattr__(issued, field, changed[field])
+        # Keep the issued object and its one-use identity. Override only the
+        # named verdict descriptor, never a generic object's setter.
+        match field:
+            case "function":
+                monkeypatch.setattr(
+                    SqlVerdict,
+                    "function",
+                    property(lambda _value: changed["function"]),
+                    raising=False,
+                )
+            case "allowed":
+                monkeypatch.setattr(
+                    SqlVerdict,
+                    "allowed",
+                    property(lambda _value: changed["allowed"]),
+                    raising=False,
+                )
+            case "observed":
+                monkeypatch.setattr(
+                    SqlVerdict,
+                    "observed",
+                    property(lambda _value: changed["observed"]),
+                    raising=False,
+                )
+            case "member":
+                monkeypatch.setattr(
+                    SqlVerdict,
+                    "member",
+                    property(lambda _value: changed["member"]),
+                    raising=False,
+                )
+            case unreachable:
+                assert_never(unreachable)
         with pytest.raises(AssertionError, match="issued contents"):
             redeem(issued, TEXT_MEMBER)
         with pytest.raises(AssertionError, match="bypassed probe"):
@@ -465,9 +499,14 @@ def test_changed_uuid_values_reject_identical_formatting(
         display = repr(issued.observed)
         changed = UUID(int=original_value ^ 1)
         if in_place:
-            object.__setattr__(original, "int", changed.int)
+            vars(UUID)["int"].__set__(original, changed.int)
         else:
-            object.__setattr__(issued, "observed", sql_rowset([(changed,)]))
+            monkeypatch.setattr(
+                SqlVerdict,
+                "observed",
+                property(lambda _value: sql_rowset([(changed,)])),
+                raising=False,
+            )
         assert repr(issued.observed) == display
         altered = issued.observed[0][0][1]
         assert type(altered) is UUID
@@ -510,8 +549,8 @@ def test_datetime_snapshot_copies_actual_offset_values() -> None:
     changed = original.replace(tzinfo=OffsetTimezone())
     assert type(changed) is datetime
     assert changed != original
-    object.__setattr__(verdict, "observed", sql_rowset([(changed,)]))
-    assert _contents(verdict) != captured
+    altered = replace(verdict, observed=sql_rowset([(changed,)]))
+    assert _contents(altered) != captured
 
 
 def test_dml_seal_consumes_once_and_binds_every_member_component(
@@ -607,9 +646,9 @@ def test_inactive_revoked_and_cross_clinic_publication_refuse(
                 if state == "inactive":
                     User.objects.filter(pk=w.manager).update(is_active=False)
                 elif state == "revoked":
-                    removed, _ = UserClinicRole.objects.filter(
+                    removed = UserClinicRole.objects.filter(
                         clinic_id=w.graph.clinic_a, user_id=w.manager
-                    ).delete()
+                    ).update(revoked_at=timezone.now())
                     assert removed == 1
                 else:
                     row.clinic_id = w.graph.clinic_b

@@ -73,21 +73,22 @@ def test_unique_role_and_physician_resolver_catalog_posture_are_exact() -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT constraint_row.conname,
+            SELECT index_class.relname,
                    ARRAY(
                        SELECT attribute.attname
-                       FROM unnest(constraint_row.conkey)
+                       FROM unnest(index_row.indkey)
                             WITH ORDINALITY AS key(attnum, position)
                        JOIN pg_attribute AS attribute
-                         ON attribute.attrelid = constraint_row.conrelid
+                         ON attribute.attrelid = index_row.indrelid
                         AND attribute.attnum = key.attnum
                        ORDER BY key.position
-                   )
-            FROM pg_constraint AS constraint_row
-            WHERE constraint_row.conrelid =
+                   ), index_row.indisunique, index_row.indisvalid,
+                   pg_get_expr(index_row.indpred, index_row.indrelid)
+            FROM pg_index AS index_row
+            JOIN pg_class AS index_class ON index_class.oid = index_row.indexrelid
+            WHERE index_row.indrelid =
                   'clinic_app.identity_userclinicrole'::regclass
-              AND constraint_row.contype = 'u'
-              AND constraint_row.conname = 'identity_userclinicrole_assignment_uniq'
+              AND index_class.relname = 'identity_userclinicrole_assignment_uniq'
             """
         )
         constraint = cursor.fetchone()
@@ -121,6 +122,9 @@ def test_unique_role_and_physician_resolver_catalog_posture_are_exact() -> None:
     assert constraint == (
         "identity_userclinicrole_assignment_uniq",
         ["organization_id", "clinic_id", "user_id", "role"],
+        True,
+        True,
+        "(revoked_at IS NULL)",
     )
     assert resolver == (
         "clinic_resolver",

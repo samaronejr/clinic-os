@@ -3193,11 +3193,325 @@ msgstr "Comentário operacional"
 msgid "Outcome"
 msgstr "Resultado"
 
+msgctxt "account owner"
+msgid "Owner"
+msgstr "Titular"
+
+msgctxt "task owner"
 msgid "Owner"
 msgstr "Responsável"
 
 msgid "Patient enrollment"
 msgstr "Vínculo do paciente"
+
+msgid "Organization name"
+msgstr "Nome da organização"
+
+msgid "Legal responsible"
+msgstr "Responsável legal"
+
+msgid "First administrator username"
+msgstr "Usuário do primeiro administrador"
+
+msgid "First administrator email"
+msgstr "E-mail do primeiro administrador"
+
+msgid "Professional registration"
+msgstr "Registro profissional"
+
+msgid "Confirm password"
+msgstr "Confirmar senha"
+
+msgid "Pending activation"
+msgstr "Aguardando ativação"
+
+msgid "Enter the organization's CNPJ, with or without punctuation."
+msgstr "Informe o CNPJ da organização, com ou sem pontuação."
+
+msgid "If applicable, enter the council, registration number and state. This does not verify a credential."
+msgstr "Se aplicável, informe o conselho, o número do registro e a UF. O registro ainda precisará ser verificado."
+
+msgid "The passwords do not match. Enter them again."
+msgstr "As senhas não coincidem. Informe-as novamente."
+
+msgid "We could not register this request. Check the details and try again."
+msgstr "Não foi possível registrar a solicitação. Confira os dados e tente novamente."
+
+msgid "Register organization · Clinic OS"
+msgstr "Cadastrar organização · Clinic OS"
+
+msgid "Register an organization for protected subscription activation."
+msgstr "Cadastre uma organização para a ativação protegida da assinatura."
+
+msgid "Register your organization"
+msgstr "Cadastre sua organização"
+
+msgid "Send the organization and first administrator details. Clinical access starts only after subscription activation."
+msgstr "Informe os dados da organização e do primeiro administrador. O acesso clínico começa somente após a ativação da assinatura."
+
+msgid "Registration received"
+msgstr "Cadastro recebido"
+
+msgid "Your organization is pending activation. This request has not started a trial or opened the clinical workspace."
+msgstr "Sua organização aguarda ativação. Esta solicitação não iniciou um período de teste nem liberou o ambiente clínico."
+
+msgid "Check the registration details"
+msgstr "Confira os dados do cadastro"
+
+msgid "Register organization"
+msgstr "Cadastrar organização"
+
+msgid "Return to sign in"
+msgstr "Voltar para entrar"
+
+msgid "Register an organization"
+msgstr "Cadastrar uma organização"
+
+msgid "First steps · Clinic OS"
+msgstr "Primeiros passos · Clinic OS"
+
+msgid "First steps"
+msgstr "Primeiros passos"
+
+msgid "Prepare your clinic, protect your account and open your first agenda. Your progress stays on the server."
+msgstr "Prepare sua clínica, proteja sua conta e abra sua primeira agenda. Seu progresso fica salvo no servidor."
+
+msgid "Progress refreshed."
+msgstr "Progresso atualizado."
+
+msgid "Complete"
+msgstr "Concluído"
+
+msgid "To do"
+msgstr "A fazer"
+
+msgid "Review only. This screen does not activate a provider or authorize live use."
+msgstr "Apenas consulta. Esta tela não ativa um provedor nem autoriza o uso real."
+
+msgid "Live eligible"
+msgstr "Apto para uso real"
+
+msgid "Not live eligible"
+msgstr "Não apto para uso real"
+
+msgid "No provider connection is configured."
+msgstr "Nenhuma conexão com provedor está configurada."
+
+msgid "Confirm status review"
+msgstr "Confirmar consulta de status"
+
+msgid "Refresh progress"
+msgstr "Atualizar progresso"
+
+msgid "Back to clinic settings"
+msgstr "Voltar às configurações da clínica"
+
+msgid "Your sessions · Clinic OS"
+msgstr "Suas sessões · Clinic OS"
+
+msgid "Your sessions"
+msgstr "Suas sessões"
+
+msgid "Revoke a session you no longer use. Its next request will require a new login."
+msgstr "Revogue uma sessão que você não usa mais. O próximo acesso exigirá uma nova entrada."
+
+msgid "Session revoked."
+msgstr "Sessão revogada."
+
+msgid "Revoke session"
+msgstr "Revogar sessão"
+
+msgid "No sessions are available."
+msgstr "Nenhuma sessão disponível."
+
+msgid "Account recovery · Clinic OS"
+msgstr "Recuperação da conta · Clinic OS"
+
+msgid "Account recovery"
+msgstr "Recuperação da conta"
+
+msgid "Keep your recovery codes offline. Each code works once and retires your old authenticators and sessions."
+msgstr "Guarde seus códigos de recuperação fora do sistema. Cada código funciona uma vez e desativa seus autenticadores e sessões antigos."
+
+msgid "Recovery codes"
+msgstr "Códigos de recuperação"
+
+msgid "Your codes were already shown once. They cannot be displayed again."
+msgstr "Seus códigos já foram exibidos uma vez. Não é possível exibi-los novamente."
+
+msgid "Confirm your authenticator before generating your codes. They will be shown only in the next response."
+msgstr "Confirme seu autenticador antes de gerar os códigos. Eles serão exibidos somente na próxima tela."
+
+msgid "Generate recovery codes"
+msgstr "Gerar códigos de recuperação"
+
+msgid "Lost your authenticator?"
+msgstr "Perdeu seu autenticador?"
+
+msgid "Use recovery code"
+msgstr "Usar código de recuperação"
+
+msgid "Without a code, ask your clinic administrator for a notified reset. The full 24-hour delay starts after delivery, not after the request."
+msgstr "Sem um código, solicite uma redefinição ao administrador da clínica. O prazo completo de 24 horas começa após a entrega da notificação, não após a solicitação."
+
+msgid "Save your recovery codes · Clinic OS"
+msgstr "Guarde seus códigos de recuperação · Clinic OS"
+
+msgid "Save your recovery codes"
+msgstr "Guarde seus códigos de recuperação"
+
+msgid "Shown once. Save these codes offline before leaving this page. Do not share them."
+msgstr "Exibidos uma única vez. Guarde estes códigos fora do sistema antes de sair desta página. Não os compartilhe."
+
+msgid "I saved my codes"
+msgstr "Guardei meus códigos"
+
+msgid "Staff and account security · Clinic OS"
+msgstr "Equipe e segurança das contas · Clinic OS"
+
+msgid "Staff and account security"
+msgstr "Equipe e segurança das contas"
+
+msgid "Invite your team and manage account recovery within this clinic."
+msgstr "Convide sua equipe e gerencie a recuperação das contas desta clínica."
+
+msgid "Invitation queued. Access starts after password and authenticator confirmation."
+msgstr "Convite na fila de envio. O acesso começa após a confirmação da senha e do autenticador."
+
+msgid "Invite staff"
+msgstr "Convidar profissional"
+
+msgid "Send invitation"
+msgstr "Enviar convite"
+
+msgid "Notifications are synthetic simulations; no live provider is activated here."
+msgstr "As notificações são simulações sintéticas; nenhum provedor real é ativado nesta tela."
+
+msgid "Revoke invitation"
+msgstr "Revogar convite"
+
+msgid "No invitations yet."
+msgstr "Nenhum convite até o momento."
+
+msgid "For an expired or unavailable invitation, send a new invitation with the same email and role."
+msgstr "Se o convite expirou ou não está disponível, envie um novo convite com o mesmo e-mail e perfil."
+
+msgid "Current staff"
+msgstr "Equipe atual"
+
+msgid "Request notified authenticator reset"
+msgstr "Solicitar redefinição com notificação"
+
+msgid "Deactivate login and revoke access. Keep all history."
+msgstr "Desativar a entrada e revogar o acesso. Manter todo o histórico."
+
+msgid "Offboard staff"
+msgstr "Desligar profissional"
+
+msgid "No staff are available."
+msgstr "Nenhum profissional disponível."
+
+msgid "Authenticator reset requests"
+msgstr "Solicitações de redefinição do autenticador"
+
+msgid "Only delivered notification starts the full 24-hour delay. A fresh authenticator confirmation is required for execution."
+msgstr "Somente a entrega da notificação inicia o prazo completo de 24 horas. A execução exige uma nova confirmação do autenticador."
+
+msgid "Reset completed"
+msgstr "Redefinição concluída"
+
+msgid "Available after"
+msgstr "Disponível após"
+
+msgid "Waiting for notification delivery"
+msgstr "Aguardando a entrega da notificação"
+
+msgid "Execute delayed reset"
+msgstr "Executar redefinição após o prazo"
+
+msgid "No reset requests."
+msgstr "Nenhuma solicitação de redefinição."
+
+msgid "Reset not available · Clinic OS"
+msgstr "Redefinição indisponível · Clinic OS"
+
+msgid "Reset not available"
+msgstr "Redefinição indisponível"
+
+msgid "The user must receive the notification and the full 24-hour delay must finish. No authenticator was changed."
+msgstr "O usuário precisa receber a notificação e aguardar o prazo completo de 24 horas. Nenhum autenticador foi alterado."
+
+msgid "Back to staff"
+msgstr "Voltar à equipe"
+
+msgid "Organization and clinic"
+msgstr "Organização e unidade"
+
+msgid "Invite your staff"
+msgstr "Convide sua equipe"
+
+msgid "Review provider status"
+msgstr "Consulte o status dos provedores"
+
+msgid "Open your first agenda"
+msgstr "Abra sua primeira agenda"
+
+msgid "Additional setup step"
+msgstr "Etapa adicional de configuração"
+
+msgid "We could not send this invitation. Check the email and role."
+msgstr "Não foi possível enviar este convite. Confira o e-mail e o perfil."
+
+msgid "That recovery code is unavailable. Use another code or ask your clinic administrator."
+msgstr "Este código de recuperação não está disponível. Use outro código ou procure o administrador da clínica."
+
+msgid "Staff email"
+msgstr "E-mail do profissional"
+
+msgid "Role bundle"
+msgstr "Perfil de acesso"
+
+msgid "Private invitation code"
+msgstr "Código privado do convite"
+
+msgid "Username"
+msgstr "Usuário"
+
+msgid "Password"
+msgstr "Senha"
+
+msgid "Authenticator code"
+msgstr "Código do autenticador"
+
+msgid "The passwords do not match."
+msgstr "As senhas não coincidem."
+
+msgid "Recovery code"
+msgstr "Código de recuperação"
+
+msgid "Staff invitation · Clinic OS"
+msgstr "Convite para a equipe · Clinic OS"
+
+msgid "Join your clinic"
+msgstr "Entre na equipe da sua clínica"
+
+msgid "Use the private code from your invitation email. Your clinic access starts only after your password and authenticator are confirmed."
+msgstr "Use o código privado do e-mail de convite. Seu acesso à clínica começa somente após a confirmação da senha e do autenticador."
+
+msgid "Check the invitation details"
+msgstr "Confira os dados do convite"
+
+msgid "Scan with your authenticator"
+msgstr "Leia o código com seu autenticador"
+
+msgid "Scan this private QR code, then enter your invitation code, password and current authenticator code below. An interrupted enrollment resumes the same authenticator."
+msgstr "Leia este QR code privado e informe abaixo o código do convite, a senha e o código atual do autenticador. Uma configuração interrompida retoma o mesmo autenticador."
+
+msgid "Confirm authenticator and join"
+msgstr "Confirmar autenticador e entrar"
+
+msgid "Set password and start enrollment"
+msgstr "Definir senha e configurar autenticador"
 
 msgid "Pending"
 msgstr "Pendente"
@@ -3388,6 +3702,21 @@ msgstr "Validada"
 msgid "Published"
 msgstr "Publicada"
 
+msgid "Accepted"
+msgstr "Aceito"
+
+msgid "Chromium"
+msgstr "Chromium"
+
+msgid "Firefox"
+msgstr "Firefox"
+
+msgid "Safari"
+msgstr "Safari"
+
+msgid "Other browser"
+msgstr "Outro navegador"
+
 msgid "Receptionist"
 msgstr "Recepcionista"
 
@@ -3431,3 +3760,36 @@ msgstr "Outro documento"
 
 msgid "Search by name or by document, not both."
 msgstr "Busque pelo nome ou pelo documento, não pelos dois."
+
+msgid "Waiting for external setup"
+msgstr "Aguardando configuração externa"
+
+msgid "Researched"
+msgstr "Pesquisado"
+
+msgid "Selected in plan"
+msgstr "Selecionado no plano"
+
+msgid "Approved to test"
+msgstr "Aprovado para testes"
+
+msgid "Sandbox"
+msgstr "Ambiente de testes"
+
+msgid "Production authorized"
+msgstr "Produção autorizada"
+
+msgid "Activated"
+msgstr "Ativado"
+
+msgid "Degraded"
+msgstr "Degradado"
+
+msgid "We could not accept this invitation. Check the private details."
+msgstr "Não foi possível aceitar este convite. Confira os dados privados."
+
+msgid "For an expired or unavailable invitation, ask your clinic administrator for a new invitation."
+msgstr "Para um convite vencido ou indisponível, peça um novo convite ao administrador da clínica."
+
+msgid "Enter a valid CNPJ."
+msgstr "Informe um CNPJ válido."

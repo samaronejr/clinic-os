@@ -104,6 +104,7 @@ from apps.teleconsult.services import (
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
+from django.db.models.functions import Now
 from django.db.utils import DatabaseError
 from django.test.utils import CaptureQueriesContext
 from psycopg.errors import InsufficientPrivilege
@@ -876,7 +877,9 @@ def _revoke(user_id: UUID, organization_id: UUID, clinic_id: UUID) -> None:
             "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
             [str(organization_id)],
         )
-        UserClinicRole.objects.filter(user_id=user_id, clinic_id=clinic_id).delete()
+        UserClinicRole.objects.filter(user_id=user_id, clinic_id=clinic_id).update(
+            revoked_at=Now()
+        )
 
 
 def test_revoked_role_denies_mid_operation_across_domains(

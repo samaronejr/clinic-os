@@ -129,7 +129,7 @@ def test_external_send_is_refused_after_actor_revocation(
         with owner_context(graph.organization_a):
             UserClinicRole.objects.filter(
                 user_id=graph.shared_user, clinic_id=graph.clinic_a
-            ).delete()
+            ).update(revoked_at=timezone.now())
     else:
         remove_permission(graph, revocation)
     with runtime_role():

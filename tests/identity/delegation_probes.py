@@ -29,17 +29,16 @@ from apps.identity.models import (
 )
 from apps.realtime import authorization, scopes
 from apps.realtime.topics import TOPIC_PERMISSIONS
-from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
 from django.contrib.sessions.backends.db import SessionStore
 from django.core import signing
 from django.db import connection, transaction
-from django.test import override_settings
+from django.test import Client, override_settings
 from django_otp import DEVICE_ID_SESSION_KEY
 from psycopg import sql
 
 from identity.nonstaff_differential import DifferentialProbe
 from identity.permission_support import owner_context, permission_actor
-from otp_test_support import create_totp_device
+from otp_test_support import create_totp_device, runtime_role
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -206,13 +205,23 @@ def _as_owner() -> Iterator[None]:
 
 def staff_session(graph: RbacGraph, actor: UUID) -> str:
     """A real, fully verified staff login session (TOTP bound) for the actor."""
-    with _as_owner():
+    with _as_owner(), transaction.atomic(), connection.cursor() as cursor:
         user = User.objects.get(pk=actor)
         device = create_totp_device(actor, confirmed=True)
-        session = SessionStore()
-        session[SESSION_KEY] = str(actor)
-        session[BACKEND_SESSION_KEY] = "apps.identity.auth_backends.ClinicBackend"
-        session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+        cursor.execute("SELECT current_setting('app.current_user_id', true)")
+        (previous,) = cursor.fetchone()
+        cursor.execute(
+            "SELECT set_config('app.current_user_id', %s, true)", [str(actor)]
+        )
+        client = Client()
+        try:
+            with runtime_role():
+                client.force_login(user)
+        finally:
+            cursor.execute(
+                "SELECT set_config('app.current_user_id', %s, true)", [previous or ""]
+            )
+        session = client.session
         session["active_org_id"] = str(graph.organization_a)
         session[DEVICE_ID_SESSION_KEY] = device.persistent_id
         session.save()

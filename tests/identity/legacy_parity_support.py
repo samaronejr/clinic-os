@@ -49,6 +49,7 @@ from renewal.test_encounters import draft, seed
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from apps.comms.models import IntegrationOperation
     from apps.ehr.models import ClinicalDocumentVersion, SpecialtyTemplate
     from apps.scheduling.models import Appointment
     from django.http import HttpRequest
@@ -86,6 +87,10 @@ class LegacyWorld:
     template: SpecialtyTemplate
     version: ClinicalDocumentVersion
     request: HttpRequest
+    lifecycle_target: UUID | None = None
+    lifecycle_reset: UUID | None = None
+    lifecycle_invitation: UUID | None = None
+    lifecycle_operation: IntegrationOperation | None = None
 
     @property
     def clinic(self) -> UUID:

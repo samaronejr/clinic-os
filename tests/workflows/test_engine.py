@@ -206,7 +206,7 @@ def test_queued_step_does_not_run_for_revoked_actor(
         with owner_context(graph.organization_a):
             UserClinicRole.objects.filter(
                 user_id=graph.shared_user, clinic_id=graph.clinic_a
-            ).delete()
+            ).update(revoked_at=timezone.now())
     assert execute(identifier) == "denied"
     with owner_context(graph.organization_a):
         assert Task.objects.count() == 0

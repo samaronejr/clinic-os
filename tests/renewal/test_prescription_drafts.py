@@ -31,6 +31,7 @@ from apps.prescription.services import (
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client, setup_context
@@ -648,7 +649,7 @@ def test_peer_physician_and_cross_tenant_are_denied(rbac_graph: RbacGraph) -> No
     with setup_context(rbac_graph.organization_a):
         UserClinicRole.objects.filter(
             user_id=rbac_graph.physician, role="physician"
-        ).delete()
+        ).update(revoked_at=Now())
     with (
         pytest.raises(TenantAccessDeniedError),
         runtime_role(),

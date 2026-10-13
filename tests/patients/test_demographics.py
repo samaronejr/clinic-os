@@ -37,19 +37,22 @@ from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import (
     VersionedBlindIndex,
+    _kek,
     blind_indexes_with_versions,
     protect,
 )
 from django.contrib.auth.hashers import make_password
-from django.db import IntegrityError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.migrations import RunPython
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext
 from psycopg import sql
 from psycopg.errors import CheckViolation, InsufficientPrivilege
 
 from accessible_document import Document
 from database_urls import database_url_for_name
+from identity.permission_support import owner_context, permission_context
 from patient_http_support import receptionist_client, verified_physician_client
 from patient_service_support import runtime_role
 from tenant_probe_support import assert_no_cross_tenant_rows
@@ -824,6 +827,73 @@ def test_name_search_folds_diacritics_and_prefers_social_name(
         assert [item.enrollment_id for item in accented.items] == [
             registration.enrollment.pk
         ]
+
+
+@pytest.mark.parametrize("function", ["count", "page"])
+def test_registry_sql_denies_a_retained_revoked_manager(
+    rbac_graph: RbacGraph, function: str
+) -> None:
+    graph = rbac_graph
+    services = _services()
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        registration = _register(services, graph, full_name="João Gonçalves")
+        services.update_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={
+                "legal_name": "João Gonçalves",
+                "social_name": "Joana Gonçalves",
+            },
+            reason="registration intake",
+        )
+        kek = _kek()
+    parameters: list[str | UUID | int | None] = [
+        kek,
+        graph.clinic_a,
+        "joana goncalves",
+        None,
+    ]
+    if function == "page":
+        parameters.extend([0, 25])
+    statement = sql.SQL("SELECT * FROM clinic_app.{}({})").format(
+        sql.Identifier(f"patient_registry_{function}"),
+        sql.SQL(", ").join(sql.Placeholder() for _ in parameters),
+    )
+    with permission_context(graph, graph.shared_user), connection.cursor() as cursor:
+        cursor.execute(statement, parameters)
+        rows = cursor.fetchall()
+        if function == "count":
+            assert rows == [(1,)]
+        else:
+            assert rows == [
+                (
+                    registration.enrollment.pk,
+                    "João Gonçalves",
+                    date(1990, 5, 17),
+                    "Joana Gonçalves",
+                )
+            ]
+    with owner_context(graph.organization_a):
+        membership = UserClinicRole.objects.get(
+            clinic_id=graph.clinic_a, user_id=graph.shared_user
+        )
+        assert (
+            UserClinicRole.objects.filter(pk=membership.pk).update(
+                revoked_at=timezone.now()
+            )
+            == 1
+        )
+        assert UserClinicRole.all_objects.get(pk=membership.pk).revoked_at is not None
+    # Bind stale GUCs directly: neither Python authorization nor tenant entry
+    # can hide a missing current-membership check in the registry function.
+    with permission_context(graph, graph.shared_user), connection.cursor() as cursor:
+        with pytest.raises(
+            DatabaseError, match="clinic manager authority is required"
+        ) as raised:
+            cursor.execute(statement, parameters)
+        assert isinstance(raised.value.__cause__, InsufficientPrivilege)
+        assert raised.value.__cause__.sqlstate == "42501"
 
 
 def test_addresses_contacts_memberships_version_and_retire(

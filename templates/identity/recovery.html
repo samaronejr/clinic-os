@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Account recovery · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="recovery-title">
+  <h1 id="recovery-title">{% trans "Account recovery" %}</h1>
+  <p class="lede">{% trans "Keep your recovery codes offline. Each code works once and retires your old authenticators and sessions." %}</p>
+  {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error data-recovery-error>{{ form.non_field_errors }}{{ form.code.errors }}</div>{% endif %}
+  <section class="panel" aria-labelledby="codes-title">
+    <h2 id="codes-title">{% trans "Recovery codes" %}</h2>
+    {% if enrolled %}<p>{% trans "Your codes were already shown once. They cannot be displayed again." %}</p>
+    {% else %}<p>{% trans "Confirm your authenticator before generating your codes. They will be shown only in the next response." %}</p><form method="post" action="{% url 'identity:recovery-enrollment' clinic_id=clinic_id %}">{% csrf_token %}<button class="button" type="submit">{% trans "Generate recovery codes" %}</button></form>{% endif %}
+  </section>
+  <section class="panel" aria-labelledby="lost-title">
+    <h2 id="lost-title">{% trans "Lost your authenticator?" %}</h2>
+    <form method="post" novalidate>{% csrf_token %}{% include "includes/field.html" with field=form.code %}<button class="button button--danger" type="submit">{% trans "Use recovery code" %}</button></form>
+    <p>{% trans "Without a code, ask your clinic administrator for a notified reset. The full 24-hour delay starts after delivery, not after the request." %}</p>
+  </section>
+  <p><a class="button button--secondary" href="{% url 'identity:sessions' %}">{% trans "Your sessions" %}</a></p>
+</section>
+{% endblock %}

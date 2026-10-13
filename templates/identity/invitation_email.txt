@@ -1,0 +1,5 @@
+{% load i18n %}{% blocktrans %}You have been invited to join Clinic OS. Open the staff invitation page and enter the private invitation code below. Choose your password and confirm your authenticator to finish joining the clinic.{% endblocktrans %}
+
+{{ invitation_code }}
+
+{% blocktrans %}Keep this code private. It expires in two days and cannot be used again after your account is activated.{% endblocktrans %}

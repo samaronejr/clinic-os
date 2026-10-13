@@ -3,9 +3,12 @@ from typing import Final
 import pytest
 from django.db import connection
 
+from infra import identity_lifecycle_catalog
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    *identity_lifecycle_catalog.TABLE_GRANTS,
     ("billing_invoice", "SELECT"),
     ("billing_invoicerevision", "INSERT"),
     ("billing_invoicerevision", "SELECT"),
@@ -94,6 +97,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowstep", "SELECT"),
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *identity_lifecycle_catalog.COLUMN_GRANTS,
     ("billing_invoice", "state", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
@@ -122,6 +126,7 @@ POSTURE_OVERRIDES: Final = {
     "scheduling_capacity_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_definition_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
+    **identity_lifecycle_catalog.POSTURE,
     "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
@@ -141,7 +146,7 @@ POSTURE_OVERRIDES: Final = {
     "ehr_encounter_close_guard": ("v", False, ["clinic_resolver"]),
     "ehr_history_guard": ("v", False, ["clinic_resolver"]),
     "end_patient_session": ("v", True, ["clinic_app", "clinic_resolver"]),
-    "has_permission": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "has_permission": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "identity_scope_guard": ("v", False, ["clinic_resolver"]),
     "overlay_plain_text_guard": ("v", False, ["clinic_resolver"]),
     "patient_booking_event_immutable": ("v", False, ["clinic_resolver"]),
@@ -239,6 +244,7 @@ FUNCTION_SIGNATURES: Final = {
     ("scheduling_definition_guard", ""),
     ("scheduling_generated_block_guard", ""),
     ("scheduling_service_practitioners", "requested_clinic uuid"),
+    *identity_lifecycle_catalog.RESULTS,
     ("auth_lookup", "requested_username text"),
     ("billing_immutable", ""),
     ("billing_invoice_guard", ""),
@@ -398,6 +404,7 @@ FUNCTION_RESULTS: Final = {
     ("scheduling_service_practitioners", "requested_clinic uuid"): (
         "TABLE(user_id uuid, display_label text)"
     ),
+    **identity_lifecycle_catalog.RESULTS,
     ("auth_lookup", "requested_username text"): (
         "TABLE(id uuid, username character varying, "
         "password character varying, is_active boolean)"
@@ -741,7 +748,11 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
             True,
             volatility,
             "u",
-            ["search_path=pg_catalog, clinic_app, pg_temp"],
+            [
+                "search_path=pg_catalog, pg_temp"
+                if name in identity_lifecycle_catalog.POSTURE
+                else "search_path=pg_catalog, clinic_app, pg_temp"
+            ],
             True,
             app_execute,
         )

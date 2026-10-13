@@ -124,6 +124,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "realtime.subscription.authorized": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.clinic", "authorized"
         ),
+        "identity.signup.requested": Phase1AuditEventDefinition(
+            "system", "clinic-os-web", "identity.signup_registration", "requested"
+        ),
+        "identity.signup.inspected": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "identity.signup_registration", "inspected"
+        ),
         "identity.principal.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-ops", "identity.service_principal", "created"
         ),
@@ -249,6 +255,36 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "clinic-os-ops",
             "identity.user_clinic_role",
             "revoked",
+        ),
+        "identity.staff.invited": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "created"
+        ),
+        "identity.staff.invitation_accepted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "accepted"
+        ),
+        "identity.staff.invitation_expired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "expired"
+        ),
+        "identity.staff.invitation_revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.staff_invitation", "revoked"
+        ),
+        "identity.recovery.enrolled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.recovery_batch", "created"
+        ),
+        "identity.recovery.consumed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.recovery_code", "consumed"
+        ),
+        "identity.authenticator.reset_requested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.authenticator_reset", "requested"
+        ),
+        "identity.authenticator.reset_executed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.authenticator_reset", "executed"
+        ),
+        "identity.session.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.session", "revoked"
+        ),
+        "identity.staff.offboarded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.user", "offboarded"
         ),
         "identity.clinic_timezone.changed": Phase1AuditEventDefinition(
             "tenant",

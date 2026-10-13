@@ -65,9 +65,7 @@ class StepForm(forms.Form):
     task_kind = forms.ChoiceField(label=_("Task kind"), choices=KIND_CHOICES)
     owner_role = forms.ChoiceField(
         label=_("Responsible role"),
-        choices=tuple(
-            (value, _(label)) for value, label in UserClinicRole.Role.choices
-        ),
+        choices=tuple(UserClinicRole.Role.choices),
     )
     subject = forms.IntegerField(label=_("Reference index"), min_value=0, max_value=49)
     seconds = forms.IntegerField(

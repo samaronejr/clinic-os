@@ -45,6 +45,7 @@ from apps.prescription.services import (
 )
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.db import DatabaseError, connection, transaction
+from django.db.models.functions import Now
 from PIL import Image
 
 from patient_service_support import runtime_role
@@ -1209,7 +1210,7 @@ def test_membership_revocation_closes_access(rbac_graph: RbacGraph) -> None:
     with setup_context(rbac_graph.organization_a):
         UserClinicRole.objects.filter(
             user_id=rbac_graph.physician, role="physician"
-        ).delete()
+        ).update(revoked_at=Now())
     with (
         pytest.raises(TenantAccessDeniedError),
         runtime_role(),
