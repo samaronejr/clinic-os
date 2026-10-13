@@ -180,7 +180,11 @@ def test_portuguese_patient_and_clinic_time_round_trip(
         page.locator("#id_q").fill(f"{NAME} {mode}")
         _submit(page, "#patient-search-form button[type=submit]")
         expect(page.locator(".intake-table tbody tr").first).to_be_visible()
-        _submit(page, ".intake-table tbody tr:first-child button.button--secondary")
+        _submit(
+            page,
+            ".intake-table tbody tr:first-child "
+            'form:has(input[name="mode"][value="prepare"]) button',
+        )
         expect(page.locator("#scheduling-booking")).to_be_visible()
         page.locator("#id_practitioner").select_option(locale_staff["physician"])
         page.locator("#id_start_local").fill(DAY + "T23:00")
