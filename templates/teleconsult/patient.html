@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% load static %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-patient.js' %}" defer></script>{% endblock %}
+{% load static i18n %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-patient.js' %}" defer></script><script src="{% static 'js/teleconsult-devices.js' %}" defer></script>{% endblock %}
 {% block title %}Sala de espera da teleconsulta · Clinic OS{% endblock %}
 {% block meta_description %}Prepare câmera e microfone e entre na sua teleconsulta.{% endblock %}
 {% block content %}
@@ -9,6 +9,7 @@
   <p class="lede">Confira sua autorização, teste a câmera e o microfone e entre na sala quando estiver pronto. A consulta não é gravada nem transcrita.</p>
   {% include "teleconsult/partials/synthetic_notice.html" %}
   {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><h2>Não foi possível entrar agora</h2><p>{{ error }}</p></div>{% endif %}
+  {% if device_message %}<p class="feedback feedback--success" role="status" tabindex="-1" data-device-saved>{% trans "Device check saved. Only whether each item worked was sent to the clinic." %}</p>{% endif %}
 
   {% for row in live_rows %}
   <section class="panel tele-session" aria-labelledby="session-{{ forloop.counter }}-title" data-session="{{ row.session.pk }}" data-state="{{ row.state }}">
@@ -43,8 +44,8 @@
 
   {% if live_rows %}
   <section class="panel tele-devices" aria-labelledby="devices-title" data-device-check data-device-state="idle">
-    <h2 id="devices-title">Câmera e microfone</h2>
-    <p>Teste antes de entrar para evitar surpresas. O teste acontece só no seu aparelho: nada é enviado à clínica.</p>
+    <h2 id="devices-title">{% trans "Device check" %}</h2>
+    <p>{% trans "Test your camera, microphone, speaker and connection before entering. The test runs on your device: only whether each item worked is sent to the clinic, never an image or a sound." %}</p>
     <noscript><p class="feedback feedback--muted" role="status">A verificação automática precisa de JavaScript. Você ainda pode entrar na sala: o navegador pedirá permissão ao entrar.</p></noscript>
     <div class="tele-preview" data-preview hidden>
       <video data-preview-video autoplay muted playsinline aria-label="Prévia da sua câmera"></video>
@@ -70,6 +71,7 @@
       <button class="button button--secondary" type="button" data-device-test>Testar câmera e microfone</button>
       <button class="button button--quiet" type="button" data-device-stop hidden>Encerrar teste</button>
     </div>
+    {% with device_session=live_rows.0.session device_role="patient" %}{% include "teleconsult/partials/device_check.html" %}{% endwith %}
   </section>
   {% else %}
   <section class="panel" aria-labelledby="empty-title">

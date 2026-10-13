@@ -20,6 +20,12 @@ from renewal.browser._fixture_secrets import new_access_code, worker_dsn
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import encrypt
+from renewal.browser._teleconsult import (
+    device_checks,
+    register_physician,
+    session_events,
+    stored_room_name,
+)
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_availability import (
     _sign_in_physician,
@@ -248,6 +254,52 @@ def _join_patient(patient: Page, root: Path, width: int) -> None:
     _capture(patient, root, "patient-room", width)
 
 
+def _native_device_check(
+    patient: Page, staff: dict[str, str], session_id: str, root: Path, width: int
+) -> None:
+    """Without JavaScript the patient reports each device by hand; codes only."""
+    manual = patient.locator("[data-device-manual]")
+    expect(manual).to_be_visible()
+    for field, value in (
+        ("camera", "ok"),
+        ("microphone", "ok"),
+        ("speaker", "error"),
+        ("network", "good"),
+    ):
+        patient.locator(f"#device-patient-{field}").select_option(value)
+    click_to_navigate(patient.locator('[data-device-form] button[type="submit"]'))
+    expect(patient.locator("[data-device-saved]")).to_be_visible()
+    assert device_checks(staff, session_id) == [
+        ("patient", "ok", "ok", "error", "good")
+    ]
+    _capture(patient, root, "patient-device-saved", width)
+
+
+def _native_removal(  # noqa: PLR0913 - both personas and the stored rows
+    physician: Page,
+    patient: Page,
+    patient_url: str,
+    staff: dict[str, str],
+    session_id: str,
+    root: Path,
+    width: int,
+) -> None:
+    """The physician removes the patient without JavaScript; re-entry is fresh."""
+    expect(physician.locator("[data-patient-presence]")).to_have_text("Na sala")
+    click_to_navigate(physician.locator('button[value="remove"]'))
+    expect(physician.locator("[data-patient-presence]")).to_have_text(
+        "Retirado da sala"
+    )
+    expect(physician.locator('button[value="remove"]')).to_be_hidden()
+    _capture(physician, root, "physician-removed-patient", width)
+    goto_settled(patient, patient_url)
+    _join_patient(patient, root, width)
+    assert [
+        event for event in session_events(staff, session_id) if event[1] == "patient"
+    ] == [("joined", "patient"), ("joined", "patient")]
+    assert ("removed", "physician") in session_events(staff, session_id)
+
+
 def _happy_path(  # noqa: PLR0913 - the journey needs its full context
     physician: Page,
     patient: Page,
@@ -272,13 +324,17 @@ def _happy_path(  # noqa: PLR0913 - the journey needs its full context
     # Patient enters the waiting room first; the physician joins after.
     goto_settled(patient, patient_url)
     _capture(patient, root, "patient-waiting", width)
+    _native_device_check(patient, staff, session_id, root, width)
     _join_patient(patient, root, width)
     click_to_navigate(
         physician.locator(f'[data-session="{session_id}"] button[value="join"]')
     )
-    expect(physician.locator("#room-name")).to_contain_text(f"tc-{session_id}")
+    expect(physician.locator("#room-name")).to_have_text(
+        stored_room_name(staff, session_id)
+    )
     expect(physician.locator("#room-panel")).to_have_attribute("data-role", "physician")
     _capture(physician, root, "physician-room", width)
+    _native_removal(physician, patient, patient_url, staff, session_id, root, width)
     goto_settled(physician, staff_url)
     click_to_navigate(
         physician.locator(f'[data-session="{session_id}"] button[value="start"]')
@@ -393,6 +449,8 @@ def test_teleconsult_journey(
     patient_url = f"{base}/patient/teleconsult/"
     data = _seed(staff, day, 12)
     failing = _seed(staff, day, 14)
+    # The v2 clinician controls decide clinical.write (todo 6 bundles).
+    register_physician(staff)
     try:
         _sign_in_physician(physician, base, staff)
         sign_in_manager(admin, base, staff, seed_manager(staff))
@@ -462,7 +520,7 @@ def test_teleconsult_journey(
                     "cross_patient_status": 403,
                     "reception_status": 403,
                     "failed_join_status": 409,
-                    "room_reference": f"tc-{session_id}",
+                    "room_reference": stored_room_name(staff, session_id),
                     "real_provider": "waiting_external",
                 },
                 indent=2,

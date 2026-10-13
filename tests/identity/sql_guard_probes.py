@@ -19,7 +19,14 @@ from identity.legacy_owner_boundaries import _owner_call
 from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
-from identity.sql_denial_contracts import SqlArgument, SqlVerdict, probe
+from identity.sql_denial_contracts import DmlMember, SqlArgument, SqlVerdict, probe
+from identity.sql_teleconsult_probes import (
+    DEVICE_MEMBER,
+    MODE_MEMBER,
+    insert_device_check,
+    insert_mode_event,
+    mode_transition_scope,
+)
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -96,6 +103,8 @@ class SqlProbe:
     name: str
     roles: tuple[str, ...]
     arguments: Callable[[SqlWorld, bool], list[SqlArgument]]
+    member: DmlMember | None = None
+    execute: Callable[[SqlWorld, bool], SqlVerdict] | None = None
 
     @property
     def function(self) -> str:
@@ -134,6 +143,8 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
 
 
 def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
+    if sql_probe.execute is not None:
+        return sql_probe.execute(w, valid)
     return probe(sql_probe.function, sql_probe.arguments(w, valid))
 
 
@@ -254,6 +265,31 @@ PROBES = {
         "teleconsult_assigned",
         PHYSICIAN,
         lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
+    ),
+    "teleconsult_clinician": SqlProbe(
+        "teleconsult_clinician",
+        PHYSICIAN,
+        lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
+    ),
+    "teleconsult_binding_guard#device": SqlProbe(
+        "teleconsult_binding_guard",
+        PHYSICIAN,
+        lambda w, ok: [],
+        member=DEVICE_MEMBER,
+        execute=insert_device_check,
+    ),
+    "teleconsult_mode_transition_scope": SqlProbe(
+        "teleconsult_mode_transition_scope",
+        PHYSICIAN,
+        lambda w, ok: [],
+        execute=mode_transition_scope,
+    ),
+    "teleconsult_binding_guard#mode": SqlProbe(
+        "teleconsult_binding_guard",
+        PHYSICIAN,
+        lambda w, ok: [],
+        member=MODE_MEMBER,
+        execute=insert_mode_event,
     ),
     "teleconsult_fail": SqlProbe(
         "teleconsult_fail",

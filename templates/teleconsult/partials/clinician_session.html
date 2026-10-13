@@ -1,4 +1,4 @@
-<div id="video-session" class="tc-session" data-state="{{ state }}" data-patient-joined="{% if patient_joined %}true{% else %}false{% endif %}"{% if failure_label %} data-failure="{{ failure_label }}"{% endif %}>
+{% load i18n %}<div id="video-session" class="tc-session" data-state="{{ state }}" data-patient-joined="{% if patient_joined %}true{% else %}false{% endif %}" data-patient-removed="{% if patient_removed %}true{% else %}false{% endif %}" data-patient-audio-only="{% if patient_audio_only %}true{% else %}false{% endif %}"{% if failure_label %} data-failure="{{ failure_label }}"{% endif %}>
   {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ error }}</div>{% endif %}
   {% if state == "ended" or state == "failed" %}
   <div class="feedback {% if state == 'ended' %}feedback--muted{% else %}feedback--error{% endif %}" role="{% if state == 'ended' %}status{% else %}alert{% endif %}" tabindex="-1" data-session-notice>
@@ -25,12 +25,27 @@
     </form>
     </div>
     <p class="hint">Encerrar o vídeo não encerra o atendimento nem finaliza o documento.<noscript> Sem JavaScript, iniciar ou encerrar recarrega a página com o texto digitado ainda não salvo; salve o rascunho em seguida.</noscript></p>
+    {% comment %}Shown while the patient is in the room; the status refetch toggles it.{% endcomment %}
+    <form method="post" action="{{ staff_url }}" class="tc-remove" data-remove-form{% if not patient_joined or patient_removed %} hidden{% endif %}>
+      {% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}"><input type="hidden" name="surface" value="workspace">
+      <button class="button button--quiet" name="action" value="remove" type="submit" hx-post="{{ staff_url }}" hx-target="#video-session" hx-swap="outerHTML" hx-indicator="closest form"{% if version.state == "draft" %} form="soap-form"{% endif %}>{% trans "Remove the patient from the room" %}</button>
+      <span class="htmx-indicator" role="status">{% trans "Removing…" %}</span>
+      <p class="hint">{% trans "Removing disconnects the patient and revokes their access to this room; they can return only through the waiting room." %}</p>
+    </form>
   </div>
   {% endif %}
   <dl class="tele-facts tc-facts">
     <div class="tele-fact">
       <dt>Paciente</dt>
-      <dd data-patient-presence>{% if state == "ended" or state == "failed" %}—{% elif patient_joined %}Na sala{% else %}Ainda não entrou{% endif %}</dd>
+      <dd data-patient-presence>{% if state == "ended" or state == "failed" %}—{% elif patient_removed %}{% trans "Removed from the room" %}{% elif patient_joined %}Na sala{% else %}Ainda não entrou{% endif %}</dd>
+    </div>
+    <div class="tele-fact">
+      <dt>{% trans "Patient's media" %}</dt>
+      <dd data-patient-media data-text-audio="{% trans 'Audio only' %}" data-text-video="{% trans 'Video and audio' %}">{% if patient_audio_only %}{% trans "Audio only" %}{% else %}{% trans "Video and audio" %}{% endif %}</dd>
+    </div>
+    <div class="tele-fact">
+      <dt>{% trans "Patient's devices" %}</dt>
+      <dd data-patient-devices>{% if patient_devices %}{% include "teleconsult/partials/device_summary.html" with items=patient_devices only %}{% else %}{% trans "Not checked yet" %}{% endif %}</dd>
     </div>
     <div class="tele-fact">
       <dt>Gravação</dt>

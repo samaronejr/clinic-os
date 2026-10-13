@@ -13,7 +13,7 @@ from apps.comms.tasks import execute_operation
 from apps.core import integration
 from apps.ehr.services import open_encounter
 from apps.scheduling.services import AppointmentLocalRange, create_appointment
-from apps.teleconsult import services, workspace
+from apps.teleconsult import participants, services, workspace
 from apps.teleconsult.adapters import PROVIDER, SyntheticRoomAdapter
 from apps.teleconsult.models import (
     TeleconsultCredential,
@@ -25,6 +25,7 @@ from apps.tenancy.db import tenant_context
 from identity.legacy_parity_support import LEGACY, PHYSICIAN, Boundary, has_rows
 from patient_service_support import runtime_role
 from renewal.test_encounters import setup_context
+from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
     import pytest
@@ -38,6 +39,7 @@ class TeleconsultSubjects:
     session: TeleconsultSession
     credential: TeleconsultCredential
     operation: IntegrationOperation
+    room_name: str
 
 
 def seed_teleconsult(
@@ -48,6 +50,7 @@ def seed_teleconsult(
         execute_operation, "apply_async", lambda **kwargs: dispatched.append(kwargs)
     )
     integration.register_send_adapter(SyntheticRoomAdapter())
+    seed_video_versions()
     with runtime_role(), tenant_context(w.graph.physician, w.graph.organization_a):
         session = services.create_session(clinic_id=w.clinic, encounter_id=w.encounter)
     assert len(dispatched) == 1
@@ -78,7 +81,7 @@ def seed_teleconsult(
         )
     with runtime_role(), tenant_context(w.graph.physician, w.graph.organization_a):
         open_encounter(clinic_id=w.clinic, appointment_id=appointment.pk)
-    return TeleconsultSubjects(session, credential, operation)
+    return TeleconsultSubjects(session, credential, operation, room.room_name)
 
 
 def _assigned(w: LegacyWorld, ok: bool, data: TeleconsultSubjects) -> object:
@@ -129,6 +132,24 @@ def boundaries(data: TeleconsultSubjects) -> tuple[Boundary, ...]:
             "teleconsult",
             PHYSICIAN,
             lambda w, ok: _enter(w, ok, data),
+        ),
+        # v2 participant guards: clinical.write for the session patient's
+        # enrollment plus the bound-physician relation (todo 6 bundles).
+        Boundary(
+            "apps.teleconsult.participants.clinician_session",
+            "teleconsult",
+            PHYSICIAN,
+            lambda w, ok: participants.clinician_session(
+                clinic_id=w.clinic_for(ok), session_id=data.session.pk
+            ),
+        ),
+        Boundary(
+            "apps.teleconsult.participants.authorize_room_topic",
+            "teleconsult",
+            PHYSICIAN,
+            lambda w, ok: participants.authorize_room_topic(
+                room_name=data.room_name if ok else "tc-" + "0" * 32
+            ),
         ),
         Boundary(
             "apps.teleconsult.services.staff_sessions",

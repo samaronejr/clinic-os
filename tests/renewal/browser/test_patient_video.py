@@ -22,6 +22,12 @@ from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js, wait_for_js
+from renewal.browser._teleconsult import (
+    device_checks,
+    register_physician,
+    session_events,
+    stored_room_name,
+)
 from renewal.browser.engines import (
     END_TRACK_JS,
     displays_clipped_video,
@@ -53,6 +59,7 @@ if TYPE_CHECKING:
 
 __all__ = ("availability_staff",)
 TIMEOUT_MS = 20_000
+OK = 200
 FORBIDDEN = 403
 CONFLICT = 409
 PATIENT_PATH = "/patient/teleconsult/"
@@ -99,6 +106,13 @@ FOCUS_RING_JS = """() => {
   const style = getComputedStyle(el);
   return {tag: el.tagName, text: el.textContent.trim(), outline: style.outlineStyle,
     width: parseFloat(style.outlineWidth), height: el.getBoundingClientRect().height};
+}"""
+# Reject at the media boundary, leaving classification, tc:devices dispatch,
+# network measurement, FormData serialization and the real POST untouched.
+DEVICE_FAILURE_JS = """(name) => {
+  MediaDevices.prototype.getUserMedia = name ? function () {
+    return Promise.reject(new DOMException('', name));
+  } : undefined;
 }"""
 
 
@@ -219,8 +233,37 @@ def _camera_frame(page: Page, selector: str) -> None:
         wait_for_js(page, PLAYING_CAMERA_JS, arg=selector)
 
 
-def _check_devices(patient: Page, case: _Case) -> None:
-    """Explicit device test: idle, ready with a live preview, then released."""
+def _assert_media_released(patient: Page) -> None:
+    """Check Firefox/WebKit shim resources and expose actual states on failure.
+
+    Chromium uses native fake devices without the shim registry, so the helper
+    returns early there and does not claim shim-resource release coverage.
+    """
+    if not evaluate_js(patient, "() => Boolean(window.__clinicSyntheticMedia)"):
+        return
+    states = evaluate_js(
+        patient,
+        """async () => {
+          const {peers, audio, closing} = window.__clinicSyntheticMedia.resources;
+          await Promise.all(closing);
+          return {
+            peers: peers.map(peer => peer.connectionState),
+            audio: audio.map(context => context.state),
+          };
+        }""",
+    )
+    assert states["peers"], states
+    assert states["audio"], states
+    assert all(state == "closed" for state in states["peers"]), states
+    assert all(state == "closed" for state in states["audio"]), states
+
+
+def _check_devices(patient: Page, case: _Case, session_id: str) -> None:
+    """Explicit device test: idle, ready with a live preview, then released.
+
+    The camera/microphone result, the timed network probe and the answered
+    speaker tone are posted as closed codes only; the stored rows are exact.
+    """
     panel = patient.locator("[data-device-check]")
     expect(panel).to_have_attribute("data-device-state", "idle")
     expect(patient.locator("[data-consent]")).to_contain_text(
@@ -234,19 +277,50 @@ def _check_devices(patient: Page, case: _Case) -> None:
     expect(patient.locator("[data-device-status]")).to_be_focused()
     expect(patient.locator("[data-preview-video]")).to_be_visible()
     _camera_frame(patient, "[data-preview-video]")
+    report = patient.locator("[data-device-report]")
+    expect(report).to_have_attribute("data-report-state", "sent")
+    network = patient.locator('[data-result="network"]')
+    expect(network).to_have_attribute(
+        "data-result-state", re.compile(r"^(good|degraded)$")
+    )
+    measured = network.get_attribute("data-result-state")
+    # The self-report is replaced by the measured results when JS runs.
+    expect(patient.locator("[data-device-manual]")).to_be_hidden()
+    patient.locator("[data-speaker-test]").click()
+    expect(patient.locator("[data-speaker-check]")).to_be_visible()
+    expect(patient.locator('[data-speaker-answer="ok"]')).to_be_focused()
+    with patient.expect_response(
+        lambda r: (
+            r.request.method == "POST" and "device_check" in (r.request.post_data or "")
+        )
+    ) as answered:
+        patient.locator('[data-speaker-answer="ok"]').click()
+    assert answered.value.status == OK
+    expect(patient.locator('[data-result="speaker"]')).to_have_attribute(
+        "data-result-state", "ok"
+    )
+    expect(report).to_have_attribute("data-report-state", "sent")
+    expect(patient.locator("[data-speaker-test]")).to_be_focused()
+    assert device_checks(case.staff, session_id) == [
+        ("patient", "ok", "ok", "not_checked", str(measured)),
+        ("patient", "ok", "ok", "ok", str(measured)),
+    ]
     _capture(patient, case, "waiting-ready")
     patient.locator("[data-device-stop]").click()
     expect(panel).to_have_attribute("data-device-state", "idle")
     assert patient.evaluate(
         "() => document.querySelector('[data-preview-video]').srcObject === null"
     )
+    _assert_media_released(patient)
 
 
 def _enter_room(patient: Page, case: _Case, session_id: str) -> None:
     click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-role", "patient")
-    expect(patient.locator("#room-name")).to_contain_text(f"tc-{session_id}")
+    expect(patient.locator("#room-name")).to_have_text(
+        stored_room_name(case.staff, session_id)
+    )
     expect(panel).to_have_attribute("data-media", "ready")
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(patient.locator("[data-connection-status]")).to_contain_text(
@@ -281,7 +355,10 @@ def _keyboard_controls(patient: Page, case: _Case) -> None:
     assert patient.evaluate(TRACK_JS, "video") == {"enabled": False, "state": "live"}
     _capture(patient, case, "room-muted")
     patient.keyboard.press("Tab")
+    expect(patient.locator("[data-audio-only]")).to_be_focused()
+    patient.keyboard.press("Tab")
     expect(patient.locator("[data-leave]")).to_be_focused()
+    patient.keyboard.press("Shift+Tab")
     patient.keyboard.press("Shift+Tab")
     patient.keyboard.press("Space")
     expect(camera).to_have_attribute("aria-pressed", "true")
@@ -289,6 +366,30 @@ def _keyboard_controls(patient: Page, case: _Case) -> None:
     patient.keyboard.press("Space")
     expect(mic).to_have_attribute("aria-pressed", "true")
     assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
+
+
+def _audio_only(patient: Page, case: _Case, session_id: str) -> None:
+    """Audio only stops sending video, is stored for the physician, and returns."""
+    button = patient.locator("[data-audio-only]")
+    panel = patient.locator("#room-panel")
+    button.click()
+    expect(button).to_have_attribute("aria-pressed", "true")
+    expect(panel).to_have_attribute("data-media-mode", "audio")
+    expect(patient.locator("[data-self-off]")).to_have_text("Somente áudio")
+    expect(patient.locator('[data-toggle="camera"]')).to_be_disabled()
+    assert patient.evaluate(TRACK_JS, "video") == {"enabled": False, "state": "live"}
+    assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
+    _capture(patient, case, "room-audio-only")
+    button.click()
+    expect(button).to_have_attribute("aria-pressed", "false")
+    expect(panel).to_have_attribute("data-media-mode", "video")
+    expect(patient.locator('[data-toggle="camera"]')).to_be_enabled()
+    assert patient.evaluate(TRACK_JS, "video") == {"enabled": True, "state": "live"}
+    assert [
+        event
+        for event in session_events(case.staff, session_id)
+        if event[0] in {"audio_only", "video_restored"}
+    ] == [("audio_only", "patient"), ("video_restored", "patient")]
 
 
 def _drop_connection(patient: Page, case: _Case) -> None:
@@ -339,13 +440,14 @@ def _assert_late_media_dropped(patient: Page, state: str) -> None:
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", state)
     expect(panel).to_have_attribute("data-media", "off")
-    patient.evaluate("() => window.__lateMedia.release()")
+    evaluate_js(patient, "() => window.__lateMedia.release()")
     wait_for_js(
         patient,
         "() => { const s = window.__lateMedia.stream;"
         " return s !== null && s.getTracks().every((t) => t.readyState === 'ended'); }",
     )
-    assert patient.evaluate(LATE_TRACKS_JS) == ["ended", "ended"]
+    assert evaluate_js(patient, LATE_TRACKS_JS) == ["ended", "ended"]
+    _assert_media_released(patient)
     expect(panel).to_have_attribute("data-media", "off")
     expect(panel).to_have_attribute("data-connection", state)
     expect(patient.locator("[data-room-error]")).to_have_attribute(
@@ -416,10 +518,11 @@ def _happy_path(
     expect(patient.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "waiting"
     )
-    _check_devices(patient, case)
+    _check_devices(patient, case, session_id)
     _enter_room(patient, case, session_id)
     _assert_private(patient, case, session_id)
     _keyboard_controls(patient, case)
+    _audio_only(patient, case, session_id)
     _drop_connection(patient, case)
     _lose_device(patient)
     _staff_action(physician, case, session_id, "join")
@@ -456,11 +559,134 @@ def _reconnect_while_denied(denied: Page, case: _Case) -> None:
     _capture(denied, case, "room-denied-reconnected")
 
 
-def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) -> None:
+def _assert_failed_device_report(
+    patient: Page,
+    physician: Page,
+    case: _Case,
+    session_id: str,
+    rows: list[tuple[str, ...]],
+) -> None:
+    """The automatic report commits exact codes and the physician sees them."""
+    expect(patient.locator("[data-device-report]")).to_have_attribute(
+        "data-report-state", "sent"
+    )
+    network = patient.locator('[data-result="network"]')
+    expect(network).to_have_attribute(
+        "data-result-state", re.compile(r"^(good|degraded)$")
+    )
+    measured = str(network.get_attribute("data-result-state"))
+    media = {
+        field: str(
+            patient.locator(f'[data-device="{field}"]').get_attribute(
+                "data-device-state"
+            )
+        )
+        for field in ("camera", "microphone")
+    }
+    media["speaker"] = str(
+        patient.locator('[data-result="speaker"]').get_attribute("data-result-state")
+    )
+    rows.append(
+        ("patient", media["camera"], media["microphone"], media["speaker"], measured)
+    )
+    with psycopg.connect(case.staff["dsn"]) as conn:
+        conn.execute("SET ROLE clinic_app")
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true), "
+            "set_config('app.current_user_id',%s,true)",
+            [case.staff["organization"], case.staff["physician_a_id"]],
+        )
+        stored = conn.execute(
+            "SELECT role,camera,microphone,speaker,network "
+            "FROM clinic_app.teleconsult_teleconsultdevicecheck "
+            "WHERE session_id=%s AND role='patient' ORDER BY created_at,id",
+            [session_id],
+        ).fetchall()
+    assert stored == rows
+    with physician.expect_response(
+        lambda r: (
+            r.request.method == "POST"
+            and 'name="action"\r\n\r\nstatus' in (r.request.post_data or "")
+        )
+    ) as refreshed:
+        physician.locator("[data-refresh-status]").click()
+    assert refreshed.value.status == OK
+    summary = physician.locator("[data-patient-devices]")
+    for field, value in (
+        *media.items(),
+        ("network", measured),
+    ):
+        item = summary.locator(f'[data-summary="{field}"]')
+        expect(item).to_have_attribute("data-summary-state", value)
+        expect(item).to_be_visible()
+
+
+def _closed_device_failures(
+    patient: Page, physician: Page, case: _Case, session_id: str
+) -> None:
+    """All non-ok media codes survive the real automatic reporting path."""
+    rows: list[tuple[str, ...]] = []
+    for field in ("camera", "microphone"):
+        expect(patient.locator(f'[data-device="{field}"]')).to_have_attribute(
+            "data-device-state", "denied"
+        )
+    _assert_failed_device_report(patient, physician, case, session_id, rows)
+    for code, error in (
+        ("missing", "NotFoundError"),
+        ("busy", "NotReadableError"),
+        ("unsupported", ""),
+    ):
+        patient.evaluate(DEVICE_FAILURE_JS, error)
+        with patient.expect_response(
+            lambda r: (
+                r.request.method == "POST"
+                and "device_check" in (r.request.post_data or "")
+            )
+        ) as reported:
+            patient.locator("[data-device-test]").click()
+        assert reported.value.status == OK
+        expect(patient.locator("[data-device-check]")).to_have_attribute(
+            "data-device-state", code
+        )
+        for field in ("camera", "microphone"):
+            expect(patient.locator(f'[data-device="{field}"]')).to_have_attribute(
+                "data-device-state", code
+            )
+        _assert_failed_device_report(patient, physician, case, session_id, rows)
+    patient.evaluate(
+        "() => { window.AudioContext = undefined;"
+        " window.webkitAudioContext = undefined; }"
+    )
+    with patient.expect_response(
+        lambda r: (
+            r.request.method == "POST" and "device_check" in (r.request.post_data or "")
+        )
+    ) as reported:
+        patient.locator("[data-speaker-test]").click()
+    assert reported.value.status == OK
+    expect(patient.locator('[data-result="speaker"]')).to_have_attribute(
+        "data-result-state", "unsupported"
+    )
+    _assert_failed_device_report(patient, physician, case, session_id, rows)
+    # A fresh document restores the engine's normal media/permission boundary
+    # before the denial, reconnect and permission recovery journey continues.
+    goto_settled(patient, case.patient_url)
+
+
+def _denied_path(
+    denied: Page, physician: Page, case: _Case, session_id: str, patient_id: str
+) -> None:
     """Denied devices are explained, recoverable, then the session expires."""
     goto_settled(denied, case.patient_url)
+    _staff_action(physician, case, session_id, "join")
     panel = denied.locator("[data-device-check]")
-    denied.locator("[data-device-test]").click()
+    with denied.expect_response(
+        lambda r: (
+            r.request.method == "POST" and "device_check" in (r.request.post_data or "")
+        )
+    ) as reported:
+        denied.locator("[data-device-test]").click()
+    assert reported.value.status == OK
     expect(panel).to_have_attribute("data-device-state", "denied")
     error = denied.locator("[data-device-error]")
     expect(error).to_have_attribute("data-failure", "denied")
@@ -470,6 +696,7 @@ def _denied_path(denied: Page, case: _Case, session_id: str, patient_id: str) ->
     expect(denied.locator('[data-device="camera"]')).to_have_text("Permissão negada")
     expect(denied.locator('button[value="join"]')).to_be_enabled()
     _capture(denied, case, "waiting-denied")
+    _closed_device_failures(denied, physician, case, session_id)
     click_to_navigate(denied.locator('button[value="join"]'))
     room = denied.locator("#room-panel")
     expect(room).to_have_attribute("data-media", "denied")
@@ -585,6 +812,7 @@ def test_patient_video_journey(
         ]
         try:
             _sign_in_physician(physician, base, case.staff)
+            register_physician(case.staff)
             sign_in_manager(admin, base, case.staff, seed_manager(case.staff))
             _publish_consent(admin, f"{base}/clinics/{case.staff['clinic_a']}/consent/")
             _redeem(patient, base, case.staff["clinic_a"], data["code"])
@@ -595,7 +823,7 @@ def test_patient_video_journey(
             _redeem(denied, base, case.staff["clinic_a"], second["code"])
             _accept_consent(denied, base)
             second_session = _provision(physician, case, second)
-            _denied_path(denied, case, second_session, second["patient"])
+            _denied_path(denied, physician, case, second_session, second["patient"])
             _redeem(prompted, base, case.staff["clinic_a"], third["code"])
             _accept_consent(prompted, base)
             _unanswered_prompt(prompted, case, _provision(physician, case, third))

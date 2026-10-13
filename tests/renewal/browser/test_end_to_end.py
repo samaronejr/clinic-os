@@ -51,6 +51,7 @@ from renewal.browser._navigation import (
 )
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
+from renewal.browser._teleconsult import register_physician, stored_room_name
 from renewal.browser.engines import (
     element_box,
     full_page_screenshot,
@@ -802,6 +803,8 @@ def write_notes(case: Day, physician: Page) -> str:
 
 def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> None:
     """Create, provision, join, start and end the teleconsult session."""
+    # The v2 participant controls decide clinical.write (todo 6 bundles).
+    register_physician(case.staff)
     staff_url = case.url(f"/teleconsult/clinics/{case.clinic}/")
     patient_url = case.url("/patient/teleconsult/")
     goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
@@ -877,7 +880,9 @@ def patient_enters_room(case: Day, patient: Page, session_id: str) -> Locator:
     click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "connected")
-    expect(patient.locator("#room-name")).to_contain_text(f"tc-{session_id}")
+    expect(patient.locator("#room-name")).to_have_text(
+        stored_room_name(case.staff, session_id)
+    )
     expect(patient.locator("[data-synthetic-room]")).to_be_visible()
     capture(case, patient, "patient-room")
     return panel

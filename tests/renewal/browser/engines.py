@@ -233,8 +233,8 @@ SYNTHETIC_MEDIA_BINDING: Final = "__clinicSyntheticMediaGranted"
 # video (it paints its first frame at once) and an oscillator for audio,
 # delivered through a loopback RTCPeerConnection. They are real
 # MediaStreamTracks, so enabled, readyState and stop() behave as they do for
-# devices, and __clinicSyntheticMedia.end(audioTrack) ends the audio the way
-# an unplugged microphone does: the source stops and the track fires a
+# devices, and __clinicSyntheticMedia.end(track) ends audio or video the way
+# an unplugged device does: the source stops and the track fires a
 # genuine "ended". Firefox never delivers a script-dispatched "ended" to a
 # MediaStreamTrack listener. Browsers exempt real capture streams from
 # autoplay restrictions; WebKit does not know these streams are capture
@@ -250,6 +250,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
   if (!proto) return;
   const endings = new WeakMap();
   const captured = new WeakSet();
+  const resources = {peers: [], audio: [], closing: []};
   const srcObject = Object.getOwnPropertyDescriptor(
     HTMLMediaElement.prototype, 'srcObject');
   Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', {
@@ -264,6 +265,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     },
   });
   window.__clinicSyntheticMedia = {
+    resources,
     end: (track) => {
       const end = endings.get(track);
       if (!end) throw new Error('not a synthetic media track');
@@ -273,22 +275,66 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
   const loopback = async (source) => {
     const sender = new RTCPeerConnection();
     const receiver = new RTCPeerConnection();
+    resources.peers.push(sender, receiver);
     const relay = (peer) => (event) =>
       event.candidate && peer.addIceCandidate(event.candidate);
     sender.onicecandidate = relay(receiver);
     receiver.onicecandidate = relay(sender);
-    const received = new Promise((resolve) => { receiver.ontrack = resolve; });
+    const received = new Promise((resolve, reject) => {
+      let incoming = null;
+      const ready = () => {
+        const states = [sender.connectionState, receiver.connectionState];
+        const failed = states.some(state =>
+          state === 'failed' || state === 'closed') ||
+          Boolean(incoming && incoming.track.readyState === 'ended');
+        if (!failed && (!incoming || incoming.track.muted ||
+            states.some(state => state !== 'connected'))) return;
+        sender.removeEventListener('connectionstatechange', ready);
+        receiver.removeEventListener('connectionstatechange', ready);
+        if (incoming) {
+          incoming.track.removeEventListener('unmute', ready);
+          incoming.track.removeEventListener('ended', ready);
+        }
+        if (failed) {
+          reject(new DOMException(
+            'Synthetic media unavailable before readiness', 'NotReadableError'));
+        } else {
+          resolve(incoming);
+        }
+      };
+      sender.addEventListener('connectionstatechange', ready);
+      receiver.addEventListener('connectionstatechange', ready);
+      receiver.ontrack = (event) => {
+        incoming = event;
+        incoming.track.addEventListener('unmute', ready);
+        incoming.track.addEventListener('ended', ready);
+        ready();
+      };
+    });
     sender.addTrack(source);
     await sender.setLocalDescription(await sender.createOffer());
     await receiver.setRemoteDescription(sender.localDescription);
     await receiver.setLocalDescription(await receiver.createAnswer());
     await sender.setRemoteDescription(receiver.localDescription);
     const {track, transceiver} = await received;
-    endings.set(track, () => {
-      transceiver.stop();
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      sender.onicecandidate = null;
+      receiver.onicecandidate = null;
       source.stop();
       sender.close();
       receiver.close();
+    };
+    const stop = track.stop.bind(track);
+    track.stop = () => {
+      stop();
+      release();
+    };
+    endings.set(track, () => {
+      transceiver.stop();
+      release();
     });
     return track;
   };
@@ -311,11 +357,23 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
   };
   const audioSource = () => {
     const audio = new AudioContext();
+    resources.audio.push(audio);
     const tone = audio.createOscillator();
     const sink = audio.createMediaStreamDestination();
     tone.connect(sink);
     tone.start();
-    return sink.stream.getAudioTracks()[0];
+    const track = sink.stream.getAudioTracks()[0];
+    const stop = track.stop.bind(track);
+    let released = false;
+    track.stop = () => {
+      if (released) return;
+      released = true;
+      stop();
+      tone.stop();
+      tone.disconnect();
+      resources.closing.push(audio.close().catch(() => {}));
+    };
+    return track;
   };
   proto.getUserMedia = async function getUserMedia(constraints = {}) {
     if (!(await window.__clinicSyntheticMediaGranted())) {
@@ -325,8 +383,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     if (constraints.video) sources.push(videoSource());
     if (constraints.audio) sources.push(audioSource());
     if (!sources.length) throw new TypeError('audio or video must be requested');
-    const tracks = sources.map((source) =>
-      source.kind === 'audio' ? loopback(source) : source);
+    const tracks = sources.map(loopback);
     const stream = new MediaStream(await Promise.all(tracks));
     captured.add(stream);
     return stream;
@@ -419,9 +476,11 @@ def _engine_of(context: BrowserContext) -> str:
     return browser.browser_type.name
 
 
-def install_media(context: BrowserContext, origin: str, *, granted: bool) -> None:
+def install_media(
+    context: BrowserContext, origin: str, *, granted: bool, scripted: bool = False
+) -> None:
     """Set a fresh context's camera/microphone permission (before any page)."""
-    if _engine_of(context) == "chromium":
+    if _engine_of(context) == "chromium" and not scripted:
         if granted:
             context.grant_permissions(list(MEDIA_PERMISSIONS), origin=origin)
         return
@@ -433,7 +492,7 @@ def install_media(context: BrowserContext, origin: str, *, granted: bool) -> Non
 
 def grant_media(context: BrowserContext, origin: str) -> None:
     """Grant camera/microphone later, as a user fixing the permission would."""
-    if _engine_of(context) == "chromium":
+    if _engine_of(context) == "chromium" and context not in _SYNTHETIC_GRANTS:
         context.grant_permissions(list(MEDIA_PERMISSIONS), origin=origin)
         return
     _SYNTHETIC_GRANTS[context]["granted"] = True
@@ -441,7 +500,7 @@ def grant_media(context: BrowserContext, origin: str) -> None:
 
 def media_source(context: BrowserContext) -> str:
     """Describe the capture source a context's media comes from (evidence)."""
-    if _engine_of(context) == "chromium":
+    if context not in _SYNTHETIC_GRANTS:
         return f"chromium {CHROMIUM_FAKE_MEDIA_ARG}"
     return f"{_engine_of(context)} synthetic canvas/oscillator getUserMedia"
 

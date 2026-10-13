@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static tz %}
-{% block extra_head %}<meta name="referrer" content="same-origin"><meta name="robots" content="noindex, nofollow"><link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/teleconsult-clinician.js' %}" defer></script>{% endblock %}
+{% load static tz i18n %}
+{% block extra_head %}<meta name="referrer" content="same-origin"><meta name="robots" content="noindex, nofollow"><link rel="stylesheet" href="{% static 'css/clinic-os-teleconsult.css' %}"><script src="{% static 'js/realtime.js' %}" defer></script><script src="{% static 'js/teleconsult-clinician.js' %}" defer></script><script src="{% static 'js/teleconsult-devices.js' %}" defer></script>{% endblock %}
 {% block title %}Teleconsulta · Clinic OS{% endblock %}
 {% block meta_description %}Sala de teleconsulta do médico com as anotações do atendimento.{% endblock %}
 {% block content %}
 {% timezone encounter.clinic.timezone %}
-<section class="shell-wide tc-workspace" aria-labelledby="workspace-title" data-teleconsult="clinician" data-session="{{ session.pk }}" data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}">
+<section class="shell-wide tc-workspace" aria-labelledby="workspace-title" data-teleconsult="clinician" data-session="{{ session.pk }}" data-encounter="{{ encounter.pk }}" data-encounter-state="{{ encounter.state }}" data-realtime-topic="{{ realtime_topic }}" data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}" data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
   <header class="tc-head">
     <div class="tc-identity">
       <h1 id="workspace-title" data-patient>{{ encounter.patient.full_name }}</h1>
@@ -31,6 +31,7 @@
       </div>
     </div>
     {% if session_error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ session_error }}</div>{% endif %}
+    {% if realtime_enabled %}<p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Automatic updates are unavailable. Use “Check status now” to update the video state." %}</p>{% endif %}
   </header>
   <div class="tc-switch" role="tablist" aria-label="Painéis da consulta" data-switch hidden>
     <button class="button tc-tab" type="button" role="tab" id="tab-video" aria-controls="room-panel" aria-selected="true" data-tab="video">Vídeo</button>
@@ -55,6 +56,7 @@
       <div class="tele-controls" role="group" aria-label="Controles da chamada">
         <button class="button button--secondary tele-toggle" type="button" data-toggle="microphone" aria-pressed="true" disabled>Microfone ligado</button>
         <button class="button button--secondary tele-toggle" type="button" data-toggle="camera" aria-pressed="true" disabled>Câmera ligada</button>
+        <button class="button button--secondary tele-toggle" type="button" data-audio-only aria-pressed="{% if physician_audio_only %}true{% else %}false{% endif %}" data-text-on="{% trans 'Audio only: on' %}" data-text-off="{% trans 'Audio only: off' %}" data-text-busy="{% trans 'Switching…' %}" data-text-auto="{% trans 'Your camera is unavailable, so the consultation continues with audio only.' %}" data-text-failed="{% trans 'The audio-only switch was not confirmed by the clinic. Try again.' %}">{% if physician_audio_only %}{% trans "Audio only: on" %}{% else %}{% trans "Audio only: off" %}{% endif %}</button>
       </div>
       <noscript><p class="feedback feedback--muted" role="status">O vídeo precisa de JavaScript ativado. As anotações abaixo funcionam sem ele.</p></noscript>
       <p class="feedback" role="status" aria-live="polite" data-connection-status tabindex="-1">Preparando câmera e microfone…</p>
@@ -71,6 +73,13 @@
         <button class="button button--quiet" type="button" data-refresh-status hidden>Verificar estado agora</button>
       </div>
       {% include "teleconsult/partials/clinician_session.html" %}
+      {% if state == "waiting" or state == "active" %}
+      <details class="tele-devices tc-devices" data-device-check data-device-state="idle">
+        <summary>{% trans "Your device check" %}</summary>
+        <p>{% trans "Camera and microphone come from this room; test the speaker and see the connection here. Only whether each item worked is recorded." %}</p>
+        {% with device_session=session device_role="physician" device_url=staff_url %}{% include "teleconsult/partials/device_check.html" %}{% endwith %}
+      </details>
+      {% endif %}
     </section>
     {% include "teleconsult/partials/clinician_notes.html" %}
   </div>

@@ -30,8 +30,11 @@ from apps.realtime.topics import (
     CLINIC_TOPIC,
     JOB_TOPIC,
     PATIENT_TOPIC,
+    TELECONSULT_TOPIC,
     TOPIC_PERMISSIONS,
 )
+from apps.teleconsult.participants import authorize_room_topic
+from apps.teleconsult.services import TeleconsultAccessDeniedError
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 
 if TYPE_CHECKING:
@@ -95,6 +98,12 @@ def _staff_topics(topics: tuple[str, ...]) -> None:
                 require_permission(TOPIC_PERMISSIONS[match[2]], clinic_id=clinic_id)
         elif JOB_TOPIC.fullmatch(topic):
             clinic_id = authorize_scope(topic=topic)
+        elif room := TELECONSULT_TOPIC.fullmatch(topic):
+            # The room's bound physician holding clinical.write for its patient.
+            try:
+                clinic_id = authorize_room_topic(room_name=room[1])
+            except TeleconsultAccessDeniedError as error:
+                raise TopicDeniedError from error
         else:
             raise TopicDeniedError
         record_phase1_event(

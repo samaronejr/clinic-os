@@ -7,7 +7,9 @@ no sleeps, provider credentials, recording or clinical-data traces are used.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -15,7 +17,8 @@ import pytest
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
-from renewal.browser._page_wait import evaluate_js
+from renewal.browser._page_wait import evaluate_js, wait_for_js
+from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import (
     full_page_screenshot,
     grant_media,
@@ -52,7 +55,11 @@ from renewal.browser.test_teleconsult import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import APIResponse, Page, Route
+    from playwright.sync_api import (
+        APIResponse,
+        Page,
+        Route,
+    )
 
 __all__ = ("availability_staff",)
 DAYS = {1280: "2035-09-03", 768: "2035-09-04", 375: "2035-09-05"}
@@ -80,6 +87,11 @@ OBSERVE_STATUS = """() => {
       return response;
     });
   };
+}"""
+ROOM_READY = """() => {
+  const panel = document.querySelector('#room-panel');
+  return panel && panel.getAttribute('data-connection') === 'connected' &&
+    panel.getAttribute('data-media') === 'ready';
 }"""
 
 
@@ -189,6 +201,9 @@ def end_with_late_status(physician: Page, patient: Page, case: _Case) -> None:
     """Actual active replies arrive after the stored end on both personas."""
     held: dict[str, tuple[Route, APIResponse]] = {}
     pages = {"physician": physician, "patient": patient}
+    fetched: dict[str, asyncio.Future[None]] = {
+        persona: page._impl_obj._loop.create_future() for persona, page in pages.items()
+    }
     intercepted: set[str] = set()
 
     def hold(persona: str, route: Route) -> None:
@@ -197,20 +212,18 @@ def end_with_late_status(physician: Page, patient: Page, case: _Case) -> None:
             response = route.fetch()
             assert response.json()["state"] == "active"
             held[persona] = (route, response)
-            pages[persona].evaluate("() => console.info('task30-status-held')")
+            fetched[persona].set_result(None)
         else:
             route.continue_()
 
     physician.route(case.staff_url, lambda route: hold("physician", route))
     patient.route(case.patient_url, lambda route: hold("patient", route))
     try:
-        for page in pages.values():
-            page.evaluate(OBSERVE_STATUS)
-            page.evaluate("() => {window.__watchNextStatus = true;}")
-            with page.expect_console_message(
-                predicate=lambda m: m.text == "task30-status-held"
-            ):
-                page.locator("[data-refresh-status]").click()
+        for persona, page in pages.items():
+            evaluate_js(page, OBSERVE_STATUS)
+            evaluate_js(page, "() => {window.__watchNextStatus = true;}")
+            page.locator("[data-refresh-status]").click()
+            page._sync(asyncio.wait_for(asyncio.shield(fetched[persona]), timeout=20))
         assert set(held) == set(pages)
         _htmx(physician, 'button[value="end"]')
         expect(physician.locator("#room-panel")).to_have_attribute(
@@ -240,8 +253,44 @@ def end_with_late_status(physician: Page, patient: Page, case: _Case) -> None:
             page.unroute_all(behavior="wait")
 
 
+DROP_PLAN = FIRST["plan"] + " (digitado durante a queda de 20 s)"
+DROP_MS = 20_000
+
+
+def long_drop(physician: Page, case: _Case, session: str) -> None:
+    """A 20 s network drop: typed notes survive, reconnect resumes, save stores.
+
+    Playwright's clock advances the page 20 s while offline, firing every
+    timer that falls due (no real wait); the server records the reconnection.
+    """
+    panel = physician.locator("#room-panel")
+    _show(physician, case, "notes")
+    physician.clock.install()
+    physician.context.set_offline(offline=True)
+    expect(panel).to_have_attribute("data-connection", "offline")
+    _fill(physician, {"plan": DROP_PLAN})
+    physician.clock.fast_forward(DROP_MS)
+    expect(physician.locator("#id_plan")).to_have_value(DROP_PLAN)
+    expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
+    capture(physician, case, "physician-drop-20s")
+    with physician.expect_response(
+        lambda r: (
+            r.request.method == "POST"
+            and 'name="action"\r\n\r\nresume' in (r.request.post_data or "")
+        )
+    ) as resumed:
+        physician.context.set_offline(offline=False)
+    assert resumed.value.status == 200
+    expect(panel).to_have_attribute("data-connection", "connected")
+    expect(physician.locator("#id_plan")).to_have_value(DROP_PLAN)
+    _save(physician)
+    expect(physician.locator("#notes-panel")).to_have_attribute("data-revision", "3")
+    _show(physician, case, "video")
+    capture(physician, case, "physician-drop-recovered")
+
+
 def preserved(case: _Case, version: str, session: str) -> None:
-    assert stored(case.staff, version) == (2, FIRST["subjective"])
+    assert stored(case.staff, version) == (3, FIRST["subjective"])
     rows = state_rows(case, session)
     assert rows["encounter"] == "open"
     assert rows["recording"] is False
@@ -264,6 +313,71 @@ def device_recovery(patient: Page, case: _Case) -> None:
     capture(patient, case, "devices-ready")
 
 
+def join_initializing_rooms(
+    physician: Page, patient: Page, case: _Case, session: str
+) -> None:
+    """A physician joins before the patient's actual initial status arrives."""
+    held: list[tuple[Route, APIResponse]] = []
+    fetched: asyncio.Future[None] = patient._impl_obj._loop.create_future()
+    intercepted = False
+
+    def initial_status(route: Route) -> None:
+        nonlocal intercepted
+        if (
+            status_request(route)
+            and 'name="action"\r\n\r\nstatus' in (route.request.post_data or "")
+            and not intercepted
+        ):
+            intercepted = True
+            response = route.fetch()
+            assert response.json()["state"] == "waiting"
+            held.append((route, response))
+            fetched.set_result(None)
+        else:
+            route.continue_()
+
+    patient.route(case.patient_url, initial_status)
+    try:
+        click_to_navigate(patient.locator('button[value="join"]'))
+        patient._sync(asyncio.wait_for(asyncio.shield(fetched), timeout=5))
+        # Media acquisition, not document load, admits the other navigation.
+        # The actual initial status reply stays held: the physician still joins
+        # while this patient's room is initializing.
+        wait_for_js(
+            patient,
+            """() => document.querySelector('#room-panel')
+              ?.getAttribute('data-media') === 'ready'""",
+            timeout=5000,
+        )
+        assert len(held) == 1
+        expect(patient.locator("#room-panel")).to_have_attribute(
+            "data-connection", "joining"
+        )
+        goto_settled(physician, case.staff_url)
+        click_to_navigate(
+            physician.locator(f'[data-session="{session}"] button[value="join"]')
+        )
+        wait_for_js(physician, ROOM_READY, timeout=5000)
+        expect(patient.locator("#room-panel")).to_have_attribute(
+            "data-connection", "joining"
+        )
+        route, response = held.pop()
+        route.fulfill(response=response)
+        wait_for_js(patient, ROOM_READY, timeout=5000)
+    finally:
+        for route, _ in held:
+            route.abort()
+        patient.unroute(case.patient_url, initial_status)
+    for page in (patient, physician):
+        expect(page.locator("#room-panel")).to_have_attribute(
+            "data-connection", "connected"
+        )
+        expect(page.locator("#room-panel")).to_have_attribute("data-media", "ready")
+        for kind in ("audio", "video"):
+            assert page.evaluate(TRACK_JS, kind) == {"enabled": True, "state": "live"}
+    capture(patient, case, "patient-connected")
+
+
 def begin(
     physician: Page, patient: Page, case: _Case, data: dict[str, str]
 ) -> tuple[str, str]:
@@ -278,19 +392,7 @@ def begin(
     template = _seed_template(case)
     goto_settled(patient, case.patient_url)
     device_recovery(patient, case)
-    click_to_navigate(patient.locator('button[value="join"]'))
-    goto_settled(physician, case.staff_url)
-    click_to_navigate(
-        physician.locator(f'[data-session="{session}"] button[value="join"]')
-    )
-    for page in (patient, physician):
-        expect(page.locator("#room-panel")).to_have_attribute(
-            "data-connection", "connected"
-        )
-        expect(page.locator("#room-panel")).to_have_attribute("data-media", "ready")
-        for kind in ("audio", "video"):
-            assert page.evaluate(TRACK_JS, kind) == {"enabled": True, "state": "live"}
-    capture(patient, case, "patient-connected")
+    join_initializing_rooms(physician, patient, case, session)
     version = _create_draft(physician, case, template)
     _fill(physician, FIRST)
     _save(physician)
@@ -360,12 +462,28 @@ def outage_and_expiry(
     )
 
 
+# Each transport recovery resumes twice (back online, then the explicit
+# Reconnect after a timed-out status), and the 20 s drop resumes once more.
+RECOVERED = [
+    ("created", ""),
+    ("joined", "patient"),
+    ("joined", "physician"),
+    ("started", "physician"),
+    ("reconnected", "patient"),
+    ("reconnected", "patient"),
+    ("reconnected", "physician"),
+    ("reconnected", "physician"),
+    ("reconnected", "physician"),
+]
+
+
 def journey(
     physician: Page, patient: Page, case: _Case, data: dict[str, str], ending: str
 ) -> dict[str, object]:
     session, version = begin(physician, patient, case, data)
     transport_recovery(patient, case, "patient")
     transport_recovery(physician, case, "physician")
+    long_drop(physician, case, session)
     preserved(case, version, session)
     if ending == "outage":
         outage_and_expiry(physician, patient, case, session)
@@ -377,10 +495,7 @@ def journey(
         assert rows["session"] == "failed"
         assert rows["live_credentials"] == 0
         assert rows["events"] == [
-            ("created", ""),
-            ("joined", "patient"),
-            ("joined", "physician"),
-            ("started", "physician"),
+            *RECOVERED,
             ("failed", ""),
         ]
         return rows
@@ -414,13 +529,7 @@ def journey(
     rows = state_rows(case, session)
     assert rows["session"] == "ended"
     assert rows["live_credentials"] == 0
-    assert rows["events"] == [
-        ("created", ""),
-        ("joined", "patient"),
-        ("joined", "physician"),
-        ("started", "physician"),
-        ("ended", "physician"),
-    ]
+    assert rows["events"] == [*RECOVERED, ("ended", "physician")]
     return rows
 
 
@@ -450,6 +559,7 @@ def test_video_recovery_journey(
     )
     errors: list[str] = []
     console: list[str] = []
+    video_root = os.environ.get("CLINIC_TELECONSULT_QA_VIDEO_ROOT")
     with sync_playwright() as driver:
         browser = launch_selected(driver, media=True)
         contexts = [
@@ -478,6 +588,34 @@ def test_video_recovery_journey(
             )
         try:
             _sign_in_physician(physician, base, staff)
+            # Optional QA capture begins only after synthetic authentication.
+            # Normal browser/stress runs retain screenshots, not raw video.
+            previous = contexts[0]
+            contexts[0] = browser.new_context(
+                locale="pt-BR",
+                viewport={"width": width, "height": 900},
+                service_workers="block",
+                storage_state=previous.storage_state(),
+                record_video_dir=(
+                    f"{video_root}/{width}-{ending}" if video_root else None
+                ),
+                record_video_size=(
+                    {"width": width, "height": 900} if video_root else None
+                ),
+            )
+            install_media(contexts[0], base, granted=True)
+            physician = contexts[0].new_page()
+            physician.set_default_timeout(20_000)
+            watch_page_errors(physician, errors)
+            physician.on(
+                "console",
+                lambda message: (
+                    console.append(message.text) if message.type == "error" else None
+                ),
+            )
+            previous.close()
+            # The v2 participant controls decide clinical.write (todo 6).
+            register_physician(staff)
             sign_in_manager(manager, base, staff, seed_manager(staff))
             _publish_consent(manager, f"{base}/clinics/{staff['clinic_a']}/consent/")
             rows = journey(physician, patient, case, _seed(staff, case.day, 12), ending)
@@ -521,4 +659,7 @@ def test_video_recovery_journey(
         finally:
             for context in contexts:
                 context.close()
+            if video_root:
+                assert physician.video is not None
+                physician.video.save_as(f"{video_root}/tele-{width}-{ending}.webm")
             browser.close()

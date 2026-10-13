@@ -81,6 +81,20 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS
     assert set(runner.SUITES) >= runner.FIXTURE_SUITES
     assert "video-recovery" in runner.FIXTURE_SUITES & runner.VIDEO_SUITES
+    # The realtime suite also drives teleconsult hints through a real room.
+    assert (
+        frozenset(
+            {
+                "realtime",
+                "teleconsult",
+                "patient-video",
+                "clinician-video",
+                "video-recovery",
+                "end-to-end",
+            }
+        )
+        == runner.VIDEO_SUITES
+    )
     # The rehearsal drives every synthetic adapter slice in one runtime.
     assert "end-to-end" in (
         runner.FIXTURE_SUITES
@@ -1350,6 +1364,62 @@ def test_gate_coverage_binds_the_pytest_child_to_the_memory_broker(
     assert environment["MIGRATION_DATABASE_URL"] == database.owner_dsn
     assert environment["TEST_SUPERUSER_DATABASE_URL"] == database.super_dsn
     assert "CELERY_RESULT_BACKEND" not in environment
+
+
+def test_browser_children_preserve_owned_runtime_paths_and_broker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owned = {
+        "TMPDIR": str(tmp_path / "tmp"),
+        "PLAYWRIGHT_BROWSERS_PATH": str(tmp_path / "browsers"),
+        "REALTIME_REDIS_URL": "redis://127.0.0.1:65431/1",
+    }
+    for name, value in owned.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("CLINIC_UNRELATED_SECRET", "must-not-inherit")
+    environments = (
+        runner._server_environment(
+            "postgresql://clinic_app:synthetic@127.0.0.1:55432/clinic"
+        ),
+        runner._pytest_environment(
+            base_url="http://127.0.0.1:48000",
+            artifact_root=tmp_path,
+            browser=str(tmp_path / "browser"),
+            engine="chromium",
+            username="synthetic-staff",
+            password=tmp_path.name,
+        ),
+    )
+    for environment in environments:
+        assert {name: environment[name] for name in owned} == owned
+        assert "CLINIC_UNRELATED_SECRET" not in environment
+
+
+def test_browser_failure_tracebacks_never_include_fixture_arguments() -> None:
+    tree = ast.parse(
+        (REPOSITORY / "ops/testing/renewal_runner.py").read_text(encoding="utf-8")
+    )
+    suite = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_browser_suite"
+    )
+    commands = [
+        {
+            argument.value
+            for argument in call.args[0].elts
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+        }
+        for call in ast.walk(suite)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "_run_bounded"
+        and call.args
+        and isinstance(call.args[0], ast.List)
+    ]
+    pytest_commands = [arguments for arguments in commands if "pytest" in arguments]
+    assert pytest_commands
+    assert all("--tb=short" in arguments for arguments in pytest_commands)
 
 
 def test_bounded_subprocess_kills_a_hung_child_group(tmp_path: Path) -> None:
