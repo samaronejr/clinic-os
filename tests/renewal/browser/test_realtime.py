@@ -43,7 +43,7 @@ class _RealtimeTap:
     """Every /rt/stream request and response of one page, against a revocation.
 
     Boundary rule, causal and clock-free: ``mark_boundary`` runs BEFORE the
-    owner transaction that deletes the role commits, and freezes the list of
+    owner transaction that revokes the role commits, and freezes the list of
     realtime responses the tap has received so far. Only those responses are
     pre-revocation; every later one is post-revocation. The server sends a
     response only after deciding it, the tap receives it only after it is
@@ -207,7 +207,13 @@ def _denied_after_revocation(
     # periodic reauthorization), and a refused request that lands before a
     # late wait exists is lost (hosted run 36475967514; fix-a16). It matches
     # only a post-revocation 403, so a late or absent refusal times out.
-    with b.expect_response(tap.is_refusal):
+    # The refused ticket dispatches a poll whose HTMX refetch redirects the
+    # revoked session to login. Subscribe before revocation, not after the
+    # transient denied agenda state, which can disappear on any engine.
+    with (
+        expect_document(b, url=base_url + "/auth/login/"),
+        b.expect_response(tap.is_refusal),
+    ):
         # The mark precedes the commit, so every server decision after the
         # commit is post-revocation (gate-review r2 B1: no clock boundary).
         tap.mark_boundary(b)
@@ -224,12 +230,14 @@ def _denied_after_revocation(
         # Leaving the connection context committed the revocation.
         goto_settled(a, base_url + "/auth/logout/")
         expect(a.locator("#id_username")).to_be_visible()
-    # The client closes its EventSource before every new ticket request, and
-    # its denied state follows the refused response: once denied is visible,
-    # every earlier realtime event has been dispatched to the tap.
-    expect(b.locator("#agenda-shell")).to_have_attribute(
-        "data-realtime-state", "denied"
-    )
+    # Role revocation ends every old session, including the remaining clinic
+    # membership's session. The final document must contain no clinical UI.
+    expect(b).to_have_url(base_url + "/auth/login/")
+    expect(b.locator("#id_username")).to_be_visible()
+    expect(
+        b.locator("#agenda-shell, .agenda-row, [data-realtime-topic]")
+    ).to_have_count(0)
+    expect(b.locator("body")).not_to_contain_text("Sintetico Realtime")
     post_revocation = tap.post_revocation()
     # A single grant followed by a refusal is still a grant (gate-review B1).
     assert [status for _method, status in post_revocation[:1]] == [403], post_revocation
@@ -324,6 +332,7 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
         assert api_status == 403
         assert tap.grants() == [], tap.post_revocation()
         (root / "revoke.txt").write_text(
+            "revoked session redirected to login; no agenda or clinical rows; "
             "stream closed; first post-revocation response 403; no "
             f"post-revocation 2xx {post_revocation}; authorized refetch API "
             "403; ticket replay 403\n"
