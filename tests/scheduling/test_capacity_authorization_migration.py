@@ -16,12 +16,18 @@ def test_capacity_authorization_reverse_restores_exact_body_and_posture() -> Non
     operation = migration.Migration.operations[0]
     header = "CREATE FUNCTION clinic_app.scheduling_capacity_guard()"
     previous = GUARDS_SQL.split(header, 1)[1].split("AS $f$", 1)[1].split("$f$;", 1)[0]
+    snapshot = (
+        "SELECT pg_get_functiondef(oid), proowner, proacl, prosecdef, proconfig "
+        "FROM pg_proc WHERE oid="
+        "'clinic_app.scheduling_capacity_guard()'::regprocedure"
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(snapshot)
+        deployed = cursor.fetchone()
     with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_get_functiondef(oid), proowner, proacl, prosecdef, proconfig "
-            "FROM pg_proc WHERE oid="
-            "'clinic_app.scheduling_capacity_guard()'::regprocedure"
-        )
+        # Establish 0006's deployed body, not the later lifecycle revision.
+        cursor.execute(operation.sql)
+        cursor.execute(snapshot)
         candidate = cursor.fetchone()
         cursor.execute(operation.reverse_sql)
         cursor.execute(
@@ -31,10 +37,9 @@ def test_capacity_authorization_reverse_restores_exact_body_and_posture() -> Non
         reversed_body = cursor.fetchone()
         assert reversed_body == (previous,)
         cursor.execute(operation.sql)
-        cursor.execute(
-            "SELECT pg_get_functiondef(oid), proowner, proacl, prosecdef, proconfig "
-            "FROM pg_proc WHERE oid="
-            "'clinic_app.scheduling_capacity_guard()'::regprocedure"
-        )
+        cursor.execute(snapshot)
         assert cursor.fetchone() == candidate
         transaction.set_rollback(True)
+    with connection.cursor() as cursor:
+        cursor.execute(snapshot)
+        assert cursor.fetchone() == deployed

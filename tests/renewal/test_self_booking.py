@@ -427,6 +427,8 @@ def test_patient_booking_catalog_is_narrow() -> None:
         "patient_booking_guard",
         "patient_booking_receipt",
         "patient_booking_event_immutable",
+        # Lifecycle v2 (D-9): the session clinic's self-booking approval policy (D-9).
+        "patient_booking_requires_approval",
     }
     assert all(
         row[1:]

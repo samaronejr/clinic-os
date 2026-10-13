@@ -38,7 +38,7 @@ from apps.intake.questionnaires import (
 )
 from apps.intake.questionnaires import publish_template as publish_questionnaire
 from apps.intake.services import issue_invitation
-from apps.scheduling.services import cancel_appointment
+from apps.scheduling.services import cancel, cancel_appointment
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, connections, transaction
 from django.test import Client
@@ -49,6 +49,7 @@ from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from scheduling.appointment_service_support import (
     AppointmentSetup,
+    arrived_synthetic_appointment,
     create_synthetic_appointment,
     seed_appointment_setup,
 )
@@ -98,7 +99,7 @@ def setup_context(organization_id: UUID) -> Iterator[None]:
 def seed(graph: RbacGraph) -> tuple[Appointment, SpecialtyTemplate]:
     setup = seed_appointment_setup(graph)
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
-        appointment = create_synthetic_appointment(setup)
+        appointment = arrived_synthetic_appointment(setup)
     with setup_context(graph.organization_a):
         UserClinicRole.objects.create(
             organization_id=graph.organization_a,
@@ -406,7 +407,14 @@ def test_cancellation_retains_existing_record_but_blocks_new(
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
     ):
-        cancel_appointment(appointment_id=appointment.pk, reason="patient_request")
+        # Lifecycle v2: an arrived visit is cancelled through the SM service.
+        appointment.refresh_from_db()
+        cancel(
+            clinic_id=rbac_graph.clinic_a,
+            appointment_id=appointment.pk,
+            expected_revision=appointment.revision,
+            command_id=uuid4(),
+        )
     with (
         runtime_role(),
         tenant_context(rbac_graph.physician, rbac_graph.organization_a),

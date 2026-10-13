@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Appointment not changed" %} · Clinic OS{% endblock %}
+{% block meta_description %}{% trans "The appointment state changed before this action." %}{% endblock %}
+{% block content %}
+<section class="scheduling-task" aria-labelledby="lifecycle-title">
+  <h1 id="lifecycle-title">{% trans "Appointment not changed" %}</h1>
+  <div class="feedback feedback--warning" id="lifecycle-conflict" role="status" data-focus-error tabindex="-1">
+    <p>{{ message }}</p>
+  </div>
+  <div class="actions">
+    <a class="button button--secondary" href="{{ agenda_url }}">{% trans "Back to agenda" %}</a>
+  </div>
+</section>
+{% endblock %}

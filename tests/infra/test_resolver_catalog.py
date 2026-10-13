@@ -78,6 +78,11 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("scheduling_availabilityblock", "SELECT"),
     ("scheduling_availabilitytemplate", "SELECT"),
     ("scheduling_holiday", "SELECT"),
+    # Lifecycle v2 (D-9): series reads and DB-owned transition receipts.
+    ("scheduling_appointmentseries", "SELECT"),
+    ("scheduling_seriesexception", "SELECT"),
+    ("scheduling_appointmenttransition", "SELECT"),
+    ("scheduling_appointmenttransition", "INSERT"),
     ("scheduling_patientbookingevent", "INSERT"),
     ("scheduling_resource", "SELECT"),
     ("scheduling_servicetype", "SELECT"),
@@ -112,6 +117,9 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("scheduling_availabilityblock", "retired_at", "UPDATE"),
     ("scheduling_availabilityblock", "updated_at", "UPDATE"),
     ("scheduling_resource", "id", "UPDATE"),
+    # Lifecycle v2: machine hold expiry (status + command id) as the resolver.
+    ("scheduling_appointment", "status", "UPDATE"),
+    ("scheduling_appointment", "last_command_id", "UPDATE"),
     ("teleconsult_teleconsultsession", "ended_at", "UPDATE"),
     ("teleconsult_teleconsultsession", "failure_reason", "UPDATE"),
     ("teleconsult_teleconsultsession", "revision", "UPDATE"),
@@ -124,6 +132,11 @@ POSTURE_OVERRIDES: Final = {
     "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
     "principal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
     "principal_has": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "scheduling_lifecycle_guard": ("v", False, ["clinic_resolver"]),
+    "scheduling_lifecycle_receipt": ("v", False, ["clinic_resolver"]),
+    "scheduling_history_immutable": ("v", False, ["clinic_resolver"]),
+    "scheduling_release_due_holds": ("v", False, ["clinic_resolver"]),
+    "scheduling_expire_hold": ("v", True, ["clinic_app", "clinic_resolver"]),
     "billing_immutable": ("v", False, ["clinic_resolver"]),
     "billing_invoice_guard": ("v", False, ["clinic_resolver"]),
     "billing_payment_event_guard": ("v", False, ["clinic_resolver"]),
@@ -239,6 +252,22 @@ FUNCTION_SIGNATURES: Final = {
     ("scheduling_definition_guard", ""),
     ("scheduling_generated_block_guard", ""),
     ("scheduling_service_practitioners", "requested_clinic uuid"),
+    ("patient_booking_requires_approval", ""),
+    ("scheduling_due_holds", "batch integer"),
+    (
+        "scheduling_expire_hold",
+        "requested_clinic uuid, requested_appointment uuid, "
+        "expected_revision integer, command uuid",
+    ),
+    ("scheduling_history_immutable", ""),
+    ("scheduling_lifecycle_guard", ""),
+    ("scheduling_lifecycle_receipt", ""),
+    (
+        "scheduling_release_due_holds",
+        "booking uuid, org uuid, practitioner uuid, patient uuid, "
+        "resources uuid[], starts timestamp with time zone, "
+        "ends timestamp with time zone",
+    ),
     ("auth_lookup", "requested_username text"),
     ("billing_immutable", ""),
     ("billing_invoice_guard", ""),
@@ -398,6 +427,24 @@ FUNCTION_RESULTS: Final = {
     ("scheduling_service_practitioners", "requested_clinic uuid"): (
         "TABLE(user_id uuid, display_label text)"
     ),
+    ("patient_booking_requires_approval", ""): "boolean",
+    ("scheduling_due_holds", "batch integer"): (
+        "TABLE(clinic_id uuid, appointment_id uuid, revision integer)"
+    ),
+    (
+        "scheduling_expire_hold",
+        "requested_clinic uuid, requested_appointment uuid, "
+        "expected_revision integer, command uuid",
+    ): "integer",
+    ("scheduling_history_immutable", ""): "trigger",
+    ("scheduling_lifecycle_guard", ""): "trigger",
+    ("scheduling_lifecycle_receipt", ""): "trigger",
+    (
+        "scheduling_release_due_holds",
+        "booking uuid, org uuid, practitioner uuid, patient uuid, "
+        "resources uuid[], starts timestamp with time zone, "
+        "ends timestamp with time zone",
+    ): "void",
     ("auth_lookup", "requested_username text"): (
         "TABLE(id uuid, username character varying, "
         "password character varying, is_active boolean)"

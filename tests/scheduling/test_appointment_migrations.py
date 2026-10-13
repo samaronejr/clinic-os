@@ -61,9 +61,13 @@ def test_appointment_migration_catalog_is_immediate_versioned_and_indexed() -> N
             "tstzrange(start_at, end_at, '[)'::text) WITH &&" in row
             for row in exclusions
         )
-        assert all(
-            "WHERE (((status)::text = 'scheduled'::text))" in row for row in exclusions
+        # D-9 / todo 22: both exclusions cover the capacity-consuming states.
+        occupying = (
+            "WHERE (((status)::text = ANY ((ARRAY['held'::character varying, "
+            "'scheduled'::character varying, 'arrived'::character varying, "
+            "'in_progress'::character varying])::text[])))"
         )
+        assert all(row.endswith(occupying) for row in exclusions)
         cursor.execute(
             "SELECT tgname, tgenabled FROM pg_catalog.pg_trigger "
             "WHERE tgrelid='clinic_app.scheduling_appointment'::regclass "
@@ -73,7 +77,9 @@ def test_appointment_migration_catalog_is_immediate_versioned_and_indexed() -> N
             ("comms_schedule_reminders", "O"),
             ("patient_booking_guard", "O"),
             ("patient_booking_receipt", "O"),
+            ("scheduling_appointment_a_lifecycle", "O"),
             ("scheduling_appointment_guard", "O"),
+            ("scheduling_appointment_lifecycle_receipt", "O"),
             ("scheduling_appointment_no_delete", "O"),
             ("scheduling_capacity_after", "O"),
             ("scheduling_capacity_before", "O"),

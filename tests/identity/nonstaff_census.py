@@ -24,6 +24,7 @@ from identity.nonstaff_infrastructure_probes import (
     infrastructure_probes,
     metrics_probes,
 )
+from identity.nonstaff_lifecycle_probes import lifecycle_probes
 from identity.nonstaff_patient_probes import patient_probes
 from identity.nonstaff_principal_probes import principal_probes
 from identity.nonstaff_realtime_probes import realtime_probes
@@ -89,6 +90,7 @@ def run_nonstaff_census(
             *metrics_probes(data, patch),
             *realtime_probes(data),
             *principal_probes(graph),
+            *lifecycle_probes(data, graph),
             *delegation_probes(graph, data.actor.pk),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)

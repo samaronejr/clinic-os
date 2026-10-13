@@ -284,6 +284,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         record_disposition,
         release_version,
     )
+    from apps.scheduling.appointment_lifecycle import arrive
     from apps.scheduling.availability_creation import create_availability
     from apps.scheduling.patient_booking import book_patient_slot, patient_slots
     from apps.scheduling.waitlist import add_waitlist_entry, issue_waitlist_offer
@@ -447,6 +448,13 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
 
     request = _verified_request(PHYSICIAN_ID)
     with _runtime_role(), tenant_context(PHYSICIAN_ID, ORGANIZATION_ID):
+        # Lifecycle v2 (D-9): the booked physician records arrival first.
+        appointment = arrive(
+            clinic_id=CLINIC_ID,
+            appointment_id=appointment.pk,
+            expected_revision=appointment.revision,
+            command_id=uuid4(),
+        )
         encounter = open_encounter(clinic_id=CLINIC_ID, appointment_id=appointment.pk)
         from apps.ehr.models import SpecialtyTemplate
 

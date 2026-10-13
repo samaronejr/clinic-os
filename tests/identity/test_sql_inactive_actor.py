@@ -27,6 +27,7 @@ from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
 from identity.authority_sql import _tokenize, references
+from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
@@ -337,9 +338,11 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
     assert own == set(PROBES) | set(OWN_GUARD_PROBES)
-    assert set(readers) - own - delegating == set(JUSTIFIED)
+    assert set(readers) - own - delegating == set(JUSTIFIED) | set(LIFECYCLE_PROBES)
     # Every derived delegator is executed below; a new one needs a probe.
-    assert set(DELEGATE_PROBES) | set(GUARD_PROBES) == delegating
+    assert (
+        set(DELEGATE_PROBES) | set(GUARD_PROBES) | set(LIFECYCLE_DELEGATE_PROBES)
+    ) == delegating
 
 
 def _staff_actor(graph: RbacGraph) -> UUID:

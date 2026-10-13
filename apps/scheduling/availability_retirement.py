@@ -80,7 +80,7 @@ def retire_availability(
                 organization_id=clinic.organization_id,
                 clinic_id=clinic_id,
                 practitioner_id=block.practitioner_id,
-                status=Appointment.Status.SCHEDULED,
+                status__in=Appointment.OCCUPYING_STATUSES,
                 start_at__gt=timezone.now(),
                 start_at__gte=block.start_at,
                 end_at__lte=block.end_at,

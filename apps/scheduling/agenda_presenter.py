@@ -11,9 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Final
+from uuid import uuid4
 
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.scheduling.access import (
@@ -46,6 +48,7 @@ class AgendaScreen:
     can_manage: bool
     can_move_services: bool = False
     service_practitioner_id: UUID | None = None
+    viewer_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +62,10 @@ class AgendaRow:
     is_scheduled: bool
     start_time: str
     end_time: str
+    is_active: bool = True
+    lifecycle_actions: tuple[tuple[str, str], ...] = ()
+    can_open_encounter: bool = False
+    command_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,12 +130,35 @@ def agenda_url(clinic_id: UUID, view: str, day: str, page: int) -> str:
     return reverse("scheduling:agenda-at", args=(clinic_id, view, day, page))
 
 
+ACTIVE_STATUSES: Final = frozenset(
+    {"requested", "held", "scheduled", "arrived", "in_progress"}
+)
+ARRIVE_LABEL: Final = _("Record arrival")
+START_LABEL: Final = _("Start visit")
+COMPLETE_LABEL: Final = _("Complete visit")
+
+
+def lifecycle_actions(
+    item: AgendaItem, *, can_manage: bool, viewer_id: UUID | None
+) -> tuple[tuple[str, str], ...]:
+    """Offer only the SM edges this viewer's role could take; services decide."""
+    own = viewer_id is not None and item.practitioner_id == viewer_id
+    if item.status == Appointment.Status.SCHEDULED and can_manage:
+        return (("arrive", str(ARRIVE_LABEL)),)
+    if item.status == Appointment.Status.ARRIVED and own:
+        return (("start", str(START_LABEL)),)
+    if item.status == Appointment.Status.IN_PROGRESS and own:
+        return (("complete", str(COMPLETE_LABEL)),)
+    return ()
+
+
 def presented_rows(
     page: AgendaPage,
     *,
     can_manage: bool,
     can_move_services: bool = False,
     service_practitioner_id: UUID | None = None,
+    viewer_id: UUID | None = None,
 ) -> tuple[AgendaRow, ...]:
     """Bind every visible appointment to its transition routes when allowed."""
     rows = []
@@ -144,7 +174,7 @@ def presented_rows(
         rows.append(
             AgendaRow(
                 item=item,
-                status_label=STATUS_LABELS.get(item.status, item.status),
+                status_label=str(STATUS_LABELS.get(item.status, item.status)),
                 reschedule_url=(
                     reverse(
                         "scheduling:appointment-reschedule", args=(item.appointment_id,)
@@ -162,6 +192,15 @@ def presented_rows(
                 is_scheduled=item.status == Appointment.Status.SCHEDULED,
                 start_time=item.start_local[LOCAL_TIME_SLICE],
                 end_time=item.end_local[LOCAL_TIME_SLICE],
+                is_active=item.status in ACTIVE_STATUSES,
+                lifecycle_actions=lifecycle_actions(
+                    item, can_manage=can_manage, viewer_id=viewer_id
+                ),
+                can_open_encounter=viewer_id is not None
+                and item.practitioner_id == viewer_id
+                and item.status
+                in {Appointment.Status.ARRIVED, Appointment.Status.IN_PROGRESS},
+                command_id=str(uuid4()),
             )
         )
     return tuple(rows)
@@ -173,6 +212,7 @@ def presented_days(
     can_manage: bool,
     can_move_services: bool = False,
     service_practitioner_id: UUID | None = None,
+    viewer_id: UUID | None = None,
 ) -> tuple[AgendaDay, ...]:
     """Group the page's rows by the clinic-local civil day they start on."""
     days: list[AgendaDay] = []
@@ -181,6 +221,7 @@ def presented_days(
         can_manage=can_manage,
         can_move_services=can_move_services,
         service_practitioner_id=service_practitioner_id,
+        viewer_id=viewer_id,
     ):
         civil = date.fromisoformat(row.item.start_local[:LOCAL_DATE_LENGTH])
         if days and days[-1].date == civil:
