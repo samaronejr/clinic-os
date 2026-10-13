@@ -28,6 +28,7 @@ SYNTAX_CALLS = frozenset(
         "filter",
         "if",
         "in",
+        "lateral",
         "not",
         "nullif",
         "only",
@@ -40,6 +41,7 @@ SYNTAX_CALLS = frozenset(
         "some",
         "values",
         "when",
+        "where",
         "with",
     }
 )

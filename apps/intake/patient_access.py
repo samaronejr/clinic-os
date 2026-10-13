@@ -51,7 +51,7 @@ SESSION_IDLE_TTL: Final = timedelta(minutes=30)
 SECRET_BYTES: Final = 32
 MAX_ACTOR_LABEL_LENGTH: Final = 150
 PATIENT_SESSION_KEY: Final = "patient_session_id"
-BINDING_COLUMN_COUNT: Final = 8
+BINDING_COLUMN_COUNT: Final = 10
 OVERVIEW_COLUMN_COUNT: Final = 7
 
 
@@ -75,6 +75,8 @@ class PatientSessionBinding:
     operations: tuple[str, ...]
     expires_at: datetime
     idle_expires_at: datetime
+    acting_for_enrollment_id: UUID | None = None
+    delegate_grant_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -297,6 +299,8 @@ def _binding_from_row(row: tuple[object, ...] | None) -> PatientSessionBinding |
         operations,
         expires_at,
         idle_expires_at,
+        acting_for_enrollment_id,
+        delegate_grant_id,
     ) = row
     if (
         not isinstance(session_id, UUID)
@@ -308,6 +312,11 @@ def _binding_from_row(row: tuple[object, ...] | None) -> PatientSessionBinding |
         or not all(type(operation) is str for operation in operations)
         or not isinstance(expires_at, datetime)
         or not isinstance(idle_expires_at, datetime)
+        or (
+            acting_for_enrollment_id is not None
+            and not isinstance(acting_for_enrollment_id, UUID)
+        )
+        or (delegate_grant_id is not None and not isinstance(delegate_grant_id, UUID))
     ):
         return None
     return PatientSessionBinding(
@@ -319,6 +328,8 @@ def _binding_from_row(row: tuple[object, ...] | None) -> PatientSessionBinding |
         operations=tuple(operations),
         expires_at=expires_at,
         idle_expires_at=idle_expires_at,
+        acting_for_enrollment_id=acting_for_enrollment_id,
+        delegate_grant_id=delegate_grant_id,
     )
 
 
@@ -346,13 +357,17 @@ def patient_session_context(
                 [str(session_id)],
             )
             row = cursor.fetchone()
-            binding = _binding_from_row(row)
-            if binding is not None:
+            binding = None
+            if row is not None:
                 cursor.execute(
                     "SELECT pg_catalog.set_config("
                     "'app.current_patient_session', %s, true)",
                     [str(session_id)],
                 )
+                cursor.execute(
+                    "SELECT * FROM clinic_app.current_patient_authority(NULL)"
+                )
+                binding = _binding_from_row(cursor.fetchone())
         yield binding
 
 

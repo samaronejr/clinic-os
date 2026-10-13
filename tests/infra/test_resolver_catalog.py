@@ -6,6 +6,8 @@ from django.db import connection
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    ("identity_patientdelegategrant", "SELECT"),
+    ("identity_patientdelegategrant", "INSERT"),
     ("billing_invoice", "SELECT"),
     ("billing_invoicerevision", "INSERT"),
     ("billing_invoicerevision", "SELECT"),
@@ -94,6 +96,14 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowstep", "SELECT"),
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    ("identity_patientdelegategrant", "state", "UPDATE"),
+    ("identity_patientdelegategrant", "revision", "UPDATE"),
+    ("identity_patientdelegategrant", "verified_by_id", "UPDATE"),
+    ("identity_patientdelegategrant", "verified_at", "UPDATE"),
+    ("identity_patientdelegategrant", "activated_at", "UPDATE"),
+    ("identity_patientdelegategrant", "revoked_at", "UPDATE"),
+    ("intake_patientsession", "acting_for_enrollment_id", "UPDATE"),
+    ("intake_patientsession", "delegate_grant_id", "UPDATE"),
     ("billing_invoice", "state", "UPDATE"),
     ("comms_integrationoperation", "last_error", "UPDATE"),
     ("comms_integrationoperation", "status", "UPDATE"),
@@ -119,6 +129,39 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "delegate_now": ("s", False, ["clinic_resolver"]),
+    "patient_identity": ("s", False, ["clinic_resolver"]),
+    "delegate_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "delegate_grantor": ("s", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "delegate_guard": ("v", False, ["clinic_resolver"]),
+    "request_delegate_grant": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "transition_delegate_grant": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "patient_authority": ("s", False, ["clinic_resolver"]),
+    "current_patient_authority": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "switch_patient_delegate": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "renew_delegate_grant": ("v", True, ["clinic_app", "clinic_resolver"]),
+    "delegate_session_guard": ("v", False, ["clinic_resolver"]),
+    "delegate_confidentiality_guard": ("v", False, ["clinic_resolver"]),
+    "consent_delegate_guard": ("v", False, ["clinic_resolver"]),
+    "delegate_purpose_allowed": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "patient_is_delegate": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "delegate_audit_scope": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
     "scheduling_capacity_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_definition_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
@@ -235,6 +278,37 @@ POSTURE_OVERRIDES: Final = {
     "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
+    ("delegate_now", ""),
+    ("patient_identity", "requested_session uuid"),
+    ("delegate_staff", "requested_clinic uuid"),
+    ("delegate_grantor", "requested_clinic uuid, requested_enrollment uuid"),
+    ("delegate_guard", ""),
+    (
+        "request_delegate_grant",
+        "requested_clinic uuid, represented uuid, recipient uuid, kind text, "
+        "evidence uuid, requested_purposes text[], requested_operations "
+        "text[], deadline timestamp with time zone, request_key uuid",
+    ),
+    (
+        "transition_delegate_grant",
+        "requested_clinic uuid, requested_grant uuid, expected_revision "
+        "integer, next_state text",
+    ),
+    ("patient_authority", "requested_session uuid, requested_operation text"),
+    ("current_patient_authority", "requested_operation text"),
+    ("switch_patient_delegate", "requested_clinic uuid, requested_grant uuid"),
+    ("delegate_session_status", "requested_session uuid"),
+    ("delegate_recovery_identity", ""),
+    (
+        "renew_delegate_grant",
+        "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
+    ),
+    ("delegate_session_guard", ""),
+    ("delegate_confidentiality_guard", ""),
+    ("consent_delegate_guard", ""),
+    ("delegate_purpose_allowed", "requested_purpose text"),
+    ("patient_is_delegate", ""),
+    ("delegate_audit_scope", "record_id uuid, event_name text"),
     ("scheduling_capacity_guard", ""),
     ("scheduling_definition_guard", ""),
     ("scheduling_generated_block_guard", ""),
@@ -392,6 +466,62 @@ FUNCTION_SIGNATURES: Final = {
     ("workflows_task_scope", "requested_task uuid"),
 }
 FUNCTION_RESULTS: Final = {
+    ("delegate_now", ""): "timestamp with time zone",
+    (
+        "patient_identity",
+        "requested_session uuid",
+    ): "SETOF intake_patientsession",
+    ("delegate_staff", "requested_clinic uuid"): "boolean",
+    ("delegate_grantor", "requested_clinic uuid, requested_enrollment uuid"): "boolean",
+    ("delegate_guard", ""): "trigger",
+    (
+        "request_delegate_grant",
+        "requested_clinic uuid, represented uuid, recipient uuid, kind text, "
+        "evidence uuid, requested_purposes text[], requested_operations "
+        "text[], deadline timestamp with time zone, request_key uuid",
+    ): "TABLE(grant_id uuid, revision integer, state text, changed boolean)",
+    (
+        "transition_delegate_grant",
+        "requested_clinic uuid, requested_grant uuid, expected_revision "
+        "integer, next_state text",
+    ): "TABLE(grant_id uuid, revision integer, state text, changed boolean)",
+    (
+        "patient_authority",
+        "requested_session uuid, requested_operation text",
+    ): (
+        "TABLE(session_id uuid, organization_id uuid, clinic_id uuid, "
+        "patient_id uuid, enrollment_id uuid, operations text[], expires_at "
+        "timestamp with time zone, idle_expires_at timestamp with time zone, "
+        "acting_for_enrollment_id uuid, delegate_grant_id uuid)"
+    ),
+    (
+        "current_patient_authority",
+        "requested_operation text",
+    ): (
+        "TABLE(session_id uuid, organization_id uuid, clinic_id uuid, "
+        "patient_id uuid, enrollment_id uuid, operations text[], expires_at "
+        "timestamp with time zone, idle_expires_at timestamp with time zone, "
+        "acting_for_enrollment_id uuid, delegate_grant_id uuid)"
+    ),
+    (
+        "switch_patient_delegate",
+        "requested_clinic uuid, requested_grant uuid",
+    ): "boolean",
+    ("delegate_session_status", "requested_session uuid"): "text",
+    ("delegate_recovery_identity", ""): "TABLE(session_id uuid, clinic_id uuid)",
+    (
+        "renew_delegate_grant",
+        "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
+    ): "TABLE(grant_id uuid, revision integer, state text, changed boolean)",
+    ("delegate_session_guard", ""): "trigger",
+    ("delegate_confidentiality_guard", ""): "trigger",
+    ("consent_delegate_guard", ""): "trigger",
+    ("delegate_purpose_allowed", "requested_purpose text"): "boolean",
+    ("patient_is_delegate", ""): "boolean",
+    (
+        "delegate_audit_scope",
+        "record_id uuid, event_name text",
+    ): "TABLE(session_id uuid, organization_id uuid, clinic_id uuid)",
     ("scheduling_capacity_guard", ""): "trigger",
     ("scheduling_definition_guard", ""): "trigger",
     ("scheduling_generated_block_guard", ""): "trigger",

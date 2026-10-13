@@ -112,8 +112,13 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Effective patient authority now reads the shared enrollment relation and rejects a bound staff identity. The real callable must expose those channels; the existing staff-state differential replay remains required.",
+      "observe": true,
+      "differential": true,
+      "probes": [
+        "apps.billing.services.patient_charges#observed"
+      ]
     },
     {
       "symbol": "apps.billing.views.charges_workspace",
@@ -1928,7 +1933,8 @@
     {
       "symbol": "apps.prescription.verification.release_document",
       "signals": [
-        "actor"
+        "actor",
+        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
@@ -1995,8 +2001,13 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Effective patient authority now reads the shared enrollment relation and rejects a bound staff identity. The real callable must expose those channels; the existing staff-state differential replay remains required.",
+      "observe": true,
+      "differential": true,
+      "probes": [
+        "apps.prescription.verification._patient_session_scope#observed"
+      ]
     },
     {
       "symbol": "apps.prescription.verification.patient_document_download",
@@ -2510,8 +2521,13 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Effective patient authority now reads the shared enrollment relation and rejects a bound staff identity. The real callable must expose those channels; the existing staff-state differential replay remains required.",
+      "observe": true,
+      "differential": true,
+      "probes": [
+        "apps.retention.services._session_scope#observed"
+      ]
     },
     {
       "symbol": "apps.retention.services._record_patient_view",
@@ -4047,15 +4063,109 @@
       "probes": [
         "apps.workflows.views._staff_catalog#cut1"
       ]
+    },
+    {
+      "symbol": "apps.audit.services._record_delegate_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services._record_delegate_event#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates._command#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates.request_delegate_grant",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates.request_delegate_grant#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates._transition",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates._transition#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates.switch_delegate",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates.switch_delegate#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates.request_renewal",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates.request_renewal#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.intake.delegate_views.delegate_session_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.delegate_views.delegate_session_status#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.intake.delegate_views.renew_representation",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.delegate_views.renew_representation#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
     }
   ],
   "probes": [
+    "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
     "apps.billing.pix.prepare_pix_charge",
     "apps.billing.presentation.patient_charge#observed",
     "apps.billing.services._clinic",
     "apps.billing.services._invoice",
+    "apps.billing.services.patient_charges#observed",
     "apps.billing.views.charges_workspace",
     "apps.billing.views.invoice_detail",
     "apps.billing.views.invoice_status",
@@ -4128,6 +4238,11 @@
     "apps.identity.current_context.practitioner_display_label",
     "apps.identity.current_context.require_current_actor_clinic_roles",
     "apps.identity.current_context.require_current_actor_org_admin",
+    "apps.identity.delegates._command#cut1",
+    "apps.identity.delegates._transition#cut1",
+    "apps.identity.delegates.request_delegate_grant#cut1",
+    "apps.identity.delegates.request_renewal#cut1",
+    "apps.identity.delegates.switch_delegate#cut1",
     "apps.identity.management.base.assert_owner_database_role",
     "apps.identity.management.bootstrap.bootstrap_clinic#observed",
     "apps.identity.management.context.assume_runtime_owner",
@@ -4166,6 +4281,8 @@
     "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
     "apps.intake.contacts._actor_label",
+    "apps.intake.delegate_views.delegate_session_status#cut1",
+    "apps.intake.delegate_views.renew_representation#cut1",
     "apps.intake.demographics._actor_label",
     "apps.intake.demographics.search_patient_identifiers",
     "apps.intake.demographics.set_intake_policy",
@@ -4201,6 +4318,7 @@
     "apps.prescription.signing.initiate_signature",
     "apps.prescription.signing.signature_status",
     "apps.prescription.verification._issuer_document",
+    "apps.prescription.verification._patient_session_scope#observed",
     "apps.prescription.verification._record_patient_download#observed",
     "apps.prescription.verification.patient_document_download#observed",
     "apps.prescription.verification.patient_documents#observed",
@@ -4220,6 +4338,7 @@
     "apps.retention.services._record_patient_view#observed",
     "apps.retention.services._record_scope",
     "apps.retention.services._require_manager",
+    "apps.retention.services._session_scope#observed",
     "apps.retention.services.export_staff_records",
     "apps.retention.services.patient_released_records#observed",
     "apps.retention.services.release_version",
@@ -5004,7 +5123,8 @@
         ],
         "migrations": [
           "apps/billing/migrations/0007_patient_charge_detail.py",
-          "apps/billing/migrations/0009_protected_fields.py"
+          "apps/billing/migrations/0009_protected_fields.py",
+          "apps/billing/migrations/0010_delegate_charges.py"
         ],
         "policies": [],
         "resolvers": []
@@ -5024,6 +5144,7 @@
           }
         ],
         "migrations": [
+          "apps/billing/migrations/0010_delegate_charges.py",
           "apps/billing/migrations/_invoice_sql.py"
         ],
         "policies": [],
@@ -5519,6 +5640,32 @@
       "probes": [],
       "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
     },
+    "clinic_app.consent_delegate_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/0005_delegate_purposes.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
     "clinic_app.consent_guard": {
       "discovery": {
         "signatures": [
@@ -5572,7 +5719,8 @@
           }
         ],
         "migrations": [
-          "apps/consent/migrations/_consent_sql.py"
+          "apps/consent/migrations/_consent_sql.py",
+          "apps/intake/migrations/_delegate_session_sql.py"
         ],
         "policies": [
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
@@ -5593,6 +5741,358 @@
       "kind": "patient_principal",
       "probes": [],
       "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.current_patient_authority": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_operation text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_patient_charge",
+          "clinic_app.billing_patient_charges",
+          "clinic_app.consent_session",
+          "clinic_app.delegate_purpose_allowed",
+          "clinic_app.patient_booking_scope",
+          "clinic_app.patient_session_overview",
+          "clinic_app.questionnaire_patient_enrollment",
+          "clinic_app.retention_records_session",
+          "clinic_app.teleconsult_patient_match"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_audit": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_audit_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_audit"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_confidentiality_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/0004_delegate_confidentiality.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_grantor": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_patientdelegategrant:delegate_read"
+        ],
+        "resolvers": [
+          "clinic_app.delegate_guard",
+          "clinic_app.request_delegate_grant",
+          "clinic_app.transition_delegate_grant"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_now": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_guard",
+          "clinic_app.delegate_session_guard",
+          "clinic_app.delegate_session_status",
+          "clinic_app.patient_authority",
+          "clinic_app.renew_delegate_grant",
+          "clinic_app.switch_patient_delegate"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_purpose_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_purpose text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [
+          "clinic_app.consent_consentacceptance:delegate_purpose",
+          "clinic_app.consent_consentrevocation:delegate_purpose",
+          "clinic_app.consent_consenttext:delegate_purpose",
+          "clinic_app.consent_refusalrecord:delegate_purpose"
+        ],
+        "resolvers": [
+          "clinic_app.consent_delegate_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_recovery_identity": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_session_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_session_status": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_recovery_identity"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_staff": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_patientdelegategrant:delegate_read"
+        ],
+        "resolvers": [
+          "clinic_app.delegate_guard",
+          "clinic_app.request_delegate_grant",
+          "clinic_app.transition_delegate_grant"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
     },
     "clinic_app.digest": {
       "discovery": {
@@ -5618,6 +6118,7 @@
           "clinic_app.audit_append_unchecked_v1",
           "clinic_app.audit_append_unchecked_v2",
           "clinic_app.consent_audit",
+          "clinic_app.delegate_audit",
           "clinic_app.prescription_document_viewed",
           "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_verify",
@@ -5904,6 +6405,14 @@
     },
     "clinic_app.gen_random_uuid": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
         "migrations": [],
         "policies": [],
         "resolvers": [
@@ -5911,15 +6420,9 @@
           "clinic_app.billing_settlement_receipt",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
+          "clinic_app.renew_delegate_grant",
+          "clinic_app.request_delegate_grant",
           "clinic_app.scheduling_capacity_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "uuid",
-            "security_definer": false,
-            "set_returning": false
-          }
         ]
       },
       "kind": "crypto_protocol",
@@ -5928,6 +6431,14 @@
     },
     "clinic_app.has_permission": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_permission_sql.py",
           "apps/identity/migrations/_workflow_eligibility_sql.py"
@@ -5957,6 +6468,7 @@
         ],
         "resolvers": [
           "clinic_app.consent_guard",
+          "clinic_app.delegate_staff",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -5966,14 +6478,6 @@
           "clinic_app.workflows_owner_valid",
           "clinic_app.workflows_predecessor_ready",
           "clinic_app.workflows_staff_catalog"
-        ],
-        "signatures": [
-          {
-            "arguments": "perm text, clinic uuid, enrollment uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "staff_guard",
@@ -6089,6 +6593,26 @@
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
+    "clinic_app.intake_contact_event_immutable_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0002_contacts_and_preferences.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
     "clinic_app.intake_correction_guard_v1": {
       "discovery": {
         "signatures": [
@@ -6169,26 +6693,6 @@
       "probes": [],
       "reason": "Binds an immutable registry identity to the exact latest name/date/HMAC version in the same transaction. Source-owned typed guard/mirror proofs cover changed and refused unchanged rows; this grants no role or common UPDATE approval."
     },
-    "clinic_app.intake_contact_event_immutable_v1": {
-      "discovery": {
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
-          }
-        ],
-        "migrations": [
-          "apps/intake/migrations/0002_contacts_and_preferences.py"
-        ],
-        "policies": [],
-        "resolvers": []
-      },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
-    },
     "clinic_app.list_active_clinic_physicians": {
       "discovery": {
         "signatures": [
@@ -6252,6 +6756,35 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.patient_authority": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, requested_operation text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.current_patient_authority",
+          "clinic_app.touch_patient_session"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
     },
     "clinic_app.patient_booking_event_immutable": {
       "discovery": {
@@ -6360,7 +6893,16 @@
     },
     "clinic_app.patient_booking_scope": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [
@@ -6381,14 +6923,6 @@
           "clinic_app.patient_booking_slots",
           "clinic_app.scheduling_appointment_guard_v1",
           "clinic_app.scheduling_capacity_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
         ]
       },
       "kind": "patient_principal",
@@ -6417,6 +6951,80 @@
         "patient_booking_slots"
       ],
       "reason": "Patient-facing but consults clinician staff membership; direct patient-session allow/deny oracles are exercised from each staff-role fixture."
+    },
+    "clinic_app.patient_identity": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "intake_patientsession",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_audit_scope",
+          "clinic_app.delegate_grantor",
+          "clinic_app.delegate_recovery_identity",
+          "clinic_app.delegate_session_status",
+          "clinic_app.patient_authority",
+          "clinic_app.patient_is_delegate",
+          "clinic_app.renew_delegate_grant",
+          "clinic_app.switch_patient_delegate"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.patient_is_delegate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [
+          "clinic_app.consent_aiusedisclosure:delegate_confidentiality",
+          "clinic_app.consent_consentacceptance:delegate_purpose",
+          "clinic_app.consent_consentrevocation:delegate_purpose",
+          "clinic_app.consent_consenttext:delegate_purpose",
+          "clinic_app.consent_refusalrecord:delegate_purpose",
+          "clinic_app.intake_questionnaireresponse:delegate_confidentiality",
+          "clinic_app.prescription_prescriptiondocumentrelease:delegate_confidentiality",
+          "clinic_app.retention_recordrelease:delegate_confidentiality"
+        ],
+        "resolvers": [
+          "clinic_app.consent_delegate_guard",
+          "clinic_app.prescription_patient_documents",
+          "clinic_app.retention_patient_releases"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
     },
     "clinic_app.patient_registry_count": {
       "discovery": {
@@ -6477,7 +7085,8 @@
         "migrations": [
           "apps/intake/migrations/0003_patient_access.py",
           "apps/intake/migrations/0011_protected_fields.py",
-          "apps/intake/migrations/0013_patient_demographics.py"
+          "apps/intake/migrations/0013_patient_demographics.py",
+          "apps/intake/migrations/_delegate_session_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -6680,6 +7289,7 @@
         ],
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/0011_delegate_confidentiality.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
         "policies": [],
@@ -6707,11 +7317,14 @@
         ],
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/0011_delegate_confidentiality.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.prescription_document_viewed"
+          "clinic_app.prescription_document_viewed",
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_patient_documents"
         ]
       },
       "kind": "patient_principal",
@@ -7232,6 +7845,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/intake/migrations/_questionnaire_sql.py"
         ],
         "policies": [
@@ -7375,6 +7989,58 @@
       "probes": [],
       "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
     },
+    "clinic_app.renew_delegate_grant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.request_delegate_grant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, represented uuid, recipient uuid, kind text, evidence uuid, requested_purposes text[], requested_operations text[], deadline timestamp with time zone, request_key uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
     "clinic_app.retention_author_label": {
       "discovery": {
         "signatures": [
@@ -7498,6 +8164,7 @@
         ],
         "migrations": [
           "apps/retention/migrations/0003_protected_fields.py",
+          "apps/retention/migrations/0004_delegate_confidentiality.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [],
@@ -7565,6 +8232,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [
@@ -7574,7 +8242,6 @@
         ],
         "resolvers": [
           "clinic_app.prescription_document_viewed",
-          "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_patient_documents",
           "clinic_app.retention_guard",
           "clinic_app.retention_patient_releases",
@@ -7743,6 +8410,32 @@
       ],
       "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
     },
+    "clinic_app.switch_patient_delegate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_grant uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
     "clinic_app.teleconsult_assigned": {
       "discovery": {
         "signatures": [
@@ -7867,6 +8560,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/teleconsult/migrations/_teleconsult_sql.py"
         ],
         "policies": [
@@ -8114,7 +8808,8 @@
           }
         ],
         "migrations": [
-          "apps/intake/migrations/0003_patient_access.py"
+          "apps/intake/migrations/0003_patient_access.py",
+          "apps/intake/migrations/_delegate_session_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -8122,6 +8817,32 @@
       "kind": "patient_principal",
       "probes": [],
       "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
+    },
+    "clinic_app.transition_delegate_grant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_grant uuid, expected_revision integer, next_state text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
     },
     "clinic_app.unaccent": {
       "discovery": {

@@ -1,4 +1,69 @@
 {
+  "function:clinic_app.delegate_guard()": {
+    "direct": {
+      "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
+      "pg_catalog.statement_timestamp()": 4,
+      "pg_catalog.timestamptz(date)": 1,
+      "pg_catalog.timestamptz(date, time without time zone)": 1,
+      "pg_catalog.timestamptz(timestamp without time zone)": 1,
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "constraint:ehr_clinicalattachment.ehr_attachment_digest_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_scanned_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_size_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_state_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_type_check",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachme_encounter_id_c1ff2209_fk_ehr_encou",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachme_organization_id_a1f78cad_fk_identity_",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_clinic_id_9c7fe8c7_fk_identity_clinic_id",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_patient_id_b75168ba_fk_intake_patient_id",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_scan_attempts_check",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_size_bytes_check",
+      "constraint:identity_patientdelegategrant.delegate_clinic_fk",
+      "constraint:identity_patientdelegategrant.delegate_operations_check",
+      "constraint:identity_patientdelegategrant.delegate_purposes_check",
+      "constraint:identity_patientdelegategrant.delegate_recipient_fk",
+      "constraint:identity_patientdelegategrant.delegate_represented_fk",
+      "constraint:identity_patientdelegategrant.identity_delegate_distinct_subject",
+      "constraint:identity_patientdelegategrant.identity_delegate_lifecycle",
+      "constraint:identity_patientdelegategrant.identity_patientdele_clinic_id_942910c8_fk_identity_",
+      "constraint:identity_patientdelegategrant.identity_patientdele_delegate_enrollment__9acf1ef3_fk_intake_pa",
+      "constraint:identity_patientdelegategrant.identity_patientdele_evidence_attachment__664ab59d_fk_ehr_clini",
+      "constraint:identity_patientdelegategrant.identity_patientdele_grantor_session_id_2a103c22_fk_intake_pa",
+      "constraint:identity_patientdelegategrant.identity_patientdele_organization_id_a881874e_fk_identity_",
+      "constraint:identity_patientdelegategrant.identity_patientdele_represented_enrollme_99323f9c_fk_intake_pa",
+      "constraint:identity_patientdelegategrant.identity_patientdelegategrant_revision_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "function:clinic_app.delegate_grantor(uuid, uuid)",
+      "function:clinic_app.delegate_now()",
+      "function:clinic_app.delegate_staff(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.timestamptz(date, time with time zone)",
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "policy:ehr_clinicalattachment.attachment_insert",
+      "policy:ehr_clinicalattachment.attachment_read",
+      "policy:ehr_clinicalattachment.attachment_scan",
+      "policy:ehr_clinicalattachment.setup_tenant",
+      "policy:identity_patientdelegategrant.delegate_read",
+      "policy:identity_patientdelegategrant.setup_tenant",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "trigger:ehr_clinicalattachment.ehr_attachment_binding",
+      "trigger:identity_patientdelegategrant.delegate_binding"
+    ]
+  },
+  "function:clinic_app.delegate_now()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": []
+  },
   "function:clinic_app.intake_correction_guard_v1()": {
     "direct": {
       "pg_catalog.timestamptz(date)": 1,
@@ -115,48 +180,6 @@
       "policy:scheduling_patientbookingevent.tenant_isolation"
     ]
   },
-  "function:clinic_app.patient_booking_scope()": {
-    "direct": {
-      "pg_catalog.statement_timestamp()": 2
-    },
-    "via": [
-      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
-      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
-      "constraint:intake_patientaccessgrant.intake_grant_expiry_check",
-      "constraint:intake_patientaccessgrant.intake_grant_operations_check",
-      "constraint:intake_patientaccessgrant.intake_grant_org_clinic_fk",
-      "constraint:intake_patientaccessgrant.intake_grant_org_enrollment_fk",
-      "constraint:intake_patientaccessgrant.intake_grant_org_patient_fk",
-      "constraint:intake_patientaccessgrant.intake_grant_secret_hash_32_check",
-      "constraint:intake_patientaccessgrant.intake_patientaccess_clinic_id_74051320_fk_identity_",
-      "constraint:intake_patientaccessgrant.intake_patientaccess_enrollment_id_a7d28acd_fk_intake_pa",
-      "constraint:intake_patientaccessgrant.intake_patientaccess_organization_id_510993a5_fk_identity_",
-      "constraint:intake_patientaccessgrant.intake_patientaccess_patient_id_3f1484a5_fk_intake_pa",
-      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
-      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
-      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
-      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
-      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
-      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
-      "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
-      "constraint:intake_patientsession.intake_patientsessio_grant_id_1244fe55_fk_intake_pa",
-      "constraint:intake_patientsession.intake_patientsessio_organization_id_03d883cb_fk_identity_",
-      "constraint:intake_patientsession.intake_patientsession_clinic_id_a6cff610_fk_identity_clinic_id",
-      "constraint:intake_patientsession.intake_patientsession_patient_id_7a678128_fk_intake_patient_id",
-      "constraint:intake_patientsession.intake_session_expiry_check",
-      "constraint:intake_patientsession.intake_session_operations_check",
-      "constraint:intake_patientsession.intake_session_org_clinic_fk",
-      "constraint:intake_patientsession.intake_session_org_enrollment_fk",
-      "constraint:intake_patientsession.intake_session_org_grant_fk",
-      "constraint:intake_patientsession.intake_session_org_patient_fk",
-      "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)",
-      "policy:identity_clinic.tenant_isolation",
-      "policy:intake_patientaccessgrant.tenant_isolation",
-      "policy:intake_patientclinicenrollment.tenant_isolation",
-      "policy:intake_patientsession.tenant_isolation"
-    ]
-  },
   "function:clinic_app.patient_booking_slots(date, uuid)": {
     "direct": {
       "pg_catalog.generate_series(timestamp with time zone, timestamp with time zone, interval)": 1,
@@ -249,6 +272,47 @@
       "trigger:scheduling_availabilityblock.scheduling_generated_block_guard",
       "trigger:scheduling_availabilitytemplate.scheduling_definition_guard",
       "trigger:scheduling_holiday.scheduling_definition_guard"
+    ]
+  },
+  "function:clinic_app.patient_identity(uuid)": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 2
+    },
+    "via": [
+      "constraint:intake_patientaccessgrant.intake_grant_expiry_check",
+      "constraint:intake_patientaccessgrant.intake_grant_operations_check",
+      "constraint:intake_patientaccessgrant.intake_grant_org_clinic_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_org_enrollment_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_org_patient_fk",
+      "constraint:intake_patientaccessgrant.intake_grant_secret_hash_32_check",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_clinic_id_74051320_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_enrollment_id_a7d28acd_fk_intake_pa",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_organization_id_510993a5_fk_identity_",
+      "constraint:intake_patientaccessgrant.intake_patientaccess_patient_id_3f1484a5_fk_intake_pa",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_acting_for_enrollmen_3b2961f3_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_delegate_grant_id_9ffe72e6_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsessio_enrollment_id_8ef003fa_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_grant_id_1244fe55_fk_intake_pa",
+      "constraint:intake_patientsession.intake_patientsessio_organization_id_03d883cb_fk_identity_",
+      "constraint:intake_patientsession.intake_patientsession_clinic_id_a6cff610_fk_identity_clinic_id",
+      "constraint:intake_patientsession.intake_patientsession_patient_id_7a678128_fk_intake_patient_id",
+      "constraint:intake_patientsession.intake_session_expiry_check",
+      "constraint:intake_patientsession.intake_session_operations_check",
+      "constraint:intake_patientsession.intake_session_org_clinic_fk",
+      "constraint:intake_patientsession.intake_session_org_enrollment_fk",
+      "constraint:intake_patientsession.intake_session_org_grant_fk",
+      "constraint:intake_patientsession.intake_session_org_patient_fk",
+      "constraint:intake_patientsession.session_delegate_pair",
+      "policy:intake_patientaccessgrant.tenant_isolation",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "policy:intake_patientsession.tenant_isolation",
+      "trigger:intake_patientsession.delegate_session_binding"
     ]
   },
   "function:clinic_app.scheduling_appointment_guard_v1()": {

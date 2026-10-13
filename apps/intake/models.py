@@ -750,6 +750,15 @@ class PatientSession(TenantScopedModel):
     clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
     patient = models.ForeignKey(Patient, on_delete=models.PROTECT)
     enrollment = models.ForeignKey(PatientClinicEnrollment, on_delete=models.PROTECT)
+    acting_for_enrollment = models.ForeignKey(
+        PatientClinicEnrollment,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="represented_sessions",
+    )
+    delegate_grant = models.ForeignKey(
+        "identity.PatientDelegateGrant", on_delete=models.PROTECT, null=True
+    )
     operations = ArrayField(models.CharField(max_length=32), size=None)
     expires_at = models.DateTimeField()
     idle_expires_at = models.DateTimeField()
@@ -826,6 +835,7 @@ class QuestionnaireResponse(TenantScopedModel):
     )
     state = models.CharField(max_length=16, default="draft")
     revision = models.PositiveIntegerField(default=1)
+    restricted_from_delegates = models.BooleanField(default=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     reopen_reason = EncryptedTextField(
         purpose="intake.questionnaireresponse.reopen_reason", null=True

@@ -91,9 +91,59 @@ A session can never exceed the operations it was minted with.
   sessions are never resurrected or extended past their absolute expiry.
 - **Compromise or error**: staff revoke the grant, which ends the invitation
   and all sessions derived from it in one action.
-- There is no patient self-service recovery and no identity proofing beyond
+- There is no patient self-service recovery for the original identity and no identity proofing beyond
   possession of the single-use code; a patient who loses access returns to
   the clinic for a new invitation.
+
+## Guardian and delegate representation
+
+`identity.PatientDelegateGrant` is the sole representation authority store.
+A contact, invitation, family relationship or message channel never establishes
+legal representation. Staff with `configuration.clinic` or
+`configuration.organization`, or the authenticated represented patient, can
+request a grant. Independent verifier staff must review its legal authority and
+scanned document reference before `pending_verification` becomes `verified`.
+Rejected grants are terminal. Only verifier staff or the represented patient
+can activate a verified grant or revoke a nonterminal grant.
+
+The authority kind is a legal guardian of a minor, curator, or
+patient-authorized adult. The verifier attests that kind from the evidence;
+the application does not infer it from contact possession. Both enrollments
+and the evidence belong to the same clinic and organization. Purposes,
+operations, subjects, evidence and expiry are immutable. A command retry does
+not append another transition audit, and stale revisions cannot skip a state.
+
+`PatientSession.enrollment_id` retains the authenticating identity.
+`acting_for_enrollment_id` and `delegate_grant_id` bind its selected
+representation. The POST-only `/patient/delegation/switch/` accepts a grant
+selector in the request body, not a represented patient or tenant claim.
+`clinic_app.current_patient_authority` intersects the original invitation
+operations with the verified grant, resolves the represented enrollment, and
+checks revocation and expiry at every database statement. Booking, intake,
+consent, released records, prescribing, teleconsult and billing use that
+effective scope. Original patient access and staff roles remain separate.
+
+Confidential releases and questionnaire responses default to
+`restricted_from_delegates=True`. An explicit clinical decision is required
+when creating a shared release or assigning a shared response; audience
+metadata cannot later be silently widened. Restricted versions never appear
+in the delegated release resolver or export, including when selected directly.
+Consent actions additionally require the exact verified purpose and store
+`delegate_explicit_action`; one purpose does not authorize another.
+Patient AI-use attestations are not disclosed to delegates.
+
+An expired grant stays bound to the session and denies representation; it does
+not silently return to the patient's own scope. The expiry screen offers a
+signed, body-only renewal request. This creates a new `pending_verification`
+grant with the same subjects, operations, purposes and evidence, and never
+resurrects access. The original identity must still be live. Revoked grants
+cannot renew. Expiry is checked on use, without a cron dependency or mutable
+deadline. Every persisted lifecycle transition and session switch uses
+`record_phase1_event` with only the permitted metadata payload keys.
+
+The legal authority and confidentiality policy require EG-2 human review.
+These synthetic implementation tests do not approve legal authority for live
+patient data.
 
 ## Non-goals
 

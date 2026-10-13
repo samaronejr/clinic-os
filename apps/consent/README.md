@@ -1,5 +1,14 @@
 # Consent
 
+Verified representation does not confer blanket consent authority.
+`clinic_app.consent_session` resolves the effective represented enrollment
+through the database's current patient authority. Restrictive policies and
+insert guards require the exact grant purpose and preserve
+`delegate_explicit_action` provenance alongside the original patient-session
+binding. Restricted patient AI-use attestations stay hidden from delegates.
+Revocation or expiry of a representation grant denies already-minted sessions
+without changing or revoking the represented patient's own consent records.
+
 Synthetic, purpose-specific consent, notices and disclosure records are
 implemented; no live legal approval is implied. Consent here is never the
 sole legal-basis claim for care processing. The supported purposes are

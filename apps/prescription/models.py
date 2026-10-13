@@ -342,6 +342,7 @@ class PrescriptionDocumentRelease(TenantScopedModel):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    restricted_from_delegates = models.BooleanField(default=True)
     document = models.ForeignKey(
         PrescriptionDocument, on_delete=models.PROTECT, related_name="releases"
     )

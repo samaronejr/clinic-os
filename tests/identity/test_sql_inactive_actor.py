@@ -46,6 +46,10 @@ ACTOR_SETTING = "app.current_user_id"
 PARSEABLE_OPAQUE = frozenset({"do"})
 _ATTRIBUTION = "attribution: stamps the actor id on the written row; decides nothing"
 _PATIENT_ONLY = "patient-only: requires the actor setting to be absent"
+_DELEGATE_AUTHORITY = (
+    "dual authority: delegate_staff checks has_permission; the patient branch "
+    "requires no staff actor; executed by the delegate inactive-actor probe"
+)
 # Executed for an inactive staff actor on the agent login in
 # test_service_principals (the forged-actor-with-domain-history test).
 _MACHINE_ONLY = "machine-only: refuses any non-empty actor setting"
@@ -62,8 +66,22 @@ JUSTIFIED = {
     "timestamp with time zone,jsonb,bytea)": _ATTRIBUTION,
     "clinic_app.billing_revision_snapshot()": _ATTRIBUTION,
     "clinic_app.questionnaire_receipt()": _ATTRIBUTION,
-    "clinic_app.consent_session()": _PATIENT_ONLY,
-    "clinic_app.teleconsult_patient_match(uuid)": _PATIENT_ONLY,
+    # Consent and teleconsult now call this patient-only boundary instead of
+    # reading the actor setting themselves.
+    "clinic_app.current_patient_authority(text)": _PATIENT_ONLY,
+    "clinic_app.delegate_audit_scope(uuid,text)": _PATIENT_ONLY,
+    "clinic_app.delegate_grantor(uuid,uuid)": _PATIENT_ONLY,
+    "clinic_app.delegate_recovery_identity()": _PATIENT_ONLY,
+    "clinic_app.renew_delegate_grant(uuid,uuid,timestamp with time zone)": (
+        _PATIENT_ONLY
+    ),
+    "clinic_app.switch_patient_delegate(uuid,uuid)": _PATIENT_ONLY,
+    "clinic_app.delegate_guard()": _DELEGATE_AUTHORITY,
+    "clinic_app.request_delegate_grant(uuid,uuid,uuid,text,uuid,text[],text[],"
+    "timestamp with time zone,uuid)": _DELEGATE_AUTHORITY,
+    "clinic_app.transition_delegate_grant(uuid,uuid,integer,text)": (
+        _DELEGATE_AUTHORITY
+    ),
     "clinic_app.principal_scope(uuid,uuid)": _MACHINE_ONLY,
     "clinic_app.load_current_user()": (
         "loader: returns is_active and every caller refuses an inactive row"

@@ -10,14 +10,15 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
 import psycopg
+from django.db import connection
 from psycopg import sql
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# Preserve the shipped 10/9/6 audit and fixture replacements. This vocabulary
-# is only a cross-check, not the live reader detector: clock_catalog derives its
-# readers and expression surfaces from PostgreSQL and follows helper calls.
+# This vocabulary is only a cross-check, not the live reader detector:
+# clock_catalog derives readers and expression surfaces from PostgreSQL and
+# follows helper calls, including independent patient authority clocks.
 SQL_TIME: Final = re.compile(
     r"\b(?:pg_catalog\.)?(?:"
     r"(?:statement_timestamp|transaction_timestamp|clock_timestamp|now)\s*\(\s*\)|"
@@ -26,7 +27,6 @@ SQL_TIME: Final = re.compile(
 )
 SQL_CLOCKS: Final = {
     "scheduling_appointment_guard_v1()": {"current_timestamp": 1},
-    "patient_booking_scope()": {"statement_timestamp()": 2},
     "patient_booking_slots(date,uuid)": {"statement_timestamp()": 1},
     "patient_booking_receipt()": {"statement_timestamp()": 1},
     "scheduling_definition_guard()": {"statement_timestamp()": 3},
@@ -45,9 +45,12 @@ DEPENDENCY_CLOCKS: Final = {
     "intake_patientdemographics_version_guard_v1()": {"transaction_timestamp()": 1},
     "intake_correction_guard_v1()": {"transaction_timestamp()": 1},
     "intake_patient_mirror_guard_v1()": {"transaction_timestamp()": 1},
+    "patient_identity(uuid)": {"statement_timestamp()": 2},
+    "delegate_now()": {"statement_timestamp()": 1},
+    "delegate_guard()": {"statement_timestamp()": 4},
 }
 CONTROLLED_CLOCKS: Final = SQL_CLOCKS | DEPENDENCY_CLOCKS
-AUTHORITY_CLOCKS: Final = frozenset({"patient_booking_scope()", *DEPENDENCY_CLOCKS})
+AUTHORITY_CLOCKS: Final = frozenset(DEPENDENCY_CLOCKS)
 SQL_CLOCKS_CONTROLLED: ContextVar[bool] = ContextVar(
     "scheduling_sql_clocks_controlled", default=False
 )
@@ -75,7 +78,12 @@ def frozen_sql_clocks(
     """
     originals: list[tuple[str, str]] = []
     definitions: dict[str, dict[str, str]] = {}
+    with connection.cursor() as cursor:
+        cursor.execute("SHOW search_path")
+        path = cursor.fetchone()
+    assert path is not None
     with psycopg.connect(database_url, autocommit=True) as owner:
+        owner.execute("SELECT set_config('search_path', %s, false)", [path[0]])
         row = owner.execute("SELECT statement_timestamp()").fetchone()
         assert row is not None
         authority_now = row[0]

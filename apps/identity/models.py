@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -507,3 +508,113 @@ class SavedView(TenantScopedModel):
     def __str__(self) -> str:
         """Return only the stable record identifier."""
         return str(self.pk)
+
+
+class PatientDelegateGrant(TenantScopedModel):
+    """Verified representation authority, separate from staff membership.
+
+    Contact possession supplies no authority. The two enrollments and evidence
+    are bound to the same clinic by the database; scope is immutable, and an
+    expired or revoked grant never authorizes a patient request.
+    """
+
+    class State(models.TextChoices):
+        """Only verification followed by activation can grant access."""
+
+        PENDING = "pending_verification", "Pending verification"
+        VERIFIED = "verified", "Verified"
+        REJECTED = "rejected", "Rejected"
+        ACTIVE = "active", "Active"
+        REVOKED = "revoked", "Revoked"
+
+    class AuthorityKind(models.TextChoices):
+        """Representation kinds requiring independent staff verification."""
+
+        GUARDIAN = "legal_guardian_minor", "Legal guardian of a minor"
+        CURATOR = "curator", "Curator"
+        ADULT = "patient_authorized_adult", "Patient-authorized adult"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey(Clinic, on_delete=models.PROTECT)
+    represented_enrollment = models.ForeignKey(
+        "intake.PatientClinicEnrollment",
+        on_delete=models.PROTECT,
+        related_name="representation_grants",
+    )
+    delegate_enrollment = models.ForeignKey(
+        "intake.PatientClinicEnrollment",
+        on_delete=models.PROTECT,
+        related_name="delegate_grants",
+    )
+    evidence_attachment = models.ForeignKey(
+        "ehr.ClinicalAttachment", on_delete=models.PROTECT
+    )
+    authority_kind = models.CharField(max_length=32, choices=AuthorityKind.choices)
+    purposes = ArrayField(models.CharField(max_length=32))
+    operations = ArrayField(models.CharField(max_length=32))
+    state = models.CharField(
+        max_length=24, choices=State.choices, default=State.PENDING
+    )
+    revision = models.PositiveIntegerField(default=1)
+    idempotency_key = models.UUIDField()
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="delegate_requests",
+    )
+    grantor_session = models.ForeignKey(
+        "intake.PatientSession", on_delete=models.PROTECT, null=True
+    )
+    renewal_of = models.ForeignKey("self", on_delete=models.PROTECT, null=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="delegate_verifications",
+    )
+    verified_at = models.DateTimeField(null=True)
+    activated_at = models.DateTimeField(null=True)
+    revoked_at = models.DateTimeField(null=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Constrain lifecycle and immutable request identity."""
+
+        constraints: ClassVar[list[BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=("organization", "id"), name="identity_delegate_org_id_uniq"
+            ),
+            models.UniqueConstraint(
+                fields=("clinic", "idempotency_key"),
+                name="identity_delegate_request_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    state__in=(
+                        "pending_verification",
+                        "verified",
+                        "rejected",
+                        "active",
+                        "revoked",
+                    )
+                )
+                & models.Q(
+                    authority_kind__in=(
+                        "legal_guardian_minor",
+                        "curator",
+                        "patient_authorized_adult",
+                    )
+                )
+                & models.Q(revision__gte=1)
+                & models.Q(expires_at__gt=models.F("created_at")),
+                name="identity_delegate_lifecycle",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(
+                    represented_enrollment=models.F("delegate_enrollment")
+                ),
+                name="identity_delegate_distinct_subject",
+            ),
+        ]

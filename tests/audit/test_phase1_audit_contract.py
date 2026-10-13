@@ -11,6 +11,42 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "identity.delegate.requested": (
+        "tenant",
+        "clinic-os-web",
+        "identity.patient_delegate_grant",
+        "requested",
+    ),
+    "identity.delegate.verified": (
+        "tenant",
+        "clinic-os-web",
+        "identity.patient_delegate_grant",
+        "verified",
+    ),
+    "identity.delegate.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "identity.patient_delegate_grant",
+        "rejected",
+    ),
+    "identity.delegate.activated": (
+        "tenant",
+        "clinic-os-web",
+        "identity.patient_delegate_grant",
+        "activated",
+    ),
+    "identity.delegate.revoked": (
+        "tenant",
+        "clinic-os-web",
+        "identity.patient_delegate_grant",
+        "revoked",
+    ),
+    "identity.delegate.session_switched": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_session",
+        "session_switched",
+    ),
     "workflows.task.created": (
         "tenant",
         "clinic-os-web",

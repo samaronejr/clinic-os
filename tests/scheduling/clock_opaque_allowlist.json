@@ -44,6 +44,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.booleq(boolean, boolean)": {
+    "extension": "",
+    "implementation": "booleq",
+    "language": "internal",
+    "library": "",
+    "reason": "Equality of supplied boolean delegation flags; retain the exact native comparison implementation as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.btrim(bytea, bytea)": {
     "extension": "",
     "implementation": "byteatrim",
@@ -943,6 +952,15 @@
     "returns": "name",
     "volatility": "s",
     "reason": "Workflow bundle issuance tests the authenticated database login, not the effective role. Admit only the exact PostgreSQL login-identity implementation; it is not a temporal input."
+  },
+  "pg_catalog.sha256(bytea)": {
+    "extension": "",
+    "implementation": "sha256_bytea",
+    "language": "internal",
+    "library": "",
+    "reason": "Digest validation of reached clinical authority evidence; retain the exact native SHA-256 implementation as opaque risk.",
+    "returns": "bytea",
+    "volatility": "i"
   },
   "pg_catalog.similar_to_escape(text)": {
     "extension": "",

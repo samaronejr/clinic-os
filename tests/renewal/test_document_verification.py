@@ -18,8 +18,9 @@ from apps.comms.tasks import execute_operation as execute_operation_task
 from apps.core.integration import execute_operation
 from apps.core.secrets import secret_store
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.delegates import switch_delegate
 from apps.identity.models import PhysicianProfile
-from apps.intake.models import PatientContact
+from apps.intake.models import PatientClinicEnrollment, PatientContact
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     issue_invitation,
@@ -62,11 +63,13 @@ from django.utils import timezone
 
 from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
+from patients.delegate_support import NotesFixture, active_grant, delegate_world
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client, setup_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from django.http import HttpRequest
     from pytest_django.fixtures import SettingsWrapper
@@ -577,6 +580,66 @@ def test_release_gates_patient_download_and_revocation_restores_denial(
             ).status_code
             == 403
         )
+
+
+def test_delegate_cannot_list_or_export_a_restricted_signed_document(
+    signed: SignedSetup,
+    tmp_path: Path,
+) -> None:
+    signed.issue()
+    graph = signed.graph
+    with setup_context(graph.organization_a):
+        enrollment = PatientClinicEnrollment.objects.get(
+            patient_id=signed.scope["patient_id"], clinic_id=graph.clinic_a
+        )
+    world = delegate_world(
+        graph,
+        tmp_path,
+        notes=NotesFixture(
+            enrollment.pk,
+            signed.scope["patient_id"],
+            signed.scope["encounter_id"],
+            uuid4(),
+        ),
+    )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        release_document(clinic_id=graph.clinic_a, document_id=signed.document.pk)
+    grant = active_grant(graph, world)
+    with runtime_role(), patient_session_context(world.session_id):
+        switch_delegate(clinic_id=graph.clinic_a, grant_id=grant.grant_id)
+    with runtime_role(), patient_session_context(world.session_id):
+        assert patient_documents() == []
+        for document_id in (signed.document.pk, uuid4()):
+            with pytest.raises(ClinicalAccessDeniedError):
+                patient_document_download(document_id=document_id)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM clinic_app.prescription_patient_documents()")
+            assert cursor.fetchall() == []
+    patient = Client()
+    session = patient.session
+    session[PATIENT_SESSION_KEY] = str(world.session_id)
+    session.save()
+    with runtime_role():
+        restricted = patient.post(
+            "/patient/documents/",
+            {"action": "download", "document_id": str(signed.document.pk)},
+        )
+        unknown = patient.post(
+            "/patient/documents/",
+            {"action": "download", "document_id": str(uuid4())},
+        )
+    assert restricted.status_code == unknown.status_code == 403
+    assert restricted.content == unknown.content
+    newer = signed.amend_and_issue()
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        release_document(
+            clinic_id=graph.clinic_a,
+            document_id=newer.pk,
+            restricted_from_delegates=False,
+        )
+    with runtime_role(), patient_session_context(world.session_id):
+        assert [row.document_id for row in patient_documents()] == [newer.pk]
+        assert patient_document_download(document_id=newer.pk).data
 
 
 def test_release_requires_completed_signature_and_issuer(

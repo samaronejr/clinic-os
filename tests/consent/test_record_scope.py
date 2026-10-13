@@ -415,6 +415,9 @@ NON_BINDING = {
     r"has_permission\('[a-z_.]+',\s*NEW\.clinic_id": "authority argument",
     r"'consent:'\|\|(?:NEW|t)\.clinic_id": "advisory-lock key",
     r"SELECT s\.id,s\.organization_id,s\.clinic_id,s\.patient_id": "session projection",
+    r"SELECT s\.session_id,s\.organization_id,s\.clinic_id,s\.patient_id": (
+        "effective session projection from current_patient_authority()"
+    ),
     r"SELECT s\.session_id,s\.organization_id,s\.clinic_id": "audit scope projection",
     r"'clinic-audit:'\|\|s\.organization_id": "audit chain lock key",
     r"audit_event \(organization_id": "audit insert column list",

@@ -463,7 +463,7 @@ def test_database_policies_and_trigger_check_the_same_bundle_names() -> None:
         row = cursor.fetchone()
     assert row is not None
     bodies = [str(row[0]), *(str(item[2]) for item in policies)]
-    assert len(policies) == 14
+    assert len(policies) == 19
     for body in bodies:
         assert "questionnaire_staff" not in body
     names = {

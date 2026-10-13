@@ -515,6 +515,7 @@ def test_questionnaire_database_policy_and_resolver_catalog() -> None:
             (tables[1], "response_read", ("clinic_app",), "SELECT"),
             (tables[1], "response_assign", ("clinic_app",), "INSERT"),
             (tables[1], "response_write", ("clinic_app",), "UPDATE"),
+            (tables[1], "delegate_confidentiality", ("clinic_app",), "ALL"),
             (tables[2], "event_read", ("clinic_app",), "SELECT"),
         }
         cursor.execute(
