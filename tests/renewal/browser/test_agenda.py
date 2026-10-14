@@ -98,6 +98,7 @@ DAYS = {1280: _tuesday(0), 768: _tuesday(1), 375: _tuesday(2)}
 FAILURE_DAYS = {1280: _tuesday(10), 768: _tuesday(11), 375: _tuesday(12)}
 NATIVE_DAY = _tuesday(20)
 REFLOW_DAY = _tuesday(30)
+LIFECYCLE_DAYS = {1280: _tuesday(40), 375: _tuesday(41)}
 PAGE_SIZE = 25
 ZOOM_WINDOW = 1280  # physical window width behind the 200% zoom scene
 ZOOM_FACTOR = 2
@@ -1876,9 +1877,10 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_agenda_usable(
 def lifecycle_staff(
     agenda_staff: dict[str, str], request: pytest.FixtureRequest
 ) -> dict[str, str]:
-    """Give this journey its own physician with an additional reception role."""
+    """Give each width's journey its own day, physician and reception role."""
     staff = {
         **agenda_staff,
+        "day": LIFECYCLE_DAYS[request.param],
         "physician_a": f"clinico-sintetico-ciclo-{uuid4().hex[:8]}",
         "physician_a_id": str(uuid4()),
         "totp_key": new_totp_key(),
@@ -2039,7 +2041,7 @@ def test_multirole_clinician_completes_the_native_lifecycle(
     staff = lifecycle_staff
     root = renewal_artifact_root
     width = int(staff["width"])
-    day = _tuesday(40)
+    day = staff["day"]
     _promise(staff, staff["physician_a_id"], (day, "08:00", "12:00"))
     enrollment = _seed_enrollment(staff, "Paciente Sintetico Ciclo")
     with agenda_browser.new_context(
@@ -2061,6 +2063,8 @@ def test_multirole_clinician_completes_the_native_lifecycle(
         )
         url = f"{renewal_base_url}{_agenda_path(staff, 'day', day)}"
         goto_settled(page, url)
+        # The reception role sees every clinic row: this width's day holds one.
+        expect(page.locator(ROWS)).to_have_count(1)
         row = page.locator(ROWS).filter(has_text="Paciente Sintetico Ciclo")
         expect(row).to_have_attribute("data-appointment-status", "held")
         assert _no_overflow(page)
