@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -17,6 +17,7 @@ from webauthn.helpers import bytes_to_base64url
 from auth.passkey_test_support import AssertionOptions, SoftwareAuthenticator
 from renewal.browser import _onboarding as journeys
 from renewal.browser._navigation import goto_settled
+from renewal.browser._passkey_client import client_evidence
 from renewal.browser.test_retention import seed_manager, sign_in_manager
 
 if TYPE_CHECKING:
@@ -30,7 +31,12 @@ onboarding_staff = journeys.onboarding_staff
 
 @contextmanager
 def _recording(
-    browser: Browser, root: Path, *, javascript: bool = True
+    browser: Browser,
+    root: Path,
+    *,
+    javascript: bool = True,
+    expected_denial: bool = False,
+    expected_abort: bool = False,
 ) -> Iterator[Page]:
     """Keep one masked, named recording and delete the private raw copy."""
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -45,13 +51,16 @@ def _recording(
     page = context.new_page()
     video = page.video
     assert video is not None
-    try:
-        yield page
-    finally:
-        context.close()
-        video.save_as(root / "passkey.webm")
-        video.delete()
-        (root / "private-video").rmdir()
+    with client_evidence(
+        page, root, expected_denial=expected_denial, expected_abort=expected_abort
+    ):
+        try:
+            yield page
+        finally:
+            context.close()
+            video.save_as(root / "passkey.webm")
+            video.delete()
+            (root / "private-video").rmdir()
 
 
 def _virtual_authenticator(page: Page) -> tuple[CDPSession, str]:
@@ -70,7 +79,16 @@ def _virtual_authenticator(page: Page) -> tuple[CDPSession, str]:
             }
         },
     )
-    return cdp, result["authenticatorId"]
+    authenticator_id = result["authenticatorId"]
+    assert isinstance(authenticator_id, str)
+    assert authenticator_id
+    assert (
+        cdp.send("WebAuthn.getCredentials", {"authenticatorId": authenticator_id})[
+            "credentials"
+        ]
+        == []
+    )
+    return cdp, authenticator_id
 
 
 def _organization_admin(staff: dict[str, str]) -> dict[str, str]:
@@ -139,31 +157,32 @@ def test_platform_registration_step_up_and_sign_in(
 ) -> None:
     browser = renewal_page.context.browser
     assert browser is not None
+    base = renewal_base_url.replace("127.0.0.1", "localhost", 1)
     manager = _organization_admin(onboarding_staff)
     root = renewal_artifact_root / "passkeys"
     with _recording(browser, root, javascript=renewal_engine == "chromium") as page:
-        sign_in_manager(page, renewal_base_url, onboarding_staff, manager)
+        sign_in_manager(page, base, onboarding_staff, manager)
         if renewal_engine != "chromium":
-            goto_settled(page, renewal_base_url + "/account/passkeys/")
+            goto_settled(page, base + "/account/passkeys/")
             expect(page.locator("[data-passkey-start]")).to_be_hidden()
             expect(page.locator("[data-passkey-unavailable]")).to_be_visible()
             journeys.capture(page, root, f"{renewal_engine}-native-code-fallback")
             return
         cdp, authenticator_id = _virtual_authenticator(page)
-        _register(page, renewal_base_url)
+        _register(page, base)
         _opt_in(page)
         for width in journeys.WIDTHS:
             page.set_viewport_size({"width": width, "height": 850})
             journeys.capture(page, root, f"happy-own-credentials-{width}")
-        journeys.sign_out(page, renewal_base_url)
-        goto_settled(page, renewal_base_url + "/auth/login/")
+        journeys.sign_out(page, base)
+        goto_settled(page, base + "/auth/login/")
         page.locator("#id_username").fill(manager["username"])
         page.locator("#id_password").fill(onboarding_staff["password"])
         assert (
             journeys.submit(page, 'form[action="/auth/login/"] button[type=submit]')
             == 200
         )
-        goto_settled(page, renewal_base_url + "/auth/step-up/?next=/account/passkeys/")
+        goto_settled(page, base + "/auth/step-up/?next=/account/passkeys/")
         expect(page.locator("#passkey-step-up [data-passkey-start]")).to_be_visible()
         with page.expect_response(
             lambda response: response.url.endswith("/auth/passkey/assert/finish/")
@@ -172,15 +191,15 @@ def test_platform_registration_step_up_and_sign_in(
         assert stepped_up.value.status == 200
         expect(page.locator("[data-passkey-record]")).to_have_count(1)
         journeys.capture(page, root, "happy-platform-step-up")
-        journeys.sign_out(page, renewal_base_url)
-        goto_settled(page, renewal_base_url + "/auth/login/")
+        journeys.sign_out(page, base)
+        goto_settled(page, base + "/auth/login/")
         with page.expect_response(
             lambda response: response.url.endswith("/auth/passkey/assert/finish/")
         ) as verified:
             page.locator("#passkey-login [data-passkey-start]").click()
         assert verified.value.status == 200
-        expect(page).not_to_have_url(renewal_base_url + "/auth/login/")
-        goto_settled(page, renewal_base_url + "/account/sessions/")
+        expect(page).not_to_have_url(base + "/auth/login/")
+        goto_settled(page, base + "/account/sessions/")
         expect(page.locator("[data-session-record]")).not_to_have_count(0)
         journeys.capture(page, root, "happy-passkey-session-inventory")
         cdp.send(
@@ -199,48 +218,48 @@ def test_signed_assertion_refusals(
 ) -> None:
     browser = renewal_page.context.browser
     assert browser is not None
+    base = renewal_base_url.replace("127.0.0.1", "localhost", 1)
     root = renewal_artifact_root / f"passkey-{case}"
     engine = browser.browser_type.name
     manager = _organization_admin(onboarding_staff)
-    with _recording(browser, root) as page:
-        sign_in_manager(page, renewal_base_url, onboarding_staff, manager)
+    with _recording(browser, root, expected_denial=True) as page:
+        sign_in_manager(page, base, onboarding_staff, manager)
         if engine != "chromium":
-            goto_settled(page, renewal_base_url + "/account/passkeys/")
+            goto_settled(page, base + "/account/passkeys/")
+            expect(page.locator('a[href^="/auth/step-up/"]')).to_be_visible()
             journeys.capture(page, root, f"{engine}-native-factor")
             return
         cdp, authenticator_id = _virtual_authenticator(page)
-        _register(page, renewal_base_url)
+        _register(page, base)
         _opt_in(page)
-        journeys.sign_out(page, renewal_base_url)
-        goto_settled(page, renewal_base_url + "/auth/login/")
+        journeys.sign_out(page, base)
+        goto_settled(page, base + "/auth/login/")
         with page.expect_response(
             lambda response: response.url.endswith("/auth/passkey/assert/finish/")
         ) as accepted:
             page.locator("#passkey-login [data-passkey-start]").click()
         assert accepted.value.status == 200
-        expect(page).not_to_have_url(renewal_base_url + "/auth/login/")
-        journeys.sign_out(page, renewal_base_url)
-        goto_settled(page, renewal_base_url + "/auth/login/")
+        expect(page).not_to_have_url(base + "/auth/login/")
+        journeys.sign_out(page, base)
+        goto_settled(page, base + "/auth/login/")
         if case == "foreign_rp":
             software, handle = _software_credential(cdp, authenticator_id)
             csrf = page.locator(
                 '#passkey-login input[name="csrfmiddlewaretoken"]'
             ).input_value()
             begin = page.request.post(
-                renewal_base_url + "/auth/passkey/assert/begin/",
+                base + "/auth/passkey/assert/begin/",
                 form={"csrfmiddlewaretoken": csrf, "purpose": "login"},
             )
             assert begin.status == 200
             denied = page.request.post(
-                renewal_base_url + "/auth/passkey/assert/finish/",
+                base + "/auth/passkey/assert/finish/",
                 form={
                     "csrfmiddlewaretoken": csrf,
                     "credential": software.assertion(
                         challenge=begin.json()["challenge"],
                         user_handle=handle,
-                        options=AssertionOptions(
-                            rp_id="foreign.example", origin=renewal_base_url
-                        ),
+                        options=AssertionOptions(rp_id="foreign.example", origin=base),
                     ),
                 },
             )
@@ -297,20 +316,28 @@ def test_cancel_retry_and_offline_identity_feedback(
     renewal_base_url: str,
     renewal_engine: str,
     renewal_artifact_root: Path,
+    onboarding_staff: dict[str, str],
 ) -> None:
     browser = renewal_page.context.browser
     assert browser is not None
+    base = renewal_base_url.replace("127.0.0.1", "localhost", 1)
     root = renewal_artifact_root / "passkey-errors"
-    with _recording(browser, root) as page:
+    with _recording(browser, root, expected_abort=True) as page:
         context = page.context
-        goto_settled(page, renewal_base_url + "/auth/login/")
+        goto_settled(page, base + "/auth/login/")
         if renewal_engine != "chromium":
             expect(
                 page.locator('form[action="/auth/login/"] button[type=submit]')
             ).to_be_visible()
             journeys.capture(page, root, f"{renewal_engine}-password-fallback")
             return
+        manager = _organization_admin(onboarding_staff)
+        sign_in_manager(page, base, onboarding_staff, manager)
         cdp, authenticator_id = _virtual_authenticator(page)
+        _register(page, base)
+        _opt_in(page)
+        journeys.sign_out(page, base)
+        goto_settled(page, base + "/auth/login/")
         cdp.send(
             "WebAuthn.setAutomaticPresenceSimulation",
             {
@@ -318,7 +345,10 @@ def test_cancel_retry_and_offline_identity_feedback(
                 "enabled": False,
             },
         )
-        page.locator("#passkey-login [data-passkey-start]").click()
+        with page.expect_console_message(
+            lambda message: message.text == "PASSKEY_PENDING:get"
+        ):
+            page.locator("#passkey-login [data-passkey-start]").click()
         cancel = page.locator("#passkey-login [data-passkey-cancel]")
         expect(cancel).to_be_visible()
         cancel.click()
@@ -342,3 +372,35 @@ def test_cancel_retry_and_offline_identity_feedback(
             "WebAuthn.removeVirtualAuthenticator", {"authenticatorId": authenticator_id}
         )
         cdp.detach()
+
+
+def test_unexpected_client_exception_is_reported(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+) -> None:
+    """A caught credential rejection must reach the test with its exact exception."""
+    browser = renewal_page.context.browser
+    assert browser is not None
+    base = renewal_base_url.replace("127.0.0.1", "localhost", 1)
+    root = renewal_artifact_root / "passkey-client-exception"
+    with ExitStack() as recording:
+        page = recording.enter_context(_recording(browser, root))
+        goto_settled(page, base + "/auth/login/")
+        page.evaluate(
+            """() => {
+                navigator.credentials.get = async () => {
+                    throw new DOMException(
+                        "Synthetic credential failure", "SecurityError"
+                    );
+                };
+            }"""
+        )
+        with page.expect_console_message(
+            lambda message: message.text.startswith("PASSKEY_FAILURE:")
+        ):
+            page.locator("#passkey-login [data-passkey-start]").click()
+        with pytest.raises(
+            AssertionError, match="SecurityError: Synthetic credential failure"
+        ):
+            recording.close()

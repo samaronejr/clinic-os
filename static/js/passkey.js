@@ -128,6 +128,14 @@
         var result = await post(form, form.dataset.finish, payload, signal);
         window.location.assign(result.next);
       } catch (error) {
+        form.dispatchEvent(new CustomEvent("clinic:passkey-failure", {
+          bubbles: true,
+          detail: {
+            name: error.name,
+            message: error.message,
+            aborted: signal.aborted
+          }
+        }));
         var cancelled = error.name === "AbortError" || error.name === "NotAllowedError";
         announce(!navigator.onLine ? form.dataset.textOffline :
           cancelled ? form.dataset.textCancelled : form.dataset.textError, true);

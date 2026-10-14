@@ -54,8 +54,9 @@ SECURE_SSL_REDIRECT = False
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 SECURE_PROXY_SSL_HEADER = None
-# The runner binds an ephemeral loopback origin; production has no such default.
-WEBAUTHN_RP_ID = env("CLINIC_WEBAUTHN_RP_ID", default="127.0.0.1")
+# WebAuthn requires a domain origin, even on loopback. Passkey journeys use
+# localhost with the runner's ephemeral port, never an IP-address RP ID.
+WEBAUTHN_RP_ID = env("CLINIC_WEBAUTHN_RP_ID", default="localhost")
 STATICFILES_BACKEND = "django.contrib.staticfiles.storage.StaticFilesStorage"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
