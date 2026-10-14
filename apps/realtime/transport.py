@@ -22,6 +22,7 @@ EVENT_KINDS: Final = frozenset(
         "queue",
         "messages",
         "ai_job",
+        "teleconsult",
         "ready",
         "revoked",
         "expired",

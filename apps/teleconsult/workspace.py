@@ -15,9 +15,11 @@ import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from django.conf import settings
 from django.db import DatabaseError
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import gettext_lazy as _
 
 from apps.ehr.finalization import amend_document, discard_draft, finalize_version
 from apps.ehr.forms import AmendmentForm, DraftForm
@@ -31,19 +33,26 @@ from apps.ehr.services import (
 )
 from apps.identity.otp import flow_redirect, safe_next_url
 from apps.identity.stepup import StepUpRequired
+from apps.teleconsult.hints import room_topic
 from apps.teleconsult.models import TeleconsultRoom
+from apps.teleconsult.participants import (
+    audio_only,
+    latest_device_check,
+    patient_removed,
+)
 from apps.teleconsult.services import (
     TeleconsultAccessDeniedError,
     derived_state,
     patient_joined,
 )
+from apps.teleconsult.video_providers import ROOM_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from django.http import HttpRequest, HttpResponseBase
 
-    from apps.teleconsult.models import TeleconsultSession
+    from apps.teleconsult.models import TeleconsultDeviceCheck, TeleconsultSession
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +98,24 @@ _STALE = "stale_revision"
 _CONFLICT = 409
 _UNAVAILABLE = 503
 _INVALID = 400
+DEVICE_FIELDS = (
+    ("camera", _("Camera")),
+    ("microphone", _("Microphone")),
+    ("speaker", _("Speaker")),
+    ("network", _("Connection")),
+)
+DEVICE_RESULT_LABELS = {
+    "ok": _("working"),
+    "denied": _("permission denied"),
+    "missing": _("not found"),
+    "busy": _("in use by another app"),
+    "unsupported": _("not supported"),
+    "error": _("not working"),
+    "not_checked": _("not tested"),
+    "good": _("good"),
+    "degraded": _("unstable"),
+    "offline": _("no connection"),
+}
 NOTES_PARTIAL = "teleconsult/partials/clinician_notes.html"
 WORKSPACE_TEMPLATE = "teleconsult/clinician.html"
 
@@ -114,19 +141,48 @@ def staff_url(clinic_id: UUID) -> str:
     return reverse("teleconsult:staff", kwargs={"clinic_id": clinic_id})
 
 
+def device_summary(check: TeleconsultDeviceCheck | None) -> list[dict[str, str]]:
+    """Label one device check's closed codes for display; empty when absent."""
+    if check is None:
+        return []
+    return [
+        {
+            "field": field,
+            "label": str(label),
+            "code": getattr(check, field),
+            "value": str(DEVICE_RESULT_LABELS[getattr(check, field)]),
+        }
+        for field, label in DEVICE_FIELDS
+    ]
+
+
 def video_context(clinic_id: UUID, session: TeleconsultSession) -> dict[str, object]:
     """Describe the stored session for the video panel; metadata only."""
     state = derived_state(session)
+    live = state in ("waiting", "active")
+    room_name = TeleconsultRoom.objects.get(session=session).room_name
+    # Only a live session subscribes: terminal ones never change again, and a
+    # finalized encounter no longer grants the physician clinical.write.
+    topic = room_topic(room_name) if live and ROOM_NAME.fullmatch(room_name) else ""
+    devices = latest_device_check(session, "patient") if live else None
     return {
         "clinic_id": clinic_id,
         "staff_url": staff_url(clinic_id),
         "record_url": encounter_url(clinic_id),
         "session": session,
-        "room_name": TeleconsultRoom.objects.get(session=session).room_name,
+        "room_name": room_name,
         "state": state,
         "state_label": STATE_LABELS.get(state, state),
         "failure_label": FAILURE_LABELS.get(session.failure_reason, ""),
-        "patient_joined": state in ("waiting", "active") and patient_joined(session),
+        "patient_joined": live and patient_joined(session),
+        "patient_removed": live and patient_removed(session),
+        "patient_audio_only": live and audio_only(session, "patient"),
+        "physician_audio_only": live and audio_only(session, "physician"),
+        "patient_devices": device_summary(devices),
+        "device_fields": DEVICE_FIELDS,
+        "realtime_topic": topic,
+        "realtime_enabled": settings.REALTIME_ENABLED and bool(topic),
+        "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
         "encounter": Encounter.objects.select_related("patient", "appointment").get(
             pk=session.encounter_id
         ),
