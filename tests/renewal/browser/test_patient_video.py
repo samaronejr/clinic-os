@@ -71,20 +71,38 @@ TRACK_JS = """(kind) => {
   if (!tracks.length) return null;
   return {enabled: tracks[0].enabled, state: tracks[0].readyState};
 }"""
-# Holds the next getUserMedia open until the test releases it, then answers
-# with the real synthetic stream so a late resolution is observable.
+# Holds the next getUserMedia open until the test answers it: ``release`` with
+# the real synthetic stream (a prompt the patient answers), ``synthetic`` with
+# local tracks that need no device, peer or negotiation (a late resolution,
+# observable the same way on every engine).
 # Patched on the prototype: WebKit ignores an own-property override on the
 # navigator.mediaDevices instance.
 STALL_MEDIA_JS = """() => {
   const proto = MediaDevices.prototype;
   const real = proto.getUserMedia;
-  window.__lateMedia = {release: null, stream: null};
+  window.__lateMedia = {release: null, synthetic: null, stream: null};
   proto.getUserMedia = function (constraints) {
     return new Promise((resolve, reject) => {
-      window.__lateMedia.release = () => real.call(this, constraints).then((stream) => {
+      const settle = (stream) => {
         window.__lateMedia.stream = stream;
         resolve(stream);
-      }, reject);
+      };
+      window.__lateMedia.release = () =>
+        real.call(this, constraints).then(settle, reject);
+      window.__lateMedia.synthetic = () => {
+        const tracks = [];
+        if (constraints && constraints.video) {
+          const canvas = document.createElement('canvas');
+          canvas.getContext('2d').fillRect(0, 0, 1, 1);
+          tracks.push(canvas.captureStream(0).getVideoTracks()[0]);
+        }
+        if (constraints && constraints.audio) {
+          const sink = new AudioContext().createMediaStreamDestination();
+          tracks.push(sink.stream.getAudioTracks()[0]);
+        }
+        settle(new MediaStream(tracks));
+        return tracks.map((track) => track.kind);
+      };
     });
   };
 }"""
@@ -436,11 +454,18 @@ def _stall_media_retry(patient: Page) -> None:
 
 
 def _assert_late_media_dropped(patient: Page, state: str) -> None:
-    """An acquisition resolving after a terminal state is stopped, not installed."""
+    """An acquisition resolving after a terminal state is stopped, not installed.
+
+    The held acquisition resolves with local synthetic tracks, so the room's
+    drop is the only behavior under test. A real WebRTC loopback here crashed
+    WebKit's GStreamer audio path locally and hung 20s on hosted CI
+    (.omo/evidence/clinic-ops-premium-intelligence/task-37/c2/HOSTED-B1C8459.md).
+    """
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", state)
     expect(panel).to_have_attribute("data-media", "off")
-    evaluate_js(patient, "() => window.__lateMedia.release()")
+    late = evaluate_js(patient, "() => window.__lateMedia.synthetic()")
+    assert late == ["video", "audio"], late
     wait_for_js(
         patient,
         "() => { const s = window.__lateMedia.stream;"
