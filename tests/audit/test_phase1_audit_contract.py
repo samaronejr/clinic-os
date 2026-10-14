@@ -562,6 +562,12 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "scheduling.appointment",
         "held",
     ),
+    "scheduling.appointment.expired": (
+        "tenant",
+        "clinic-os-worker",
+        "scheduling.appointment",
+        "expired",
+    ),
     "scheduling.appointment.booked": (
         "tenant",
         "clinic-os-web",

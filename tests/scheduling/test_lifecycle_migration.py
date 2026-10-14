@@ -15,6 +15,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 from apps.ehr.migrations import _arrival_sql as arrival
+from apps.scheduling.migrations import _expiry_audit_sql as expiry_audit
 from apps.scheduling.migrations import _lifecycle_sql as lifecycle
 from apps.scheduling.services import arrive
 from apps.tenancy.db import tenant_context
@@ -129,7 +130,13 @@ def test_every_derived_sql_edit_actually_matched() -> None:
             1,
         ),
         "capacity": (lifecycle._CAPACITY, lifecycle._CAPACITY_V2, 3),
+        "expire_hold": (expiry_audit.EXPIRE_HOLD, expiry_audit.EXPIRE_HOLD_GATED, 2),
     }
+    # 0008 reverses to 0007's W expiry byte for byte.
+    assert (
+        expiry_audit.EXPIRE_HOLD.removeprefix("CREATE OR REPLACE ")
+        in lifecycle._GUARD_SQL_PART_8
+    )
     for name, (source, derived, hunks) in pairs.items():
         assert source.startswith("CREATE OR REPLACE FUNCTION clinic_app."), name
         assert _hunks(source, derived) == hunks, name

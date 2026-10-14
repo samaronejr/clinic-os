@@ -1,4 +1,96 @@
 {
+  "constraint:audit_event.audit_event_actor_scope_ck": {
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2
+    },
+    "via": [
+      "function:pg_catalog.jsonb_delete(jsonb, text)",
+      "function:pg_catalog.jsonb_eq(jsonb, jsonb)",
+      "function:pg_catalog.jsonb_object_field_text(jsonb, text)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "constraint:audit_event.audit_event_affected_text_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.btrim(bytea, bytea)",
+      "function:pg_catalog.btrim(text)",
+      "function:pg_catalog.btrim(text, text)",
+      "function:pg_catalog.char_length(character)",
+      "function:pg_catalog.char_length(text)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)"
+    ]
+  },
+  "constraint:audit_event.audit_event_component_id_text_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.btrim(bytea, bytea)",
+      "function:pg_catalog.btrim(text)",
+      "function:pg_catalog.btrim(text, text)",
+      "function:pg_catalog.char_length(character)",
+      "function:pg_catalog.char_length(text)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)"
+    ]
+  },
+  "constraint:audit_event.audit_event_component_ip_host_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.family(inet)",
+      "function:pg_catalog.int4eq(integer, integer)",
+      "function:pg_catalog.masklen(inet)"
+    ]
+  },
+  "constraint:audit_event.audit_event_curr_hash_len_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4eq(integer, integer)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)"
+    ]
+  },
+  "constraint:audit_event.audit_event_event_type_text_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.btrim(bytea, bytea)",
+      "function:pg_catalog.btrim(text)",
+      "function:pg_catalog.btrim(text, text)",
+      "function:pg_catalog.char_length(character)",
+      "function:pg_catalog.char_length(text)",
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)"
+    ]
+  },
+  "constraint:audit_event.audit_event_payload_object_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.jsonb_typeof(jsonb)",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:audit_event.audit_event_prev_hash_len_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4eq(integer, integer)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)"
+    ]
+  },
+  "constraint:audit_event.audit_event_timestamp_finite_ck": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.isfinite(date)",
+      "function:pg_catalog.isfinite(interval)",
+      "function:pg_catalog.isfinite(timestamp with time zone)",
+      "function:pg_catalog.isfinite(timestamp without time zone)"
+    ]
+  },
   "constraint:comms_appointmentreminder.comms_appointmentrem_appointment_id_99e0768f_fk_schedulin": {
     "direct": {},
     "via": [
@@ -38,6 +130,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -295,6 +388,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -1368,6 +1462,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -1806,6 +1901,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -1884,6 +1980,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -2030,6 +2127,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -2101,6 +2199,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -2340,6 +2439,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -2597,6 +2697,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -2700,6 +2801,49 @@
     "direct": {},
     "via": [
       "function:pg_catalog.int2(integer)"
+    ]
+  },
+  "function:clinic_app.audit_appointment_expired()": {
+    "direct": {
+      "pg_catalog.clock_timestamp()": 1,
+      "pg_catalog.timestamptz(date)": 1,
+      "pg_catalog.timestamptz(date, time without time zone)": 1,
+      "pg_catalog.timestamptz(timestamp without time zone)": 1
+    },
+    "via": [
+      "constraint:audit_event.audit_event_actor_scope_ck",
+      "constraint:audit_event.audit_event_affected_text_ck",
+      "constraint:audit_event.audit_event_component_id_text_ck",
+      "constraint:audit_event.audit_event_component_ip_host_ck",
+      "constraint:audit_event.audit_event_curr_hash_len_ck",
+      "constraint:audit_event.audit_event_event_type_text_ck",
+      "constraint:audit_event.audit_event_payload_object_ck",
+      "constraint:audit_event.audit_event_prev_hash_len_ck",
+      "constraint:audit_event.audit_event_timestamp_finite_ck",
+      "function:pg_catalog.convert_to(text, name)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.decode(text, text)",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.sha256(bytea)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.timestamptz(date, time with time zone)",
+      "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "function:pg_catalog.to_char(bigint, text)",
+      "function:pg_catalog.to_char(double precision, text)",
+      "function:pg_catalog.to_char(integer, text)",
+      "function:pg_catalog.to_char(interval, text)",
+      "function:pg_catalog.to_char(numeric, text)",
+      "function:pg_catalog.to_char(real, text)",
+      "function:pg_catalog.to_char(timestamp with time zone, text)",
+      "function:pg_catalog.to_char(timestamp without time zone, text)"
     ]
   },
   "function:clinic_app.comms_schedule_reminders_v1()": {
@@ -2902,6 +3046,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -3066,6 +3211,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -3151,6 +3297,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -3651,6 +3798,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -3847,6 +3995,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4149,6 +4298,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4199,6 +4349,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4255,12 +4406,18 @@
       "default:scheduling_appointment.buffer_before",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
       "function:pg_catalog.text(\"char\")",
       "function:pg_catalog.text(boolean)",
       "function:pg_catalog.text(character)",
       "function:pg_catalog.text(inet)",
       "function:pg_catalog.text(name)",
       "function:pg_catalog.text(xml)",
+      "function:pg_catalog.unnest(anyarray)",
+      "function:pg_catalog.unnest(anymultirange)",
+      "function:pg_catalog.unnest(tsvector)",
       "index:scheduling_appointment_scheduled_patient_excl",
       "index:scheduling_appointment_scheduled_practitioner_excl",
       "index:scheduling_z_buffer_practitioner_excl",
@@ -4274,6 +4431,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4362,6 +4520,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4495,6 +4654,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4572,6 +4732,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -4650,6 +4811,24 @@
   "function:pg_catalog.cardinality(anyarray)": {
     "direct": {
       "opaque:reviewed:pg_catalog.cardinality(anyarray)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.char_length(character)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.char_length(character)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.char_length(text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.char_length(text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.convert_to(text, name)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.convert_to(text, name)": 1
     },
     "via": []
   },
@@ -4746,6 +4925,12 @@
   "function:pg_catalog.extract(text, timestamp without time zone)": {
     "direct": {
       "opaque:reviewed:pg_catalog.extract(text, timestamp without time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.family(inet)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.family(inet)": 1
     },
     "via": []
   },
@@ -4941,6 +5126,36 @@
     },
     "via": []
   },
+  "function:pg_catalog.isfinite(date)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.isfinite(date)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.isfinite(interval)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.isfinite(interval)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.isfinite(timestamp with time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.isfinite(timestamp with time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.isfinite(timestamp without time zone)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.isfinite(timestamp without time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.jsonb_delete(jsonb, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_delete(jsonb, text)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.jsonb_delete(jsonb, text[])": {
     "direct": {
       "opaque:reviewed:pg_catalog.jsonb_delete(jsonb, text[])": 1
@@ -4956,6 +5171,12 @@
   "function:pg_catalog.jsonb_eq(jsonb, jsonb)": {
     "direct": {
       "opaque:reviewed:pg_catalog.jsonb_eq(jsonb, jsonb)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.jsonb_object_field_text(jsonb, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_object_field_text(jsonb, text)": 1
     },
     "via": []
   },
@@ -4992,6 +5213,12 @@
   "function:pg_catalog.make_interval(integer, integer, integer, integer, integer, integer, double precision)": {
     "direct": {
       "opaque:reviewed:pg_catalog.make_interval(integer, integer, integer, integer, integer, integer, double precision)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.masklen(inet)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.masklen(inet)": 1
     },
     "via": []
   },
@@ -5229,6 +5456,12 @@
     },
     "via": []
   },
+  "function:pg_catalog.sha256(bytea)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.sha256(bytea)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.similar_to_escape(text)": {
     "direct": {
       "opaque:reviewed:pg_catalog.similar_to_escape(text)": 1
@@ -5457,6 +5690,54 @@
   "function:pg_catalog.timezone(text, timestamp without time zone)": {
     "direct": {
       "opaque:reviewed:pg_catalog.timezone(text, timestamp without time zone)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(bigint, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(bigint, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(double precision, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(double precision, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(integer, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(integer, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(interval, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(interval, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(numeric, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(numeric, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(real, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(real, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(timestamp with time zone, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(timestamp with time zone, text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.to_char(timestamp without time zone, text)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.to_char(timestamp without time zone, text)": 1
     },
     "via": []
   },
@@ -6240,6 +6521,7 @@
       "trigger:scheduling_appointment.patient_booking_guard",
       "trigger:scheduling_appointment.patient_booking_receipt",
       "trigger:scheduling_appointment.scheduling_appointment_a_lifecycle",
+      "trigger:scheduling_appointment.scheduling_appointment_expiry_audit",
       "trigger:scheduling_appointment.scheduling_appointment_guard",
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
@@ -6597,6 +6879,13 @@
     "direct": {},
     "via": [
       "function:clinic_app.scheduling_lifecycle_guard()"
+    ]
+  },
+  "trigger:scheduling_appointment.scheduling_appointment_expiry_audit": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.audit_appointment_expired()",
+      "function:pg_catalog.texteq(text, text)"
     ]
   },
   "trigger:scheduling_appointment.scheduling_appointment_guard": {

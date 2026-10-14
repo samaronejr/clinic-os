@@ -154,6 +154,12 @@ beat job (every 60 s, `clinical` queue) expires the rest, one transaction and
 deterministic command per hold. W uses the runtime connection with no human
 actor or patient session; the job can only perform what the clock already
 mandates. Task 7's availability-only `clinic_agent` grant is not widened.
+Every held -> expired edge (job, explicit `expire` or lazy release) appends the
+registered `scheduling.appointment.expired` event (component
+`clinic-os-worker`, no human actor, metadata only) to the organization's audit
+chain in the same transaction, through the owner-owned trigger of
+`0008_expiry_audit`. The W expiry takes the clinic, practitioner, resource and
+patient gates before its row lock, as every appointment write does.
 
 `create_series` materializes a bounded weekly, biweekly or monthly-by-weekday
 rule (count <= 52 or until <= 366 days) atomically as ordinary bookings bound by
@@ -163,7 +169,10 @@ under the move terms (own = the series practitioner) and appends an immutable
 `SeriesException`; occurrences are never deleted. Moves keep each date's
 clinic-local wall time, so a DST-free zone never shifts. `payer_membership_id`
 and `authorization_reference` are insurer placeholders without a foreign key
-(todo 59). Reception records arrival from the agenda; physicians open the
+(todo 59). The agenda offers arrival, start and completion exactly where
+`authorize_transition` accepts them: the move terms record arrival (reception,
+schedulers and managers on any row, the booked clinician on their own), and
+only the booked clinician starts and completes the visit. Physicians open the
 encounter once the patient has arrived. Migration `0007_appointment_lifecycle_v2`
 is one rehearsed transaction; reverse refuses once v2 states exist
 (rollback = restore).

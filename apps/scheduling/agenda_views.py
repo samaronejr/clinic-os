@@ -69,16 +69,12 @@ def _context(
         "today_url": reverse("scheduling:agenda", args=(clinic_id,)),
     }
     if agenda is not None:
-        days = presented_days(
-            agenda,
-            can_manage=screen.can_manage,
-            can_move_services=screen.can_move_services,
-            service_practitioner_id=screen.service_practitioner_id,
-            viewer_id=screen.viewer_id,
-        )
+        days = presented_days(agenda, screen=screen)
         context["days"] = days
         context["can_transition"] = screen.can_manage or any(
-            row.reschedule_url for day in days for row in day.rows
+            row.reschedule_url or row.lifecycle_actions
+            for day in days
+            for row in day.rows
         )
         context.update(navigation(clinic_id, agenda, today=today))
     return context

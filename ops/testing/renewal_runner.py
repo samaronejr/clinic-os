@@ -971,7 +971,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
                     **(
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite == "reminders"
+                        if suite in {"agenda", "reminders"}
                         or suite in VIDEO_SUITES
                         or suite == "document-verification"
                         else {}

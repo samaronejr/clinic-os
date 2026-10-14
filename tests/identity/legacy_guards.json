@@ -5027,6 +5027,26 @@
       "probes": [],
       "reason": "Audit payload/context validation and chain append protocol. It attributes GUC identity rather than granting staff domain access; audit tests cover the protocol and ACLs."
     },
+    "clinic_app.audit_appointment_expired": {
+      "discovery": {
+        "migrations": [
+          "apps/scheduling/migrations/_expiry_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Owner-owned ledger writer for the registered machine hold-expiry event (AFTER trigger on held -> expired). It reads no actor or tenant setting, appends one fixed metadata-only row with a null actor to the expiring row's organization chain and grants nothing; clinic_app and clinic_resolver have no EXECUTE. Expiry audit tests cover the chain, replay and rollback."
+    },
     "clinic_app.audit_event_reject_mutation": {
       "discovery": {
         "migrations": [
@@ -7894,6 +7914,7 @@
     "clinic_app.scheduling_expire_hold": {
       "discovery": {
         "migrations": [
+          "apps/scheduling/migrations/_expiry_audit_sql.py",
           "apps/scheduling/migrations/_lifecycle_sql.py"
         ],
         "policies": [],
@@ -7909,7 +7930,7 @@
       },
       "kind": "worker_protocol",
       "probes": [],
-      "reason": "W expiry of one due hold under a deterministic command; refuses any human actor or patient session and lets the lifecycle trigger refuse holds not yet due. The current availability-only clinic_agent grant is not widened."
+      "reason": "W expiry of one due hold under a deterministic command; refuses any human actor or patient session, takes the appointment write gates before its row lock and lets the lifecycle trigger refuse holds not yet due. The current availability-only clinic_agent grant is not widened."
     },
     "clinic_app.scheduling_generated_block_guard": {
       "discovery": {

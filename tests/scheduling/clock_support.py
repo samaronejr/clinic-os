@@ -40,6 +40,8 @@ SOURCE_CLOCKS: Final = {
     "_resource_slots_sql.py": {"statement_timestamp()": 1},
     "_resources_sql.py": {"statement_timestamp()": 4},
     "_lifecycle_sql.py": {"statement_timestamp()": 1},
+    # Ledger time of the machine expiry audit event, not a scheduling decision.
+    "_expiry_audit_sql.py": {"clock_timestamp()": 1},
 }
 # The merged FK closure reaches these intake guards. Their transaction clock
 # binds a registry mirror to its new immutable demographics version; it must

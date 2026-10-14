@@ -78,6 +78,7 @@ def test_appointment_migration_catalog_is_immediate_versioned_and_indexed() -> N
             ("patient_booking_guard", "O"),
             ("patient_booking_receipt", "O"),
             ("scheduling_appointment_a_lifecycle", "O"),
+            ("scheduling_appointment_expiry_audit", "O"),
             ("scheduling_appointment_guard", "O"),
             ("scheduling_appointment_lifecycle_receipt", "O"),
             ("scheduling_appointment_no_delete", "O"),

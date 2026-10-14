@@ -89,6 +89,33 @@
     "volatility": "i",
     "reason": "Required supplied-array cardinality used in definition shape checks."
   },
+  "pg_catalog.char_length(character)": {
+    "extension": "",
+    "implementation": "bpcharlen",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Reached audit-ledger text-length constraints; conservative overload resolution retains this exact length implementation as opaque risk."
+  },
+  "pg_catalog.char_length(text)": {
+    "extension": "",
+    "implementation": "textlen",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Reached audit-ledger text-length constraints; conservative overload resolution retains this exact length implementation as opaque risk."
+  },
+  "pg_catalog.convert_to(text, name)": {
+    "extension": "",
+    "implementation": "pg_convert_to",
+    "language": "internal",
+    "library": "",
+    "returns": "bytea",
+    "volatility": "s",
+    "reason": "Required UTF-8 encoding of the machine expiry event's canonical content before hashing; retained native risk, not a clock-free exemption."
+  },
   "pg_catalog.count(\"any\")": {
     "extension": "",
     "implementation": "aggregate_dummy",
@@ -232,6 +259,15 @@
     "returns": "numeric",
     "volatility": "i",
     "reason": "Required extraction of components from supplied temporal values; potential temporal dependency remains visible."
+  },
+  "pg_catalog.family(inet)": {
+    "extension": "",
+    "implementation": "network_family",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger component address constraint; retained native risk."
   },
   "pg_catalog.gen_random_uuid()": {
     "extension": "",
@@ -521,6 +557,51 @@
     "volatility": "i",
     "reason": "PL/pgSQL interval declarations also match callable identifiers; retain this exact conversion/precision candidate as opaque risk."
   },
+  "pg_catalog.isfinite(date)": {
+    "extension": "",
+    "implementation": "date_finite",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+  },
+  "pg_catalog.isfinite(interval)": {
+    "extension": "",
+    "implementation": "interval_finite",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+  },
+  "pg_catalog.isfinite(timestamp with time zone)": {
+    "extension": "",
+    "implementation": "timestamp_finite",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+  },
+  "pg_catalog.isfinite(timestamp without time zone)": {
+    "extension": "",
+    "implementation": "timestamp_finite",
+    "language": "internal",
+    "library": "",
+    "returns": "boolean",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+  },
+  "pg_catalog.jsonb_delete(jsonb, text)": {
+    "extension": "",
+    "implementation": "jsonb_delete",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk."
+  },
   "pg_catalog.jsonb_delete(jsonb, text[])": {
     "extension": "",
     "implementation": "jsonb_delete_array",
@@ -547,6 +628,15 @@
     "returns": "boolean",
     "volatility": "i",
     "reason": "Reached JSON equality constraints; retained native risk."
+  },
+  "pg_catalog.jsonb_object_field_text(jsonb, text)": {
+    "extension": "",
+    "implementation": "jsonb_object_field_text",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk."
   },
   "pg_catalog.jsonb_path_exists(jsonb, jsonpath, jsonb, boolean)": {
     "extension": "",
@@ -601,6 +691,15 @@
     "returns": "interval",
     "volatility": "i",
     "reason": "Required construction of service-buffer intervals from supplied components."
+  },
+  "pg_catalog.masklen(inet)": {
+    "extension": "",
+    "implementation": "network_masklen",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Reached the audit-ledger component address constraint; retained native risk."
   },
   "pg_catalog.max(anyarray)": {
     "extension": "",
@@ -953,6 +1052,15 @@
     "volatility": "v",
     "reason": "Todo 22 hold release clears and then restores the transaction-local human actor settings so due holds expire as the machine (W) actor; this exact setting writer never reads a clock."
   },
+  "pg_catalog.sha256(bytea)": {
+    "extension": "",
+    "implementation": "sha256_bytea",
+    "language": "internal",
+    "library": "",
+    "returns": "bytea",
+    "volatility": "i",
+    "reason": "Required content and chain hashing of the machine expiry audit event; retained native risk, not a clock-free exemption."
+  },
   "pg_catalog.similar_to_escape(text)": {
     "extension": "",
     "implementation": "similar_to_escape_1",
@@ -1276,6 +1384,78 @@
     "returns": "timestamp with time zone",
     "volatility": "i",
     "reason": "The calendar timezone identifier matches overloaded catalog routines; retain this exact timezone conversion candidate as opaque risk."
+  },
+  "pg_catalog.to_char(bigint, text)": {
+    "extension": "",
+    "implementation": "int8_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(double precision, text)": {
+    "extension": "",
+    "implementation": "float8_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(integer, text)": {
+    "extension": "",
+    "implementation": "int4_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(interval, text)": {
+    "extension": "",
+    "implementation": "interval_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(numeric, text)": {
+    "extension": "",
+    "implementation": "numeric_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(real, text)": {
+    "extension": "",
+    "implementation": "float4_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(timestamp with time zone, text)": {
+    "extension": "",
+    "implementation": "timestamptz_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+  },
+  "pg_catalog.to_char(timestamp without time zone, text)": {
+    "extension": "",
+    "implementation": "timestamp_to_char",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "s",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
   },
   "pg_catalog.to_jsonb(anyelement)": {
     "extension": "",

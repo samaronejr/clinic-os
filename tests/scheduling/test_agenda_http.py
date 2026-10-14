@@ -203,7 +203,7 @@ def test_malformed_agenda_input_renders_one_accessible_error(
     assert SYNTHETIC_PATIENT.encode() not in response.content
 
 
-def test_physician_sees_only_their_own_rows_without_any_control(
+def test_physician_sees_only_own_rows_and_own_lifecycle_controls(
     rbac_graph: RbacGraph,
 ) -> None:
     _client, context = _clinic_with_one_appointment(rbac_graph)
@@ -217,12 +217,10 @@ def test_physician_sees_only_their_own_rows_without_any_control(
     body = response.content
     assert response.status_code == 200
     assert SYNTHETIC_PATIENT.encode() in body
-    # The only controls are the physician's own encounter and questionnaire
-    # actions; reception's scheduling controls never render.
+    # Own questionnaire action plus the arrival the services grant the booked
+    # clinician (appointment.move_own); reception's links never render.
     actions = re.findall(rb'<button[^>]*name="action" value="([^"]+)"', body)
-    assert actions
-    assert all(value in {b"open", b"appointment"} for value in actions)
-    assert b'class="agenda-actions"' not in body
+    assert set(actions) == {b"arrive", b"appointment"}
     assert b"/reschedule/" not in body
     assert b"/cancel/" not in body
     assert b"1988-04-05" not in body

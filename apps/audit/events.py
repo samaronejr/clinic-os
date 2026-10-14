@@ -457,6 +457,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "scheduling.appointment",
             "held",
         ),
+        "scheduling.appointment.expired": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "scheduling.appointment",
+            "expired",
+        ),
         "scheduling.appointment.booked": Phase1AuditEventDefinition(
             "tenant",
             "clinic-os-web",
