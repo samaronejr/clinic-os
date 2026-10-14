@@ -398,6 +398,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "release_read",
                     "release_insert",
                     "release_revoke",
+                    "delegate_confidentiality",
                 )
             } | {
                 ("prescription_prescriptiondocumentrevocation", policy)

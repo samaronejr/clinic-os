@@ -112,8 +112,13 @@
       "signals": [
         "resolver"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Effective patient authority now reads the shared enrollment relation and rejects a bound staff identity. The real callable must expose those channels; the existing staff-state differential replay remains required.",
+      "observe": true,
+      "differential": true,
+      "probes": [
+        "apps.billing.services.patient_charges#observed"
+      ]
     },
     {
       "symbol": "apps.billing.views.charges_workspace",
@@ -2400,8 +2405,13 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Effective patient authority now reads the shared enrollment relation and rejects a bound staff identity. The real callable must expose those channels; the existing staff-state differential replay remains required.",
+      "observe": true,
+      "differential": true,
+      "probes": [
+        "apps.prescription.verification._patient_session_scope#observed"
+      ]
     },
     {
       "symbol": "apps.prescription.verification._record_patient_download",
@@ -2452,7 +2462,8 @@
     {
       "symbol": "apps.prescription.verification.release_document",
       "signals": [
-        "actor"
+        "actor",
+        "denial"
       ],
       "kind": "delegated",
       "enforced_by": [
@@ -2918,8 +2929,13 @@
         "resolver",
         "scope_name"
       ],
-      "kind": "nonstaff",
-      "reason": "Patient-session authority, not a UserClinicRole decision; staff roles cannot substitute for the patient session."
+      "kind": "direct",
+      "reason": "Effective patient authority now reads the shared enrollment relation and rejects a bound staff identity. The real callable must expose those channels; the existing staff-state differential replay remains required.",
+      "observe": true,
+      "differential": true,
+      "probes": [
+        "apps.retention.services._session_scope#observed"
+      ]
     },
     {
       "symbol": "apps.retention.services.approve_policy",
@@ -4390,21 +4406,109 @@
       "probes": [
         "apps.workflows.views._staff_catalog#cut1"
       ]
+    },
+    {
+      "symbol": "apps.audit.services._record_delegate_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services._record_delegate_event#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates._command#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates.request_delegate_grant",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates.request_delegate_grant#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates._transition",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates._transition#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates.switch_delegate",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates.switch_delegate#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.identity.delegates.request_renewal",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.delegates.request_renewal#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.intake.delegate_views.delegate_session_status",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.delegate_views.delegate_session_status#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.intake.delegate_views.renew_representation",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.delegate_views.renew_representation#cut1"
+      ],
+      "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
     }
   ],
-  "method": [
-    "AST census of every apps/**/*.py runtime function and class method, excluding numbered migration bodies",
-    "Signals: role helpers, membership queries/properties, actor binding, resolver SQL, denial branches, scope/access names, authentication checks, view decorators and tenant boundaries",
-    "Manual classification of each detected candidate, explicit call-graph edges for composed consumers, and concrete probes for polymorphic hooks",
-    "Each direct probe invokes the real named callable or SQL resolver under clinic_app (owner-connection guards use clinic_owner); no authorization return value is mocked"
-  ],
   "probes": [
+    "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
     "apps.billing.pix.prepare_pix_charge",
     "apps.billing.presentation.patient_charge#observed",
     "apps.billing.services._clinic",
     "apps.billing.services._invoice",
+    "apps.billing.services.patient_charges#observed",
     "apps.billing.views.charges_workspace",
     "apps.billing.views.invoice_detail",
     "apps.billing.views.invoice_status",
@@ -4478,6 +4582,11 @@
     "apps.identity.current_context.practitioner_display_label",
     "apps.identity.current_context.require_current_actor_clinic_roles",
     "apps.identity.current_context.require_current_actor_org_admin",
+    "apps.identity.delegates._command#cut1",
+    "apps.identity.delegates._transition#cut1",
+    "apps.identity.delegates.request_delegate_grant#cut1",
+    "apps.identity.delegates.request_renewal#cut1",
+    "apps.identity.delegates.switch_delegate#cut1",
     "apps.identity.invitation_management.expire_pending_invitations",
     "apps.identity.invitation_management.revoke_invitation",
     "apps.identity.invitations.enroll_invitation#observed",
@@ -4548,6 +4657,8 @@
     "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
     "apps.intake.contacts._actor_label",
+    "apps.intake.delegate_views.delegate_session_status#cut1",
+    "apps.intake.delegate_views.renew_representation#cut1",
     "apps.intake.demographics._actor_label",
     "apps.intake.demographics.search_patient_identifiers",
     "apps.intake.demographics.set_intake_policy",
@@ -4583,6 +4694,7 @@
     "apps.prescription.signing.initiate_signature",
     "apps.prescription.signing.signature_status",
     "apps.prescription.verification._issuer_document",
+    "apps.prescription.verification._patient_session_scope#observed",
     "apps.prescription.verification._record_patient_download#observed",
     "apps.prescription.verification.patient_document_download#observed",
     "apps.prescription.verification.patient_documents#observed",
@@ -4602,6 +4714,7 @@
     "apps.retention.services._record_patient_view#observed",
     "apps.retention.services._record_scope",
     "apps.retention.services._require_manager",
+    "apps.retention.services._session_scope#observed",
     "apps.retention.services.export_staff_records",
     "apps.retention.services.patient_released_records#observed",
     "apps.retention.services.release_version",
@@ -4729,6 +4842,13 @@
     "clinic_app.user_has_org",
     "clinic_app.user_organizations",
     "clinic_app.waitlist_staff"
+  ],
+  "schema_version": 2,
+  "method": [
+    "AST census of every apps/**/*.py runtime function and class method, excluding numbered migration bodies",
+    "Signals: role helpers, membership queries/properties, actor binding, resolver SQL, denial branches, scope/access names, authentication checks, view decorators and tenant boundaries",
+    "Manual classification of each detected candidate, explicit call-graph edges for composed consumers, and concrete probes for polymorphic hooks",
+    "Each direct probe invokes the real named callable or SQL resolver under clinic_app (owner-connection guards use clinic_owner); no authorization return value is mocked"
   ],
   "role_calls": [
     {
@@ -5138,7 +5258,6 @@
       "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     }
   ],
-  "schema_version": 2,
   "sql_guards": {
     "clinic_app.__function_name__": {
       "discovery": {
@@ -5153,19 +5272,6 @@
       "kind": "migration_only",
       "probes": [],
       "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
-    },
-    "clinic_app.__name__": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_authority_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": []
-      },
-      "kind": "migration_only",
-      "probes": [],
-      "reason": "The source scanner conservatively retains the literal factory placeholder in _lifecycle_authority_sql.py. The factory replaces it before execution; its four generated writer names are independently discovered and executed, and no literal placeholder signature is deployed."
     },
     "clinic_app._phase1a_identity_canonicalization_candidates": {
       "discovery": {
@@ -5427,7 +5533,8 @@
         ],
         "migrations": [
           "apps/billing/migrations/0007_patient_charge_detail.py",
-          "apps/billing/migrations/0009_protected_fields.py"
+          "apps/billing/migrations/0009_protected_fields.py",
+          "apps/billing/migrations/0010_delegate_charges.py"
         ],
         "policies": [],
         "resolvers": []
@@ -5447,6 +5554,7 @@
           }
         ],
         "migrations": [
+          "apps/billing/migrations/0010_delegate_charges.py",
           "apps/billing/migrations/_invoice_sql.py"
         ],
         "policies": [],
@@ -5995,7 +6103,8 @@
           }
         ],
         "migrations": [
-          "apps/consent/migrations/_consent_sql.py"
+          "apps/consent/migrations/_consent_sql.py",
+          "apps/intake/migrations/_delegate_session_sql.py"
         ],
         "policies": [
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
@@ -6019,21 +6128,6 @@
     },
     "clinic_app.digest": {
       "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.audit_append_system_unchecked_v1",
-          "clinic_app.audit_append_system_unchecked_v2",
-          "clinic_app.audit_append_unchecked_v1",
-          "clinic_app.audit_append_unchecked_v2",
-          "clinic_app.consent_audit",
-          "clinic_app.identity_signup_register",
-          "clinic_app.prescription_document_viewed",
-          "clinic_app.prescription_patient_document_bytes",
-          "clinic_app.prescription_verify",
-          "clinic_app.prescription_verify_synthetic",
-          "clinic_app.retention_record_viewed"
-        ],
         "signatures": [
           {
             "arguments": "bytea, text",
@@ -6047,6 +6141,22 @@
             "security_definer": false,
             "set_returning": false
           }
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.audit_append_system_unchecked_v1",
+          "clinic_app.audit_append_system_unchecked_v2",
+          "clinic_app.audit_append_unchecked_v1",
+          "clinic_app.audit_append_unchecked_v2",
+          "clinic_app.consent_audit",
+          "clinic_app.delegate_audit",
+          "clinic_app.identity_signup_register",
+          "clinic_app.prescription_document_viewed",
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_verify",
+          "clinic_app.prescription_verify_synthetic",
+          "clinic_app.retention_record_viewed"
         ]
       },
       "kind": "crypto_protocol",
@@ -6339,14 +6449,16 @@
           "clinic_app.identity_session_register",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
+          "clinic_app.renew_delegate_grant",
+          "clinic_app.request_delegate_grant",
           "clinic_app.scheduling_capacity_guard"
         ],
         "signatures": [
           {
             "arguments": "",
             "returns": "uuid",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
         ]
       },
@@ -6390,6 +6502,7 @@
         ],
         "resolvers": [
           "clinic_app.consent_guard",
+          "clinic_app.delegate_staff",
           "clinic_app.identity_invitation_accept",
           "clinic_app.identity_invitation_account",
           "clinic_app.identity_invitation_finish",
@@ -6412,8 +6525,8 @@
           {
             "arguments": "perm text, clinic uuid, enrollment uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
         ]
       },
@@ -6449,312 +6562,6 @@
       "kind": "crypto_protocol",
       "probes": [],
       "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
-    },
-    "clinic_app.identity_invitation_accept": {
-      "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_username text",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_pending_accept_rechecks_the_stored_sender"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_invitation_account": {
-      "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, requested_user uuid",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "staff_guard",
-      "probes": [
-        "identity_invitation_account"
-      ],
-      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
-    },
-    "clinic_app.identity_invitation_begin": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
-            "returns": "int4",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_invitation_claim": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_authority_sql.py",
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_pending_claim_and_password_require_their_exact_context"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_invitation_finish": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_username text",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_invitation_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_authority_sql.py",
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_invitation_password": {
-      "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
-            "returns": "int4",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_pending_claim_and_password_require_their_exact_context"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_invitation_user": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, requested_user uuid",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
-      ],
-      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
-    },
-    "clinic_app.identity_membership_history_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Retained membership revocation is irreversible and membership rows cannot be deleted. This invoker row-integrity trigger grants no staff authority."
-    },
-    "clinic_app.identity_no_delete_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Unconditional protected-history deletion denial. This invoker row-integrity trigger does not read actor, role or membership authority."
-    },
-    "clinic_app.identity_offboarding_clinics": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_offboarding_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.identity_offboarding_execute",
-          "clinic_app.identity_offboarding_revoke"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_clinic uuid",
-            "returns": "_uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "staff_protocol",
-      "probes": [
-        "test_current_staff_protocol_guards"
-      ],
-      "reason": "Direct current staff-management authority limits the complete offboarding clinic set to an authorized actor and scope; real ordinary-role SQL allow/deny probes cover all stored roles."
-    },
-    "clinic_app.identity_offboarding_execute": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_authority_sql.py",
-          "apps/identity/migrations/_lifecycle_offboarding_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
-      ],
-      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
-    },
-    "clinic_app.identity_offboarding_revoke": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_authority_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "staff_protocol",
-      "probes": [
-        "test_current_staff_protocol_guards"
-      ],
-      "reason": "Current actor and clinic staff-management authority are rechecked before offboarding; direct ordinary-role SQL probes cover all stored roles and wrong clinic."
-    },
-    "clinic_app.identity_pending_authority_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sql.py",
-          "apps/identity/migrations/_signup_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
-        "identity.test_lifecycle_sql_readers.test_pending_authority_and_capture_history_refuse_writes"
-      ],
-      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
     },
     "clinic_app.identity_principal_immutable": {
       "discovery": {
@@ -6796,213 +6603,6 @@
       "probes": [],
       "reason": "Stored-operation/provider event resolution, deduplication or queue projection. There is no caller staff-role decision in the body; authenticated callbacks/workers and quota tests cover the protocol."
     },
-    "clinic_app.identity_recovery_consume": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
-    },
-    "clinic_app.identity_recovery_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
-      ],
-      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
-    },
-    "clinic_app.identity_reset_execute": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_reset uuid, requested_session bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "staff_protocol",
-      "probes": [
-        "test_current_staff_protocol_guards"
-      ],
-      "reason": "A real delivered reset requires current staff-management authority and a fresh verified bound session; direct ordinary-role SQL probes cover all stored roles and a missing selector."
-    },
-    "clinic_app.identity_reset_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
-      ],
-      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
-    },
-    "clinic_app.identity_reset_notification_clock": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
-      ],
-      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
-    },
-    "clinic_app.identity_reset_recipient": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_reset uuid",
-            "returns": "text",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "staff_protocol",
-      "probes": [
-        "test_current_staff_protocol_guards"
-      ],
-      "reason": "The real reset recipient is returned only to a current authorized staff manager; direct ordinary-role SQL probes cover all stored roles and a missing selector."
-    },
-    "clinic_app.identity_reset_target": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.identity_reset_guard",
-          "clinic_app.identity_reset_recipient"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, requested_user uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "staff_guard",
-      "probes": [
-        "identity_reset_target"
-      ],
-      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
-    },
-    "clinic_app.identity_retire_authenticators": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.identity_offboarding_execute",
-          "clinic_app.identity_offboarding_revoke",
-          "clinic_app.identity_recovery_consume",
-          "clinic_app.identity_reset_execute"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid",
-            "returns": "void",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities",
-        "auth.test_recovery_codes.test_recovery_codes_are_once_shown_hash_only_and_one_use"
-      ],
-      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
-    },
-    "clinic_app.identity_revoke_changed_sessions": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
     "clinic_app.identity_savedview_transition": {
       "discovery": {
         "signatures": [
@@ -7039,298 +6639,6 @@
             "set_returning": false
           }
         ]
-      },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
-    },
-    "clinic_app.identity_session_active": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_change_guard": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py",
-          "apps/identity/migrations/_session_rotation_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_register": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_revoke_hash": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/0027_session_revoke_scope.py",
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_revoked_cookie": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_session_rotation_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_rotate_hash": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_session_rotation_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_step_up": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.identity_reset_execute"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_verified": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [
-          "clinic_app.identity_session_step_up"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_session_verify": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_device integer",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
-      ],
-      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
-    },
-    "clinic_app.identity_signup_immutable": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_signup_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
-        "identity.test_lifecycle_sql_readers.test_pending_authority_and_capture_history_refuse_writes"
-      ],
-      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
-    },
-    "clinic_app.identity_signup_register": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_signup_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "registration_id uuid, requested_organization_id uuid, requested_admin_id uuid, request_key uuid, capture jsonb, encoded_password text, fingerprint bytea, kek text",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
-      },
-      "kind": "lifecycle_protocol",
-      "probes": [
-        "identity.test_onboarding.test_signup_is_protected_pending_and_confers_no_runtime_membership",
-        "identity.test_onboarding.test_signup_refuses_ambient_identity_or_tenant_authority"
-      ],
-      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
-    },
-    "clinic_app.identity_staff_directory": {
-      "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_surface_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
-      },
-      "kind": "staff_guard",
-      "probes": [
-        "identity_staff_directory"
-      ],
-      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
-    },
-    "clinic_app.intake_contact_event_immutable_v1": {
-      "discovery": {
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
-          }
-        ],
-        "migrations": [
-          "apps/intake/migrations/0002_contacts_and_preferences.py"
-        ],
-        "policies": [],
-        "resolvers": []
       },
       "kind": "row_integrity",
       "probes": [],
@@ -7415,6 +6723,26 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Binds an immutable registry identity to the exact latest name/date/HMAC version in the same transaction. Source-owned typed guard/mirror proofs cover changed and refused unchanged rows; this grants no role or common UPDATE approval."
+    },
+    "clinic_app.intake_contact_event_immutable_v1": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0002_contacts_and_preferences.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     },
     "clinic_app.list_active_clinic_physicians": {
       "discovery": {
@@ -7589,7 +6917,16 @@
     },
     "clinic_app.patient_booking_scope": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [
@@ -7610,14 +6947,6 @@
           "clinic_app.patient_booking_slots",
           "clinic_app.scheduling_appointment_guard_v1",
           "clinic_app.scheduling_capacity_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
         ]
       },
       "kind": "patient_principal",
@@ -7708,7 +7037,8 @@
         "migrations": [
           "apps/intake/migrations/0003_patient_access.py",
           "apps/intake/migrations/0011_protected_fields.py",
-          "apps/intake/migrations/0013_patient_demographics.py"
+          "apps/intake/migrations/0013_patient_demographics.py",
+          "apps/intake/migrations/_delegate_session_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -7911,6 +7241,7 @@
         ],
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/0011_delegate_confidentiality.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
         "policies": [],
@@ -7938,11 +7269,14 @@
         ],
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
+          "apps/prescription/migrations/0011_delegate_confidentiality.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.prescription_document_viewed"
+          "clinic_app.prescription_document_viewed",
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_patient_documents"
         ]
       },
       "kind": "patient_principal",
@@ -8463,6 +7797,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/intake/migrations/_questionnaire_sql.py"
         ],
         "policies": [
@@ -8730,6 +8065,7 @@
         ],
         "migrations": [
           "apps/retention/migrations/0003_protected_fields.py",
+          "apps/retention/migrations/0004_delegate_confidentiality.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [],
@@ -8797,6 +8133,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [
@@ -8806,7 +8143,6 @@
         ],
         "resolvers": [
           "clinic_app.prescription_document_viewed",
-          "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_patient_documents",
           "clinic_app.retention_guard",
           "clinic_app.retention_patient_releases",
@@ -9102,6 +8438,7 @@
           }
         ],
         "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py",
           "apps/teleconsult/migrations/_teleconsult_sql.py"
         ],
         "policies": [
@@ -9353,7 +8690,8 @@
           }
         ],
         "migrations": [
-          "apps/intake/migrations/0003_patient_access.py"
+          "apps/intake/migrations/0003_patient_access.py",
+          "apps/intake/migrations/_delegate_session_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -9791,6 +9129,1389 @@
         "clinic_app.workflows_task_scope"
       ],
       "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.__name__": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": []
+      },
+      "kind": "migration_only",
+      "probes": [],
+      "reason": "The source scanner conservatively retains the literal factory placeholder in _lifecycle_authority_sql.py. The factory replaces it before execution; its four generated writer names are independently discovered and executed, and no literal placeholder signature is deployed."
+    },
+    "clinic_app.identity_invitation_accept": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_accept_rechecks_the_stored_sender"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_account": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "identity_invitation_account"
+      ],
+      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
+    },
+    "clinic_app.identity_invitation_begin": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_claim": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py",
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_claim_and_password_require_their_exact_context"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_finish": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username text",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py",
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_password": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_pending_claim_and_password_require_their_exact_context"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_invitation_user": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Pending-account token/password/TOTP or retired-callable protocol, bound to real ordinary-role positive/refusal or ACL controls. It is not an active-staff-role exemption."
+    },
+    "clinic_app.identity_membership_history_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Retained membership revocation is irreversible and membership rows cannot be deleted. This invoker row-integrity trigger grants no staff authority."
+    },
+    "clinic_app.identity_no_delete_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Unconditional protected-history deletion denial. This invoker row-integrity trigger does not read actor, role or membership authority."
+    },
+    "clinic_app.identity_offboarding_clinics": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_offboarding_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "_uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "Direct current staff-management authority limits the complete offboarding clinic set to an authorized actor and scope; real ordinary-role SQL allow/deny probes cover all stored roles."
+    },
+    "clinic_app.identity_offboarding_execute": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py",
+          "apps/identity/migrations/_lifecycle_offboarding_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_offboarding_revoke": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "Current actor and clinic staff-management authority are rechecked before offboarding; direct ordinary-role SQL probes cover all stored roles and wrong clinic."
+    },
+    "clinic_app.identity_pending_authority_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py",
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
+        "identity.test_lifecycle_sql_readers.test_pending_authority_and_capture_history_refuse_writes"
+      ],
+      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
+    },
+    "clinic_app.identity_recovery_consume": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_recovery_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_reset_execute": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_reset uuid, requested_session bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "A real delivered reset requires current staff-management authority and a fresh verified bound session; direct ordinary-role SQL probes cover all stored roles and a missing selector."
+    },
+    "clinic_app.identity_reset_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_reset_notification_clock": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_reset_recipient": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_reset uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_protocol",
+      "probes": [
+        "test_current_staff_protocol_guards"
+      ],
+      "reason": "The real reset recipient is returned only to a current authorized staff manager; direct ordinary-role SQL probes cover all stored roles and a missing selector."
+    },
+    "clinic_app.identity_reset_target": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_reset_guard",
+          "clinic_app.identity_reset_recipient"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "identity_reset_target"
+      ],
+      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
+    },
+    "clinic_app.identity_retire_authenticators": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_offboarding_execute",
+          "clinic_app.identity_offboarding_revoke",
+          "clinic_app.identity_recovery_consume",
+          "clinic_app.identity_reset_execute"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_historical_lifecycle_callables_are_not_runtime_capabilities",
+        "auth.test_recovery_codes.test_recovery_codes_are_once_shown_hash_only_and_one_use"
+      ],
+      "reason": "Current recovery/reset capability or installed integrity boundary. Real recovery, inactive/foreign actor, lifecycle or callable ACL controls are bound."
+    },
+    "clinic_app.identity_revoke_changed_sessions": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_active": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_change_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py",
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_register": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_revoke_hash": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/0027_session_revoke_scope.py",
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_revoked_cookie": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_rotate_hash": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_step_up": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_reset_execute"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_verified": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_session_step_up"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_session_verify": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_device integer",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_account_gates_refuse_inactive_and_foreign_actors"
+      ],
+      "reason": "Purpose-bound account/session validity, metadata or monotonic revocation protocol, with actual cookie/account and installed-trigger controls; verified authority separately rechecks the current actor."
+    },
+    "clinic_app.identity_signup_immutable": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_lifecycle_sql_readers.test_installed_lifecycle_triggers_are_attached_and_enabled",
+        "identity.test_lifecycle_sql_readers.test_pending_authority_and_capture_history_refuse_writes"
+      ],
+      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
+    },
+    "clinic_app.identity_signup_register": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "registration_id uuid, requested_organization_id uuid, requested_admin_id uuid, request_key uuid, capture jsonb, encoded_password text, fingerprint bytea, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "lifecycle_protocol",
+      "probes": [
+        "identity.test_onboarding.test_signup_is_protected_pending_and_confers_no_runtime_membership",
+        "identity.test_onboarding.test_signup_refuses_ambient_identity_or_tenant_authority"
+      ],
+      "reason": "Public capture creates protected pending records without active users or memberships; actual ambient-authority and protected-history controls are bound."
+    },
+    "clinic_app.identity_staff_directory": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_surface_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "identity_staff_directory"
+      ],
+      "reason": "Current exact-clinic human management, executed directly across all stored staff roles."
+    },
+    "clinic_app.consent_delegate_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/consent/migrations/0005_delegate_purposes.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.current_patient_authority": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_operation text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.billing_patient_charge",
+          "clinic_app.billing_patient_charges",
+          "clinic_app.consent_session",
+          "clinic_app.delegate_purpose_allowed",
+          "clinic_app.patient_booking_scope",
+          "clinic_app.patient_session_overview",
+          "clinic_app.questionnaire_patient_enrollment",
+          "clinic_app.retention_records_session",
+          "clinic_app.teleconsult_patient_match"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_audit": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_audit_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_audit"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_confidentiality_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/retention/migrations/0004_delegate_confidentiality.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_grantor": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_patientdelegategrant:delegate_read"
+        ],
+        "resolvers": [
+          "clinic_app.delegate_guard",
+          "clinic_app.request_delegate_grant",
+          "clinic_app.transition_delegate_grant"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_now": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_guard",
+          "clinic_app.delegate_session_guard",
+          "clinic_app.delegate_session_status",
+          "clinic_app.patient_authority",
+          "clinic_app.renew_delegate_grant",
+          "clinic_app.switch_patient_delegate"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_purpose_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_purpose text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [
+          "clinic_app.consent_consentacceptance:delegate_purpose",
+          "clinic_app.consent_consentrevocation:delegate_purpose",
+          "clinic_app.consent_consenttext:delegate_purpose",
+          "clinic_app.consent_refusalrecord:delegate_purpose"
+        ],
+        "resolvers": [
+          "clinic_app.consent_delegate_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_recovery_identity": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_session_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_session_status": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "text",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_recovery_identity"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.delegate_staff": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [
+          "clinic_app.identity_patientdelegategrant:delegate_read"
+        ],
+        "resolvers": [
+          "clinic_app.delegate_guard",
+          "clinic_app.request_delegate_grant",
+          "clinic_app.transition_delegate_grant"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.patient_authority": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, requested_operation text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.current_patient_authority",
+          "clinic_app.touch_patient_session"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.patient_identity": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "intake_patientsession",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.delegate_audit_scope",
+          "clinic_app.delegate_grantor",
+          "clinic_app.delegate_recovery_identity",
+          "clinic_app.delegate_session_status",
+          "clinic_app.patient_authority",
+          "clinic_app.patient_is_delegate",
+          "clinic_app.renew_delegate_grant",
+          "clinic_app.switch_patient_delegate"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.patient_is_delegate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [
+          "clinic_app.consent_aiusedisclosure:delegate_confidentiality",
+          "clinic_app.consent_consentacceptance:delegate_purpose",
+          "clinic_app.consent_consentrevocation:delegate_purpose",
+          "clinic_app.consent_consenttext:delegate_purpose",
+          "clinic_app.consent_refusalrecord:delegate_purpose",
+          "clinic_app.intake_questionnaireresponse:delegate_confidentiality",
+          "clinic_app.prescription_prescriptiondocumentrelease:delegate_confidentiality",
+          "clinic_app.retention_recordrelease:delegate_confidentiality"
+        ],
+        "resolvers": [
+          "clinic_app.consent_delegate_guard",
+          "clinic_app.prescription_patient_documents",
+          "clinic_app.retention_patient_releases"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.renew_delegate_grant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.request_delegate_grant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, represented uuid, recipient uuid, kind text, evidence uuid, requested_purposes text[], requested_operations text[], deadline timestamp with time zone, request_key uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.switch_patient_delegate": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_grant uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/_delegate_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.transition_delegate_grant": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_grant uuid, expected_revision integer, next_state text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/identity/migrations/_delegate_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_sm_verification_idempotency_and_stale_commands",
+        "test_delegate_scope_is_stored_and_cannot_widen_or_cross_clinic",
+        "test_restricted_records_are_hidden_in_database_and_unknown_denials_match",
+        "test_delegate_consent_keeps_exact_purpose_and_truthful_authority",
+        "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
+      ],
+      "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
     }
   },
   "sql_method": [

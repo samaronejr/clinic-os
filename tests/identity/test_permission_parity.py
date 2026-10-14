@@ -12,6 +12,7 @@ from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.db import transaction
 from django.test import override_settings
+from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW
 from auth.test_reset_delay import reset_db_clock
@@ -42,6 +43,7 @@ from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
 from identity.test_service_principals import agent_password
 from patient_service_support import runtime_role
+from scheduling.clock_support import frozen_sql_clocks
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -83,8 +85,11 @@ def nonstaff_differential_census(
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     record_property: Callable[[str, object], None],
+    superuser_database_url: str,
 ) -> DifferentialReport:
-    receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
+    # Keep authority time fixed without widening a minted session's deadline.
+    with frozen_sql_clocks(superuser_database_url, timezone.now()):
+        receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
     record_property("authority_channels", json.dumps(receipts.channels, sort_keys=True))
     record_property(
         "authority_observations", json.dumps(receipts.observations, sort_keys=True)

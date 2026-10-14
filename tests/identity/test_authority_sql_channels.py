@@ -184,6 +184,25 @@ def test_subquery_and_aggregate_syntax_keep_nested_authority_reads(
         assert ("guc", "app.current_user_id") in observer.touches
 
 
+@pytest.mark.parametrize(
+    ("statement", "calls"),
+    [
+        (
+            "SELECT clinic_app.probe(v) FROM LATERAL (SELECT 1 AS v) q WHERE (v = 1)",
+            {("clinic_app", "probe")},
+        ),
+        ('SELECT "where"(1)', {("where",)}),
+        ('SELECT "lateral"(1)', {("lateral",)}),
+        ("SELECT clinic_app.where(1)", {("clinic_app", "where")}),
+        ("SELECT clinic_app.lateral(1)", {("clinic_app", "lateral")}),
+    ],
+)
+def test_parenthesized_syntax_preserves_actual_function_calls(
+    statement: str, calls: set[tuple[str, ...]]
+) -> None:
+    assert references(statement).calls == calls
+
+
 def test_show_guard_cannot_claim_nonstaff(rbac_graph: RbacGraph) -> None:
     actor = User.objects.create(username="synthetic-show-guard-" + uuid4().hex)
     probe = DifferentialProbe(

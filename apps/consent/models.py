@@ -93,7 +93,12 @@ class ConsentAcceptance(TenantScopedModel):
                 fields=("enrollment", "text"), name="consent_acceptance_uniq"
             ),
             models.CheckConstraint(
-                condition=models.Q(authority="patient_explicit_action"),
+                condition=models.Q(
+                    authority__in=(
+                        "patient_explicit_action",
+                        "delegate_explicit_action",
+                    )
+                ),
                 name="consent_authority_check",
             ),
         ]
@@ -138,7 +143,12 @@ class RefusalRecord(TenantScopedModel):
                 fields=("enrollment", "text"), name="consent_refusal_uniq"
             ),
             models.CheckConstraint(
-                condition=models.Q(authority="patient_explicit_action"),
+                condition=models.Q(
+                    authority__in=(
+                        "patient_explicit_action",
+                        "delegate_explicit_action",
+                    )
+                ),
                 name="consent_refusal_authority_check",
             ),
         ]

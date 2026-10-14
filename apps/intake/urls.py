@@ -3,11 +3,21 @@
 from django.urls import path
 from django.urls.resolvers import URLPattern
 
-from apps.intake import questionnaire_views, views
+from apps.intake import delegate_views, questionnaire_views, views
 
 app_name = "intake"
 
 urlpatterns: list[URLPattern] = [
+    path(
+        "patient/delegation/switch/",
+        delegate_views.switch_representation,
+        name="delegate-switch",
+    ),
+    path(
+        "patient/delegation/renew/",
+        delegate_views.renew_representation,
+        name="delegate-renew",
+    ),
     path(
         "intake/clinics/<uuid:clinic_id>/patients/demographics/",
         views.patient_demographics_view,

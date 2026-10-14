@@ -21,6 +21,7 @@ from apps.identity.session_inventory import (
     session_is_active,
     touch_session,
 )
+from apps.intake.delegate_views import delegate_session_status, renewal_offer
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     patient_session_context,
@@ -229,12 +230,7 @@ class TenantMiddleware:
         try:
             with patient_session_context(session_id) as binding:
                 if binding is None:
-                    return render(
-                        request,
-                        "intake/patient_gate.html",
-                        {"state": "required"},
-                        status=403,
-                    )
+                    return self._delegate_recovery(request, session_id)
                 response = self.get_response(request)
                 if response.streaming:
                     raise TenantStreamingResponseError
@@ -243,3 +239,33 @@ class TenantMiddleware:
                 return response
         finally:
             clear_connection_tenant_gucs()
+
+    def _delegate_recovery(
+        self, request: HttpRequest, session_id: UUID
+    ) -> HttpResponseBase:
+        """Open only renewal/reset for an expired grant, never a clinical surface."""
+        state = delegate_session_status(session_id)
+        if (
+            state in {"expired", "revoked"}
+            and request.method == "POST"
+            and (
+                request.path_info == "/patient/delegation/switch/"
+                or (
+                    state == "expired"
+                    and request.path_info == "/patient/delegation/renew/"
+                )
+            )
+        ):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT set_config('app.current_patient_session',%s,true)",
+                    [str(session_id)],
+                )
+            return self.get_response(request)
+        context: dict[str, object] = {"state": "required"}
+        if state == "expired":
+            context = {
+                "state": "delegate_expired",
+                "renewal_offer": renewal_offer(session_id),
+            }
+        return render(request, "intake/patient_gate.html", context, status=403)

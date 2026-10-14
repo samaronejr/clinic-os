@@ -66,6 +66,8 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
+        # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.
+        "identity_patientdelegategrant",
         # Exact user-bound saved-view policy/ACLs: tests/core/test_saved_views.py.
         "identity_savedview",
         # Protected pending captures: tests/identity/test_onboarding.py.

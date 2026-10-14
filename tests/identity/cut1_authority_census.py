@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
@@ -13,6 +14,7 @@ from typing import TYPE_CHECKING
 from apps.identity.models import UserClinicRole
 from django.test import override_settings
 
+from auth.stepup_test_support import STEP_UP_NOW
 from identity.legacy_parity_support import target_code
 from identity.permission_support import owner_context
 from rbac_fixtures import RbacGraph
@@ -202,6 +204,7 @@ def run_cut1_census(
     from apps.workflows import engine  # noqa: PLC0415
 
     from consent import test_authority as consent  # noqa: PLC0415
+    from identity.domain_sql_oracles import DELEGATE_CASES  # noqa: PLC0415
     from workflows import decision_sites, test_authority, test_engine  # noqa: PLC0415
     from workflows.guard_cases import seed_guard_world  # noqa: PLC0415
     from workflows.guard_discovery import discover_guards  # noqa: PLC0415
@@ -227,6 +230,14 @@ def run_cut1_census(
         subject = graph()
         proofs.run(consent_oracle.__name__, partial(consent_oracle, subject))
     _scheduling_proofs(proofs, graph, patch, database_url)
+    with patch.context() as delegate_clock:
+        delegate_clock.setattr(time, "time", lambda: STEP_UP_NOW)
+        for name, delegate_oracle in DELEGATE_CASES.items():
+            subject = graph()
+            proofs.run(
+                f"delegate stored authority, state, scope and response:{name}",
+                partial(delegate_oracle, subject, secret_root.parent),
+            )
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
     secret.write_text(token_hex(32), encoding="ascii")

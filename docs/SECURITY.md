@@ -194,6 +194,28 @@ as the exception type, route name and traceback frame locations only: never
 the exception message, its arguments, chained exceptions, locals or request
 data.
 
+## Patient representation authority
+
+Guardian, curator and adult-delegate grants are retained in
+`identity_patientdelegategrant`, separately from staff roles, service principals
+and patient contact records. Runtime roles cannot insert, update or delete that
+table or change a patient session's representation columns. Fixed
+`SECURITY DEFINER` commands enforce evidence scope, authorized verification,
+immutable purposes and operations, lifecycle revisions, revocation and expiry.
+An unknown selector and a wrong-clinic selector receive the same denial.
+
+The authenticated session identity is never rewritten. Its selected
+representation is checked by `clinic_app.current_patient_authority` at every
+use, including existing sessions after revocation. Every patient surface uses
+the resulting enrollment and operation intersection. Confidential record
+releases and questionnaires default to deny for delegates, and consent is
+further limited to the exact verified purpose. An expired grant permits only a
+pending renewal request or an explicit reset to the original identity; it
+cannot restore clinical access. Selectors remain in POST bodies and transition
+audits contain no document bytes, patient selectors or contact information.
+EG-2 human review of legal authority and clinic confidentiality policy remains
+required before live-data use.
+
 ## Audit ledger
 
 `record_event` accepts a bounded semantic event and only five payload keys:

@@ -38,6 +38,23 @@ destination can never receive an automated message. Verification is the
 explicit staff-attested synthetic method; no identity is inferred from a
 shared destination and no legal basis is inferred from a preference.
 
+Patient representation is owned by `identity.PatientDelegateGrant`, not patient
+contacts. Its fixed database commands require staff verification of scanned
+legal evidence before activation. Patient sessions retain their original
+identity and bind `acting_for_enrollment_id` to a verified, expiring grant.
+`clinic_app.current_patient_authority` supplies the effective enrollment and
+operation intersection to every patient surface. Revocation and expiry deny
+already-minted sessions on their next use.
+
+The POST-only `/patient/delegation/switch/` trusts only the stored grant.
+Expired representation offers a signed renewal request at
+`/patient/delegation/renew/`; the new grant is pending verification and does not
+restore access. Restricted releases and questionnaire responses default to
+deny for delegates, and consent remains purpose-specific. Legal authority and
+confidentiality exceptions require EG-2 human review; synthetic evidence is not
+legal approval. The complete contract is in
+[`docs/clinical/patient-access.md`](../../docs/clinical/patient-access.md).
+
 Patient access adds enrollment-bound invitations and sessions: staff issue
 a single-use 24-hour code whose SHA-256 hash is the only persisted form,
 redemption through `clinic_app.redeem_patient_invitation` consumes the

@@ -10,6 +10,21 @@ msgstr ""
 msgid "Clinic OS secure clinical workspace."
 msgstr "Clinic OS: seu espaço de trabalho clínico seguro."
 
+msgid "Representation access expired"
+msgstr "Acesso de representação expirado"
+
+msgid "This representation grant expired. Ask the clinic to verify a renewal before acting for this patient again."
+msgstr "Esta autorização de representação expirou. Solicite à clínica a verificação da renovação antes de voltar a agir por este paciente."
+
+msgid "Request representation renewal"
+msgstr "Solicitar renovação da representação"
+
+msgid "Renewal requested"
+msgstr "Renovação solicitada"
+
+msgid "The clinic must verify and activate the new grant. This request does not restore representation access."
+msgstr "A clínica precisa verificar e ativar a nova autorização. Esta solicitação não restabelece o acesso de representação."
+
 msgid "Skip to main content"
 msgstr "Ir para o conteúdo principal"
 

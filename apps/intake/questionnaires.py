@@ -169,8 +169,11 @@ def assign_questionnaire(
     enrollment_id: UUID,
     template_id: UUID,
     appointment_id: UUID | None = None,
+    restricted_from_delegates: bool = True,
 ) -> QuestionnaireResponse:
     """Assign an exact version to an enrollment as its clinic physician."""
+    if type(restricted_from_delegates) is not bool:
+        raise PatientAccessDeniedError
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     with transaction.atomic():
         enrollment = PatientClinicEnrollment.objects.filter(
@@ -194,6 +197,7 @@ def assign_questionnaire(
             enrollment=enrollment,
             template=template,
             appointment_id=appointment_id,
+            restricted_from_delegates=restricted_from_delegates,
         )
 
 

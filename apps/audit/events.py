@@ -46,6 +46,24 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "identity.delegate.requested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "requested"
+        ),
+        "identity.delegate.verified": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "verified"
+        ),
+        "identity.delegate.rejected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "rejected"
+        ),
+        "identity.delegate.activated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "activated"
+        ),
+        "identity.delegate.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.patient_delegate_grant", "revoked"
+        ),
+        "identity.delegate.session_switched": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_session", "session_switched"
+        ),
         "workflows.task.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "workflows.task", "created"
         ),

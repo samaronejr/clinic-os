@@ -91,6 +91,13 @@ which re-validate the live `records` session on every call. Downloads append a
 `revoke_document` records an insert-only revocation row; neither rewrites the
 signed artifact.
 
+Patient releases default to `restricted_from_delegates=True`. The issuer may
+explicitly choose a shareable release when creating it; that classification is
+immutable. All three patient resolvers, including the keyed list and direct byte
+export, recheck the active delegate grant and omit restricted releases. Unknown
+and restricted document selectors both return the same denial. The patient's
+own access and public status-only verification retain their existing boundaries.
+
 Delivery uses the shared outbox: `deliver_document` enqueues a
 `prescription.document.delivery` operation that the registered
 `DocumentDeliveryAdapter` sends as a link-only email (the verification URL,

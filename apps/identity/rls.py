@@ -14,6 +14,7 @@ RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
 # 0011, 0013 and 0015.
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
+        "identity_patientdelegategrant",
         "identity_clinicconfiguration",
         "identity_rolegrant",
         "identity_serviceprincipal",
@@ -38,6 +39,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
 # runtime role holds no grants on it.
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset({"identity_user"})
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    "identity_patientdelegategrant": frozenset({"SELECT"}),
     "identity_user": frozenset(),
     "identity_serviceprincipal": frozenset(),
     "identity_serviceprincipalgrant": frozenset(),

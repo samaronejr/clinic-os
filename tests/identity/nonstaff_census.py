@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from apps.identity import stepup
-from apps.intake.models import Patient, PatientClinicEnrollment, PatientSession
+from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.scheduling import waitlist
 from django.test import override_settings
 from django.utils import timezone
@@ -65,12 +65,6 @@ def run_nonstaff_census(
         patch.setattr(waitlist, "OFFER_LIFETIME", timedelta(days=30))
         data = seed_nonstaff(graph, patch)
         with owner_context(graph.organization_a):
-            # Fixed, long-lived synthetic protocol inputs: machine speed must
-            # not turn later subsets into expired-session negative controls.
-            PatientSession.objects.filter(pk=data.op.patient_session).update(
-                expires_at=stamp + timedelta(days=30),
-                idle_expires_at=stamp + timedelta(days=30),
-            )
             patient = Patient.objects.create(
                 organization_id=graph.organization_a,
                 full_name="Sintetico scope",
