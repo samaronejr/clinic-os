@@ -5,14 +5,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
 from apps.consent.models import ConsentAcceptance
+from apps.consent.services import patient_authority
 from apps.core.patient_context import bind_encounter_context
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError
@@ -20,7 +24,14 @@ from apps.identity.models import Clinic
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import PatientAccessDeniedError
 from apps.intake.patient_access import patient_session_overview
-from apps.teleconsult.models import TeleconsultCredential, TeleconsultRoom
+from apps.teleconsult import participants
+from apps.teleconsult.hints import patient_topic
+from apps.teleconsult.models import (
+    TeleconsultCredential,
+    TeleconsultRoom,
+    TeleconsultSession,
+)
+from apps.teleconsult.participants import DeviceResults, Recovery
 from apps.teleconsult.services import (
     TeleconsultAccessDeniedError,
     TeleconsultConflictError,
@@ -40,10 +51,12 @@ from apps.teleconsult.services import (
     start_consultation,
 )
 from apps.teleconsult.workspace import (
+    DEVICE_FIELDS,
     FAILURE_LABELS,
     NOTE_ACTIONS,
     STATE_LABELS,
     WORKSPACE_TEMPLATE,
+    device_summary,
     is_htmx,
     note_action,
     notes_context,
@@ -52,9 +65,9 @@ from apps.teleconsult.workspace import (
 )
 
 if TYPE_CHECKING:
-    from django.http import HttpRequest, HttpResponse, HttpResponseBase
+    from collections.abc import Callable
 
-    from apps.teleconsult.models import TeleconsultSession
+    from django.http import HttpRequest, HttpResponse, HttpResponseBase
 
 _CONFLICT_MESSAGES = {
     "consent_required": "O paciente precisa consentir com a versão atual do "
@@ -62,7 +75,17 @@ _CONFLICT_MESSAGES = {
     "encounter_closed": "O atendimento está encerrado; a sessão não pode ser criada.",
     "room_not_ready": "A sala ainda não está pronta. Aguarde a criação pelo provedor.",
     "session_closed": "Esta sessão está encerrada e não pode ser reaberta.",
+    "provider_unavailable": _(
+        "The video provider is unavailable. No room was created and no alternative "
+        "provider was used."
+    ),
+    "not_in_room": _(
+        "This participant is not in the room. Return to the waiting room "
+        "to enter again."
+    ),
 }
+_DEVICE_FIELDS = ("camera", "microphone", "speaker", "network")
+_JSON = "application/json"
 _STATE_LABELS = STATE_LABELS
 _SESSION_PARTIAL = "teleconsult/partials/clinician_session.html"
 _WORKSPACE = "workspace"
@@ -95,9 +118,44 @@ def _private[R: HttpResponseBase](response: R) -> R:
     return response
 
 
+def _wants_json(request: HttpRequest) -> bool:
+    return request.headers.get("Accept") == _JSON
+
+
+def _device_results(request: HttpRequest) -> DeviceResults:
+    """Read closed device codes from the body; anything else raises ValueError."""
+    return DeviceResults(
+        *(str(request.POST.get(field, "")) for field in _DEVICE_FIELDS)
+    )
+
+
+def _enabled(request: HttpRequest) -> bool:
+    value = request.POST.get("enabled")
+    if value not in ("true", "false"):
+        message = "invalid audio-only choice"
+        raise ValueError(message)
+    return value == "true"
+
+
+def _recovery_json(recovery: Recovery) -> JsonResponse:
+    """Metadata-only recovery facts; no token, identifier or clinical text."""
+    return JsonResponse(
+        {
+            "state": recovery.state,
+            "audio_only": recovery.audio_only,
+            "peer_audio_only": recovery.peer_audio_only,
+            "peer_present": recovery.peer_present,
+            "credential_expires_in": max(
+                0,
+                int((recovery.credential_expires_at - timezone.now()).total_seconds()),
+            ),
+        }
+    )
+
+
 def _conflict_message(error: TeleconsultConflictError) -> str:
-    return _CONFLICT_MESSAGES.get(
-        error.reason_code, _CONFLICT_MESSAGES["session_closed"]
+    return str(
+        _CONFLICT_MESSAGES.get(error.reason_code, _CONFLICT_MESSAGES["session_closed"])
     )
 
 
@@ -140,6 +198,9 @@ def _room_context(entry_session: TeleconsultSession, role: str) -> dict[str, obj
     """Assemble the room surface for one admitted participant."""
     room = TeleconsultRoom.objects.get(session=entry_session)
     return {
+        "realtime_topic": patient_topic(patient_authority().enrollment_id),
+        "realtime_enabled": settings.REALTIME_ENABLED,
+        "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
         "entry": {
             "session": entry_session,
             "room_name": room.room_name,
@@ -187,12 +248,19 @@ def _workspace_status(clinic_id: UUID, session_id: UUID) -> JsonResponse:
         assigned_session(clinic_id=clinic_id, session_id=session_id)
     )
     state = derived_state(session)
+    live = state in _LIVE_STATES
+    devices = participants.latest_device_check(session, "patient")
     return JsonResponse(
         {
             "state": state,
             "label": _STATE_LABELS.get(state, state),
             "reason": FAILURE_LABELS.get(session.failure_reason, ""),
-            "patient_joined": state in _LIVE_STATES and patient_joined(session),
+            "patient_joined": live and patient_joined(session),
+            "patient_removed": live and participants.patient_removed(session),
+            "patient_audio_only": live and participants.audio_only(session, "patient"),
+            "physician_audio_only": live
+            and participants.audio_only(session, "physician"),
+            "patient_devices": device_summary(devices),
         }
     )
 
@@ -222,10 +290,13 @@ def _workspace_conflict(
 
 
 def _staff_context(clinic_id: UUID) -> dict[str, object]:
+    # The physician guard decides before any clinic lookup: an unknown clinic
+    # is the same refusal as a foreign one, never a missing-row error.
+    rows = _session_rows(staff_sessions(clinic_id=clinic_id))
     context: dict[str, object] = {
         "clinic_id": clinic_id,
         "clinic_timezone": Clinic.objects.get(pk=clinic_id).timezone,
-        "rows": _session_rows(staff_sessions(clinic_id=clinic_id)),
+        "rows": rows,
     }
     try:
         context["encounters"] = open_encounters(clinic_id=clinic_id)
@@ -273,6 +344,85 @@ def _transition(
     return redirect(_continuation(clinic_id))
 
 
+def _participant_action(
+    request: HttpRequest,
+    clinic_id: UUID,
+    session_id: UUID,
+    write: Callable[[], dict[str, object]],
+) -> HttpResponseBase:
+    """Decide every authority the reply needs, then write, then render.
+
+    The participant guard reads only and writes nothing when it refuses. A
+    page reply then reads the notes through the clinical read service, whose
+    decision (and view audit) precede the participant write, so no refusal
+    can follow a write the middleware would commit. htmx replies need only
+    the session facts, and fetch replies only the JSON the write returns.
+    """
+    session = participants.clinician_session(clinic_id=clinic_id, session_id=session_id)
+    if _wants_json(request):
+        return _private(JsonResponse(write()))
+    notes = (
+        None if is_htmx(request) else posted_notes_context(request, clinic_id, session)
+    )
+    write()
+    session = TeleconsultSession.objects.get(pk=session.pk)
+    context = video_context(clinic_id, session)
+    if notes is None:
+        return _private(render(request, _SESSION_PARTIAL, context))
+    context.update(notes)
+    return _private(render(request, WORKSPACE_TEMPLATE, context))
+
+
+def _staff_device_check(
+    request: HttpRequest, clinic_id: UUID, session_id: UUID
+) -> HttpResponseBase:
+    results = _device_results(request)
+
+    def write() -> dict[str, object]:
+        participants.record_device_check(
+            clinic_id=clinic_id, session_id=session_id, results=results
+        )
+        return {"recorded": True}
+
+    return _participant_action(request, clinic_id, session_id, write)
+
+
+def _staff_audio_only(
+    request: HttpRequest, clinic_id: UUID, session_id: UUID
+) -> HttpResponseBase:
+    enabled = _enabled(request)
+
+    def write() -> dict[str, object]:
+        return {
+            "audio_only": participants.set_audio_only(
+                clinic_id=clinic_id, session_id=session_id, enabled=enabled
+            )
+        }
+
+    return _participant_action(request, clinic_id, session_id, write)
+
+
+def _staff_remove(
+    request: HttpRequest, clinic_id: UUID, session_id: UUID
+) -> HttpResponseBase:
+    def write() -> dict[str, object]:
+        participants.remove_patient(clinic_id=clinic_id, session_id=session_id)
+        return {"removed": True}
+
+    return _participant_action(request, clinic_id, session_id, write)
+
+
+def _staff_resume(
+    request: HttpRequest, clinic_id: UUID, session_id: UUID
+) -> HttpResponseBase:
+    del request
+    return _private(
+        _recovery_json(
+            participants.resume_physician(clinic_id=clinic_id, session_id=session_id)
+        )
+    )
+
+
 def _staff_post(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     """Route one staff POST action through the scoped service boundary."""
     action = str(request.POST.get("action"))
@@ -289,6 +439,10 @@ def _staff_post(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
         ),
         "start": _transition,
         "end": _transition,
+        "device_check": _staff_device_check,
+        "audio_only": _staff_audio_only,
+        "remove": _staff_remove,
+        "resume": _staff_resume,
         **dict.fromkeys(NOTE_ACTIONS, _note),
     }
     handler = handlers.get(action)
@@ -309,6 +463,8 @@ def staff_teleconsult(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
             render(request, "teleconsult/staff.html", _staff_context(clinic_id))
         )
     except TeleconsultConflictError as error:
+        if _wants_json(request):
+            return _private(JsonResponse({"code": error.reason_code}, status=409))
         kept = _workspace_conflict(request, clinic_id, error)
         if kept is not None:
             return kept
@@ -381,6 +537,8 @@ def _patient_row(session: TeleconsultSession) -> dict[str, object]:
 def _patient_context() -> dict[str, object]:
     rows = [_patient_row(session) for session in patient_sessions()]
     return {
+        "device_url": reverse("teleconsult:patient"),
+        "device_fields": DEVICE_FIELDS,
         "rows": rows,
         "live_rows": [row for row in rows if row["state"] in _LIVE_STATES],
         "past_rows": [row for row in rows if row["state"] not in _LIVE_STATES],
@@ -393,14 +551,30 @@ def _patient_status(session_id: UUID) -> JsonResponse:
     if session is None:
         raise PatientAccessDeniedError
     state = derived_state(session)
+    live = state in _LIVE_STATES
     return JsonResponse(
         {
             "state": state,
             "label": _PATIENT_STATE_LABELS.get(state, state),
             "reason": _FAILURE_LABELS.get(session.failure_reason, ""),
-            "physician_joined": state in _LIVE_STATES and _physician_joined(session),
+            "physician_joined": live and _physician_joined(session),
+            "removed": live and participants.patient_removed(session),
+            "audio_only": live and participants.audio_only(session, "patient"),
+            "physician_audio_only": live
+            and participants.audio_only(session, "physician"),
         }
     )
+
+
+def _patient_device_check(request: HttpRequest, session_id: UUID) -> HttpResponse:
+    participants.record_patient_device_check(
+        session_id=session_id, results=_device_results(request)
+    )
+    if _wants_json(request):
+        return JsonResponse({"recorded": True})
+    context = _patient_context()
+    context["device_message"] = True
+    return render(request, "teleconsult/patient.html", context)
 
 
 def _patient_post(request: HttpRequest) -> HttpResponse:
@@ -408,6 +582,15 @@ def _patient_post(request: HttpRequest) -> HttpResponse:
     session_id = UUID(request.POST.get("session_id", ""))
     if action == "status":
         return _patient_status(session_id)
+    if action == "device_check":
+        return _patient_device_check(request, session_id)
+    if action == "audio_only":
+        enabled = participants.set_patient_audio_only(
+            session_id=session_id, enabled=_enabled(request)
+        )
+        return JsonResponse({"audio_only": enabled})
+    if action == "resume":
+        return _recovery_json(participants.resume_patient(session_id=session_id))
     if action != "join":
         return render(request, "intake/patient_gate.html", status=403)
     issued = request_patient_join(session_id=session_id)
@@ -440,6 +623,8 @@ def patient_teleconsult(request: HttpRequest) -> HttpResponse:
             return _private(_patient_post(request))
         return _private(render(request, "teleconsult/patient.html", _patient_context()))
     except TeleconsultConflictError as error:
+        if _wants_json(request):
+            return _private(JsonResponse({"code": error.reason_code}, status=409))
         context = _patient_context()
         context["error"] = _conflict_message(error)
         return _private(

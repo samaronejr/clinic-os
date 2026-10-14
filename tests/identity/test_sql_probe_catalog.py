@@ -24,7 +24,7 @@ def test_contract_table_classifies_exactly_the_census_functions() -> None:
         name.split("#", 1)[0]
         for name in declared_probes()
         if name.startswith("clinic_app.")
-    } | {probe.function for probe in PROBES.values()}
+    } | {probe.function for probe in PROBES.values() if probe.member is None}
     assert sorted(CONTRACTS) == sorted(functions)
 
 

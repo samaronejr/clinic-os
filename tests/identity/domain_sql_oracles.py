@@ -1,5 +1,8 @@
-"""Executable protocol oracles for scheduling, workflows and representation."""
+"""Executable protocol oracles for scheduling, workflows and teleconsult."""
 
+from identity.test_permission_parity import (
+    test_sql_guards_allow_and_deny_all_staff_roles,
+)
 from patients import test_delegates
 from scheduling.test_appointment_states import (
     test_database_trigger_decides_every_status_pair_by_actor,
@@ -12,6 +15,13 @@ from scheduling.test_lifecycle_service_bookings import (
 from scheduling.test_resource_permission_identity import GUARDS
 from scheduling.test_resource_role_matrix import (
     test_effective_interval_is_actor_invariant,
+)
+from teleconsult.test_mode_concurrency import (
+    test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
+)
+from teleconsult.test_mode_transition import (
+    test_second_valid_session_cannot_supply_or_rebind_a_receipt,
+    test_two_patient_sessions_and_physician_keep_independent_mode_receipts,
 )
 from workflows.test_bundle_issuer import (
     test_bundle_issuance_requires_the_owner_login_for_every_role,
@@ -80,6 +90,12 @@ PROTOCOL_ORACLES = {
         "test_bundle_issuance_requires_the_owner_login_for_every_role"
     ],
     **{name: list(DELEGATE_CASES) for name in DELEGATE_PROTOCOLS},
+    "clinic_app.teleconsult_mode_transition_audit": [
+        "test_sql_guards_allow_and_deny_all_staff_roles",
+        "test_two_patient_sessions_and_physician_keep_independent_mode_receipts",
+        "test_second_valid_session_cannot_supply_or_rebind_a_receipt",
+        "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority",
+    ],
 }
 
 
@@ -95,3 +111,11 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_guards_decide_by_the_exact_permission_not_a_sibling)
     assert callable(test_python_guard_decides_each_action_by_its_pinned_terms)
     assert callable(test_every_service_booking_status_change_keeps_the_todo_21_guard)
+    assert callable(test_sql_guards_allow_and_deny_all_staff_roles)
+    assert callable(
+        test_two_patient_sessions_and_physician_keep_independent_mode_receipts
+    )
+    assert callable(test_second_valid_session_cannot_supply_or_rebind_a_receipt)
+    assert callable(
+        test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
+    )

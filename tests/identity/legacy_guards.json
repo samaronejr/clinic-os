@@ -4615,6 +4615,40 @@
       "enforced_by": [
         "apps.scheduling.patient_authority.require_patient_booking_scope"
       ]
+    },
+    {
+      "symbol": "apps.teleconsult.participants.clinician_session",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.participants.clinician_session"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.participants.patient_session",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "reason": "Authority-channel boundary, not a nonstaff exemption. The named executable oracle checks real callable controls and requires observed relation, GUC or accessor evidence.",
+      "observe": true,
+      "probes": [
+        "apps.teleconsult.participants.patient_session#observed"
+      ]
+    },
+    {
+      "symbol": "apps.teleconsult.participants.authorize_room_topic",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.teleconsult.participants.authorize_room_topic"
+      ]
     }
   ],
   "probes": [
@@ -4886,6 +4920,9 @@
     "apps.scheduling.views.availability_list_view",
     "apps.scheduling.views.availability_retire_view",
     "apps.scheduling.waitlist_views.waitlist_view",
+    "apps.teleconsult.participants.authorize_room_topic",
+    "apps.teleconsult.participants.clinician_session",
+    "apps.teleconsult.participants.patient_session#observed",
     "apps.teleconsult.services._assigned_physician",
     "apps.teleconsult.services._denied",
     "apps.teleconsult.services._enter_as_patient#observed",
@@ -6273,7 +6310,8 @@
           "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_verify",
           "clinic_app.prescription_verify_synthetic",
-          "clinic_app.retention_record_viewed"
+          "clinic_app.retention_record_viewed",
+          "clinic_app.teleconsult_mode_transition_audit"
         ]
       },
       "kind": "crypto_protocol",
@@ -6643,6 +6681,7 @@
           "clinic_app.scheduling_generated_block_guard",
           "clinic_app.scheduling_lifecycle_guard",
           "clinic_app.scheduling_service_practitioners",
+          "clinic_app.teleconsult_clinician",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
           "clinic_app.workflows_owner_valid",
@@ -8486,14 +8525,18 @@
           }
         ],
         "migrations": [
-          "apps/teleconsult/migrations/_teleconsult_sql.py"
+          "apps/teleconsult/migrations/_teleconsult_sql.py",
+          "apps/teleconsult/migrations/_teleconsult_v2_sql.py"
         ],
         "policies": [],
         "resolvers": []
       },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_binding_guard#device",
+        "teleconsult_binding_guard#mode"
+      ],
+      "reason": "Row binding trigger whose v2 device-check branch decides participant authority: the staff branch requires clinic_app.teleconsult_clinician (has_permission clinical.write with the session patient's enrollment plus the bound physician), the patient branch teleconsult_patient_match. The trigger oracle fires the guarded INSERT under every stored role."
     },
     "clinic_app.teleconsult_credential_guard": {
       "discovery": {
@@ -8575,13 +8618,17 @@
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_insert",
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_read",
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_update",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_insert",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_read",
           "clinic_app.teleconsult_teleconsultevent:teleconsult_event_insert",
           "clinic_app.teleconsult_teleconsultevent:teleconsult_event_read",
           "clinic_app.teleconsult_teleconsultroom:teleconsult_room_read",
           "clinic_app.teleconsult_teleconsultsession:teleconsult_session_read"
         ],
         "resolvers": [
+          "clinic_app.teleconsult_binding_guard",
           "clinic_app.teleconsult_fail",
+          "clinic_app.teleconsult_mode_transition_scope",
           "clinic_app.teleconsult_room_state",
           "clinic_app.teleconsult_session_scope"
         ]
@@ -10856,6 +10903,83 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Machine (W) release of due holds, executable only by the lifecycle trigger's owner (no clinic_app EXECUTE). It clears and restores the transaction-local human settings so the trigger records the machine actor, and can only expire holds whose deadline already passed."
+    },
+    "clinic_app.teleconsult_clinician": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_teleconsult_v2_sql.py"
+        ],
+        "policies": [
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_insert",
+          "clinic_app.teleconsult_teleconsultdevicecheck:teleconsult_device_read"
+        ],
+        "resolvers": [
+          "clinic_app.teleconsult_binding_guard",
+          "clinic_app.teleconsult_mode_transition_scope"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_clinician"
+      ],
+      "reason": "Direct callable SQL decision: clinic_app.has_permission('clinical.write', clinic, session patient's enrollment) and the session's bound physician, with fixed allow/deny oracles across all ten stored staff roles and unknown/foreign subjects."
+    },
+    "clinic_app.teleconsult_mode_transition_audit": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_mode_transition_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_guards_allow_and_deny_all_staff_roles",
+        "test_two_patient_sessions_and_physician_keep_independent_mode_receipts",
+        "test_second_valid_session_cannot_supply_or_rebind_a_receipt",
+        "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority"
+      ],
+      "reason": "Canonical receipt writer delegates participant admission to teleconsult_mode_transition_scope and rechecks it after lock admission. Executable protocol oracles cover the all-staff-role SQL matrix, actual physician and patient-session receipt origins, supplied-receipt refusal, immutable receipts and concurrent winning authority."
+    },
+    "clinic_app.teleconsult_mode_transition_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_session uuid, requested_role text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/teleconsult/migrations/_mode_transition_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.teleconsult_mode_transition_audit"
+        ]
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "teleconsult_mode_transition_scope"
+      ],
+      "reason": "Private resolver validates the requested participant channel and derives the actual originating actor and current immutable mode receipt. The owner-call oracle retains the acting staff GUCs and covers every stored role plus unknown subjects; patient-channel controls are covered by the two-valid-session HTTP/SQL mode suite."
     }
   },
   "sql_method": [

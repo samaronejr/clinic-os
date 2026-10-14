@@ -140,8 +140,10 @@ FIXTURE_SUITES: Final = frozenset(
     }
 )
 # Suites that exercise the synthetic room provider through the real outbox.
+# ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
 VIDEO_SUITES: Final = frozenset(
     {
+        "realtime",
         "teleconsult",
         "patient-video",
         "clinician-video",
@@ -618,8 +620,9 @@ def _child_env(extra: dict[str, str]) -> dict[str, str]:
         "PYTHONPATH": str(_repository()),
         "PYTHONTZPATH": "",
     }
-    if "TMPDIR" in os.environ:
-        environment["TMPDIR"] = os.environ["TMPDIR"]
+    for name in ("TMPDIR", "PLAYWRIGHT_BROWSERS_PATH", "REALTIME_REDIS_URL"):
+        if name in os.environ:
+            environment[name] = os.environ[name]
     environment.update(extra)
     return environment
 
@@ -997,6 +1000,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "-m",
                     "pytest",
                     "-q",
+                    "--tb=short",
                     "-p",
                     "no:cacheprovider",
                     f"--junitxml={junit}",
