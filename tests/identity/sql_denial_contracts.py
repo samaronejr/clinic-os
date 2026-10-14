@@ -433,7 +433,10 @@ def _dml_identity(
         assert reserved is not None
         identity = reserved[0]
         row.pk = identity
-    assert type(identity) is identity_type, (member, "exact row identity required")
+    assert type(identity) is identity_type, (
+        member,
+        f"exact {identity_type.__name__} row identity required",
+    )
     return identity
 
 

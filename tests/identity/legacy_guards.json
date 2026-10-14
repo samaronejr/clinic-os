@@ -8638,9 +8638,14 @@
         "policies": [],
         "resolvers": []
       },
-      "kind": "delegated",
-      "probes": [],
-      "reason": "Canonical receipt writer delegates participant admission to teleconsult_mode_transition_scope, whose owner-call SQL oracle executes every staff role. The event's first real rejection is teleconsult_binding_guard#mode, separately exercised by a sealed stored-row INSERT oracle. Receipt authority is rechecked after lock admission; domain tests cover canonical audits, two-valid-session replay, immutable receipts and concurrency."
+      "kind": "domain_protocol",
+      "probes": [
+        "test_sql_guards_allow_and_deny_all_staff_roles",
+        "test_two_patient_sessions_and_physician_keep_independent_mode_receipts",
+        "test_second_valid_session_cannot_supply_or_rebind_a_receipt",
+        "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority"
+      ],
+      "reason": "Canonical receipt writer delegates participant admission to teleconsult_mode_transition_scope and rechecks it after lock admission. Executable protocol oracles cover the all-staff-role SQL matrix, actual physician and patient-session receipt origins, supplied-receipt refusal, immutable receipts and concurrent winning authority."
     },
     "clinic_app.teleconsult_mode_transition_scope": {
       "discovery": {

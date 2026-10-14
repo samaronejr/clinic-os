@@ -14,15 +14,81 @@ kept byte-for-byte; only todo 40 relaxes it.
 ``teleconsult_clinician`` decides the assigned physician's participant
 authority through todo 6's ``clinic_app.has_permission('clinical.write',
 clinic, enrollment)``. Device-check rows are insert-only, FORCE RLS, and
-carry closed result codes. The reverse SQL restores the exact v1 guard body
-taken from ``_teleconsult_sql``.
+carry closed result codes. The reverse SQL restores the exact v1 guard body,
+written out statically so the clock census reads the whole statement;
+tests/teleconsult/test_binding_guard_reverse.py pins it to
+``_teleconsult_sql``.
 """
 
 from ._teleconsult_sql import SQL as _V1_SQL
 
-_V1_START = _V1_SQL.index("CREATE FUNCTION clinic_app.teleconsult_binding_guard()")
-_V1_END = _V1_SQL.index("\n$f$;\n", _V1_START) + len("\n$f$;\n")
-BINDING_GUARD_V1 = "CREATE OR REPLACE " + _V1_SQL[_V1_START + len("CREATE ") : _V1_END]
+BINDING_GUARD_V1 = """CREATE OR REPLACE FUNCTION clinic_app.teleconsult_binding_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, clinic_app, pg_temp AS $f$
+DECLARE e RECORD; s RECORD; a RECORD; t RECORD;
+BEGIN
+ IF TG_TABLE_NAME='teleconsult_teleconsultsession' THEN
+   SELECT * INTO e FROM clinic_app.ehr_encounter WHERE id=NEW.encounter_id;
+   IF e.id IS NULL OR e.organization_id IS DISTINCT FROM NEW.organization_id
+      OR e.clinic_id IS DISTINCT FROM NEW.clinic_id
+      OR e.appointment_id IS DISTINCT FROM NEW.appointment_id
+      OR e.patient_id IS DISTINCT FROM NEW.patient_id
+      OR e.physician_id IS DISTINCT FROM NEW.physician_id
+      OR e.state <> 'open' OR NEW.state <> 'waiting' OR NEW.revision <> 1
+      OR NEW.started_at IS NOT NULL OR NEW.ended_at IS NOT NULL
+      OR NEW.failure_reason <> '' THEN
+     RAISE EXCEPTION 'invalid teleconsult session binding' USING ERRCODE='23514';
+   END IF;
+   SELECT * INTO a FROM clinic_app.consent_consentacceptance
+     WHERE id=NEW.consent_id;
+   IF a.id IS NULL OR a.clinic_id IS DISTINCT FROM NEW.clinic_id
+      OR a.patient_id IS DISTINCT FROM NEW.patient_id
+      OR EXISTS (SELECT 1 FROM clinic_app.consent_consentrevocation r
+        WHERE r.acceptance_id=a.id) THEN
+     RAISE EXCEPTION 'invalid teleconsult consent binding' USING ERRCODE='23514';
+   END IF;
+   SELECT * INTO t FROM clinic_app.consent_consenttext WHERE id=a.text_id;
+   IF t.id IS NULL OR t.purpose <> 'teleconsultation'
+      OR EXISTS (SELECT 1 FROM clinic_app.consent_consenttext newer
+        WHERE newer.clinic_id=t.clinic_id AND newer.purpose=t.purpose
+        AND newer.version>t.version) THEN
+     RAISE EXCEPTION 'invalid teleconsult consent binding' USING ERRCODE='23514';
+   END IF;
+   RETURN NEW;
+ END IF;
+ SELECT * INTO s FROM clinic_app.teleconsult_teleconsultsession
+   WHERE id=NEW.session_id;
+ IF s.id IS NULL OR s.organization_id IS DISTINCT FROM NEW.organization_id THEN
+   RAISE EXCEPTION 'invalid teleconsult binding' USING ERRCODE='23514';
+ END IF;
+ IF TG_TABLE_NAME='teleconsult_teleconsultroom' THEN
+   IF NOT EXISTS (SELECT 1 FROM clinic_app.comms_integrationoperation o
+     WHERE o.id=NEW.operation_id AND o.organization_id=NEW.organization_id
+     AND o.clinic_id=s.clinic_id AND o.actor_id=s.physician_id
+     AND o.channel='video' AND o.provider='teleconsult-synthetic-v1'
+     AND o.subject_type='teleconsult.session' AND o.subject_id=s.id)
+      OR NEW.room_name <> 'tc-' || s.id::text
+      OR NEW.recording_enabled OR NEW.transcription_enabled THEN
+     RAISE EXCEPTION 'invalid teleconsult room binding' USING ERRCODE='23514';
+   END IF;
+ ELSIF TG_TABLE_NAME='teleconsult_teleconsultcredential' THEN
+   IF (NEW.role='physician' AND NEW.participant_id IS DISTINCT FROM s.physician_id)
+      OR (NEW.role='patient' AND NEW.participant_id IS DISTINCT FROM s.patient_id)
+      OR NEW.expires_at <= statement_timestamp()
+      OR NEW.expires_at > statement_timestamp()+interval '1 hour'
+      OR NEW.first_used_at IS NOT NULL OR NEW.revoked_at IS NOT NULL THEN
+     RAISE EXCEPTION 'invalid teleconsult credential' USING ERRCODE='23514';
+   END IF;
+ ELSIF TG_TABLE_NAME='teleconsult_teleconsultevent' THEN
+   IF NEW.kind NOT IN ('created','joined','join_denied','started','ended','failed')
+      OR NEW.actor_role NOT IN ('','physician','patient') THEN
+     RAISE EXCEPTION 'invalid teleconsult event' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ RETURN NEW;
+END
+$f$;
+"""
 # The unchanged capture refusal (H-13, relaxed only by todo 40).
 CAPTURE_REFUSAL = "      OR NEW.recording_enabled OR NEW.transcription_enabled THEN"
 SYNTHETIC_PROVIDER = "teleconsult-synthetic-v1"

@@ -16,8 +16,7 @@ SET search_path = pg_catalog, clinic_app, pg_temp AS $f$
  SELECT CASE requested_role
   WHEN 'patient' THEN
    NULLIF(current_setting('app.current_patient_session',true),'')::uuid
-  WHEN 'physician' THEN
-   NULLIF(current_setting('app.current_user_id',true),'')::uuid END,
+  WHEN 'physician' THEN s.physician_id END,
  s.organization_id, s.clinic_id, e.kind
  FROM clinic_app.teleconsult_teleconsultsession s
  LEFT JOIN LATERAL (

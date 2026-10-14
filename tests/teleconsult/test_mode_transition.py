@@ -10,7 +10,7 @@ import pytest
 from apps.audit.models import AuditEvent
 from apps.audit.services import verify_chain
 from apps.intake.patient_access import patient_session_context
-from apps.teleconsult import participants
+from apps.teleconsult import participants, services
 from apps.teleconsult.models import TeleconsultEvent
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
@@ -247,3 +247,30 @@ def test_second_valid_session_cannot_supply_or_rebind_a_receipt(
         sql_mode(w, "patient", enabled=False)
     _, final = mode_history(w)
     assert [audit.actor_user_id for audit in final] == [w.patient_session, second]
+
+
+@pytest.mark.parametrize("role", ["patient", "physician"])
+def test_toggle_after_the_end_answers_a_json_conflict(
+    rbac_graph: RbacGraph, synthetic_provider: object, role: Role
+) -> None:
+    w = seed_world(rbac_graph)
+    with runtime_role(), tenant_context(w.graph.physician, w.organization):
+        services.end_consultation(clinic_id=w.clinic, session_id=w.session)
+    with ExitStack() as resources:
+        client = (
+            _client(w.patient_session)
+            if role == "patient"
+            else resources.enter_context(staff_client(w.graph.physician))
+        )
+        response = client.post(
+            "/patient/teleconsult/"
+            if role == "patient"
+            else f"/teleconsult/clinics/{w.clinic}/",
+            {"action": "audio_only", "session_id": str(w.session), "enabled": "true"},
+            HTTP_ACCEPT="application/json",
+        )
+    assert response.status_code == 409
+    assert response.json() == {"code": "session_closed"}
+    events, audits = mode_history(w)
+    assert events == []
+    assert audits == []
