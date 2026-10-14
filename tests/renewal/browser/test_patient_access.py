@@ -297,17 +297,30 @@ def _sign_in(page: Page, base_url: str, staff: dict[str, str]) -> None:
     wait_for_signed_in(page)
 
 
-def _open_access(page: Page, base_url: str, staff: dict[str, str], name: str) -> None:
+def _open_access(
+    page: Page,
+    base_url: str,
+    staff: dict[str, str],
+    name: str,
+    *,
+    native: bool = False,
+) -> None:
     """Search the patient and open the access screen through the row action."""
     patients = f"/intake/clinics/{staff['clinic_a']}/patients/"
     goto_settled(page, f"{base_url}{patients}")
     page.locator("#id_q").fill(name)
-    with page.expect_response(
-        lambda response: response.request.method == "POST"
-    ) as received:
-        page.locator("#patient-search-form button[type=submit]").click()
-    assert received.value.status == OK
-    wait_for_js(page, SETTLED_JS)
+    submit = page.locator("#patient-search-form button[type=submit]")
+    if native:
+        response = click_to_navigate(submit)
+        assert response is not None
+        assert response.status == OK
+    else:
+        with page.expect_response(
+            lambda response: response.request.method == "POST"
+        ) as received:
+            submit.click()
+        assert received.value.status == OK
+        wait_for_js(page, SETTLED_JS)
     row = page.locator(".intake-table tbody tr", has_text=name)
     click_to_navigate(row.locator("button", has_text=gettext("Access")))
     expect(page.locator("h1")).to_have_text(gettext("Patient access"))
@@ -589,7 +602,7 @@ def test_native_post_completes_the_journey_without_javascript(
     page.set_default_timeout(20_000)
     try:
         _sign_in(page, renewal_base_url, access_staff)
-        _open_access(page, renewal_base_url, access_staff, PATIENT_A)
+        _open_access(page, renewal_base_url, access_staff, PATIENT_A, native=True)
         code = _issue_code(page)
 
         patient_context = access_browser.new_context(
