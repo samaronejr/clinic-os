@@ -177,6 +177,43 @@ encounter once the patient has arrived. Migration `0007_appointment_lifecycle_v2
 is one rehearsed transaction; reverse refuses once v2 states exist
 (rollback = restore).
 
+## Multi-resource day grid (todo 23)
+
+`view_day_grid(*, clinic_id, date)` returns one clinic-local day as practitioner
+columns (every active physician for managers, only themself for a physician)
+followed by active room columns, with the agenda's scope, statuses and
+`scheduling.agenda.viewed` audit event. An appointment appears in its
+practitioner's column and in every room it occupies. `move_appointment(*,
+clinic_id, appointment_id, expected_revision, local_range)` is
+`reschedule_appointment` with the same locks, authority and audit, plus two
+refusals: a revision other than the stored one raises
+`AppointmentLifecycleError("revision_conflict")` and writes nothing (no lost
+update), and an appointment of another clinic shares the unknown-appointment
+denial. The HTMX grid (`/scheduling/clinics/<clinic>/agenda/grid/<day>/`, move
+POST `.../agenda/grid/move/` with every selector in the body) answers a lost
+race or a taken time with 409 and the current grid; with JavaScript off each
+appointment links to its own reschedule page. ADR-001 records why this HTMX
+variant, not a React island, was selected.
+
+The move POST requires `authorized_agenda_scope` before any write, matching
+the list agenda on Wave B: manager roles and RP booking staff see every
+professional, while a physician sees only their own column. The selected
+booking's authority is then rechecked under the write locks: legacy bookings
+retain the manager roles; service bookings use `appointment.move` or
+`appointment.move_own` for the booked clinician. Scheduler and clinic manager
+can therefore view the grid and move service bookings, and the booked
+physician can move their own service booking. The grid renders links and move
+hooks only where those same rules accept a scheduled booking. Unknown,
+foreign and unauthorized selectors share one refusal and write nothing.
+
+The grid lists every agenda lifecycle state except expired holds. Due holds
+are also hidden using the database clock. Only `{held, scheduled, arrived,
+in_progress}` occupy time; cancelled, requested, completed and no-show rows
+remain visible without blocking a new move. Held/requested, completed and
+inactive rows reuse the design system's warning, success and muted treatments.
+Professional column names come from the service catalog and agenda label
+resolver, including nurse/allied practitioners, rather than raw UUIDs.
+
 ## Appointment reminders
 
 Booking (including patient and waitlist booking) atomically schedules eligible
