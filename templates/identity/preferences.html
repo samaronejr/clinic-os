@@ -34,5 +34,8 @@
       <button type="submit">{% trans "Save preferences" %}</button>
     </div>
   </form>
+  <div class="actions">
+    <a class="button button--secondary" href="{% url 'identity:passkeys' %}">{% trans "Your passkeys" %}</a>
+  </div>
 </section>
 {% endblock %}

@@ -117,7 +117,7 @@
       {% block context_switch_dialog %}{% if workspace.patient %}{% include "includes/components/context_switch_dialog.html" only %}{% endif %}{% endblock %}
     {% endif %}
     <footer class="site-footer">
-      <p>{% trans "Clinic OS foundation" %}{% if workspace %} · <a href="{% url 'identity:preferences' %}">{% trans "Display preferences" %}</a> · <a href="{% url 'identity:passkeys' %}">{% trans "Your passkeys" %}</a>{% endif %}</p>
+      <p>{% trans "Clinic OS foundation" %}{% if workspace %} · <a href="{% url 'identity:preferences' %}">{% trans "Display preferences" %}</a>{% endif %}</p>
     </footer>
   </body>
 </html>
