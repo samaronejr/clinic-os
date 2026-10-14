@@ -26,6 +26,7 @@ from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
+from consent.test_purposes import register_physician
 from identity.authority_sql import _tokenize, references
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
@@ -580,6 +581,7 @@ def test_delegating_gates_refuse_inactive_actor(
 ) -> None:
     graph = rbac_graph
     appointment, encounter, _consent, _patient, _manager = teleconsult_seed(graph)
+    register_physician(graph)
     session = teleconsult_create(graph, encounter)
     with owner_context(graph.organization_a):
         assert (

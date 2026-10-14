@@ -262,6 +262,7 @@ def test_toggle_after_the_end_answers_a_json_conflict(
             if role == "patient"
             else resources.enter_context(staff_client(w.graph.physician))
         )
+        resources.enter_context(runtime_role())
         response = client.post(
             "/patient/teleconsult/"
             if role == "patient"
