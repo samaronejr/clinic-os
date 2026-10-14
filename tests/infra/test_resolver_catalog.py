@@ -8,6 +8,7 @@ from infra import identity_lifecycle_catalog
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    ("identity_passkey", "SELECT"),
     *identity_lifecycle_catalog.TABLE_GRANTS,
     ("identity_patientdelegategrant", "SELECT"),
     ("identity_patientdelegategrant", "INSERT"),
@@ -104,6 +105,10 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowstep", "SELECT"),
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    ("identity_organization", "passkey_step_up_enabled", "UPDATE"),
+    ("identity_passkey", "last_used", "UPDATE"),
+    ("identity_passkey", "removed_at", "UPDATE"),
+    ("identity_passkey", "sign_count", "UPDATE"),
     *identity_lifecycle_catalog.COLUMN_GRANTS,
     ("identity_patientdelegategrant", "state", "UPDATE"),
     ("identity_patientdelegategrant", "revision", "UPDATE"),

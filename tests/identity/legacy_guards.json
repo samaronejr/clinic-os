@@ -2513,8 +2513,10 @@
       "signals": [
         "authentication"
       ],
-      "kind": "presentation",
-      "reason": "Signing readiness presentation; enforcement is verify_physician_for_signing and _prepare_signature."
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.views._identity_state#cut1"
+      ]
     },
     {
       "symbol": "apps.prescription.views._issuer_document",
@@ -4717,6 +4719,161 @@
       "enforced_by": [
         "apps.scheduling.patient_authority.require_patient_booking_scope"
       ]
+    },
+    {
+      "symbol": "apps.identity.passkey_account_views._page",
+      "signals": [
+        "actor",
+        "membership",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_account_views._page#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_account_views.passkeys_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_account_views.passkeys_view#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_assertion_views.assertion_begin",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_assertion_views.assertion_begin#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_assertion_views.assertion_finish",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_assertion_views.assertion_finish#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_authentication.lookup_credential",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_authentication.lookup_credential#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_authentication.verify_assertion",
+      "signals": [
+        "resolver",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_authentication.verify_assertion#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_controls.own_passkeys",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.own_passkeys#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_controls.remove_passkey",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.remove_passkey#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_controls.require_authenticator_session",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.require_authenticator_session#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_controls.require_registration_session",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.require_registration_session#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_controls.set_passkey_policy",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.set_passkey_policy#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_sessions.is_passkey_verified",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_sessions.is_passkey_verified#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_sessions.record_passkey_verification",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_sessions.record_passkey_verification#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkey_views.registration_begin",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_views.registration_begin#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.identity.passkeys.register_passkey",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkeys.register_passkey#cut1"
+      ]
     }
   ],
   "probes": [
@@ -4832,6 +4989,21 @@
     "apps.identity.otp_views._current_user",
     "apps.identity.otp_views.enroll_view",
     "apps.identity.otp_views.verify_view",
+    "apps.identity.passkey_account_views._page#cut1",
+    "apps.identity.passkey_account_views.passkeys_view#cut1",
+    "apps.identity.passkey_assertion_views.assertion_begin#cut1",
+    "apps.identity.passkey_assertion_views.assertion_finish#cut1",
+    "apps.identity.passkey_authentication.lookup_credential#cut1",
+    "apps.identity.passkey_authentication.verify_assertion#cut1",
+    "apps.identity.passkey_controls.own_passkeys#cut1",
+    "apps.identity.passkey_controls.remove_passkey#cut1",
+    "apps.identity.passkey_controls.require_authenticator_session#cut1",
+    "apps.identity.passkey_controls.require_registration_session#cut1",
+    "apps.identity.passkey_controls.set_passkey_policy#cut1",
+    "apps.identity.passkey_sessions.is_passkey_verified#cut1",
+    "apps.identity.passkey_sessions.record_passkey_verification#cut1",
+    "apps.identity.passkey_views.registration_begin#cut1",
+    "apps.identity.passkeys.register_passkey#cut1",
     "apps.identity.permissions.IsClinicAdminForClinic.has_permission",
     "apps.identity.permissions.IsPhysicianForClinic.has_permission",
     "apps.identity.phase1a_identity_acl_migration.remove_runtime_identity_acl#observed",
@@ -4918,6 +5090,7 @@
     "apps.prescription.verification.patient_document_download#observed",
     "apps.prescription.verification.patient_documents#observed",
     "apps.prescription.views._draft_document",
+    "apps.prescription.views._identity_state#cut1",
     "apps.prescription.views._issuer_document",
     "apps.prescription.views._selected_encounter",
     "apps.prescription.views._workspace",
@@ -6748,6 +6921,7 @@
           "clinic_app.identity_invitation_finish",
           "clinic_app.identity_invitation_user",
           "clinic_app.identity_offboarding_clinics",
+          "clinic_app.identity_passkey_policy_set",
           "clinic_app.identity_reset_target",
           "clinic_app.identity_session_step_up",
           "clinic_app.identity_staff_directory",
@@ -8978,8 +9152,8 @@
           {
             "arguments": "requested_org uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8987,8 +9161,15 @@
           "apps/tenancy/migrations/0002_rls_and_resolvers.py",
           "apps/tenancy/migrations/0005_active_tenant_actor.py"
         ],
-        "policies": [],
-        "resolvers": []
+        "policies": [
+          "clinic_app.identity_passkey:passkey_owner_only"
+        ],
+        "resolvers": [
+          "clinic_app.identity_passkey_registration_allowed",
+          "clinic_app.identity_passkey_session_verified",
+          "clinic_app.identity_passkey_use",
+          "clinic_app.identity_session_verify_passkey"
+        ]
       },
       "kind": "staff_guard",
       "probes": [
@@ -9855,12 +10036,13 @@
           {
             "arguments": "requested_user uuid",
             "returns": "void",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+          "apps/identity/migrations/_lifecycle_recovery_sql.py",
+          "apps/identity/migrations/_passkey_retirement_sql.py"
         ],
         "policies": [],
         "resolvers": [
@@ -9927,12 +10109,13 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sessions_sql.py",
+          "apps/identity/migrations/_passkey_session_sql.py",
           "apps/identity/migrations/_session_rotation_sql.py"
         ],
         "policies": [],
@@ -10039,12 +10222,13 @@
           {
             "arguments": "requested_hash bytea, requested_clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+          "apps/identity/migrations/_lifecycle_sessions_sql.py",
+          "apps/identity/migrations/_passkey_policy_sql.py"
         ],
         "policies": [],
         "resolvers": [
@@ -10063,8 +10247,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10072,7 +10256,7 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.identity_session_step_up"
+          "clinic_app.identity_session_authenticator_verified"
         ]
       },
       "kind": "lifecycle_protocol",
@@ -10087,12 +10271,13 @@
           {
             "arguments": "requested_hash bytea, requested_device integer",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+          "apps/identity/migrations/_lifecycle_sessions_sql.py",
+          "apps/identity/migrations/_passkey_retirement_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -10969,6 +11154,210 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Machine (W) release of due holds, executable only by the lifecycle trigger's owner (no clinic_app EXECUTE). It clears and restores the transaction-local human settings so the trigger records the machine actor, and can only expire holds whose deadline already passed."
+    },
+    "clinic_app.identity_passkey_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkeys.register_passkey#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_passkey_lookup": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_assertion_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_credential bytea",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_authentication.lookup_credential#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_passkey_policy_set": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_policy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_enabled boolean, requested_session bytea",
+            "returns": "int4",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.set_passkey_policy#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_passkey_registration_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_policy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.require_registration_session#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_passkey_revoke_sessions": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_retirement_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.remove_passkey#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_passkey_session_verified": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_session_authenticator_verified"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_passkey uuid, requested_age integer",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_sessions.is_passkey_verified#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_passkey_use": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_assertion_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_passkey uuid, requested_counter bigint",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_authentication.verify_assertion#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_session_authenticator_verified": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_policy_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.identity_passkey_policy_set",
+          "clinic_app.identity_passkey_registration_allowed",
+          "clinic_app.identity_session_step_up"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_controls.require_authenticator_session#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+    },
+    "clinic_app.identity_session_verify_passkey": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_passkey_session_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_passkey uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "direct",
+      "probes": [
+        "apps.identity.passkey_sessions.record_passkey_verification#cut1"
+      ],
+      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
     }
   },
   "sql_method": [

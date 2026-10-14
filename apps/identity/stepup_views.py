@@ -7,7 +7,7 @@ from django.views.decorators.debug import sensitive_post_parameters, sensitive_v
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.forms import ExplicitOTPTokenForm
-from apps.identity.models import User
+from apps.identity.models import Organization, Passkey, User
 from apps.identity.otp import (
     auth_redirect,
     auth_response,
@@ -52,12 +52,25 @@ def step_up_view(request: HttpRequest) -> HttpResponseBase:
         return auth_redirect(request, target)
 
     devices = list(confirmed_devices(user.pk))
-    if not devices:
+    active_org_id = request.session.get("active_org_id")
+    passkeys_allowed = (
+        isinstance(active_org_id, str)
+        and Organization.objects.filter(
+            pk=active_org_id,
+            passkey_step_up_enabled=True,
+        ).exists()
+        and Passkey.objects.filter(user_id=user.pk, removed_at__isnull=True).exists()
+    )
+    if not devices and not passkeys_allowed:
         return auth_response(render(request, "403.html", status=403))
 
     data = request.POST if request.method == "POST" else None
-    form = ExplicitOTPTokenForm(user, devices, request=request, data=data)
-    if request.method == "POST" and form.is_valid():
+    form = (
+        ExplicitOTPTokenForm(user, devices, request=request, data=data)
+        if devices
+        else None
+    )
+    if request.method == "POST" and form is not None and form.is_valid():
         device = form.selected_device()
         if device is not None:
             record_otp_verification(request, device)
@@ -73,6 +86,7 @@ def step_up_view(request: HttpRequest) -> HttpResponseBase:
             "form": form,
             "next": target,
             "intent": step_up_intent_for(request, target),
+            "passkeys_allowed": passkeys_allowed,
         },
     )
     return auth_response(response)

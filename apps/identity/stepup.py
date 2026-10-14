@@ -1,4 +1,4 @@
-"""Fail-closed recent-TOTP verification for sensitive identity boundaries."""
+"""Fail-closed recent authenticator verification for sensitive boundaries."""
 
 from __future__ import annotations
 
@@ -8,11 +8,14 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from django.conf import settings
+from django.contrib.auth import SESSION_KEY
 from django.core.exceptions import PermissionDenied
 from django_otp import DEVICE_ID_SESSION_KEY
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
+from apps.identity import passkey_challenges
 from apps.identity.models import User
+from apps.identity.passkey_sessions import is_passkey_verified
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,7 +25,8 @@ if TYPE_CHECKING:
 
     P = ParamSpec("P")
 
-STEP_UP_SESSION_KEY: Final = "otp_verified_at"
+PASSKEY_SESSION_KEY: Final = passkey_challenges.PASSKEY_SESSION_KEY
+STEP_UP_SESSION_KEY: Final = passkey_challenges.STEP_UP_SESSION_KEY
 STEP_UP_INTENT_SESSION_KEY: Final = "otp_step_up_intent"
 DEFAULT_STEP_UP_MAX_AGE_SECONDS: Final = int(settings.STEP_UP_MAX_AGE_SECONDS)
 MAX_INTENT_FACTS: Final = 6
@@ -57,6 +61,7 @@ def clear_step_up_verification(
 ) -> None:
     """Remove invalid freshness and optionally its OTP device binding."""
     request.session.pop(STEP_UP_SESSION_KEY, None)
+    request.session.pop(PASSKEY_SESSION_KEY, None)
     if clear_device:
         request.session.pop(DEVICE_ID_SESSION_KEY, None)
 
@@ -110,6 +115,19 @@ def clear_step_up_intent(request: HttpRequest) -> None:
 
 def _freshness_is_valid(request: HttpRequest, max_age: int) -> bool:
     user = request.user
+    if PASSKEY_SESSION_KEY in request.session:
+        verified_at = request.session.get(STEP_UP_SESSION_KEY)
+        if (
+            not isinstance(user, User)
+            or not user.is_active
+            or request.session.get(SESSION_KEY) != str(user.pk)
+            or type(verified_at) is not int
+            or not 0 <= _utc_now_seconds() - verified_at <= max_age
+            or not is_passkey_verified(session=request.session, max_age=max_age)
+        ):
+            clear_step_up_verification(request)
+            return False
+        return True
     is_verified = getattr(user, "is_verified", None)
     if (
         not isinstance(user, User)
@@ -134,11 +152,9 @@ def _freshness_is_valid(request: HttpRequest, max_age: int) -> bool:
         return False
 
     verified_at = request.session.get(STEP_UP_SESSION_KEY)
-    if isinstance(verified_at, bool) or not isinstance(verified_at, int):
-        clear_step_up_verification(request)
-        return False
-    age = _utc_now_seconds() - verified_at
-    if age < 0 or age > max_age:
+    if type(verified_at) is not int or not (
+        0 <= _utc_now_seconds() - verified_at <= max_age
+    ):
         clear_step_up_verification(request)
         return False
     return True
@@ -149,7 +165,7 @@ def assert_step_up(
     *,
     max_age: int = DEFAULT_STEP_UP_MAX_AGE_SECONDS,
 ) -> None:
-    """Raise a typed permission error unless recent TOTP is still valid."""
+    """Require recent TOTP or an exact, current-policy-approved verified passkey."""
     if isinstance(max_age, bool) or not isinstance(max_age, int) or max_age < 0:
         clear_step_up_verification(request)
         raise StepUpRequired

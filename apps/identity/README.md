@@ -195,3 +195,43 @@ audit events in the same transaction; failed audit rolls back the write.
 `archive_saved_view` are keyword-only with an explicit `clinic_id`; unknown,
 foreign and other users' views share one `SavedViewError`. Reversing the
 migration drops the policy and table; it holds no clinical data.
+
+## Passkeys (todo 16)
+
+`Passkey` is an organization-scoped, current-user-owned public credential.
+Credential IDs, COSE public keys, uint32 counters and closed transport values
+are retained; private keys never reach the server. Nicknames are encrypted
+from creation. Removal is irreversible; deletion and truncation are forbidden.
+The discoverable user handle is organization UUID bytes followed by user UUID
+bytes, allowing independent registrations in multiple organizations.
+
+The four `/auth/passkey/{register,assert}/{begin,finish}/` endpoints are
+CSRF-protected POST ceremonies. Registration requires fresh persisted enrollment
+authority. Recent primary authentication suffices for nonprivileged staff;
+privileged staff still require TOTP until their organization explicitly enables
+passkey substitution. `/account/passkeys/` lists only own current-organization
+history, with native body-only removal and organization policy POST forms.
+
+Assertion endpoints are narrow sessionless authentication entrypoints, not
+general tenant bypasses. A resolver selects active stored organization/user
+scope, never posted tenant claims. Verification checks real signed bytes, exact
+challenge, RP ID, origin and required user verification. Only a valid signature
+can attribute a counter regression; positive counters must increase, while
+legitimate zero-counter devices still need a fresh single-use server challenge.
+
+Challenges live in database-backed server sessions for at most 300 seconds.
+Finish locks and consumes the persisted challenge, including expired, malformed
+and denied attempts; browser options carry it only in transient memory.
+Assertions rotate and inventory the session, binding the exact credential.
+Sensitive boundaries recheck credential, account, membership, session and the
+current default-off `Organization.passkey_step_up_enabled` policy. Removal
+rejects bound sessions on their next request; recovery, reset and final
+offboarding retire old passkeys too.
+
+`CLINIC_WEBAUTHN_RP_ID` configures the RP ID per environment.
+`CLINIC_WEBAUTHN_ORIGIN` supplies the exact origin; live mode requires HTTPS.
+Only synthetic loopback serving may bind its ephemeral origin at begin.
+Registration requests no attestation, a resident platform credential and user
+verification. Credential material never enters audit payloads. TOTP remains
+the native unsupported-device/no-JavaScript fallback. Real device and other
+live/provider evidence remain external-gate work, not synthetic acceptance.

@@ -39,6 +39,10 @@ AUTH_FLOW_VIEWS: Final = frozenset(
         "identity:enroll",
         "identity:verify",
         "identity:step-up",
+        "identity:passkey-register-begin",
+        "identity:passkey-register-finish",
+        "identity:passkey-assert-begin",
+        "identity:passkey-assert-finish",
     }
 )
 _STAFF_ROLES: Final = (*MANAGER_ROLES, UserClinicRole.Role.PHYSICIAN)

@@ -1,10 +1,13 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-passkeys.css' %}">
+<script src="{% static 'js/passkey.js' %}" defer></script>
+{% endblock %}
 {% block title %}{% trans "Confirm sensitive action · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "Confirm a recent authenticator code before a sensitive Clinic OS action." %}{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
-  <p class="eyebrow">{% trans "Step-up verification" %}</p>
   <h1 id="auth-title">{% trans "Confirm this sensitive action" %}</h1>
   <p class="lede">{% trans "Enter a current code from your Clinic OS authenticator before continuing." %}</p>
   {% if intent %}
@@ -24,6 +27,7 @@
         <p>{% trans "Review the highlighted authenticator details and try again." %}</p>
       </div>
     {% endif %}
+    {% if form %}
     <form id="step-up-form" method="post" action="{% url 'identity:step-up' %}"
           hx-post="{% url 'identity:step-up' %}" hx-target="#auth-panel"
           hx-select="#auth-panel" hx-swap="outerHTML" hx-indicator="#auth-progress"
@@ -52,6 +56,11 @@
         <span class="htmx-indicator" id="auth-progress" role="status">{% trans "Verifying…" %}</span>
       </div>
     </form>
+    {% endif %}
+    {% if passkeys_allowed %}
+      {% trans "Confirm with a passkey" as passkey_label %}
+      {% include "includes/passkey.html" with id="passkey-step-up" kind="step_up" label=passkey_label next=next csrf_token=csrf_token only %}
+    {% endif %}
   </div>
 </section>
 {% endblock %}

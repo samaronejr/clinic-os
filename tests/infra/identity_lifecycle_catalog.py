@@ -28,6 +28,29 @@ COLUMN_GRANTS: Final = {
     for column in columns
 }
 RESULTS: Final = {
+    ("identity_session_authenticator_verified", "requested_hash bytea"): "boolean",
+    ("identity_passkey_registration_allowed", "requested_hash bytea"): "boolean",
+    ("identity_passkey_revoke_sessions", ""): "trigger",
+    (
+        "identity_passkey_policy_set",
+        "requested_clinic uuid, requested_enabled boolean, requested_session bytea",
+    ): "integer",
+    ("identity_passkey_lookup", "requested_credential bytea"): (
+        "TABLE(passkey_id uuid, user_id uuid, organization_id uuid, clinic_id uuid, "
+        "username text, encoded_password text)"
+    ),
+    (
+        "identity_passkey_use",
+        "requested_passkey uuid, requested_counter bigint",
+    ): "boolean",
+    (
+        "identity_session_verify_passkey",
+        "requested_hash bytea, requested_passkey uuid",
+    ): "boolean",
+    (
+        "identity_passkey_session_verified",
+        "requested_hash bytea, requested_passkey uuid, requested_age integer",
+    ): "boolean",
     ("identity_invitation_user", "requested_clinic uuid, requested_user uuid"): "uuid",
     (
         "identity_invitation_begin",
@@ -88,6 +111,7 @@ RESULTS: Final = {
     ),
 }
 NO_APP_EXECUTE: Final = {
+    "identity_passkey_revoke_sessions",
     "identity_invitation_user",
     "identity_invitation_begin",
     "identity_invitation_finish",

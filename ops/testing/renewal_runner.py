@@ -70,6 +70,7 @@ SUITES: Final = {
     "onboarding": (
         "tests/renewal/browser/test_onboarding.py",
         "tests/renewal/browser/test_onboarding_security.py",
+        "tests/renewal/browser/test_passkeys.py",
     ),
     "clinic-settings": ("tests/renewal/browser/test_clinic_settings.py",),
     "billing": ("tests/renewal/browser/test_billing.py",),
