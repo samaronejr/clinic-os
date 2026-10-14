@@ -10,8 +10,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
+from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema
@@ -24,22 +27,42 @@ from rest_framework.views import APIView
 from apps.core.api.authentication import StepUpVerified, UiSessionAuthentication
 from apps.core.api.errors import (
     ACCESS_DENIED,
+    DRAFT_NOT_EDITABLE,
+    HANDOVER_REQUESTED,
+    IDEMPOTENCY_MISMATCH,
     INVALID_INPUT,
+    LOCKED_BY_OTHER,
     UiApiError,
     ui_api_exception_handler,
     ui_api_not_found_response,
 )
 from apps.core.api.serializers import (
+    AddendumAutosaveRequestSerializer,
+    AddendumOpenedSerializer,
+    AddendumOpenRequestSerializer,
+    AddendumSavedSerializer,
     AgendaPageSerializer,
     AgendaQueryRequestSerializer,
     CommandResultSerializer,
     CommandSearchRequestSerializer,
+    DraftAutosaveConflictSerializer,
+    DraftAutosaveRequestSerializer,
+    DraftAutosaveSavedSerializer,
     ErrorSerializer,
 )
 from apps.core.command_search import CommandResult, CommandSearch, search_commands
 from apps.core.command_views import tokenized
 from apps.core.workspace import ACTIVE_CLINIC_SESSION_KEY, clinic_of_actor
-from apps.identity.models import User
+from apps.ehr.addenda import autosave_addendum, open_addendum
+from apps.ehr.autosave import (
+    AutosaveIdempotencyError,
+    AutosaveResult,
+    AutosaveStatus,
+    autosave_draft,
+)
+from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.current_context import CurrentActorError
+from apps.identity.models import Clinic, User
 from apps.scheduling.services import (
     AgendaInputError,
     AvailabilityAccessDeniedError,
@@ -187,6 +210,170 @@ def _remembered_clinic(request: Request) -> UUID | None:
         return UUID(raw) if isinstance(raw, str) else None
     except ValueError:
         return None
+
+
+AUTOSAVE_RESPONSES: dict[int, object] = {
+    200: DraftAutosaveSavedSerializer,
+    409: DraftAutosaveConflictSerializer,
+    412: ErrorSerializer,
+    422: ErrorSerializer,
+    423: ErrorSerializer,
+    **ERROR_RESPONSES,
+}
+
+
+def _conflict_body(result: AutosaveResult) -> dict[str, object]:
+    return {
+        "current_revision": result.revision,
+        "diff": [
+            {
+                "section": section.section,
+                "theirs": section.theirs,
+                "lines": [
+                    {"kind": line.kind, "text": line.text} for line in section.lines
+                ],
+            }
+            for section in result.diff
+        ],
+    }
+
+
+class DraftAutosaveView(UiApiView):
+    """Autosave one SOAP draft revision; see ``apps.ehr.autosave``."""
+
+    @extend_schema(
+        operation_id="ehr_draft_autosave",
+        tags=["ehr"],
+        request=DraftAutosaveRequestSerializer,
+        responses=AUTOSAVE_RESPONSES,
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``ehr.autosave_draft``; unknown and foreign drafts match."""
+        body = DraftAutosaveRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        zone = _clinic_zone(data["clinic_id"])
+        try:
+            result = autosave_draft(
+                clinic_id=data["clinic_id"],
+                version_id=data["version_id"],
+                expected_revision=data["expected_revision"],
+                editor_command_id=data["editor_command_id"],
+                editor_session_id=data["editor_session"],
+                sections=dict(data["sections"]),
+                request_handover=data["handover"],
+            )
+        except (ClinicalAccessDeniedError, CurrentActorError) as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except ClinicalConflictError as error:
+            raise UiApiError(DRAFT_NOT_EDITABLE) from error
+        except AutosaveIdempotencyError as error:
+            raise UiApiError(IDEMPOTENCY_MISMATCH) from error
+        except ValidationError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        if result.status == AutosaveStatus.LOCKED_BY_OTHER:
+            raise UiApiError(LOCKED_BY_OTHER)
+        if result.status == AutosaveStatus.HANDOVER_REQUESTED:
+            raise UiApiError(HANDOVER_REQUESTED)
+        if result.status == AutosaveStatus.CONFLICT:
+            return Response(_conflict_body(result), status=409)
+        return Response(
+            {
+                "revision": result.revision,
+                "saved_at": _clinic_time(zone, result),
+                "lock": "handed_over" if result.handed_over else "held",
+            }
+        )
+
+
+def _clinic_zone(clinic_id: UUID) -> ZoneInfo:
+    """Resolve the response's clinic before any write; unknown ones are denied."""
+    clinic = Clinic.objects.filter(pk=clinic_id).first()
+    if clinic is None:
+        raise UiApiError(ACCESS_DENIED)
+    return ZoneInfo(str(clinic.timezone))
+
+
+def _clinic_time(zone: ZoneInfo, result: AutosaveResult) -> str:
+    return timezone.localtime(result.saved_at, zone).isoformat(timespec="seconds")
+
+
+class AddendumOpenView(UiApiView):
+    """Open or resume the caller's addendum draft on one encounter."""
+
+    @extend_schema(
+        operation_id="ehr_addendum_open",
+        tags=["ehr"],
+        request=AddendumOpenRequestSerializer,
+        responses={
+            200: AddendumOpenedSerializer,
+            412: ErrorSerializer,
+            **ERROR_RESPONSES,
+        },
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``ehr.addenda.open_addendum``; unknown and foreign match."""
+        body = AddendumOpenRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            addendum = open_addendum(
+                clinic_id=data["clinic_id"], encounter_id=data["encounter_id"]
+            )
+        except (ClinicalAccessDeniedError, CurrentActorError) as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except ClinicalConflictError as error:
+            raise UiApiError(DRAFT_NOT_EDITABLE) from error
+        return Response(
+            {"addendum_id": str(addendum.pk), "revision": addendum.revision}
+        )
+
+
+class AddendumAutosaveView(UiApiView):
+    """Autosave one addendum revision; CAS, idempotency and compare."""
+
+    @extend_schema(
+        operation_id="ehr_addendum_autosave",
+        tags=["ehr"],
+        request=AddendumAutosaveRequestSerializer,
+        responses={
+            200: AddendumSavedSerializer,
+            409: DraftAutosaveConflictSerializer,
+            412: ErrorSerializer,
+            422: ErrorSerializer,
+            **ERROR_RESPONSES,
+        },
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``ehr.addenda.autosave_addendum``; unknown and foreign match."""
+        body = AddendumAutosaveRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        zone = _clinic_zone(data["clinic_id"])
+        try:
+            result = autosave_addendum(
+                clinic_id=data["clinic_id"],
+                addendum_id=data["addendum_id"],
+                expected_revision=data["expected_revision"],
+                editor_command_id=data["editor_command_id"],
+                text=data["text"],
+            )
+        except (ClinicalAccessDeniedError, CurrentActorError) as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except ClinicalConflictError as error:
+            raise UiApiError(DRAFT_NOT_EDITABLE) from error
+        except AutosaveIdempotencyError as error:
+            raise UiApiError(IDEMPOTENCY_MISMATCH) from error
+        except ValidationError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        if result.status == AutosaveStatus.CONFLICT:
+            return Response(_conflict_body(result), status=409)
+        return Response(
+            {
+                "revision": result.revision,
+                "saved_at": _clinic_time(zone, result),
+            }
+        )
 
 
 @csrf_exempt

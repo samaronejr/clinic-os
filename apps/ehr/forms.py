@@ -14,6 +14,11 @@ if TYPE_CHECKING:
     from apps.ehr.models import ClinicalDocumentVersion
 
 
+SECTION_LABELS = dict(
+    zip(SOAP_FIELDS, ("Subjetivo", "Objetivo", "Avaliação", "Plano"), strict=True)
+)
+
+
 class DraftForm(forms.Form):
     """Preserve the submitted revision and edits on every failed save."""
 
@@ -32,8 +37,7 @@ class DraftForm(forms.Form):
                 **{field: getattr(version, field) for field in SOAP_FIELDS},
             },
         )
-        labels = ("Subjetivo", "Objetivo", "Avaliação", "Plano")
-        for key, label in zip(SOAP_FIELDS, labels, strict=True):
+        for key, label in SECTION_LABELS.items():
             self.fields[key] = forms.CharField(
                 label=label,
                 required=False,

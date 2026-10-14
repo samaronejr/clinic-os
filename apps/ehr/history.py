@@ -121,6 +121,17 @@ def _context(encounter: Encounter, kind: str) -> HistoryContext:
     )
 
 
+def entry_encounter(encounter: Encounter, kind: str, entry_id: UUID) -> UUID | None:
+    """Return the encounter of an entry's current version, reads only.
+
+    Callers decide write authority for that encounter before the audited
+    ``read_history``, so an edit refusal never follows a history-view row.
+    """
+    context = _context(encounter, kind)
+    entry = next((e for e in context.entries if e.entry_id == entry_id), None)
+    return None if entry is None else entry.assessment.encounter_id
+
+
 def read_history(*, clinic_id: UUID, encounter_id: UUID, kind: str) -> HistoryContext:
     """Audit clinical reads before materializing current and historical values."""
     encounter = authorize_history(clinic_id, encounter_id)

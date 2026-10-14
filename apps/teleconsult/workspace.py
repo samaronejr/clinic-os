@@ -19,12 +19,15 @@ from django.db import DatabaseError
 from django.shortcuts import render
 from django.urls import reverse
 
+from apps.core.patient_context import bind_encounter_context
 from apps.ehr.finalization import amend_document, discard_draft, finalize_version
 from apps.ehr.forms import AmendmentForm, DraftForm
 from apps.ehr.models import ClinicalDocumentVersion, Encounter, SpecialtyTemplate
 from apps.ehr.services import (
     SOAP_FIELDS,
     ClinicalConflictError,
+    assignee_scope,
+    author_scope,
     create_draft,
     record_clinical_note,
     view_version,
@@ -37,6 +40,7 @@ from apps.teleconsult.services import (
     derived_state,
     patient_joined,
 )
+from apps.tenancy.middleware import HANDLED_REJECTION_ATTR
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -208,13 +212,35 @@ def posted_notes_context(
 
 
 def _session_version(
-    clinic_id: UUID, session: TeleconsultSession, raw: str
+    clinic_id: UUID,
+    session: TeleconsultSession,
+    raw: str,
+    *,
+    scope: Callable[..., UUID] | None = None,
+    read: bool = True,
 ) -> ClinicalDocumentVersion:
-    """Admit only a version of this session's own encounter."""
-    version = view_version(clinic_id=clinic_id, version_id=UUID(raw))
-    if version.document.encounter_id != session.encounter_id:
+    """Admit only a version of this session's own encounter.
+
+    The binding and then the action's own authority (``scope``) are decided
+    with reads only; the audited clinical read comes last, so no refusal
+    follows an ``ehr.record.viewed`` row. Finalize renders no content and
+    skips that read (``read=False``); its service decides the rest.
+    """
+    version_id = UUID(raw)
+    bound = (
+        ClinicalDocumentVersion.objects.filter(
+            pk=version_id, document__encounter_id=session.encounter_id
+        )
+        .only("pk")
+        .first()
+    )
+    if bound is None:
         raise TeleconsultAccessDeniedError
-    return version
+    if scope is not None:
+        scope(clinic_id=clinic_id, version_id=version_id)
+    if not read:
+        return bound
+    return view_version(clinic_id=clinic_id, version_id=version_id)
 
 
 def _render(
@@ -234,7 +260,9 @@ def _save(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int]:
     """Save explicitly; a failed save keeps the edits on screen as unsaved."""
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), scope=author_scope
+    )
     form = DraftForm(version, request.POST)
     status = _INVALID
     if form.is_valid():
@@ -268,7 +296,9 @@ def _finalize(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int] | HttpResponseBase:
     """Freeze the saved draft; the service enforces recent step-up."""
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), read=False
+    )
     try:
         finalize_version(
             clinic_id=clinic_id,
@@ -278,7 +308,9 @@ def _finalize(
         )
     except StepUpRequired:
         target = safe_next_url(request, staff_url(clinic_id))
-        return flow_redirect(request, "identity:step-up", target)
+        response = flow_redirect(request, "identity:step-up", target)
+        setattr(response, HANDLED_REJECTION_ATTR, True)
+        return response
     except ClinicalConflictError as error:
         return _conflict(clinic_id, session, error)
     return notes_context(
@@ -289,7 +321,9 @@ def _finalize(
 def _discard(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int]:
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), scope=author_scope
+    )
     try:
         discard_draft(clinic_id=clinic_id, version_id=version.pk)
     except ClinicalConflictError as error:
@@ -302,7 +336,9 @@ def _discard(
 def _amend(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int]:
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), scope=assignee_scope
+    )
     form = AmendmentForm(request.POST)
     if not form.is_valid():
         context = notes_context(clinic_id, session)
@@ -368,4 +404,5 @@ def note_action(
     if not isinstance(result, tuple):
         return result
     context, status = result
+    bind_encounter_context(request, session.encounter)
     return _render(request, context, status, workspace)

@@ -4,8 +4,9 @@ Task 21 implements assigned-physician encounters, immutable specialty-template
 versions and explicit SOAP draft saves. Open an appointment from the physician
 agenda; PostgreSQL uniqueness and locking converge parallel starts on one encounter
 and SOAP version. Saving compares the submitted revision atomically and retains
-prior data on failure. Clinical content is never autosaved or stored in browser
-storage. Selection uses server-side session state and POST bodies, not patient URLs.
+prior data on failure. Clinical content is never stored in browser storage;
+autosave is server-side only (below). Selection uses server-side session state
+and POST bodies, not patient URLs.
 
 Appointment lifecycle v2 (todo 22, D-9): a scheduled-bound encounter opens only
 when its appointment is `arrived` or `in_progress`; the service predicate and
@@ -53,6 +54,93 @@ must run as `clinic_owner` (or a superuser/BYPASSRLS role) when no upload is in
 flight. The synthetic scanner cannot approve production uploads; real use
 requires approved storage, encryption and scanning capabilities.
 
-Verification: `tests/renewal/test_encounters.py`,
+Plan item 27 (ADR-004, SD-8a) adds durable server autosave, conflict compare,
+episodes and unscheduled encounters.
+
+- Autosave: `autosave.autosave_draft(*, clinic_id, version_id,
+  expected_revision, editor_command_id, editor_session_id, sections,
+  request_handover=False)`, exposed as `POST /api/ui/v1/ehr/autosave/`
+  (`{clinic_id, version_id, expected_revision, editor_command_id,
+  editor_session, sections, handover}` returns `{revision, saved_at, lock}`, or
+  409 `{current_revision, diff}`). It is authorized exactly like an explicit
+  save and writes only through the unchanged `record_clinical_note` (H-2).
+  `editor_command_id` is idempotent: a receipt binds it to the SHA-256 of the
+  request, so a retry replays the acknowledgement and a reused key with other
+  content is refused (`idempotency_mismatch`). A stale revision writes nothing
+  and returns a per-section comparison; the author merges explicitly
+  (`action=merge` without JavaScript). There is no last-write-wins.
+- One editor session (tab) holds the draft lock; each autosave renews it for
+  two minutes. Another tab gets `locked_by_other` and may request a handover,
+  which the holder's next autosave grants after saving its own text.
+- The lock is advisory by design: it coordinates the author's tabs, and the
+  revision compare-and-set protects the text. An explicit save (or an
+  autosave naming another tab's session) can write past the lock. That write
+  still needs the current revision, so any other tab then gets the compare
+  and cannot overwrite it.
+- `section_edit_epochs` counts one accepted edit per changed section. It is
+  advanced inside `record_clinical_note`, the single revision writer, so
+  explicit saves, autosaves and merges all count (todo 42 relies on this).
+- `static/js/ehr-autosave.js` debounces 1.5 s, resends an unacknowledged
+  command unchanged after a network failure ("Não salvo - tentando
+  novamente"), shows "Salvo às HH:MM (revisão N)" only after the server's
+  acknowledgement, and marks a back-forward cache restore unconfirmed.
+- `services.open_unscheduled_encounter(*, clinic_id, enrollment_id, reason)`
+  opens a walk-in, phone follow-up or documentation-only encounter without an
+  appointment. It needs `encounter.open_unscheduled` (bundle v2, registered
+  physicians only) through `has_permission`; the insert policy re-checks it and
+  the binding guard admits only an appointment-bound shape (arrived or in
+  progress, no reason) or an unscheduled shape (closed reason, enrolled
+  patient). Parallel starts converge on one open unscheduled encounter per
+  physician and patient. `ehr_assigned` treats its opener as the assignee, so
+  drafts, history, attachments, finalization and releases work unchanged;
+  prescribing and teleconsult sessions refuse unscheduled encounters.
+- `episodes.open_episode`, `close_episode` and `link_encounter` group one
+  patient's encounters under a titled episode (title enveloped). They need
+  `clinical.write` (reads `clinical.read`) for the patient's enrollment through
+  `has_permission`; linking also needs the encounter's assigned physician, the
+  same patient and clinic, and an open episode, re-decided by RLS and the
+  binding trigger.
+- Addendum drafts (`addenda.py`; `POST /api/ui/v1/ehr/addendum/open/` and
+  `/addendum/autosave/`) carry other clinicians' contributions to an
+  encounter:
+  - Anyone other than the assigned physician who holds `clinical.write` for
+    the encounter's patient in its clinic (a registered care-team physician
+    today) opens one addendum draft per encounter, stored in
+    `EncounterAddendum`. It never touches the main draft.
+  - Autosave has the same CAS, idempotency receipts
+    (`AddendumSaveReceipt`) and compare as the main draft. There is no lock,
+    because the author is the only writer.
+  - RLS (`has_permission`, author) and `ehr_addendum_guard` (same
+    organization, clinic, patient; open encounter; never the assignee)
+    re-decide every write. A new save command on a closed encounter is
+    refused (`encounter_closed`) before its receipt, even when the text is
+    unchanged; the guard binds receipts to an open encounter too (`0012`).
+    Replaying an already acknowledged command stays a read.
+  - Only the draft state exists. Later todos extend it: finalizing,
+    releasing and showing addenda to readers, and a UI entry point from the
+    patient workspace and timeline (todo 28). Typed addendum fields and
+    templates come with todo 29, and nurse observations with todo 28
+    (`observation.write`).
+- Every writer decides every refusal, including the read scope of what its
+  response renders, before its first write (the read audit included). The
+  request transaction commits any response below 500, so a later refusal
+  would keep the write. `services.author_scope` decides clinic scope,
+  assignee and authorship with reads only before a draft is written;
+  `services.assignee_scope` does the same for the amendment, which the
+  assignee writes. Every handler (encounter, history and teleconsult notes
+  workspaces, native or htmx) decides those scopes and any posted binding
+  before `view_version` or `read_history` appends a read audit.
+  `episodes.open_episode_for_encounter` opens and links an episode in one
+  savepoint after all of its checks. The only row a refusal leaves is the
+  fixed `ehr.access.denied` record.
+- Migrations `0010`, `0011` and `0012` are additive and rehearsed forward
+  and backward; `0012` only replaces the guard body and its reverse
+  restores the `0011` body exactly. The reverse refuses while an unscheduled encounter exists, or while
+  any of their tables holds a row (a `*_rollback_is_restore` probe), so
+  rollback is a restore and never a silent drop.
+
+Verification: `tests/renewal/test_encounters.py`, `tests/ehr/test_autosave.py`,
+`tests/ehr/test_addenda.py`, `tests/ehr/test_write_ordering.py`,
+`tests/ehr/test_refusal_matrix.py`,
 `tests/renewal/test_attachments.py` and renewal browser suites `encounter` and
 `attachments`. All fixtures and browser evidence are synthetic-only.

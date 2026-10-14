@@ -137,8 +137,318 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/ui/v1/ehr/addendum/autosave/:
+    post:
+      operationId: ehr_addendum_autosave
+      description: Adapt ``ehr.addenda.autosave_addendum``; unknown and foreign match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumAutosaveRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddendumSaved'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveConflict'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/ui/v1/ehr/addendum/open/:
+    post:
+      operationId: ehr_addendum_open
+      description: Adapt ``ehr.addenda.open_addendum``; unknown and foreign match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddendumOpenRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddendumOpened'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/ui/v1/ehr/autosave/:
+    post:
+      operationId: ehr_draft_autosave
+      description: Adapt ``ehr.autosave_draft``; unknown and foreign drafts match.
+      tags:
+      - ehr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftAutosaveRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveSaved'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftAutosaveConflict'
+          description: ''
+        '412':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '423':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
+    AddendumAutosaveRequest:
+      type: object
+      description: POST body of ``ehr/addendum/autosave``; same contract as the main
+        draft.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        addendum_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        editor_command_id:
+          type: string
+          format: uuid
+          description: 'Idempotency key: a retry of the same save reuses it.'
+        text:
+          type: string
+          maxLength: 20000
+      required:
+      - addendum_id
+      - clinic_id
+      - editor_command_id
+      - expected_revision
+      - text
+    AddendumOpenRequest:
+      type: object
+      description: POST body of ``ehr/addendum/open``; the encounter stays in the
+        body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        encounter_id:
+          type: string
+          format: uuid
+      required:
+      - clinic_id
+      - encounter_id
+    AddendumOpened:
+      type: object
+      description: The caller's own addendum draft on that encounter.
+      properties:
+        addendum_id:
+          type: string
+          format: uuid
+          readOnly: true
+        revision:
+          type: integer
+          readOnly: true
+      required:
+      - addendum_id
+      - revision
+    AddendumSaved:
+      type: object
+      description: The acknowledged addendum save.
+      properties:
+        revision:
+          type: integer
+          readOnly: true
+        saved_at:
+          type: string
+          readOnly: true
+          description: ISO 8601 in the clinic's UTC offset.
+      required:
+      - revision
+      - saved_at
     AgendaItem:
       type: object
       description: 'Adapt ``scheduling.AgendaItem``: one clinic-local appointment
@@ -253,6 +563,10 @@ components:
       - unsupported_media_type
       - throttled
       - not_found
+      - precondition_failed
+      - locked_by_other
+      - handover_requested
+      - idempotency_mismatch
       - internal_error
       type: string
       description: |-
@@ -266,6 +580,10 @@ components:
         * `unsupported_media_type` - unsupported_media_type
         * `throttled` - throttled
         * `not_found` - not_found
+        * `precondition_failed` - precondition_failed
+        * `locked_by_other` - locked_by_other
+        * `handover_requested` - handover_requested
+        * `idempotency_mismatch` - idempotency_mismatch
         * `internal_error` - internal_error
     CommandResult:
       type: object
@@ -279,7 +597,7 @@ components:
       properties:
         kind:
           allOf:
-          - $ref: '#/components/schemas/KindEnum'
+          - $ref: '#/components/schemas/CommandResultKindEnum'
           readOnly: true
         meta:
           type: string
@@ -310,6 +628,24 @@ components:
       - label
       - meta
       - token
+    CommandResultKindEnum:
+      enum:
+      - destination
+      - action
+      - saved_view
+      - save_view
+      - archive_view
+      - patient
+      - notice
+      type: string
+      description: |-
+        * `destination` - destination
+        * `action` - action
+        * `saved_view` - saved_view
+        * `save_view` - save_view
+        * `archive_view` - archive_view
+        * `patient` - patient
+        * `notice` - notice
     CommandSearchRequest:
       type: object
       description: |-
@@ -331,6 +667,119 @@ components:
           pattern: ^/[A-Za-z0-9/_.-]*$
       required:
       - q
+    DraftAutosaveConflict:
+      type: object
+      description: 'A stale revision: nothing was written; merge explicitly.'
+      properties:
+        current_revision:
+          type: integer
+          readOnly: true
+        diff:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftSectionDiff'
+          readOnly: true
+      required:
+      - current_revision
+      - diff
+    DraftAutosaveRequest:
+      type: object
+      description: POST body of ``ehr/autosave``; record selectors stay in the body.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        version_id:
+          type: string
+          format: uuid
+        expected_revision:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        editor_command_id:
+          type: string
+          format: uuid
+          description: 'Idempotency key: a retry of the same save reuses it.'
+        editor_session:
+          type: string
+          format: uuid
+          description: The editing tab; one tab holds the draft lock at a time.
+        sections:
+          $ref: '#/components/schemas/SoapSections'
+        handover:
+          type: boolean
+          default: false
+          description: Ask the tab holding the lock to hand it over after its next
+            save.
+      required:
+      - clinic_id
+      - editor_command_id
+      - editor_session
+      - expected_revision
+      - sections
+      - version_id
+    DraftAutosaveSaved:
+      type: object
+      description: 'The acknowledged save: shown as saved only after this response.'
+      properties:
+        revision:
+          type: integer
+          readOnly: true
+        saved_at:
+          type: string
+          readOnly: true
+          description: ISO 8601 in the clinic's UTC offset.
+        lock:
+          allOf:
+          - $ref: '#/components/schemas/LockEnum'
+          readOnly: true
+      required:
+      - lock
+      - revision
+      - saved_at
+    DraftDiffLine:
+      type: object
+      description: One compared line; ``removed`` exists only in the saved text.
+      properties:
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/DraftDiffLineKindEnum'
+          readOnly: true
+        text:
+          type: string
+          readOnly: true
+      required:
+      - kind
+      - text
+    DraftDiffLineKindEnum:
+      enum:
+      - same
+      - added
+      - removed
+      type: string
+      description: |-
+        * `same` - same
+        * `added` - added
+        * `removed` - removed
+    DraftSectionDiff:
+      type: object
+      description: The saved text of one changed section and its comparison.
+      properties:
+        section:
+          type: string
+          readOnly: true
+        theirs:
+          type: string
+          readOnly: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftDiffLine'
+          readOnly: true
+      required:
+      - lines
+      - section
+      - theirs
     Error:
       type: object
       description: The ``{code, message_key}`` refusal body shared by every endpoint.
@@ -342,24 +791,35 @@ components:
       required:
       - code
       - message_key
-    KindEnum:
+    LockEnum:
       enum:
-      - destination
-      - action
-      - saved_view
-      - save_view
-      - archive_view
-      - patient
-      - notice
+      - held
+      - handed_over
       type: string
       description: |-
-        * `destination` - destination
-        * `action` - action
-        * `saved_view` - saved_view
-        * `save_view` - save_view
-        * `archive_view` - archive_view
-        * `patient` - patient
-        * `notice` - notice
+        * `held` - held
+        * `handed_over` - handed_over
+    SoapSections:
+      type: object
+      description: Exactly the four SOAP sections as plain text; never trimmed.
+      properties:
+        subjective:
+          type: string
+          maxLength: 20000
+        objective:
+          type: string
+          maxLength: 20000
+        assessment:
+          type: string
+          maxLength: 20000
+        plan:
+          type: string
+          maxLength: 20000
+      required:
+      - assessment
+      - objective
+      - plan
+      - subjective
     ViewEnum:
       enum:
       - day

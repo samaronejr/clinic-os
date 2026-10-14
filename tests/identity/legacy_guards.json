@@ -733,8 +733,7 @@
       ],
       "kind": "delegated",
       "enforced_by": [
-        "apps.ehr.services._appointment",
-        "apps.ehr.services._assigned"
+        "apps.ehr.services._encounter_actor"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
@@ -893,16 +892,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.services.record_clinical_note",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.services.record_clinical_note"
-      ]
-    },
-    {
       "symbol": "apps.ehr.services.view_version",
       "signals": [
         "actor",
@@ -949,16 +938,6 @@
         "apps.ehr.services.view_version"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
-    },
-    {
-      "symbol": "apps.ehr.views._selected",
-      "signals": [
-        "denial"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.views._selected"
-      ]
     },
     {
       "symbol": "apps.ehr.views._show",
@@ -4717,6 +4696,162 @@
       "enforced_by": [
         "apps.scheduling.patient_authority.require_patient_booking_scope"
       ]
+    },
+    {
+      "symbol": "apps.ehr.addenda._authorized",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27 addendum: the caller's own addendum in the claimed clinic, under clinical.write through has_permission. tests/ehr/test_addenda.py::test_addendum_scope_holds_in_python_and_sql executes the author, a same-clinic colleague (refused), and the author claiming clinic B, where they hold the same standing (refused). The API refusals are asserted byte-identical."
+    },
+    {
+      "symbol": "apps.ehr.addenda.open_addendum",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27 addendum: clinical.write through has_permission for the encounter's patient in its own clinic; the assignee is sent to the main draft. test_addendum_open_is_decided_by_clinical_write runs all 10 catalog roles with a statement spy. test_addendum_refusals_cover_actor_states_scope_and_the_assignee adds inactive, foreign-clinic, unregistered and no-membership actors, clinic B and C claims, an unknown encounter, the assignee and a closed encounter."
+    },
+    {
+      "symbol": "apps.ehr.episodes._require",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27 helper: maps a require_permission (clinic_app.has_permission) refusal to the clinical denial. Reached through its callers' role matrices: test_open_episode_is_decided_by_clinical_write and tests/ehr/test_addenda.py::test_addendum_open_is_decided_by_clinical_write, each over all 10 catalog roles with a statement spy on 'clinical.write'."
+    },
+    {
+      "symbol": "apps.ehr.episodes.close_episode",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27: requires clinical.write for the episode's enrollment through has_permission. Tests execute it only for the permitted physician; its refusal branch is _require's, which is executed through open_episode."
+    },
+    {
+      "symbol": "apps.ehr.episodes.encounter_episodes",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27 read for the encounter page: _encounter_actor, then clinical.read through has_permission. It runs for the assigned physician via the workspace tests; there is no dedicated refusal matrix, and a refusal only hides the panel."
+    },
+    {
+      "symbol": "apps.ehr.episodes.link_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27: requires the assignee (_encounter_actor), the same patient and clinic, and clinical.write. test_episode_links_decide_patient_clinic_assignee_and_state executes the owner physician, a care-team colleague (refused as non-assignee), other-patient, other-clinic and closed episodes, and an already-linked encounter."
+    },
+    {
+      "symbol": "apps.ehr.episodes.open_episode_for_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27: the workspace's open-with-this-encounter path. It decides the assignee (_encounter_actor), clinical.write through has_permission, the title and an unlinked encounter before writing both rows in one savepoint. tests/ehr/test_write_ordering.py executes the assignee without clinical.write, a non-assignee colleague with it, and the already-linked conflict through the service and the HTTP route; each asserts no episode row and no episode audit row."
+    },
+    {
+      "symbol": "apps.ehr.services._encounter_actor",
+      "signals": [
+        "actor",
+        "denial",
+        "membership",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.services._encounter_actor"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.services.assignee_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.ehr_version_scope"
+      ],
+      "reason": "Plan item 27 round 3 write-ordering gate for writers acting as the encounter's assignee rather than the version's author (amend_document, the EHR and teleconsult amend handlers) and the first half of author_scope. With reads only, it decides the version's clinic scope (ehr_version_scope) and the encounter's assigned physician (_encounter_actor) before the read audit. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused amend_document here; tests/ehr/test_refusal_matrix.py executes the amend route in native and htmx modes as a care reader and a receptionist with no committed row."
+    },
+    {
+      "symbol": "apps.ehr.services.author_scope",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.ehr_version_scope"
+      ],
+      "reason": "Plan item 27 write-ordering gate shared by record_clinical_note, autosave_draft, section_edit_epochs and the explicit save/discard handlers (EHR workspace and teleconsult notes). With reads only, it takes the version's clinic scope and the encounter's assignee from assignee_scope (ehr_version_scope, _encounter_actor), then decides authorship, before any write, the read audit included. tests/ehr/test_write_ordering.py::test_care_reader_writes_are_refused_before_the_read_audit executes a care reader who passes view_version but is refused here. test_autosave_refuses_every_non_author_and_writes_nothing executes all 10 catalog roles, foreign and unknown scope, and no-membership and inactive actors. tests/ehr/test_refusal_matrix.py drives every save route and mode as a care reader and a receptionist and asserts no committed row."
+    },
+    {
+      "symbol": "apps.ehr.services.open_unscheduled_encounter",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27: 'encounter.open_unscheduled' through has_permission. It is executed for all 10 catalog roles with a statement spy (test_unscheduled_open_is_decided_by_its_exact_permission). test_unscheduled_refusals_cover_actor_states_and_record_scope adds unregistered, inactive, foreign-clinic and no-membership actors, foreign and unknown enrollments, and a v2 RoleGrant subtraction."
+    },
+    {
+      "symbol": "apps.ehr.services.resume_encounter",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "apps.ehr.services.open_encounter"
+      ],
+      "reason": "Plan item 27: rechecks an encounter's assignment. Scheduled encounters go through open_encounter and unscheduled ones through _encounter_actor. Executed for the assignee and a refused colleague on an unscheduled encounter (test_unscheduled_encounter_carries_the_draft_lifecycle), and for the assignee by every encounter page test."
+    },
+    {
+      "symbol": "apps.ehr.views._unscheduled_options",
+      "signals": [
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ],
+      "reason": "The unscheduled-start selector is shown only after encounter.open_unscheduled is decided through require_permission; the service and encounter insert policy recheck the same permission before writing."
     }
   ],
   "probes": [
@@ -4778,6 +4913,7 @@
     "apps.ehr.services._appointment",
     "apps.ehr.services._assigned",
     "apps.ehr.services._denied",
+    "apps.ehr.services._encounter_actor",
     "apps.ehr.services.create_draft",
     "apps.ehr.services.open_encounter",
     "apps.ehr.services.publish_template",
@@ -5522,8 +5658,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5540,8 +5676,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5558,8 +5694,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5576,8 +5712,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5594,8 +5730,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5614,8 +5750,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5635,8 +5771,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5655,8 +5791,8 @@
           {
             "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -5675,8 +5811,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5695,8 +5831,8 @@
           {
             "arguments": "requested_username text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -5717,8 +5853,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5737,8 +5873,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5757,8 +5893,8 @@
           {
             "arguments": "requested_invoice uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -5779,8 +5915,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -5800,8 +5936,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5820,8 +5956,8 @@
           {
             "arguments": "requested_operation uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5845,8 +5981,8 @@
           {
             "arguments": "requested_provider text, requested_operation uuid, requested_event_id text, observed_status text, observed_amount bigint, observed_currency character varying",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5865,8 +6001,8 @@
           {
             "arguments": "requested_provider text, requested_reference text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -5885,8 +6021,8 @@
           {
             "arguments": "requested_provider text, requested_event_id text",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5905,8 +6041,8 @@
           {
             "arguments": "requested_operation uuid, observed_at timestamp with time zone, observed_status text, observed_amount bigint, observed_currency character varying",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5925,8 +6061,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5947,8 +6083,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5967,8 +6103,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -5987,8 +6123,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6007,8 +6143,8 @@
           {
             "arguments": "requested_invoice uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6038,8 +6174,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6058,8 +6194,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6078,8 +6214,8 @@
           {
             "arguments": "requested_provider text, requested_reference text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6098,8 +6234,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6118,8 +6254,8 @@
           {
             "arguments": "requested_operation uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6138,8 +6274,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6161,8 +6297,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6181,8 +6317,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6201,8 +6337,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6222,8 +6358,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6242,8 +6378,8 @@
           {
             "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6263,8 +6399,8 @@
           {
             "arguments": "record_id uuid, event_name text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6286,8 +6422,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6308,8 +6444,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6328,8 +6464,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -6362,14 +6498,14 @@
           {
             "arguments": "bytea, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           },
           {
             "arguments": "text, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -6399,11 +6535,12 @@
           {
             "arguments": "requested_encounter uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_clinical_sql.py"
         ],
         "policies": [
@@ -6415,9 +6552,14 @@
           "clinic_app.ehr_clinicaldocumentversion:clinical_insert",
           "clinic_app.ehr_clinicaldocumentversion:clinical_read",
           "clinic_app.ehr_clinicaldocumentversion:clinical_update",
+          "clinic_app.ehr_drafteditstate:draft_state_author",
+          "clinic_app.ehr_draftsavereceipt:draft_receipt_insert",
+          "clinic_app.ehr_draftsavereceipt:draft_receipt_read",
           "clinic_app.ehr_encounter:clinical_lock",
+          "clinic_app.ehr_encounteraddendum:addendum_insert",
           "clinic_app.ehr_encounterintakereference:clinical_insert",
           "clinic_app.ehr_encounterintakereference:clinical_read",
+          "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.ehr_historyassessment:history_insert",
           "clinic_app.ehr_problem:history_insert",
           "clinic_app.identity_physicianevidence:physician_evidence_assigned",
@@ -6453,8 +6595,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6473,13 +6615,14 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
           "apps/ehr/migrations/0009_protected_fields.py",
           "apps/ehr/migrations/_arrival_sql.py",
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_clinical_sql.py",
           "apps/ehr/migrations/_finalization_sql.py"
         ],
@@ -6496,8 +6639,8 @@
           {
             "arguments": "requested_encounter uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6526,11 +6669,12 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_finalization_sql.py"
         ],
         "policies": [],
@@ -6546,8 +6690,8 @@
           {
             "arguments": "requested_encounter uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6570,8 +6714,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6591,8 +6735,8 @@
           {
             "arguments": "requested_document uuid",
             "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6611,11 +6755,12 @@
           {
             "arguments": "requested_clinic uuid, requested_version uuid",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py",
           "apps/ehr/migrations/_clinical_sql.py"
         ],
         "policies": [],
@@ -6633,8 +6778,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "void",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6653,8 +6798,8 @@
           {
             "arguments": "integer",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -6673,8 +6818,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -6704,12 +6849,13 @@
           {
             "arguments": "perm text, clinic uuid, enrollment uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
           "apps/identity/migrations/0030_workflow_current_membership.py",
+          "apps/identity/migrations/_encounter_permission_sql.py",
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/migrations/_permission_sql.py",
           "apps/identity/migrations/_workflow_eligibility_sql.py"
@@ -6726,6 +6872,14 @@
           "clinic_app.consent_participantacknowledgment:consent_participant_insert",
           "clinic_app.consent_participantacknowledgment:consent_participant_read",
           "clinic_app.consent_refusalrecord:consent_refusal_read",
+          "clinic_app.ehr_encounter:clinical_insert",
+          "clinic_app.ehr_encounteraddendum:addendum_insert",
+          "clinic_app.ehr_encounteraddendum:addendum_read",
+          "clinic_app.ehr_encounteraddendum:addendum_write",
+          "clinic_app.ehr_episode:episode_close",
+          "clinic_app.ehr_episode:episode_insert",
+          "clinic_app.ehr_episode:episode_read",
+          "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.identity_authenticatorreset:manager",
           "clinic_app.identity_careteammembership:scope_read",
           "clinic_app.identity_onboardingprogress:manager",
@@ -6775,14 +6929,14 @@
           {
             "arguments": "bytea, bytea, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           },
           {
             "arguments": "text, text, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -6802,8 +6956,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6822,8 +6976,8 @@
           {
             "arguments": "requested_org uuid",
             "returns": "jsonb",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6842,8 +6996,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6862,8 +7016,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6883,8 +7037,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6903,8 +7057,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6923,8 +7077,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6943,8 +7097,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6963,8 +7117,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -6983,8 +7137,8 @@
           {
             "arguments": "requested_clinic uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7006,8 +7160,8 @@
           {
             "arguments": "",
             "returns": "identity_user",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7028,8 +7182,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7048,8 +7202,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7069,8 +7223,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7091,8 +7245,8 @@
           {
             "arguments": "practitioners uuid[], starts timestamp with time zone[], ends timestamp with time zone[]",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7111,8 +7265,8 @@
           {
             "arguments": "requested_practitioner uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7136,8 +7290,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7157,8 +7311,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7198,8 +7352,8 @@
           {
             "arguments": "requested_day date, ignored_appointment uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7221,8 +7375,8 @@
           {
             "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7245,8 +7399,8 @@
           {
             "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date, page_offset integer, page_limit integer",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7269,8 +7423,8 @@
           {
             "arguments": "kek text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7292,14 +7446,14 @@
           {
             "arguments": "bytea, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           },
           {
             "arguments": "bytea, text, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -7320,14 +7474,14 @@
           {
             "arguments": "bytea, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           },
           {
             "arguments": "bytea, text, text",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -7348,8 +7502,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7368,8 +7522,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7389,8 +7543,8 @@
           {
             "arguments": "kek text, organization_id uuid, purpose text, envelope bytea",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7413,8 +7567,8 @@
           {
             "arguments": "requested_document uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7433,8 +7587,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7453,8 +7607,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7474,8 +7628,8 @@
           {
             "arguments": "kek text, requested_document uuid",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7496,14 +7650,14 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           },
           {
             "arguments": "kek text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7528,8 +7682,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7548,8 +7702,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7568,8 +7722,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7588,8 +7742,8 @@
           {
             "arguments": "requested_provider text, requested_reference text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7608,8 +7762,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7628,8 +7782,8 @@
           {
             "arguments": "requested_operation uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7648,8 +7802,8 @@
           {
             "arguments": "kek text, requested_handle text, allow_synthetic boolean",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7669,8 +7823,8 @@
           {
             "arguments": "requested_probe bytea, max_lookups integer, window_seconds integer",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7689,8 +7843,8 @@
           {
             "arguments": "signed_bytes bytea, content_digest text, signer_subject text, operation_ref text, not_before timestamp with time zone",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7711,8 +7865,8 @@
           {
             "arguments": "perm text, clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7736,8 +7890,8 @@
           {
             "arguments": "requested_principal uuid, requested_clinic uuid",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7761,8 +7915,8 @@
           {
             "arguments": "kek text, purpose text, plaintext bytea",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -7781,8 +7935,8 @@
           {
             "arguments": "kek text, purpose text, envelope bytea",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7805,8 +7959,8 @@
           {
             "arguments": "kek text, purpose text, plaintext bytea",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7825,8 +7979,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7849,8 +8003,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7869,8 +8023,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7889,8 +8043,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7909,8 +8063,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7929,8 +8083,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7949,8 +8103,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7969,8 +8123,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -7989,8 +8143,8 @@
           {
             "arguments": "requested_clinic uuid, requested_enrollment uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8011,8 +8165,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8031,8 +8185,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8058,8 +8212,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8078,8 +8232,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8099,8 +8253,8 @@
           {
             "arguments": "requested_clinic uuid, roles text[]",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8167,8 +8321,8 @@
           {
             "arguments": "requested_clinic uuid, requested_hash bytea",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8187,8 +8341,8 @@
           {
             "arguments": "requested_user uuid",
             "returns": "text",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8209,8 +8363,8 @@
           {
             "arguments": "requested_clinic uuid, requested_patient uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8236,8 +8390,8 @@
           {
             "arguments": "requested_clinic uuid",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8258,8 +8412,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8278,8 +8432,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8298,8 +8452,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8322,8 +8476,8 @@
           {
             "arguments": "requested_class text, requested_record uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8347,8 +8501,8 @@
           {
             "arguments": "requested_version uuid, occurred_at_utc timestamp with time zone, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8367,8 +8521,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8398,8 +8552,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8420,8 +8574,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8440,8 +8594,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8467,8 +8621,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8490,8 +8644,8 @@
           {
             "arguments": "starts timestamp with time zone, ends timestamp with time zone, before_minutes integer, after_minutes integer",
             "returns": "tstzrange",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8518,8 +8672,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8540,8 +8694,8 @@
           {
             "arguments": "requested_clinic uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8563,8 +8717,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8594,8 +8748,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8614,8 +8768,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8634,8 +8788,8 @@
           {
             "arguments": "requested_session uuid, reason text",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8656,8 +8810,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8676,8 +8830,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8709,8 +8863,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "text",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8731,8 +8885,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8751,8 +8905,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8773,8 +8927,8 @@
           {
             "arguments": "kek text, expected_purpose text, envelope bytea",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8798,8 +8952,8 @@
           {
             "arguments": "kek text",
             "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8820,8 +8974,8 @@
           {
             "arguments": "old_kek text, new_kek text",
             "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8840,8 +8994,8 @@
           {
             "arguments": "kek text, requested_version integer",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8864,8 +9018,8 @@
           {
             "arguments": "kek text, purpose text, plaintext bytea",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8888,8 +9042,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8908,8 +9062,8 @@
           {
             "arguments": "kek text, purpose text, envelope bytea",
             "returns": "bytea",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -8928,8 +9082,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -8949,14 +9103,14 @@
           {
             "arguments": "regdictionary, text",
             "returns": "text",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           },
           {
             "arguments": "text",
             "returns": "text",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -8978,8 +9132,8 @@
           {
             "arguments": "requested_org uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9002,8 +9156,8 @@
           {
             "arguments": "",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9025,8 +9179,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9045,8 +9199,8 @@
           {
             "arguments": "requested_clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9075,8 +9229,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9097,8 +9251,8 @@
           {
             "arguments": "due_at timestamp with time zone",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9119,8 +9273,8 @@
           {
             "arguments": "due_at timestamp with time zone",
             "returns": "uuid",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9141,8 +9295,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9164,8 +9318,8 @@
           {
             "arguments": "",
             "returns": "timestamptz",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9188,8 +9342,8 @@
           {
             "arguments": "clinic uuid, owner_user uuid, owner_role text",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9217,8 +9371,8 @@
           {
             "arguments": "clinic uuid, owner_user uuid, owner_role text",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9242,8 +9396,8 @@
           {
             "arguments": "clinic uuid, requested_task uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9264,8 +9418,8 @@
           {
             "arguments": "ref jsonb, tenant uuid, clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9288,8 +9442,8 @@
           {
             "arguments": "clinic uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9311,8 +9465,8 @@
           {
             "arguments": "requested_step uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9333,8 +9487,8 @@
           {
             "arguments": "steps jsonb",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9357,8 +9511,8 @@
           {
             "arguments": "requested_task uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9392,8 +9546,8 @@
           {
             "arguments": "requested_hash bytea, requested_username text",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -9412,8 +9566,8 @@
           {
             "arguments": "requested_clinic uuid, requested_user uuid",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -9432,8 +9586,8 @@
           {
             "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
             "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9454,8 +9608,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -9477,8 +9631,8 @@
           {
             "arguments": "requested_hash bytea, requested_username text",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9499,8 +9653,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9522,8 +9676,8 @@
           {
             "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
             "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [],
@@ -9542,8 +9696,8 @@
           {
             "arguments": "requested_clinic uuid, requested_user uuid",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9564,8 +9718,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9584,8 +9738,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9604,8 +9758,8 @@
           {
             "arguments": "requested_user uuid, requested_clinic uuid",
             "returns": "_uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9629,8 +9783,8 @@
           {
             "arguments": "requested_user uuid, requested_clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9652,8 +9806,8 @@
           {
             "arguments": "requested_user uuid, requested_clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9674,8 +9828,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9698,8 +9852,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9720,8 +9874,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9742,8 +9896,8 @@
           {
             "arguments": "requested_reset uuid, requested_session bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9764,8 +9918,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9786,8 +9940,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9808,8 +9962,8 @@
           {
             "arguments": "requested_reset uuid",
             "returns": "text",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9830,8 +9984,8 @@
           {
             "arguments": "requested_clinic uuid, requested_user uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9855,8 +10009,8 @@
           {
             "arguments": "requested_user uuid",
             "returns": "void",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9883,8 +10037,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9905,8 +10059,8 @@
           {
             "arguments": "requested_user uuid, requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9927,8 +10081,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9950,8 +10104,8 @@
           {
             "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
             "returns": "uuid",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9972,8 +10126,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -9995,8 +10149,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10017,8 +10171,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10039,8 +10193,8 @@
           {
             "arguments": "requested_hash bytea, requested_clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10063,8 +10217,8 @@
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10087,8 +10241,8 @@
           {
             "arguments": "requested_hash bytea, requested_device integer",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10109,8 +10263,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10132,8 +10286,8 @@
           {
             "arguments": "registration_id uuid, requested_organization_id uuid, requested_admin_id uuid, request_key uuid, capture jsonb, encoded_password text, fingerprint bytea, kek text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10155,8 +10309,8 @@
           {
             "arguments": "requested_clinic uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10177,8 +10331,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10203,8 +10357,8 @@
           {
             "arguments": "requested_operation text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10239,8 +10393,8 @@
           {
             "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
             "returns": "int8",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10265,8 +10419,8 @@
           {
             "arguments": "record_id uuid, event_name text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10293,8 +10447,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10319,8 +10473,8 @@
           {
             "arguments": "requested_clinic uuid, requested_enrollment uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10351,8 +10505,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10377,8 +10531,8 @@
           {
             "arguments": "",
             "returns": "timestamptz",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10410,8 +10564,8 @@
           {
             "arguments": "requested_purpose text",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10443,8 +10597,8 @@
           {
             "arguments": "",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10469,8 +10623,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10495,8 +10649,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "text",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10523,8 +10677,8 @@
           {
             "arguments": "requested_clinic uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10555,8 +10709,8 @@
           {
             "arguments": "requested_session uuid, requested_operation text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10584,8 +10738,8 @@
           {
             "arguments": "requested_session uuid",
             "returns": "intake_patientsession",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10619,8 +10773,8 @@
           {
             "arguments": "",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10658,8 +10812,8 @@
           {
             "arguments": "requested_clinic uuid, request_key uuid, deadline timestamp with time zone",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10684,8 +10838,8 @@
           {
             "arguments": "requested_clinic uuid, represented uuid, recipient uuid, kind text, evidence uuid, requested_purposes text[], requested_operations text[], deadline timestamp with time zone, request_key uuid",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10710,8 +10864,8 @@
           {
             "arguments": "requested_clinic uuid, requested_grant uuid",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10736,8 +10890,8 @@
           {
             "arguments": "requested_clinic uuid, requested_grant uuid, expected_revision integer, next_state text",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10762,8 +10916,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10782,8 +10936,8 @@
           {
             "arguments": "",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10802,8 +10956,8 @@
           {
             "arguments": "",
             "returns": "timestamptz",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10825,8 +10979,8 @@
           {
             "arguments": "batch integer",
             "returns": "record",
-            "set_returning": true,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": true
           }
         ],
         "migrations": [
@@ -10845,8 +10999,8 @@
           {
             "arguments": "requested_clinic uuid, requested_appointment uuid, expected_revision integer, command uuid",
             "returns": "int4",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10866,8 +11020,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10886,8 +11040,8 @@
           {
             "arguments": "deadline timestamp with time zone",
             "returns": "bool",
-            "set_returning": false,
-            "security_definer": false
+            "security_definer": false,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10910,8 +11064,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10934,8 +11088,8 @@
           {
             "arguments": "",
             "returns": "trigger",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10954,8 +11108,8 @@
           {
             "arguments": "booking uuid, org uuid, practitioner uuid, patient uuid, resources uuid[], starts timestamp with time zone, ends timestamp with time zone",
             "returns": "void",
-            "set_returning": false,
-            "security_definer": true
+            "security_definer": true,
+            "set_returning": false
           }
         ],
         "migrations": [
@@ -10969,6 +11123,46 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Machine (W) release of due holds, executable only by the lifecycle trigger's owner (no clinic_app EXECUTE). It clears and restores the transaction-local human settings so the trigger records the machine actor, and can only expire holds whose deadline already passed."
+    },
+    "clinic_app.ehr_addendum_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_addendum_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.ehr_autosave_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_autosave_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
     }
   },
   "sql_method": [
