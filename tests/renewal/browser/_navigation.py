@@ -27,7 +27,9 @@ once the new document has loaded:
 * ``goto_refused``: a navigation the engine must refuse (``set_offline``,
   an aborted route); see below;
 * ``wait_for_signed_in``: every sign-in ends on the first signed-in page,
-  where the context's worker first registers, and settles there.
+  where the context's worker first registers, and settles there;
+* ``wait_for_document``: a document the suite did not navigate to itself,
+  such as the one a popup was opened to.
 
 A refused navigation has a second hazard beside the worker hold. Firefox
 loads an error document for it that commits under the refused URL itself
@@ -272,6 +274,18 @@ def wait_for_signed_in(page: Page, url: UrlMatch = "**/auth/protected/") -> None
     later navigation of the context can meet an installing or activating
     worker, because the worker script is content-versioned and constant for
     the run (apps/core/views.py ``shell_static_version``).
+    """
+    page.wait_for_url(url)
+    settle_service_worker(page)
+
+
+def wait_for_document(page: Page, url: UrlMatch) -> None:
+    """Settle ``url`` once it has committed and loaded in ``page``.
+
+    For a document the suite did not navigate to itself: a popup is reported
+    on its initial ``about:blank``, before the document it was opened to
+    commits, and evaluating there races that commit (Chromium: "Execution
+    context was destroyed").
     """
     page.wait_for_url(url)
     settle_service_worker(page)

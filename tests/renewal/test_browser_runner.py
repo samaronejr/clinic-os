@@ -14,7 +14,8 @@ import sys
 import textwrap
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from ops.testing import renewal_runner as runner
@@ -34,6 +35,8 @@ from renewal.browser import a11y_support, engines
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+
+    from playwright.sync_api import Browser, Playwright
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
@@ -405,6 +408,9 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
         "go_back_settled": "the helper: go_back between two settles",
         "go_forward_settled": "the helper: go_forward between two settles",
         "wait_for_signed_in": "the helper: sign-in landing, then a settle",
+        "wait_for_document": (
+            "the helper: a document the suite did not navigate to, then a settle"
+        ),
     },
     BROWSER_SUITES / "engines.py": {
         "browser_zoom_200": (
@@ -1204,6 +1210,51 @@ def test_mobile_profiles_are_the_touch_phones_of_the_device_matrix() -> None:
             assert descriptor["user_agent"] == profile.user_agent
             assert descriptor["is_mobile"] is True
             assert descriptor["has_touch"] is True
+
+
+def test_every_firefox_the_suites_start_turns_coop_processing_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # engines.py, Cross-origin opener policy: a COOP browsing-context
+    # replacement loses a Juggler event, so launch and both throwaway
+    # Firefox profiles keep COOP processing off; other engines are unchanged.
+    launched: dict[str, list[dict[str, object]]] = {}
+
+    def browser_type(name: str) -> SimpleNamespace:
+        def start(*_profile: object, **options: object) -> SimpleNamespace:
+            launched.setdefault(name, []).append(options)
+            return SimpleNamespace(
+                on=lambda *_: None,
+                set_storage_state=lambda _state: None,
+                pages=[None],
+                close=lambda: None,
+            )
+
+        return SimpleNamespace(name=name, launch=start, launch_persistent_context=start)
+
+    driver = SimpleNamespace(**{name: browser_type(name) for name in engines.ENGINES})
+    for engine in engines.ENGINES:
+        engines.launch(cast("Playwright", driver), engine, f"/{engine}")
+    monkeypatch.setenv("CLINIC_RENEWAL_ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", "/firefox")
+    firefox = SimpleNamespace(browser_type=driver.firefox)
+    engines.new_context(cast("Browser", firefox), device_scale_factor=2)
+    signed_in = SimpleNamespace(
+        context=SimpleNamespace(browser=firefox, storage_state=dict)
+    )
+    with engines.browser_zoom_200(cast("Page", signed_in), tmp_path):
+        pass
+
+    off = {"browser.tabs.remote.useCrossOriginOpenerPolicy": False}
+    assert off == engines.FIREFOX_USER_PREFS
+    scaled = {**off, "layout.css.devPixelsPerPx": "2.0"}
+    assert [o.get("firefox_user_prefs") for o in launched["firefox"]] == [
+        off,
+        scaled,
+        scaled,
+    ]
+    assert [o.get("firefox_user_prefs") for o in launched["chromium"]] == [None]
+    assert [o.get("firefox_user_prefs") for o in launched["webkit"]] == [None]
 
 
 def test_artifact_root_must_be_excluded_or_external(
