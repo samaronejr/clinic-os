@@ -1257,6 +1257,46 @@ def test_every_firefox_the_suites_start_turns_coop_processing_off(
     assert [o.get("firefox_user_prefs") for o in launched["webkit"]] == [None]
 
 
+def test_firefox_zoom_profiles_request_the_scale_their_pref_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Playwright 1.61.0 sends every Firefox viewport with ``deviceScaleFactor
+    # || 1`` (FFBrowserContext.doUpdateDefaultViewport), an override that
+    # hides ``layout.css.devPixelsPerPx``. Only a COOP browsing-context swap
+    # dropped it, and COOP processing is off, so a profile that names its
+    # scale only in the pref measures devicePixelRatio 1 (hosted run
+    # 38505173758: ten Firefox suites at 200% zoom).
+    profiles: list[dict[str, object]] = []
+
+    def start(*_profile: object, **options: object) -> SimpleNamespace:
+        profiles.append(options)
+        return SimpleNamespace(
+            on=lambda *_: None,
+            set_storage_state=lambda _state: None,
+            pages=[None],
+            close=lambda: None,
+        )
+
+    firefox = SimpleNamespace(
+        browser_type=SimpleNamespace(name="firefox", launch_persistent_context=start)
+    )
+    monkeypatch.setenv("CLINIC_RENEWAL_ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("CLINIC_RENEWAL_BROWSER_EXECUTABLE", "/firefox")
+    engines.new_context(cast("Browser", firefox), device_scale_factor=3)
+    signed_in = SimpleNamespace(
+        context=SimpleNamespace(browser=firefox, storage_state=dict)
+    )
+    with engines.browser_zoom_200(cast("Page", signed_in), tmp_path):
+        pass
+
+    assert [o.get("device_scale_factor") for o in profiles] == [3, 2]
+    for options in profiles:
+        prefs = cast("dict[str, object]", options["firefox_user_prefs"])
+        assert prefs["browser.tabs.remote.useCrossOriginOpenerPolicy"] is False
+        scale = float(str(prefs["layout.css.devPixelsPerPx"]))
+        assert scale == options["device_scale_factor"]
+
+
 def test_artifact_root_must_be_excluded_or_external(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

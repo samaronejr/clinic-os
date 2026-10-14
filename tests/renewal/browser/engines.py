@@ -96,8 +96,12 @@ Playwright 1.61.0, so this module owns the one place each differs:
   ``new_context`` therefore applies a requested scale on Firefox through its
   own ``layout.css.devPixelsPerPx`` pref in a throwaway profile, which holds
   for every navigation. Other engines use ``browser.new_context`` unchanged.
-  With COOP processing off (above) Firefox no longer swaps the group; the
-  profile pref stays because it holds either way.
+  The pref alone is not enough: Playwright 1.61.0 sends every Firefox
+  viewport with ``deviceScaleFactor || 1`` (coreBundle
+  ``FFBrowserContext.doUpdateDefaultViewport``), an override that hides the
+  pref until a COOP swap drops it. With COOP processing off (above) nothing
+  drops it, so these profiles also request the scale themselves; the pref
+  still holds if a swap ever comes back.
 * Screenshot size. Firefox and WebKit refuse a screenshot taller or wider
   than 32767 device pixels ("Cannot take screenshot larger than 32767").
   ``full_page_screenshot`` captures such a page as consecutive full-width
@@ -588,6 +592,7 @@ def new_context(browser: Browser, **options: Any) -> BrowserContext:  # noqa: AN
         profile,
         executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
         headless=True,
+        device_scale_factor=scale,
         firefox_user_prefs={
             **FIREFOX_USER_PREFS,
             "layout.css.devPixelsPerPx": str(float(scale)),
@@ -843,6 +848,7 @@ def browser_zoom_200(page: Page, profile_root: Path) -> Iterator[tuple[Page, str
                 headless=True,
                 locale="pt-BR",
                 viewport={"width": 640, "height": 450},
+                device_scale_factor=2,
                 firefox_user_prefs={
                     **FIREFOX_USER_PREFS,
                     "layout.css.devPixelsPerPx": "2.0",
