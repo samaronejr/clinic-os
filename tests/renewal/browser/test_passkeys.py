@@ -131,12 +131,14 @@ def _software_credential(
 
 
 def test_platform_registration_step_up_and_sign_in(
-    browser: Browser,
+    renewal_page: Page,
     renewal_base_url: str,
     renewal_engine: str,
     renewal_artifact_root: Path,
     onboarding_staff: dict[str, str],
 ) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
     manager = _organization_admin(onboarding_staff)
     root = renewal_artifact_root / "passkeys"
     with _recording(browser, root, javascript=renewal_engine == "chromium") as page:
@@ -189,12 +191,14 @@ def test_platform_registration_step_up_and_sign_in(
 
 @pytest.mark.parametrize("case", ["counter_regression", "foreign_rp"])
 def test_signed_assertion_refusals(
-    browser: Browser,
+    renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     onboarding_staff: dict[str, str],
     case: str,
 ) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
     root = renewal_artifact_root / f"passkey-{case}"
     engine = browser.browser_type.name
     manager = _organization_admin(onboarding_staff)
@@ -289,11 +293,13 @@ def test_signed_assertion_refusals(
 
 
 def test_cancel_retry_and_offline_identity_feedback(
-    browser: Browser,
+    renewal_page: Page,
     renewal_base_url: str,
     renewal_engine: str,
     renewal_artifact_root: Path,
 ) -> None:
+    browser = renewal_page.context.browser
+    assert browser is not None
     root = renewal_artifact_root / "passkey-errors"
     with _recording(browser, root) as page:
         context = page.context
