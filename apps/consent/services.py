@@ -310,7 +310,11 @@ def record_refusal(*, offer: str, purpose: str) -> RefusalRecord:
 def patient_receipts() -> list[ConsentAcceptance]:
     """Read all retained receipts, including superseded and revoked decisions."""
     authority = patient_authority()
-    return list(_receipts().filter(enrollment_id=authority.enrollment_id))
+    return list(
+        _receipts().filter(
+            clinic_id=authority.clinic_id, patient_id__in=_patient_lineage(authority)
+        )
+    )
 
 
 def patient_refusals() -> list[RefusalRecord]:
@@ -318,7 +322,9 @@ def patient_refusals() -> list[RefusalRecord]:
     authority = patient_authority()
     return list(
         RefusalRecord.objects.select_related("text")
-        .filter(enrollment_id=authority.enrollment_id)
+        .filter(
+            clinic_id=authority.clinic_id, patient_id__in=_patient_lineage(authority)
+        )
         .order_by("-refused_at", "pk")
     )
 
@@ -328,9 +334,18 @@ def patient_disclosures() -> list[AIUseDisclosure]:
     authority = patient_authority()
     return list(
         AIUseDisclosure.objects.filter(
-            clinic_id=authority.clinic_id, patient_id=authority.patient_id
+            clinic_id=authority.clinic_id, patient_id__in=_patient_lineage(authority)
         ).order_by("-recorded_at", "pk")
     )
+
+
+def _patient_lineage(authority: ConsentAuthority) -> tuple[UUID, ...]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT patient_id FROM clinic_app.patient_alias_set(%s)",
+            [authority.patient_id],
+        )
+        return tuple(row[0] for row in cursor.fetchall())
 
 
 def _receipts() -> QuerySet[ConsentAcceptance]:

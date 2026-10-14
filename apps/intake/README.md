@@ -83,3 +83,51 @@ physician encounter view carries document provenance (template version,
 document version, revision, amendment chain, finalization timestamp, content
 digest and linked intake submission references) and no separate physician
 provenance panel exists for demographics — that is the contract, not a gap.
+
+## Duplicate review and retained lineage
+
+`DuplicateCandidate` retains an ordered same-clinic enrollment pair with
+`exact_identifier`, `dob+name_prefix` or `contact` signals. Creation and updates
+compare purpose-bound tenant HMAC snapshots, including every active DEK version;
+name/DOB prefixes use six normalized characters. Migration `0014` seeds existing
+encrypted registrations. Signals are hints, never a block or an automatic merge.
+
+`adjudicate_duplicate(*, clinic_id, candidate_id, decision,
+survivor_patient_id, field_choices, reason)` requires a manager or physician
+assignment, `demographics.read` and a genuinely persisted, fresh verified session.
+Legacy clinic-admin assignments retain manager eligibility; an owner assignment
+alone does not gain demographics access. `duplicate_review_session` binds the
+framework-owned session key, and the services and triggers revalidate its hash.
+Each field choice names one of the pair's patients and the exact version reviewed.
+Only a new survivor demographics version receives the choices. Its existing
+same-transaction mirror guard remains the sole permitted registry UPDATE path.
+
+`MergeDecision` is immutable, with encrypted reason and choices. Active
+`PatientAlias` edges resolve through `clinic_app.patient_alias_set(patient uuid)`;
+the workspace, search, finalized timeline, released portal history and exports
+retain original bindings and show their unified date. Search matches retained
+identities but selects the current surviving enrollment. Clinical care, same
+clinic, explicit release and live patient-operation gates still apply. Consent
+history projects aliases for reads only; a historical receipt never supplies a
+new consent or a new permission.
+
+New appointments, encounters and invoices reject an aliased target with
+`patient_aliased` in services and a native insert trigger. Replaying an existing
+operation still returns its historical identity. Historical encounters,
+finalized SOAP digests, invoice references, signed/rendered documents, consent
+receipts and audit rows are never repointed. Invalid, unknown and foreign merge
+selectors share the `merge_cross_org` refusal without a record-existence hint.
+
+The human must hold review authority in every affected enrolled clinic before a
+merge begins. Per-app handlers cancel/recreate future unencountered bookings and
+open waitlist entries with immutable links. Contacts retain originals; fresh
+copies are unverified. Old preferences are opted out without inferring a new
+opt-in. Old grants and sessions are revoked; fresh codes are returned once in
+memory, never persisted or audited. Existing survivor choices are retained.
+
+`unmerge(*, clinic_id, merge_decision_id, reason)` deactivates an edge under the
+same role and session proof. Later survivor rows stay on the survivor.
+`merge_review` lists those appointments, encounters, invoices and retained
+forward links through their unchanged domain RLS for individual review. Native
+forms live at the clinic's `patients/duplicates/` and `patients/timeline/` routes;
+all selectors and reasons remain in POST bodies.

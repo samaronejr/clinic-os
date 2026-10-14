@@ -20,6 +20,7 @@ from django.views.decorators.http import require_http_methods
 from apps.core.patient_context import bind_patient_context
 from apps.identity.otp import privileged_totp_required
 from apps.intake.access import authorized_manager_clinic
+from apps.intake.alias_access import patient_alias_overview, review_actor
 from apps.intake.demographics import (
     DemographicsInputError,
     DemographicsNameRequiredError,
@@ -225,7 +226,13 @@ def _search_context(
 ) -> dict[str, object]:
     query = form.data.get("q", "") if results is not None else ""
     identifier_kind = form.data.get("identifier_kind", "")
+    try:
+        review_actor(clinic_id)
+        can_review_duplicates = True
+    except PatientAccessDeniedError:
+        can_review_duplicates = False
     return {
+        "can_review_duplicates": can_review_duplicates,
         "access_url": patient_access_url(clinic_id),
         "birth_date_value": birth_date.isoformat() if birth_date else "",
         "book_url": reverse("scheduling:appointment-create", args=(clinic_id,)),
@@ -1365,7 +1372,7 @@ def patient_home_view(request: HttpRequest) -> HttpResponseBase:
     return render(
         request,
         "intake/patient_home.html",
-        {"overview": overview},
+        {"overview": overview, "unified_at": patient_alias_overview()},
     )
 
 

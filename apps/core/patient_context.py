@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Final, Protocol
 from uuid import UUID
 
@@ -30,6 +30,7 @@ from apps.ehr.history import read_history
 from apps.ehr.models import Encounter
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError, require_permission
+from apps.intake.alias_access import patient_alias_set
 from apps.intake.demographics import demographics_profile
 from apps.intake.models import PatientClinicEnrollment
 from apps.intake.services import PatientAccessDeniedError
@@ -54,6 +55,7 @@ PATIENT_BOUND_VIEWS: Final = frozenset(
         "intake:patient-contacts",
         "intake:patient-access",
         "intake:patient-demographics",
+        "intake:patient-timeline",
         "intake:questionnaire-staff",
         "prescription:draft",
         "prescription:draft-encounter",
@@ -256,6 +258,7 @@ class PatientBanner:
     restricted: bool
     actions: tuple[Destination, ...]
     bound: bool
+    unified_at: datetime | None = None
 
 
 def age_label(birth_date: date | None, today: date) -> str:
@@ -375,4 +378,7 @@ def resolve_patient_banner(  # noqa: PLR0913 - the banner needs the whole shell 
             if allows(action, roles=roles, granted=granted)
         ),
         bound=bound is not None,
+        unified_at=patient_alias_set(
+            clinic_id=clinic_id, patient_id=profile.patient_id
+        ).unified_at,
     )

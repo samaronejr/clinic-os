@@ -1,0 +1,125 @@
+"""Every stored role is checked against real session and native SQL authority."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from hashlib import sha256
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
+import pytest
+from apps.identity.models import SessionRecord, UserClinicRole
+from apps.identity.permissions import BUNDLES_V1
+from apps.intake import services
+from apps.intake.alias_access import MERGE_ROLES
+from apps.tenancy.db import tenant_context
+from django.db import connection
+
+from auth.stepup_test_support import create_role_actor
+from identity.lifecycle_test_support import session_key, verified_client
+from identity.permission_support import owner_context
+from patient_service_support import runtime_role
+from patients.duplicate_support import _pair
+
+if TYPE_CHECKING:
+    from rbac_fixtures import RbacGraph
+
+SQL_PROTOCOL_ORACLES = {
+    name: ["test_merge_authority_checks_every_stored_role_and_exact_live_session"]
+    for name in (
+        "clinic_app.intake_duplicate_detection_guard",
+        "clinic_app.intake_duplicate_transition_guard",
+        "clinic_app.intake_merge_authorized",
+        "clinic_app.intake_merge_decision_guard",
+        "clinic_app.intake_merge_mutation_allowed",
+        "clinic_app.intake_merge_receipt_guard",
+        "clinic_app.intake_patient_alias_guard",
+        "clinic_app.patient_alias_set",
+    )
+} | {
+    "clinic_app.intake_merge_transfer_guard": [
+        "test_merge_recreates_forward_rows_with_links_and_fresh_access",
+        "test_forward_waitlist_keeps_integer_source_and_replacement_links",
+    ],
+    "clinic_app.intake_survivor_write_guard": [
+        "test_new_charge_for_an_aliased_identity_is_rejected",
+    ],
+}
+
+
+@pytest.mark.parametrize("role", UserClinicRole.Role.values)
+def test_merge_authority_checks_every_stored_role_and_exact_live_session(
+    rbac_graph: RbacGraph,
+    role: str,
+) -> None:
+    first, second, candidate = _pair(rbac_graph, services)
+    actor = create_role_actor(rbac_graph, UserClinicRole.Role(role))
+    key = session_key(verified_client(replace(rbac_graph, clinic_admin=actor.pk)))
+    digest = sha256(key.encode()).digest()
+    with owner_context(rbac_graph.organization_a):
+        proof = SessionRecord.objects.get(user=actor, session_key_hash=digest)
+    permitted = role in MERGE_ROLES and "demographics.read" in BUNDLES_V1[role]
+    with runtime_role(), tenant_context(actor.pk, rbac_graph.organization_a):
+        if "demographics.read" in BUNDLES_V1[role]:
+            assert any(
+                row.pk == candidate.pk
+                for row in services.duplicate_candidates(clinic_id=rbac_graph.clinic_a)
+            )
+        else:
+            with pytest.raises(services.PatientAccessDeniedError):
+                services.duplicate_candidates(clinic_id=rbac_graph.clinic_a)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_merge_session',%s,true)", [digest.hex()]
+            )
+            cursor.execute(
+                "SELECT clinic_app.intake_merge_authorized(%s,%s), "
+                "clinic_app.intake_merge_authorized(%s,%s), "
+                "clinic_app.intake_merge_mutation_allowed(%s,%s)",
+                [
+                    rbac_graph.clinic_a,
+                    proof.pk,
+                    rbac_graph.clinic_a,
+                    uuid4(),
+                    rbac_graph.clinic_a,
+                    first.patient.pk,
+                ],
+            )
+            assert cursor.fetchone() == (permitted, False, False)
+        if not permitted:
+            with pytest.raises(services.PatientAccessDeniedError):
+                services.adjudicate_duplicate(
+                    clinic_id=rbac_graph.clinic_a,
+                    candidate_id=candidate.pk,
+                    decision="merge",
+                    survivor_patient_id=first.patient.pk,
+                    field_choices={},
+                    reason="Synthetic role refusal",
+                )
+            return
+        with services.duplicate_review_session(
+            clinic_id=rbac_graph.clinic_a, session_key=key
+        ):
+            decision = services.adjudicate_duplicate(
+                clinic_id=rbac_graph.clinic_a,
+                candidate_id=candidate.pk,
+                decision="merge",
+                survivor_patient_id=first.patient.pk,
+                field_choices={
+                    "legal_name": services.DemographicFieldChoice(second.patient.pk, 0)
+                },
+                reason="Synthetic exact role and session adjudication",
+            )
+            projection = services.patient_alias_set(
+                clinic_id=rbac_graph.clinic_a, patient_id=first.patient.pk
+            )
+            assert set(projection.patient_ids) == {first.patient.pk, second.patient.pk}
+            assert decision.adjudicator_id == actor.pk
+            services.unmerge(
+                clinic_id=rbac_graph.clinic_a,
+                merge_decision_id=decision.pk,
+                reason="Synthetic role reversal",
+            )
+            assert services.patient_alias_set(
+                clinic_id=rbac_graph.clinic_a, patient_id=second.patient.pk
+            ).patient_ids == (second.patient.pk,)

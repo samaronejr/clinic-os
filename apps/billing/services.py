@@ -17,6 +17,7 @@ from apps.identity.current_context import (
     require_current_actor_clinic_roles,
 )
 from apps.identity.models import Clinic
+from apps.intake.alias_access import patient_alias_set, require_survivor
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -129,6 +130,7 @@ def create_invoice(  # noqa: PLR0913 - exact scope, terms, key and optional sour
         replay = _charge_for_key(clinic.organization_id, idempotency_key, fingerprint)
         if replay is not None:
             return replay
+        require_survivor(clinic_id=clinic_id, patient_id=patient_id)
         try:
             with transaction.atomic():
                 return Invoice.objects.create(
@@ -165,6 +167,21 @@ def charge_for_operation(*, clinic_id: UUID, idempotency_key: UUID) -> Invoice |
     return Invoice.objects.filter(
         organization_id=clinic.organization_id, idempotency_key=idempotency_key
     ).first()
+
+
+def patient_invoice_history(
+    *, clinic_id: UUID, patient_id: UUID
+) -> tuple[Invoice, ...]:
+    """Read unified charges under unchanged exact-clinic financial authority."""
+    _actor, clinic = _clinic(clinic_id)
+    aliases = patient_alias_set(clinic_id=clinic_id, patient_id=patient_id)
+    return tuple(
+        Invoice.objects.filter(
+            organization_id=clinic.organization_id,
+            clinic_id=clinic_id,
+            patient_id__in=aliases.patient_ids,
+        ).order_by("created_at", "id")
+    )
 
 
 def revise_invoice(

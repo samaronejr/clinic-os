@@ -289,6 +289,12 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     assert user_grants == []
     assert tenant_column_updates == {
         ("scheduling_appointment", "last_command_id"),
+        ("intake_duplicatecandidate", "state"),
+        ("intake_patientalias", "active"),
+        ("intake_patientalias", "deactivated_at"),
+        ("intake_patientalias", "deactivated_by_id"),
+        ("intake_patientalias", "deactivation_session_id"),
+        ("intake_patientalias", "deactivation_reason"),
         ("comms_integrationoperation", "attempt_count"),
         ("comms_integrationoperation", "last_callback_event_id"),
         ("comms_integrationoperation", "last_error"),

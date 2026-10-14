@@ -4717,6 +4717,169 @@
       "enforced_by": [
         "apps.scheduling.patient_authority.require_patient_booking_scope"
       ]
+    },
+    {
+      "symbol": "apps.consent.services._patient_lineage",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.consent.services._patient_lineage#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.alias_access.patient_alias_overview",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.alias_access.patient_alias_overview#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.alias_access.patient_alias_set",
+      "signals": [
+        "actor",
+        "denial",
+        "membership",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.alias_access.patient_alias_set#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.alias_access.require_survivor",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.alias_access.require_survivor#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.alias_access.review_actor",
+      "signals": [
+        "denial",
+        "permission",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.alias_access.review_actor#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.alias_access.verified_review_session",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.alias_access.verified_review_session#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.duplicate_detection.duplicate_candidates",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.duplicate_detection.duplicate_candidates#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.duplicate_views._action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.duplicate_views._action#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.duplicate_views.patient_duplicates",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.duplicate_views.patient_duplicates#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.duplicates.adjudicate_duplicate",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.duplicates.adjudicate_duplicate#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.merge_review.merge_review",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.merge_review.merge_review#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.merge_transfer.merge_transfer_scope",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.merge_transfer.merge_transfer_scope#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.intake.patient_merge.transfer_patient_forward",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.patient_merge.transfer_patient_forward#cut1"
+      ],
+      "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
+    },
+    {
+      "symbol": "apps.retention.services.export_patient_records",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services.export_patient_records#cut1"
+      ],
+      "reason": "Task-18 released-lineage and export oracles execute the live patient-session boundary through the cut1 census."
     }
   ],
   "probes": [
@@ -4733,6 +4896,7 @@
     "apps.billing.views.invoice_status",
     "apps.comms.views.reminders_view",
     "apps.consent.services._patient_audit#observed",
+    "apps.consent.services._patient_lineage#cut1",
     "apps.consent.services._resolve_offer#observed",
     "apps.consent.services.acknowledge_participant",
     "apps.consent.services.ai_disclosure_status#cut1",
@@ -4875,18 +5039,30 @@
     "apps.intake.access.authorized_enrollment",
     "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
+    "apps.intake.alias_access.patient_alias_overview#cut1",
+    "apps.intake.alias_access.patient_alias_set#cut1",
+    "apps.intake.alias_access.require_survivor#cut1",
+    "apps.intake.alias_access.review_actor#cut1",
+    "apps.intake.alias_access.verified_review_session#cut1",
     "apps.intake.contacts._actor_label",
     "apps.intake.delegate_views.delegate_session_status#cut1",
     "apps.intake.delegate_views.renew_representation#cut1",
     "apps.intake.demographics._actor_label",
     "apps.intake.demographics.search_patient_identifiers",
     "apps.intake.demographics.set_intake_policy",
+    "apps.intake.duplicate_detection.duplicate_candidates#cut1",
+    "apps.intake.duplicate_views._action#cut1",
+    "apps.intake.duplicate_views.patient_duplicates#cut1",
+    "apps.intake.duplicates.adjudicate_duplicate#cut1",
+    "apps.intake.merge_review.merge_review#cut1",
+    "apps.intake.merge_transfer.merge_transfer_scope#cut1",
     "apps.intake.patient_access._actor_label",
     "apps.intake.patient_access.end_patient_session#observed",
     "apps.intake.patient_access.patient_session_context#observed",
     "apps.intake.patient_access.patient_session_overview#observed",
     "apps.intake.patient_access.redeem_invitation#observed",
     "apps.intake.patient_access.revoke_patient_access",
+    "apps.intake.patient_merge.transfer_patient_forward#cut1",
     "apps.intake.patient_search.search_patients_exact",
     "apps.intake.questionnaire_views._denied",
     "apps.intake.questionnaire_views.patient_questionnaires#observed",
@@ -4934,6 +5110,7 @@
     "apps.retention.services._record_scope",
     "apps.retention.services._require_manager",
     "apps.retention.services._session_scope#observed",
+    "apps.retention.services.export_patient_records#cut1",
     "apps.retention.services.export_staff_records",
     "apps.retention.services.patient_released_records#observed",
     "apps.retention.services.release_version",
@@ -5279,6 +5456,16 @@
       ],
       "path": "apps/intake/access.py",
       "roles": "MANAGER_ROLES"
+    },
+    {
+      "function": "review_actor",
+      "legacy_allowed": [
+        "physician",
+        "clinic_admin",
+        "owner"
+      ],
+      "path": "apps/intake/alias_access.py",
+      "roles": "MERGE_ROLES"
     },
     {
       "function": "publish_template",
@@ -10969,6 +11156,295 @@
       "kind": "worker_protocol",
       "probes": [],
       "reason": "Machine (W) release of due holds, executable only by the lifecycle trigger's owner (no clinic_app EXECUTE). It clears and restores the transaction-local human settings so the trigger records the machine actor, and can only expire holds whose deadline already passed."
+    },
+    "clinic_app.intake_duplicate_detection_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_duplicate_detection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_duplicate_history_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_duplicate_detection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Always rejects UPDATE/DELETE of retained duplicate/merge history with 23514; no actor or role branch grants authority."
+    },
+    "clinic_app.intake_duplicate_transition_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_merge_authorized": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.intake_duplicate_transition_guard",
+          "clinic_app.intake_merge_decision_guard",
+          "clinic_app.intake_merge_mutation_allowed",
+          "clinic_app.intake_patient_alias_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_session uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_merge_decision_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_merge_mutation_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_scope_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scheduling_waitlistentry:waitlist_merge_insert",
+          "clinic_app.scheduling_waitlistentry:waitlist_merge_read",
+          "clinic_app.scheduling_waitlistentry:waitlist_merge_update",
+          "clinic_app.scheduling_waitlistoffer:waitlist_merge_read",
+          "clinic_app.scheduling_waitlistoffer:waitlist_merge_update"
+        ],
+        "resolvers": [
+          "clinic_app.intake_merge_transfer_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_patient uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_merge_receipt_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_merge_transfer_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_merge_transfer_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_recreates_forward_rows_with_links_and_fresh_access",
+        "test_forward_waitlist_keeps_integer_source_and_replacement_links"
+      ],
+      "reason": "Native retained links bind the current verified adjudication and actual same-org original/replacement metadata and state."
+    },
+    "clinic_app.intake_patient_alias_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
+    },
+    "clinic_app.intake_survivor_write_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_survivor_write_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_new_charge_for_an_aliased_identity_is_rejected"
+      ],
+      "reason": "Real native INSERT refuses an aliased identity with the exact patient_aliased constraint; services preserve historical replays."
+    },
+    "clinic_app.patient_alias_overview": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_portal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Returns only a unified-date marker for the live current portal session holding enrollment_view; it grants no staff or write authority."
+    },
+    "clinic_app.patient_alias_set": {
+      "discovery": {
+        "migrations": [
+          "apps/intake/migrations/_alias_scope_sql.py"
+        ],
+        "policies": [
+          "clinic_app.consent_aiusedisclosure:consent_alias_read",
+          "clinic_app.consent_consentacceptance:consent_alias_read",
+          "clinic_app.consent_consentrevocation:consent_alias_read",
+          "clinic_app.consent_refusalrecord:consent_alias_read"
+        ],
+        "resolvers": [
+          "clinic_app.billing_patient_charge",
+          "clinic_app.billing_patient_charges",
+          "clinic_app.ehr_care",
+          "clinic_app.ehr_history_care",
+          "clinic_app.patient_alias_overview",
+          "clinic_app.prescription_patient_document_bytes",
+          "clinic_app.prescription_patient_documents",
+          "clinic_app.retention_care",
+          "clinic_app.retention_patient_releases"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_patient uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_merge_authority_checks_every_stored_role_and_exact_live_session"
+      ],
+      "reason": "Exact persisted human-session authority, declared same-org pair and every stored-role outcome are executed on native PostgreSQL, never supplied as a caller Boolean."
     }
   },
   "sql_method": [

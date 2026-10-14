@@ -27,7 +27,7 @@
         {% for item in results.items %}
         {% with patient_name=item.display_name|default:item.full_name %}
         <tr role="row">
-          <th scope="row" role="rowheader">{{ patient_name }}</th>
+          <th scope="row" role="rowheader">{{ patient_name }}{% if item.unified_at %}<p class="hint">{% blocktrans with date=item.unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</p>{% endif %}</th>
           <td role="cell" data-label="{% trans "Birth date" %}">{{ item.birth_date|date:"SHORT_DATE_FORMAT" }}</td>
           <td role="cell" class="intake-book">
             <form method="post" action="{{ book_url }}">
@@ -59,6 +59,10 @@
               <input type="hidden" name="action" value="status">
               <input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
               <button class="button button--quiet" type="submit">Questionários<span class="visually-hidden"> de {{ patient_name }}</span></button>
+            </form>
+            <form method="post" action="{% url 'intake:patient-timeline' clinic_id=clinic_id %}">
+              {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--quiet" type="submit">{% trans "Patient timeline" %}<span class="visually-hidden"> {{ patient_name }}</span></button>
             </form>
           </td>
         </tr>

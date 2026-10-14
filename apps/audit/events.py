@@ -64,6 +64,21 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "identity.delegate.session_switched": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "intake.patient_session", "session_switched"
         ),
+        "intake.duplicate.detected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.duplicate_candidate", "detected"
+        ),
+        "intake.duplicate.merged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.merge_decision", "merged"
+        ),
+        "intake.duplicate.dismissed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.merge_decision", "dismissed"
+        ),
+        "intake.duplicate.unmerged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_alias", "unmerged"
+        ),
+        "intake.duplicate.forward_transferred": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.patient_merge_transfer", "transferred"
+        ),
         "workflows.task.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "workflows.task", "created"
         ),

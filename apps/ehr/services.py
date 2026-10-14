@@ -158,6 +158,9 @@ def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
         existing = Encounter.objects.filter(appointment=appointment).first()
         if existing is not None:
             return existing
+        from apps.intake.alias_access import require_survivor  # noqa: PLC0415
+
+        require_survivor(clinic_id=clinic_id, patient_id=appointment.patient_id)
         if appointment.status not in {
             Appointment.Status.ARRIVED,
             Appointment.Status.IN_PROGRESS,

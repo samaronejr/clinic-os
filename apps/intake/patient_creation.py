@@ -16,6 +16,7 @@ from apps.core.idempotency import (
     normalize_patient_name,
 )
 from apps.intake.access import authorized_manager_clinic
+from apps.intake.duplicate_detection import refresh_duplicate_candidates
 from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.intake.patient_name_index import name_indexes
 from apps.scheduling.locks import acquire_advisory_locks, clinic_lock_key
@@ -172,4 +173,5 @@ def create_patient(
             clinic_id=clinic_id,
             affected_record_id=patient.pk,
         )
+        refresh_duplicate_candidates(clinic_id=clinic_id, patient_id=patient.pk)
         return PatientRegistration(patient=patient, enrollment=enrollment)

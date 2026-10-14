@@ -1,6 +1,15 @@
 """Phase >=1 intake service entrypoints."""
 
+from apps.ehr.patient_timeline import patient_record_timeline
 from apps.intake.access import PatientAccessDeniedError
+from apps.intake.alias_access import (
+    DuplicateConflictError,
+    DuplicateInputError,
+    MergeCrossOrganizationError,
+    PatientAliasedError,
+    duplicate_review_session,
+    patient_alias_set,
+)
 from apps.intake.contacts import (
     AutomatedMessageError,
     ContactConflictError,
@@ -50,6 +59,13 @@ from apps.intake.demographics import (
     set_intake_policy,
     update_demographics,
 )
+from apps.intake.duplicate_detection import duplicate_candidates
+from apps.intake.duplicates import (
+    DemographicFieldChoice,
+    adjudicate_duplicate,
+    unmerge,
+)
+from apps.intake.merge_review import MergeReview, merge_review
 from apps.intake.patient_access import (
     AccessOverview,
     GrantView,
@@ -100,11 +116,14 @@ __all__ = (
     "ContactOverview",
     "ContactView",
     "CorrectionView",
+    "DemographicFieldChoice",
     "DemographicsInputError",
     "DemographicsNameRequiredError",
     "DemographicsProfile",
     "DemographicsRequiredError",
     "DemographicsStaleError",
+    "DuplicateConflictError",
+    "DuplicateInputError",
     "EmergencyContactView",
     "GrantView",
     "IdentifierConflictError",
@@ -112,8 +131,11 @@ __all__ = (
     "IdentifierView",
     "IssuedInvitation",
     "MembershipView",
+    "MergeCrossOrganizationError",
+    "MergeReview",
     "NotCarried",
     "PatientAccessDeniedError",
+    "PatientAliasedError",
     "PatientBirthDateError",
     "PatientCreateInputError",
     "PatientIdempotencyConflictError",
@@ -128,6 +150,7 @@ __all__ = (
     "SessionView",
     "access_overview",
     "add_identifier",
+    "adjudicate_duplicate",
     "assign_questionnaire",
     "billing_demographics",
     "carry_forward_demographics",
@@ -137,10 +160,15 @@ __all__ = (
     "contact_overview",
     "create_patient",
     "demographics_profile",
+    "duplicate_candidates",
+    "duplicate_review_session",
     "enqueue_automated_message",
     "issue_invitation",
     "mask_destination",
+    "merge_review",
     "normalize_identifier",
+    "patient_alias_set",
+    "patient_record_timeline",
     "patient_response",
     "patient_responses",
     "publish_template",
@@ -160,6 +188,7 @@ __all__ = (
     "set_intake_policy",
     "set_purpose_channel",
     "submit_intake",
+    "unmerge",
     "update_demographics",
     "verify_contact",
 )

@@ -54,6 +54,7 @@ from apps.identity.models import (
     User,
     UserClinicRole,
 )
+from apps.intake import services as intake
 from apps.intake.access import PatientAccessDeniedError
 from apps.intake.models import PatientClinicEnrollment
 from apps.intake.patient_access import (
@@ -69,6 +70,7 @@ from django.utils import timezone
 
 from consent.test_authority import run
 from identity.legacy_sql_inventory import migration_definitions
+from identity.lifecycle_test_support import session_key, verified_client
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
@@ -134,7 +136,7 @@ PY_SITES: dict[str, str | tuple[str, str]] = {
         "clinical_patient_read binds the session clinic and patient; "
         "test_patient_sessions_see_only_their_clinic pins the combined result",
     ),
-    "patient_disclosures:AIUseDisclosure.filter:patient_id": (
+    "patient_disclosures:AIUseDisclosure.filter:patient_id__in": (
         "equivalent",
         "clinical_patient_read binds the session clinic and patient; "
         "test_patient_sessions_see_only_their_clinic pins the combined result",
@@ -219,6 +221,16 @@ PY_SITES: dict[str, str | tuple[str, str]] = {
         "test_attestations_bind_the_encounter_patients_enrollment"
     ),
 }
+_ALIAS_READ = "test_alias_reads_keep_clinic_and_patient_scope"
+PY_SITES |= {
+    f"{service}:{model}.filter:{binding}": _ALIAS_READ
+    for service, model in (
+        ("patient_receipts", "_receipts"),
+        ("patient_refusals", "RefusalRecord"),
+        ("patient_disclosures", "AIUseDisclosure"),
+    )
+    for binding in ("clinic_id", "patient_id__in")
+}
 # Scope tokens outside ORM sites and comparisons, keyed module:scope:context,
 # each with its reason. A token in any other context fails the census, so a
 # Q object, a positional filter argument, raw SQL or a new assignment of a
@@ -250,6 +262,11 @@ PY_CONTEXTS: dict[str, str] = {
     "services:publish_notice:statement:Assign": _ORGANIZATION_OF_CLINIC,
     "services:publish_notice:call:values_list": _ORGANIZATION_OF_CLINIC,
     "services:_lock:call:execute": "advisory-lock key",
+    "services:_patient_lineage:call:execute": (
+        "patient_alias_set resolves only the live consent-session identity; "
+        "test_survivor_portal_preserves_released_history_and_original_receipts "
+        "checks retained receipt projection without changing future consent"
+    ),
     "views:staff_consent:statement:AnnAssign": (
         "template context for the clinic form URL"
     ),
@@ -409,9 +426,38 @@ SQL_SITES |= {
         )
     },
 }
+SQL_SITES |= {
+    **{
+        f"{table}.consent_alias_read.using:{binding}#0": _ALIAS_READ
+        for table in (
+            "consent_consentacceptance",
+            "consent_refusalrecord",
+            "consent_aiusedisclosure",
+        )
+        for binding in (
+            f"s.organization_id = {table}.organization_id",
+            f"s.clinic_id = {table}.clinic_id",
+            f"{table}.patient_id = lineage.patient_id",
+        )
+    },
+    **{
+        f"consent_consentrevocation.consent_alias_read.using:{binding}#0": (_ALIAS_READ)
+        for binding in (
+            "s.organization_id = a.organization_id",
+            "s.clinic_id = a.clinic_id",
+            "a.organization_id = consent_consentrevocation.organization_id",
+            "a.clinic_id = consent_consentrevocation.clinic_id",
+            "a.patient_id = lineage.patient_id",
+        )
+    },
+}
 # Scope tokens that are not bindings between rows, each with its reason. Any
 # other occurrence outside a parsed comparison fails the census.
 NON_BINDING = {
+    r"patient_alias_set\(s\.patient_id\)": "live consent-session lineage argument",
+    r"lineage\(patient_id, survivor_patient_id, unified_at\)": (
+        "patient_alias_set() output column aliases"
+    ),
     r"has_permission\('[a-z_.]+',\s*NEW\.clinic_id": "authority argument",
     r"'consent:'\|\|(?:NEW|t)\.clinic_id": "advisory-lock key",
     r"SELECT s\.id,s\.organization_id,s\.clinic_id,s\.patient_id": "session projection",
@@ -1222,6 +1268,101 @@ def test_patient_sessions_see_only_their_clinic(rbac_graph: RbacGraph) -> None:
             AIUseDisclosure.objects.get(pk=other_disclosure.pk).patient_id
             == w.other_patient
         )
+
+
+def test_alias_reads_keep_clinic_and_patient_scope(rbac_graph: RbacGraph) -> None:
+    """Lineage adds retained reads only, never another clinic or future consent."""
+    w = seed_scope_world(rbac_graph)
+    survivor_session_a = _session(w.clinic_a, w.other_a, w.reader, w.organization)
+    with runtime_role(), tenant_context(w.reader, w.organization):
+        unrelated = create_patient(
+            clinic_id=w.clinic_a,
+            full_name="Synthetic unrelated alias scope",
+            birth_date=date(1985, 4, 5),
+            idempotency_key=uuid4(),
+        )
+        for enrollment_id in (w.enrollment_a, w.other_a):
+            intake.add_identifier(
+                clinic_id=w.clinic_a,
+                enrollment_id=enrollment_id,
+                kind="cpf",
+                value="52998224725",
+            )
+        candidate = intake.duplicate_candidates(clinic_id=w.clinic_a)[0]
+    unrelated_session = _session(
+        w.clinic_a, unrelated.enrollment.pk, w.reader, w.organization
+    )
+    key = session_key(verified_client(w.graph))
+    with (
+        runtime_role(),
+        tenant_context(w.graph.clinic_admin, w.organization),
+        intake.duplicate_review_session(clinic_id=w.clinic_a, session_key=key),
+    ):
+        decision = intake.adjudicate_duplicate(
+            clinic_id=w.clinic_a,
+            candidate_id=candidate.pk,
+            decision="merge",
+            survivor_patient_id=w.other_patient,
+            field_choices={},
+            reason="Synthetic scoped consent lineage",
+        )
+        assert (
+            consent.consent_for_future_use(
+                clinic_id=w.clinic_b,
+                enrollment_id=w.other_b,
+                purpose="teleconsultation",
+            )
+            is None
+        )
+    for session, acceptances, refusals, revocations, disclosures in (
+        (
+            survivor_session_a,
+            {w.acceptance_a},
+            {w.refusal_a},
+            {w.revocation_a},
+            {w.disclosure_a},
+        ),
+        (
+            w.other_session_b,
+            {w.acceptance_b},
+            {w.refusal_b, w.other_refusal_b},
+            set(),
+            {w.disclosure_b},
+        ),
+        (unrelated_session, set(), set(), set(), set()),
+    ):
+        with runtime_role(), patient_session_context(session):
+            expected = {
+                "ConsentAcceptance": acceptances,
+                "RefusalRecord": refusals,
+                "ConsentRevocation": revocations,
+                "AIUseDisclosure": disclosures,
+            }
+            visible = _visible()
+            assert {name: visible[name] for name in expected} == expected
+            assert _pks(consent.patient_receipts()) == acceptances
+            assert _pks(consent.patient_refusals()) == refusals
+            assert _pks(consent.patient_disclosures()) == disclosures
+    with owner_context(w.graph.organization_b):
+        assert _visible() == {model.__name__: set() for model in _CONSENT_MODELS}
+    with (
+        runtime_role(),
+        tenant_context(w.graph.clinic_admin, w.organization),
+        intake.duplicate_review_session(clinic_id=w.clinic_a, session_key=key),
+    ):
+        intake.unmerge(
+            clinic_id=w.clinic_a,
+            merge_decision_id=decision.pk,
+            reason="Synthetic lineage separation",
+        )
+    with runtime_role(), patient_session_context(survivor_session_a):
+        assert consent.patient_receipts() == []
+        assert consent.patient_refusals() == []
+        assert consent.patient_disclosures() == []
+    with runtime_role(), patient_session_context(w.other_session_b):
+        assert consent.patient_receipts() == []
+        assert _pks(consent.patient_refusals()) == {w.other_refusal_b}
+        assert consent.patient_disclosures() == []
 
 
 def test_writes_store_the_exact_scope(rbac_graph: RbacGraph) -> None:
