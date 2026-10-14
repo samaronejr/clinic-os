@@ -72,9 +72,7 @@ def _context(
         days = presented_days(agenda, screen=screen)
         context["days"] = days
         context["can_transition"] = screen.can_manage or any(
-            row.reschedule_url or row.lifecycle_actions
-            for day in days
-            for row in day.rows
+            row.reschedule_url for day in days for row in day.rows
         )
         context.update(navigation(clinic_id, agenda, today=today))
     return context
