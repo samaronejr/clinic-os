@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from playwright.sync_api import Page, Request, Response
+    from playwright.sync_api import Page, Request, Response, Route
 
 __all__ = ("agenda_staff",)
 WIDTHS = (1280, 375, 320)
@@ -207,29 +207,43 @@ def _denied_after_revocation(
     # periodic reauthorization), and a refused request that lands before a
     # late wait exists is lost (hosted run 36475967514; fix-a16). It matches
     # only a post-revocation 403, so a late or absent refusal times out.
-    # The refused ticket dispatches a poll whose HTMX refetch redirects the
-    # revoked session to login. Subscribe before revocation, not after the
-    # transient denied agenda state, which can disappear on any engine.
-    with (
-        expect_document(b, url=base_url + "/auth/login/"),
-        b.expect_response(tap.is_refusal),
-    ):
-        # The mark precedes the commit, so every server decision after the
-        # commit is post-revocation (gate-review r2 B1: no clock boundary).
-        tap.mark_boundary(b)
-        with psycopg.connect(agenda_staff["dsn"]) as owner:
-            owner.execute(
-                "SELECT set_config('app.current_tenant', %s, true)",
-                [agenda_staff["organization"]],
-            )
-            owner.execute(
-                "UPDATE clinic_app.identity_userclinicrole SET revoked_at=now() "
-                "WHERE clinic_id = %s AND user_id = %s",
-                [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
-            )
-        # Leaving the connection context committed the revocation.
-        goto_settled(a, base_url + "/auth/logout/")
-        expect(a.locator("#id_username")).to_be_visible()
+    # Stream closure starts both a ticket POST and a clinical refetch.
+    # The refetch can reach login first, whose pagehide aborts that POST.
+    # Hold only the real HTMX refetch until the real ticket refusal is seen;
+    # then forward it unchanged and observe the terminal login navigation.
+    refetch_url = b.url
+    refetches: list[Route] = []
+
+    def defer_refetch(route: Route) -> None:
+        if route.request.headers.get("hx-request") == "true":
+            refetches.append(route)
+        else:
+            route.continue_()
+
+    with expect_document(b, url=base_url + "/auth/login/"):
+        b.route(refetch_url, defer_refetch)
+        try:
+            with b.expect_response(tap.is_refusal):
+                # The mark precedes the commit, so every later server decision
+                # is post-revocation (gate-review r2 B1: no clock boundary).
+                tap.mark_boundary(b)
+                with psycopg.connect(agenda_staff["dsn"]) as owner:
+                    owner.execute(
+                        "SELECT set_config('app.current_tenant', %s, true)",
+                        [agenda_staff["organization"]],
+                    )
+                    owner.execute(
+                        "UPDATE clinic_app.identity_userclinicrole "
+                        "SET revoked_at=now() WHERE clinic_id = %s AND user_id = %s",
+                        [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
+                    )
+                # Leaving the connection context committed the revocation.
+                goto_settled(a, base_url + "/auth/logout/")
+                expect(a.locator("#id_username")).to_be_visible()
+        finally:
+            for refetch in refetches:
+                refetch.continue_()
+            b.unroute(refetch_url, defer_refetch)
     # Role revocation ends every old session, including the remaining clinic
     # membership's session. The final document must contain no clinical UI.
     expect(b).to_have_url(base_url + "/auth/login/")
@@ -259,8 +273,12 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
     assert browser is not None
     durations = []
     with (
-        browser.new_context(locale="pt-BR", record_video_dir=root) as first,
-        browser.new_context(locale="pt-BR", record_video_dir=root) as second,
+        browser.new_context(
+            locale="pt-BR", record_video_dir=root, service_workers="block"
+        ) as first,
+        browser.new_context(
+            locale="pt-BR", record_video_dir=root, service_workers="block"
+        ) as second,
     ):
         a, b = first.new_page(), second.new_page()
         a.set_default_timeout(15000)
