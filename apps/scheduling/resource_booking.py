@@ -13,6 +13,7 @@ from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import Clinic
 from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.appointment_errors import AppointmentAvailabilityError
+from apps.scheduling.appointment_locking import due_hold
 from apps.scheduling.appointment_values import require_active_practitioner
 from apps.scheduling.models import (
     Appointment,
@@ -178,6 +179,9 @@ def validate_resource_window(
             )
             .exclude(
                 appointment_id__in=() if appointment_id is None else (appointment_id,)
+            )
+            .exclude(
+                appointment__in=Appointment.objects.filter(due_hold()).values("pk")
             )
             .values_list("unit", flat=True)
         )

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from apps.scheduling import (
     agenda_views,
     booking_views,
+    lifecycle_views,
     patient_views,
     resource_views,
     transition_views,
@@ -33,6 +34,9 @@ class WriteRoute:
 # These siblings have their own HTTP suites; a new callback cannot silently
 # fall outside the appointment matrix. GET-only callbacks are classified too.
 SIBLINGS = {
+    inspect.unwrap(lifecycle_views.appointment_lifecycle_view): (
+        "scheduling.test_lifecycle_http"
+    ),
     inspect.unwrap(resource_views.resource_settings): "scheduling.test_resource_http",
     inspect.unwrap(patient_views.patient_booking_view): "renewal.test_self_booking",
     inspect.unwrap(waitlist_views.patient_offers_view): "renewal.test_waitlist",

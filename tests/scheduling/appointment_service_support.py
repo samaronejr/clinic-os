@@ -10,6 +10,7 @@ from apps.intake.models import PatientClinicEnrollment
 from apps.intake.services import create_patient
 from apps.scheduling.services import (
     AppointmentLocalRange,
+    arrive,
     create_appointment,
     create_availability,
 )
@@ -125,4 +126,36 @@ def create_synthetic_appointment(
         practitioner_id=setup.practitioner_id,
         local_range=AppointmentLocalRange(start_local, end_local),
         idempotency_key=idempotency_key or uuid4(),
+    )
+
+
+def arrive_appointment(appointment: Appointment) -> Appointment:
+    """Record arrival (lifecycle v2, D-9) in the caller's staff context.
+
+    Scheduled-bound encounters open only from ``arrived``/``in_progress``; the
+    caller must hold ``appointment.move`` or be the practitioner (``move_own``).
+    """
+    appointment.refresh_from_db()
+    return arrive(
+        clinic_id=appointment.clinic_id,
+        appointment_id=appointment.pk,
+        expected_revision=appointment.revision,
+        command_id=uuid4(),
+    )
+
+
+def arrived_synthetic_appointment(
+    setup: AppointmentSetup,
+    *,
+    idempotency_key: UUID | None = None,
+    start_local: str = "2035-06-02T09:00",
+    end_local: str = "2035-06-02T10:00",
+) -> Appointment:
+    return arrive_appointment(
+        create_synthetic_appointment(
+            setup,
+            idempotency_key=idempotency_key,
+            start_local=start_local,
+            end_local=end_local,
+        )
     )

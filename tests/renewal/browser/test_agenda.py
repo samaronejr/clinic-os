@@ -25,8 +25,11 @@ import json
 import os
 import re
 import secrets
+import subprocess
+import sys
 import threading
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
@@ -39,7 +42,12 @@ from django.utils.translation import gettext, ngettext
 from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
-from renewal.browser._fixture_secrets import fixture_dsn, new_password, new_totp_key
+from renewal.browser._fixture_secrets import (
+    fixture_dsn,
+    new_password,
+    new_totp_key,
+    worker_dsn,
+)
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -59,7 +67,6 @@ from renewal.browser.engines import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from playwright.sync_api import Browser, BrowserContext, Locator, Page, Route
 
@@ -91,6 +98,7 @@ DAYS = {1280: _tuesday(0), 768: _tuesday(1), 375: _tuesday(2)}
 FAILURE_DAYS = {1280: _tuesday(10), 768: _tuesday(11), 375: _tuesday(12)}
 NATIVE_DAY = _tuesday(20)
 REFLOW_DAY = _tuesday(30)
+LIFECYCLE_DAYS = {1280: _tuesday(40), 375: _tuesday(41)}
 PAGE_SIZE = 25
 ZOOM_WINDOW = 1280  # physical window width behind the 200% zoom scene
 ZOOM_FACTOR = 2
@@ -1523,14 +1531,19 @@ def _physician_view(
         goto_settled(page, f"{base_url}{_agenda_path(staff, 'day', day)}")
         expect(page.locator("h1")).to_have_text(gettext("Clinic agenda"))
         expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
-        # The only write controls are the physician's own encounter and
-        # questionnaire actions; reception's scheduling controls never render.
-        expect(page.locator(".agenda-actions")).to_have_count(0)
+        # Own encounter and questionnaire actions plus the arrival the services
+        # grant the booked clinician; reception's links never render.
+        expect(page.locator(".agenda-actions a")).to_have_count(0)
         actions = page.locator("form button[type=submit]").evaluate_all(
             "nodes => nodes.map(node => node.value)"
         )
         assert actions
-        assert all(value in {"open", "appointment"} for value in actions)
+        assert set(actions) <= {"open", "appointment", "arrive"}
+        scheduled = page.locator(f'{ROWS}[data-appointment-status="scheduled"]')
+        expect(page.locator('button[value="arrive"]')).to_have_count(scheduled.count())
+        expect(scheduled.locator('button[value="arrive"]')).to_have_count(
+            scheduled.count()
+        )
         rows = _rows(page)
         assert rows, rows
         assert all(row["physician"].endswith(staff["physician_a"]) for row in rows)
@@ -1858,3 +1871,253 @@ def test_reflow_forced_colors_reduced_motion_and_zoom_keep_the_agenda_usable(
     destination.parent.mkdir(mode=0o700, exist_ok=True)
     destination.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     destination.chmod(0o600)
+
+
+@pytest.fixture(params=(1280, 375), ids=("1280px", "375px"))
+def lifecycle_staff(
+    agenda_staff: dict[str, str], request: pytest.FixtureRequest
+) -> dict[str, str]:
+    """Give each width's journey its own day, physician and reception role."""
+    staff = {
+        **agenda_staff,
+        "day": LIFECYCLE_DAYS[request.param],
+        "physician_a": f"clinico-sintetico-ciclo-{uuid4().hex[:8]}",
+        "physician_a_id": str(uuid4()),
+        "totp_key": new_totp_key(),
+        "width": str(request.param),
+    }
+    with psycopg.connect(staff["dsn"]) as connection:
+        connection.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            [staff["organization"]],
+        )
+        connection.execute(
+            "INSERT INTO clinic_app.identity_user "
+            "(id, username, password, email, first_name, last_name, is_active, "
+            "is_staff, is_superuser, date_joined) "
+            "VALUES (%s, %s, %s, %s, '', '', true, false, false, now())",
+            [
+                staff["physician_a_id"],
+                staff["physician_a"],
+                make_password(staff["password"]),
+                f"{staff['physician_a']}@agenda.invalid",
+            ],
+        )
+        for role in ("physician", "receptionist"):
+            connection.execute(
+                "INSERT INTO clinic_app.identity_userclinicrole "
+                "(id, user_id, organization_id, clinic_id, role, "
+                "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
+                [
+                    str(uuid4()),
+                    staff["physician_a_id"],
+                    staff["organization"],
+                    staff["clinic_a"],
+                    role,
+                ],
+            )
+        connection.execute("SET ROLE clinic_app")
+        connection.execute(
+            "SELECT set_config('app.current_user_id', %s, true)",
+            [staff["physician_a_id"]],
+        )
+        connection.execute(
+            "INSERT INTO clinic_app.otp_totp_totpdevice "
+            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
+            "user_id, throttling_failure_count, created_at) "
+            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
+            "%s, 0, now())",
+            [staff["totp_key"], staff["physician_a_id"]],
+        )
+    return staff
+
+
+def _lifecycle_worker(
+    action: str,
+    staff: dict[str, str],
+    subject: str,
+    day: str,
+    destination: Path,
+) -> str:
+    env = {
+        **os.environ,
+        "APP_DATABASE_URL": worker_dsn(),
+        "DJANGO_SETTINGS_MODULE": "config.settings.base",
+        "CLINIC_DATA_MODE": "synthetic",
+        "PYTHONPATH": str(Path.cwd()) + os.pathsep + str(Path.cwd() / "tests"),
+    }
+    result = subprocess.run(  # noqa: S603 - fixed QA entrypoint and owned runtime DSN
+        [
+            sys.executable,
+            "-c",
+            "import django; django.setup(); "
+            "from renewal.appointment_lifecycle_worker import main; main()",
+            action,
+            staff["organization"],
+            staff["clinic_a"],
+            staff["physician_a_id"],
+            subject,
+            day,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    receipt = json.loads(result.stdout)
+    assert receipt["runtime_role"] == "clinic_app"
+    assert receipt["status"] == {"hold": "held", "book": "scheduled"}[action]
+    destination.parent.mkdir(mode=0o700, exist_ok=True)
+    destination.write_text(json.dumps(receipt, sort_keys=True) + "\n")
+    destination.chmod(0o600)
+    return str(receipt["appointment_id"])
+
+
+LIFECYCLE_RECEIPTS = [
+    ("", "held", 1, "staff", False),
+    ("held", "scheduled", 2, "staff", True),
+    ("scheduled", "arrived", 3, "staff", True),
+    ("arrived", "in_progress", 4, "staff", True),
+    ("in_progress", "completed", 5, "staff", True),
+]
+LIFECYCLE_EVENTS = [
+    (f"scheduling.appointment.{verb}", "clinic-os-web", True)
+    for verb in ("held", "booked", "arrived", "started", "completed")
+]
+
+
+def _lifecycle_transcript(
+    staff: dict[str, str], appointment: str, destination: Path
+) -> str:
+    """Assert and keep the metadata-only receipts and ledger of one lifecycle."""
+    with psycopg.connect(staff["dsn"]) as connection:
+        connection.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            [staff["organization"]],
+        )
+        receipts = connection.execute(
+            "SELECT from_status, to_status, revision, actor_kind, "
+            "command_id IS NOT NULL FROM clinic_app.scheduling_appointmenttransition "
+            "WHERE appointment_id = %s ORDER BY revision",
+            [appointment],
+        ).fetchall()
+        events = connection.execute(
+            "SELECT event_type, component_id, actor_user_id IS NOT NULL "
+            "FROM clinic_app.audit_event WHERE affected_record_type = "
+            "'scheduling.appointment' AND affected_record_id = %s ORDER BY seq",
+            [appointment],
+        ).fetchall()
+    assert receipts == LIFECYCLE_RECEIPTS
+    assert events == LIFECYCLE_EVENTS
+    lines = [
+        "Todo 22 QA happy path: hold -> book -> arrive -> start -> complete",
+        "DB-owned receipts (from -> to @revision, actor_kind, command set):",
+        *(
+            f"  {source or 'new'} -> {target} @{revision} {kind} "
+            f"command={'yes' if command else 'no'}"
+            for source, target, revision, kind, command in receipts
+        ),
+        "Audit ledger (event, component, human actor present):",
+        *(
+            f"  {event} {component} actor={'yes' if actor else 'no'}"
+            for event, component, actor in events
+        ),
+    ]
+    destination.write_text("\n".join(lines) + "\n")
+    destination.chmod(0o600)
+    return str(destination)
+
+
+def test_multirole_clinician_completes_the_native_lifecycle(
+    agenda_browser: Browser,
+    lifecycle_staff: dict[str, str],
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    browser_report: dict[str, object],
+) -> None:
+    """Capture held through completed, with actual native arrival/care controls."""
+    staff = lifecycle_staff
+    root = renewal_artifact_root
+    width = int(staff["width"])
+    day = staff["day"]
+    _promise(staff, staff["physician_a_id"], (day, "08:00", "12:00"))
+    enrollment = _seed_enrollment(staff, "Paciente Sintetico Ciclo")
+    with agenda_browser.new_context(
+        locale="pt-BR",
+        timezone_id=BROWSER_ZONE,
+        viewport={"width": width, "height": 900},
+        java_script_enabled=False,
+    ) as context:
+        page = context.new_page()
+        page.set_default_timeout(20_000)
+        errors = _watch_errors(page)
+        _sign_in_physician(page, renewal_base_url, staff)
+        appointment = _lifecycle_worker(
+            "hold",
+            staff,
+            enrollment,
+            day,
+            root / "agenda" / f"lifecycle-hold-{width}.json",
+        )
+        url = f"{renewal_base_url}{_agenda_path(staff, 'day', day)}"
+        goto_settled(page, url)
+        # The reception role sees every clinic row: this width's day holds one.
+        expect(page.locator(ROWS)).to_have_count(1)
+        row = page.locator(ROWS).filter(has_text="Paciente Sintetico Ciclo")
+        expect(row).to_have_attribute("data-appointment-status", "held")
+        assert _no_overflow(page)
+        captures = [_capture(page, root, f"lifecycle-held-{width}")]
+        assert (
+            _lifecycle_worker(
+                "book",
+                staff,
+                appointment,
+                day,
+                root / "agenda" / f"lifecycle-book-{width}.json",
+            )
+            == appointment
+        )
+        reload_settled(page)
+        for status, action in (
+            ("scheduled", "arrive"),
+            ("arrived", "start"),
+            ("in_progress", "complete"),
+        ):
+            expect(row).to_have_attribute("data-appointment-status", status)
+            button = row.locator(f'button[name="action"][value="{action}"]')
+            expect(button).to_be_visible()
+            box = button.bounding_box()
+            assert box is not None
+            assert box["width"] >= MIN_TARGET_PX
+            assert box["height"] >= MIN_TARGET_PX
+            button.focus()
+            expect(button).to_be_focused()
+            assert _no_overflow(page)
+            captures.append(_capture(page, root, f"lifecycle-{status}-{width}"))
+            click_to_navigate(button)
+        expect(row).to_have_attribute("data-appointment-status", "completed")
+        expect(row.locator("form.agenda-lifecycle")).to_have_count(0)
+        assert _no_overflow(page)
+        captures.append(_capture(page, root, f"lifecycle-completed-{width}"))
+        assert errors == []
+    transcript = _lifecycle_transcript(
+        staff, appointment, root / "agenda" / f"lifecycle-sm-{width}.txt"
+    )
+    checks = browser_report["checks"]
+    assert isinstance(checks, list)
+    checks.append(
+        {
+            "surface": "agenda-lifecycle",
+            "width": width,
+            "javascript": False,
+            "roles": ["physician", "receptionist"],
+            "states": ["held", "scheduled", "arrived", "in_progress", "completed"],
+            "captures": captures,
+            "transcript": transcript,
+            "assertion": "Runtime services hold and book; a multirole clinician "
+            "uses native arrival, start and complete forms with keyboard focus "
+            "and 44px targets, without horizontal overflow.",
+        }
+    )

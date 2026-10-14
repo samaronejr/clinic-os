@@ -23,6 +23,7 @@ from apps.prescription.verification import release_document
 from apps.providers.services import current_version, is_live
 from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy, release_version
+from apps.scheduling import services as scheduling_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
 from django.apps import apps as django_apps
@@ -197,6 +198,55 @@ def test_machine_provisioning_derives_operator(name: str, expected: list[str]) -
     parameters = signature(getattr(service_principals, name)).parameters
     assert list(parameters) == expected
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+LIFECYCLE_TRANSITIONS = (
+    "hold",
+    "book",
+    "arrive",
+    "start",
+    "complete",
+    "cancel",
+    "expire",
+    "mark_no_show",
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (name, ["clinic_id", "appointment_id", "expected_revision", "command_id"])
+        for name in LIFECYCLE_TRANSITIONS
+    ]
+    + [
+        (
+            "create_hold",
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "local_range",
+                "idempotency_key",
+            ],
+        ),
+        (
+            "create_series",
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "booking",
+                "idempotency_key",
+            ],
+        ),
+        ("edit_series", ["clinic_id", "series_id", "edit", "command_id"]),
+    ],
+)
+def test_lifecycle_services_are_keyword_scoped(name: str, expected: list[str]) -> None:
+    # Plan item 22 contract: keyword-only, explicit clinic scope, never an actor.
+    parameters = signature(getattr(scheduling_services, name)).parameters
+    assert list(parameters) == expected
+    assert all(value.kind is Parameter.KEYWORD_ONLY for value in parameters.values())
 
 
 def test_permission_boundary_derives_actor_and_requires_clinic_scope() -> None:

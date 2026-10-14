@@ -31,12 +31,17 @@ SQL_CLOCKS: Final = {
     "patient_booking_receipt()": {"statement_timestamp()": 1},
     "scheduling_definition_guard()": {"statement_timestamp()": 3},
     "scheduling_generated_block_guard()": {"statement_timestamp()": 1},
+    # Lifecycle v2 (D-9): the single clock reader (hold TTL, expiry, no-show).
+    "scheduling_clock()": {"statement_timestamp()": 1},
 }
 SOURCE_CLOCKS: Final = {
     "_appointment_sql.py": {"current_timestamp": 1},
     "_patient_booking_sql.py": {"statement_timestamp()": 4},
     "_resource_slots_sql.py": {"statement_timestamp()": 1},
     "_resources_sql.py": {"statement_timestamp()": 4},
+    "_lifecycle_sql.py": {"statement_timestamp()": 1},
+    # Ledger time of the machine expiry audit event, not a scheduling decision.
+    "_expiry_audit_sql.py": {"clock_timestamp()": 1},
 }
 # The merged FK closure reaches these intake guards. Their transaction clock
 # binds a registry mirror to its new immutable demographics version; it must

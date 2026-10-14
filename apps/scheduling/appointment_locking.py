@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from django.db.models import Q
+from django.db.models import BooleanField, F, Func, Q
 
 from apps.scheduling.locks import (
     acquire_advisory_locks,
@@ -23,6 +23,21 @@ from apps.scheduling.patient_authority import (
 if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
+
+
+def due_hold() -> Q:
+    """Match holds at or past their database-time deadline (no longer occupying).
+
+    The lifecycle trigger expires it (as the machine actor) before any
+    overlapping write, so pre-lock checks must not report it as a conflict.
+    """
+    return Q(status=Appointment.Status.HELD) & Q(
+        Func(
+            F("hold_expires_at"),
+            function="clinic_app.scheduling_hold_due",
+            output_field=BooleanField(),
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +117,8 @@ def lock_appointment_write_rows(
         .filter(
             Q(pk__in=appointment_ids)
             | (
-                Q(status=Appointment.Status.SCHEDULED)
+                Q(status__in=Appointment.OCCUPYING_STATUSES)
+                & ~due_hold()
                 & appointment_overlap
                 & (
                     Q(patient_id=target.patient_id)

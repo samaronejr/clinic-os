@@ -27,6 +27,7 @@ from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
 from identity.authority_sql import _tokenize, references
+from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
 from identity.permission_support import owner_context
 from identity.test_lifecycle_sql_readers import (
     ACTOR_PROTOCOL_ORACLES,
@@ -364,11 +365,13 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     # readers need executable capability/creation/cleanup contracts instead.
     assert protocols <= set(readers)
     assert own - protocols == set(PROBES) | set(OWN_GUARD_PROBES)
-    assert set(readers) - own - delegating - protocols == set(JUSTIFIED)
-    # Every derived delegator is executed below; a new one needs a probe.
-    assert (set(DELEGATE_PROBES) | set(GUARD_PROBES)) - protocols == (
-        delegating - protocols
+    assert set(readers) - own - delegating - protocols == set(JUSTIFIED) | set(
+        LIFECYCLE_PROBES
     )
+    # Every derived delegator is executed below; a new one needs a probe.
+    assert (
+        set(DELEGATE_PROBES) | set(GUARD_PROBES) | set(LIFECYCLE_DELEGATE_PROBES)
+    ) - protocols == delegating - protocols
     assert_lifecycle_oracles(ACTOR_PROTOCOL_ORACLES.values())
 
 

@@ -18,6 +18,7 @@ from django.db import connection
 
 from identity.delegation_probes import CASES, Case
 from identity.nonstaff_differential import root_delegation
+from identity.nonstaff_lifecycle_probes import SYMBOLS as LIFECYCLE_SYMBOLS
 from identity.permission_support import permission_actor, permission_context
 from identity.test_permission_parity import INVENTORY
 from identity.test_scope_provisioning import provisioning_context
@@ -102,7 +103,7 @@ def _context(
 
 def test_cases_cover_every_root_delegation() -> None:
     rows = [row["symbol"] for row in INVENTORY["candidates"] if root_delegation(row)]
-    assert sorted(CASES) == sorted(rows)
+    assert sorted(set(CASES) | LIFECYCLE_SYMBOLS) == sorted(rows)
     for case in CASES.values():
         assert case.permission in BUNDLES_V1[PERMITTED_ROLE]
         assert refused_roles(case.permission)

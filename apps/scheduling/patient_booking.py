@@ -4,20 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid5
 from zoneinfo import ZoneInfo
 
 from django.core import signing
 from django.db import connection
 
 from apps.scheduling.access import AppointmentAccessDeniedError
+from apps.scheduling.appointment_creation import create_patient_booking
 from apps.scheduling.appointment_errors import AppointmentCreateInputError
+from apps.scheduling.appointment_lifecycle import (
+    AppointmentLifecycleError,
+    cancel,
+)
 from apps.scheduling.models import Appointment
 from apps.scheduling.patient_authority import require_patient_booking_scope
 from apps.scheduling.services import (
     AppointmentLocalRange,
+    AppointmentTerminalError,
     cancel_appointment,
-    create_appointment,
     reschedule_appointment,
 )
 
@@ -25,6 +30,7 @@ if TYPE_CHECKING:
     from datetime import date, datetime
 
 SLOT_SALT = "scheduling.patient-slot.v1"
+PATIENT_CANCEL_NAMESPACE = UUID("0c8f7d52-8a8e-4f7b-9b1b-5d1b3f0a9e61")
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +93,7 @@ def book_patient_slot(*, token: str, idempotency_key: UUID) -> Appointment:
     """Derive clinic and enrollment from authority, recheck eligibility on write."""
     scope = require_patient_booking_scope()
     practitioner_id, local_range = _slot(token)
-    return create_appointment(
+    return create_patient_booking(
         clinic_id=scope.clinic_id,
         enrollment_id=scope.enrollment_id,
         practitioner_id=practitioner_id,
@@ -125,6 +131,21 @@ def patient_appointment(appointment_id: UUID) -> Appointment:
 def cancel_patient_appointment(appointment_id: UUID) -> Appointment:
     """Keep cancellation terminal and same-reason retries idempotent."""
     appointment = patient_appointment(appointment_id)
+    if appointment.status in {
+        Appointment.Status.REQUESTED,
+        Appointment.Status.HELD,
+    }:
+        # A withdrawn request or released hold: deterministic command per
+        # revision, so a double submit replays instead of conflicting.
+        try:
+            return cancel(
+                clinic_id=appointment.clinic_id,
+                appointment_id=appointment.pk,
+                expected_revision=appointment.revision,
+                command_id=uuid5(PATIENT_CANCEL_NAMESPACE, f"{appointment.pk}"),
+            )
+        except AppointmentLifecycleError as error:
+            raise AppointmentTerminalError from error
     return cancel_appointment(
         appointment_id=appointment.pk,
         reason=Appointment.CancellationReason.PATIENT_REQUEST,

@@ -4498,6 +4498,123 @@
         "apps.intake.delegate_views.renew_representation#cut1"
       ],
       "reason": "The executed delegate protocol tests bind this actual callable to real role/session authorization, exact scope, stale-state and uniform-denial assertions."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle._save",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Constraint-to-code mapping for the write its caller already authorized; the database lifecycle trigger re-decides the edge through its domain protocol and maps 42501 to the shared denial."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle._transition",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The lifecycle v2 role matrix in tests/scheduling/test_appointment_states.py executes every action from every stored state for every catalog role, the booked and another physician, both patient sessions, inactive and foreign-clinic actors, and spies the exact permission names.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.authorize_transition",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The lifecycle v2 role matrix in tests/scheduling/test_appointment_states.py executes every action from every stored state for every catalog role, the booked and another physician, both patient sessions, inactive and foreign-clinic actors, and spies the exact permission names.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.expire",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "W (machine) clock-mandated hold expiry: refuses any human actor or patient session before calling the worker_protocol resolver, which refuses them again; no staff-role decision exists for this edge."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.expire_due_holds",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "W (machine) hold-expiry job over the worker_protocol projection; refuses human actors and patient sessions; each hold expires through expire(). No staff-role decision."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series._enrollment_patient",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Enrollment-to-patient resolution inside the clinic its caller already authorized (RLS-scoped); unknown and foreign enrollments share the series denial."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series._require_edit_authority",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. tests/scheduling/test_series.py executes every catalog role and the series owner both ways.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series.create_series",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. tests/scheduling/test_series.py executes every catalog role and the own-schedule physician.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.appointment_series.edit_series",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. tests/scheduling/test_series.py executes every catalog role and the series owner both ways.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.lifecycle_views.appointment_lifecycle_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff. The agenda lifecycle route calls the permission-bound arrive/start/complete services.",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.patient_authority.patient_booking_requires_approval",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "delegated",
+      "reason": "Patient-session policy read behind the validated booking scope; staff state is never consulted.",
+      "enforced_by": [
+        "apps.scheduling.patient_authority.require_patient_booking_scope"
+      ]
     }
   ],
   "probes": [
@@ -5380,19 +5497,19 @@
     },
     "clinic_app.audit_append_system_unchecked_v2": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [],
         "policies": [],
         "resolvers": [
           "clinic_app.audit_append_system",
           "clinic_app.identity_signup_register"
-        ],
-        "signatures": [
-          {
-            "arguments": "event_type text, component_id text, component_ip inet, affected_record_type text, affected_record_id text, occurred_at_utc timestamp with time zone, payload jsonb, content_hash bytea",
-            "returns": "int8",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "audit_protocol",
@@ -6132,14 +6249,14 @@
           {
             "arguments": "bytea, text",
             "returns": "bytea",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           },
           {
             "arguments": "text, text",
             "returns": "bytea",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
         ],
         "migrations": [],
@@ -6249,6 +6366,7 @@
         ],
         "migrations": [
           "apps/ehr/migrations/0009_protected_fields.py",
+          "apps/ehr/migrations/_arrival_sql.py",
           "apps/ehr/migrations/_clinical_sql.py",
           "apps/ehr/migrations/_finalization_sql.py"
         ],
@@ -6438,6 +6556,14 @@
     },
     "clinic_app.gen_random_uuid": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
         "migrations": [],
         "policies": [],
         "resolvers": [
@@ -6451,15 +6577,8 @@
           "clinic_app.questionnaire_receipt",
           "clinic_app.renew_delegate_grant",
           "clinic_app.request_delegate_grant",
-          "clinic_app.scheduling_capacity_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "uuid",
-            "set_returning": false,
-            "security_definer": false
-          }
+          "clinic_app.scheduling_capacity_guard",
+          "clinic_app.scheduling_lifecycle_receipt"
         ]
       },
       "kind": "crypto_protocol",
@@ -6468,6 +6587,14 @@
     },
     "clinic_app.has_permission": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/0030_workflow_current_membership.py",
           "apps/identity/migrations/_lifecycle_sql.py",
@@ -6514,20 +6641,13 @@
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
+          "clinic_app.scheduling_lifecycle_guard",
           "clinic_app.scheduling_service_practitioners",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
           "clinic_app.workflows_owner_valid",
           "clinic_app.workflows_predecessor_ready",
           "clinic_app.workflows_staff_catalog"
-        ],
-        "signatures": [
-          {
-            "arguments": "perm text, clinic uuid, enrollment uuid",
-            "returns": "bool",
-            "set_returning": false,
-            "security_definer": true
-          }
         ]
       },
       "kind": "staff_guard",
@@ -6625,20 +6745,20 @@
     },
     "clinic_app.identity_scope_guard": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/migrations/_permission_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "row_integrity",
       "probes": [],
@@ -6746,20 +6866,20 @@
     },
     "clinic_app.list_active_clinic_physicians": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/phase1a_identity_acl_migration.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -6820,6 +6940,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [],
@@ -6831,20 +6952,21 @@
     },
     "clinic_app.patient_booking_guard": {
       "discovery": {
-        "migrations": [
-          "apps/scheduling/migrations/_patient_booking_sql.py",
-          "apps/scheduling/migrations/_resource_slots_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
+          "apps/scheduling/migrations/_patient_booking_sql.py",
+          "apps/scheduling/migrations/_resource_slots_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "row_integrity",
       "probes": [],
@@ -6872,6 +6994,14 @@
     },
     "clinic_app.patient_booking_practitioner": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_practitioner uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
@@ -6879,14 +7009,6 @@
         "policies": [],
         "resolvers": [
           "clinic_app.patient_booking_slots"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_practitioner uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "staff_guard",
@@ -6906,6 +7028,7 @@
           }
         ],
         "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_patient_booking_sql.py"
         ],
         "policies": [],
@@ -6933,6 +7056,7 @@
           "clinic_app.scheduling_appointment:patient_booking_insert",
           "clinic_app.scheduling_appointment:patient_booking_read",
           "clinic_app.scheduling_appointment:patient_booking_update",
+          "clinic_app.scheduling_appointmenttransition:patient_booking_read",
           "clinic_app.scheduling_availabilityblock:patient_booking_read",
           "clinic_app.scheduling_waitlistentry:waitlist_read",
           "clinic_app.scheduling_waitlistentry:waitlist_update",
@@ -6944,9 +7068,11 @@
           "clinic_app.patient_booking_lock_availability",
           "clinic_app.patient_booking_practitioner",
           "clinic_app.patient_booking_receipt",
+          "clinic_app.patient_booking_requires_approval",
           "clinic_app.patient_booking_slots",
           "clinic_app.scheduling_appointment_guard_v1",
-          "clinic_app.scheduling_capacity_guard"
+          "clinic_app.scheduling_capacity_guard",
+          "clinic_app.scheduling_lifecycle_guard"
         ]
       },
       "kind": "patient_principal",
@@ -6955,20 +7081,20 @@
     },
     "clinic_app.patient_booking_slots": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_day date, ignored_appointment uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/scheduling/migrations/_patient_booking_sql.py",
           "apps/scheduling/migrations/_resource_slots_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_day date, ignored_appointment uuid",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -6978,21 +7104,21 @@
     },
     "clinic_app.patient_registry_count": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_registry_sql.py",
           "apps/intake/migrations/0013_patient_demographics.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date",
-            "returns": "int8",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -7002,21 +7128,21 @@
     },
     "clinic_app.patient_registry_page": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date, page_offset integer, page_limit integer",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_registry_sql.py",
           "apps/intake/migrations/0013_patient_demographics.py",
           "apps/tenancy/migrations/0004_protected_fields.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "kek text, requested_clinic uuid, normalized_query text, requested_birth date, page_offset integer, page_limit integer",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -7856,6 +7982,14 @@
     },
     "clinic_app.questionnaire_staff": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, roles text[]",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/intake/migrations/_questionnaire_sql.py"
@@ -7905,14 +8039,6 @@
           "clinic_app.retention_guard",
           "clinic_app.retention_record_scope",
           "clinic_app.teleconsult_assigned"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, roles text[]",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "staff_guard",
@@ -8165,7 +8291,8 @@
         ],
         "migrations": [
           "apps/scheduling/migrations/0003_patient_booking.py",
-          "apps/scheduling/migrations/_appointment_sql.py"
+          "apps/scheduling/migrations/_appointment_sql.py",
+          "apps/scheduling/migrations/_lifecycle_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -8196,45 +8323,47 @@
     },
     "clinic_app.scheduling_capacity_guard": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_cut2_current_membership_sql.py",
-          "apps/scheduling/migrations/_capacity_insert_sql.py",
-          "apps/scheduling/migrations/_resources_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_cut2_current_membership_sql.py",
+          "apps/scheduling/migrations/_capacity_insert_sql.py",
+          "apps/scheduling/migrations/_lifecycle_sql.py",
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
         "capacity_insert_trigger",
-        "capacity_update_trigger"
+        "capacity_update_trigger",
+        "test_every_service_booking_status_change_keeps_the_todo_21_guard"
       ],
       "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
     },
     "clinic_app.scheduling_definition_guard": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8244,6 +8373,14 @@
     },
     "clinic_app.scheduling_effective_interval": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "starts timestamp with time zone, ends timestamp with time zone, before_minutes integer, after_minutes integer",
+            "returns": "tstzrange",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
         "migrations": [
           "apps/scheduling/migrations/_resources_sql.py"
         ],
@@ -8252,15 +8389,8 @@
           "clinic_app.patient_booking_slots",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
-          "clinic_app.scheduling_generated_block_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "starts timestamp with time zone, ends timestamp with time zone, before_minutes integer, after_minutes integer",
-            "returns": "tstzrange",
-            "security_definer": false,
-            "set_returning": false
-          }
+          "clinic_app.scheduling_generated_block_guard",
+          "clinic_app.scheduling_release_due_holds"
         ]
       },
       "kind": "domain_protocol",
@@ -8271,19 +8401,19 @@
     },
     "clinic_app.scheduling_generated_block_guard": {
       "discovery": {
-        "migrations": [
-          "apps/scheduling/migrations/_resources_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_resources_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8293,20 +8423,20 @@
     },
     "clinic_app.scheduling_service_practitioners": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/scheduling/migrations/_resources_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8526,6 +8656,14 @@
     },
     "clinic_app.tenant_decrypt": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, expected_purpose text, envelope bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/tenancy/migrations/_envelope_sql.py"
         ],
@@ -8535,14 +8673,6 @@
           "clinic_app.prescription_document_open",
           "clinic_app.protected_decrypt",
           "clinic_app.tenant_reencrypt"
-        ],
-        "signatures": [
-          {
-            "arguments": "kek text, expected_purpose text, envelope bytea",
-            "returns": "bytea",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "crypto_protocol",
@@ -8551,20 +8681,20 @@
     },
     "clinic_app.tenant_dek_issue": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/tenancy/migrations/_envelope_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.identity_signup_register"
-        ],
-        "signatures": [
-          {
-            "arguments": "kek text",
-            "returns": "int4",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "crypto_protocol",
@@ -8617,6 +8747,14 @@
     },
     "clinic_app.tenant_encrypt": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "kek text, purpose text, plaintext bytea",
+            "returns": "bytea",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/tenancy/migrations/_envelope_sql.py"
         ],
@@ -8625,14 +8763,6 @@
           "clinic_app.identity_signup_register",
           "clinic_app.protected_encrypt",
           "clinic_app.tenant_reencrypt"
-        ],
-        "signatures": [
-          {
-            "arguments": "kek text, purpose text, plaintext bytea",
-            "returns": "bytea",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "crypto_protocol",
@@ -8731,21 +8861,21 @@
     },
     "clinic_app.user_has_org": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_org uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/tenancy/migrations/0002_rls_and_resolvers.py",
           "apps/tenancy/migrations/0005_active_tenant_actor.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_org uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -8755,20 +8885,20 @@
     },
     "clinic_app.user_organizations": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "uuid",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/tenancy/migrations/0002_rls_and_resolvers.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "uuid",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -8798,6 +8928,14 @@
     },
     "clinic_app.waitlist_staff": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/scheduling/migrations/_waitlist_sql.py"
@@ -8810,15 +8948,7 @@
           "clinic_app.scheduling_waitlistoffer:waitlist_read",
           "clinic_app.scheduling_waitlistoffer:waitlist_update"
         ],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -8828,19 +8958,19 @@
     },
     "clinic_app.workflows_bundle_selection_guard": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_workflow_eligibility_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_workflow_eligibility_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8850,19 +8980,19 @@
     },
     "clinic_app.workflows_due_steps": {
       "discovery": {
-        "migrations": [
-          "apps/workflows/migrations/_workflow_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "due_at timestamp with time zone",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8872,19 +9002,19 @@
     },
     "clinic_app.workflows_due_tasks": {
       "discovery": {
-        "migrations": [
-          "apps/workflows/migrations/_workflow_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "due_at timestamp with time zone",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8894,20 +9024,20 @@
     },
     "clinic_app.workflows_guard": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/workflows/migrations/0004_task_completion_gate.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -8917,20 +9047,20 @@
     },
     "clinic_app.workflows_now": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.workflows_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "timestamptz",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -8941,6 +9071,14 @@
     },
     "clinic_app.workflows_owned": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, owner_user uuid, owner_role text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
@@ -8952,14 +9090,6 @@
         "resolvers": [
           "clinic_app.workflows_guard",
           "clinic_app.workflows_predecessor_ready"
-        ],
-        "signatures": [
-          {
-            "arguments": "clinic uuid, owner_user uuid, owner_role text",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -8970,6 +9100,14 @@
     },
     "clinic_app.workflows_owner_valid": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, owner_user uuid, owner_role text",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
@@ -8977,14 +9115,6 @@
         "policies": [],
         "resolvers": [
           "clinic_app.workflows_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "clinic uuid, owner_user uuid, owner_role text",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -8995,19 +9125,19 @@
     },
     "clinic_app.workflows_predecessor_ready": {
       "discovery": {
-        "migrations": [
-          "apps/workflows/migrations/0002_predecessor_eligibility.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "clinic uuid, requested_task uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/workflows/migrations/0002_predecessor_eligibility.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -9017,20 +9147,20 @@
     },
     "clinic_app.workflows_reference_valid": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "ref jsonb, tenant uuid, clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.workflows_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "ref jsonb, tenant uuid, clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -9041,20 +9171,20 @@
     },
     "clinic_app.workflows_staff_catalog": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_cut2_current_membership_sql.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "clinic uuid",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -9064,19 +9194,19 @@
     },
     "clinic_app.workflows_step_scope": {
       "discovery": {
-        "migrations": [
-          "apps/workflows/migrations/_workflow_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_step uuid",
             "returns": "record",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -9086,20 +9216,20 @@
     },
     "clinic_app.workflows_steps_valid": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "steps jsonb",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/workflows/migrations/_workflow_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.workflows_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "steps jsonb",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -9110,19 +9240,19 @@
     },
     "clinic_app.workflows_task_scope": {
       "discovery": {
-        "migrations": [
-          "apps/workflows/migrations/_workflow_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_task uuid",
             "returns": "record",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/workflows/migrations/_workflow_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -9132,12 +9262,12 @@
     },
     "clinic_app.__name__": {
       "discovery": {
+        "signatures": [],
         "migrations": [
           "apps/identity/migrations/_lifecycle_authority_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": []
+        "resolvers": []
       },
       "kind": "migration_only",
       "probes": [],
@@ -9145,17 +9275,17 @@
     },
     "clinic_app.identity_invitation_accept": {
       "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea, requested_username text",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9165,17 +9295,17 @@
     },
     "clinic_app.identity_invitation_account": {
       "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_clinic uuid, requested_user uuid",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -9185,19 +9315,19 @@
     },
     "clinic_app.identity_invitation_begin": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
             "returns": "int4",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9207,20 +9337,20 @@
     },
     "clinic_app.identity_invitation_claim": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_authority_sql.py",
           "apps/identity/migrations/_lifecycle_invitations_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
-        ]
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9230,19 +9360,19 @@
     },
     "clinic_app.identity_invitation_finish": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea, requested_username text",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9252,20 +9382,20 @@
     },
     "clinic_app.identity_invitation_guard": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_authority_sql.py",
           "apps/identity/migrations/_lifecycle_invitations_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9275,17 +9405,17 @@
     },
     "clinic_app.identity_invitation_password": {
       "discovery": {
-        "migrations": [],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea, requested_username bytea, requested_password text, requested_device_key text",
             "returns": "int4",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9295,19 +9425,19 @@
     },
     "clinic_app.identity_invitation_user": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_invitations_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_clinic uuid, requested_user uuid",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_invitations_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9317,19 +9447,19 @@
     },
     "clinic_app.identity_membership_history_guard": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "row_integrity",
       "probes": [],
@@ -9337,19 +9467,19 @@
     },
     "clinic_app.identity_no_delete_guard": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "row_integrity",
       "probes": [],
@@ -9357,6 +9487,14 @@
     },
     "clinic_app.identity_offboarding_clinics": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "_uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_offboarding_sql.py"
         ],
@@ -9364,14 +9502,6 @@
         "resolvers": [
           "clinic_app.identity_offboarding_execute",
           "clinic_app.identity_offboarding_revoke"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_clinic uuid",
-            "returns": "_uuid",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "staff_protocol",
@@ -9382,20 +9512,20 @@
     },
     "clinic_app.identity_offboarding_execute": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_user uuid, requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_authority_sql.py",
           "apps/identity/migrations/_lifecycle_offboarding_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid, requested_clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9405,19 +9535,19 @@
     },
     "clinic_app.identity_offboarding_revoke": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_authority_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_user uuid, requested_clinic uuid",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "staff_protocol",
       "probes": [
@@ -9427,20 +9557,20 @@
     },
     "clinic_app.identity_pending_authority_guard": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/migrations/_signup_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9451,19 +9581,19 @@
     },
     "clinic_app.identity_recovery_consume": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9473,19 +9603,19 @@
     },
     "clinic_app.identity_recovery_guard": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9495,19 +9625,19 @@
     },
     "clinic_app.identity_reset_execute": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_reset uuid, requested_session bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "staff_protocol",
       "probes": [
@@ -9517,19 +9647,19 @@
     },
     "clinic_app.identity_reset_guard": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9539,19 +9669,19 @@
     },
     "clinic_app.identity_reset_notification_clock": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9561,19 +9691,19 @@
     },
     "clinic_app.identity_reset_recipient": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_recovery_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_reset uuid",
             "returns": "text",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_recovery_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "staff_protocol",
       "probes": [
@@ -9583,6 +9713,14 @@
     },
     "clinic_app.identity_reset_target": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_user uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_recovery_sql.py"
         ],
@@ -9590,14 +9728,6 @@
         "resolvers": [
           "clinic_app.identity_reset_guard",
           "clinic_app.identity_reset_recipient"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, requested_user uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "staff_guard",
@@ -9608,6 +9738,14 @@
     },
     "clinic_app.identity_retire_authenticators": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_user uuid",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_recovery_sql.py"
         ],
@@ -9617,14 +9755,6 @@
           "clinic_app.identity_offboarding_revoke",
           "clinic_app.identity_recovery_consume",
           "clinic_app.identity_reset_execute"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_user uuid",
-            "returns": "void",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "lifecycle_protocol",
@@ -9636,19 +9766,19 @@
     },
     "clinic_app.identity_revoke_changed_sessions": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9658,19 +9788,19 @@
     },
     "clinic_app.identity_session_active": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_user uuid, requested_hash bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9680,20 +9810,20 @@
     },
     "clinic_app.identity_session_change_guard": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sessions_sql.py",
           "apps/identity/migrations/_session_rotation_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "",
-            "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9703,19 +9833,19 @@
     },
     "clinic_app.identity_session_register": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_user uuid, requested_hash bytea, requested_network text, requested_family text, requested_expiry timestamp with time zone",
             "returns": "uuid",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9725,20 +9855,20 @@
     },
     "clinic_app.identity_session_revoke_hash": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/0027_session_revoke_scope.py",
           "apps/identity/migrations/_lifecycle_sessions_sql.py"
         ],
         "policies": [],
-        "resolvers": [],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
-        ]
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9748,19 +9878,19 @@
     },
     "clinic_app.identity_session_revoked_cookie": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_session_rotation_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9770,19 +9900,19 @@
     },
     "clinic_app.identity_session_rotate_hash": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_session_rotation_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_session_rotation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9792,20 +9922,20 @@
     },
     "clinic_app.identity_session_step_up": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea, requested_clinic uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sessions_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.identity_reset_execute"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea, requested_clinic uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "lifecycle_protocol",
@@ -9816,20 +9946,20 @@
     },
     "clinic_app.identity_session_verified": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_hash bytea",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/identity/migrations/_lifecycle_sessions_sql.py"
         ],
         "policies": [],
         "resolvers": [
           "clinic_app.identity_session_step_up"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_hash bytea",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "lifecycle_protocol",
@@ -9840,19 +9970,19 @@
     },
     "clinic_app.identity_session_verify": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_sessions_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_hash bytea, requested_device integer",
             "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_sessions_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9862,19 +9992,19 @@
     },
     "clinic_app.identity_signup_immutable": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_signup_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9885,19 +10015,19 @@
     },
     "clinic_app.identity_signup_register": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_signup_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "registration_id uuid, requested_organization_id uuid, requested_admin_id uuid, request_key uuid, capture jsonb, encoded_password text, fingerprint bytea, kek text",
             "returns": "record",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_signup_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "lifecycle_protocol",
       "probes": [
@@ -9908,19 +10038,19 @@
     },
     "clinic_app.identity_staff_directory": {
       "discovery": {
-        "migrations": [
-          "apps/identity/migrations/_lifecycle_surface_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "requested_clinic uuid",
             "returns": "record",
-            "security_definer": true,
-            "set_returning": true
+            "set_returning": true,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/identity/migrations/_lifecycle_surface_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "staff_guard",
       "probes": [
@@ -10512,6 +10642,220 @@
         "test_revoke_and_expiry_deny_next_request_and_renewal_stays_pending"
       ],
       "reason": "The real PostgreSQL delegate protocol tests exercise staff verification, original identity, immutable grant scope, operation/purpose intersection, live revocation and expiry, confidential projection, uniform denial and audit integrity."
+    },
+    "clinic_app.audit_appointment_expired": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_expiry_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "audit_protocol",
+      "probes": [],
+      "reason": "Owner-owned ledger writer for the registered machine hold-expiry event (AFTER trigger on held -> expired). It reads no actor or tenant setting, appends one fixed metadata-only row with a null actor to the expiring row's organization chain and grants nothing; clinic_app and clinic_resolver have no EXECUTE. Expiry audit tests cover the chain, replay and rollback."
+    },
+    "clinic_app.patient_booking_requires_approval": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "patient_principal",
+      "probes": [],
+      "reason": "Patient-session/capability authority, not staff membership. Returns only the session clinic's self-booking approval policy; staff callers get the default."
+    },
+    "clinic_app.scheduling_clock": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "timestamptz",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scheduling_hold_due",
+          "clinic_app.scheduling_lifecycle_guard"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "The single lifecycle v2 DB-time reader (statement_timestamp); reads no relation or setting and is classified by the scheduling SQL clock census."
+    },
+    "clinic_app.scheduling_due_holds": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "batch integer",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "W job projection of due hold identifiers; returns nothing to any human actor or patient session. tests/scheduling/test_appointment_states.py refuses every sampled staff and patient caller."
+    },
+    "clinic_app.scheduling_expire_hold": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_appointment uuid, expected_revision integer, command uuid",
+            "returns": "int4",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_expiry_audit_sql.py",
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "W expiry of one due hold under a deterministic command; refuses any human actor or patient session, takes the appointment write gates before its row lock and lets the lifecycle trigger refuse holds not yet due. The current availability-only clinic_agent grant is not widened."
+    },
+    "clinic_app.scheduling_history_immutable": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Rejects every UPDATE/DELETE of series, series exceptions and lifecycle receipts."
+    },
+    "clinic_app.scheduling_hold_due": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "deadline timestamp with time zone",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": false
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scheduling_due_holds",
+          "clinic_app.scheduling_lifecycle_guard",
+          "clinic_app.scheduling_release_due_holds"
+        ]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Pure hold-expiry equality over its argument and the census-controlled scheduling clock: due exactly when deadline <= DB time. Reads no relation or setting."
+    },
+    "clinic_app.scheduling_lifecycle_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_database_trigger_decides_every_status_pair_by_actor",
+        "test_guards_decide_by_the_exact_permission_not_a_sibling",
+        "test_python_guard_decides_each_action_by_its_pinned_terms"
+      ],
+      "reason": "Lifecycle RP protocol: executed all-state, all-actor SQL transitions and exact-permission witnesses in tests/scheduling/test_appointment_states.py."
+    },
+    "clinic_app.scheduling_lifecycle_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Database-owned lifecycle receipt writer (AFTER trigger); records the transition and a closed actor-kind label, grants nothing and decides nothing. The runtime role can only read receipts."
+    },
+    "clinic_app.scheduling_release_due_holds": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "booking uuid, org uuid, practitioner uuid, patient uuid, resources uuid[], starts timestamp with time zone, ends timestamp with time zone",
+            "returns": "void",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_lifecycle_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scheduling_lifecycle_guard"
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Machine (W) release of due holds, executable only by the lifecycle trigger's owner (no clinic_app EXECUTE). It clears and restores the transaction-local human settings so the trigger records the machine actor, and can only expire holds whose deadline already passed."
     }
   },
   "sql_method": [

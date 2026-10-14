@@ -72,7 +72,7 @@ from identity.legacy_sql_inventory import migration_definitions
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
-    create_synthetic_appointment,
+    arrived_synthetic_appointment,
     seed_cross_clinic_appointment_setups,
 )
 
@@ -895,15 +895,15 @@ def seed_scope_world(graph: RbacGraph) -> ScopeWorld:
             idempotency_key=uuid4(),
             create_fingerprint=b"q" * 32,
         ).pk
-        appointment_a = create_synthetic_appointment(setup_a)
-        other_appointment_a = create_synthetic_appointment(
+        appointment_a = arrived_synthetic_appointment(setup_a)
+        other_appointment_a = arrived_synthetic_appointment(
             replace(
                 setup_a, enrollment_id=other.enrollment.pk, patient_id=other.patient.pk
             ),
             start_local="2035-06-02T10:00",
             end_local="2035-06-02T10:30",
         )
-        appointment_b = create_synthetic_appointment(
+        appointment_b = arrived_synthetic_appointment(
             setup_b, start_local="2035-06-02T11:00", end_local="2035-06-02T11:30"
         )
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):

@@ -67,6 +67,16 @@ worker-environment tests/renewal/test_browser_runner.py::test_teardown_interrupt
 # CONNECT ACL changes in pg_database. The fixture population is derived at
 # collection; its committed writes can trigger automatic ANALYZE and reset
 # the parent certifier even without explicit maintenance. Keep autovacuum on.
+# Lifecycle worlds additionally rewrite controlled SQL clocks and rehearse
+# migrations. Preserve every existing serial classification and include these
+# new modules before the independent collection certifier runs.
+server-state tests/scheduling/test_appointment_states.py
+server-state tests/scheduling/test_appointment_expiry_audit.py
+server-state tests/scheduling/test_agenda_lifecycle_controls.py
+server-state tests/scheduling/test_lifecycle_http.py
+server-state tests/scheduling/test_lifecycle_migration.py
+server-state tests/scheduling/test_lifecycle_service_bookings.py
+server-state tests/scheduling/test_series.py
 server-state tests/scheduling/test_agenda_audit.py::test_read_events_are_exact_once_transactional_and_denials_are_silent
 server-state tests/scheduling/test_agenda_http.py::test_a_completely_skipped_civil_date_renders_an_empty_agenda
 server-state tests/scheduling/test_agenda_http.py::test_a_nonexistent_local_minute_is_never_booked
@@ -78,7 +88,7 @@ server-state tests/scheduling/test_agenda_http.py::test_day_agenda_shows_the_loc
 server-state tests/scheduling/test_agenda_http.py::test_daylight_gap_and_fold_days_carry_their_real_civil_bounds
 server-state tests/scheduling/test_agenda_http.py::test_default_agenda_uses_the_clinic_local_civil_today
 server-state tests/scheduling/test_agenda_http.py::test_malformed_agenda_input_renders_one_accessible_error
-server-state tests/scheduling/test_agenda_http.py::test_physician_sees_only_their_own_rows_without_any_control
+server-state tests/scheduling/test_agenda_http.py::test_physician_sees_only_own_rows_and_own_lifecycle_controls
 server-state tests/scheduling/test_agenda_http.py::test_week_agenda_uses_the_iso_week_civil_bounds
 server-state tests/scheduling/test_agenda_queries.py::test_day_week_agenda_uses_civil_bounds_and_stable_pagination
 server-state tests/scheduling/test_agenda_query_plan.py::test_query_counts_user_joins_and_volume_plan_stay_bounded

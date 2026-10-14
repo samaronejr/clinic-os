@@ -6,7 +6,9 @@ comes from Todo 3 through Todo 12, so no naive midnight is ever constructed.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Final
+from uuid import UUID
 
 from django.conf import settings
 from django.http import Http404, HttpResponseBase
@@ -32,8 +34,6 @@ from apps.scheduling.services import (
 )
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from django.http import HttpRequest
 
 AGENDA_TEMPLATE: Final = "scheduling/agenda.html"
@@ -69,18 +69,18 @@ def _context(
         "today_url": reverse("scheduling:agenda", args=(clinic_id,)),
     }
     if agenda is not None:
-        days = presented_days(
-            agenda,
-            can_manage=screen.can_manage,
-            can_move_services=screen.can_move_services,
-            service_practitioner_id=screen.service_practitioner_id,
-        )
+        days = presented_days(agenda, screen=screen)
         context["days"] = days
         context["can_transition"] = screen.can_manage or any(
             row.reschedule_url for day in days for row in day.rows
         )
         context.update(navigation(clinic_id, agenda, today=today))
     return context
+
+
+def _viewer(request: HttpRequest) -> UUID | None:
+    pk = getattr(request.user, "pk", None)
+    return pk if isinstance(pk, UUID) else None
 
 
 @privileged_totp_required(agenda_continuation)
@@ -94,7 +94,7 @@ def agenda_view(
 ) -> HttpResponseBase:
     """Render one authorized clinic-local day or ISO-week appointment page."""
     try:
-        screen = agenda_screen(clinic_id)
+        screen = replace(agenda_screen(clinic_id), viewer_id=_viewer(request))
         today = clinic_local_today(screen.timezone_key)
         selected_day = day or today
         try:

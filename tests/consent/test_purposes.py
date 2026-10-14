@@ -66,7 +66,7 @@ from renewal.test_encounters import (
 )
 from renewal.test_encounters import seed as clinical_seed
 from renewal.test_retention import admin, staff_client
-from scheduling.appointment_service_support import create_synthetic_appointment
+from scheduling.appointment_service_support import arrived_synthetic_appointment
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -430,7 +430,7 @@ def test_ai_use_disclosure_once_per_encounter_and_refusal_preserved(
         runtime_role(),
         tenant_context(graph.shared_user, graph.organization_a),
     ):
-        second = create_synthetic_appointment(
+        second = arrived_synthetic_appointment(
             setup, start_local="2035-06-02T10:00", end_local="2035-06-02T11:00"
         )
     other = _encounter(graph, second)

@@ -1,6 +1,14 @@
 """Executable protocol oracles for scheduling, workflows and representation."""
 
 from patients import test_delegates
+from scheduling.test_appointment_states import (
+    test_database_trigger_decides_every_status_pair_by_actor,
+    test_guards_decide_by_the_exact_permission_not_a_sibling,
+    test_python_guard_decides_each_action_by_its_pinned_terms,
+)
+from scheduling.test_lifecycle_service_bookings import (
+    test_every_service_booking_status_change_keeps_the_todo_21_guard,
+)
 from scheduling.test_resource_permission_identity import GUARDS
 from scheduling.test_resource_role_matrix import (
     test_effective_interval_is_actor_invariant,
@@ -55,6 +63,15 @@ DELEGATE_PROTOCOLS = frozenset(
 )
 PROTOCOL_ORACLES = {
     **SCHEDULING_CASES,
+    "clinic_app.scheduling_capacity_guard": [
+        *SCHEDULING_CASES["clinic_app.scheduling_capacity_guard"],
+        "test_every_service_booking_status_change_keeps_the_todo_21_guard",
+    ],
+    "clinic_app.scheduling_lifecycle_guard": [
+        "test_database_trigger_decides_every_status_pair_by_actor",
+        "test_guards_decide_by_the_exact_permission_not_a_sibling",
+        "test_python_guard_decides_each_action_by_its_pinned_terms",
+    ],
     "clinic_app.scheduling_effective_interval": [
         "test_effective_interval_is_actor_invariant"
     ],
@@ -74,3 +91,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_effective_interval_is_actor_invariant)
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
+    assert callable(test_database_trigger_decides_every_status_pair_by_actor)
+    assert callable(test_guards_decide_by_the_exact_permission_not_a_sibling)
+    assert callable(test_python_guard_decides_each_action_by_its_pinned_terms)
+    assert callable(test_every_service_booking_status_change_keeps_the_todo_21_guard)
