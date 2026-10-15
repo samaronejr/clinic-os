@@ -19,7 +19,14 @@ from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js, wait_for_js
-from renewal.browser._room_join import capture_room_failure, room_join_readiness
+from renewal.browser._room_join import (
+    capture_room_failure,
+    is_status_request,
+    room_action_finished,
+    room_join_readiness,
+    room_media_settled,
+    room_offline,
+)
 from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import (
     full_page_screenshot,
@@ -150,27 +157,26 @@ def status_request(route: Route) -> bool:
 
 
 def refresh(page: Page) -> None:
-    with page.expect_response(
-        lambda r: (
-            r.request.method == "POST"
-            and r.request.headers.get("accept") == "application/json"
-        )
-    ) as response:
+    with room_action_finished(page, page.url):
         page.locator("[data-refresh-status]").click()
-    assert response.value.status == 200
 
 
 def transport_recovery(page: Page, case: _Case, persona: str) -> None:
     panel = page.locator("#room-panel")
-    page.context.set_offline(offline=True)
+    with room_offline(page):
+        page.context.set_offline(offline=True)
     expect(panel).to_have_attribute("data-connection", "offline")
     expect(page.locator("[data-room-error]")).to_be_focused()
     capture(page, case, f"{persona}-disconnected")
-    page.context.set_offline(offline=False)
+    url = case.patient_url if persona == "patient" else case.staff_url
+    with (
+        room_action_finished(page, url),
+        room_action_finished(page, url, action="resume"),
+    ):
+        page.context.set_offline(offline=False)
     expect(panel).to_have_attribute("data-connection", "connected")
     # Fail the exact next status request as a transport timeout, then explicitly
     # recover against the real server. No synthetic success response is used.
-    url = case.patient_url if persona == "patient" else case.staff_url
     injected: list[str] = []
 
     def timeout(route: Route) -> None:
@@ -183,7 +189,7 @@ def transport_recovery(page: Page, case: _Case, persona: str) -> None:
     page.route(url, timeout)
     try:
         with page.expect_event(
-            "requestfailed", predicate=lambda request: request.url == url
+            "requestfailed", predicate=lambda request: is_status_request(request, url)
         ):
             page.locator("[data-refresh-status]").click()
         expect(panel).to_have_attribute("data-connection", "offline")
@@ -191,8 +197,9 @@ def transport_recovery(page: Page, case: _Case, persona: str) -> None:
     finally:
         page.unroute(url, timeout)
     assert injected == ["timedout"]
-    with page.expect_response(
-        lambda r: r.request.headers.get("accept") == "application/json"
+    with (
+        room_action_finished(page, url),
+        room_action_finished(page, url, action="resume"),
     ):
         page.locator("[data-reconnect]").click()
     expect(panel).to_have_attribute("data-connection", "connected")
@@ -268,21 +275,19 @@ def long_drop(physician: Page, case: _Case, session: str) -> None:
     panel = physician.locator("#room-panel")
     _show(physician, case, "notes")
     physician.clock.install()
-    physician.context.set_offline(offline=True)
+    with room_offline(physician):
+        physician.context.set_offline(offline=True)
     expect(panel).to_have_attribute("data-connection", "offline")
     _fill(physician, {"plan": DROP_PLAN})
     physician.clock.fast_forward(DROP_MS)
     expect(physician.locator("#id_plan")).to_have_value(DROP_PLAN)
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     capture(physician, case, "physician-drop-20s")
-    with physician.expect_response(
-        lambda r: (
-            r.request.method == "POST"
-            and 'name="action"\r\n\r\nresume' in (r.request.post_data or "")
-        )
-    ) as resumed:
+    with (
+        room_action_finished(physician, case.staff_url),
+        room_action_finished(physician, case.staff_url, action="resume"),
+    ):
         physician.context.set_offline(offline=False)
-    assert resumed.value.status == 200
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(physician.locator("#id_plan")).to_have_value(DROP_PLAN)
     _save(physician)
@@ -341,8 +346,9 @@ def join_initializing_rooms(
     patient.route(case.patient_url, initial_status)
     try:
         with room_join_readiness(patient, case.patient_url, case.root):
-            click_to_navigate(patient.locator('button[value="join"]'))
-            patient._sync(asyncio.wait_for(asyncio.shield(fetched), timeout=5))
+            with room_media_settled(patient):
+                click_to_navigate(patient.locator('button[value="join"]'))
+                patient._sync(asyncio.wait_for(asyncio.shield(fetched), timeout=5))
             # Media acquisition, not document load, admits the other navigation.
             # The actual initial status reply stays held: the physician still joins
             # while this patient's room is initializing.
@@ -357,7 +363,10 @@ def join_initializing_rooms(
                 "data-connection", "joining"
             )
             goto_settled(physician, case.staff_url)
-            with room_join_readiness(physician, case.staff_url, case.root):
+            with (
+                room_join_readiness(physician, case.staff_url, case.root),
+                room_media_settled(physician),
+            ):
                 click_to_navigate(
                     physician.locator(
                         f'[data-session="{session}"] button[value="join"]'
@@ -443,7 +452,7 @@ def outage_and_expiry(
             "FROM clinic_app.teleconsult_teleconsultsession WHERE id=%s)",
             [session],
         )
-    with patient.expect_response(lambda r: r.status == 403):
+    with room_action_finished(patient, case.patient_url, status=403):
         patient.locator("[data-refresh-status]").click()
     expect(patient.locator("#room-panel")).to_have_attribute(
         "data-connection", "expired"

@@ -22,6 +22,13 @@ from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js, wait_for_js
+from renewal.browser._room_join import (
+    room_action_finished,
+    room_join_readiness,
+    room_media_settled,
+    room_offline,
+    room_track_ended,
+)
 from renewal.browser._teleconsult import (
     device_checks,
     register_physician,
@@ -333,7 +340,11 @@ def _check_devices(patient: Page, case: _Case, session_id: str) -> None:
 
 
 def _enter_room(patient: Page, case: _Case, session_id: str) -> None:
-    click_to_navigate(patient.locator('button[value="join"]'))
+    with (
+        room_join_readiness(patient, case.patient_url, case.root),
+        room_media_settled(patient),
+    ):
+        click_to_navigate(patient.locator('button[value="join"]'))
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-role", "patient")
     expect(patient.locator("#room-name")).to_have_text(
@@ -390,7 +401,8 @@ def _audio_only(patient: Page, case: _Case, session_id: str) -> None:
     """Audio only stops sending video, is stored for the physician, and returns."""
     button = patient.locator("[data-audio-only]")
     panel = patient.locator("#room-panel")
-    button.click()
+    with room_action_finished(patient, case.patient_url, action="audio_only"):
+        button.click()
     expect(button).to_have_attribute("aria-pressed", "true")
     expect(panel).to_have_attribute("data-media-mode", "audio")
     expect(patient.locator("[data-self-off]")).to_have_text("Somente áudio")
@@ -398,7 +410,8 @@ def _audio_only(patient: Page, case: _Case, session_id: str) -> None:
     assert patient.evaluate(TRACK_JS, "video") == {"enabled": False, "state": "live"}
     assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
     _capture(patient, case, "room-audio-only")
-    button.click()
+    with room_action_finished(patient, case.patient_url, action="audio_only"):
+        button.click()
     expect(button).to_have_attribute("aria-pressed", "false")
     expect(panel).to_have_attribute("data-media-mode", "video")
     expect(patient.locator('[data-toggle="camera"]')).to_be_enabled()
@@ -413,7 +426,8 @@ def _audio_only(patient: Page, case: _Case, session_id: str) -> None:
 def _drop_connection(patient: Page, case: _Case) -> None:
     """Real offline emulation shows the recovery and reconnects when back."""
     panel = patient.locator("#room-panel")
-    patient.context.set_offline(offline=True)
+    with room_offline(patient):
+        patient.context.set_offline(offline=True)
     expect(panel).to_have_attribute("data-connection", "offline")
     error = patient.locator("[data-room-error]")
     expect(error).to_have_attribute("data-failure", "offline")
@@ -422,7 +436,11 @@ def _drop_connection(patient: Page, case: _Case) -> None:
     _capture(patient, case, "room-offline")
     patient.locator("[data-reconnect]").click()
     expect(panel).to_have_attribute("data-connection", "offline")
-    patient.context.set_offline(offline=False)
+    with (
+        room_action_finished(patient, case.patient_url),
+        room_action_finished(patient, case.patient_url, action="resume"),
+    ):
+        patient.context.set_offline(offline=False)
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(error).to_be_hidden()
     assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
@@ -431,13 +449,15 @@ def _drop_connection(patient: Page, case: _Case) -> None:
 def _lose_device(patient: Page) -> None:
     """A track that ends mid-call is reported and can be re-acquired."""
     panel = patient.locator("#room-panel")
-    patient.evaluate(END_TRACK_JS)
+    with room_track_ended(patient):
+        patient.evaluate(END_TRACK_JS)
     expect(panel).to_have_attribute("data-media", "lost")
     expect(patient.locator("[data-room-error]")).to_have_attribute(
         "data-failure", "lost"
     )
     expect(patient.locator('[data-toggle="microphone"]')).to_be_disabled()
-    patient.locator("[data-retry-media]").click()
+    with room_media_settled(patient):
+        patient.locator("[data-retry-media]").click()
     expect(panel).to_have_attribute("data-media", "ready")
     expect(patient.locator("[data-room-error]")).to_be_hidden()
 
@@ -445,7 +465,8 @@ def _lose_device(patient: Page) -> None:
 def _stall_media_retry(patient: Page) -> None:
     """Lose a device, then retry with the acquisition held open by the test."""
     panel = patient.locator("#room-panel")
-    patient.evaluate(END_TRACK_JS)
+    with room_track_ended(patient):
+        patient.evaluate(END_TRACK_JS)
     expect(panel).to_have_attribute("data-media", "lost")
     patient.evaluate(STALL_MEDIA_JS)
     patient.locator("[data-retry-media]").click()
@@ -490,7 +511,8 @@ def _ended_room(patient: Page, physician: Page, case: _Case, session_id: str) ->
     panel = patient.locator("#room-panel")
     _stall_media_retry(patient)
     _staff_action(physician, case, session_id, "end")
-    patient.locator("[data-refresh-status]").click()
+    with room_action_finished(patient, case.patient_url):
+        patient.locator("[data-refresh-status]").click()
     expect(panel).to_have_attribute("data-connection", "ended")
     expect(panel).to_have_attribute("data-state", "ended")
     expect(patient.locator("[data-state-badge]")).to_have_text("Consulta encerrada")
@@ -552,7 +574,8 @@ def _happy_path(
     _lose_device(patient)
     _staff_action(physician, case, session_id, "join")
     _staff_action(physician, case, session_id, "start")
-    patient.locator("[data-refresh-status]").click()
+    with room_action_finished(patient, case.patient_url):
+        patient.locator("[data-refresh-status]").click()
     expect(patient.locator("#room-panel")).to_have_attribute("data-state", "active")
     expect(patient.locator("[data-state-badge]")).to_have_text("Consulta em andamento")
     expect(patient.locator("[data-physician]")).to_have_text("Já está na sala")
@@ -567,12 +590,17 @@ def _reconnect_while_denied(denied: Page, case: _Case) -> None:
     """Losing the connection while denied must not lose the device guidance."""
     room = denied.locator("#room-panel")
     error = denied.locator("[data-room-error]")
-    denied.context.set_offline(offline=True)
+    with room_offline(denied):
+        denied.context.set_offline(offline=True)
     expect(room).to_have_attribute("data-connection", "offline")
     expect(error).to_have_attribute("data-failure", "offline")
     expect(denied.locator("[data-reconnect]")).to_be_visible()
     expect(denied.locator("[data-retry-media]")).to_be_hidden()
-    denied.context.set_offline(offline=False)
+    with (
+        room_action_finished(denied, case.patient_url),
+        room_action_finished(denied, case.patient_url, action="resume"),
+    ):
+        denied.context.set_offline(offline=False)
     expect(room).to_have_attribute("data-connection", "connected")
     expect(room).to_have_attribute("data-media", "denied")
     expect(error).to_have_attribute("data-failure", "denied")
@@ -722,7 +750,11 @@ def _denied_path(
     expect(denied.locator('button[value="join"]')).to_be_enabled()
     _capture(denied, case, "waiting-denied")
     _closed_device_failures(denied, physician, case, session_id)
-    click_to_navigate(denied.locator('button[value="join"]'))
+    with (
+        room_join_readiness(denied, case.patient_url, case.root),
+        room_media_settled(denied),
+    ):
+        click_to_navigate(denied.locator('button[value="join"]'))
     room = denied.locator("#room-panel")
     expect(room).to_have_attribute("data-media", "denied")
     expect(room).to_have_attribute("data-connection", "connected")
@@ -738,14 +770,16 @@ def _denied_path(
     # The patient fixes the browser permission and retries without leaving.
     room_error = denied.locator("[data-room-error]")
     grant_media(denied.context, case.base)
-    denied.locator("[data-retry-media]").click()
+    with room_media_settled(denied):
+        denied.locator("[data-retry-media]").click()
     expect(room).to_have_attribute("data-media", "ready")
     expect(room_error).to_be_hidden()
     assert denied.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
     _capture(denied, case, "room-recovered")
     _stall_media_retry(denied)
     _expire_patient_session(case, patient_id)
-    denied.locator("[data-refresh-status]").click()
+    with room_action_finished(denied, case.patient_url, status=FORBIDDEN):
+        denied.locator("[data-refresh-status]").click()
     expect(room).to_have_attribute("data-connection", "expired")
     expect(room_error).to_have_attribute("data-failure", "expired")
     expect(denied.locator("[data-portal]")).to_be_visible()
@@ -766,12 +800,13 @@ def _denied_path(
 def _unanswered_prompt(patient: Page, case: _Case, session_id: str) -> None:
     """The room connects and follows the session while the prompt is open."""
     goto_settled(patient, case.patient_url)
-    click_to_navigate(
-        patient.locator(
-            f'form:has(input[name="session_id"][value="{session_id}"]) '
-            'button[value="join"]'
+    with room_join_readiness(patient, case.patient_url, case.root):
+        click_to_navigate(
+            patient.locator(
+                f'form:has(input[name="session_id"][value="{session_id}"]) '
+                'button[value="join"]'
+            )
         )
-    )
     panel = patient.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(panel).to_have_attribute("data-media", "pending")
@@ -780,7 +815,8 @@ def _unanswered_prompt(patient: Page, case: _Case, session_id: str) -> None:
     )
     # Answering the prompt later brings the devices into the same room.
     wait_for_js(patient, "() => window.__lateMedia.release !== null")
-    patient.evaluate("() => window.__lateMedia.release()")
+    with room_media_settled(patient):
+        patient.evaluate("() => window.__lateMedia.release()")
     expect(panel).to_have_attribute("data-media", "ready")
     expect(panel).to_have_attribute("data-connection", "connected")
     assert patient.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}

@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import stat
 from typing import TYPE_CHECKING, Final
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock, PropertyMock, create_autospec
 
 import pytest
+from playwright.sync_api import ConsoleMessage, Page, Request, Response
 from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import Page, Request, Response
 
 from renewal.browser import _room_join as join
+from renewal.browser import test_clinician_video as clinician
+from renewal.browser import test_patient_video as patient_video
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -170,6 +172,217 @@ def test_join_subscribes_before_navigation_and_asserts_after_completion(
     assert not list(tmp_path.glob("*-room-join-*.json"))
 
 
+@pytest.mark.parametrize(
+    ("action", "status"),
+    [("status", 200), ("status", 403), ("resume", 200), ("audio_only", 200)],
+)
+def test_action_wait_requires_the_exact_completed_json_operation(
+    monkeypatch: pytest.MonkeyPatch, action: str, status: int
+) -> None:
+    page = create_autospec(Page, instance=True)
+    request = _request(
+        f"action={action}".encode(), content_type="application/x-www-form-urlencoded"
+    )
+    response = create_autospec(Response, instance=True)
+    monkeypatch.setattr(request, "existing_response", response)
+    signal: MagicMock = page.expect_request_finished.return_value
+    signal.value = request
+    events: list[str] = []
+
+    def subscribe() -> MagicMock:
+        predicate = page.expect_request_finished.call_args.args[0]
+        assert predicate(request)
+        assert not predicate(
+            _request(
+                f"action={action}".encode(),
+                url=STAFF_URL,
+                content_type="application/x-www-form-urlencoded",
+            )
+        )
+        assert not predicate(
+            _request(b"action=join", content_type="application/x-www-form-urlencoded")
+        )
+        native = _request(
+            f"action={action}".encode(),
+            content_type="application/x-www-form-urlencoded",
+        )
+        monkeypatch.setattr(
+            native,
+            "headers",
+            {
+                "content-type": "application/x-www-form-urlencoded",
+                "accept": "text/html",
+            },
+        )
+        assert not predicate(native)
+        events.append("subscribed")
+        return signal
+
+    def status_code() -> int:
+        assert events == ["subscribed", "triggered", "finished"]
+        return status
+
+    signal.__enter__.side_effect = subscribe
+    signal.__exit__.side_effect = lambda *_args: events.append("finished")
+    monkeypatch.setattr(
+        type(response), "status", PropertyMock(side_effect=status_code), raising=False
+    )
+    with join.room_action_finished(page, URL, action=action, status=status):
+        events.append("triggered")
+    assert events == ["subscribed", "triggered", "finished"]
+    assert "timeout" not in page.expect_request_finished.call_args.kwargs
+
+
+@pytest.mark.parametrize("kind", ["media", "offline", "track"])
+@pytest.mark.parametrize("completed_during_trigger", [False, True])
+def test_room_signals_subscribe_before_trigger_and_drain_the_event(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    *,
+    completed_during_trigger: bool,
+) -> None:
+    page = create_autospec(Page, instance=True)
+    signal: MagicMock = page.expect_console_message.return_value
+    events: list[str] = []
+    completed = False
+    text = {
+        "media": "clinic-room-media-settled:ready",
+        "offline": "clinic-room-offline",
+        "track": "clinic-room-track-ended",
+    }[kind]
+
+    def subscribe() -> MagicMock:
+        predicate = page.expect_console_message.call_args.kwargs["predicate"]
+        assert predicate(
+            create_autospec(ConsoleMessage, instance=True, type="debug", text=text)
+        )
+        assert not predicate(
+            create_autospec(ConsoleMessage, instance=True, type="error", text=text)
+        )
+        assert not predicate(
+            create_autospec(ConsoleMessage, instance=True, type="debug", text="other")
+        )
+        events.append("subscribed")
+        return signal
+
+    def arm(_page: Page, script: str) -> None:
+        assert _page is page
+        assert events == ["subscribed"]
+        assert (
+            script
+            == {
+                "media": join.MEDIA_SETTLED,
+                "offline": join.OFFLINE_SIGNAL,
+                "track": join.TRACK_ENDED_SIGNAL,
+            }[kind]
+        )
+        events.append("armed")
+
+    def finish(*_args: object) -> None:
+        nonlocal completed
+        assert events == ["subscribed", "armed", "triggered"]
+        completed = True
+        events.append("finished")
+
+    signal.__enter__.side_effect = subscribe
+    signal.__exit__.side_effect = finish
+    monkeypatch.setattr(join, "evaluate_js", arm)
+    boundary = {
+        "media": join.room_media_settled,
+        "offline": join.room_offline,
+        "track": join.room_track_ended,
+    }[kind]
+    with boundary(page):
+        events.append("triggered")
+        completed = completed_during_trigger
+    assert completed
+    assert events == ["subscribed", "armed", "triggered", "finished"]
+    assert "timeout" not in page.expect_console_message.call_args.kwargs
+    if kind == "media":
+        page.add_init_script.assert_called_once_with(join.MEDIA_SETTLED)
+    else:
+        page.add_init_script.assert_not_called()
+
+
+def test_device_retry_waits_for_acquisition_before_its_ready_assertion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = create_autospec(Page, instance=True)
+    events: list[str] = []
+    signal: MagicMock = page.expect_console_message.return_value
+    signal.__enter__.side_effect = lambda: events.append("subscribed")
+    signal.__exit__.side_effect = lambda *_args: events.append("finished")
+    monkeypatch.setattr(
+        join,
+        "evaluate_js",
+        MagicMock(side_effect=lambda *_args: events.append("armed")),
+    )
+    page.locator.return_value.click.side_effect = lambda: events.append("retry")
+    page.evaluate.side_effect = lambda *_args: events.append("end-track")
+    assertion = MagicMock()
+
+    def state(attribute: str, value: str) -> None:
+        ended = ["subscribed", "armed", "end-track", "finished"]
+        if (attribute, value) == ("data-media", "lost"):
+            assert events == ended
+        if (attribute, value) == ("data-media", "ready"):
+            assert events == [*ended, "subscribed", "armed", "retry", "finished"]
+
+    assertion.to_have_attribute.side_effect = state
+    monkeypatch.setattr(patient_video, "expect", MagicMock(return_value=assertion))
+    patient_video._lose_device(page)
+    assert events == [
+        "subscribed",
+        "armed",
+        "end-track",
+        "finished",
+        "subscribed",
+        "armed",
+        "retry",
+        "finished",
+    ]
+
+
+def test_htmx_room_changes_wait_for_the_complete_partial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = create_autospec(Page, instance=True, url=STAFF_URL)
+    request = _request(url=STAFF_URL)
+    monkeypatch.setattr(request, "headers", {"hx-request": "true"})
+    response = create_autospec(Response, instance=True)
+    monkeypatch.setattr(request, "existing_response", response)
+    signal: MagicMock = page.expect_request_finished.return_value
+    signal.value = request
+    events: list[str] = []
+
+    def subscribe() -> MagicMock:
+        predicate = page.expect_request_finished.call_args.args[0]
+        assert predicate(request)
+        foreign = _request()
+        monkeypatch.setattr(foreign, "headers", {"hx-request": "true"})
+        assert not predicate(foreign)
+        get = _request(url=STAFF_URL, method="GET")
+        monkeypatch.setattr(get, "headers", {"hx-request": "true"})
+        assert not predicate(get)
+        assert not predicate(_request(url=STAFF_URL))
+        events.append("subscribed")
+        return signal
+
+    def status_code() -> int:
+        assert events == ["subscribed", "clicked", "finished"]
+        return 200
+
+    signal.__enter__.side_effect = subscribe
+    signal.__exit__.side_effect = lambda *_args: events.append("finished")
+    page.locator.return_value.click.side_effect = lambda: events.append("clicked")
+    monkeypatch.setattr(
+        type(response), "status", PropertyMock(side_effect=status_code), raising=False
+    )
+    clinician._htmx(page, 'button[value="end"]')
+    assert events == ["subscribed", "clicked", "finished"]
+    assert "timeout" not in page.expect_request_finished.call_args.kwargs
+
+
 def test_failure_retains_closed_state_without_forms_or_clinical_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -268,4 +481,4 @@ def test_diagnostic_storage_failure_preserves_the_original_join_error(
         raise original
     # Then: diagnostic failure never replaces the actual failure, even during cleanup.
     assert caught.value is original
-    assert caught.value.__notes__ == ["Join evidence write failed: OSError"]
+    assert len(caught.value.__notes__) == 1

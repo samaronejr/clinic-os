@@ -29,6 +29,52 @@ if TYPE_CHECKING:
 
 ACTIONS: Final = ("join", "status", "resume", "device_check", "audio_only")
 STATES: Final = ("waiting", "active", "ended", "failed")
+MEDIA_SETTLED: Final = """(() => {
+  if (window.__clinicRoomMedia) { window.__clinicRoomMedia(); return; }
+  const outcomes = ["ready", "partial", "denied", "missing", "error", "insecure",
+    "off", "lost"];
+  let pending = false;
+  const observer = new MutationObserver(records => {
+    const changes = records.filter(record => record.target.id === "room-panel");
+    changes.forEach((record, index) => {
+      const next = changes.slice(index + 1).find(item => item.target === record.target);
+      const value = next ? next.oldValue : record.target.getAttribute("data-media");
+      if (value === "pending") {
+        pending = true;
+      } else if (pending) {
+        pending = false;
+        console.debug("clinic-room-media-settled:" +
+          (outcomes.includes(value) ? value : "other"));
+      }
+    });
+  });
+  observer.observe(document, {subtree: true, attributes: true,
+    attributeFilter: ["data-media"], attributeOldValue: true});
+  window.__clinicRoomMedia = () => {
+    observer.takeRecords();
+    pending = document.querySelector("#room-panel")
+      ?.getAttribute("data-media") === "pending";
+  };
+  window.__clinicRoomMedia();
+})();"""
+MEDIA_OUTCOMES: Final = (
+    "ready",
+    "partial",
+    "denied",
+    "missing",
+    "error",
+    "insecure",
+    "off",
+    "lost",
+    "other",
+)
+OFFLINE_SIGNAL: Final = """() => window.addEventListener("offline", () =>
+  console.debug("clinic-room-offline"), {once: true})"""
+TRACK_ENDED_SIGNAL: Final = """() => {
+  const stream = document.querySelector("#room-panel [data-self-video]").srcObject;
+  stream.getAudioTracks()[0].addEventListener("ended", () =>
+    console.debug("clinic-room-track-ended"), {once: true});
+}"""
 HISTORY: Final = """(() => {
   if (window.__clinicRoomJoin) return;
   const allowed = ["idle", "requesting", "joining", "connected", "offline",
@@ -135,6 +181,62 @@ def is_status_request(request: Request, url: str) -> bool:
     )
 
 
+@contextmanager
+def room_action_finished(
+    page: Page, url: str, *, action: str = "status", status: int = 200
+) -> Iterator[None]:
+    """Subscribe before the trigger; require the exact JSON action's full reply."""
+    with page.expect_request_finished(
+        lambda request: (
+            request_action(request, url) == action
+            and request.headers.get("accept") == "application/json"
+        )
+    ) as finished:
+        yield
+    response = finished.value.existing_response
+    assert response is not None
+    assert response.status == status
+
+
+@contextmanager
+def room_media_settled(page: Page) -> Iterator[None]:
+    """Observe this acquisition's pending-to-outcome transition, not stale ready."""
+    page.add_init_script(MEDIA_SETTLED)
+    with page.expect_console_message(
+        predicate=lambda message: (
+            message.type == "debug"
+            and message.text
+            in {f"clinic-room-media-settled:{state}" for state in MEDIA_OUTCOMES}
+        )
+    ):
+        evaluate_js(page, MEDIA_SETTLED)
+        yield
+
+
+@contextmanager
+def room_offline(page: Page) -> Iterator[None]:
+    """Require the browser's offline event before asserting its room effects."""
+    with page.expect_console_message(
+        predicate=lambda message: (
+            message.type == "debug" and message.text == "clinic-room-offline"
+        )
+    ):
+        evaluate_js(page, OFFLINE_SIGNAL)
+        yield
+
+
+@contextmanager
+def room_track_ended(page: Page) -> Iterator[None]:
+    """Drain the original audio track's ended event, including loopback engines."""
+    with page.expect_console_message(
+        predicate=lambda message: (
+            message.type == "debug" and message.text == "clinic-room-track-ended"
+        )
+    ):
+        evaluate_js(page, TRACK_ENDED_SIGNAL)
+        yield
+
+
 def capture_room_failure(page: Page, url: str, root: Path, phase: str) -> None:
     """Read native request history and closed DOM state only after failure."""
     participant = (
@@ -215,13 +317,8 @@ def room_join_readiness(page: Page, url: str, root: Path) -> Iterator[None]:
         # The product paints connected only after status JSON is complete. Arm
         # before the native POST: a fast reply can finish during navigation.
         # Use the existing page deadline, not the DOM assertion's 5 s window.
-        with page.expect_request_finished(
-            lambda request: is_status_request(request, url)
-        ) as status:
+        with room_action_finished(page, url):
             yield
-        response = status.value.existing_response
-        assert response is not None
-        assert response.status == 200
         phase = "connected"
         expect(page.locator("#room-panel")).to_have_attribute(
             "data-connection", "connected"

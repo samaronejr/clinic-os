@@ -26,7 +26,12 @@ from psycopg.types.json import Jsonb
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
-from renewal.browser._room_join import room_join_readiness
+from renewal.browser._room_join import (
+    room_action_finished,
+    room_join_readiness,
+    room_media_settled,
+    room_offline,
+)
 from renewal.browser._teleconsult import (
     device_checks,
     register_physician,
@@ -224,20 +229,28 @@ def _provision(physician: Page, case: _Case, data: dict[str, str]) -> str:
 
 
 def _htmx(page: Page, selector: str, status: int = OK) -> None:
-    """Click one htmx action and require the partial response status."""
-    with page.expect_response(
-        lambda r: (
-            r.request.method == "POST" and r.request.headers.get("hx-request") == "true"
+    """Click one htmx action and require its complete partial response."""
+    url = page.url
+    with page.expect_request_finished(
+        lambda request: (
+            request.method == "POST"
+            and request.url == url
+            and request.headers.get("hx-request") == "true"
         )
-    ) as response:
+    ) as finished:
         page.locator(selector).click()
-    assert response.value.status == status
+    response = finished.value.existing_response
+    assert response is not None
+    assert response.status == status
 
 
 def _enter(physician: Page, case: _Case, session_id: str, name: str) -> None:
     """Join from the session list and land in the workspace for this patient."""
     goto_settled(physician, case.staff_url)
-    with room_join_readiness(physician, case.staff_url, case.root):
+    with (
+        room_join_readiness(physician, case.staff_url, case.root),
+        room_media_settled(physician),
+    ):
         click_to_navigate(
             physician.locator(f'[data-session="{session_id}"] button[value="join"]')
         )
@@ -481,7 +494,8 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
     """Going offline keeps the edits; a save fails honestly, then succeeds."""
     physician.locator("#id_subjective").fill("Relato retificado offline")
     panel = physician.locator("#room-panel")
-    physician.context.set_offline(offline=True)
+    with room_offline(physician):
+        physician.context.set_offline(offline=True)
     _show(physician, case, "video")
     expect(panel).to_have_attribute("data-connection", "offline")
     expect(physician.locator("[data-room-error]")).to_have_attribute(
@@ -502,7 +516,11 @@ def _lost_video(physician: Page, case: _Case, version: str) -> None:
     )
     assert stored(case.staff, version) == (1, FIRST["subjective"])
     _capture(physician, case, "offline-unsaved")
-    physician.context.set_offline(offline=False)
+    with (
+        room_action_finished(physician, case.staff_url),
+        room_action_finished(physician, case.staff_url, action="resume"),
+    ):
+        physician.context.set_offline(offline=False)
     _show(physician, case, "video")
     expect(panel).to_have_attribute("data-connection", "connected")
     expect(physician.locator("[data-room-error]")).to_be_hidden()
@@ -520,7 +538,8 @@ def _provider_failure(
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     _fail_room(case, session_id)
     _show(physician, case, "video")
-    physician.locator("[data-refresh-status]").click()
+    with room_action_finished(physician, case.staff_url):
+        physician.locator("[data-refresh-status]").click()
     panel = physician.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "failed")
     expect(panel).to_have_attribute("data-media", "off")
@@ -696,9 +715,10 @@ def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) 
     """The clinician room connects and follows the session while the prompt is open."""
     _sign_in_physician(prompted, case.base, case.staff)
     goto_settled(prompted, case.staff_url)
-    click_to_navigate(
-        prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
-    )
+    with room_join_readiness(prompted, case.staff_url, case.root):
+        click_to_navigate(
+            prompted.locator(f'[data-session="{session_id}"] button[value="join"]')
+        )
     expect(prompted.locator("[data-teleconsult='clinician']")).to_have_attribute(
         "data-session", session_id
     )
@@ -711,7 +731,8 @@ def _unanswered_prompt(prompted: Page, case: _Case, session_id: str, name: str) 
     )
     # Answering the prompt later brings the devices into the same room.
     wait_for_js(prompted, "() => window.__lateMedia.release !== null")
-    prompted.evaluate("() => window.__lateMedia.release()")
+    with room_media_settled(prompted):
+        prompted.evaluate("() => window.__lateMedia.release()")
     expect(panel).to_have_attribute("data-media", "ready")
     expect(panel).to_have_attribute("data-connection", "connected")
     assert prompted.evaluate(TRACK_JS, "audio") == {"enabled": True, "state": "live"}
@@ -732,9 +753,10 @@ def _journey(  # noqa: PLR0913 - the journey needs its full context
     first_encounter = _encounter_of(case, first_session)
     second_encounter = _encounter_of(case, second_session)
     goto_settled(patient, case.patient_url)
-    click_to_navigate(
-        patient.locator(f'[data-session="{first_session}"] button[value="join"]')
-    )
+    with room_join_readiness(patient, case.patient_url, case.root):
+        click_to_navigate(
+            patient.locator(f'[data-session="{first_session}"] button[value="join"]')
+        )
     expect(patient.locator("#room-panel")).to_have_attribute("data-role", "patient")
     _enter(physician, case, first_session, first["name"])
     _capture(physician, case, "joined")
@@ -1341,9 +1363,8 @@ def status_response(response: Response) -> bool:
 
 
 def refresh_status(page: Page) -> None:
-    with page.expect_response(status_response) as refreshed:
+    with room_action_finished(page, page.url):
         page.locator("[data-refresh-status]").click()
-    assert refreshed.value.status == OK
 
 
 def _targets(page: Page, selectors: tuple[str, ...], label: str) -> None:
@@ -1434,7 +1455,10 @@ def _v2_fallback_poll(physician: Page) -> None:
 
 
 def _v2_patient_joins(physician: Page, patient: Page, case: _Case) -> None:
-    with room_join_readiness(patient, case.patient_url, case.root):
+    with (
+        room_join_readiness(patient, case.patient_url, case.root),
+        room_media_settled(patient),
+    ):
         click_to_navigate(patient.locator('button[value="join"]'))
     refresh_status(physician)
     expect(physician.locator("[data-patient-presence]")).to_have_text("Na sala")
@@ -1550,7 +1574,10 @@ def v2_remove_and_return(
     assert patient.evaluate(TRACK_JS, "audio") is None
     _capture(patient, case, "v2-patient-removed")
     click_to_navigate(patient.locator("[data-back]"))
-    with room_join_readiness(patient, case.patient_url, case.root):
+    with (
+        room_join_readiness(patient, case.patient_url, case.root),
+        room_media_settled(patient),
+    ):
         click_to_navigate(patient.locator('button[value="join"]'))
     events = session_events(case.staff, session_id)
     assert ("removed", "physician") in events
