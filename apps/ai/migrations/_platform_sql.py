@@ -40,6 +40,7 @@ BEGIN
  RETURN NEW;
 END $f$;
 REVOKE ALL ON FUNCTION clinic_app.ai_platform_guard() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION clinic_app.ai_platform_guard() TO clinic_owner;
 RESET ROLE;
 CREATE TRIGGER ai_model_guard BEFORE INSERT OR UPDATE OR DELETE
  ON clinic_app.ai_modelconfiguration FOR EACH ROW
@@ -47,4 +48,7 @@ CREATE TRIGGER ai_model_guard BEFORE INSERT OR UPDATE OR DELETE
 CREATE TRIGGER ai_switch_guard BEFORE INSERT OR UPDATE OR DELETE
  ON clinic_app.ai_gatewayswitch FOR EACH ROW
  EXECUTE FUNCTION clinic_app.ai_platform_guard();
+SET LOCAL ROLE clinic_resolver;
+REVOKE EXECUTE ON FUNCTION clinic_app.ai_platform_guard() FROM clinic_owner;
+RESET ROLE;
 """

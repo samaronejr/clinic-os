@@ -149,6 +149,8 @@ BEGIN
  RETURN NEW;
 END $f$;
 REVOKE ALL ON FUNCTION clinic_app.ai_ledger_guard() FROM PUBLIC;
+-- Match retention.0004: owner EXECUTE exists only while binding triggers.
+GRANT EXECUTE ON FUNCTION clinic_app.ai_ledger_guard() TO clinic_owner;
 RESET ROLE;
 CREATE TRIGGER ai_artifact_guard BEFORE INSERT OR UPDATE OR DELETE
  ON clinic_app.ai_aiartifact FOR EACH ROW
@@ -159,4 +161,7 @@ CREATE TRIGGER ai_invocation_guard BEFORE INSERT OR UPDATE OR DELETE
 CREATE TRIGGER ai_circuit_guard BEFORE INSERT OR UPDATE OR DELETE
  ON clinic_app.ai_aicircuit FOR EACH ROW
  EXECUTE FUNCTION clinic_app.ai_ledger_guard();
+SET LOCAL ROLE clinic_resolver;
+REVOKE EXECUTE ON FUNCTION clinic_app.ai_ledger_guard() FROM clinic_owner;
+RESET ROLE;
 """

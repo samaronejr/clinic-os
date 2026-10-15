@@ -347,6 +347,7 @@ class Migration(migrations.Migration):
             + _ledger_sql.SQL
             + _platform_sql.SQL
             + _configuration_sql.SQL
-            + "\nCOMMIT;"
+            + "\nCOMMIT;",
+            reverse_sql=None,
         ),
     ]
