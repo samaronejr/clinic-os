@@ -87,33 +87,43 @@ def open_episode(*, clinic_id: UUID, enrollment_id: UUID, title: str) -> Episode
         return episode
 
 
-def close_episode(*, clinic_id: UUID, episode_id: UUID) -> Episode:
-    """Close an episode; a retry returns the closed row unchanged."""
+def _close_authority(clinic_id: UUID, episode_id: UUID) -> tuple[Episode, UUID]:
+    """Decide a close with reads only: a visible episode and ``clinical.write``."""
     episode = Episode.objects.filter(pk=episode_id, clinic_id=clinic_id).first()
     if episode is None:
         raise ClinicalAccessDeniedError
     actor = _require(
         "clinical.write", clinic_id, _enrollment_id(clinic_id, episode.patient_id)
     )
+    return episode, actor
+
+
+def close_episode(*, clinic_id: UUID, episode_id: UUID) -> Episode:
+    """Close an episode; a retry returns the closed row unchanged."""
+    episode, actor = _close_authority(clinic_id, episode_id)
     with transaction.atomic():
-        # The update policy admits only open rows, so a closed one is absent.
+        # The update policy admits only open episodes under clinical.write.
         locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
-        if locked is None:
-            return Episode.objects.get(pk=episode.pk)
-        locked.state = Episode.State.CLOSED
-        locked.closed_at = timezone.now()
-        locked.closed_by_id = actor
-        locked.save(update_fields=("state", "closed_at", "closed_by"))
-        record_phase1_event(
-            "ehr.episode.closed", clinic_id=clinic_id, affected_record_id=locked.pk
-        )
-        return locked
+        if locked is not None:
+            locked.state = Episode.State.CLOSED
+            locked.closed_at = timezone.now()
+            locked.closed_by_id = actor
+            locked.save(update_fields=("state", "closed_at", "closed_by"))
+            record_phase1_event(
+                "ehr.episode.closed", clinic_id=clinic_id, affected_record_id=locked.pk
+            )
+            return locked
+    # A closed episode and clinical.write committed away since the check both
+    # hide the row lock. Deciding authority again, outside the locked decision,
+    # gives lost authority the early refusal; only a closed episode is a retry.
+    _close_authority(clinic_id, episode_id)
+    return Episode.objects.get(pk=episode.pk)
 
 
-def link_encounter(
-    *, clinic_id: UUID, encounter_id: UUID, episode_id: UUID
-) -> EpisodeEncounter:
-    """Group an encounter under an open episode of the same patient and clinic."""
+def _link_authority(
+    clinic_id: UUID, encounter_id: UUID, episode_id: UUID
+) -> tuple[Encounter, Episode, UUID]:
+    """Decide a link with reads only: assignee, same patient and clinic, write."""
     encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
@@ -124,26 +134,40 @@ def link_encounter(
     _require(
         "clinical.write", clinic_id, _enrollment_id(clinic_id, encounter.patient_id)
     )
+    return encounter, episode, actor
+
+
+def link_encounter(
+    *, clinic_id: UUID, encounter_id: UUID, episode_id: UUID
+) -> EpisodeEncounter:
+    """Group an encounter under an open episode of the same patient and clinic."""
+    encounter, episode, actor = _link_authority(clinic_id, encounter_id, episode_id)
     with transaction.atomic():
-        if Episode.objects.select_for_update().filter(pk=episode.pk).first() is None:
-            msg = "episode_closed"
-            raise ClinicalConflictError(msg)
-        existing = EpisodeEncounter.objects.filter(encounter=encounter).first()
-        if existing is not None:
-            if existing.episode_id == episode.pk:
-                return existing
-            msg = "already_linked"
-            raise ClinicalConflictError(msg)
-        link = EpisodeEncounter.objects.create(
-            organization_id=encounter.organization_id,
-            episode=episode,
-            encounter=encounter,
-            linked_by_id=actor,
-        )
-        record_phase1_event(
-            "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
-        )
-        return link
+        # The update policy admits only open episodes under clinical.write.
+        locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
+        if locked is not None:
+            existing = EpisodeEncounter.objects.filter(encounter=encounter).first()
+            if existing is not None:
+                if existing.episode_id == episode.pk:
+                    return existing
+                msg = "already_linked"
+                raise ClinicalConflictError(msg)
+            link = EpisodeEncounter.objects.create(
+                organization_id=encounter.organization_id,
+                episode=episode,
+                encounter=encounter,
+                linked_by_id=actor,
+            )
+            record_phase1_event(
+                "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
+            )
+            return link
+    # A closed episode and clinical.write committed away since the check both
+    # hide the row lock. Deciding authority again, outside the locked decision,
+    # gives lost authority the early refusal; only a closed episode conflicts.
+    _link_authority(clinic_id, encounter_id, episode_id)
+    msg = "episode_closed"
+    raise ClinicalConflictError(msg)
 
 
 def open_episode_for_encounter(

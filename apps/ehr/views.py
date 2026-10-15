@@ -389,23 +389,34 @@ def _episode(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     encounter = _selected(clinic_id, UUID(request.POST.get("encounter_id", "")))
     action = request.POST.get("action")
     try:
-        if action == "episode_open":
-            # One service decides everything before its first write (B1).
-            open_episode_for_encounter(
-                clinic_id=clinic_id,
-                encounter_id=encounter.pk,
-                title=request.POST.get("title", ""),
-            )
-        elif action == "episode_link":
-            link_encounter(
-                clinic_id=clinic_id,
-                encounter_id=encounter.pk,
-                episode_id=UUID(request.POST.get("episode_id", "")),
-            )
-        else:
-            close_episode(
-                clinic_id=clinic_id, episode_id=UUID(request.POST.get("episode_id", ""))
-            )
+        # A service refusal rolls back with this savepoint, so a late one leaves
+        # only the record of the decision taken again below.
+        with transaction.atomic():
+            if action == "episode_open":
+                # One service decides everything before its first write (B1).
+                open_episode_for_encounter(
+                    clinic_id=clinic_id,
+                    encounter_id=encounter.pk,
+                    title=request.POST.get("title", ""),
+                )
+            elif action == "episode_link":
+                link_encounter(
+                    clinic_id=clinic_id,
+                    encounter_id=encounter.pk,
+                    episode_id=UUID(request.POST.get("episode_id", "")),
+                )
+            else:
+                close_episode(
+                    clinic_id=clinic_id,
+                    episode_id=UUID(request.POST.get("episode_id", "")),
+                )
+    except ClinicalAccessDeniedError:
+        # Refused after _selected passed. Authority committed away since then
+        # is decided again here, so a late refusal gets exactly the early
+        # refusal's response and denial record; a refusal of the posted episode
+        # alone stands as the service decided it.
+        _selected(clinic_id, encounter.pk)
+        raise
     except ValidationError as error:
         context = _context(request, clinic_id, encounter)
         context["episode_error"] = " ".join(error.messages)

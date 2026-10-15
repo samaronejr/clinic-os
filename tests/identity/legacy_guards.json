@@ -4743,15 +4743,29 @@
       "reason": "Plan item 27 helper: maps a require_permission (clinic_app.has_permission) refusal to the clinical denial. Reached through its callers' role matrices: test_open_episode_is_decided_by_clinical_write and tests/ehr/test_addenda.py::test_addendum_open_is_decided_by_clinical_write, each over all 10 catalog roles with a statement spy on 'clinical.write'."
     },
     {
-      "symbol": "apps.ehr.episodes.close_episode",
+      "symbol": "apps.ehr.episodes._link_authority",
       "signals": [
-        "denial"
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "clinic_app.has_permission"
+      ],
+      "reason": "Plan item 27: link_encounter's authority, decided before the episode row lock and again when that lock is absent (a closed episode, or authority committed away since). Requires the assignee (_encounter_actor), the same patient and clinic, and clinical.write. test_episode_links_decide_patient_clinic_assignee_and_state executes the owner physician, a care-team colleague (refused as non-assignee), other-patient, other-clinic and closed episodes, and an already-linked encounter. After a real revocation, test_episode_link_and_close_refused_after_late_role_revocation_keep_no_write[episode_link] executes the second decision."
+    },
+    {
+      "symbol": "apps.ehr.episodes._close_authority",
+      "signals": [
+        "denial",
+        "scope_name"
       ],
       "kind": "delegated",
       "enforced_by": [
         "clinic_app.has_permission"
       ],
-      "reason": "Plan item 27: requires clinical.write for the episode's enrollment through has_permission. Tests execute it only for the permitted physician; its refusal branch is _require's, which is executed through open_episode."
+      "reason": "Plan item 27: close_episode's authority, decided before the episode row lock and again when that lock is absent (a closed episode, or authority committed away since): a visible episode and clinical.write for its enrollment through has_permission. Tests execute the first decision for the permitted physician and for an unknown episode (test_workspace_episode_refusal_decided_by_the_service_stands); after a real revocation, test_episode_link_and_close_refused_after_late_role_revocation_keep_no_write[episode_close] executes the second; _require's refusal branch is executed through open_episode."
     },
     {
       "symbol": "apps.ehr.episodes.encounter_episodes",
@@ -4764,18 +4778,6 @@
         "clinic_app.has_permission"
       ],
       "reason": "Plan item 27 read for the encounter page: _encounter_actor, then clinical.read through has_permission. It runs for the assigned physician via the workspace tests; there is no dedicated refusal matrix, and a refusal only hides the panel."
-    },
-    {
-      "symbol": "apps.ehr.episodes.link_encounter",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.ehr.services._encounter_actor",
-        "clinic_app.has_permission"
-      ],
-      "reason": "Plan item 27: requires the assignee (_encounter_actor), the same patient and clinic, and clinical.write. test_episode_links_decide_patient_clinic_assignee_and_state executes the owner physician, a care-team colleague (refused as non-assignee), other-patient, other-clinic and closed episodes, and an already-linked encounter."
     },
     {
       "symbol": "apps.ehr.episodes.open_episode_for_encounter",

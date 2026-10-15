@@ -20,9 +20,9 @@ from uuid import uuid4
 import pytest
 from apps.audit import services as audit_services
 from apps.audit.models import AuditEvent
-from apps.ehr import history, services
+from apps.ehr import episodes, history, services
 from apps.ehr.autosave import autosave_draft
-from apps.ehr.episodes import open_episode_for_encounter
+from apps.ehr.episodes import link_encounter, open_episode, open_episode_for_encounter
 from apps.ehr.finalization import amend_document, finalize_version
 from apps.ehr.history import HistoryChange, save_history
 from apps.ehr.models import (
@@ -257,6 +257,7 @@ class LateRevocation:
     url: str
     physician: UUID
     encounter: UUID
+    enrollment: UUID
     entry: UUID
     revoke: Callable[[], int]
 
@@ -325,6 +326,7 @@ def late_revocation(graph: RbacGraph) -> LateRevocation:
         f"/ehr/clinics/{graph.clinic_a}/history/",
         physician,
         encounter.pk,
+        enrolled,
         entry,
         revoke,
     )
@@ -391,6 +393,40 @@ def revoked_before_autosave_view_audit(world: LateRevocation) -> Iterator[None]:
         ThreadPoolExecutor(max_workers=1) as pool,
     ):
         patch.setattr("apps.ehr.services.record_phase1_event", viewed)
+        revocation = pool.submit(revoke)
+        yield
+        assert revocation.result(timeout=180) == 0
+
+
+@contextmanager
+def revoked_after_episode_check(world: LateRevocation) -> Iterator[None]:
+    """Commit the real revocation between an episode writer's check and its lock."""
+    reached, revoked = Event(), Event()
+    require = episodes._require
+
+    def last_check(
+        permission: str, clinic_id: UUID, enrollment_id: UUID | None
+    ) -> UUID:
+        # The writer's own clinical.write check, unchanged; the committed
+        # revocation lands between it and the episode's row lock.
+        actor = require(permission, clinic_id, enrollment_id)
+        if permission == "clinical.write" and not reached.is_set():
+            reached.set()
+            assert revoked.wait(timeout=120), "the revocation did not finish"
+        return actor
+
+    def revoke() -> int:
+        try:
+            assert reached.wait(timeout=120), "the request never reached its check"
+            return world.revoke()
+        finally:
+            revoked.set()
+
+    with (
+        pytest.MonkeyPatch.context() as patch,
+        ThreadPoolExecutor(max_workers=1) as pool,
+    ):
+        patch.setattr("apps.ehr.episodes._require", last_check)
         revocation = pool.submit(revoke)
         yield
         assert revocation.result(timeout=180) == 0
@@ -521,3 +557,100 @@ def test_autosave_refused_after_late_role_revocation_keeps_no_view_audit(
     assert late_trail == early_trail
     assert trail.count("identity.staff_role.revoked") == 1
     assert domain() == unchanged
+
+
+@pytest.mark.parametrize("action", ["episode_link", "episode_close"])
+def test_episode_link_and_close_refused_after_late_role_revocation_keep_no_write(
+    rbac_graph: RbacGraph, action: str
+) -> None:
+    graph = rbac_graph
+    world = late_revocation(graph)
+    with as_actor(graph, world.physician):
+        episode = open_episode(
+            clinic_id=graph.clinic_a,
+            enrollment_id=world.enrollment,
+            title="Episódio sintético",
+        ).pk
+        if action == "episode_close":
+            # The workspace offers closing the visit's own episode.
+            link_encounter(
+                clinic_id=graph.clinic_a,
+                encounter_id=world.encounter,
+                episode_id=episode,
+            )
+    url = f"/ehr/clinics/{graph.clinic_a}/encounter/"
+    body = {
+        "encounter_id": str(world.encounter),
+        "episode_id": str(episode),
+        "action": action,
+    }
+
+    def domain() -> tuple[object, ...]:
+        """The episode's state and closure, and its encounters."""
+        with owner_context(graph.organization_a):
+            row = (
+                Episode.objects.filter(pk=episode)
+                .values_list("state", "closed_at", "closed_by_id")
+                .get()
+            )
+            members = sorted(
+                EpisodeEncounter.objects.filter(episode_id=episode).values_list(
+                    "encounter_id", flat=True
+                )
+            )
+        return row, members
+
+    unchanged = domain()
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        session = dict(client.session)
+        with revoked_after_episode_check(world):
+            late = client.post(url, body)
+        assert dict(client.session) == session
+    trail = audit_since(graph, before)
+    assert domain() == unchanged
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        # The same request once the revocation has committed.
+        early = client.post(url, body)
+    early_trail = [e for e in audit_since(graph, before) if e.startswith("ehr.")]
+    late_trail = [e for e in trail if e.startswith("ehr.")]
+    # Lost authority is the ordinary denial: no "episode closed", no 500.
+    assert late.status_code == early.status_code == 403
+    assert NONCE.sub(b"", late.content) == NONCE.sub(b"", early.content)
+    assert not {"ehr.episode.linked", "ehr.episode.closed"} & set(trail)
+    # Only the fixed denial event may remain, exactly as the early refusal leaves.
+    assert set(late_trail) <= {DENIAL}
+    assert late_trail == early_trail
+    assert trail.count("identity.staff_role.revoked") == 1
+    assert domain() == unchanged
+
+
+def test_workspace_episode_refusal_decided_by_the_service_stands(
+    rbac_graph: RbacGraph,
+) -> None:
+    registration(rbac_graph, rbac_graph.physician, rbac_graph.clinic_a)
+    enrolled = enrollment_of(
+        rbac_graph,
+        draft_world(rbac_graph).document.encounter.patient_id,
+        rbac_graph.clinic_a,
+    )
+    with as_actor(rbac_graph, rbac_graph.physician):
+        encounter = open_walk_in(rbac_graph, enrolled)
+    url = f"/ehr/clinics/{rbac_graph.clinic_a}/encounter/"
+    before = audit_mark(rbac_graph)
+    with physician_client(rbac_graph) as client:
+        for action in ("episode_link", "episode_close"):
+            # The visit is the physician's own; only the posted episode is
+            # unknown, so the service's refusal stands and records nothing.
+            refused = client.post(
+                url,
+                {
+                    "encounter_id": encounter.pk,
+                    "episode_id": str(uuid4()),
+                    "action": action,
+                },
+            )
+            assert refused.status_code == 403
+    assert count(rbac_graph, EpisodeEncounter) == 0
+    assert [e for e in audit_since(rbac_graph, before) if e.startswith("ehr.")] == []
