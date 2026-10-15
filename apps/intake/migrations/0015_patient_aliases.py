@@ -30,6 +30,18 @@ TABLES = (
     "intake_patientalias",
     "intake_patientmergetransfer",
 )
+ALIAS_SQL = (
+    "".join(
+        revoke_default_dml(table, ("SELECT", "INSERT"))
+        + apply_intake_rls(table, "organization_id")
+        for table in TABLES
+    )
+    + SCOPE_SQL
+    + GUARD_SQL
+    + BINDINGS_SQL
+    + composite_bindings()
+    + FINALIZE_SQL
+)
 
 if TYPE_CHECKING:
     from django.apps.registry import Apps
@@ -40,20 +52,8 @@ if TYPE_CHECKING:
 def install_alias_contract(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
     """Install the protected contract in one owned DDL transaction."""
     del apps
-    sql = (
-        "".join(
-            revoke_default_dml(table, ("SELECT", "INSERT"))
-            + apply_intake_rls(table, "organization_id")
-            for table in TABLES
-        )
-        + SCOPE_SQL
-        + GUARD_SQL
-        + BINDINGS_SQL
-        + composite_bindings()
-        + FINALIZE_SQL
-    )
     with schema_editor.connection.cursor() as cursor:
-        cursor.execute(sql)
+        cursor.execute(ALIAS_SQL)
 
 
 class Migration(migrations.Migration):

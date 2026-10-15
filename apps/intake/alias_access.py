@@ -36,7 +36,6 @@ MERGE_ROLES: Final = (
     UserClinicRole.Role.CLINIC_ADMIN,
     UserClinicRole.Role.OWNER,
 )
-SESSION_GUC: Final = "app.current_merge_session"
 SESSION_HASH_HEX_LENGTH: Final = 64
 
 
@@ -113,11 +112,11 @@ def duplicate_review_session(*, clinic_id: UUID, session_key: str) -> Iterator[N
     except (SessionInventoryDeniedError, UnicodeEncodeError) as error:
         raise StepUpRequired from error
     with connection.cursor() as cursor:
-        cursor.execute("SELECT current_setting(%s, true)", [SESSION_GUC])
+        cursor.execute("SELECT current_setting('app.current_merge_session', true)")
         previous = cursor.fetchone()
         cursor.execute(
-            "SELECT set_config(%s, %s, true)",
-            [SESSION_GUC, session_hash(session_key).hex()],
+            "SELECT set_config('app.current_merge_session', %s, true)",
+            [session_hash(session_key).hex()],
         )
     try:
         with transaction.atomic():
@@ -125,15 +124,15 @@ def duplicate_review_session(*, clinic_id: UUID, session_key: str) -> Iterator[N
     finally:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT set_config(%s, %s, true)",
-                [SESSION_GUC, previous[0] or "" if previous else ""],
+                "SELECT set_config('app.current_merge_session', %s, true)",
+                [previous[0] or "" if previous else ""],
             )
 
 
 def verified_review_session(actor_id: UUID) -> SessionRecord:
     """Revalidate the exact live proof at the service's mutation boundary."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT current_setting(%s, true)", [SESSION_GUC])
+        cursor.execute("SELECT current_setting('app.current_merge_session', true)")
         row = cursor.fetchone()
         digest = row[0] if row else None
         if (

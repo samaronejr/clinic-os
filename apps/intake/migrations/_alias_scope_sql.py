@@ -109,19 +109,19 @@ BEGIN
     END IF;
     IF requested_org IS NULL THEN RETURN; END IF;
     RETURN QUERY
-    WITH RECURSIVE forward(id) AS (
-        SELECT requested_patient
+    WITH RECURSIVE forward AS (
+        SELECT requested_patient AS id
         UNION
         SELECT a.survivor_patient_id FROM clinic_app.intake_patientalias a
         JOIN forward f ON f.id=a.merged_patient_id
         WHERE a.active AND a.organization_id=requested_org
-    ), root(id) AS (
+    ), root AS (
         SELECT f.id FROM forward f WHERE NOT EXISTS (
             SELECT 1 FROM clinic_app.intake_patientalias a
             WHERE a.active AND a.organization_id=requested_org
               AND a.merged_patient_id=f.id
         )
-    ), members(id) AS (
+    ), members AS (
         SELECT r.id FROM root r
         UNION
         SELECT a.merged_patient_id FROM clinic_app.intake_patientalias a
