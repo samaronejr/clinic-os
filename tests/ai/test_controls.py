@@ -89,39 +89,37 @@ def test_native_controls_execute_valid_invalid_stale_and_forbidden_requests(
     world = seed(rbac_graph, monkeypatch)
     g = rbac_graph
     valid = submission(world)
-    requests = [
-        (native_request(world.administrator, g.clinic_a), 200),
+    requests: list[tuple[UUID, UUID, dict[str, str] | None, int]] = [
+        (world.administrator, g.clinic_a, None, 200),
         (
-            native_request(
-                world.administrator, g.clinic_a, data={**valid, "region": "US"}
-            ),
+            world.administrator,
+            g.clinic_a,
+            {**valid, "region": "US"},
             400,
         ),
         (
-            native_request(
-                world.administrator,
-                g.clinic_a,
-                data={**valid, "monthly_budget_micros": "-1"},
-            ),
+            world.administrator,
+            g.clinic_a,
+            {**valid, "monthly_budget_micros": "-1"},
             400,
         ),
         (
-            native_request(
-                world.administrator, g.clinic_a, data={**valid, "expected_version": "1"}
-            ),
+            world.administrator,
+            g.clinic_a,
+            {**valid, "expected_version": "1"},
             409,
         ),
-        (native_request(world.administrator, g.clinic_a, data=valid), 302),
-        (native_request(g.shared_user, g.clinic_a), 403),
-        (native_request(world.administrator, g.clinic_c), 403),
+        (world.administrator, g.clinic_a, valid, 302),
+        (g.shared_user, g.clinic_a, None, 403),
+        (world.administrator, g.clinic_c, None, 403),
     ]
     # When: every native command traverses the real view and service.
-    for request, expected in requests:
+    for actor, clinic, data, expected in requests:
+        request = native_request(actor, clinic, data=data)
         match = request.resolver_match
         assert match is not None
-        clinic = match.kwargs["clinic_id"]
-        actor = request.user.pk
-        assert actor is not None
+        assert match.kwargs["clinic_id"] == clinic
+        # OTPMiddleware's lazy device lookup needs the known actor's GUC.
         with runtime_role(), tenant_context(actor, g.organization_a):
             response = views.settings_view(request, clinic)
         # Then: refusals never modify a session or write a session cookie.

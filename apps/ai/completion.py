@@ -79,7 +79,7 @@ def finish_success(
 ) -> None:
     """Atomically retain encrypted output and exact metering once."""
     invocation = (
-        AIInvocation.objects.select_for_update()
+        AIInvocation.objects.select_for_update(of=("self",))
         .select_related("configuration", "inputs_ref")
         .get(pk=invocation_id)
     )
