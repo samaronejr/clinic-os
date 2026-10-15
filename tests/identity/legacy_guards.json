@@ -1,6 +1,90 @@
 {
   "candidates": [
     {
+      "symbol": "apps.ai.artifacts.check_authority",
+      "signals": ["permission", "scope_name"],
+      "kind": "direct",
+      "probes": ["apps.ai.artifacts.check_authority#cut1"]
+    },
+    {
+      "symbol": "apps.ai.artifacts.input_for",
+      "signals": ["actor", "denial"],
+      "kind": "direct",
+      "probes": ["apps.ai.artifacts.input_for#cut1"]
+    },
+    {
+      "symbol": "apps.ai.artifacts.read_artifact",
+      "signals": ["actor", "denial"],
+      "kind": "direct",
+      "probes": ["apps.ai.artifacts.read_artifact#cut1"]
+    },
+    {
+      "symbol": "apps.ai.controls.current_policy",
+      "signals": ["permission"],
+      "kind": "direct",
+      "probes": ["apps.ai.controls.current_policy#cut1"]
+    },
+    {
+      "symbol": "apps.ai.controls.set_organization_policy",
+      "signals": ["denial", "permission"],
+      "kind": "direct",
+      "probes": ["apps.ai.controls.set_organization_policy#cut1"]
+    },
+    {
+      "symbol": "apps.ai.management.commands.ai_gateway.Command.handle",
+      "signals": ["authentication"],
+      "kind": "direct",
+      "probes": ["apps.ai.management.commands.ai_gateway.Command.handle#cut1"]
+    },
+    {
+      "symbol": "apps.ai.outbox.GatewayActionAdapter.send",
+      "signals": ["tenant_boundary"],
+      "kind": "direct",
+      "probes": ["apps.ai.outbox.GatewayActionAdapter.send#cut1"]
+    },
+    {
+      "symbol": "apps.ai.owner.propose_model",
+      "signals": ["authentication"],
+      "kind": "direct",
+      "probes": ["apps.ai.owner.propose_model#cut1"]
+    },
+    {
+      "symbol": "apps.ai.owner.reset_circuit",
+      "signals": ["authentication"],
+      "kind": "direct",
+      "probes": ["apps.ai.owner.reset_circuit#cut1"]
+    },
+    {
+      "symbol": "apps.ai.owner.set_global_switch",
+      "signals": ["authentication"],
+      "kind": "direct",
+      "probes": ["apps.ai.owner.set_global_switch#cut1"]
+    },
+    {
+      "symbol": "apps.ai.owner.transition_model",
+      "signals": ["authentication"],
+      "kind": "direct",
+      "probes": ["apps.ai.owner.transition_model#cut1"]
+    },
+    {
+      "symbol": "apps.ai.policy.organization_policy",
+      "signals": ["resolver"],
+      "kind": "direct",
+      "probes": ["apps.ai.policy.organization_policy#cut1"]
+    },
+    {
+      "symbol": "apps.ai.services.invoke",
+      "signals": ["actor", "denial", "resolver"],
+      "kind": "direct",
+      "probes": ["apps.ai.services.invoke#cut1"]
+    },
+    {
+      "symbol": "apps.ai.views.settings_view",
+      "signals": ["decorator"],
+      "kind": "direct",
+      "probes": ["apps.ai.views.settings_view#cut1"]
+    },
+    {
       "symbol": "apps.audit.services._record_system_event",
       "signals": [
         "resolver"
@@ -4866,6 +4950,20 @@
     }
   ],
   "probes": [
+    "apps.ai.artifacts.check_authority#cut1",
+    "apps.ai.artifacts.input_for#cut1",
+    "apps.ai.artifacts.read_artifact#cut1",
+    "apps.ai.controls.current_policy#cut1",
+    "apps.ai.controls.set_organization_policy#cut1",
+    "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
+    "apps.ai.outbox.GatewayActionAdapter.send#cut1",
+    "apps.ai.owner.propose_model#cut1",
+    "apps.ai.owner.reset_circuit#cut1",
+    "apps.ai.owner.set_global_switch#cut1",
+    "apps.ai.owner.transition_model#cut1",
+    "apps.ai.policy.organization_policy#cut1",
+    "apps.ai.services.invoke#cut1",
+    "apps.ai.views.settings_view#cut1",
     "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
@@ -5669,6 +5767,99 @@
     }
   ],
   "sql_guards": {
+    "clinic_app.ai_budget_usage": {
+      "discovery": {
+        "signatures": [{
+          "arguments": "requested_purpose text", "returns": "record",
+          "set_returning": true, "security_definer": true
+        }],
+        "migrations": ["apps/ai/migrations/_policy_sql.py"],
+        "policies": [],
+        "resolvers": ["clinic_app.ai_ledger_guard"]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Content-free tenant budget aggregation; reservation and concurrency tests exercise its closed projection."
+    },
+    "clinic_app.ai_ledger_guard": {
+      "discovery": {
+        "signatures": [{
+          "arguments": "", "returns": "trigger",
+          "set_returning": false, "security_definer": true
+        }],
+        "migrations": ["apps/ai/migrations/_ledger_sql.py"],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_raw_invocation_cannot_forge_a_cheaper_budget_reservation",
+        "test_fake_call_is_metered_once_and_all_content_stays_encrypted",
+        "test_closed_circuit_can_reopen_without_losing_history"
+      ],
+      "reason": "Executed runtime reservation, artifact, actor and outbox binding with raw-SQL refusal and real transport settlement."
+    },
+    "clinic_app.ai_organization_policy": {
+      "discovery": {
+        "signatures": [{
+          "arguments": "", "returns": "jsonb",
+          "set_returning": false, "security_definer": true
+        }],
+        "migrations": ["apps/ai/migrations/_policy_sql.py"],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_ledger_guard", "clinic_app.configuration_guard"
+        ]
+      },
+      "kind": "worker_protocol",
+      "probes": [],
+      "reason": "Closed organization configuration projection; contains only opt-in and integer caps, never clinical content."
+    },
+    "clinic_app.ai_platform_guard": {
+      "discovery": {
+        "signatures": [{
+          "arguments": "", "returns": "trigger",
+          "set_returning": false, "security_definer": true
+        }],
+        "migrations": ["apps/ai/migrations/_platform_sql.py"],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Owner-only immutable configuration lifecycle and fixed region vocabulary; runtime has SELECT only."
+    },
+    "clinic_app.ai_policy_valid": {
+      "discovery": {
+        "signatures": [{
+          "arguments": "policy jsonb", "returns": "bool",
+          "set_returning": false, "security_definer": true
+        }],
+        "migrations": ["apps/ai/migrations/_policy_sql.py"],
+        "policies": [],
+        "resolvers": ["clinic_app.configuration_guard"]
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Immutable closed JSON schema validation; reads no staff, tenant, principal or patient state."
+    },
+    "clinic_app.ai_staff": {
+      "discovery": {
+        "signatures": [{
+          "arguments": "clinic uuid, purpose text, enrollment uuid",
+          "returns": "bool", "set_returning": false, "security_definer": true
+        }],
+        "migrations": ["apps/ai/migrations/_policy_sql.py"],
+        "policies": ["clinic_app.ai_aiartifact:ai_artifact_user"],
+        "resolvers": ["clinic_app.ai_ledger_guard"]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_ai_sql_role_and_scope_decisions_follow_exact_permissions",
+        "test_clinical_purposes_recheck_current_patient_authority"
+      ],
+      "reason": "Real all-role purpose/permission decisions and current professional/care-team revocation oracles, without authorization mocks."
+    },
     "clinic_app.__function_name__": {
       "discovery": {
         "signatures": [],
@@ -6407,14 +6598,18 @@
           }
         ],
         "migrations": [
+          "apps/ai/migrations/_configuration_sql.py",
           "apps/identity/migrations/0009_clinic_configuration_policy.py"
         ],
         "policies": [],
         "resolvers": []
       },
-      "kind": "row_integrity",
-      "probes": [],
-      "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+      "kind": "domain_protocol",
+      "probes": [
+        "test_ai_policy_requires_organization_permission_in_every_clinic",
+        "test_native_controls_execute_valid_invalid_stale_and_forbidden_requests"
+      ],
+      "reason": "Retains legacy configuration checks and adds executed org-wide permission, narrowing, native denial and optimistic-version controls."
     },
     "clinic_app.consent_audit": {
       "discovery": {
@@ -6926,6 +7121,8 @@
           "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.identity_authenticatorreset:manager",
           "clinic_app.identity_careteammembership:scope_read",
+          "clinic_app.identity_clinicconfiguration:configuration_insert",
+          "clinic_app.identity_clinicconfiguration:configuration_read",
           "clinic_app.identity_onboardingprogress:manager",
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
@@ -6939,6 +7136,8 @@
           "clinic_app.workflows_workflowstep:workflow_update"
         ],
         "resolvers": [
+          "clinic_app.ai_staff",
+          "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
           "clinic_app.delegate_staff",
           "clinic_app.identity_invitation_accept",

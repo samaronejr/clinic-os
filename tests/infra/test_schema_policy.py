@@ -64,6 +64,10 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     # Task-16 session/clinical policies are checked independently, including
     # exact policy names, FORCE RLS and runtime ACLs, in test_questionnaires.
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
+        # Exact requester-only ciphertext and ledger policies: tests/ai/test_posture.py.
+        "ai_aiartifact",
+        "ai_aiinvocation",
+        "ai_aicircuit",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

@@ -19,6 +19,11 @@ from dataclasses import dataclass
 from typing import Final, Never
 
 DOMAIN_RELATIONS: Final = (
+    "ai_aiartifact",
+    "ai_aicircuit",
+    "ai_aiinvocation",
+    "ai_gatewayswitch",
+    "ai_modelconfiguration",
     "audit_event",
     "billing_invoice",
     "billing_invoicerevision",

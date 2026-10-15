@@ -88,6 +88,7 @@ __all__ = (
     "hold_subject_mutation_lock",
     "receive_provider_callback",
     "register_action_adapter",
+    "register_action_dispatcher",
     "register_callback_authenticator",
     "register_send_adapter",
     "register_subject_recheck",
@@ -123,6 +124,7 @@ type _PresendDecision = Literal["send", "missing", "ineligible", "revoked"]
 
 _SEND_ADAPTERS: dict[str, SendAdapter] = {}
 _ACTION_ADAPTERS: dict[str, SendAdapter] = {}
+_ACTION_DISPATCHERS: dict[str, Callable[[OperationScope], None]] = {}
 _CALLBACK_AUTHENTICATORS: dict[str, CallbackAuthenticator] = {}
 _SUBJECT_RECHECKS: dict[str, Callable[[OperationScope], bool]] = {}
 _SUBJECT_LOCK_KEYS: dict[str, Callable[[OperationScope, UUID], str | None]] = {}
@@ -207,6 +209,13 @@ def register_action_adapter(adapter: SendAdapter) -> None:
     _ACTION_ADAPTERS[adapter.provider] = adapter
 
 
+def register_action_dispatcher(
+    provider: str, dispatcher: Callable[[OperationScope], None]
+) -> None:
+    """Route committed action references to a domain's dedicated fair queue."""
+    _ACTION_DISPATCHERS[provider] = dispatcher
+
+
 def register_callback_authenticator(authenticator: CallbackAuthenticator) -> None:
     """Register the authenticator for one provider's callbacks."""
     _CALLBACK_AUTHENTICATORS[authenticator.provider] = authenticator
@@ -269,6 +278,7 @@ def clear_integration_registrations() -> None:
     """Remove every registered adapter and authenticator."""
     _SEND_ADAPTERS.clear()
     _ACTION_ADAPTERS.clear()
+    _ACTION_DISPATCHERS.clear()
     _CALLBACK_AUTHENTICATORS.clear()
 
 
@@ -507,6 +517,21 @@ def _dispatch(operation_id: UUID) -> None:
     )
 
     require_live_runtime(os.environ)
+    if _ACTION_DISPATCHERS:
+        scope = _resolve_scope(operation_id)
+        if scope is not None:
+            with _stored_scope_context(scope):
+                provider = (
+                    IntegrationOperation.objects.filter(
+                        pk=operation_id, kind=OperationKind.ACTION
+                    )
+                    .values_list("provider", flat=True)
+                    .first()
+                )
+            dispatcher = _ACTION_DISPATCHERS.get(provider or "")
+            if dispatcher is not None:
+                dispatcher(scope)
+                return
     execute_operation_task.apply_async(kwargs={"operation_id": str(operation_id)})
 
 

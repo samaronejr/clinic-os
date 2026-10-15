@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from django.utils.translation import gettext
 from PIL import Image
 from playwright.sync_api import expect
 
@@ -188,3 +189,74 @@ def test_settings_native_publication_isolation_and_rejection(
     expect(physician.locator('[data-module="settings"]')).to_have_count(0)
     capture(physician, renewal_artifact_root, "physician-denied", width)
     physician_context.close()
+
+
+@pytest.mark.parametrize(
+    "presentation",
+    [(1440, "light"), (1440, "dark"), (390, "light"), (390, "dark")],
+)
+def test_ai_organization_controls_are_native_scoped_and_readable(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    presentation: tuple[int, str],
+) -> None:
+    """Extend this registered suite; no new suite or CI shard is introduced."""
+    width, theme = presentation
+    staff = availability_staff
+    manager = seed_settings_manager(staff)
+    # Owner-only synthetic setup. Runtime assertions below use only the UI.
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)",
+            [staff["organization"]],
+        )
+        for clinic in (staff["clinic_a"], staff["clinic_b"]):
+            conn.execute(
+                "INSERT INTO clinic_app.identity_userclinicrole "
+                "(id,user_id,organization_id,clinic_id,role,workflow_bundle_version) "
+                "VALUES (%s,%s,%s,%s,'org_admin',1)",
+                [str(uuid4()), manager["id"], staff["organization"], clinic],
+            )
+        conn.execute("SET ROLE clinic_app")
+        conn.execute(
+            "SELECT set_config('app.current_user_id',%s,true)", [manager["id"]]
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_userpreference "
+            "(user_id,theme,density,updated_at) VALUES (%s,%s,'comfortable',now())",
+            [manager["id"], theme],
+        )
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        java_script_enabled=False, viewport={"width": width, "height": 900}
+    )
+    try:
+        page = context.new_page()
+        sign_in_manager(page, renewal_base_url, staff, manager)
+        settings_url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/"
+        goto_settled(page, settings_url)
+        page.locator("#id_display_name").fill("Clínica sintética de IA")
+        submit(page, "settings")
+        ai_url = f"{settings_url}ai/"
+        goto_settled(page, ai_url)
+        expect(page.locator("h1")).to_have_text(gettext("AI settings"))
+        expect(page.locator("[data-ai-status]")).to_contain_text(
+            gettext("AI is disabled. Continue working manually.")
+        )
+        page.locator("#id_monthly_budget_micros").fill("100000")
+        page.locator("#id_enabled").check()
+        page.locator("#id_limit_front_desk").fill("100000")
+        page.locator('input[name="purposes"][value="front_desk"]').check()
+        click_to_navigate(page.locator('[data-ai-policy-form] button[type="submit"]'))
+        expect(page.locator("#id_monthly_budget_micros")).to_have_value("100000")
+        expect(page.locator("#id_enabled")).to_be_checked()
+        capture(page, renewal_artifact_root, f"ai-controls-{theme}", width)
+        page.locator("#id_monthly_budget_micros").fill("-1")
+        click_to_navigate(page.locator('[data-ai-policy-form] button[type="submit"]'))
+        expect(page.locator('[data-ai-policy-form] [role="alert"]')).to_be_visible()
+        capture(page, renewal_artifact_root, f"ai-invalid-{theme}", width)
+    finally:
+        context.close()

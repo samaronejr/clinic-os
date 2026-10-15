@@ -11,6 +11,58 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "ai.model.drafted": (
+        "system",
+        "clinic-os-ops",
+        "ai.model_configuration",
+        "drafted",
+    ),
+    "ai.model.approved": (
+        "system",
+        "clinic-os-ops",
+        "ai.model_configuration",
+        "approved",
+    ),
+    "ai.model.active": ("system", "clinic-os-ops", "ai.model_configuration", "active"),
+    "ai.model.retired": (
+        "system",
+        "clinic-os-ops",
+        "ai.model_configuration",
+        "retired",
+    ),
+    "ai.global_switch.changed": (
+        "system",
+        "clinic-os-ops",
+        "ai.gateway_switch",
+        "changed",
+    ),
+    "ai.organization_policy.published": (
+        "tenant",
+        "clinic-os-web",
+        "identity.clinic_configuration",
+        "published",
+    ),
+    "ai.artifact.created": ("tenant", "clinic-os-worker", "ai.artifact", "created"),
+    "ai.invocation.reserved": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.invocation",
+        "reserved",
+    ),
+    "ai.invocation.succeeded": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.invocation",
+        "succeeded",
+    ),
+    "ai.invocation.failed": ("tenant", "clinic-os-worker", "ai.invocation", "failed"),
+    "ai.circuit.opened": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.circuit",
+        "opened",
+    ),
+    "ai.circuit.closed": ("system", "clinic-os-ops", "ai.circuit", "closed"),
     "identity.delegate.requested": (
         "tenant",
         "clinic-os-web",

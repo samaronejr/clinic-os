@@ -8,6 +8,11 @@ from infra import identity_lifecycle_catalog
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    ("ai_aiartifact", "SELECT"),
+    ("ai_aicircuit", "SELECT"),
+    ("ai_aiinvocation", "SELECT"),
+    ("ai_gatewayswitch", "SELECT"),
+    ("ai_modelconfiguration", "SELECT"),
     *identity_lifecycle_catalog.TABLE_GRANTS,
     ("identity_patientdelegategrant", "SELECT"),
     ("identity_patientdelegategrant", "INSERT"),
@@ -143,6 +148,16 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "ai_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "ai_organization_policy": (
+        "s",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "ai_budget_usage": ("s", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "ai_policy_valid": ("i", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "ai_ledger_guard": ("v", False, ["clinic_resolver"]),
+    "ai_platform_guard": ("v", False, ["clinic_resolver"]),
     "delegate_now": ("s", False, ["clinic_resolver"]),
     "patient_identity": ("s", False, ["clinic_resolver"]),
     "delegate_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
@@ -300,6 +315,12 @@ POSTURE_OVERRIDES: Final = {
     "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
+    ("ai_staff", "clinic uuid, purpose text, enrollment uuid"),
+    ("ai_organization_policy", ""),
+    ("ai_budget_usage", "requested_purpose text"),
+    ("ai_policy_valid", "policy jsonb"),
+    ("ai_ledger_guard", ""),
+    ("ai_platform_guard", ""),
     ("delegate_now", ""),
     ("patient_identity", "requested_session uuid"),
     ("delegate_staff", "requested_clinic uuid"),
@@ -507,6 +528,14 @@ FUNCTION_SIGNATURES: Final = {
     ("workflows_task_scope", "requested_task uuid"),
 }
 FUNCTION_RESULTS: Final = {
+    ("ai_staff", "clinic uuid, purpose text, enrollment uuid"): "boolean",
+    ("ai_organization_policy", ""): "jsonb",
+    ("ai_budget_usage", "requested_purpose text"): (
+        "TABLE(total_micros numeric, purpose_micros numeric)"
+    ),
+    ("ai_policy_valid", "policy jsonb"): "boolean",
+    ("ai_ledger_guard", ""): "trigger",
+    ("ai_platform_guard", ""): "trigger",
     ("delegate_now", ""): "timestamp with time zone",
     (
         "patient_identity",
