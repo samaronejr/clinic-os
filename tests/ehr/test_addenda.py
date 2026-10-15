@@ -730,6 +730,10 @@ def test_addendum_api_contract_and_identical_refusals(rbac_graph: RbacGraph) -> 
             ),
         ]
         assert {(r.status_code, r.content) for r in refusals} == {(403, denial)}
+    # The assigned physician writes the main draft, never an addendum; with
+    # clinical.write authority (a current registration) that is a precondition
+    # refusal, as in the service test above.
+    registration(rbac_graph, rbac_graph.physician, rbac_graph.clinic_a)
     with signed_in(rbac_graph.physician) as author:
         own = author.post(
             "/api/ui/v1/ehr/addendum/open/",

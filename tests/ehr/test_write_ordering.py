@@ -28,7 +28,11 @@ from apps.ehr.models import (
     EpisodeEncounter,
     Problem,
 )
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.ehr.services import (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    create_draft,
+)
 from apps.identity.models import User, UserClinicRole
 from django.contrib.auth.hashers import make_password
 from django.db import connection
@@ -57,7 +61,7 @@ from infra.management_command_support import (
     run_management_command,
 )
 from otp_test_support import create_totp_device
-from renewal.test_encounters import physician_client
+from renewal.test_encounters import physician_client, seed
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -241,11 +245,19 @@ def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
     rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     graph = rbac_graph
+    _, template = seed(graph)
     enrolled = enrollment(graph, graph.clinic_a)
     physician = clinician(graph, "physician", enrolled)
     with as_actor(graph, physician):
         # Unscheduled: no appointment or availability blocks the revocation.
         encounter = open_walk_in(graph, enrolled)
+        # Starting the note is the care relationship history writes need
+        # (ehr_care: a version this physician authored for the patient).
+        create_draft(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            template_id=template.pk,
+        )
         save_history(
             clinic_id=graph.clinic_a,
             encounter_id=encounter.pk,
