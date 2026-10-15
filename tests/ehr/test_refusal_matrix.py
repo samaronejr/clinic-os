@@ -267,12 +267,16 @@ def reaches_ehr(view: object) -> bool:
     )
     assert functions, f"uninspectable view {view!r}"
     for function in functions:
+        # A referenced name is resolved as an attribute of the module that
+        # defines the function: the same binding, read by value.
+        defining = inspect.getmodule(function)
+        assert defining is not None, f"view function without a module {function!r}"
         codes = [function.__code__]
         while codes:
             code = codes.pop()
             codes.extend(c for c in code.co_consts if isinstance(c, types.CodeType))
             for name in code.co_names:
-                target = function.__globals__.get(name)
+                target = getattr(defining, name, None)
                 module = (
                     target.__name__
                     if isinstance(target, types.ModuleType)

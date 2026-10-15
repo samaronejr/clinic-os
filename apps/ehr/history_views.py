@@ -8,7 +8,7 @@ from uuid import UUID
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
@@ -61,24 +61,31 @@ def _editor(request: HttpRequest, encounter: Encounter) -> HistoryForm:
         if owner is None:
             raise ClinicalAccessDeniedError
         authorize_history(encounter.clinic_id, owner, write=True)
-    context = read_history(
-        clinic_id=encounter.clinic_id, encounter_id=encounter.pk, kind=kind
-    )
-    initial: dict[str, object] = {
-        "encounter_id": encounter.pk,
-        "kind": kind,
-        "revision": context.revision,
-        "state": "documented",
-        "status": "active",
-    }
-    if request.POST.get("action") == "edit":
-        entry_id = UUID(request.POST.get("entry_id", ""))
-        entry = next((e for e in context.entries if e.entry_id == entry_id), None)
-        if entry is None:
-            raise ClinicalAccessDeniedError
-        initial.update(
-            entry_id=entry.entry_id, description=entry.description, status=entry.status
+    # A savepoint: authority committed away after the last authorization (a
+    # physician-role revocation) hides the entry from the audited read under
+    # RLS. That late refusal rolls the read's audit back with it, so it leaves
+    # exactly what the pre-audit refusal above leaves.
+    with transaction.atomic():
+        context = read_history(
+            clinic_id=encounter.clinic_id, encounter_id=encounter.pk, kind=kind
         )
+        initial: dict[str, object] = {
+            "encounter_id": encounter.pk,
+            "kind": kind,
+            "revision": context.revision,
+            "state": "documented",
+            "status": "active",
+        }
+        if request.POST.get("action") == "edit":
+            entry_id = UUID(request.POST.get("entry_id", ""))
+            entry = next((e for e in context.entries if e.entry_id == entry_id), None)
+            if entry is None:
+                raise ClinicalAccessDeniedError
+            initial.update(
+                entry_id=entry.entry_id,
+                description=entry.description,
+                status=entry.status,
+            )
     return HistoryForm(initial=initial)
 
 

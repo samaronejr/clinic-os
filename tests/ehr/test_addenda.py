@@ -707,6 +707,11 @@ def test_addendum_api_contract_and_identical_refusals(rbac_graph: RbacGraph) -> 
         )
         assert stale.status_code == 409
         assert set(stale.json()) == {"current_revision", "diff"}
+        reused = post("autosave", {**body, "text": "Outro complemento"})
+        assert (reused.status_code, reused.json()["code"]) == (
+            422,
+            "idempotency_mismatch",
+        )
         denial = b'{"code":"access_denied","message_key":"api.error.access_denied"}'
         refusals = [
             post("autosave", {**body, "addendum_id": str(uuid4())}),
@@ -725,8 +730,21 @@ def test_addendum_api_contract_and_identical_refusals(rbac_graph: RbacGraph) -> 
             ),
         ]
         assert {(r.status_code, r.content) for r in refusals} == {(403, denial)}
+    with signed_in(rbac_graph.physician) as author:
+        own = author.post(
+            "/api/ui/v1/ehr/addendum/open/",
+            json.dumps(
+                {
+                    "clinic_id": str(rbac_graph.clinic_a),
+                    "encounter_id": str(encounter.pk),
+                }
+            ),
+            "application/json",
+        )
+    assert (own.status_code, own.json()["code"]) == (412, "precondition_failed")
     with owner_context(rbac_graph.organization_a):
         assert EncounterAddendum.objects.get(pk=addendum).revision == 2
+        assert EncounterAddendum.objects.filter(encounter=encounter).count() == 1
     assert count(rbac_graph, AddendumSaveReceipt) == 1
 
 

@@ -351,6 +351,10 @@ def _review(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     ).exists():
         raise ClinicalAccessDeniedError
     version = view_version(clinic_id=clinic_id, version_id=version_id)
+    # The authorized read must agree with that binding before the session
+    # selects it; a disagreeing version is the same refusal as an unknown one.
+    if version.document.encounter_id != encounter.pk:
+        raise ClinicalAccessDeniedError
     request.session[key] = str(encounter.pk)
     request.session[f"ehr.review.{clinic_id}"] = str(version.pk)
     return redirect(continuation(clinic_id))

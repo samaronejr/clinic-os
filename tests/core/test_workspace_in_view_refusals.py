@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 from apps.core.api.errors import UI_API_PREFIX
+from apps.ehr.services import SOAP_FIELDS
 from apps.identity.account_views import request_session_key
 from apps.identity.models import UserClinicRole
 from django.http import HttpRequest, HttpResponse
@@ -24,7 +25,7 @@ from otp_test_support import fixed_otp_time, runtime_role
 from workspace_refusal_support import workspace_routes
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
     from django.http import HttpResponseBase
     from django.test.client import _MonkeyPatchedWSGIResponse
@@ -46,6 +47,13 @@ NO_IN_VIEW_REFUSAL = {
         "invalid JSON/schema returns 400, not a clinic refusal."
     ),
 }
+
+
+# The UI API autosave routes parse a strict JSON schema before their refusal
+# branch, so the form-shaped requests below end in a 400 there. Schema-valid
+# bodies naming an unknown record, in the actor's clinic and in the foreign
+# clinic, reach each view's own unknown/wrong-scope refusal.
+AUTOSAVE_ROUTES = frozenset({"ui_api:ehr-autosave", "ui_api:ehr-addendum-autosave"})
 
 
 def _missing_framework_key(request: HttpRequest) -> HttpResponse:
@@ -116,11 +124,40 @@ def _requests(
         )
 
 
+def _autosave_requests(
+    graph: RbacGraph, route_name: str
+) -> Iterator[tuple[str, Mapping[str, object], bool]]:
+    if route_name not in AUTOSAVE_ROUTES:
+        return
+    unknown = str(uuid4())
+    record: dict[str, object] = (
+        {
+            "version_id": unknown,
+            "editor_session": str(uuid4()),
+            "sections": dict.fromkeys(SOAP_FIELDS, ""),
+        }
+        if route_name == "ui_api:ehr-autosave"
+        else {"addendum_id": unknown, "text": ""}
+    )
+    for htmx in (False, True):
+        for clinic in (graph.clinic_a, graph.clinic_c):
+            yield (
+                "POST",
+                {
+                    **record,
+                    "clinic_id": str(clinic),
+                    "expected_revision": 1,
+                    "editor_command_id": str(uuid4()),
+                },
+                htmx,
+            )
+
+
 def _send(
     client: Client,
     url: str,
     method: str,
-    data: dict[str, str],
+    data: Mapping[str, object],
     htmx: bool,
 ) -> _MonkeyPatchedWSGIResponse:
     headers = {"HX-Request": "true"} if htmx else {}
@@ -168,7 +205,10 @@ def _probe_route(
             else (graph.clinic_a,)
         )
         for clinic_id in clinics:
-            for method, data, htmx in _requests(graph, known_encounter):
+            for method, data, htmx in (
+                *_requests(graph, known_encounter),
+                *_autosave_requests(graph, route.name),
+            ):
                 _restore_session(client, snapshot)
                 before = len(entries)
                 response = _send(client, route.url(clinic_id), method, data, htmx)
@@ -195,6 +235,7 @@ def test_authorised_in_view_refusals_are_session_read_only(
     names = {route.name for route in routes}
     assert len(routes) == len(names)
     assert NO_IN_VIEW_REFUSAL.keys() <= names
+    assert names >= AUTOSAVE_ROUTES
     observed: dict[str, int] = dict.fromkeys(names, 0)
     statuses: dict[str, set[int]] = {name: set() for name in names}
     profiles = [

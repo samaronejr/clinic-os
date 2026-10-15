@@ -8,40 +8,63 @@ and no audit row other than the fixed ``ehr.access.denied`` record survive.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from apps.audit.models import AuditEvent
-from apps.ehr import services
+from apps.ehr import history, services
 from apps.ehr.autosave import autosave_draft
 from apps.ehr.episodes import open_episode_for_encounter
 from apps.ehr.finalization import amend_document, finalize_version
+from apps.ehr.history import HistoryChange, save_history
 from apps.ehr.models import (
     DraftEditState,
     DraftSaveReceipt,
     Episode,
     EpisodeEncounter,
+    Problem,
 )
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.models import User, UserClinicRole
+from django.contrib.auth.hashers import make_password
+from django.db import connection
+from django.utils import timezone
+from django_otp.oath import TOTP
 
 from auth.stepup_test_support import verified_request
-from ehr.test_addenda import clinician, enrollment_of
+from database_urls import database_url_for_name
+from ehr.test_addenda import clinician, enrollment_of, signed_in
 from ehr.test_autosave import (
+    NONCE,
     SECTIONS,
     TAB_A,
     as_actor,
     count,
     draft_world,
+    enrollment,
     open_walk_in,
     registration,
     save,
     stored,
 )
 from identity.permission_support import owner_context
+from infra.management_command_support import (
+    generated_password,
+    run_management_command,
+)
+from otp_test_support import create_totp_device
 from renewal.test_encounters import physician_client
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
+    from apps.ehr.models import Encounter
+    from django_otp.plugins.otp_totp.models import TOTPDevice
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -184,3 +207,127 @@ def test_care_reader_writes_are_refused_before_the_read_audit(
     assert stored(rbac_graph, version.pk)[0] == 2
     assert count(rbac_graph, DraftSaveReceipt) == 1
     assert count(rbac_graph, DraftEditState, version_id=version.pk) == 1
+
+
+def clinic_owner(graph: RbacGraph) -> tuple[UUID, TOTPDevice]:
+    owner = User.objects.create(
+        username=f"sintetico-owner-{uuid4().hex}",
+        password=make_password(generated_password()),
+    )
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user=owner,
+            role=UserClinicRole.Role.OWNER,
+        )
+    return owner.pk, create_totp_device(owner.pk, confirmed=True)
+
+
+def wall_clock_code(device: TOTPDevice) -> str:
+    """The device's code on the wall clock.
+
+    ``fixed_otp_time`` pins ``time.time`` for this whole process while a
+    physician session is open; the owner command runs in its own process.
+    """
+    generator = TOTP(
+        device.bin_key, device.step, device.t0, device.digits, device.drift
+    )
+    generator.time = timezone.now().timestamp()
+    return f"{generator.token():0{device.digits}d}"
+
+
+def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph = rbac_graph
+    enrolled = enrollment(graph, graph.clinic_a)
+    physician = clinician(graph, "physician", enrolled)
+    with as_actor(graph, physician):
+        # Unscheduled: no appointment or availability blocks the revocation.
+        encounter = open_walk_in(graph, enrolled)
+        save_history(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            change=HistoryChange(
+                kind="problem",
+                expected_revision=0,
+                description="Problema sintético",
+                status="active",
+                reason="Registro inicial",
+                state="documented",
+            ),
+        )
+        (entry,) = Problem.objects.values_list("entry_id", flat=True)
+    with owner_context(graph.organization_a):
+        # Tenant membership outlives the physician role.
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=physician,
+            role=UserClinicRole.Role.RECEPTIONIST,
+        )
+    operator, device = clinic_owner(graph)
+    database_url = database_url_for_name(
+        os.environ["MIGRATION_DATABASE_URL"], str(connection.settings_dict["NAME"])
+    )
+    url = f"/ehr/clinics/{graph.clinic_a}/history/"
+    form = {"action": "edit", "encounter_id": str(encounter.pk), "kind": "problem"}
+    reached, revoked = Event(), Event()
+    authorize = history.authorize_history
+
+    def last_authorization(
+        clinic_id: UUID, encounter_id: UUID, *, write: bool = False
+    ) -> Encounter:
+        # read_history's own check, unchanged; the committed revocation lands
+        # between it and the audited, RLS-filtered read.
+        found = authorize(clinic_id, encounter_id, write=write)
+        reached.set()
+        assert revoked.wait(timeout=120), "the revocation did not finish"
+        return found
+
+    def revoke() -> int:
+        try:
+            assert reached.wait(timeout=120), "the edit never reached its last check"
+            return run_management_command(
+                (
+                    "revoke_staff_role",
+                    "--operator-id",
+                    str(operator),
+                    "--organization-id",
+                    str(graph.organization_a),
+                    "--clinic-id",
+                    str(graph.clinic_a),
+                    "--target-user-id",
+                    str(physician),
+                    "--role",
+                    UserClinicRole.Role.PHYSICIAN,
+                ),
+                database_url=database_url,
+                hidden_responses=(("Authentication code: ", wall_clock_code(device)),),
+            ).exit_code
+        finally:
+            revoked.set()
+
+    before = audit_mark(graph)
+    with signed_in(physician) as client:
+        # The unknown entry is refused before the audited read.
+        unknown = client.post(url, {**form, "entry_id": str(uuid4())})
+    baseline = [e for e in audit_since(graph, before) if e.startswith("ehr.")]
+    before = audit_mark(graph)
+    with signed_in(physician) as client:
+        session = dict(client.session)
+        monkeypatch.setattr("apps.ehr.history.authorize_history", last_authorization)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            revocation = pool.submit(revoke)
+            late = client.post(url, {**form, "entry_id": str(entry)})
+            assert revocation.result(timeout=180) == 0
+        assert dict(client.session) == session
+    trail = audit_since(graph, before)
+    assert unknown.status_code == late.status_code == 403
+    assert NONCE.sub(b"", late.content) == NONCE.sub(b"", unknown.content)
+    # The viewed audit rolled back with its savepoint: the late refusal leaves
+    # what the early one leaves, beside the revocation's own event.
+    assert [e for e in trail if e.startswith("ehr.")] == baseline
+    assert "ehr.history.viewed" not in trail
+    assert trail.count("identity.staff_role.revoked") == 1

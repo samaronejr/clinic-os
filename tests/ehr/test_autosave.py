@@ -1162,6 +1162,44 @@ def test_ui_api_autosave_contract_and_identical_refusals(
     assert count(rbac_graph, DraftSaveReceipt) == 1
 
 
+def test_ui_api_autosave_refuses_a_note_that_is_no_longer_a_draft(
+    rbac_graph: RbacGraph,
+) -> None:
+    version = draft_world(rbac_graph)
+    request = verified_request(rbac_graph.physician)
+    with as_actor(rbac_graph, rbac_graph.physician):
+        save(rbac_graph, version.pk, 1)
+        finalize_version(
+            clinic_id=rbac_graph.clinic_a,
+            version_id=version.pk,
+            expected_revision=2,
+            request=request,
+        )
+    before = stored(rbac_graph, version.pk)
+    with physician_client(rbac_graph) as client:
+        refused = client.post(
+            AUTOSAVE_URL,
+            json.dumps(
+                {
+                    "clinic_id": str(rbac_graph.clinic_a),
+                    "version_id": str(version.pk),
+                    "expected_revision": 2,
+                    "editor_command_id": str(uuid4()),
+                    "editor_session": str(TAB_A),
+                    "sections": {**SECTIONS, "plan": "Depois da finalização"},
+                    "handover": False,
+                }
+            ),
+            "application/json",
+        )
+    assert (refused.status_code, refused.json()) == (
+        412,
+        {"code": "precondition_failed", "message_key": "api.error.precondition_failed"},
+    )
+    assert stored(rbac_graph, version.pk) == before
+    assert count(rbac_graph, DraftSaveReceipt) == 1
+
+
 def test_explicit_stale_save_shows_the_compare_and_merges_explicitly(
     rbac_graph: RbacGraph,
 ) -> None:

@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.translation import gettext
@@ -269,8 +268,6 @@ class DraftAutosaveView(UiApiView):
             raise UiApiError(DRAFT_NOT_EDITABLE) from error
         except AutosaveIdempotencyError as error:
             raise UiApiError(IDEMPOTENCY_MISMATCH) from error
-        except ValidationError as error:
-            raise UiApiError(INVALID_INPUT) from error
         if result.status == AutosaveStatus.LOCKED_BY_OTHER:
             raise UiApiError(LOCKED_BY_OTHER)
         if result.status == AutosaveStatus.HANDOVER_REQUESTED:
@@ -364,8 +361,6 @@ class AddendumAutosaveView(UiApiView):
             raise UiApiError(DRAFT_NOT_EDITABLE) from error
         except AutosaveIdempotencyError as error:
             raise UiApiError(IDEMPOTENCY_MISMATCH) from error
-        except ValidationError as error:
-            raise UiApiError(INVALID_INPUT) from error
         if result.status == AutosaveStatus.CONFLICT:
             return Response(_conflict_body(result), status=409)
         return Response(

@@ -523,7 +523,7 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     second = page.context.new_page()
     second.on("pageerror", lambda error: scene.errors.append(str(error)))
     second.clock.install()
-    second.goto(scene.url)
+    goto_settled(second, scene.url)
     expect(second.locator("[data-revision]")).to_have_attribute("data-revision", "3")
     paused(second)
     second_status = second.locator("#save-state")
@@ -600,8 +600,9 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.clock.install()
         _sign_in_physician(page, base, staff)
-        page.goto(
-            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{AUTOSAVE_DAY}/1/"
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{AUTOSAVE_DAY}/1/",
         )
         press(page, "open")
         page.locator("#template-id").select_option(data["specialty"])
