@@ -5427,6 +5427,16 @@
       "roles": "MANAGER_ROLES"
     },
     {
+      "function": "_move_rules",
+      "legacy_allowed": [
+        "clinic_admin",
+        "owner",
+        "receptionist"
+      ],
+      "path": "apps/scheduling/agenda_grid.py",
+      "roles": "MANAGER_ROLES"
+    },
+    {
       "function": "_assigned_physician",
       "legacy_allowed": [
         "physician"
