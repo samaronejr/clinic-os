@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import dataclass
 from threading import Event
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -64,9 +66,12 @@ from otp_test_support import create_totp_device
 from renewal.test_encounters import physician_client, seed
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
     from uuid import UUID
 
     from apps.ehr.models import Encounter
+    from django.test import Client
+    from django.test.client import _MonkeyPatchedWSGIResponse
     from django_otp.plugins.otp_totp.models import TOTPDevice
 
     from rbac_fixtures import RbacGraph
@@ -241,10 +246,18 @@ def wall_clock_code(device: TOTPDevice) -> str:
     return f"{generator.token():0{device.digits}d}"
 
 
-def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
-    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    graph = rbac_graph
+@dataclass(frozen=True)
+class LateRevocation:
+    """A physician's walk-in with one history entry, and the owner's revoke."""
+
+    url: str
+    physician: UUID
+    encounter: UUID
+    entry: UUID
+    revoke: Callable[[], int]
+
+
+def late_revocation(graph: RbacGraph) -> LateRevocation:
     _, template = seed(graph)
     enrolled = enrollment(graph, graph.clinic_a)
     physician = clinician(graph, "physician", enrolled)
@@ -283,8 +296,39 @@ def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
     database_url = database_url_for_name(
         os.environ["MIGRATION_DATABASE_URL"], str(connection.settings_dict["NAME"])
     )
-    url = f"/ehr/clinics/{graph.clinic_a}/history/"
-    form = {"action": "edit", "encounter_id": str(encounter.pk), "kind": "problem"}
+
+    def revoke() -> int:
+        """The shipped owner CLI revokes the physician role."""
+        return run_management_command(
+            (
+                "revoke_staff_role",
+                "--operator-id",
+                str(operator),
+                "--organization-id",
+                str(graph.organization_a),
+                "--clinic-id",
+                str(graph.clinic_a),
+                "--target-user-id",
+                str(physician),
+                "--role",
+                UserClinicRole.Role.PHYSICIAN,
+            ),
+            database_url=database_url,
+            hidden_responses=(("Authentication code: ", wall_clock_code(device)),),
+        ).exit_code
+
+    return LateRevocation(
+        f"/ehr/clinics/{graph.clinic_a}/history/",
+        physician,
+        encounter.pk,
+        entry,
+        revoke,
+    )
+
+
+@contextmanager
+def revoked_at_last_history_check(world: LateRevocation) -> Iterator[None]:
+    """Commit the real revocation between read_history's check and its read."""
     reached, revoked = Event(), Event()
     authorize = history.authorize_history
 
@@ -300,40 +344,37 @@ def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
 
     def revoke() -> int:
         try:
-            assert reached.wait(timeout=120), "the edit never reached its last check"
-            return run_management_command(
-                (
-                    "revoke_staff_role",
-                    "--operator-id",
-                    str(operator),
-                    "--organization-id",
-                    str(graph.organization_a),
-                    "--clinic-id",
-                    str(graph.clinic_a),
-                    "--target-user-id",
-                    str(physician),
-                    "--role",
-                    UserClinicRole.Role.PHYSICIAN,
-                ),
-                database_url=database_url,
-                hidden_responses=(("Authentication code: ", wall_clock_code(device)),),
-            ).exit_code
+            assert reached.wait(timeout=120), "the request never reached its check"
+            return world.revoke()
         finally:
             revoked.set()
 
+    with (
+        pytest.MonkeyPatch.context() as patch,
+        ThreadPoolExecutor(max_workers=1) as pool,
+    ):
+        patch.setattr("apps.ehr.history.authorize_history", last_authorization)
+        revocation = pool.submit(revoke)
+        yield
+        assert revocation.result(timeout=180) == 0
+
+
+def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
+    rbac_graph: RbacGraph,
+) -> None:
+    graph = rbac_graph
+    world = late_revocation(graph)
+    form = {"action": "edit", "encounter_id": str(world.encounter), "kind": "problem"}
     before = audit_mark(graph)
-    with signed_in(physician) as client:
+    with signed_in(world.physician) as client:
         # The unknown entry is refused before the audited read.
-        unknown = client.post(url, {**form, "entry_id": str(uuid4())})
+        unknown = client.post(world.url, {**form, "entry_id": str(uuid4())})
     baseline = [e for e in audit_since(graph, before) if e.startswith("ehr.")]
     before = audit_mark(graph)
-    with signed_in(physician) as client:
+    with signed_in(world.physician) as client:
         session = dict(client.session)
-        monkeypatch.setattr("apps.ehr.history.authorize_history", last_authorization)
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            revocation = pool.submit(revoke)
-            late = client.post(url, {**form, "entry_id": str(entry)})
-            assert revocation.result(timeout=180) == 0
+        with revoked_at_last_history_check(world):
+            late = client.post(world.url, {**form, "entry_id": str(world.entry)})
         assert dict(client.session) == session
     trail = audit_since(graph, before)
     assert unknown.status_code == late.status_code == 403
@@ -342,4 +383,47 @@ def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
     # what the early one leaves, beside the revocation's own event.
     assert [e for e in trail if e.startswith("ehr.")] == baseline
     assert "ehr.history.viewed" not in trail
+    assert trail.count("identity.staff_role.revoked") == 1
+
+
+@pytest.mark.parametrize("path", ["new", "view"])
+def test_history_new_and_view_refused_after_late_role_revocation_keep_no_view_audit(
+    rbac_graph: RbacGraph, path: str
+) -> None:
+    graph = rbac_graph
+    world = late_revocation(graph)
+    selected = {"encounter_id": str(world.encounter)}
+
+    def send(client: Client) -> _MonkeyPatchedWSGIResponse:
+        if path == "new":
+            # The workspace's own new-entry form for the problem list.
+            return client.post(
+                world.url, {**selected, "action": "new", "kind": "problem"}
+            )
+        # The read-only view of the session-selected encounter.
+        return client.get(world.url)
+
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        if path == "view":
+            opened = client.post(world.url, {**selected, "action": "open"})
+            assert opened.status_code == 302
+        session = dict(client.session)
+        with revoked_at_last_history_check(world):
+            late = send(client)
+        assert dict(client.session) == session
+    trail = audit_since(graph, before)
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        # The same request once the revocation has committed.
+        early = send(client)
+    early_trail = [e for e in audit_since(graph, before) if e.startswith("ehr.")]
+    late_trail = [e for e in trail if e.startswith("ehr.")]
+    assert late.status_code == early.status_code == 403
+    assert NONCE.sub(b"", late.content) == NONCE.sub(b"", early.content)
+    # Every view audit before the late refusal rolled back with it: only the
+    # fixed denial event may remain, exactly as the early refusal leaves.
+    assert "ehr.history.viewed" not in trail
+    assert set(late_trail) <= {DENIAL}
+    assert late_trail == early_trail
     assert trail.count("identity.staff_role.revoked") == 1

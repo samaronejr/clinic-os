@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
@@ -166,8 +166,8 @@ def _conflict(
     messages_by_reason = {
         "stale_revision": "A versão salva mudou. Reabra a versão atual antes de "
         "alterar ou retificar.",
-        "episode_closed": "O episódio está encerrado e não aceita atendimentos.",
-        "already_linked": "Este atendimento já pertence a outro episódio.",
+        "episode_closed": _("The episode is closed and accepts no encounters."),
+        "already_linked": _("This encounter already belongs to another episode."),
         "draft_in_progress": "Já existe um rascunho em andamento neste documento.",
         "encounter_closed": "O atendimento está encerrado; novos documentos não "
         "podem ser criados.",
@@ -208,8 +208,10 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
         except ClinicalConflictError:
             form.add_error(
                 None,
-                "A versão salva mudou. Suas alterações não foram salvas. "
-                "Compare abaixo e salve a versão combinada.",
+                _(
+                    "The saved version changed. Your changes were not saved. "
+                    "Compare below and save the combined version."
+                ),
             )
             current = view_version(clinic_id=clinic_id, version_id=version.pk)
             if current.state == "draft":
@@ -350,11 +352,16 @@ def _review(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
         pk=version_id, document__encounter=encounter
     ).exists():
         raise ClinicalAccessDeniedError
-    version = view_version(clinic_id=clinic_id, version_id=version_id)
     # The authorized read must agree with that binding before the session
     # selects it; a disagreeing version is the same refusal as an unknown one.
+    # Only that refusal rolls back to before the read, taking the read's audit
+    # with it; the read's own refusals keep their fixed denial record.
+    before_read = transaction.savepoint()
+    version = view_version(clinic_id=clinic_id, version_id=version_id)
     if version.document.encounter_id != encounter.pk:
+        transaction.savepoint_rollback(before_read)
         raise ClinicalAccessDeniedError
+    transaction.savepoint_commit(before_read)
     request.session[key] = str(encounter.pk)
     request.session[f"ehr.review.{clinic_id}"] = str(version.pk)
     return redirect(continuation(clinic_id))

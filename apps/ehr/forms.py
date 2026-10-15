@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from django import forms
+from django.utils.translation import gettext_lazy
 
 from apps.ehr.services import MAX_CONTENT, SOAP_FIELDS
 
@@ -15,7 +16,16 @@ if TYPE_CHECKING:
 
 
 SECTION_LABELS = dict(
-    zip(SOAP_FIELDS, ("Subjetivo", "Objetivo", "Avaliação", "Plano"), strict=True)
+    zip(
+        SOAP_FIELDS,
+        (
+            gettext_lazy("Subjective"),
+            gettext_lazy("Objective"),
+            gettext_lazy("Assessment"),
+            gettext_lazy("Plan"),
+        ),
+        strict=True,
+    )
 )
 
 

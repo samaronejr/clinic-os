@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Final
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.translation import gettext_lazy
 
 from apps.audit.services import record_phase1_event
 from apps.ehr.models import Encounter, Episode, EpisodeEncounter
@@ -35,7 +36,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 MAX_EPISODE_TITLE: Final = 160
-INVALID_TITLE: Final = "Informe um título de episódio em texto simples."
+INVALID_TITLE: Final = gettext_lazy("Enter an episode title in plain text.")
 
 
 @dataclass(frozen=True, slots=True)

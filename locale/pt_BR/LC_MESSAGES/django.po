@@ -4025,3 +4025,21 @@ msgstr "Retorno por telefone"
 
 msgid "Documentation only"
 msgstr "Somente registro"
+
+msgid "Enter an episode title in plain text."
+msgstr "Informe um título de episódio em texto simples."
+
+msgid "The episode is closed and accepts no encounters."
+msgstr "O episódio está encerrado e não aceita atendimentos."
+
+msgid "This encounter already belongs to another episode."
+msgstr "Este atendimento já pertence a outro episódio."
+
+msgid "The saved version changed. Your changes were not saved. Compare below and save the combined version."
+msgstr "A versão salva mudou. Suas alterações não foram salvas. Compare abaixo e salve a versão combinada."
+
+msgid "Objective"
+msgstr "Objetivo"
+
+msgid "Assessment"
+msgstr "Avaliação"

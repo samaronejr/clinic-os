@@ -12,12 +12,15 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from django.contrib.auth.hashers import make_password
 from playwright.sync_api import expect
 from psycopg.types.json import Jsonb
 
+from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._navigation import click_to_navigate, goto_settled, reload_settled
 from renewal.browser._page_wait import evaluate_js
-from renewal.browser._protected import decrypt
+from renewal.browser._protected import decrypt, encrypt
+from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import element_box, full_page_screenshot, new_context
 from renewal.browser.test_availability import (
     _sign_in_physician,
@@ -34,6 +37,27 @@ if TYPE_CHECKING:
 __all__ = ("availability_staff",)
 FIELDS = ("subjective", "objective", "assessment", "plan")
 DAYS = {1280: "2035-06-02", 768: "2035-06-03", 375: "2035-06-04"}
+MIN_TARGET_PX = 44
+TARGET_WIDTHS = (320, 375, 1280)
+# The regions this todo added or rewired: the autosave form, the lock and
+# compare panels, and the episode and unscheduled panels.
+OWNED_REGIONS = (
+    "#soap-form",
+    "#lock-panel",
+    "#conflict-panel",
+    "#episode-panel",
+    "#unscheduled-panel",
+)
+OWNED_CONTROLS = ", ".join(
+    f"{region} :is(a[href], button, input:not([type=hidden]), select, textarea)"
+    for region in OWNED_REGIONS
+)
+# Names a control for a failure message without any typed content.
+CONTROL_NAME_JS = """(node) => node.tagName.toLowerCase()
+  + (node.id ? '#' + node.id : '')
+  + (node.name ? '[name=' + node.name + ']' : '')
+  + (node.type === 'radio' || node.tagName === 'BUTTON'
+    ? '[value=' + node.value + ']' : '')"""
 
 
 def seed(staff: dict[str, str], day: str) -> dict[str, str]:
@@ -121,6 +145,55 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
+def accessible(
+    page: Page, base: str, root: Path, state: str, *, controls: bool = True
+) -> dict[str, object]:
+    """Axe and the owned controls' target size at 320, 375 and 1280 CSS px.
+
+    Both run on this same page state, which only the viewport changes; the
+    viewport is restored afterwards. No axe rule, region or control is exempt.
+    ``controls`` is False only for a state that renders no owned control.
+    """
+    viewport = page.viewport_size
+    assert viewport is not None
+    widths: dict[str, object] = {}
+    try:
+        for width in TARGET_WIDTHS:
+            page.set_viewport_size({"width": width, "height": viewport["height"]})
+            axe = check_page(page, base, root, f"encounter-{state}-{width}")
+            visible = [
+                control
+                for control in page.locator(OWNED_CONTROLS).all()
+                if control.is_visible()
+            ]
+            assert bool(visible) is controls, (state, width, len(visible))
+            small: list[tuple[str, float, float]] = []
+            for control in visible:
+                box = element_box(control)
+                if min(box["width"], box["height"]) < MIN_TARGET_PX:
+                    name = str(control.evaluate(CONTROL_NAME_JS))
+                    small.append((name, box["width"], box["height"]))
+            assert small == [], (state, width, small)
+            widths[str(width)] = {"axe": axe, "controls": len(visible)}
+    finally:
+        page.set_viewport_size(viewport)
+    return {"state": state, "widths": widths}
+
+
+@dataclass
+class Audit:
+    """Collect one scene's axe and control-target results for its report."""
+
+    base: str
+    root: Path
+    results: list[dict[str, object]]
+
+    def __call__(self, page: Page, state: str, *, controls: bool = True) -> None:
+        self.results.append(
+            accessible(page, self.base, self.root, state, controls=controls)
+        )
+
+
 def press(page: Page, action: str) -> None:
     click_to_navigate(page.locator(f'button[value="{action}"]').first)
 
@@ -183,13 +256,17 @@ def failed_save(
             )
 
 
-def edit_and_reload(page: Page, staff: dict[str, str], root: Path, width: int) -> str:
+def edit_and_reload(
+    page: Page, staff: dict[str, str], root: Path, width: int, audit: Audit | None
+) -> str:
     version = page.locator("[data-version]").get_attribute("data-version")
     assert version is not None
     expect(page.locator("[data-template-version]")).to_have_attribute(
         "data-template-version", "1"
     )
     capture(page, root, "draft", width)
+    if audit is not None:
+        audit(page, "draft")
     second = page.context.new_page()
     goto_settled(second, page.url)
     for field in FIELDS:
@@ -206,6 +283,9 @@ def edit_and_reload(page: Page, staff: dict[str, str], root: Path, width: int) -
     page.locator('button[value="save"]').click()
     expect(page.locator("#save-state")).to_have_attribute("data-state", "saving")
     capture(page, root, "saving", width)
+    if audit is not None:
+        # Submitting cleared every autosave timer: this state holds still.
+        audit(page, "saving")
     press(page, "save")
     expect(page.locator("#save-state")).to_have_attribute("data-state", "saved")
     capture(page, root, "saved", width)
@@ -223,6 +303,8 @@ def edit_and_reload(page: Page, staff: dict[str, str], root: Path, width: int) -
     expect(second.locator("#save-state")).to_have_attribute("data-state", "conflict")
     expect(second.locator("#conflict-panel")).to_be_visible()
     capture(second, root, "stale-retained", width)
+    if audit is not None:
+        audit(second, "conflict")
     second.close()
     return version
 
@@ -308,6 +390,8 @@ def test_encounter_journey(
     base = renewal_base_url
     url = f"{base}/ehr/clinics/{staff['clinic_a']}/encounter/"
     root = renewal_artifact_root
+    # One journey is audited; the audit itself covers every target width.
+    audit = Audit(base, root, []) if width == TARGET_WIDTHS[-1] else None
     try:
         _sign_in_physician(page, base, staff)
         goto_settled(page, url)
@@ -335,7 +419,7 @@ def test_encounter_journey(
         capture(page, root, "choose-template", width)
         page.locator("#template-id").select_option(data["specialty"])
         press(page, "template")
-        version = edit_and_reload(page, staff, root, width)
+        version = edit_and_reload(page, staff, root, width, audit)
         failed_save(page, staff, root, width, version)
         goto_settled(page, url)
         expect(page.locator("#id_subjective")).to_have_value("Relato sintético salvo")
@@ -362,6 +446,7 @@ def test_encounter_journey(
                     "stale_http": 409,
                     "failure_http": 503,
                     "reflow": True,
+                    "a11y": audit.results if audit is not None else [],
                 },
                 indent=2,
             )
@@ -442,6 +527,7 @@ class AutosaveScene:
     page: Page
     bodies: list[object]
     errors: list[str]
+    audit: Audit
 
 
 def saved_revision(status: Locator) -> str:
@@ -491,6 +577,7 @@ def dropped_then_offline(scene: AutosaveScene) -> list[str]:
     revision, content = stored_soap(scene.staff, scene.version)
     assert (revision, content["subjective"]) == (3, "Relato após a queda da rede")
     capture(page, scene.root, "autosave-retrying", 1280)
+    scene.audit(page, "autosave-retrying")
     page.context.set_offline(offline=True)
     page.clock.fast_forward(30000)
     expect(status).to_have_attribute("data-state", "retrying")
@@ -532,6 +619,7 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(second_status).to_have_attribute("data-state", "locked-by-other")
     expect(second.locator("#lock-panel")).to_be_visible()
     capture(second, scene.root, "autosave-locked-by-other", 1280)
+    scene.audit(second, "autosave-locked-by-other")
     with second.expect_response(is_autosave) as asked:
         second.locator("[data-request-handover]").click()
     assert (asked.value.status, asked.value.json()["code"]) == (
@@ -544,10 +632,20 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(status).to_have_attribute("data-state", "locked-by-other")
     expect(page.locator("#id_assessment")).to_have_attribute("readonly", "")
     capture(page, scene.root, "autosave-handed-over", 1280)
+    scene.audit(page, "autosave-handed-over")
     revision, content = stored_soap(scene.staff, scene.version)
     assert revision == 4
     assert content["assessment"] == "Avaliação da primeira aba"
     assert content["plan"] != "Plano da segunda aba"
+    compare_and_merge(scene, second, (revision, content))
+    return second
+
+
+def compare_and_merge(
+    scene: AutosaveScene, second: Page, stored_before: tuple[int, dict[str, str]]
+) -> None:
+    """The stale tab's retry opens the compare; the author merges explicitly."""
+    second_status = second.locator("#save-state")
     with second.expect_response(is_autosave) as retried:
         second.clock.fast_forward(20000)
     assert retried.value.status == 409
@@ -555,8 +653,9 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(second.locator("#conflict-panel")).to_be_visible()
     expect(second.locator("#conflict-plan")).to_be_visible()
     expect(second.locator("#conflict-assessment")).to_be_visible()
-    assert stored_soap(scene.staff, scene.version) == (revision, content)
+    assert stored_soap(scene.staff, scene.version) == stored_before
     capture(second, scene.root, "autosave-conflict-compare", 1280)
+    scene.audit(second, "autosave-conflict-compare")
     second.locator('[data-use-saved="assessment"]').click()
     expect(second.locator("#id_assessment")).to_have_value("Avaliação da primeira aba")
     with second.expect_response(is_autosave) as merged:
@@ -569,7 +668,6 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     assert content["plan"] == "Plano da segunda aba"
     assert content["assessment"] == "Avaliação da primeira aba"
     capture(second, scene.root, "autosave-merged", 1280)
-    return second
 
 
 def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
@@ -620,7 +718,14 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
         )
         paused(page)
         scene = AutosaveScene(
-            staff, renewal_artifact_root, page.url, version, page, bodies, errors
+            staff,
+            renewal_artifact_root,
+            page.url,
+            version,
+            page,
+            bodies,
+            errors,
+            Audit(base, renewal_artifact_root, []),
         )
         happy_autosave(scene)
         states = dropped_then_offline(scene)
@@ -637,6 +742,7 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
                     "conflict_http": 409,
                     "merged_revision": 5,
                     "page_errors": errors,
+                    "a11y": scene.audit.results,
                 },
                 indent=2,
             )
@@ -651,3 +757,122 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
     second_video.save_as(folder / "autosave-second-tab.webm")
     first_video.delete()
     second_video.delete()
+
+
+# ---------------------------------------------------------------------------
+# Plan item 27: the unscheduled start and the episode panel, audited.
+# ---------------------------------------------------------------------------
+
+
+def registered_physician(staff: dict[str, str]) -> dict[str, str]:
+    """A clinic A physician with a current synthetic registration.
+
+    ``encounter.open_unscheduled`` and the episode panel's ``clinical.read``
+    need one. The shared fixture's physicians have none, and changing theirs
+    would leak into other scenes, so this scene seeds its own physician.
+    """
+    user = str(uuid4())
+    username = f"dra-registrada-{secrets.token_hex(2)}"
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_user "
+            "(id, username, password, email, first_name, last_name, is_active, "
+            "is_staff, is_superuser, date_joined) "
+            "VALUES (%s, %s, %s, %s, '', '', true, false, false, now())",
+            [
+                user,
+                username,
+                make_password(staff["password"]),
+                f"{username}@encounter.invalid",
+            ],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_userclinicrole "
+            "(id, user_id, organization_id, clinic_id, role, "
+            "workflow_bundle_version) VALUES (%s, %s, %s, %s, 'physician', 1)",
+            [str(uuid4()), user, staff["organization"], staff["clinic_a"]],
+        )
+        registered = conn.execute(
+            "INSERT INTO clinic_app.identity_professionalregistration "
+            "(id, organization_id, clinic_id, user_id, role, council, number, "
+            "jurisdiction, synthetic, status, valid_from, valid_to) "
+            "SELECT %s, %s, c.id, %s, 'physician', 'CRM', %s, c.crm_uf, true, "
+            "'regular', now() - interval '1 day', now() + interval '1 day' "
+            "FROM clinic_app.identity_clinic c WHERE c.id = %s",
+            [
+                str(uuid4()),
+                staff["organization"],
+                user,
+                encrypt(conn, "identity.registration.number", b"SINTETICO-0027"),
+                staff["clinic_a"],
+            ],
+        )
+        assert registered.rowcount == 1
+        conn.execute("SET ROLE clinic_app")
+        conn.execute("SELECT set_config('app.current_user_id', %s, true)", [user])
+        conn.execute(
+            "INSERT INTO clinic_app.otp_totp_totpdevice "
+            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
+            "user_id, throttling_failure_count, created_at) "
+            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
+            "%s, 0, now())",
+            [new_totp_key(), user],
+        )
+    return {**staff, "physician_a": username, "physician_a_id": user}
+
+
+def test_unscheduled_start_and_episode_states_pass_axe_and_target_checks(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff = registered_physician(availability_staff)
+    data = seed_patient(staff)
+    base = renewal_base_url
+    audit = Audit(base, renewal_artifact_root, [])
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        locale="pt-BR", viewport={"width": 1280, "height": 900}
+    )
+    errors: list[str] = []
+    try:
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        _sign_in_physician(page, base, staff)
+        goto_settled(page, f"{base}/ehr/clinics/{staff['clinic_a']}/encounter/")
+        expect(page.locator("#unscheduled-panel")).to_be_visible()
+        audit(page, "unscheduled-start")
+        page.locator("#unscheduled-patient").select_option(data["enrollment"])
+        page.locator('input[name="reason"][value="phone_follow_up"]').check()
+        press(page, "open_unscheduled")
+        expect(
+            page.locator('[data-unscheduled-reason="phone_follow_up"]')
+        ).to_be_visible()
+        expect(page.locator("#episode-new-title")).to_be_visible()
+        audit(page, "unscheduled-encounter")
+        # Spaces pass the native required check; the server refuses them.
+        page.locator("#episode-new-title").fill("   ")
+        press(page, "episode_open")
+        expect(page.locator("#episode-panel [role=alert]")).to_be_visible()
+        audit(page, "episode-error")
+        page.locator("#episode-new-title").fill("Episódio sintético")
+        press(page, "episode_open")
+        expect(page.locator('[data-episode-state="open"]')).to_be_visible()
+        audit(page, "episode-open")
+        press(page, "episode_close")
+        expect(page.locator('[data-episode-state="closed"]')).to_be_visible()
+        # A closed episode, and a visit without a draft, offer no owned control.
+        audit(page, "episode-closed", controls=False)
+        assert not errors
+        folder = renewal_artifact_root / "encounter"
+        folder.mkdir(exist_ok=True, mode=0o700)
+        (folder / "a11y-unscheduled-episodes.json").write_text(
+            json.dumps({"page_errors": errors, "a11y": audit.results}, indent=2) + "\n"
+        )
+    finally:
+        context.close()

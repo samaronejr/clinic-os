@@ -247,7 +247,7 @@ def open_unscheduled_encounter(
     except CurrentActorError as error:
         raise ClinicalAccessDeniedError from error
     if reason not in Encounter.UnscheduledReason.values:
-        msg = "Motivo de atendimento sem agendamento inválido."
+        msg = "Invalid unscheduled encounter reason."
         raise ValidationError(msg)
     enrollment = PatientClinicEnrollment.objects.filter(
         pk=enrollment_id, clinic_id=clinic_id

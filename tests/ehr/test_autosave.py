@@ -63,6 +63,7 @@ from apps.tenancy.db import tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
 from django.utils import timezone
+from django.utils.translation import gettext
 
 from auth.stepup_test_support import verified_request
 from identity.permission_support import (
@@ -1232,6 +1233,21 @@ def test_explicit_stale_save_shows_the_compare_and_merges_explicitly(
         body = stale.content.decode()
         assert 'id="conflict-plan"' in body
         assert 'data-state="conflict"' in body
+        assert (
+            gettext(
+                "The saved version changed. Your changes were not saved. "
+                "Compare below and save the combined version."
+            )
+            in body
+        )
+        assert conflict["sections"][0]["label"] == gettext("Plan")
+        for key, msgid in (
+            ("subjective", "Subjective"),
+            ("objective", "Objective"),
+            ("assessment", "Assessment"),
+            ("plan", "Plan"),
+        ):
+            assert f'data-label-{key}="{gettext(msgid)}"' in body
         kept = client.get(url).context["version"]
         assert (kept.revision, kept.soap) == (2, SECTIONS)
         merge = {**payload, "action": "merge", "merge_revision": 2}
@@ -1285,23 +1301,30 @@ def test_unscheduled_start_through_the_workspace(rbac_graph: RbacGraph) -> None:
         episode = {"encounter_id": encounter, "action": "episode_open"}
         blank = client.post(url, {**episode, "title": "  "})
         assert blank.status_code == 400
-        assert blank.context["episode_error"]
+        assert blank.context["episode_error"] == gettext(
+            "Enter an episode title in plain text."
+        )
         assert client.post(url, {**episode, "title": "Dor lombar"}).status_code == 302
         linked = client.get(url).content.decode()
         assert 'data-episode-state="open"' in linked
         episode_id = re.search(r'data-linked-episode="([0-9a-f-]+)"', linked)
         assert episode_id is not None
+        # One episode per encounter: a second one is a conflict, nothing written.
+        second = client.post(url, {**episode, "title": "Outra queixa"})
+        assert second.status_code == 409
+        assert second.context["error"] == gettext(
+            "This encounter already belongs to another episode."
+        )
+        link = {"encounter_id": encounter, "episode_id": episode_id.group(1)}
         for action in ("episode_link", "episode_close"):
-            done = client.post(
-                url,
-                {
-                    "encounter_id": encounter,
-                    "episode_id": episode_id.group(1),
-                    "action": action,
-                },
-            )
-            assert done.status_code == 302
+            assert client.post(url, {**link, "action": action}).status_code == 302
         assert 'data-episode-state="closed"' in client.get(url).content.decode()
+        # A closed episode takes no further visit.
+        closed = client.post(url, {**link, "action": "episode_link"})
+        assert closed.status_code == 409
+        assert closed.context["error"] == gettext(
+            "The episode is closed and accepts no encounters."
+        )
     assert count(rbac_graph, Encounter, appointment__isnull=True) == 1
     assert count(rbac_graph, Episode, state="closed") == 1
     assert count(rbac_graph, EpisodeEncounter) == 1
