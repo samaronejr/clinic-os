@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from apps.identity.models import User, UserClinicRole
+from apps.identity.stepup import stamp_step_up_verification
 from django.contrib.auth.hashers import make_password
 from django.contrib.sessions.backends.db import SessionStore
 from django.db import connection, transaction
@@ -64,14 +64,17 @@ def verified_request(user_id: UUID, *, verified_at: int | None = None) -> HttpRe
     device plus the verification timestamp; the lazy user resolves the device
     from the session exactly as production middleware does, so service-boundary
     checks see a genuine recent-verification authority rather than a flag.
+    Default freshness uses the verifier's production clock; explicit timestamps
+    remain available for stale and future-verification cases.
     """
     device = create_totp_device(user_id, confirmed=True)
     request = HttpRequest()
     request.session = SessionStore()
     request.session[DEVICE_ID_SESSION_KEY] = device.persistent_id
-    request.session[STEP_UP_SESSION_KEY] = (
-        int(time.time()) if verified_at is None else verified_at
-    )
+    if verified_at is None:
+        stamp_step_up_verification(request)
+    else:
+        request.session[STEP_UP_SESSION_KEY] = verified_at
     request.user = User.objects.get(pk=user_id)
     OTPMiddleware(lambda _request: HttpResponse())(request)
     return request
