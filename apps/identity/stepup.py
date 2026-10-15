@@ -35,7 +35,7 @@ class StepUpFailureReason(StrEnum):
     RECENT_VERIFICATION_REQUIRED = "recent_verification_required"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class StepUpRequired(PermissionDenied):
     """Signal that a sensitive operation requires recent TOTP verification."""
 

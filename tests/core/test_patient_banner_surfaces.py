@@ -13,6 +13,7 @@ from apps.tenancy.db import tenant_context
 from django.contrib.auth import SESSION_KEY
 from django.urls import reverse
 
+from consent.test_purposes import register_physician
 from core.test_navigation import PATIENT, _client_for, _get, _post, _reauthenticate
 from core.test_workspace_boundaries import remove_permission
 from identity.permission_support import owner_context
@@ -44,6 +45,7 @@ def _ehr_surface(
     encounter = begin(graph)
     url = reverse(view, kwargs={"clinic_id": graph.clinic_a})
     if view == "intake:patient-timeline":
+        register_physician(graph)
         with owner_context(graph.organization_a):
             enrollment = PatientClinicEnrollment.objects.get(
                 clinic_id=graph.clinic_a, patient_id=encounter.patient_id

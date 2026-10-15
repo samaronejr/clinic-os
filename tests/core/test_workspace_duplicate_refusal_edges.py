@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from apps.intake import services
+from django.conf import settings
 from django.urls import reverse
 
 from identity.lifecycle_test_support import verified_client
@@ -36,6 +37,9 @@ def test_duplicate_selection_refuses_without_state_changes(
     client = verified_client(rbac_graph)
     url = reverse("intake:patient-duplicates", args=(rbac_graph.clinic_a,))
     data = {"candidate_id": str(candidate.pk), **body}
+    with runtime_role():
+        assert client.get(url).status_code == 200
+    assert settings.CSRF_COOKIE_NAME in client.cookies
 
     response = _refused_request(client, url, data)
 

@@ -36,6 +36,9 @@ from identity.test_lifecycle_sql_readers import (
     assert_lifecycle_oracles,
 )
 from patient_service_support import runtime_role
+from patients.duplicate_authority_cases import (
+    ACTOR_PROTOCOL_ORACLES as MERGE_ACTOR_PROTOCOL_ORACLES,
+)
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 
@@ -364,7 +367,8 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
 def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
-    protocols = set(ACTOR_PROTOCOL_ORACLES)
+    protocol_oracles = ACTOR_PROTOCOL_ORACLES | MERGE_ACTOR_PROTOCOL_ORACLES
+    protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
     # INSERT of an inactive account. It is not an active-caller proof. Those
     # readers need executable capability/creation/cleanup contracts instead.
@@ -377,7 +381,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     assert (
         set(DELEGATE_PROBES) | set(GUARD_PROBES) | set(LIFECYCLE_DELEGATE_PROBES)
     ) - protocols == delegating - protocols
-    assert_lifecycle_oracles(ACTOR_PROTOCOL_ORACLES.values())
+    assert_lifecycle_oracles(protocol_oracles.values())
 
 
 def _staff_actor(graph: RbacGraph) -> UUID:
