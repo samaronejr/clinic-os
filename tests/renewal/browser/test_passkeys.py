@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from cryptography.hazmat.primitives.serialization import load_der_private_key
 from django.utils.translation import gettext
 from playwright.sync_api import expect
 from webauthn.helpers import bytes_to_base64url
+from webauthn.helpers.cose import COSEAlgorithmIdentifier
 
 from auth.passkey_test_support import AssertionOptions, SoftwareAuthenticator
 from renewal.browser import _onboarding as journeys
@@ -113,15 +114,23 @@ def _organization_admin(staff: dict[str, str]) -> dict[str, str]:
     return manager
 
 
-def _register(page: Page, base: str) -> None:
+def _register(page: Page, base: str) -> COSEAlgorithmIdentifier:
     goto_settled(page, base + "/account/passkeys/")
     expect(page.locator("[data-passkey-start]")).to_be_visible()
-    with page.expect_response(
-        lambda response: response.url.endswith("/auth/passkey/register/finish/")
-    ) as response:
+    with (
+        page.expect_response(
+            lambda response: response.url.endswith("/auth/passkey/register/finish/")
+        ) as response,
+        page.expect_console_message(
+            lambda message: message.text.startswith("PASSKEY_ALGORITHM:")
+        ) as algorithm,
+    ):
         page.locator("[data-passkey-start]").click()
     assert response.value.status == 201
     expect(page.locator("[data-passkey-record]")).to_have_count(1)
+    return COSEAlgorithmIdentifier(
+        int(algorithm.value.text.removeprefix("PASSKEY_ALGORITHM:"))
+    )
 
 
 def _opt_in(page: Page) -> None:
@@ -135,17 +144,26 @@ def _opt_in(page: Page) -> None:
 
 
 def _software_credential(
-    cdp: CDPSession, authenticator_id: str
-) -> tuple[SoftwareAuthenticator, str]:
+    cdp: CDPSession,
+    authenticator_id: str,
+    *,
+    algorithm: COSEAlgorithmIdentifier,
+) -> tuple[SoftwareAuthenticator, str, int]:
     """Export only this synthetic device into ephemeral memory, never evidence."""
     device = cdp.send("WebAuthn.getCredentials", {"authenticatorId": authenticator_id})[
         "credentials"
     ][0]
     key = load_der_private_key(base64.b64decode(device["privateKey"]), password=None)
-    assert isinstance(key, ec.EllipticCurvePrivateKey)
-    software = SoftwareAuthenticator(key, base64.b64decode(device["credentialId"]))
+    assert isinstance(
+        key, (ec.EllipticCurvePrivateKey, ed25519.Ed25519PrivateKey, rsa.RSAPrivateKey)
+    )
+    software = SoftwareAuthenticator(
+        key, base64.b64decode(device["credentialId"]), algorithm
+    )
     handle = bytes_to_base64url(base64.b64decode(device["userHandle"]))
-    return software, handle
+    sign_count = device["signCount"]
+    assert type(sign_count) is int
+    return software, handle, sign_count + 1
 
 
 def test_platform_registration_step_up_and_sign_in(
@@ -230,7 +248,7 @@ def test_signed_assertion_refusals(
             journeys.capture(page, root, f"{engine}-native-factor")
             return
         cdp, authenticator_id = _virtual_authenticator(page)
-        _register(page, base)
+        algorithm = _register(page, base)
         _opt_in(page)
         journeys.sign_out(page, base)
         goto_settled(page, base + "/auth/login/")
@@ -243,7 +261,9 @@ def test_signed_assertion_refusals(
         journeys.sign_out(page, base)
         goto_settled(page, base + "/auth/login/")
         if case == "foreign_rp":
-            software, handle = _software_credential(cdp, authenticator_id)
+            software, handle, sign_count = _software_credential(
+                cdp, authenticator_id, algorithm=algorithm
+            )
             csrf = page.locator(
                 '#passkey-login input[name="csrfmiddlewaretoken"]'
             ).input_value()
@@ -259,7 +279,11 @@ def test_signed_assertion_refusals(
                     "credential": software.assertion(
                         challenge=begin.json()["challenge"],
                         user_handle=handle,
-                        options=AssertionOptions(rp_id="foreign.example", origin=base),
+                        options=AssertionOptions(
+                            rp_id="foreign.example",
+                            origin=base,
+                            sign_count=sign_count,
+                        ),
                     ),
                 },
             )
@@ -299,7 +323,7 @@ def test_signed_assertion_refusals(
                 assert connection.execute(
                     "SELECT count(*) FROM clinic_app.audit_event event "
                     "JOIN clinic_app.identity_passkey credential "
-                    "ON credential.id=event.affected_record_id "
+                    "ON credential.id::text=event.affected_record_id "
                     "WHERE credential.user_id=%s "
                     "AND event.event_type='identity.passkey.counter_regression'",
                     [manager["id"]],

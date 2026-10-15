@@ -1,4 +1,4 @@
-"""A software ES256 authenticator producing real WebAuthn wire responses."""
+"""A software authenticator producing genuinely signed WebAuthn responses."""
 
 from __future__ import annotations
 
@@ -7,19 +7,29 @@ import json
 import secrets
 import struct
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 import cbor2
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
 from django.test import Client
 from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
+from webauthn.helpers.algorithms import (
+    get_ec2_sig_alg,
+    get_rsa_pkcs1_sig_alg,
+    get_rsa_pss_sig_alg,
+    is_rsa_pss,
+)
+from webauthn.helpers.cose import COSEAlgorithmIdentifier
 
 from identity.lifecycle_test_support import verified_client
 from otp_test_support import runtime_role
 
 if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
+
+type SigningKey = (
+    ec.EllipticCurvePrivateKey | ed25519.Ed25519PrivateKey | rsa.RSAPrivateKey
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +49,9 @@ DEFAULT_ASSERTION = AssertionOptions()
 class SoftwareAuthenticator:
     """An ephemeral synthetic private key; verification is never mocked."""
 
-    private_key: ec.EllipticCurvePrivateKey = field(repr=False)
+    private_key: SigningKey = field(repr=False)
     credential_id: bytes = field(repr=False)
+    algorithm: COSEAlgorithmIdentifier = COSEAlgorithmIdentifier.ECDSA_SHA_256
 
     @classmethod
     def create(cls) -> SoftwareAuthenticator:
@@ -49,16 +60,35 @@ class SoftwareAuthenticator:
 
     def registration(self, *, challenge: str, rp_id: str, verified: bool = True) -> str:
         """Emit a fmt=none attestation containing a genuine COSE public key."""
-        public = self.private_key.public_key().public_numbers()
-        cose = cbor2.dumps(
-            {
-                1: 2,
-                3: -7,
-                -1: 1,
-                -2: public.x.to_bytes(32, "big"),
-                -3: public.y.to_bytes(32, "big"),
-            }
-        )
+        public_key: dict[int, int | bytes]
+        match self.private_key:
+            case ec.EllipticCurvePrivateKey() as ec_key:
+                ec_public = ec_key.public_key().public_numbers()
+                public_key = {
+                    1: 2,
+                    3: self.algorithm.value,
+                    -1: 1,
+                    -2: ec_public.x.to_bytes(32, "big"),
+                    -3: ec_public.y.to_bytes(32, "big"),
+                }
+            case ed25519.Ed25519PrivateKey() as ed_key:
+                public_key = {
+                    1: 1,
+                    3: self.algorithm.value,
+                    -1: 6,
+                    -2: ed_key.public_key().public_bytes_raw(),
+                }
+            case rsa.RSAPrivateKey() as rsa_key:
+                rsa_public = rsa_key.public_key().public_numbers()
+                public_key = {
+                    1: 3,
+                    3: self.algorithm.value,
+                    -1: rsa_public.n.to_bytes((rsa_public.n.bit_length() + 7) // 8),
+                    -2: rsa_public.e.to_bytes((rsa_public.e.bit_length() + 7) // 8),
+                }
+            case unreachable:
+                assert_never(unreachable)
+        cose = cbor2.dumps(public_key)
         flags = 0x45 if verified else 0x41
         authenticator_data = (
             hashlib.sha256(rp_id.encode()).digest()
@@ -124,9 +154,28 @@ class SoftwareAuthenticator:
             + bytes([0x05 if options.verified else 0x01])
             + struct.pack(">I", options.sign_count)
         )
-        signature = self.private_key.sign(
-            data + hashlib.sha256(client).digest(), ec.ECDSA(hashes.SHA256())
-        )
+        signed_data = data + hashlib.sha256(client).digest()
+        match self.private_key:
+            case ec.EllipticCurvePrivateKey() as ec_key:
+                signature = ec_key.sign(signed_data, get_ec2_sig_alg(self.algorithm))
+            case ed25519.Ed25519PrivateKey() as ed_key:
+                assert self.algorithm == COSEAlgorithmIdentifier.EDDSA
+                signature = ed_key.sign(signed_data)
+            case rsa.RSAPrivateKey() as rsa_key:
+                if is_rsa_pss(self.algorithm):
+                    digest = get_rsa_pss_sig_alg(self.algorithm)
+                    scheme = padding.PSS(
+                        mgf=padding.MGF1(digest), salt_length=padding.PSS.MAX_LENGTH
+                    )
+                    signature = rsa_key.sign(signed_data, scheme, digest)
+                else:
+                    signature = rsa_key.sign(
+                        signed_data,
+                        padding.PKCS1v15(),
+                        get_rsa_pkcs1_sig_alg(self.algorithm),
+                    )
+            case unreachable:
+                assert_never(unreachable)
         return json.dumps(
             {
                 "id": bytes_to_base64url(self.credential_id),

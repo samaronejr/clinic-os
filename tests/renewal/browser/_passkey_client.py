@@ -24,10 +24,15 @@ if (navigator.credentials) {
   ["create", "get"].forEach(function (method) {
     var original = navigator.credentials[method];
     if (typeof original !== "function") return;
-    navigator.credentials[method] = function () {
+    navigator.credentials[method] = async function () {
       var pending = original.apply(this, arguments);
       console.debug("PASSKEY_PENDING:" + method);
-      return pending;
+      var credential = await pending;
+      if (method === "create") {
+        console.debug("PASSKEY_ALGORITHM:" +
+          credential.response.getPublicKeyAlgorithm());
+      }
+      return credential;
     };
   });
 }
