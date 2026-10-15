@@ -451,7 +451,7 @@ def test_database_policies_and_trigger_check_the_same_bundle_names() -> None:
         cursor.execute(
             "SELECT tablename, policyname, "
             "coalesce(qual, '') || ' ' || "
-            "coalesce(with_check, '') "
+            "coalesce(with_check, ''), cmd "
             "FROM pg_catalog.pg_policies WHERE schemaname='clinic_app' "
             "AND tablename LIKE 'consent\\_%' AND 'clinic_app' = ANY(roles)"
         )
@@ -463,7 +463,26 @@ def test_database_policies_and_trigger_check_the_same_bundle_names() -> None:
         row = cursor.fetchone()
     assert row is not None
     bodies = [str(row[0]), *(str(item[2]) for item in policies)]
-    assert len(policies) == 19
+    assert {(item[0], item[1], item[3]) for item in policies} == {
+        ("consent_aiusedisclosure", "consent_ai_disclosure_insert", "INSERT"),
+        ("consent_aiusedisclosure", "consent_ai_disclosure_read", "SELECT"),
+        ("consent_aiusedisclosure", "consent_alias_read", "SELECT"),
+        ("consent_consentacceptance", "consent_acceptance_insert", "INSERT"),
+        ("consent_consentacceptance", "consent_acceptance_read", "SELECT"),
+        ("consent_consentacceptance", "consent_alias_read", "SELECT"),
+        ("consent_consentrevocation", "consent_alias_read", "SELECT"),
+        ("consent_consentrevocation", "consent_revocation_insert", "INSERT"),
+        ("consent_consentrevocation", "consent_revocation_read", "SELECT"),
+        ("consent_consenttext", "consent_text_insert", "INSERT"),
+        ("consent_consenttext", "consent_text_read", "SELECT"),
+        ("consent_noticeversion", "consent_notice_insert", "INSERT"),
+        ("consent_noticeversion", "consent_notice_read", "SELECT"),
+        ("consent_participantacknowledgment", "consent_participant_insert", "INSERT"),
+        ("consent_participantacknowledgment", "consent_participant_read", "SELECT"),
+        ("consent_refusalrecord", "consent_alias_read", "SELECT"),
+        ("consent_refusalrecord", "consent_refusal_insert", "INSERT"),
+        ("consent_refusalrecord", "consent_refusal_read", "SELECT"),
+    }
     for body in bodies:
         assert "questionnaire_staff" not in body
     names = {
