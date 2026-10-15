@@ -14,7 +14,7 @@ from playwright.sync_api import expect
 from renewal.browser._fixture_secrets import new_totp_key
 from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
-from renewal.browser._protected import decrypt
+from renewal.browser._protected import decrypt, encrypt
 from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import (
     _no_overflow,
@@ -46,6 +46,36 @@ SECOND = {
     "plan": "Plano sintético retificado",
 }
 MIN_TARGET_PX = 44
+
+
+def seed_registered(staff: dict[str, str], day: str) -> dict[str, str]:
+    """Seed an amendment encounter with current synthetic clinical eligibility."""
+    data = seed(staff, day)
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            [staff["organization"]],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_professionalregistration "
+            "(id,organization_id,clinic_id,user_id,role,council,number,jurisdiction,"
+            "synthetic,status,valid_from,valid_to) "
+            "SELECT %s,c.organization_id,c.id,%s,'physician','CRM',%s,c.crm_uf,"
+            "true,'regular',now()-interval '1 day',now()+interval '1 day' "
+            "FROM clinic_app.identity_clinic c WHERE c.id=%s "
+            "AND NOT EXISTS (SELECT 1 "
+            "FROM clinic_app.identity_professionalregistration r "
+            "WHERE r.organization_id=c.organization_id AND r.clinic_id=c.id "
+            "AND r.user_id=%s AND r.role='physician')",
+            [
+                str(uuid4()),
+                staff["physician_a_id"],
+                encrypt(conn, "identity.registration.number", b"SYNTHETIC-T18-CRM"),
+                staff["clinic_a"],
+                staff["physician_a_id"],
+            ],
+        )
+    return data
 
 
 def capture(page: Page, root: Path, state: str, width: int) -> None:
@@ -359,7 +389,7 @@ def test_amendment_journey(
     width: int,
 ) -> None:
     staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
-    data = seed(staff, DAYS[width])
+    data = seed_registered(staff, DAYS[width])
     browser = renewal_page.context.browser
     assert browser is not None
     context = browser.new_context(
@@ -527,7 +557,7 @@ def test_amendment_accessibility_matrix(
     staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
     # Each scene gets its own day, appointment and patient.
     ctx: dict[str, dict[str, Any]] = {
-        key: {**seed(staff, day), "staff": staff, "base": base, "day": day}
+        key: {**seed_registered(staff, day), "staff": staff, "base": base, "day": day}
         for key, day in (
             ("reflow", "2035-06-06"),
             ("colors", "2035-06-07"),
