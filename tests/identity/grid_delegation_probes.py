@@ -134,6 +134,7 @@ def _seed(symbol: str, graph: RbacGraph, actor: UUID) -> Seeded:
                 clinic_id=graph.clinic_a,
                 revision=booked.revision,
             )
+            moved.refresh_from_db()
             assert moved.revision == booked.revision + 1
             return moved.pk == booked.pk
         request = RequestFactory().post(
