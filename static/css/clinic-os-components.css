@@ -743,12 +743,14 @@ a.is-active {
   transition: var(--transition-state);
 }
 
-a.resource-slot:hover {
+a.resource-slot:hover,
+button.resource-slot:hover {
   border-color: var(--color-primary-strong);
   color: var(--color-ink);
 }
 
-a.resource-slot:hover strong {
+a.resource-slot:hover strong,
+button.resource-slot:hover strong {
   text-decoration: underline;
 }
 
@@ -826,6 +828,22 @@ a.resource-grid-free {
    the columns' minimum the region scrolls sideways. */
 .agenda-grid {
   min-width: min-content;
+}
+
+.agenda-grid-select {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  margin: 0;
+}
+
+.agenda-grid-select .resource-slot {
+  align-items: stretch;
+  justify-content: flex-start;
+  background: var(--color-selection);
+  font: inherit;
+  text-align: start;
+  transform: none;
 }
 
 .agenda-grid .resource-grid-cell[role="columnheader"] + [role="columnheader"] {

@@ -14,7 +14,7 @@ script measures each of them the same way:
 * a keyboard-only reschedule;
 * axe (zero violations of any impact) and 44px targets at 1280/768/375/320;
 * two contexts moving one appointment: conflict text, no lost update, video;
-* the JS-off grid (a native ledger of reschedule links);
+* the JS-off grid (native POST selectors and revision-checked moves);
 * strict CSP: zero ``securitypolicyviolation`` events.
 
 A run over budget is recorded as failing in ``slice-<variant>.json`` and then
@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
 import psycopg
@@ -1015,41 +1015,115 @@ def test_two_contexts_moving_one_appointment_lose_no_update(
 
 
 # --------------------------------------------------------------------------
-# 6. JavaScript off: the grid is a native ledger of reschedule links
+# 6. JavaScript off: selectors stay in POST bodies, never navigation history
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("variant", _variants())
-def test_js_off_grid_keeps_the_native_path(variant: str, scene: Scene) -> None:
+@pytest.mark.parametrize("room_column", [False, True])
+def test_js_off_grid_keeps_the_native_path(
+    variant: str, room_column: bool, scene: Scene
+) -> None:
     seeded = scene.world.seed_day()
-    appointment = seeded.by_physician[scene.world.physicians[0]][0]
+    physician = scene.world.physicians[0]
+    appointment = seeded.by_physician[physician][0]
+    before = scene.world.stored(appointment)
+    target = seeded.free[physician][0]
+    move_path = f"/scheduling/clinics/{scene.world.staff['clinic_a']}/agenda/grid/move/"
+    navigated_urls: list[str] = []
+    history_entries: list[str] = []
     browser = scene.browser
     with browser.new_context(
         locale="pt-BR", storage_state=scene.state, java_script_enabled=False
     ) as context:
         page = context.new_page()
+        # With page scripts disabled, committed main-frame navigations are the
+        # history entries. Record requests too, including intermediate redirects.
+        page.on(
+            "request",
+            lambda request: (
+                navigated_urls.append(request.url)
+                if request.is_navigation_request() and request.frame == page.main_frame
+                else None
+            ),
+        )
+        page.on(
+            "framenavigated",
+            lambda frame: (
+                history_entries.append(frame.url) if frame == page.main_frame else None
+            ),
+        )
         response = goto_settled(
             page, scene.base_url + _path(scene.world, variant, seeded.day)
         )
         assert response is not None
         assert response.status == 200
         rendered = page.locator("[data-appointment]").count()
-        link = _slot_link(page, appointment)
-        href = link.get_attribute("href")
-        with expect_document(page):
-            link.click()
+        button = (
+            page.locator(
+                f"[data-grid-cell]:not([data-column]) "
+                f'button[name="appointment_id"][value="{appointment}"]'
+            ).first
+            if room_column
+            else _slot_link(page, appointment)
+        )
+        with (
+            page.expect_request(
+                lambda request: (
+                    request.method == "POST" and urlsplit(request.url).path == move_path
+                )
+            ) as selection,
+            expect_document(page),
+        ):
+            button.click()
+        selected_url = urlsplit(page.url).path
+        posted = selection.value.post_data
+        assert posted is not None
+        assert parse_qs(posted)["appointment_id"] == [appointment]
+        assert scene.world.stored(appointment) == before
+        form = page.locator("[data-native-move-form]")
+        expect(form).to_have_attribute("action", move_path)
+        form.locator('[name="start"]').fill(target)
+        with page.expect_response(_is_move(variant)) as moved, expect_document(page):
+            form.locator('button[type="submit"]').click()
+        assert moved.value.status == 303
         reached = urlsplit(page.url).path
-        page.screenshot(path=str(scene.root / f"js-off-{variant}.png"))
+        after = scene.world.stored(appointment)
+        appointment_ids = [
+            identifier
+            for appointments in seeded.by_physician.values()
+            for identifier in appointments
+        ]
+        assert navigated_urls
+        assert history_entries
+        assert all(
+            identifier not in unquote(url)
+            for identifier in appointment_ids
+            for url in navigated_urls + history_entries
+        )
+        report_key = "js_off_room" if room_column else "js_off"
+        page.screenshot(path=str(scene.root / f"{report_key}-{variant}.png"))
     passed = (
         rendered >= 40
-        and reached == f"/scheduling/appointments/{appointment}/reschedule/"
+        and selected_url == move_path
+        and reached == _path(scene.world, variant, seeded.day)
+        and after == (target, before[1] + 1)
     )
-    scene.report[variant]["js_off"] = {
-        "criterion": "JS off: server grid; appointments link to their reschedule page",
+    scene.report[variant][report_key] = {
+        "criterion": "JS off: body-only selector and native revision-checked move",
         "pass": passed,
-        "raw": {"appointments_rendered": rendered, "href": href, "reached": reached},
+        "raw": {
+            "appointments_rendered": rendered,
+            "room_column": room_column,
+            "selected_url": selected_url,
+            "reached": reached,
+            "navigated_urls": navigated_urls,
+            "history_entries": history_entries,
+            "selectors_absent_from_urls": True,
+            "after": after,
+        },
     }
-    assert passed, scene.report[variant]["js_off"]
+    assert passed, scene.report[variant][report_key]
 
 
 # --------------------------------------------------------------------------

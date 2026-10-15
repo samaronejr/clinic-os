@@ -41,6 +41,7 @@ from apps.scheduling.appointment_forms import (
 )
 from apps.scheduling.appointment_lifecycle import AppointmentLifecycleError
 from apps.scheduling.appointment_values import AppointmentLocalRange
+from apps.scheduling.models import Appointment
 from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
     AgendaInputError,
@@ -52,6 +53,7 @@ from apps.scheduling.services import (
     AvailabilityAccessDeniedError,
     SlotConflict,
     move_appointment,
+    view_appointment_for_transition,
 )
 
 if TYPE_CHECKING:
@@ -71,6 +73,7 @@ FIELDS: Final = frozenset(
         "day",
         "start",
         "duration",
+        "select",
     }
 )
 CLOCK: Final = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
@@ -250,6 +253,32 @@ def agenda_grid_move_view(request: HttpRequest, clinic_id: UUID) -> HttpResponse
     appointment_id, revision, day, local_range = _inputs(request)
     try:
         authorize_grid_move(clinic_id)
+        if "select" in request.POST:
+            # Check the explicit clinic before the audited transition read.
+            # Unknown and other-clinic selectors must both write nothing.
+            if not Appointment.objects.filter(
+                pk=appointment_id,
+                clinic_id=clinic_id,
+                status=Appointment.Status.SCHEDULED,
+            ).exists():
+                raise Http404
+            current = view_appointment_for_transition(appointment_id=appointment_id)
+            return render(
+                request,
+                "scheduling/agenda_move.html",
+                {
+                    "appointment": current,
+                    "appointment_id": appointment_id,
+                    "expected_revision": revision,
+                    "day": day,
+                    "start": local_range.start_local[11:16],
+                    "duration": request.POST["duration"],
+                    "move_url": reverse(
+                        "scheduling:agenda-grid-move", args=(clinic_id,)
+                    ),
+                    "grid_url": _grid_url(clinic_id, day),
+                },
+            )
         move_appointment(
             clinic_id=clinic_id,
             appointment_id=appointment_id,

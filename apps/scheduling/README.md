@@ -191,9 +191,12 @@ refusals: a revision other than the stored one raises
 update), and an appointment of another clinic shares the unknown-appointment
 denial. The HTMX grid (`/scheduling/clinics/<clinic>/agenda/grid/<day>/`, move
 POST `.../agenda/grid/move/` with every selector in the body) answers a lost
-race or a taken time with 409 and the current grid; with JavaScript off each
-appointment links to its own reschedule page. ADR-001 records why this HTMX
-variant, not a React island, was selected.
+race or a taken time with 409 and the current grid. With JavaScript off each
+movable appointment POSTs its selector to the same clinic-scoped endpoint,
+which renders a native move form without changing the appointment. Both
+selection and submission keep identifiers in the body and retain the grid's
+rendered revision. ADR-001 records why this HTMX variant, not a React island,
+was selected.
 
 The move POST requires `authorized_agenda_scope` before any write, matching
 the list agenda on Wave B: manager roles and RP booking staff see every
@@ -202,8 +205,8 @@ booking's authority is then rechecked under the write locks: legacy bookings
 retain the manager roles; service bookings use `appointment.move` or
 `appointment.move_own` for the booked clinician. Scheduler and clinic manager
 can therefore view the grid and move service bookings, and the booked
-physician can move their own service booking. The grid renders links and move
-hooks only where those same rules accept a scheduled booking. Unknown,
+physician can move their own service booking. The grid renders POST buttons
+and move hooks only where those same rules accept a scheduled booking. Unknown,
 foreign and unauthorized selectors share one refusal and write nothing.
 
 The grid lists every agenda lifecycle state except expired holds. Due holds
