@@ -26,6 +26,7 @@ from psycopg.types.json import Jsonb
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
+from renewal.browser._room_join import room_join_readiness
 from renewal.browser._teleconsult import (
     device_checks,
     register_physician,
@@ -236,9 +237,10 @@ def _htmx(page: Page, selector: str, status: int = OK) -> None:
 def _enter(physician: Page, case: _Case, session_id: str, name: str) -> None:
     """Join from the session list and land in the workspace for this patient."""
     goto_settled(physician, case.staff_url)
-    click_to_navigate(
-        physician.locator(f'[data-session="{session_id}"] button[value="join"]')
-    )
+    with room_join_readiness(physician, case.staff_url, case.root):
+        click_to_navigate(
+            physician.locator(f'[data-session="{session_id}"] button[value="join"]')
+        )
     assert physician.url == case.staff_url
     root = physician.locator("[data-teleconsult='clinician']")
     expect(root).to_have_attribute("data-session", session_id)
@@ -1431,11 +1433,9 @@ def _v2_fallback_poll(physician: Page) -> None:
     assert len(polls) == FALLBACK_WINDOWS
 
 
-def _v2_patient_joins(physician: Page, patient: Page) -> None:
-    click_to_navigate(patient.locator('button[value="join"]'))
-    expect(patient.locator("#room-panel")).to_have_attribute(
-        "data-connection", "connected"
-    )
+def _v2_patient_joins(physician: Page, patient: Page, case: _Case) -> None:
+    with room_join_readiness(patient, case.patient_url, case.root):
+        click_to_navigate(patient.locator('button[value="join"]'))
     refresh_status(physician)
     expect(physician.locator("[data-patient-presence]")).to_have_text("Na sala")
     expect(physician.locator('[data-summary="speaker"]')).to_have_attribute(
@@ -1550,8 +1550,8 @@ def v2_remove_and_return(
     assert patient.evaluate(TRACK_JS, "audio") is None
     _capture(patient, case, "v2-patient-removed")
     click_to_navigate(patient.locator("[data-back]"))
-    click_to_navigate(patient.locator('button[value="join"]'))
-    expect(panel).to_have_attribute("data-connection", "connected")
+    with room_join_readiness(patient, case.patient_url, case.root):
+        click_to_navigate(patient.locator('button[value="join"]'))
     events = session_events(case.staff, session_id)
     assert ("removed", "physician") in events
     assert events.count(("joined", "patient")) == 2
@@ -1605,7 +1605,7 @@ def test_clinician_video_v2_devices_audio_only_and_removal(
             _enter(physician, case, session_id, V2_NAME)
             _targets(physician, V2_TARGETS, "workspace-1280")
             _axe(physician, case, "workspace")
-            _v2_patient_joins(physician, patient)
+            _v2_patient_joins(physician, patient, case)
             _v2_audio_only(physician, patient, case)
             _v2_camera_loss(physician, patient, case, session_id)
             v2_remove_and_return(physician, patient, case, session_id)

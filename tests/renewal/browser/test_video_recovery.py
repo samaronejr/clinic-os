@@ -14,10 +14,12 @@ from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js, wait_for_js
+from renewal.browser._room_join import capture_room_failure, room_join_readiness
 from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import (
     full_page_screenshot,
@@ -338,44 +340,60 @@ def join_initializing_rooms(
 
     patient.route(case.patient_url, initial_status)
     try:
-        click_to_navigate(patient.locator('button[value="join"]'))
-        patient._sync(asyncio.wait_for(asyncio.shield(fetched), timeout=5))
-        # Media acquisition, not document load, admits the other navigation.
-        # The actual initial status reply stays held: the physician still joins
-        # while this patient's room is initializing.
-        wait_for_js(
-            patient,
-            """() => document.querySelector('#room-panel')
-              ?.getAttribute('data-media') === 'ready'""",
-            timeout=5000,
-        )
-        assert len(held) == 1
-        expect(patient.locator("#room-panel")).to_have_attribute(
-            "data-connection", "joining"
-        )
-        goto_settled(physician, case.staff_url)
-        click_to_navigate(
-            physician.locator(f'[data-session="{session}"] button[value="join"]')
-        )
-        wait_for_js(physician, ROOM_READY, timeout=5000)
-        expect(patient.locator("#room-panel")).to_have_attribute(
-            "data-connection", "joining"
-        )
-        route, response = held.pop()
-        route.fulfill(response=response)
+        with room_join_readiness(patient, case.patient_url, case.root):
+            click_to_navigate(patient.locator('button[value="join"]'))
+            patient._sync(asyncio.wait_for(asyncio.shield(fetched), timeout=5))
+            # Media acquisition, not document load, admits the other navigation.
+            # The actual initial status reply stays held: the physician still joins
+            # while this patient's room is initializing.
+            wait_for_js(
+                patient,
+                """() => document.querySelector('#room-panel')
+                  ?.getAttribute('data-media') === 'ready'""",
+                timeout=5000,
+            )
+            assert len(held) == 1
+            expect(patient.locator("#room-panel")).to_have_attribute(
+                "data-connection", "joining"
+            )
+            goto_settled(physician, case.staff_url)
+            with room_join_readiness(physician, case.staff_url, case.root):
+                click_to_navigate(
+                    physician.locator(
+                        f'[data-session="{session}"] button[value="join"]'
+                    )
+                )
+            wait_for_js(physician, ROOM_READY, timeout=5000)
+            expect(patient.locator("#room-panel")).to_have_attribute(
+                "data-connection", "joining"
+            )
+            route, response = held.pop()
+            route.fulfill(response=response)
         wait_for_js(patient, ROOM_READY, timeout=5000)
+        for page in (patient, physician):
+            expect(page.locator("#room-panel")).to_have_attribute(
+                "data-connection", "connected"
+            )
+            expect(page.locator("#room-panel")).to_have_attribute("data-media", "ready")
+            for kind in ("audio", "video"):
+                assert page.evaluate(TRACK_JS, kind) == {
+                    "enabled": True,
+                    "state": "live",
+                }
+        capture(patient, case, "patient-connected")
+    except (AssertionError, PlaywrightError, TimeoutError) as error:
+        for page, url in ((patient, case.patient_url), (physician, case.staff_url)):
+            try:
+                capture_room_failure(page, url, case.root, "initializing")
+            except OSError as capture_error:
+                error.add_note(
+                    f"Room evidence write failed: {type(capture_error).__name__}"
+                )
+        raise
     finally:
         for route, _ in held:
             route.abort()
         patient.unroute(case.patient_url, initial_status)
-    for page in (patient, physician):
-        expect(page.locator("#room-panel")).to_have_attribute(
-            "data-connection", "connected"
-        )
-        expect(page.locator("#room-panel")).to_have_attribute("data-media", "ready")
-        for kind in ("audio", "video"):
-            assert page.evaluate(TRACK_JS, kind) == {"enabled": True, "state": "live"}
-    capture(patient, case, "patient-connected")
 
 
 def begin(
