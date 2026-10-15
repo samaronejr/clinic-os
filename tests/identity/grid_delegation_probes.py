@@ -37,6 +37,7 @@ from identity.permission_support import (
     permission_actor,
     permission_context,
 )
+from otp_test_support import runtime_role
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -54,7 +55,11 @@ TARGETS = (
 
 def _seed(symbol: str, graph: RbacGraph, actor: UUID) -> Seeded:
     actor_user = User.objects.get(pk=actor)
-    with owner_context(graph.organization_a), connection.cursor() as cursor:
+    with (
+        runtime_role(),
+        owner_context(graph.organization_a),
+        connection.cursor() as cursor,
+    ):
         cursor.execute("SELECT current_setting('app.current_user_id', true)")
         (previous,) = cursor.fetchone()
         cursor.execute(
