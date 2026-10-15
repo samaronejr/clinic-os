@@ -145,6 +145,21 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
     assert evaluate_js(page, "document.documentElement.scrollWidth <= innerWidth")
 
 
+def pointer_target(control: Locator) -> Locator:
+    """The element a pointer operates ``control`` through.
+
+    A segmented option's radio is a transparent overlay inside the 1 px border
+    of the ``label.segmented-option`` that wraps it: that label is the visible,
+    clickable segment, which the primitives suite measures too. Every other
+    owned control is its own target.
+    """
+    segment = control.locator(
+        "xpath=ancestor::label[contains(concat(' ', normalize-space(@class), ' '),"
+        " ' segmented-option ')][1]"
+    )
+    return segment if segment.count() else control
+
+
 def accessible(
     page: Page, base: str, root: Path, state: str, *, controls: bool = True
 ) -> dict[str, object]:
@@ -155,8 +170,9 @@ def accessible(
     a document of its own. axe-core settles each rule through ``setTimeout(0)``,
     so an audited page keeps its timers running: never a paused clock. Only the
     viewport changes between the target checks, and it is restored afterwards.
-    No axe rule, region or control is exempt; ``controls`` is False only for a
-    state that renders no owned control.
+    Each control is measured by its ``pointer_target``. No axe rule, region or
+    control is exempt; ``controls`` is False only for a state that renders no
+    owned control.
     """
     axe = check_page(page, base, root, f"encounter-{state}")
     viewport = page.viewport_size
@@ -173,7 +189,7 @@ def accessible(
             assert bool(visible) is controls, (state, width, len(visible))
             small: list[tuple[str, float, float]] = []
             for control in visible:
-                box = element_box(control)
+                box = element_box(pointer_target(control))
                 if min(box["width"], box["height"]) < MIN_TARGET_PX:
                     name = str(control.evaluate(CONTROL_NAME_JS))
                     small.append((name, box["width"], box["height"]))
