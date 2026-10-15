@@ -333,8 +333,8 @@ def _query_requires(items: list[Tok], checked: set[str]) -> bool:
 def _delegates(reader: Reader, checked: set[str]) -> bool:
     """SQL bodies must require a checked call on every branch; plpgsql, a call.
 
-    plpgsql control flow is not analysed here: every plpgsql delegator is a
-    trigger guard whose own refusal is executed by GUARD_PROBES.
+    plpgsql control flow is not analysed here: every plpgsql delegator's own
+    refusal is executed by GUARD_PROBES or an actor protocol oracle.
     """
     names = {name for name, edge in reader.callees.items() if edge <= checked}
     if reader.language != "sql":

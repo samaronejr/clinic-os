@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.identity.models import SessionRecord, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.intake import merge_execution, services
 from apps.intake.alias_access import MERGE_ROLES
-from apps.intake.models import MergeDecision
+from apps.intake.models import MergeDecision, PatientAlias
 from apps.tenancy.db import tenant_context
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from auth.stepup_test_support import create_role_actor
 from identity.lifecycle_test_support import session_key, verified_client
@@ -29,9 +31,19 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 ACTOR_PROTOCOL_ORACLES = {
+    "clinic_app.intake_merge_authorized(uuid,uuid)": (
+        "patients.duplicate_authority_cases."
+        "test_merge_mutation_context_refuses_inactive_actor",
+    ),
+    "clinic_app.intake_merge_decision_guard()": (
+        "patients.duplicate_authority_cases.test_merge_guards_refuse_inactive_actor",
+    ),
     "clinic_app.intake_merge_mutation_allowed(uuid,uuid)": (
         "patients.duplicate_authority_cases."
         "test_merge_mutation_context_refuses_inactive_actor",
+    ),
+    "clinic_app.intake_patient_alias_guard()": (
+        "patients.duplicate_authority_cases.test_merge_guards_refuse_inactive_actor",
     ),
 }
 
@@ -140,18 +152,25 @@ class MutationProbeCompleteError(Exception):
     """Roll back a genuine prepared merge after observing its native capability."""
 
 
-def _mutation_allowed(clinic_id: UUID, patient_id: UUID) -> bool:
+def _merge_authority(clinic_id: UUID, decision: MergeDecision) -> tuple[bool, bool]:
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT current_user, clinic_app.intake_merge_mutation_allowed(%s,%s)",
-            [clinic_id, patient_id],
+            "SELECT current_user, clinic_app.intake_merge_mutation_allowed(%s,%s), "
+            "clinic_app.intake_merge_authorized(%s,%s)",
+            [
+                clinic_id,
+                decision.merged_patient_id,
+                clinic_id,
+                decision.verified_session_id,
+            ],
         )
         row = cursor.fetchone()
     assert row is not None
-    role, allowed = row
+    role, allowed, authorized = row
     assert role == "clinic_app"
     assert type(allowed) is bool
-    return allowed
+    assert type(authorized) is bool
+    return allowed, authorized
 
 
 def test_merge_mutation_context_refuses_inactive_actor(
@@ -159,11 +178,11 @@ def test_merge_mutation_context_refuses_inactive_actor(
 ) -> None:
     first, _second, candidate = _pair(rbac_graph, services)
     key = session_key(verified_client(rbac_graph))
-    observed: list[bool] = []
+    observed: list[tuple[bool, bool]] = []
 
     def inspect_transfer(*, clinic_id: UUID, merge_decision_id: UUID) -> Never:
         decision = MergeDecision.objects.get(pk=merge_decision_id)
-        observed.append(_mutation_allowed(clinic_id, decision.merged_patient_id))
+        observed.append(_merge_authority(clinic_id, decision))
         # Keep the real decision, actor GUC and verified session. Only the
         # account's native lifecycle state changes, inside a rolled-back savepoint.
         with transaction.atomic():
@@ -175,9 +194,9 @@ def test_merge_mutation_context_refuses_inactive_actor(
                 )
                 assert cursor.rowcount == 1
                 cursor.execute("SET LOCAL ROLE clinic_app")
-            observed.append(_mutation_allowed(clinic_id, decision.merged_patient_id))
+            observed.append(_merge_authority(clinic_id, decision))
             transaction.set_rollback(True)
-        observed.append(_mutation_allowed(clinic_id, decision.merged_patient_id))
+        observed.append(_merge_authority(clinic_id, decision))
         raise MutationProbeCompleteError
 
     monkeypatch.setattr(merge_execution, "transfer_intake", inspect_transfer)
@@ -196,5 +215,88 @@ def test_merge_mutation_context_refuses_inactive_actor(
             survivor_patient_id=first.patient.pk,
             field_choices={},
             reason="Synthetic native activity capability probe",
+        )
+    assert observed == [(True, True), (False, False), (True, True)]
+
+
+@pytest.mark.parametrize(
+    "model", [MergeDecision, PatientAlias], ids=("merge-decision", "patient-alias")
+)
+def test_merge_guards_refuse_inactive_actor(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    model: type[MergeDecision | PatientAlias],
+) -> None:
+    first, _second, candidate = _pair(rbac_graph, services)
+    key = session_key(verified_client(rbac_graph))
+    guard, sqlstate, message = {
+        MergeDecision: (
+            "intake_merge_decision_guard",
+            "42501",
+            "duplicate adjudication authority required",
+        ),
+        PatientAlias: (
+            "intake_patient_alias_guard",
+            "23514",
+            "patient alias transition is invalid",
+        ),
+    }[model]
+    create = model.objects.create
+    observed: list[bool] = []
+
+    def inspect_create(**values: object) -> Never:
+        # The service supplies genuine prepared INSERT values. Each native
+        # attempt rolls back, so a prior receipt cannot cause a uniqueness denial.
+        for active in (True, False, True):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT current_user")
+                    assert cursor.fetchone() == ("clinic_app",)
+                    if not active:
+                        cursor.execute("SET LOCAL ROLE clinic_owner")
+                        cursor.execute(
+                            "UPDATE clinic_app.identity_user SET is_active=false "
+                            "WHERE id=%s",
+                            [rbac_graph.clinic_admin],
+                        )
+                        assert cursor.rowcount == 1
+                        cursor.execute("SET LOCAL ROLE clinic_app")
+                if active:
+                    assert create(**values).pk is not None
+                    observed.append(True)
+                else:
+                    with pytest.raises(DatabaseError) as denied, transaction.atomic():
+                        create(**values)
+                    cause = denied.value.__cause__
+                    assert isinstance(cause, psycopg.Error)
+                    assert (cause.sqlstate, cause.diag.message_primary) == (
+                        sqlstate,
+                        message,
+                    )
+                    assert re.search(
+                        rf"PL/pgSQL function (?:clinic_app\.)?{guard}\(\) "
+                        r"line \d+ at RAISE",
+                        cause.diag.context or "",
+                    )
+                    observed.append(False)
+                transaction.set_rollback(True)
+        raise MutationProbeCompleteError
+
+    monkeypatch.setattr(model.objects, "create", inspect_create)
+    with (
+        pytest.raises(MutationProbeCompleteError),
+        runtime_role(),
+        tenant_context(rbac_graph.clinic_admin, rbac_graph.organization_a),
+        services.duplicate_review_session(
+            clinic_id=rbac_graph.clinic_a, session_key=key
+        ),
+    ):
+        services.adjudicate_duplicate(
+            clinic_id=rbac_graph.clinic_a,
+            candidate_id=candidate.pk,
+            decision="merge",
+            survivor_patient_id=first.patient.pk,
+            field_choices={},
+            reason="Synthetic native inactive actor guard probe",
         )
     assert observed == [True, False, True]

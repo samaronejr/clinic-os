@@ -23,6 +23,7 @@ from patients.duplicate_adjudication_cases import (
 )
 from patients.duplicate_authority_cases import (
     test_merge_authority_checks_every_stored_role_and_exact_live_session,
+    test_merge_guards_refuse_inactive_actor,
     test_merge_mutation_context_refuses_inactive_actor,
 )
 from patients.duplicate_forward_cases import (
@@ -64,6 +65,7 @@ __all__ = (
     "test_forward_handler_failure_rolls_back_the_complete_merge",
     "test_forward_waitlist_keeps_integer_source_and_replacement_links",
     "test_merge_authority_checks_every_stored_role_and_exact_live_session",
+    "test_merge_guards_refuse_inactive_actor",
     "test_merge_mutation_context_refuses_inactive_actor",
     "test_merge_recreates_forward_rows_with_links_and_fresh_access",
     "test_merge_requires_step_up_at_the_service_boundary",
