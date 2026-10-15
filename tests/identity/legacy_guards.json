@@ -5404,6 +5404,50 @@
       "roles": "(UserClinicRole.Role.OWNER,)"
     },
     {
+      "function": "verify_assertion",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/passkey_authentication.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
+      "function": "remove_passkey",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/passkey_controls.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
+      "function": "registration_begin",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/passkey_views.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
+      "function": "register_passkey",
+      "legacy_allowed": [
+        "owner",
+        "physician",
+        "receptionist",
+        "clinic_admin"
+      ],
+      "path": "apps/identity/passkeys.py",
+      "roles": "tuple(UserClinicRole.Role)"
+    },
+    {
       "function": "_assigned_encounter",
       "legacy_allowed": [
         "physician"
@@ -11171,11 +11215,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkeys.register_passkey#cut1"
+        "identity.passkey_authority_oracle.test_actual_passkey_authority_for_every_staff_role"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential lifecycle trigger: membership-bound registration and immutable history, exercised through the signed-wire staff-role and removal oracle."
     },
     "clinic_app.identity_passkey_lookup": {
       "discovery": {
@@ -11193,11 +11237,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_authentication.lookup_credential#cut1"
+        "identity.passkey_authority_oracle.test_actual_passkey_authority_for_every_staff_role"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Sessionless credential lookup returns active stored scope but grants no caller authority; the signed-wire role oracle exercises lookup before real assertion verification."
     },
     "clinic_app.identity_passkey_policy_set": {
       "discovery": {
@@ -11215,11 +11259,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_controls.set_passkey_policy#cut1"
+        "identity.passkey_authority_oracle.test_actual_passkey_authority_for_every_staff_role"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Organization-policy lifecycle mutation requires a fresh actual factor and staff.organization in every unit; the signed-wire role oracle exercises both admission and refusal."
     },
     "clinic_app.identity_passkey_registration_allowed": {
       "discovery": {
@@ -11237,11 +11281,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_controls.require_registration_session#cut1"
+        "identity.test_lifecycle_sql_readers.test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential/session lifecycle gate requiring prepared verified state and exact GUC-bound ownership; a direct clinic_app active/inactive/foreign SQL oracle backs this classification, alongside the unchanged staff-role census."
     },
     "clinic_app.identity_passkey_revoke_sessions": {
       "discovery": {
@@ -11259,11 +11303,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_controls.remove_passkey#cut1"
+        "identity.passkey_authority_oracle.test_actual_passkey_authority_for_every_staff_role"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential-removal lifecycle trigger revokes its bound sessions; the signed-wire role oracle proves removal and refusal of the previously authenticated session."
     },
     "clinic_app.identity_passkey_session_verified": {
       "discovery": {
@@ -11283,11 +11327,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_sessions.is_passkey_verified#cut1"
+        "identity.test_lifecycle_sql_readers.test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential/session lifecycle gate requiring prepared verified state and exact GUC-bound ownership; a direct clinic_app active/inactive/foreign SQL oracle backs this classification, alongside the unchanged staff-role census."
     },
     "clinic_app.identity_passkey_use": {
       "discovery": {
@@ -11305,11 +11349,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_authentication.verify_assertion#cut1"
+        "identity.test_lifecycle_sql_readers.test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential/session lifecycle gate requiring prepared verified state and exact GUC-bound ownership; a direct clinic_app active/inactive/foreign SQL oracle backs this classification, alongside the unchanged staff-role census."
     },
     "clinic_app.identity_session_authenticator_verified": {
       "discovery": {
@@ -11331,11 +11375,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_controls.require_authenticator_session#cut1"
+        "identity.test_lifecycle_sql_readers.test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential/session lifecycle gate requiring prepared verified state and exact GUC-bound ownership; a direct clinic_app active/inactive/foreign SQL oracle backs this classification, alongside the unchanged staff-role census."
     },
     "clinic_app.identity_session_verify_passkey": {
       "discovery": {
@@ -11353,11 +11397,11 @@
           }
         ]
       },
-      "kind": "direct",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "apps.identity.passkey_sessions.record_passkey_verification#cut1"
+        "identity.test_lifecycle_sql_readers.test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
       ],
-      "reason": "Executed signed-wire staff-role oracle enters the actual PostgreSQL registration, assertion, current-policy or retirement boundary through this Python receipt; not a staff exemption."
+      "reason": "Credential/session lifecycle gate requiring prepared verified state and exact GUC-bound ownership; a direct clinic_app active/inactive/foreign SQL oracle backs this classification, alongside the unchanged staff-role census."
     }
   },
   "sql_method": [

@@ -12,7 +12,14 @@ from uuid import uuid4
 import psycopg
 import pytest
 from apps.identity.invitations import enroll_invitation, invitation_token, invite_staff
-from apps.identity.models import Clinic, RecoveryCode, User, UserClinicRole
+from apps.identity.models import (
+    Clinic,
+    Organization,
+    Passkey,
+    RecoveryCode,
+    User,
+    UserClinicRole,
+)
 from apps.identity.recovery import issue_recovery_codes
 from apps.identity.session_inventory import session_hash
 from apps.identity.signup import submit_signup
@@ -20,8 +27,10 @@ from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import protect
 from django.contrib.auth.hashers import make_password
 from django.db import DatabaseError, ProgrammingError, connection, transaction
+from django.test import override_settings
 from django.utils import timezone
 
+from auth.passkey_test_support import passkey_login, registered_passkey
 from identity.lifecycle_test_support import session_key, verified_client
 from identity.permission_support import owner_context
 from identity.test_onboarding import _capture
@@ -81,6 +90,21 @@ LIFECYCLE_TRIGGERS = {
     },
 }
 _ACCOUNT_ORACLES = {
+    "clinic_app.identity_passkey_session_verified(bytea,uuid,integer)": (
+        "test_passkey_sql_gates_refuse_inactive_and_foreign_actors",
+    ),
+    "clinic_app.identity_passkey_registration_allowed(bytea)": (
+        "test_passkey_sql_gates_refuse_inactive_and_foreign_actors",
+    ),
+    "clinic_app.identity_passkey_use(uuid,bigint)": (
+        "test_passkey_sql_gates_refuse_inactive_and_foreign_actors",
+    ),
+    "clinic_app.identity_session_authenticator_verified(bytea)": (
+        "test_passkey_sql_gates_refuse_inactive_and_foreign_actors",
+    ),
+    "clinic_app.identity_session_verify_passkey(bytea,uuid)": (
+        "test_passkey_sql_gates_refuse_inactive_and_foreign_actors",
+    ),
     "clinic_app.identity_invitation_accept(bytea,text)": (
         "test_pending_accept_rechecks_the_stored_sender",
     ),
@@ -143,6 +167,18 @@ SQL_PROTOCOL_ORACLES = (
         }
     }
     | {
+        **dict.fromkeys(
+            (
+                "clinic_app.identity_passkey_guard",
+                "clinic_app.identity_passkey_lookup",
+                "clinic_app.identity_passkey_policy_set",
+                "clinic_app.identity_passkey_revoke_sessions",
+            ),
+            (
+                "identity.passkey_authority_oracle."
+                "test_actual_passkey_authority_for_every_staff_role",
+            ),
+        ),
         "clinic_app.identity_invitation_user": (
             "identity.test_lifecycle_sql_readers."
             "test_historical_lifecycle_callables_are_not_runtime_capabilities",
@@ -510,3 +546,86 @@ def test_account_gates_refuse_inactive_and_foreign_actors(
                         assert cursor.fetchone() == (allowed,), statement
                         transaction.set_rollback(True)
             transaction.set_rollback(True)
+
+
+@override_settings(WEBAUTHN_RP_ID="testserver", WEBAUTHN_ORIGIN="http://testserver")
+def test_passkey_sql_gates_refuse_inactive_and_foreign_actors(
+    rbac_graph: RbacGraph,
+) -> None:
+    # Given a genuinely registered credential and a signed, verified session.
+    graph = rbac_graph
+    registered = registered_passkey(graph)
+    signed = passkey_login(registered)
+    original_hash = session_hash(session_key(signed))
+    with owner_context(graph.organization_a):
+        Organization.objects.filter(pk=graph.organization_a).update(
+            passkey_step_up_enabled=True
+        )
+        credential = Passkey.objects.get(user_id=graph.clinic_admin)
+    decisions: dict[str, list[bool]] = {}
+    for actor, active in (
+        (graph.clinic_admin, True),
+        (graph.clinic_admin, False),
+        (graph.clinic_admin, True),
+        (graph.shared_user, True),
+    ):
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE clinic_app.identity_user SET is_active=%s WHERE id=%s",
+                [active, graph.clinic_admin],
+            )
+            # Deactivation revokes existing sessions. Copy the real verified
+            # subject AFTER that trigger so a revoked row cannot mask the gate.
+            digest = secrets.token_bytes(32)
+            cursor.execute(
+                "INSERT INTO clinic_app.identity_sessionrecord "
+                "(id,user_id,session_key_hash,created_at,last_seen,ip_network,"
+                "user_agent_family,expires_at,revoked_at,verification_device_id,"
+                "verification_passkey_id,verified_at) "
+                "SELECT gen_random_uuid(),user_id,%s,created_at,last_seen,ip_network,"
+                "user_agent_family,expires_at,NULL,verification_device_id,"
+                "verification_passkey_id,verified_at "
+                "FROM clinic_app.identity_sessionrecord WHERE session_key_hash=%s "
+                "RETURNING revoked_at,verification_device_id,verification_passkey_id",
+                [digest, original_hash],
+            )
+            assert cursor.fetchone() == (None, None, credential.pk)
+            queries: tuple[tuple[str, tuple[bytes | UUID | int | None, ...]], ...] = (
+                (
+                    "identity_passkey_session_verified(%s,%s,%s)",
+                    (digest, credential.pk, None),
+                ),
+                ("identity_session_authenticator_verified(%s)", (digest,)),
+                ("identity_passkey_registration_allowed(%s)", (digest,)),
+                (
+                    "identity_passkey_use(%s,%s)",
+                    (credential.pk, credential.sign_count + 1),
+                ),
+                ("identity_session_verify_passkey(%s,%s)", (digest, credential.pk)),
+            )
+            # When clinic_app binds the GUCs directly, no Python active-user
+            # gate or tenant_context can refuse before the SQL under test.
+            with _context(actor=actor, tenant=graph.organization_a):
+                for statement, parameters in queries:
+                    with transaction.atomic():
+                        cursor.execute("SELECT clinic_app." + statement, parameters)
+                        result = cursor.fetchone()
+                        assert result is not None, statement
+                        (decision,) = result
+                        assert type(decision) is bool, statement
+                        name = "clinic_app." + statement.split("(", 1)[0]
+                        decisions.setdefault(name, []).append(decision)
+                        transaction.set_rollback(True)
+            transaction.set_rollback(True)
+    # Then active controls succeed; only inactive/foreign actors are refused.
+    oracle = (
+        "identity.test_lifecycle_sql_readers."
+        "test_passkey_sql_gates_refuse_inactive_and_foreign_actors"
+    )
+    expected = {
+        signature.split("(", 1)[0]: (True, False, True, False)
+        for signature, oracles in ACTOR_PROTOCOL_ORACLES.items()
+        if oracle in oracles
+    }
+    assert expected
+    assert {name: tuple(values) for name, values in decisions.items()} == expected

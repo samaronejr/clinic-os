@@ -143,7 +143,9 @@ def run_passkey_census(
             subject = graph()
             proofs.run(
                 f"passkey signed-wire own scope and retirement:{role}",
-                partial(exercise_passkey_authority, subject, role),
+                partial(
+                    test_actual_passkey_authority_for_every_staff_role, subject, role
+                ),
             )
 
 

@@ -27,6 +27,7 @@ from patient_service_support import runtime_role
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from identity.legacy_sql_inventory import SqlInventoryEntry
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -35,6 +36,11 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
     entries = INVENTORY["sql_guards"]
     assert_sql_inventory(entries)
+    assert_staff_role_oracles(entries)
+
+
+def assert_staff_role_oracles(entries: dict[str, SqlInventoryEntry]) -> None:
+    """Check the role-probe registry without replacing live catalog validation."""
     listed = set()
     for name, entry in entries.items():
         if entry["kind"] != "staff_guard":
@@ -53,6 +59,11 @@ def test_sql_inventory_classifications_have_executable_role_oracles() -> None:
 def test_sql_protocol_inventory_has_exact_executable_oracles() -> None:
     entries = INVENTORY["sql_guards"]
     assert_sql_inventory(entries)
+    assert_protocol_oracles(entries)
+
+
+def assert_protocol_oracles(entries: dict[str, SqlInventoryEntry]) -> None:
+    """Keep classification and callable bindings independently host-free."""
     operation_oracles = {}
     machine_oracles = {}
     protocol_oracles = {}

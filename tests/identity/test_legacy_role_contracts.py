@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
     from rbac_fixtures import RbacGraph
 
-pytestmark = pytest.mark.django_db(transaction=True)
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY = ("owner", "physician", "receptionist", "clinic_admin")
 
@@ -94,6 +93,7 @@ def test_inventory_enumerates_every_current_actor_guard() -> None:
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)
+@pytest.mark.django_db(transaction=True)
 def test_all_47_guards_keep_legacy_role_decisions(
     rbac_graph: RbacGraph, legacy_role: str
 ) -> None:
