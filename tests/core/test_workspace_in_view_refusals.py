@@ -5,14 +5,18 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from functools import wraps
+from hashlib import sha256
 from itertools import product
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.core.api.errors import UI_API_PREFIX
 from apps.identity.account_views import request_session_key
 from apps.identity.models import UserClinicRole
+from django.contrib.sessions.models import Session
+from django.db import connection
 from django.http import HttpRequest, HttpResponse
 from django.test import Client, override_settings
 from django.urls import get_resolver, path
@@ -25,6 +29,7 @@ from workspace_refusal_support import workspace_routes
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from datetime import datetime
 
     from django.http import HttpResponseBase
     from django.test.client import _MonkeyPatchedWSGIResponse
@@ -105,6 +110,7 @@ def _requests(
                 "document_id": unknown,
                 "session_id": unknown,
                 "reset_id": unknown,
+                "passkey_id": unknown,
                 "token": unknown,
                 "clinic_id": str(graph.clinic_c),
                 "q": "Synthetic Unknown Patient",
@@ -143,6 +149,8 @@ def _probe_route(
     client: Client,
     graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    attempts: tuple[tuple[str, dict[str, str], bool], ...] | None = None,
 ) -> tuple[int, set[int]]:
     original = cast("Callable[..., HttpResponseBase]", route.pattern.callback)
     entries: list[HttpRequest] = []
@@ -168,7 +176,10 @@ def _probe_route(
             else (graph.clinic_a,)
         )
         for clinic_id in clinics:
-            for method, data, htmx in _requests(graph, known_encounter):
+            requests = (
+                _requests(graph, known_encounter) if attempts is None else attempts
+            )
+            for method, data, htmx in requests:
                 _restore_session(client, snapshot)
                 before = len(entries)
                 response = _send(client, route.url(clinic_id), method, data, htmx)
@@ -182,10 +193,82 @@ def _probe_route(
     return refusals, statuses
 
 
+def _passkey_page_refusal(
+    graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    superuser_database_url: str,
+) -> tuple[int, set[int]]:
+    # Given a real authenticated member whose page is initially available.
+    client, user = _client_for(graph, "receptionist")
+    route = next(
+        route
+        for route in workspace_routes(get_resolver())
+        if route.name == "identity:passkeys"
+    )
+    assert _get(client, route.url(graph.clinic_a)).status_code == 200
+    session_key = client.session.session_key
+    assert session_key is not None
+    stored_states: list[tuple[bytes, datetime]] = []
+    original = cast("Callable[..., HttpResponseBase]", route.pattern.callback)
+
+    @wraps(original)
+    def revoke_then_enter(
+        request: HttpRequest, *args: object, **kwargs: object
+    ) -> HttpResponseBase:
+        # As in the resource/workflow probes, another connection revokes real
+        # authority after middleware admission, before the unchanged view.
+        with psycopg.connect(
+            superuser_database_url,
+            dbname=str(connection.settings_dict["NAME"]),
+            autocommit=True,
+        ) as owner:
+            changed = owner.execute(
+                "UPDATE clinic_app.identity_userclinicrole "
+                "SET revoked_at=statement_timestamp() "
+                "WHERE user_id=%s AND organization_id=%s AND revoked_at IS NULL",
+                [user.pk, graph.organization_a],
+            )
+            assert changed.rowcount == 1
+            row = owner.execute(
+                "SELECT session_data,expire_date FROM clinic_app.django_session "
+                "WHERE session_key=%s",
+                [session_key],
+            ).fetchone()
+            assert row is not None
+            stored_states.append((sha256(row[0].encode()).digest(), row[1]))
+        return original(request, *args, **kwargs)
+
+    # When the actual HTTP view rechecks its now-empty clinic membership.
+    with monkeypatch.context() as patch:
+        patch.setattr(route.pattern, "callback", revoke_then_enter)
+        result = _probe_route(
+            route, client, graph, patch, attempts=(("GET", {}, False),)
+        )
+    # Then the ordinary in-view oracle sees a read-only 403, not an early
+    # middleware rejection; persisted session bytes and expiry also stay put.
+    assert result == (1, {403})
+    assert len(stored_states) == 1
+    stored = Session.objects.get(session_key=session_key)
+    assert (
+        sha256(stored.session_data.encode()).digest(),
+        stored.expire_date,
+    ) == stored_states[0]
+    return result
+
+
+def test_passkey_page_refuses_membership_lost_after_admission(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    superuser_database_url: str,
+) -> None:
+    _passkey_page_refusal(rbac_graph, monkeypatch, superuser_database_url)
+
+
 def test_authorised_in_view_refusals_are_session_read_only(
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     record_property: Callable[[str, object], None],
+    superuser_database_url: str,
 ) -> None:
     monkeypatch.setattr(
         "apps.core.navigation.clinic_local_today", lambda _zone: "2033-05-18"
@@ -242,6 +325,11 @@ def test_authorised_in_view_refusals_are_session_read_only(
             refused, codes = _probe_route(route, client, rbac_graph, monkeypatch)
             observed[route.name] += refused
             statuses[route.name].update(codes)
+    refused, codes = _passkey_page_refusal(
+        rbac_graph, monkeypatch, superuser_database_url
+    )
+    observed["identity:passkeys"] += refused
+    statuses["identity:passkeys"].update(codes)
     # The authenticated routes cannot have an absent framework key. A thin
     # HTTP adapter covers the parser's denial using a real anonymous session,
     # without changing the resolver-derived oracle or pretending auth passed.
