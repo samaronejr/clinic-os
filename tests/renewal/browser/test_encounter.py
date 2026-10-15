@@ -148,19 +148,23 @@ def capture(page: Page, root: Path, state: str, width: int) -> None:
 def accessible(
     page: Page, base: str, root: Path, state: str, *, controls: bool = True
 ) -> dict[str, object]:
-    """Axe and the owned controls' target size at 320, 375 and 1280 CSS px.
+    """Axe on this page state, then the owned controls' targets at 320, 375, 1280 px.
 
-    Both run on this same page state, which only the viewport changes; the
-    viewport is restored afterwards. No axe rule, region or control is exempt.
-    ``controls`` is False only for a state that renders no owned control.
+    ``check_page`` waits for axe-core's own network response, which a second
+    injection into the same document never produces, so every audited state is
+    a document of its own. axe-core settles each rule through ``setTimeout(0)``,
+    so an audited page keeps its timers running: never a paused clock. Only the
+    viewport changes between the target checks, and it is restored afterwards.
+    No axe rule, region or control is exempt; ``controls`` is False only for a
+    state that renders no owned control.
     """
+    axe = check_page(page, base, root, f"encounter-{state}")
     viewport = page.viewport_size
     assert viewport is not None
-    widths: dict[str, object] = {}
+    counts: dict[str, int] = {}
     try:
         for width in TARGET_WIDTHS:
             page.set_viewport_size({"width": width, "height": viewport["height"]})
-            axe = check_page(page, base, root, f"encounter-{state}-{width}")
             visible = [
                 control
                 for control in page.locator(OWNED_CONTROLS).all()
@@ -174,10 +178,10 @@ def accessible(
                     name = str(control.evaluate(CONTROL_NAME_JS))
                     small.append((name, box["width"], box["height"]))
             assert small == [], (state, width, small)
-            widths[str(width)] = {"axe": axe, "controls": len(visible)}
+            counts[str(width)] = len(visible)
     finally:
         page.set_viewport_size(viewport)
-    return {"state": state, "widths": widths}
+    return {"state": state, "axe": axe, "controls": counts}
 
 
 @dataclass
@@ -256,17 +260,13 @@ def failed_save(
             )
 
 
-def edit_and_reload(
-    page: Page, staff: dict[str, str], root: Path, width: int, audit: Audit | None
-) -> str:
+def edit_and_reload(page: Page, staff: dict[str, str], root: Path, width: int) -> str:
     version = page.locator("[data-version]").get_attribute("data-version")
     assert version is not None
     expect(page.locator("[data-template-version]")).to_have_attribute(
         "data-template-version", "1"
     )
     capture(page, root, "draft", width)
-    if audit is not None:
-        audit(page, "draft")
     second = page.context.new_page()
     goto_settled(second, page.url)
     for field in FIELDS:
@@ -283,9 +283,6 @@ def edit_and_reload(
     page.locator('button[value="save"]').click()
     expect(page.locator("#save-state")).to_have_attribute("data-state", "saving")
     capture(page, root, "saving", width)
-    if audit is not None:
-        # Submitting cleared every autosave timer: this state holds still.
-        audit(page, "saving")
     press(page, "save")
     expect(page.locator("#save-state")).to_have_attribute("data-state", "saved")
     capture(page, root, "saved", width)
@@ -303,8 +300,6 @@ def edit_and_reload(
     expect(second.locator("#save-state")).to_have_attribute("data-state", "conflict")
     expect(second.locator("#conflict-panel")).to_be_visible()
     capture(second, root, "stale-retained", width)
-    if audit is not None:
-        audit(second, "conflict")
     second.close()
     return version
 
@@ -390,8 +385,6 @@ def test_encounter_journey(
     base = renewal_base_url
     url = f"{base}/ehr/clinics/{staff['clinic_a']}/encounter/"
     root = renewal_artifact_root
-    # One journey is audited; the audit itself covers every target width.
-    audit = Audit(base, root, []) if width == TARGET_WIDTHS[-1] else None
     try:
         _sign_in_physician(page, base, staff)
         goto_settled(page, url)
@@ -419,7 +412,7 @@ def test_encounter_journey(
         capture(page, root, "choose-template", width)
         page.locator("#template-id").select_option(data["specialty"])
         press(page, "template")
-        version = edit_and_reload(page, staff, root, width, audit)
+        version = edit_and_reload(page, staff, root, width)
         failed_save(page, staff, root, width, version)
         goto_settled(page, url)
         expect(page.locator("#id_subjective")).to_have_value("Relato sintético salvo")
@@ -446,7 +439,6 @@ def test_encounter_journey(
                     "stale_http": 409,
                     "failure_http": 503,
                     "reflow": True,
-                    "a11y": audit.results if audit is not None else [],
                 },
                 indent=2,
             )
@@ -527,7 +519,6 @@ class AutosaveScene:
     page: Page
     bodies: list[object]
     errors: list[str]
-    audit: Audit
 
 
 def saved_revision(status: Locator) -> str:
@@ -577,7 +568,6 @@ def dropped_then_offline(scene: AutosaveScene) -> list[str]:
     revision, content = stored_soap(scene.staff, scene.version)
     assert (revision, content["subjective"]) == (3, "Relato após a queda da rede")
     capture(page, scene.root, "autosave-retrying", 1280)
-    scene.audit(page, "autosave-retrying")
     page.context.set_offline(offline=True)
     page.clock.fast_forward(30000)
     expect(status).to_have_attribute("data-state", "retrying")
@@ -619,7 +609,6 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(second_status).to_have_attribute("data-state", "locked-by-other")
     expect(second.locator("#lock-panel")).to_be_visible()
     capture(second, scene.root, "autosave-locked-by-other", 1280)
-    scene.audit(second, "autosave-locked-by-other")
     with second.expect_response(is_autosave) as asked:
         second.locator("[data-request-handover]").click()
     assert (asked.value.status, asked.value.json()["code"]) == (
@@ -632,20 +621,10 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(status).to_have_attribute("data-state", "locked-by-other")
     expect(page.locator("#id_assessment")).to_have_attribute("readonly", "")
     capture(page, scene.root, "autosave-handed-over", 1280)
-    scene.audit(page, "autosave-handed-over")
     revision, content = stored_soap(scene.staff, scene.version)
     assert revision == 4
     assert content["assessment"] == "Avaliação da primeira aba"
     assert content["plan"] != "Plano da segunda aba"
-    compare_and_merge(scene, second, (revision, content))
-    return second
-
-
-def compare_and_merge(
-    scene: AutosaveScene, second: Page, stored_before: tuple[int, dict[str, str]]
-) -> None:
-    """The stale tab's retry opens the compare; the author merges explicitly."""
-    second_status = second.locator("#save-state")
     with second.expect_response(is_autosave) as retried:
         second.clock.fast_forward(20000)
     assert retried.value.status == 409
@@ -653,9 +632,8 @@ def compare_and_merge(
     expect(second.locator("#conflict-panel")).to_be_visible()
     expect(second.locator("#conflict-plan")).to_be_visible()
     expect(second.locator("#conflict-assessment")).to_be_visible()
-    assert stored_soap(scene.staff, scene.version) == stored_before
+    assert stored_soap(scene.staff, scene.version) == (revision, content)
     capture(second, scene.root, "autosave-conflict-compare", 1280)
-    scene.audit(second, "autosave-conflict-compare")
     second.locator('[data-use-saved="assessment"]').click()
     expect(second.locator("#id_assessment")).to_have_value("Avaliação da primeira aba")
     with second.expect_response(is_autosave) as merged:
@@ -668,6 +646,7 @@ def compare_and_merge(
     assert content["plan"] == "Plano da segunda aba"
     assert content["assessment"] == "Avaliação da primeira aba"
     capture(second, scene.root, "autosave-merged", 1280)
+    return second
 
 
 def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
@@ -718,14 +697,7 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
         )
         paused(page)
         scene = AutosaveScene(
-            staff,
-            renewal_artifact_root,
-            page.url,
-            version,
-            page,
-            bodies,
-            errors,
-            Audit(base, renewal_artifact_root, []),
+            staff, renewal_artifact_root, page.url, version, page, bodies, errors
         )
         happy_autosave(scene)
         states = dropped_then_offline(scene)
@@ -742,7 +714,6 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
                     "conflict_http": 409,
                     "merged_revision": 5,
                     "page_errors": errors,
-                    "a11y": scene.audit.results,
                 },
                 indent=2,
             )
@@ -757,6 +728,110 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
     second_video.save_as(folder / "autosave-second-tab.webm")
     first_video.delete()
     second_video.delete()
+
+
+# ---------------------------------------------------------------------------
+# Plan item 27: the autosave states, audited with the page's timers running.
+# ---------------------------------------------------------------------------
+
+AUDIT_DAY = "2035-06-06"
+
+
+def audited_saving(page: Page, audit: Audit) -> None:
+    """Saving, as in the journey: native submission is held once after the
+    product's listener, which cleared every autosave timer."""
+    status = page.locator("#save-state")
+    page.evaluate("""document.querySelector('#soap-form').addEventListener(
+        'submit', event => event.preventDefault(), {once: true})""")
+    page.locator("#id_subjective").fill("Relato sintético auditado")
+    page.locator('button[value="save"]').click()
+    expect(status).to_have_attribute("data-state", "saving")
+    audit(page, "saving")
+    press(page, "save")
+    expect(status).to_have_attribute("data-state", "saved")
+
+
+def audited_retrying(page: Page, audit: Audit) -> None:
+    """Retrying: the first autosave fails and every retry is held unanswered.
+
+    A retry sets no other state, so retrying holds still while the page's
+    timers run; the held retries end with the context.
+    """
+    status = page.locator("#save-state")
+    failed: list[int] = []
+    held: list[Route] = []
+
+    def fail_then_hold(route: Route) -> None:
+        if failed:
+            held.append(route)
+            return
+        failed.append(503)
+        route.fulfill(status=503, content_type="application/json", body="{}")
+
+    page.route(f"**{AUTOSAVE}", fail_then_hold)
+    with page.expect_response(is_autosave) as first:
+        page.locator("#id_plan").fill("Plano sintético em nova tentativa")
+    assert first.value.status == 503
+    expect(status).to_have_attribute("data-state", "retrying")
+    audit(page, "autosave-retrying")
+    expect(status).to_have_attribute("data-state", "retrying")
+
+
+def audited_conflict(stale: Page, audit: Audit) -> None:
+    """Conflict: the stale tab's native save opens the compare."""
+    stale.locator("#id_subjective").fill("Edição antiga não salva")
+    with stale.expect_response(lambda r: r.request.method == "POST") as saved:
+        press(stale, "save")
+    assert saved.value.status == 409
+    expect(stale.locator("#save-state")).to_have_attribute("data-state", "conflict")
+    expect(stale.locator("#conflict-panel")).to_be_visible()
+    audit(stale, "conflict")
+
+
+def test_autosave_saving_retrying_and_conflict_pass_axe_and_target_checks(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    staff = availability_staff
+    base = renewal_base_url
+    root = renewal_artifact_root
+    data = seed(staff, AUDIT_DAY)
+    audit = Audit(base, root, [])
+    browser = renewal_page.context.browser
+    assert browser is not None
+    # The retrying state intercepts the autosave, and check_page observes
+    # axe-core's response: workers are blocked as in the scene above.
+    context = browser.new_context(
+        locale="pt-BR", viewport={"width": 1280, "height": 900}, service_workers="block"
+    )
+    errors: list[str] = []
+    try:
+        page = context.new_page()
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        _sign_in_physician(page, base, staff)
+        goto_settled(
+            page,
+            f"{base}/scheduling/clinics/{staff['clinic_a']}/agenda/day/{AUDIT_DAY}/1/",
+        )
+        press(page, "open")
+        page.locator("#template-id").select_option(data["specialty"])
+        press(page, "template")
+        stale = context.new_page()
+        stale.on("pageerror", lambda error: errors.append(str(error)))
+        goto_settled(stale, page.url)
+        audited_saving(page, audit)
+        audited_retrying(page, audit)
+        audited_conflict(stale, audit)
+        assert not errors
+        folder = root / "encounter"
+        folder.mkdir(exist_ok=True, mode=0o700)
+        (folder / "a11y-autosave-states.json").write_text(
+            json.dumps({"page_errors": errors, "a11y": audit.results}, indent=2) + "\n"
+        )
+    finally:
+        context.close()
 
 
 # ---------------------------------------------------------------------------
@@ -833,11 +908,14 @@ def test_unscheduled_start_and_episode_states_pass_axe_and_target_checks(
     staff = registered_physician(availability_staff)
     data = seed_patient(staff)
     base = renewal_base_url
-    audit = Audit(base, renewal_artifact_root, [])
+    root = renewal_artifact_root
+    audit = Audit(base, root, [])
     browser = renewal_page.context.browser
     assert browser is not None
+    # check_page observes axe-core's response; workers are blocked as in the
+    # autosave scenes (engines.py: WebKit hides a controlled page's requests).
     context = browser.new_context(
-        locale="pt-BR", viewport={"width": 1280, "height": 900}
+        locale="pt-BR", viewport={"width": 1280, "height": 900}, service_workers="block"
     )
     errors: list[str] = []
     try:
@@ -846,6 +924,7 @@ def test_unscheduled_start_and_episode_states_pass_axe_and_target_checks(
         _sign_in_physician(page, base, staff)
         goto_settled(page, f"{base}/ehr/clinics/{staff['clinic_a']}/encounter/")
         expect(page.locator("#unscheduled-panel")).to_be_visible()
+        capture(page, root, "unscheduled-start", 1280)
         audit(page, "unscheduled-start")
         page.locator("#unscheduled-patient").select_option(data["enrollment"])
         page.locator('input[name="reason"][value="phone_follow_up"]').check()
@@ -854,24 +933,26 @@ def test_unscheduled_start_and_episode_states_pass_axe_and_target_checks(
             page.locator('[data-unscheduled-reason="phone_follow_up"]')
         ).to_be_visible()
         expect(page.locator("#episode-new-title")).to_be_visible()
+        capture(page, root, "unscheduled-encounter", 1280)
         audit(page, "unscheduled-encounter")
         # Spaces pass the native required check; the server refuses them.
         page.locator("#episode-new-title").fill("   ")
         press(page, "episode_open")
         expect(page.locator("#episode-panel [role=alert]")).to_be_visible()
+        capture(page, root, "episode-error", 1280)
         audit(page, "episode-error")
         page.locator("#episode-new-title").fill("Episódio sintético")
         press(page, "episode_open")
         expect(page.locator('[data-episode-state="open"]')).to_be_visible()
+        capture(page, root, "episode-open", 1280)
         audit(page, "episode-open")
         press(page, "episode_close")
         expect(page.locator('[data-episode-state="closed"]')).to_be_visible()
-        # A closed episode, and a visit without a draft, offer no owned control.
+        capture(page, root, "episode-closed", 1280)
+        # A closed episode on a visit without a draft offers no owned control.
         audit(page, "episode-closed", controls=False)
         assert not errors
-        folder = renewal_artifact_root / "encounter"
-        folder.mkdir(exist_ok=True, mode=0o700)
-        (folder / "a11y-unscheduled-episodes.json").write_text(
+        (root / "encounter" / "a11y-unscheduled-episodes.json").write_text(
             json.dumps({"page_errors": errors, "a11y": audit.results}, indent=2) + "\n"
         )
     finally:
