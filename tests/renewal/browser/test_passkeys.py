@@ -410,16 +410,35 @@ def test_unexpected_client_exception_is_reported(
     root = renewal_artifact_root / "passkey-client-exception"
     with ExitStack() as recording:
         page = recording.enter_context(_recording(browser, root))
-        goto_settled(page, base + "/auth/login/")
-        page.evaluate(
-            """() => {
+        page.add_init_script(
+            """(() => {
+                if (!navigator.credentials) {
+                    Object.defineProperty(navigator, "credentials", {
+                        configurable: true,
+                        value: {
+                            create: async () => {
+                                throw new Error("Unexpected registration call");
+                            }
+                        }
+                    });
+                }
+                if (!window.PublicKeyCredential) {
+                    Object.defineProperty(window, "PublicKeyCredential", {
+                        configurable: true,
+                        value: function SyntheticPublicKeyCredential() {
+                            throw new Error("Unexpected credential construction");
+                        }
+                    });
+                }
                 navigator.credentials.get = async () => {
                     throw new DOMException(
                         "Synthetic credential failure", "SecurityError"
                     );
                 };
-            }"""
+            })();"""
         )
+        goto_settled(page, base + "/auth/login/")
+        assert page.evaluate("window.isSecureContext") is True
         with page.expect_console_message(
             lambda message: message.text.startswith("PASSKEY_FAILURE:")
         ):
