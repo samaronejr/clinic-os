@@ -24,6 +24,7 @@ from apps.identity.models import User, UserClinicRole
 from apps.intake.services import create_patient
 from apps.scheduling.resource_services import ServiceInput, create_service_type
 from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import _kek
 from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
@@ -137,12 +138,12 @@ PROBES = {
     ),
     "clinic_app.patient_registry_count(text,uuid,text,date)": Probe(
         "SELECT clinic_app.patient_registry_count("
-        "'sintetico-kek', %(clinic)s, 'SINTETICO', NULL) = 0",
+        "%(kek)s, %(clinic)s, 'SINTETICO', NULL) = 0",
         raises=True,
     ),
     "clinic_app.patient_registry_page(text,uuid,text,date,integer,integer)": Probe(
         "SELECT NOT EXISTS (SELECT 1 FROM clinic_app.patient_registry_page("
-        "'sintetico-kek', %(clinic)s, 'SINTETICO', NULL, 0, 10))",
+        "%(kek)s, %(clinic)s, 'SINTETICO', NULL, 0, 10))",
         raises=True,
     ),
     "clinic_app.patient_alias_set(uuid)": Probe(
@@ -401,7 +402,7 @@ def _decide(
     graph: RbacGraph,
     actor: UUID,
     statement: str,
-    params: Mapping[str, UUID | int],
+    params: Mapping[str, UUID | int | str],
     *,
     raises: bool = False,
 ) -> bool:
@@ -447,7 +448,8 @@ def test_sql_clause_refuses_inactive_actor(rbac_graph: RbacGraph) -> None:
             birth_date=date(1990, 1, 2),
             idempotency_key=uuid4(),
         ).patient
-    params = {
+    params: dict[str, UUID | str] = {
+        "kek": _kek(),
         "clinic": rbac_graph.clinic_a,
         "organization": rbac_graph.organization_a,
         "physician": rbac_graph.physician,
