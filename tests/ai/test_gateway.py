@@ -6,6 +6,7 @@ import json
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.ai.adapters import SyntheticProvider, register_provider
 from apps.ai.artifacts import read_artifact
@@ -20,7 +21,6 @@ from apps.ai.models import AIArtifact, AICircuit, AIInvocation
 from apps.ai.owner import set_global_switch
 from apps.ai.services import invoke
 from apps.ai.tasks import run_operation
-from apps.audit.models import AuditEvent
 from apps.comms.models import IntegrationOperation
 from apps.core.integration import execute_operation
 from apps.identity.current_context import require_permission
@@ -41,6 +41,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 def test_fake_call_is_metered_once_and_all_content_stays_encrypted(
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
+    superuser_database_url: str,
 ) -> None:
     # Given: real org authority and an offline provider, with publication observed.
     world = seed(rbac_graph, monkeypatch)
@@ -80,17 +81,26 @@ def test_fake_call_is_metered_once_and_all_content_stays_encrypted(
             budget=DEFAULT_BUDGET,
         )
         assert replay.operation_id == result.operation_id
+        assert AIInvocation.objects.count() == 1
         sinks = {
             "metering": list(AIInvocation.objects.values()),
             "outbox": list(IntegrationOperation.objects.values()),
-            "audit": list(AuditEvent.objects.values("event_type", "payload")),
         }
-        assert SENTINEL not in json.dumps(sinks, default=str)
         with connection.cursor() as cursor:
             cursor.execute("SELECT content FROM clinic_app.ai_aiartifact")
             assert all(
                 SENTINEL.encode() not in bytes(row[0]) for row in cursor.fetchall()
             )
+    # Inspect audit only after the runtime transaction commits, without new ACLs.
+    with psycopg.connect(superuser_database_url) as inspection:
+        audit_rows = inspection.execute(
+            "SELECT event_type, payload FROM clinic_app.audit_event"
+        ).fetchall()
+    sinks["audit"] = [
+        {"event_type": event_type, "payload": payload}
+        for event_type, payload in audit_rows
+    ]
+    assert SENTINEL not in json.dumps(sinks, default=str)
     assert len(world.publications) == 1
 
 
