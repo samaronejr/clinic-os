@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -20,6 +21,7 @@ from apps.ehr.history import HistoryChange, save_history
 from apps.ehr.models import SpecialtyTemplate
 from apps.ehr.services import create_draft
 from apps.identity.models import User, UserClinicRole
+from apps.intake.services import create_patient
 from apps.scheduling.resource_services import ServiceInput, create_service_type
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, ProgrammingError, connection, transaction
@@ -139,6 +141,9 @@ PROBES = {
         "SELECT NOT EXISTS (SELECT 1 FROM clinic_app.patient_registry_page("
         "'sintetico-kek', %(clinic)s, 'SINTETICO', NULL, 0, 10))",
         raises=True,
+    ),
+    "clinic_app.patient_alias_set(uuid)": Probe(
+        "SELECT EXISTS (SELECT 1 FROM clinic_app.patient_alias_set(%(patient)s))"
     ),
 }
 
@@ -428,10 +433,21 @@ def _set_active(actor: UUID, *, active: bool) -> None:
 def test_sql_clause_refuses_inactive_actor(rbac_graph: RbacGraph) -> None:
     # One graph and one flush for all gates; a fresh actor per gate. The exact
     # map names every gate whose decision does not follow is_active alone.
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        patient = create_patient(
+            clinic_id=rbac_graph.clinic_a,
+            full_name="Synthetic alias actor probe",
+            birth_date=date(1990, 1, 2),
+            idempotency_key=uuid4(),
+        ).patient
     params = {
         "clinic": rbac_graph.clinic_a,
         "organization": rbac_graph.organization_a,
         "physician": rbac_graph.physician,
+        "patient": patient.pk,
     }
     decisions = {}
     for function, probe in PROBES.items():

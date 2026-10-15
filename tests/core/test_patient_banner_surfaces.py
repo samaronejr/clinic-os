@@ -43,11 +43,18 @@ def _ehr_surface(
 ) -> tuple[Client, str, dict[str, str], _MonkeyPatchedWSGIResponse]:
     encounter = begin(graph)
     url = reverse(view, kwargs={"clinic_id": graph.clinic_a})
-    data = (
-        {"action": "show", "encounter_id": str(encounter.pk)}
-        if view == "ehr:encounter"
-        else {"action": "open", "encounter_id": str(encounter.pk)}
-    )
+    if view == "intake:patient-timeline":
+        with owner_context(graph.organization_a):
+            enrollment = PatientClinicEnrollment.objects.get(
+                clinic_id=graph.clinic_a, patient_id=encounter.patient_id
+            )
+        data = {"enrollment_id": str(enrollment.pk)}
+    else:
+        data = (
+            {"action": "show", "encounter_id": str(encounter.pk)}
+            if view == "ehr:encounter"
+            else {"action": "open", "encounter_id": str(encounter.pk)}
+        )
     with physician_client(graph) as client:
         response = client.post(url, data, follow=True)
     return client, url, data, response
@@ -88,7 +95,7 @@ def test_each_patient_surface_binds_and_refuses_revocation(
     synthetic_provider: object,
 ) -> None:
     graph, role = rbac_graph, "physician"
-    if view.startswith("ehr:"):
+    if view.startswith("ehr:") or view == "intake:patient-timeline":
         client, url, data, response = _ehr_surface(graph, view)
     elif view.startswith("prescription:"):
         client, url, data, response = _prescription_surface(graph, view, settings)
