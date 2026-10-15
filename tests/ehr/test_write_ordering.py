@@ -8,6 +8,7 @@ and no audit row other than the fixed ``ehr.access.denied`` record survive.
 
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -17,6 +18,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.audit import services as audit_services
 from apps.audit.models import AuditEvent
 from apps.ehr import history, services
 from apps.ehr.autosave import autosave_draft
@@ -24,6 +26,7 @@ from apps.ehr.episodes import open_episode_for_encounter
 from apps.ehr.finalization import amend_document, finalize_version
 from apps.ehr.history import HistoryChange, save_history
 from apps.ehr.models import (
+    ClinicalDocumentVersion,
     DraftEditState,
     DraftSaveReceipt,
     Episode,
@@ -45,6 +48,7 @@ from auth.stepup_test_support import verified_request
 from database_urls import database_url_for_name
 from ehr.test_addenda import clinician, enrollment_of, signed_in
 from ehr.test_autosave import (
+    AUTOSAVE_URL,
     NONCE,
     SECTIONS,
     TAB_A,
@@ -359,6 +363,39 @@ def revoked_at_last_history_check(world: LateRevocation) -> Iterator[None]:
         assert revocation.result(timeout=180) == 0
 
 
+@contextmanager
+def revoked_before_autosave_view_audit(world: LateRevocation) -> Iterator[None]:
+    """Commit the real revocation between view_version's checks and its audit."""
+    reached, revoked = Event(), Event()
+    append = audit_services.record_phase1_event
+
+    def viewed(event_type: str, *, clinic_id: UUID, affected_record_id: UUID) -> int:
+        # view_version's own checks all passed; the committed revocation lands
+        # before its read audit, autosave's first write.
+        if event_type == "ehr.record.viewed" and not reached.is_set():
+            reached.set()
+            assert revoked.wait(timeout=120), "the revocation did not finish"
+        return append(
+            event_type, clinic_id=clinic_id, affected_record_id=affected_record_id
+        )
+
+    def revoke() -> int:
+        try:
+            assert reached.wait(timeout=120), "the request never reached its audit"
+            return world.revoke()
+        finally:
+            revoked.set()
+
+    with (
+        pytest.MonkeyPatch.context() as patch,
+        ThreadPoolExecutor(max_workers=1) as pool,
+    ):
+        patch.setattr("apps.ehr.services.record_phase1_event", viewed)
+        revocation = pool.submit(revoke)
+        yield
+        assert revocation.result(timeout=180) == 0
+
+
 def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -427,3 +464,60 @@ def test_history_new_and_view_refused_after_late_role_revocation_keep_no_view_au
     assert set(late_trail) <= {DENIAL}
     assert late_trail == early_trail
     assert trail.count("identity.staff_role.revoked") == 1
+
+
+def test_autosave_refused_after_late_role_revocation_keeps_no_view_audit(
+    rbac_graph: RbacGraph,
+) -> None:
+    graph = rbac_graph
+    world = late_revocation(graph)
+    with owner_context(graph.organization_a):
+        version = ClinicalDocumentVersion.objects.get(
+            document__encounter_id=world.encounter, state="draft"
+        )
+    body = {
+        "clinic_id": str(graph.clinic_a),
+        "version_id": str(version.pk),
+        "expected_revision": version.revision,
+        "editor_session": str(TAB_A),
+        "sections": SECTIONS,
+        "handover": False,
+    }
+
+    def send(client: Client) -> _MonkeyPatchedWSGIResponse:
+        payload = {**body, "editor_command_id": str(uuid4())}
+        return client.post(AUTOSAVE_URL, json.dumps(payload), "application/json")
+
+    def domain() -> tuple[object, ...]:
+        """The draft's revision and text, its edit state and its receipts."""
+        with owner_context(graph.organization_a):
+            state = list(DraftEditState.objects.filter(version_id=version.pk).values())
+        receipts = count(graph, DraftSaveReceipt, version_id=version.pk)
+        return stored(graph, version.pk), state, receipts
+
+    unchanged = domain()
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        session = dict(client.session)
+        with revoked_before_autosave_view_audit(world):
+            late = send(client)
+        assert dict(client.session) == session
+    trail = audit_since(graph, before)
+    assert domain() == unchanged
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        # The same command once the revocation has committed.
+        early = send(client)
+    early_trail = [e for e in audit_since(graph, before) if e.startswith("ehr.")]
+    late_trail = [e for e in trail if e.startswith("ehr.")]
+    # Lost authority is the ordinary denial, not the 412 lifecycle answer.
+    assert late.status_code == early.status_code == 403
+    assert late.json() == early.json()
+    assert late.json()["code"] == "access_denied"
+    # The read audit rolled back with the late refusal: only the fixed denial
+    # event may remain, exactly as the early refusal leaves.
+    assert "ehr.record.viewed" not in trail
+    assert set(late_trail) <= {DENIAL}
+    assert late_trail == early_trail
+    assert trail.count("identity.staff_role.revoked") == 1
+    assert domain() == unchanged

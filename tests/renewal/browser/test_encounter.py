@@ -160,58 +160,57 @@ def pointer_target(control: Locator) -> Locator:
     return segment if segment.count() else control
 
 
-def accessible(
-    page: Page, base: str, root: Path, state: str, *, controls: bool = True
-) -> dict[str, object]:
-    """Axe on this page state, then the owned controls' targets at 320, 375, 1280 px.
-
-    ``check_page`` waits for axe-core's own network response, which a second
-    injection into the same document never produces, so every audited state is
-    a document of its own. axe-core settles each rule through ``setTimeout(0)``,
-    so an audited page keeps its timers running: never a paused clock. Only the
-    viewport changes between the target checks, and it is restored afterwards.
-    Each control is measured by its ``pointer_target``. No axe rule, region or
-    control is exempt; ``controls`` is False only for a state that renders no
-    owned control.
-    """
-    axe = check_page(page, base, root, f"encounter-{state}")
-    viewport = page.viewport_size
-    assert viewport is not None
-    counts: dict[str, int] = {}
-    try:
-        for width in TARGET_WIDTHS:
-            page.set_viewport_size({"width": width, "height": viewport["height"]})
-            visible = [
-                control
-                for control in page.locator(OWNED_CONTROLS).all()
-                if control.is_visible()
-            ]
-            assert bool(visible) is controls, (state, width, len(visible))
-            small: list[tuple[str, float, float]] = []
-            for control in visible:
-                box = element_box(pointer_target(control))
-                if min(box["width"], box["height"]) < MIN_TARGET_PX:
-                    name = str(control.evaluate(CONTROL_NAME_JS))
-                    small.append((name, box["width"], box["height"]))
-            assert small == [], (state, width, small)
-            counts[str(width)] = len(visible)
-    finally:
-        page.set_viewport_size(viewport)
-    return {"state": state, "axe": axe, "controls": counts}
-
-
 @dataclass
 class Audit:
-    """Collect one scene's axe and control-target results for its report."""
+    """Axe and the owned controls' targets at 320, 375, 1280 px, per scene state.
+
+    Each call checks the page as it is now with ``check_page`` (axe-core is
+    injected once per document; with ``paused_clock`` it settles one paused
+    clock millisecond at a time, so no later page timer fires), then measures
+    every visible owned control's ``pointer_target`` at each width. Only the
+    viewport changes between the target checks, and it is restored afterwards.
+    No axe rule, region or control is exempt; ``controls`` is False only for a
+    state that renders no owned control. Results are kept for the report.
+    """
 
     base: str
     root: Path
     results: list[dict[str, object]]
 
-    def __call__(self, page: Page, state: str, *, controls: bool = True) -> None:
-        self.results.append(
-            accessible(page, self.base, self.root, state, controls=controls)
+    def __call__(
+        self,
+        page: Page,
+        state: str,
+        *,
+        controls: bool = True,
+        paused_clock: bool = False,
+    ) -> None:
+        axe = check_page(
+            page, self.base, self.root, f"encounter-{state}", paused_clock=paused_clock
         )
+        viewport = page.viewport_size
+        assert viewport is not None
+        counts: dict[str, int] = {}
+        try:
+            for width in TARGET_WIDTHS:
+                page.set_viewport_size({"width": width, "height": viewport["height"]})
+                visible = [
+                    control
+                    for control in page.locator(OWNED_CONTROLS).all()
+                    if control.is_visible()
+                ]
+                assert bool(visible) is controls, (state, width, len(visible))
+                small: list[tuple[str, float, float]] = []
+                for control in visible:
+                    box = element_box(pointer_target(control))
+                    if min(box["width"], box["height"]) < MIN_TARGET_PX:
+                        name = str(control.evaluate(CONTROL_NAME_JS))
+                        small.append((name, box["width"], box["height"]))
+                assert small == [], (state, width, small)
+                counts[str(width)] = len(visible)
+        finally:
+            page.set_viewport_size(viewport)
+        self.results.append({"state": state, "axe": axe, "controls": counts})
 
 
 def press(page: Page, action: str) -> None:
@@ -535,6 +534,7 @@ class AutosaveScene:
     page: Page
     bodies: list[object]
     errors: list[str]
+    audit: Audit
 
 
 def saved_revision(status: Locator) -> str:
@@ -625,6 +625,8 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(second_status).to_have_attribute("data-state", "locked-by-other")
     expect(second.locator("#lock-panel")).to_be_visible()
     capture(second, scene.root, "autosave-locked-by-other", 1280)
+    # The lock panel offers the handover request; the page's clock stays paused.
+    scene.audit(second, "autosave-locked-by-other", paused_clock=True)
     with second.expect_response(is_autosave) as asked:
         second.locator("[data-request-handover]").click()
     assert (asked.value.status, asked.value.json()["code"]) == (
@@ -637,10 +639,20 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(status).to_have_attribute("data-state", "locked-by-other")
     expect(page.locator("#id_assessment")).to_have_attribute("readonly", "")
     capture(page, scene.root, "autosave-handed-over", 1280)
+    scene.audit(page, "autosave-handed-over", paused_clock=True)
     revision, content = stored_soap(scene.staff, scene.version)
     assert revision == 4
     assert content["assessment"] == "Avaliação da primeira aba"
     assert content["plan"] != "Plano da segunda aba"
+    compare_and_merge(scene, second, (revision, content))
+    return second
+
+
+def compare_and_merge(
+    scene: AutosaveScene, second: Page, stored_before: tuple[int, dict[str, str]]
+) -> None:
+    """The stale tab's retry opens the scripted compare; the author merges."""
+    second_status = second.locator("#save-state")
     with second.expect_response(is_autosave) as retried:
         second.clock.fast_forward(20000)
     assert retried.value.status == 409
@@ -648,8 +660,10 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     expect(second.locator("#conflict-panel")).to_be_visible()
     expect(second.locator("#conflict-plan")).to_be_visible()
     expect(second.locator("#conflict-assessment")).to_be_visible()
-    assert stored_soap(scene.staff, scene.version) == (revision, content)
+    assert stored_soap(scene.staff, scene.version) == stored_before
     capture(second, scene.root, "autosave-conflict-compare", 1280)
+    # The compare ehr-autosave.js built from the 409, on the same document.
+    scene.audit(second, "autosave-conflict-compare", paused_clock=True)
     second.locator('[data-use-saved="assessment"]').click()
     expect(second.locator("#id_assessment")).to_have_value("Avaliação da primeira aba")
     with second.expect_response(is_autosave) as merged:
@@ -662,7 +676,6 @@ def second_tab_compares(scene: AutosaveScene) -> Page:
     assert content["plan"] == "Plano da segunda aba"
     assert content["assessment"] == "Avaliação da primeira aba"
     capture(second, scene.root, "autosave-merged", 1280)
-    return second
 
 
 def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
@@ -713,7 +726,14 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
         )
         paused(page)
         scene = AutosaveScene(
-            staff, renewal_artifact_root, page.url, version, page, bodies, errors
+            staff,
+            renewal_artifact_root,
+            page.url,
+            version,
+            page,
+            bodies,
+            errors,
+            Audit(base, renewal_artifact_root, []),
         )
         happy_autosave(scene)
         states = dropped_then_offline(scene)
@@ -730,6 +750,7 @@ def test_autosave_survives_a_dropped_save_offline_and_a_second_tab(
                     "conflict_http": 409,
                     "merged_revision": 5,
                     "page_errors": errors,
+                    "a11y": scene.audit.results,
                 },
                 indent=2,
             )
@@ -915,14 +936,65 @@ def registered_physician(staff: dict[str, str]) -> dict[str, str]:
     return {**staff, "physician_a": username, "physician_a_id": user}
 
 
+def first_physician_episode(
+    page: Page, root: Path, audit: Audit, enrollment: str
+) -> None:
+    """The unscheduled start, a refused episode title and an opened episode."""
+    expect(page.locator("#unscheduled-panel")).to_be_visible()
+    capture(page, root, "unscheduled-start", 1280)
+    audit(page, "unscheduled-start")
+    page.locator("#unscheduled-patient").select_option(enrollment)
+    page.locator('input[name="reason"][value="phone_follow_up"]').check()
+    press(page, "open_unscheduled")
+    expect(page.locator('[data-unscheduled-reason="phone_follow_up"]')).to_be_visible()
+    expect(page.locator("#episode-new-title")).to_be_visible()
+    capture(page, root, "unscheduled-encounter", 1280)
+    audit(page, "unscheduled-encounter")
+    # Spaces pass the native required check; the server refuses them.
+    page.locator("#episode-new-title").fill("   ")
+    press(page, "episode_open")
+    expect(page.locator("#episode-panel [role=alert]")).to_be_visible()
+    capture(page, root, "episode-error", 1280)
+    audit(page, "episode-error")
+    page.locator("#episode-new-title").fill("Episódio sintético")
+    press(page, "episode_open")
+    expect(page.locator('[data-episode-state="open"]')).to_be_visible()
+    capture(page, root, "episode-open", 1280)
+    audit(page, "episode-open")
+
+
+def second_physician_links(
+    page: Page, root: Path, audit: Audit, enrollment: str
+) -> None:
+    """Another physician's unlinked visit joins the open episode, then closes it."""
+    expect(page.locator("#unscheduled-panel")).to_be_visible()
+    page.locator("#unscheduled-patient").select_option(enrollment)
+    press(page, "open_unscheduled")
+    # The patient's open episode is offered beside a new one.
+    expect(page.locator("#episode-id")).to_be_visible()
+    expect(page.locator('button[value="episode_link"]')).to_be_visible()
+    capture(page, root, "episode-select", 1280)
+    audit(page, "episode-select")
+    press(page, "episode_link")
+    expect(page.locator('[data-episode-state="open"]')).to_be_visible()
+    capture(page, root, "episode-linked", 1280)
+    audit(page, "episode-linked")
+    press(page, "episode_close")
+    expect(page.locator('[data-episode-state="closed"]')).to_be_visible()
+    capture(page, root, "episode-closed", 1280)
+    # A closed episode on a visit without a draft offers no owned control.
+    audit(page, "episode-closed", controls=False)
+
+
 def test_unscheduled_start_and_episode_states_pass_axe_and_target_checks(
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     availability_staff: dict[str, str],
 ) -> None:
-    staff = registered_physician(availability_staff)
-    data = seed_patient(staff)
+    first = registered_physician(availability_staff)
+    second = registered_physician(availability_staff)
+    data = seed_patient(first)
     base = renewal_base_url
     root = renewal_artifact_root
     audit = Audit(base, root, [])
@@ -930,46 +1002,30 @@ def test_unscheduled_start_and_episode_states_pass_axe_and_target_checks(
     assert browser is not None
     # check_page observes axe-core's response; workers are blocked as in the
     # autosave scenes (engines.py: WebKit hides a controlled page's requests).
-    context = browser.new_context(
-        locale="pt-BR", viewport={"width": 1280, "height": 900}, service_workers="block"
-    )
+    contexts = [
+        browser.new_context(
+            locale="pt-BR",
+            viewport={"width": 1280, "height": 900},
+            service_workers="block",
+        )
+        for _ in range(2)
+    ]
     errors: list[str] = []
     try:
-        page = context.new_page()
-        page.on("pageerror", lambda error: errors.append(str(error)))
-        _sign_in_physician(page, base, staff)
-        goto_settled(page, f"{base}/ehr/clinics/{staff['clinic_a']}/encounter/")
-        expect(page.locator("#unscheduled-panel")).to_be_visible()
-        capture(page, root, "unscheduled-start", 1280)
-        audit(page, "unscheduled-start")
-        page.locator("#unscheduled-patient").select_option(data["enrollment"])
-        page.locator('input[name="reason"][value="phone_follow_up"]').check()
-        press(page, "open_unscheduled")
-        expect(
-            page.locator('[data-unscheduled-reason="phone_follow_up"]')
-        ).to_be_visible()
-        expect(page.locator("#episode-new-title")).to_be_visible()
-        capture(page, root, "unscheduled-encounter", 1280)
-        audit(page, "unscheduled-encounter")
-        # Spaces pass the native required check; the server refuses them.
-        page.locator("#episode-new-title").fill("   ")
-        press(page, "episode_open")
-        expect(page.locator("#episode-panel [role=alert]")).to_be_visible()
-        capture(page, root, "episode-error", 1280)
-        audit(page, "episode-error")
-        page.locator("#episode-new-title").fill("Episódio sintético")
-        press(page, "episode_open")
-        expect(page.locator('[data-episode-state="open"]')).to_be_visible()
-        capture(page, root, "episode-open", 1280)
-        audit(page, "episode-open")
-        press(page, "episode_close")
-        expect(page.locator('[data-episode-state="closed"]')).to_be_visible()
-        capture(page, root, "episode-closed", 1280)
-        # A closed episode on a visit without a draft offers no owned control.
-        audit(page, "episode-closed", controls=False)
+        scenes = (
+            (first, first_physician_episode),
+            (second, second_physician_links),
+        )
+        for context, (physician, scene) in zip(contexts, scenes, strict=True):
+            page = context.new_page()
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            _sign_in_physician(page, base, physician)
+            goto_settled(page, f"{base}/ehr/clinics/{first['clinic_a']}/encounter/")
+            scene(page, root, audit, data["enrollment"])
         assert not errors
         (root / "encounter" / "a11y-unscheduled-episodes.json").write_text(
             json.dumps({"page_errors": errors, "a11y": audit.results}, indent=2) + "\n"
         )
     finally:
-        context.close()
+        for context in contexts:
+            context.close()

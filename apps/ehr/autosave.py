@@ -41,12 +41,14 @@ from apps.ehr.models import ClinicalDocumentVersion, DraftEditState, DraftSaveRe
 from apps.ehr.services import (
     MAX_CONTENT,
     SOAP_FIELDS,
+    ClinicalAccessDeniedError,
     ClinicalConflictError,
     author_scope,
     draft_edit_state,
     record_clinical_note,
     view_version,
 )
+from apps.identity.current_context import CurrentActorError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -279,6 +281,81 @@ def _write(  # noqa: PLR0913 - one locked save and its bookkeeping
     )
 
 
+class _DraftUnavailableError(Exception):
+    """RLS hides the draft: a lifecycle change, or authority lost since the check."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Command:
+    """One validated autosave command, decided under the draft's row lock."""
+
+    clinic_id: UUID
+    version_id: UUID
+    expected_revision: int
+    command_id: UUID
+    session_id: UUID
+    content: dict[str, str]
+    digest: str
+    now: datetime
+    handover: bool
+
+
+def _decide_locked(command: _Command) -> AutosaveResult:
+    """Read the draft (audited), lock it and decide; runs in the rollback boundary."""
+    if not ClinicalDocumentVersion.objects.filter(
+        pk=command.version_id, state="draft"
+    ).exists():
+        # A finalized note (or a closed encounter, which has no draft) is
+        # refused before the read audit.
+        raise _DraftUnavailableError
+    view_version(clinic_id=command.clinic_id, version_id=command.version_id)
+    # The version row lock serializes every command on this draft, so a replay
+    # racing its original sees the committed receipt.
+    version = (
+        ClinicalDocumentVersion.objects.select_for_update()
+        .filter(pk=command.version_id)
+        .first()
+    )
+    if version is None or version.state != "draft":
+        raise _DraftUnavailableError
+    replayed = _replay(version, command.command_id, command.digest)
+    if replayed is not None:
+        return replayed
+    state = draft_edit_state(version)
+    refused = _lock_refusal(
+        state,
+        version,
+        command.session_id,
+        command.now,
+        request_handover=command.handover,
+    )
+    if refused is not None:
+        return refused
+    if version.revision != command.expected_revision:
+        # The conflicting editor becomes the holder so its explicit merge is not
+        # raced by further autosaves from the older session.
+        _hold(state, command.session_id, command.now)
+        _save_state(state)
+        return AutosaveResult(
+            status=AutosaveStatus.CONFLICT,
+            revision=version.revision,
+            diff=section_diff(version.soap, command.content),
+        )
+    return _write(
+        command.clinic_id,
+        version,
+        state,
+        command.content,
+        (
+            command.command_id,
+            command.session_id,
+            command.expected_revision,
+            command.digest,
+        ),
+        command.now,
+    )
+
+
 def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
     *,
     clinic_id: UUID,
@@ -294,58 +371,39 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         expected_revision, editor_command_id, editor_session_id, sections
     )
     author_scope(clinic_id=clinic_id, version_id=version_id)
-    if not ClinicalDocumentVersion.objects.filter(
-        pk=version_id, state="draft"
-    ).exists():
-        # A finalized note (or a closed encounter, which has no draft) is
-        # refused before the read audit; the locked re-check below still
-        # decides a race.
-        msg = "precondition_failed"
-        raise ClinicalConflictError(msg)
-    # The read audit is the first write: every refusal was decided above.
-    view_version(clinic_id=clinic_id, version_id=version_id)
-    digest = request_digest(
-        version_id=version_id, expected_revision=expected_revision, sections=content
+    command = _Command(
+        clinic_id=clinic_id,
+        version_id=version_id,
+        expected_revision=expected_revision,
+        command_id=editor_command_id,
+        session_id=editor_session_id,
+        content=content,
+        digest=request_digest(
+            version_id=version_id, expected_revision=expected_revision, sections=content
+        ),
+        now=utc_now(),
+        handover=request_handover,
     )
-    now = utc_now()
-    with transaction.atomic():
-        # The version row lock serializes every command on this draft, so a
-        # replay racing its original sees the committed receipt.
-        version = (
-            ClinicalDocumentVersion.objects.select_for_update()
-            .filter(pk=version_id)
-            .first()
-        )
-        if version is None or version.state != "draft":
-            msg = "precondition_failed"
-            raise ClinicalConflictError(msg)
-        replayed = _replay(version, editor_command_id, digest)
-        if replayed is not None:
-            return replayed
-        state = draft_edit_state(version)
-        refused = _lock_refusal(
-            state, version, editor_session_id, now, request_handover=request_handover
-        )
-        if refused is not None:
-            return refused
-        if version.revision != expected_revision:
-            # The conflicting editor becomes the holder so its explicit merge
-            # is not raced by further autosaves from the older session.
-            _hold(state, editor_session_id, now)
-            _save_state(state)
-            return AutosaveResult(
-                status=AutosaveStatus.CONFLICT,
-                revision=version.revision,
-                diff=section_diff(version.soap, content),
-            )
-        return _write(
-            clinic_id,
-            version,
-            state,
-            content,
-            (editor_command_id, editor_session_id, expected_revision, digest),
-            now,
-        )
+    try:
+        # One rollback boundary holds the read audit (the first write) and
+        # every decision that depends on it. Authority committed away after
+        # author_scope hides the draft from RLS exactly as a finalization
+        # does; either way the read audit rolls back with the refusal, and
+        # authority is decided again below, outside the boundary.
+        with transaction.atomic():
+            result = _decide_locked(command)
+    except (ClinicalAccessDeniedError, CurrentActorError):
+        # A refusal inside the boundary is late. Deciding authority again
+        # gives the response and the denial record of an early refusal.
+        author_scope(clinic_id=clinic_id, version_id=version_id)
+        raise
+    except _DraftUnavailableError:
+        # Lost authority is the ordinary denial; only a draft that is no
+        # longer editable is the lifecycle conflict.
+        author_scope(clinic_id=clinic_id, version_id=version_id)
+        msg = "precondition_failed"
+        raise ClinicalConflictError(msg) from None
+    return result
 
 
 def section_edit_epochs(*, clinic_id: UUID, version_id: UUID) -> dict[str, int]:
