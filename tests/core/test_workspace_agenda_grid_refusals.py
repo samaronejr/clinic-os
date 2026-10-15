@@ -1,4 +1,4 @@
-"""Real HTTP grid refusal journeys using serial scheduling-world fixtures."""
+"""Todo 23 grid refusals use the worker database, not scheduling worlds."""
 
 from __future__ import annotations
 
