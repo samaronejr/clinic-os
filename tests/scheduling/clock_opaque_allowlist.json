@@ -611,6 +611,24 @@
     "volatility": "i",
     "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
   },
+  "pg_catalog.jsonb_array_elements(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_elements",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "i",
+    "reason": "AI purpose-policy validation enumerates the supplied JSONB purpose array. Pin this exact native array-element iterator as opaque risk; no claim of native clock independence."
+  },
+  "pg_catalog.jsonb_array_elements_text(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_elements_text",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "AI purpose-policy validation compares supplied purpose strings and their distinct count. Pin this exact JSONB-to-text element iterator; opaque risk stays visible rather than being declared clock-free."
+  },
   "pg_catalog.jsonb_delete(jsonb, text)": {
     "extension": "",
     "implementation": "jsonb_delete",
@@ -628,6 +646,15 @@
     "reason": "Reached audit snapshot JSON key removal; retained exact native implementation risk.",
     "returns": "jsonb",
     "volatility": "i"
+  },
+  "pg_catalog.jsonb_each(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_each",
+    "language": "internal",
+    "library": "",
+    "returns": "record",
+    "volatility": "i",
+    "reason": "AI per-purpose budget validation iterates supplied object entries. Retain this exact JSONB object iterator as an opaque dependency, not an exemption from clock analysis."
   },
   "pg_catalog.jsonb_each_text(jsonb)": {
     "extension": "",
@@ -934,6 +961,78 @@
     "reason": "Required hashing of supplied bytes/text for deterministic identifiers; not a security-signature primitive.",
     "returns": "text",
     "volatility": "i"
+  },
+  "pg_catalog.numeric(bigint)": {
+    "extension": "",
+    "implementation": "int8_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "The AI numeric budget bounds conservatively reach this exact bigint-to-numeric int8_numeric overload. Its input is a supplied number, not a SQL clock expression; retain the opaque implementation risk."
+  },
+  "pg_catalog.numeric(double precision)": {
+    "extension": "",
+    "implementation": "float8_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Conservative resolution of AI budget numeric casts reaches the float8_numeric overload. Retain this exact supplied-double conversion identity and its opaque risk; do not certify native code clock-free."
+  },
+  "pg_catalog.numeric(integer)": {
+    "extension": "",
+    "implementation": "int4_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "The AI numeric budget comparison conservatively reaches the int4_numeric overload for supplied integer values. Retain this exact immutable native conversion as opaque risk, with no clock-free assertion."
+  },
+  "pg_catalog.numeric(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "AI purpose-budget values are checked as JSONB numbers before the numeric bound comparison. Pin this exact jsonb_numeric scalar conversion; native implementation risk remains explicit."
+  },
+  "pg_catalog.numeric(money)": {
+    "extension": "",
+    "implementation": "cash_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "s",
+    "reason": "Conservative numeric-overload resolution reaches cash_numeric even though AI budgets are supplied JSON numbers. Keep this exact stable-volatility money conversion as opaque risk; neither stability nor the supplied-value use proves clock independence."
+  },
+  "pg_catalog.numeric(numeric, integer)": {
+    "extension": "",
+    "implementation": "numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "AI numeric-cast resolution conservatively includes the exact numeric typmod conversion with a supplied integer modifier. Retain this exact overload and its opaque risk; no temporal reader is removed."
+  },
+  "pg_catalog.numeric(real)": {
+    "extension": "",
+    "implementation": "float4_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Conservative AI budget numeric-cast resolution reaches float4_numeric on a supplied real value. Retain the exact native identity as opaque risk rather than declaring its implementation clock-free."
+  },
+  "pg_catalog.numeric(smallint)": {
+    "extension": "",
+    "implementation": "int2_numeric",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Conservative AI budget numeric-cast resolution reaches int2_numeric on a supplied small integer. Pin this exact conversion identity with its opaque marker; do not infer native clock freedom."
   },
   "pg_catalog.octet_length(bit)": {
     "extension": "",

@@ -3540,6 +3540,59 @@
       "function:pg_catalog.int2(integer)"
     ]
   },
+  "function:clinic_app.ai_organization_policy()": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinicconfiguration.config_clinic_org_fk",
+      "constraint:identity_clinicconfiguration.config_logo_bound",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_clinic_id_1d2b9c1d_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_organization_id_7cad916d_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfi_published_by_id_bf237669_fk_identity_",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_hold_ttl_minutes_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_reminder_hours_check",
+      "constraint:identity_clinicconfiguration.identity_clinicconfiguration_version_check",
+      "constraint:identity_clinicconfiguration.identity_config_bounded_values",
+      "constraint:identity_clinicconfiguration.identity_config_hold_ttl_bounds",
+      "constraint:identity_clinicconfiguration.identity_config_queue_quotas_shape",
+      "default:identity_clinicconfiguration.hold_ttl_minutes",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "policy:identity_clinicconfiguration.configuration_insert",
+      "policy:identity_clinicconfiguration.configuration_read",
+      "policy:identity_clinicconfiguration.setup_tenant",
+      "trigger:identity_clinicconfiguration.configuration_immutable",
+      "trigger:identity_clinicconfiguration.configuration_plain_text"
+    ]
+  },
+  "function:clinic_app.ai_policy_valid(jsonb)": {
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1,
+      "unresolved-identifier:invalid_parameter_value": 1,
+      "unresolved-identifier:numeric_value_out_of_range": 1
+    },
+    "via": [
+      "function:pg_catalog.count(\"any\")",
+      "function:pg_catalog.count()",
+      "function:pg_catalog.jsonb_array_elements(jsonb)",
+      "function:pg_catalog.jsonb_array_elements_text(jsonb)",
+      "function:pg_catalog.jsonb_each(jsonb)",
+      "function:pg_catalog.jsonb_typeof(jsonb)",
+      "function:pg_catalog.numeric(bigint)",
+      "function:pg_catalog.numeric(double precision)",
+      "function:pg_catalog.numeric(integer)",
+      "function:pg_catalog.numeric(jsonb)",
+      "function:pg_catalog.numeric(money)",
+      "function:pg_catalog.numeric(numeric, integer)",
+      "function:pg_catalog.numeric(real)",
+      "function:pg_catalog.numeric(smallint)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)"
+    ]
+  },
   "default:scheduling_appointment.authorization_reference": {
     "direct": {},
     "via": [
@@ -3696,9 +3749,12 @@
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
       "pg_catalog.statement_timestamp()": 1,
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
       "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
     },
     "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
       "constraint:identity_clinicconfiguration.config_clinic_org_fk",
       "constraint:identity_clinicconfiguration.config_logo_bound",
       "constraint:identity_clinicconfiguration.identity_clinicconfi_clinic_id_1d2b9c1d_fk_identity_",
@@ -3711,6 +3767,9 @@
       "constraint:identity_clinicconfiguration.identity_config_hold_ttl_bounds",
       "constraint:identity_clinicconfiguration.identity_config_queue_quotas_shape",
       "default:identity_clinicconfiguration.hold_ttl_minutes",
+      "function:clinic_app.ai_organization_policy()",
+      "function:clinic_app.ai_policy_valid(jsonb)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.questionnaire_staff(uuid, text[])",
       "function:pg_catalog.btrim(bytea, bytea)",
       "function:pg_catalog.btrim(text)",
@@ -3742,7 +3801,9 @@
       "function:pg_catalog.max(xid8)",
       "function:pg_catalog.pg_advisory_xact_lock(bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.to_jsonb(anyelement)",
       "function:pg_catalog.version()",
+      "policy:identity_clinic.tenant_isolation",
       "policy:identity_clinicconfiguration.configuration_insert",
       "policy:identity_clinicconfiguration.configuration_read",
       "policy:identity_clinicconfiguration.setup_tenant",
@@ -6382,6 +6443,18 @@
     },
     "via": []
   },
+  "function:pg_catalog.jsonb_array_elements(jsonb)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_array_elements(jsonb)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.jsonb_array_elements_text(jsonb)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_array_elements_text(jsonb)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.jsonb_delete(jsonb, text)": {
     "direct": {
       "opaque:reviewed:pg_catalog.jsonb_delete(jsonb, text)": 1
@@ -6391,6 +6464,12 @@
   "function:pg_catalog.jsonb_delete(jsonb, text[])": {
     "direct": {
       "opaque:reviewed:pg_catalog.jsonb_delete(jsonb, text[])": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.jsonb_each(jsonb)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_each(jsonb)": 1
     },
     "via": []
   },
@@ -6595,6 +6674,54 @@
   "function:pg_catalog.md5(text)": {
     "direct": {
       "opaque:reviewed:pg_catalog.md5(text)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(bigint)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(bigint)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(double precision)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(double precision)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(integer)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(jsonb)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(jsonb)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(money)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(money)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(numeric, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(numeric, integer)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(real)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(real)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.numeric(smallint)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.numeric(smallint)": 1
     },
     "via": []
   },
@@ -7422,12 +7549,14 @@
   "policy:identity_clinicconfiguration.configuration_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.questionnaire_staff(uuid, text[])"
     ]
   },
   "policy:identity_clinicconfiguration.configuration_read": {
     "direct": {},
     "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.questionnaire_staff(uuid, text[])"
     ]
   },
