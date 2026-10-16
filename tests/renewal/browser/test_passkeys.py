@@ -19,6 +19,7 @@ from auth.passkey_test_support import AssertionOptions, SoftwareAuthenticator
 from renewal.browser import _onboarding as journeys
 from renewal.browser._navigation import goto_settled
 from renewal.browser._passkey_client import client_evidence
+from renewal.browser.engines import virtual_authenticator
 from renewal.browser.test_retention import seed_manager, sign_in_manager
 
 if TYPE_CHECKING:
@@ -62,34 +63,6 @@ def _recording(
             video.save_as(root / "passkey.webm")
             video.delete()
             (root / "private-video").rmdir()
-
-
-def _virtual_authenticator(page: Page) -> tuple[CDPSession, str]:
-    cdp = page.context.new_cdp_session(page)
-    cdp.send("WebAuthn.enable", {"enableUI": False})
-    result = cdp.send(
-        "WebAuthn.addVirtualAuthenticator",
-        {
-            "options": {
-                "protocol": "ctap2",
-                "transport": "internal",
-                "hasResidentKey": True,
-                "hasUserVerification": True,
-                "isUserVerified": True,
-                "automaticPresenceSimulation": True,
-            }
-        },
-    )
-    authenticator_id = result["authenticatorId"]
-    assert isinstance(authenticator_id, str)
-    assert authenticator_id
-    assert (
-        cdp.send("WebAuthn.getCredentials", {"authenticatorId": authenticator_id})[
-            "credentials"
-        ]
-        == []
-    )
-    return cdp, authenticator_id
 
 
 def _organization_admin(staff: dict[str, str]) -> dict[str, str]:
@@ -186,7 +159,7 @@ def test_platform_registration_step_up_and_sign_in(
             expect(page.locator("[data-passkey-unavailable]")).to_be_visible()
             journeys.capture(page, root, f"{renewal_engine}-native-code-fallback")
             return
-        cdp, authenticator_id = _virtual_authenticator(page)
+        cdp, authenticator_id = virtual_authenticator(page)
         _register(page, base)
         _opt_in(page)
         for width in journeys.WIDTHS:
@@ -247,7 +220,7 @@ def test_signed_assertion_refusals(
             expect(page.locator('a[href^="/auth/step-up/"]')).to_be_visible()
             journeys.capture(page, root, f"{engine}-native-factor")
             return
-        cdp, authenticator_id = _virtual_authenticator(page)
+        cdp, authenticator_id = virtual_authenticator(page)
         algorithm = _register(page, base)
         _opt_in(page)
         journeys.sign_out(page, base)
@@ -357,7 +330,7 @@ def test_cancel_retry_and_offline_identity_feedback(
             return
         manager = _organization_admin(onboarding_staff)
         sign_in_manager(page, base, onboarding_staff, manager)
-        cdp, authenticator_id = _virtual_authenticator(page)
+        cdp, authenticator_id = virtual_authenticator(page)
         _register(page, base)
         _opt_in(page)
         journeys.sign_out(page, base)

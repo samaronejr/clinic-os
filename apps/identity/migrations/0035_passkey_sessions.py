@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
     """Retain TOTP verification and add a mutually exclusive passkey binding."""
 
     dependencies: ClassVar[Sequence[tuple[str, str]]] = [
-        ("identity", "0032_passkeys"),
+        ("identity", "0034_passkeys"),
     ]
     operations: ClassVar[Sequence[Operation]] = [
         migrations.AddField(

@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     """Retain old lifecycle function ACLs while adding explicit passkey authority."""
 
     dependencies: ClassVar[Sequence[tuple[str, str]]] = [
-        ("identity", "0033_passkey_sessions"),
+        ("identity", "0035_passkey_sessions"),
     ]
     operations: ClassVar[Sequence[Operation]] = [
         migrations.RunSQL(POLICY_SQL),

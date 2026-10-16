@@ -4472,6 +4472,7 @@
     },
     "via": [
       "constraint:identity_sessionrecord.identity_sessionreco_verification_device__9df6c3b7_fk_otp_totp_",
+      "constraint:identity_sessionrecord.identity_sessionreco_verification_passkey_05fc7bf4_fk_identity_",
       "constraint:identity_sessionrecord.identity_sessionrecord_user_id_b02e92f8_fk_identity_user_id",
       "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
       "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
@@ -8385,6 +8386,175 @@
     "direct": {},
     "via": [
       "function:clinic_app.waitlist_binding()"
+    ]
+  },
+  "constraint:identity_passkey.identity_passkey_clinic_id_eec17a31_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:identity_passkey.identity_passkey_clinic_org_fk": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:identity_passkey.identity_passkey_counter_uint32": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int8le(bigint, bigint)"
+    ]
+  },
+  "constraint:identity_passkey.identity_passkey_organization_id_bd09cd7c_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:identity_passkey.identity_passkey_sign_count_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int84ge(bigint, integer)"
+    ]
+  },
+  "constraint:identity_passkey.identity_passkey_user_id_aef1dd23_fk_identity_user_id": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:identity_sessionrecord.identity_sessionreco_verification_passkey_05fc7bf4_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_passkey.identity_passkey_clinic_id_eec17a31_fk_identity_clinic_id",
+      "constraint:identity_passkey.identity_passkey_clinic_org_fk",
+      "constraint:identity_passkey.identity_passkey_counter_uint32",
+      "constraint:identity_passkey.identity_passkey_organization_id_bd09cd7c_fk_identity_",
+      "constraint:identity_passkey.identity_passkey_sign_count_check",
+      "constraint:identity_passkey.identity_passkey_user_id_aef1dd23_fk_identity_user_id",
+      "policy:identity_passkey.passkey_owner_only",
+      "policy:identity_passkey.tenant_isolation",
+      "trigger:identity_passkey.identity_passkey_history",
+      "trigger:identity_passkey.identity_passkey_no_truncate",
+      "trigger:identity_passkey.identity_passkey_session_rejection"
+    ]
+  },
+  "function:clinic_app.identity_passkey_guard()": {
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 1
+    },
+    "via": [
+      "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicrole_org_clinic_fk",
+      "constraint:identity_userclinicrole.identity_userclinicrole_user_id_f253a70d_fk_identity_user_id",
+      "constraint:identity_userclinicrole.identity_userclinicrole_workflow_bundle_version_check",
+      "constraint:identity_userclinicrole.identity_workflow_bundle_version",
+      "function:pg_catalog.current_user()",
+      "function:pg_catalog.jsonb_array_length(jsonb)",
+      "function:pg_catalog.jsonb_typeof(jsonb)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)",
+      "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_userclinicrole.identity_membership_session_rejection",
+      "trigger:identity_userclinicrole.pending_membership_guard",
+      "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
+    ]
+  },
+  "function:clinic_app.identity_passkey_revoke_sessions()": {
+    "direct": {
+      "pg_catalog.statement_timestamp()": 1
+    },
+    "via": [
+      "constraint:identity_sessionrecord.identity_sessionreco_verification_device__9df6c3b7_fk_otp_totp_",
+      "constraint:identity_sessionrecord.identity_sessionreco_verification_passkey_05fc7bf4_fk_identity_",
+      "constraint:identity_sessionrecord.identity_sessionrecord_user_id_b02e92f8_fk_identity_user_id",
+      "policy:identity_sessionrecord.own_user",
+      "trigger:identity_sessionrecord.identity_session_change"
+    ]
+  },
+  "function:clinic_app.user_has_org(uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicrole_org_clinic_fk",
+      "constraint:identity_userclinicrole.identity_userclinicrole_user_id_f253a70d_fk_identity_user_id",
+      "constraint:identity_userclinicrole.identity_userclinicrole_workflow_bundle_version_check",
+      "constraint:identity_userclinicrole.identity_workflow_bundle_version",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.identity_membership_session_rejection",
+      "trigger:identity_userclinicrole.pending_membership_guard",
+      "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
+    ]
+  },
+  "function:pg_catalog.int84ge(bigint, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.int84ge(bigint, integer)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.int8le(bigint, bigint)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.int8le(bigint, bigint)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.jsonb_array_length(jsonb)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_array_length(jsonb)": 1
+    },
+    "via": []
+  },
+  "policy:identity_passkey.passkey_owner_only": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.user_has_org(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:identity_passkey.tenant_isolation": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "trigger:identity_passkey.identity_passkey_history": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.identity_passkey_guard()"
+    ]
+  },
+  "trigger:identity_passkey.identity_passkey_no_truncate": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.identity_passkey_guard()"
+    ]
+  },
+  "trigger:identity_passkey.identity_passkey_session_rejection": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.identity_passkey_revoke_sessions()"
     ]
   }
 }

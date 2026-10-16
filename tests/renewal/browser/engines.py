@@ -193,6 +193,7 @@ if TYPE_CHECKING:
     from playwright.sync_api import (
         Browser,
         BrowserContext,
+        CDPSession,
         Error,
         FloatRect,
         Locator,
@@ -707,6 +708,37 @@ CPU_CALIBRATION_JS: Final = """() => {
   for (let index = 0; index < 4000000; index += 1) value = (value + index) % 7919;
   return [performance.now() - started, value];
 }"""
+
+
+def virtual_authenticator(page: Page) -> tuple[CDPSession, str]:
+    """Create an empty synthetic platform authenticator on Chromium."""
+    if _engine_of(page.context) != "chromium":
+        pytest.fail("Virtual authenticators need Chromium DevTools")
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("WebAuthn.enable", {"enableUI": False})
+    result = cdp.send(
+        "WebAuthn.addVirtualAuthenticator",
+        {
+            "options": {
+                "protocol": "ctap2",
+                "transport": "internal",
+                "hasResidentKey": True,
+                "hasUserVerification": True,
+                "isUserVerified": True,
+                "automaticPresenceSimulation": True,
+            }
+        },
+    )
+    authenticator_id = result["authenticatorId"]
+    assert isinstance(authenticator_id, str)
+    assert authenticator_id
+    assert (
+        cdp.send("WebAuthn.getCredentials", {"authenticatorId": authenticator_id})[
+            "credentials"
+        ]
+        == []
+    )
+    return cdp, authenticator_id
 
 
 def throttle_cpu(page: Page, rate: float) -> dict[str, object]:

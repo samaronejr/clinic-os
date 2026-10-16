@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
     """Add bytea protection from creation; no plaintext conversion or backfill."""
 
     dependencies: ClassVar[Sequence[tuple[str, str]]] = [
-        ("identity", "0031_cut2_current_membership"),
+        ("identity", "0033_scheduling_policy"),
     ]
     operations: ClassVar[Sequence[Operation]] = [
         migrations.CreateModel(

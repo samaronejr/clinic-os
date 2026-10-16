@@ -218,6 +218,9 @@ scope, never posted tenant claims. Verification checks real signed bytes, exact
 challenge, RP ID, origin and required user verification. Only a valid signature
 can attribute a counter regression; positive counters must increase, while
 legitimate zero-counter devices still need a fresh single-use server challenge.
+The pinned `webauthn` runtime dependency supplies registration and signed
+assertion verification, credential parsing and browser option serialization at
+these boundaries.
 
 Challenges live in database-backed server sessions for at most 300 seconds.
 Finish locks and consumes the persisted challenge, including expired, malformed

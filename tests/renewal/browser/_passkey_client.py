@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from functools import partial
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
@@ -92,7 +91,10 @@ def client_evidence(
                 }
             )
 
-    page.on("console", partial(_record_console, console=console, failures=failures))
+    page.on(
+        "console",
+        lambda message: _record_console(message, console=console, failures=failures),
+    )
     page.on("response", record_response)
     try:
         yield
