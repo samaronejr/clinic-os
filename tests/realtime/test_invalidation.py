@@ -50,9 +50,11 @@ def mutate(graph: RbacGraph, key: str, action: str) -> None:
                 [str(graph.organization_a)],
             )
             if action == "membership":
-                UserClinicRole.objects.filter(
+                membership = UserClinicRole.objects.get(
                     user_id=graph.shared_user, clinic_id=graph.clinic_a
-                ).delete()
+                )
+                membership.revoked_at = timezone.now()
+                membership.save(update_fields=("revoked_at",))
             elif action == "role":
                 role = UserClinicRole.objects.get(
                     user_id=graph.shared_user, clinic_id=graph.clinic_a
@@ -164,7 +166,8 @@ def test_lost_control_message_cannot_release_a_post_commit_domain_frame(
                     )
                     if action == "membership":
                         owner.execute(
-                            "DELETE FROM clinic_app.identity_userclinicrole "
+                            "UPDATE clinic_app.identity_userclinicrole "
+                            "SET revoked_at=now() "
                             "WHERE user_id=%s AND clinic_id=%s",
                             [rbac_graph.shared_user, rbac_graph.clinic_a],
                         )

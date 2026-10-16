@@ -4,8 +4,9 @@ from typing import TYPE_CHECKING, Literal, assert_never
 
 import pytest
 from apps.identity import stepup
-from apps.identity.models import User, UserClinicRole
+from apps.identity.models import SessionRecord, User, UserClinicRole
 from apps.identity.stepup import STEP_UP_SESSION_KEY
+from django.contrib.auth import SESSION_KEY
 from django.contrib.auth.hashers import make_password
 from django.test import override_settings
 from django_otp import DEVICE_ID_SESSION_KEY
@@ -93,6 +94,7 @@ def test_password_relogin_and_another_user_clear_freshness(
 
     admin = User.objects.get(pk=rbac_graph.clinic_admin)
     seed_freshness(client, device)
+    old_key = client.session.session_key
     with runtime_role():
         switched = client.post(
             "/auth/login/",
@@ -102,6 +104,8 @@ def test_password_relogin_and_another_user_clear_freshness(
     assert switched.status_code == 302
     assert STEP_UP_SESSION_KEY not in client.session
     assert DEVICE_ID_SESSION_KEY not in client.session
+    assert client.session[SESSION_KEY] == str(admin.pk)
+    assert client.session.session_key != old_key
 
 
 def test_logout_clears_freshness_and_back_does_not_restore_it(
@@ -129,6 +133,12 @@ def test_inactive_or_password_changed_session_clears_freshness(
     device = create_totp_device(rbac_graph.physician, confirmed=True)
     client = logged_in_client(rbac_graph.physician)
     seed_freshness(client, device)
+    record_ids = set(
+        SessionRecord.objects.filter(user_id=rbac_graph.physician).values_list(
+            "pk", flat=True
+        )
+    )
+    assert record_ids
     update = (
         {"is_active": False}
         if invalidator == "inactive"
@@ -140,8 +150,15 @@ def test_inactive_or_password_changed_session_clears_freshness(
         response = client.get("/__test__/issuance/")
 
     assert response.status_code == 302
-    assert response.headers["Location"].startswith("/auth/step-up/")
+    # The current onboarding contract rejects a revoked cookie at login within
+    # one request (plan lines 759 and 764), before an issuance step-up challenge.
+    assert response.headers["Location"].startswith("/auth/login/")
     assert STEP_UP_SESSION_KEY not in client.session
+    assert DEVICE_ID_SESSION_KEY not in client.session
+    assert SESSION_KEY not in client.session
+    assert SessionRecord.objects.filter(
+        pk__in=record_ids, revoked_at__isnull=False
+    ).count() == len(record_ids)
 
 
 @override_settings(ROOT_URLCONF="auth.stepup_urls")

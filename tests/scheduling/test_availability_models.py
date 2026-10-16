@@ -20,12 +20,15 @@ def test_availability_block_is_an_immutable_tenant_scoped_promise() -> None:
         "create_fingerprint",
         "created_at",
         "end_at",
+        "generated_date",
         "id",
         "idempotency_key",
         "organization",
         "practitioner",
+        "resource",
         "retired_at",
         "start_at",
+        "template",
         "updated_at",
     }
     assert (
@@ -35,5 +38,14 @@ def test_availability_block_is_an_immutable_tenant_scoped_promise() -> None:
         availability._meta.get_field("practitioner").remote_field.on_delete
         is models.PROTECT
     )
+    assert (
+        availability._meta.get_field("resource").remote_field.on_delete
+        is models.PROTECT
+    )
+    assert (
+        availability._meta.get_field("template").remote_field.on_delete
+        is models.PROTECT
+    )
+    assert availability._meta.get_field("practitioner").null is True
     assert availability._meta.get_field("create_fingerprint").editable is False
     assert availability._meta.get_field("retired_at").null is True

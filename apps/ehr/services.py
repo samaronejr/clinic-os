@@ -146,7 +146,11 @@ def publish_template(
 
 
 def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
-    """Serialize starts; cancellation never removes an existing record."""
+    """Open once the patient has arrived; cancellation never removes a record.
+
+    Lifecycle v2 (D-9): a scheduled-bound encounter requires an ``arrived`` or
+    ``in_progress`` appointment, matching the database binding guard.
+    """
     appointment = _appointment(clinic_id, appointment_id)
     actor = _assigned(appointment)
     with transaction.atomic():
@@ -154,7 +158,10 @@ def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
         existing = Encounter.objects.filter(appointment=appointment).first()
         if existing is not None:
             return existing
-        if appointment.status != Appointment.Status.SCHEDULED:
+        if appointment.status not in {
+            Appointment.Status.ARRIVED,
+            Appointment.Status.IN_PROGRESS,
+        }:
             msg = "precondition_failed"
             raise ClinicalConflictError(msg)
         if not PatientClinicEnrollment.objects.filter(

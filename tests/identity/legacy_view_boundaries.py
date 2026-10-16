@@ -56,6 +56,11 @@ VIEWS = {
     "apps.intake.views.patient_create_view": MANAGERS,
     "apps.intake.views.patient_contacts_view": MANAGERS,
     "apps.intake.views.patient_access_view": MANAGERS,
+    "apps.intake.views.patient_demographics_view": (
+        "physician",
+        "receptionist",
+        "clinic_admin",
+    ),
     "apps.prescription.views.draft_workspace": PHYSICIAN,
     "apps.prescription.views.review_view": PHYSICIAN,
     "apps.prescription.views.signing_status_view": PHYSICIAN,
@@ -98,6 +103,13 @@ def _view(
         request.POST = (
             RequestFactory()
             .post("/", {"action": "inspect", "response_id": str(subjects.response.pk)})
+            .POST
+        )
+    if symbol == "apps.intake.views.patient_demographics_view":
+        request.method = "POST"
+        request.POST = (
+            RequestFactory()
+            .post("/", {"enrollment_id": str(subjects.enrollment), "action": "manage"})
             .POST
         )
     if symbol == "apps.scheduling.booking_views.appointment_create_view":

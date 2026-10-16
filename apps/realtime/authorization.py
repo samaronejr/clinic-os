@@ -10,11 +10,16 @@ from uuid import UUID
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.contrib.auth import SESSION_KEY, get_user
+from django.contrib.auth import (
+    BACKEND_SESSION_KEY,
+    HASH_SESSION_KEY,
+    SESSION_KEY,
+    load_backend,
+)
 from django.contrib.sessions.models import Session
 from django.db import connection
-from django.http import HttpRequest
 from django.utils import timezone
+from django.utils.crypto import constant_time_compare
 from django_otp import DEVICE_ID_SESSION_KEY
 from django_otp.models import Device
 from django_otp.plugins.otp_totp.models import TOTPDevice
@@ -24,6 +29,7 @@ from apps.audit.services import record_phase1_event
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import User
 from apps.identity.otp import is_privileged_user
+from apps.identity.session_inventory import session_is_active
 from apps.intake.patient_access import PATIENT_SESSION_KEY, patient_session_context
 from apps.realtime.scopes import authorize_scope
 from apps.realtime.topics import (
@@ -108,10 +114,26 @@ def _verified_staff(session: SessionBase, topics: tuple[str, ...]) -> UUID:
     user_id = UUID(session[SESSION_KEY])
     org_id = UUID(session["active_org_id"])
     with tenant_context(user_id, org_id):
-        request = HttpRequest()
-        request.session = session
-        user = get_user(request)
+        key = session.session_key
+        if key is None or not session_is_active(user_id=user_id, session_key=key):
+            raise TopicDeniedError
+        backend = session.get(BACKEND_SESSION_KEY)
+        if (
+            not isinstance(backend, str)
+            or backend not in settings.AUTHENTICATION_BACKENDS
+        ):
+            raise TopicDeniedError
+        user = load_backend(backend).get_user(user_id)
         if not isinstance(user, User) or not user.is_active:
+            raise TopicDeniedError
+        session_hash = session.get(HASH_SESSION_KEY)
+        if not isinstance(session_hash, str) or not (
+            constant_time_compare(session_hash, user.get_session_auth_hash())
+            or any(
+                constant_time_compare(session_hash, fallback)
+                for fallback in user.get_session_auth_fallback_hash()
+            )
+        ):
             raise TopicDeniedError
         if is_privileged_user(user):
             persistent_id = session.get(DEVICE_ID_SESSION_KEY)

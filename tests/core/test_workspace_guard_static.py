@@ -114,6 +114,15 @@ ALLOWED = Counter(
         ("identity/test_nonstaff_differential.py", "mutates __dict__"): 1,
         # Records every current_context function it wraps (todo 6 census).
         ("identity/authority_observer.py", "setattr with dynamic name"): 1,
+        # Redirect the consent scope census to planted test source.
+        ("consent/test_record_scope.py", "setattr with dynamic target"): 1,
+        # Assign only the scheduling model timestamp selected by the field.
+        ("scheduling/conftest.py", "setattr with dynamic name"): 1,
+        # Rewrite workflow decisions and restore their code after each probe.
+        ("workflows/decision_sites.py", "assigns __code__"): 2,
+        ("workflows/decision_sites.py", "setattr with dynamic name"): 4,
+        # Wrap aliases of the permission function only for the target mutant.
+        ("workflows/test_authority.py", "setattr with dynamic name"): 1,
         # Patch a module attribute named by the test parameter or module name.
         ("core/test_workspace_late_refusals.py", "setattr with dynamic name"): 2,
         ("renewal/test_runtime_paths.py", "setattr with dynamic name"): 1,

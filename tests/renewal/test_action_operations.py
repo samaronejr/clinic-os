@@ -35,6 +35,7 @@ from apps.tenancy.db import (
     tenant_context,
 )
 from django.db import IntegrityError, connections, transaction
+from django.db.models.functions import Now
 
 from identity.permission_support import owner_context
 from identity.test_service_principals import agent_password
@@ -358,7 +359,9 @@ def test_inactive_or_removed_actor_cancels_queued_action(
     operation_id = _queue_action(tenant_graph, harness)
     with owner_context(tenant_graph.organization_a):
         if revocation == "membership":
-            UserClinicRole.objects.filter(user_id=tenant_graph.user_a).delete()
+            UserClinicRole.objects.filter(user_id=tenant_graph.user_a).update(
+                revoked_at=Now()
+            )
         else:
             User.objects.filter(pk=tenant_graph.user_a).update(is_active=False)
     with runtime_role():

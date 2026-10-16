@@ -8,16 +8,41 @@ existing domain denial surface.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.shortcuts import render
 
 from apps.core.navigation import DESTINATIONS, granted_permissions
 from apps.core.patient_context import PATIENT_BOUND_VIEWS, patient_context_allowed
+from apps.identity.current_context import CurrentActorError, require_permission
 
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
+
+
+DEMOGRAPHICS_BILLING_READ: Final = "demographics.billing_read"
+BILLING_SURFACE_ROUTE: Final = "intake:patient-demographics"
+
+
+def _billing_surface_admitted(request: HttpRequest, clinic_id: UUID) -> bool:
+    """Admit only the billing-read fallback on the demographics surface.
+
+    ``intake:patient-demographics`` serves a narrow billing identity page to a
+    finance actor without ``demographics.read``; every other patient-bound
+    route keeps the read-only gate. The view's own service guards still
+    enforce the narrower contract, so this widens nothing past the one
+    fallback the view itself implements.
+    """
+    if request.resolver_match is None or (
+        request.resolver_match.view_name != BILLING_SURFACE_ROUTE
+    ):
+        return False
+    try:
+        require_permission(DEMOGRAPHICS_BILLING_READ, clinic_id=clinic_id)
+    except CurrentActorError:
+        return False
+    return True
 
 
 def workspace_denial(request: HttpRequest) -> HttpResponse | None:
@@ -40,7 +65,7 @@ def workspace_denial(request: HttpRequest) -> HttpResponse | None:
     granted = granted_permissions(clinic_id)
     denied = any(not granted.intersection(place.permission) for place in places)
     if patient_page and not patient_context_allowed(clinic_id=clinic_id):
-        denied = True
+        denied = not _billing_surface_admitted(request, clinic_id)
     if not denied:
         return None
     status = 404 if match.namespace in {"scheduling", "intake"} else 403

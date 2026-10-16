@@ -12,6 +12,7 @@ from otp_test_support import runtime_role
 from patient_http_support import (
     audit_event_types,
     receptionist_client,
+    relogin,
     verified_physician_client,
 )
 from scheduling.appointment_http_support import (
@@ -116,6 +117,7 @@ def test_daylight_gap_and_fold_days_carry_their_real_civil_bounds(
     clinic_id = create_zone_clinic(
         rbac_graph, receptionist.pk, rbac_graph.physician, "America/New_York"
     )
+    relogin(client, receptionist.pk)
     context = BookingContext(rbac_graph, receptionist.pk, clinic_id)
     enrollment_id = seed_enrollment(rbac_graph, receptionist.pk, clinic_id)
     schedule = ((GAP_DATE, ("01:00", "01:45")), (FOLD_DATE, ("00:15", "00:45")))
@@ -149,6 +151,7 @@ def test_a_nonexistent_local_minute_is_never_booked(rbac_graph: RbacGraph) -> No
     clinic_id = create_zone_clinic(
         rbac_graph, receptionist.pk, rbac_graph.physician, "America/New_York"
     )
+    relogin(client, receptionist.pk)
     enrollment_id = seed_enrollment(rbac_graph, receptionist.pk, clinic_id)
 
     with runtime_role():
@@ -173,6 +176,7 @@ def test_a_completely_skipped_civil_date_renders_an_empty_agenda(
     clinic_id = create_zone_clinic(
         rbac_graph, receptionist.pk, rbac_graph.physician, "Pacific/Apia"
     )
+    relogin(client, receptionist.pk)
 
     with runtime_role():
         response = client.get(agenda_at_url(clinic_id, "day", SKIPPED_DATE))
@@ -203,7 +207,7 @@ def test_malformed_agenda_input_renders_one_accessible_error(
     assert SYNTHETIC_PATIENT.encode() not in response.content
 
 
-def test_physician_sees_only_their_own_rows_without_any_control(
+def test_physician_sees_only_own_rows_and_own_lifecycle_controls(
     rbac_graph: RbacGraph,
 ) -> None:
     _client, context = _clinic_with_one_appointment(rbac_graph)
@@ -217,11 +221,10 @@ def test_physician_sees_only_their_own_rows_without_any_control(
     body = response.content
     assert response.status_code == 200
     assert SYNTHETIC_PATIENT.encode() in body
-    # The only controls are the physician's own encounter and questionnaire
-    # actions; reception's scheduling controls never render.
+    # Own questionnaire action plus the arrival the services grant the booked
+    # clinician (appointment.move_own); reception's links never render.
     actions = re.findall(rb'<button[^>]*name="action" value="([^"]+)"', body)
-    assert actions
-    assert all(value in {b"open", b"appointment"} for value in actions)
+    assert set(actions) == {b"arrive", b"appointment"}
     assert b"/reschedule/" not in body
     assert b"/cancel/" not in body
     assert b"1988-04-05" not in body
@@ -297,6 +300,7 @@ def test_agenda_is_readable_by_a_second_clinic_manager_only_for_its_own_clinic(
         rbac_graph.clinic_b,
         UserClinicRole.Role.RECEPTIONIST,
     )
+    relogin(client, context.actor)
 
     with runtime_role():
         response = client.get(agenda_url(rbac_graph.clinic_b))

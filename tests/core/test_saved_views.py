@@ -170,7 +170,9 @@ def test_revoked_role_hides_saved_views(rbac_graph: RbacGraph) -> None:
         )
     with owner_context(rbac_graph.organization_a), connection.cursor() as cursor:
         cursor.execute(
-            "DELETE FROM clinic_app.identity_userclinicrole WHERE user_id = %s",
+            "UPDATE clinic_app.identity_userclinicrole "
+            "SET revoked_at = statement_timestamp() "
+            "WHERE user_id = %s AND revoked_at IS NULL",
             [str(user.pk)],
         )
     with permission_context(rbac_graph, user.pk):

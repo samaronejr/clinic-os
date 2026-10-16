@@ -13,9 +13,50 @@ from apps.identity.current_context import (
     ClinicRoles,
     UserId,
 )
+from apps.identity.invitations import enroll_invitation as accept_invitation
+from apps.identity.invitations import invite_staff
 from apps.identity.models import Clinic, User, UserClinicRole
+from apps.identity.notifications import register_identity_notifications
+from apps.identity.offboarding import offboard_staff
+from apps.identity.onboarding import (
+    onboarding_progress,
+    register_core_onboarding_steps,
+    review_provider_status,
+)
+from apps.identity.recovery import (
+    execute_authenticator_reset,
+    issue_recovery_codes,
+    recover_authenticator,
+    request_authenticator_reset,
+)
+from apps.identity.session_inventory import (
+    own_sessions,
+    register_login_session,
+    revoke_logout_session,
+    revoke_session,
+)
 
-__all__ = ["ClinicId", "ClinicRoles", "OrganizationId", "UserId"]
+__all__ = [
+    "ClinicId",
+    "ClinicRoles",
+    "OrganizationId",
+    "UserId",
+    "accept_invitation",
+    "execute_authenticator_reset",
+    "invite_staff",
+    "issue_recovery_codes",
+    "offboard_staff",
+    "onboarding_progress",
+    "own_sessions",
+    "recover_authenticator",
+    "register_core_onboarding_steps",
+    "register_identity_notifications",
+    "register_login_session",
+    "request_authenticator_reset",
+    "review_provider_status",
+    "revoke_logout_session",
+    "revoke_session",
+]
 
 OrganizationId = NewType("OrganizationId", UUID)
 
@@ -36,6 +77,7 @@ def clinics_for_user_roles(
         Clinic.objects.filter(
             userclinicrole__user_id=user_id,
             userclinicrole__role__in=roles,
+            userclinicrole__revoked_at__isnull=True,
         )
         .distinct()
         .order_by("pk")

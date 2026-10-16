@@ -86,7 +86,9 @@ def _normalized_name(full_name: str) -> str:
         raise PatientCreateInputError from error
 
 
-def _validate_birth_date(birth_date: date, clinic: Clinic) -> None:
+def _validate_birth_date(birth_date: date | None, clinic: Clinic) -> None:
+    if birth_date is None:
+        return
     utc_minute = timezone.now().astimezone(UTC).replace(second=0, microsecond=0)
     timezone_key = clinic.timezone
     if not isinstance(timezone_key, str):
@@ -98,11 +100,16 @@ def _validate_birth_date(birth_date: date, clinic: Clinic) -> None:
         raise PatientBirthDateError
 
 
+def validate_birth_date(birth_date: date | None, clinic: Clinic) -> None:
+    """Share the current locked-clinic calendar validation with corrections."""
+    _validate_birth_date(birth_date, clinic)
+
+
 def create_patient(
     *,
     clinic_id: UUID,
     full_name: str,
-    birth_date: date,
+    birth_date: date | None,
     idempotency_key: UUID,
 ) -> PatientRegistration:
     """Create one normalized organization patient and clinic enrollment."""
@@ -112,7 +119,9 @@ def create_patient(
         fingerprint = create_fingerprint(
             "patient",
             {
-                "birth_date": birth_date.isoformat(),
+                "birth_date": (
+                    birth_date.isoformat() if birth_date is not None else ""
+                ),
                 "clinic_id": str(clinic_id),
                 "full_name": normalized_name,
             },

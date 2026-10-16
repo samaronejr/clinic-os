@@ -152,11 +152,19 @@ def test_search_results_expose_an_accessible_table_and_pagination(
         runtime_role(),
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
     ):
-        birth_dates = list(
+        raw_birth_dates = list(
             Patient.objects.filter(
                 organization_id=rbac_graph.organization_a
             ).values_list("birth_date", flat=True)
         )
+        # Patient.birth_date stays nullable (models.py intake_patient.birth_date
+        # null=True), so the ORM type is Optional; every row here comes from
+        # seeded fixtures, which always supply a date — prove it before
+        # narrowing for the year and rendering checks.
+        assert None not in raw_birth_dates
+        birth_dates = [
+            birth_date for birth_date in raw_birth_dates if birth_date is not None
+        ]
         enrollment_ids = [
             str(enrollment_id)
             for enrollment_id in PatientClinicEnrollment.objects.filter(

@@ -7,6 +7,11 @@ and SOAP version. Saving compares the submitted revision atomically and retains
 prior data on failure. Clinical content is never autosaved or stored in browser
 storage. Selection uses server-side session state and POST bodies, not patient URLs.
 
+Appointment lifecycle v2 (todo 22, D-9): a scheduled-bound encounter opens only
+when its appointment is `arrived` or `in_progress`; the service predicate and
+the database binding guard changed in the same migration. Appointment
+corrections never touch finalized notes.
+
 `services.record_clinical_note` requires an exact version and expected revision.
 Services and FORCE RLS both enforce canonical clinical roles and care relationships;
 reception and administrators have metadata access only. Submitted intake references

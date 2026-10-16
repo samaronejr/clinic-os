@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC
 from typing import TYPE_CHECKING
@@ -48,6 +49,14 @@ class CreateAppointmentRequest:
     practitioner_id: UUID
     local_range: AppointmentLocalRange
     idempotency_key: UUID
+    service_type_id: UUID | None = None
+    resource_ids: tuple[UUID, ...] = ()
+    # Lifecycle v2: holds and patient requests are born in their own state and
+    # use permission-bound authority; legacy bookings keep role authority.
+    initial_status: str = "scheduled"
+    permission_authority: bool = False
+    series_id: UUID | None = None
+    series_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,16 +92,27 @@ def prepare_appointment(
         end_at = parse_local_minute(request.local_range.end_local, timezone_key)
     except ValueError as error:
         raise AppointmentCreateInputError from error
-    fingerprint = create_fingerprint(
-        "appointment",
-        {
-            "clinic_id": str(request.clinic_id),
-            "end_utc": _utc_minute(end_at),
-            "enrollment_id": str(request.enrollment_id),
-            "practitioner_id": str(request.practitioner_id),
-            "start_utc": _utc_minute(start_at),
-        },
-    )
+    values = {
+        "clinic_id": str(request.clinic_id),
+        "end_utc": _utc_minute(end_at),
+        "enrollment_id": str(request.enrollment_id),
+        "practitioner_id": str(request.practitioner_id),
+        "start_utc": _utc_minute(start_at),
+    }
+    fingerprint = create_fingerprint("appointment", values)
+    if request.service_type_id is not None:
+        fingerprint = hashlib.sha256(
+            b"clinic-resource-booking-v1\0"
+            + fingerprint
+            + request.service_type_id.bytes
+            + b"".join(pk.bytes for pk in sorted(request.resource_ids))
+        ).digest()
+    if request.initial_status != "scheduled":
+        fingerprint = hashlib.sha256(
+            b"clinic-appointment-status-v1\0"
+            + fingerprint
+            + request.initial_status.encode()
+        ).digest()
     return PreparedAppointment(enrollment, start_at, end_at, fingerprint)
 
 

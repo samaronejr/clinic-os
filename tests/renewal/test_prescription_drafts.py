@@ -31,11 +31,12 @@ from apps.prescription.services import (
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client, setup_context
 from scheduling.appointment_service_support import (
-    create_synthetic_appointment,
+    arrived_synthetic_appointment,
     seed_appointment_setup,
 )
 
@@ -65,7 +66,7 @@ class Scope(TypedDict):
 def seed(graph: RbacGraph) -> Scope:
     setup = seed_appointment_setup(graph)
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
-        appointment = create_synthetic_appointment(setup)
+        appointment = arrived_synthetic_appointment(setup)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         encounter = open_encounter(
             clinic_id=graph.clinic_a, appointment_id=appointment.pk
@@ -397,6 +398,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "release_read",
                     "release_insert",
                     "release_revoke",
+                    "delegate_confidentiality",
                 )
             } | {
                 ("prescription_prescriptiondocumentrevocation", policy)
@@ -648,7 +650,7 @@ def test_peer_physician_and_cross_tenant_are_denied(rbac_graph: RbacGraph) -> No
     with setup_context(rbac_graph.organization_a):
         UserClinicRole.objects.filter(
             user_id=rbac_graph.physician, role="physician"
-        ).delete()
+        ).update(revoked_at=Now())
     with (
         pytest.raises(TenantAccessDeniedError),
         runtime_role(),

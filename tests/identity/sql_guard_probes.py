@@ -13,6 +13,7 @@ from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import _kek
 from django.db import connection
+from django.utils import timezone
 
 from identity.legacy_operational_boundaries import seed_operational
 from identity.legacy_owner_boundaries import _owner_call
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 ALL_ROLES = tuple(UserClinicRole.Role.values)
+STAFF_MANAGERS = ("owner", "clinic_admin", "org_admin", "clinic_manager")
 
 
 @dataclass(frozen=True)
@@ -79,7 +81,9 @@ def seed_sql_world(
         )
     if added:
         with owner_context(graph.organization_a):
-            membership.delete()
+            UserClinicRole.objects.filter(pk=membership.pk).update(
+                revoked_at=timezone.now()
+            )
     with runtime_role(), tenant_context(graph.clinic_admin, graph.organization_a):
         # Give teleconsult_fail a real, stored failure condition, not just a
         # caller-supplied reason; each invocation is subsequently rolled back.
@@ -121,7 +125,7 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
                 user_id=w.actor.graph.physician,
                 clinic_id=w.actor.clinic,
                 role=UserClinicRole.Role.PHYSICIAN,
-            ).delete()
+            ).update(revoked_at=timezone.now())
         )
     with connection.cursor() as cursor:
         cursor.execute(
@@ -138,6 +142,21 @@ def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
 
 
 PROBES = {
+    "identity_invitation_account": SqlProbe(
+        "identity_invitation_account",
+        STAFF_MANAGERS,
+        lambda w, ok: [w.actor.clinic_for(ok), uuid4()],
+    ),
+    "identity_reset_target": SqlProbe(
+        "identity_reset_target",
+        STAFF_MANAGERS,
+        lambda w, ok: [w.actor.clinic_for(ok), w.actor.graph.physician],
+    ),
+    "identity_staff_directory": SqlProbe(
+        "identity_staff_directory",
+        STAFF_MANAGERS,
+        lambda w, ok: [w.actor.clinic_for(ok)],
+    ),
     "patient_booking_practitioner": SqlProbe(
         "patient_booking_practitioner",
         ALL_ROLES,

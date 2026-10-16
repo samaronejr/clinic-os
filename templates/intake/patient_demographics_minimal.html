@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% load i18n %}
+{% block title %}{% trans "Patient identity · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="identity-title">
+  <h1 id="identity-title">{% trans "Patient identity" %}</h1>
+  <div class="panel">
+    <p>{{ identity.display_name }}</p>
+    <p class="hint">{% trans "Finance access includes only the billing identity." %}</p>
+    <a class="button button--quiet" href="{{ list_url }}">{% trans "Back to patient search" %}</a>
+  </div>
+</section>
+{% endblock %}

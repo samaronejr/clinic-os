@@ -197,6 +197,7 @@ def test_production_direct_process_trusts_no_forwarded_header(tmp_path: Path) ->
         }
     )
     environment = os.environ.copy()
+    environment.pop("AGENT_DATABASE_URL", None)
     environment.update(
         {
             "ALLOWED_HOSTS": VALID_HOSTS,

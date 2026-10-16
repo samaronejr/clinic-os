@@ -21,6 +21,7 @@ from apps.scheduling.services import (
 from apps.tenancy.db import tenant_context
 from django.contrib.auth.hashers import make_password
 from django.db import connection, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 from scheduling.availability_concurrency_support import (
@@ -110,7 +111,7 @@ def test_manager_revocation_winner_denies_waiting_create_without_residue(
             actor_id=actor.pk,
         )
         wait_for_advisory_waiter(backend_pids.get(timeout=5))
-        assignment.delete()
+        UserClinicRole.objects.filter(pk=assignment.pk).update(revoked_at=Now())
     thread.join(timeout=10)
 
     assert not thread.is_alive()
@@ -137,7 +138,7 @@ def test_target_physician_revocation_winner_denies_create_without_residue(
             clinic_id=rbac_graph.clinic_a,
             user_id=rbac_graph.physician,
             role=UserClinicRole.Role.PHYSICIAN,
-        ).delete()
+        ).update(revoked_at=Now())
     thread.join(timeout=10)
 
     assert not thread.is_alive()

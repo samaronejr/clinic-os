@@ -53,6 +53,17 @@ def _reverse_acl() -> None:
         remove_runtime_identity_acl(ProjectState().apps, editor)
 
 
+def _versioned_blind_indexes() -> bool:
+    rows = envelope.blind_indexes_with_versions(
+        purpose="synthetic.differential", plaintext=b"Sintetico"
+    )
+    assert rows
+    for row in rows:
+        assert len(row.blind_index) == 32
+        assert row.key_version > 0
+    return True
+
+
 def infrastructure_probes(
     d: NonstaffSubjects, monkeypatch: pytest.MonkeyPatch
 ) -> list[DifferentialProbe]:
@@ -169,6 +180,11 @@ def infrastructure_probes(
                 purpose="synthetic.differential", plaintext=b"Sintetico"
             ),
             bool,
+            database_role="clinic_owner",
+        ),
+        DifferentialProbe(
+            "apps.tenancy.envelope.blind_indexes_with_versions",
+            _versioned_blind_indexes,
             database_role="clinic_owner",
         ),
         DifferentialProbe(

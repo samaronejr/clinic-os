@@ -67,6 +67,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 SUITES: Final = {
+    "onboarding": (
+        "tests/renewal/browser/test_onboarding.py",
+        "tests/renewal/browser/test_onboarding_security.py",
+    ),
     "clinic-settings": ("tests/renewal/browser/test_clinic_settings.py",),
     "billing": ("tests/renewal/browser/test_billing.py",),
     "prescription-draft": ("tests/renewal/browser/test_prescription_draft.py",),
@@ -81,6 +85,7 @@ SUITES: Final = {
     "encounter": ("tests/renewal/browser/test_encounter.py",),
     "end-to-end": ("tests/renewal/browser/test_end_to_end.py",),
     "agenda": ("tests/renewal/browser/test_agenda.py",),
+    "agenda-slice": ("tests/renewal/browser/test_agenda_slice.py",),
     "realtime": ("tests/renewal/browser/test_realtime.py",),
     "availability": ("tests/renewal/browser/test_availability.py",),
     "contacts": ("tests/renewal/browser/test_contacts.py",),
@@ -104,7 +109,9 @@ SUITES: Final = {
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
     {
+        "onboarding",
         "agenda",
+        "agenda-slice",
         "realtime",
         "clinic-settings",
         "billing",
@@ -134,6 +141,8 @@ FIXTURE_SUITES: Final = frozenset(
         "workspace",
     }
 )
+# Suites served through the task-owned Redis, SSE process and same-origin proxy.
+REALTIME_SUITES: Final = frozenset({"realtime", "agenda-slice"})
 # Suites that exercise the synthetic room provider through the real outbox.
 VIDEO_SUITES: Final = frozenset(
     {
@@ -613,6 +622,8 @@ def _child_env(extra: dict[str, str]) -> dict[str, str]:
         "PYTHONPATH": str(_repository()),
         "PYTHONTZPATH": "",
     }
+    if "TMPDIR" in os.environ:
+        environment["TMPDIR"] = os.environ["TMPDIR"]
     environment.update(extra)
     return environment
 
@@ -789,18 +800,21 @@ def _pytest_environment(  # noqa: PLR0913 - closed fixture inputs.
     engine: str,
     username: str,
     password: str,
+    secret_key: str,
 ) -> dict[str, str]:
     """Export only the private runner-to-fixture inputs to the suite child."""
     return _child_env(
         {
             # Suite fixtures and worker subprocesses never reach a host Redis.
             "CELERY_BROKER_URL": "memory://",
+            "CLINIC_DATA_MODE": "synthetic",
             "CLINIC_BROWSER_ENGINE": engine,
             "CLINIC_RENEWAL_ARTIFACT_ROOT": str(artifact_root),
             "CLINIC_RENEWAL_BASE_URL": base_url,
             "CLINIC_RENEWAL_BROWSER_EXECUTABLE": browser,
             "CLINIC_RENEWAL_PASSWORD": password,
             "CLINIC_RENEWAL_USERNAME": username,
+            "SECRET_KEY": secret_key,
         }
     )
 
@@ -928,7 +942,10 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
         }
         extra_processes.enter_context(
             realtime_broker(
-                repository, server_environment, run_root, enabled=suite == "realtime"
+                repository,
+                server_environment,
+                run_root,
+                enabled=suite in REALTIME_SUITES,
             )
         )
         try:
@@ -947,7 +964,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     server_environment,
                     run_root,
                     port,
-                    enabled=suite == "realtime",
+                    enabled=suite in REALTIME_SUITES,
                 )
             )
             base_url = f"http://127.0.0.1:{port_for_browser}"
@@ -960,6 +977,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     engine=engine,
                     username=fixture["username"],
                     password=fixture["password"],
+                    secret_key=server_environment["SECRET_KEY"],
                 ),
                 **secret_environment,
             }
@@ -971,7 +989,7 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                     "CLINIC_RENEWAL_ORGANIZATION_ID": fixture["organization_id"],
                     **(
                         {"CLINIC_RENEWAL_WORKER_DATABASE_URL": app_dsn}
-                        if suite == "reminders"
+                        if suite in {"agenda", "reminders"}
                         or suite in VIDEO_SUITES
                         or suite == "document-verification"
                         else {}

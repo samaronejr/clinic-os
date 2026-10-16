@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from identity.legacy_sql_inventory import discover_sql
+from identity.staff_state_analysis import _imports, _name
 
 __all__ = ["declared_probes", "discover", "discover_sql"]
 
@@ -75,13 +76,22 @@ def discover() -> dict[str, list[str]]:
             # SQL definitions here and deployed policy/resolver dependencies.
             continue
         module = str(path.relative_to(ROOT))[:-3].replace("/", ".")
-        for name, node in _functions(ast.parse(path.read_text()).body):
+        tree = ast.parse(path.read_text())
+        aliases = _imports(tree, module)
+        for name, node in _functions(tree.body):
             body = ast.unparse(node)
             signals = sorted(
                 key
                 for key, pattern in SIGNALS.items()
                 if re.search(pattern, body, re.MULTILINE)
             )
+            if any(
+                isinstance(call, ast.Call)
+                and _name(call.func, aliases).rsplit(".", 1)[-1]
+                in {"require_permission", "has_permission", "granted_permissions"}
+                for call in ast.walk(node)
+            ):
+                signals = sorted([*signals, "permission"])
             if signals:
                 found[f"{module}.{name}"] = signals
     return found

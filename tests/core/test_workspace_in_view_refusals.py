@@ -11,18 +11,22 @@ from uuid import uuid4
 
 import pytest
 from apps.core.api.errors import UI_API_PREFIX
-from django.urls import get_resolver
+from apps.identity.account_views import request_session_key
+from apps.identity.models import UserClinicRole
+from django.http import HttpRequest, HttpResponse
+from django.test import Client, override_settings
+from django.urls import get_resolver, path
 
-from core.test_navigation import _client_for, _csrf, _get
+from core.test_navigation import _client_for, _csrf, _get, _reauthenticate
 from core.test_workspace_boundaries import _pin_patient, _restore_session
+from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time, runtime_role
 from workspace_refusal_support import workspace_routes
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    from django.http import HttpRequest, HttpResponseBase
-    from django.test import Client
+    from django.http import HttpResponseBase
     from django.test.client import _MonkeyPatchedWSGIResponse
 
     from rbac_fixtures import RbacGraph
@@ -44,6 +48,14 @@ NO_IN_VIEW_REFUSAL = {
 }
 
 
+def _missing_framework_key(request: HttpRequest) -> HttpResponse:
+    """Exercise the real boundary parser with SessionMiddleware's unsaved key."""
+    return HttpResponse(request_session_key(request))
+
+
+urlpatterns = [path("auth/login/", _missing_framework_key)]
+
+
 def _requests(
     graph: RbacGraph, known_encounter: str | None
 ) -> Iterator[tuple[str, dict[str, str], bool]]:
@@ -60,6 +72,27 @@ def _requests(
         yield "POST", {}, htmx
         yield (
             "POST",
+            {
+                "action": "retire",
+                "retire-kind": "resource",
+                "retire-record_id": unknown,
+            },
+            htmx,
+        )
+        yield (
+            "POST",
+            {
+                "action": "cancel",
+                "task_id": unknown,
+                "run_id": unknown,
+                "definition_id": unknown,
+                "expected_revision": "1",
+                "idempotency_key": str(uuid4()),
+            },
+            htmx,
+        )
+        yield (
+            "POST",
             {"action": "invalid", "token": "invalid", "clinic_id": "invalid"},
             htmx,
         )
@@ -70,6 +103,8 @@ def _requests(
                 "enrollment_id": unknown,
                 "encounter_id": unknown,
                 "document_id": unknown,
+                "session_id": unknown,
+                "reset_id": unknown,
                 "token": unknown,
                 "clinic_id": str(graph.clinic_c),
                 "q": "Synthetic Unknown Patient",
@@ -127,17 +162,23 @@ def _probe_route(
     statuses = set()
     with monkeypatch.context() as patch:
         patch.setattr(route.pattern, "callback", entered)
-        for method, data, htmx in _requests(graph, known_encounter):
-            _restore_session(client, snapshot)
-            before = len(entries)
-            response = _send(client, route.url(graph.clinic_a), method, data, htmx)
-            assert response.status_code < 500, (route.name, method, htmx)
-            statuses.add(response.status_code)
-            if response.status_code in {403, 404} and len(entries) > before:
-                refusals += 1
-                assert response.wsgi_request.session.modified is False
-                assert dict(client.session) == snapshot
-                assert not response.cookies
+        clinics = (
+            (graph.clinic_a, uuid4())
+            if route.name == "identity:recovery"
+            else (graph.clinic_a,)
+        )
+        for clinic_id in clinics:
+            for method, data, htmx in _requests(graph, known_encounter):
+                _restore_session(client, snapshot)
+                before = len(entries)
+                response = _send(client, route.url(clinic_id), method, data, htmx)
+                assert response.status_code < 500, (route.name, method, htmx)
+                statuses.add(response.status_code)
+                if response.status_code in {403, 404} and len(entries) > before:
+                    refusals += 1
+                    assert response.wsgi_request.session.modified is False
+                    assert dict(client.session) == snapshot
+                    assert not response.cookies
     return refusals, statuses
 
 
@@ -149,6 +190,7 @@ def test_authorised_in_view_refusals_are_session_read_only(
     monkeypatch.setattr(
         "apps.core.navigation.clinic_local_today", lambda _zone: "2033-05-18"
     )
+    monkeypatch.setattr("apps.identity.stepup._utc_now_seconds", lambda: 2_000_000_000)
     routes = tuple(workspace_routes(get_resolver()))
     names = {route.name for route in routes}
     assert len(routes) == len(names)
@@ -156,11 +198,37 @@ def test_authorised_in_view_refusals_are_session_read_only(
     observed: dict[str, int] = dict.fromkeys(names, 0)
     statuses: dict[str, set[int]] = {name: set() for name in names}
     profiles = [
-        *product(("receptionist", "physician", "clinic_admin"), (False, True)),
-        ("finance", False),
+        *(
+            (role, pinned, 1)
+            for role, pinned in product(
+                ("receptionist", "physician", "clinic_admin"), (False, True)
+            )
+        ),
+        ("finance", False, 1),
+        ("clinic_admin", False, 2),
+        ("clinic_admin", True, 2),
     ]
-    for role, pinned in profiles:
+    authorized_targets = {
+        "scheduling:resource-settings",
+        "workflows:designer",
+        "workflows:exceptions",
+        "workflows:run-exceptions",
+        "workflows:runs",
+        "workflows:tasks",
+    }
+    for role, pinned, bundle in profiles:
         client, user = _client_for(rbac_graph, role)
+        if bundle == 2:
+            # Owner-side issuance is enforced by the real database trigger.
+            # _client_for performs real confirmed-device HTTP verification.
+            with owner_context(rbac_graph.organization_a):
+                assert (
+                    UserClinicRole.objects.filter(
+                        user_id=user.pk, clinic_id=rbac_graph.clinic_a
+                    ).update(workflow_bundle_version=bundle)
+                    == 1
+                )
+            _reauthenticate(client, user.pk, role)
         # Finance is authenticated but has no visible workspace clinic. This
         # executes _require_clinic's refusal inside the session-scoped views.
         assert _get(client, "/auth/protected/").status_code == 200
@@ -169,9 +237,20 @@ def test_authorised_in_view_refusals_are_session_read_only(
             if role == "physician":
                 assert f"ehr.encounter.{rbac_graph.clinic_a}" in client.session
         for route in routes:
+            if bundle == 2 and route.name in authorized_targets:
+                assert _get(client, route.url(rbac_graph.clinic_a)).status_code == 200
             refused, codes = _probe_route(route, client, rbac_graph, monkeypatch)
             observed[route.name] += refused
             statuses[route.name].update(codes)
+    # The authenticated routes cannot have an absent framework key. A thin
+    # HTTP adapter covers the parser's denial using a real anonymous session,
+    # without changing the resolver-derived oracle or pretending auth passed.
+    with override_settings(ROOT_URLCONF=__name__):
+        missing_key = Client(enforce_csrf_checks=True).get("/auth/login/")
+    assert missing_key.status_code == 403
+    assert missing_key.wsgi_request.session.session_key is None
+    assert missing_key.wsgi_request.session.modified is False
+    assert not missing_key.cookies
     record_property("in_view_refusals", json.dumps(observed, sort_keys=True))
     record_property(
         "response_statuses",

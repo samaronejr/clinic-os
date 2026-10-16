@@ -125,7 +125,13 @@ def swap_totp_device(staff: dict[str, str]) -> str:
             [staff["physician_a_id"]],
         )
         conn.execute(
-            "DELETE FROM clinic_app.otp_totp_totpdevice WHERE user_id = %s",
+            "INSERT INTO clinic_app.identity_authenticatorretirement "
+            "(id, user_id, device_id, retired_at) "
+            "SELECT gen_random_uuid(), device.user_id, device.id, now() "
+            "FROM clinic_app.otp_totp_totpdevice device "
+            "WHERE device.user_id = %s AND NOT EXISTS ("
+            "SELECT 1 FROM clinic_app.identity_authenticatorretirement retired "
+            "WHERE retired.device_id = device.id)",
             [staff["physician_a_id"]],
         )
         conn.execute(

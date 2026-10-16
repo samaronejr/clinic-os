@@ -129,7 +129,21 @@ def test_cancellation_labels_change_but_persisted_values_do_not() -> None:
         assert field.clean(reason.value) == reason.value
         assert str(choices[reason.value]) == appointment_label(reason.value)
         assert str(choices[reason.value]) != reason.label
-    assert Appointment.Status.values == ["scheduled", "cancelled"]
+    # D-9 widening: persisted values stay English; every one has a pt-BR label.
+    assert Appointment.Status.values == [
+        "scheduled",
+        "cancelled",
+        "requested",
+        "held",
+        "arrived",
+        "in_progress",
+        "completed",
+        "expired",
+        "no_show",
+    ]
+    for status in Appointment.Status:
+        assert appointment_label(status.value) != status.label
+    assert appointment_label("scheduled") == "Agendada"
 
 
 def test_all_delivered_templates_compile_and_auth_labels_use_the_catalog() -> None:

@@ -171,10 +171,15 @@ def test_migrated_accented_soap_note_amends_and_finalizes(
             [
                 ("ehr", "0009_protected_fields"),
                 ("intake", "0011_protected_fields"),
+                ("scheduling", "0006_capacity_insert_authorization"),
             ]
         )
 
+        # Current runtime services require the current identity/session schema;
+        # the protected conversion and its historical seed have already run.
         with _default_connection(wrapper):
+            executor = MigrationExecutor(wrapper)
+            executor.migrate(executor.loader.graph.leaf_nodes())
             request = verified_request(LEGACY_PHYSICIAN)
             with runtime_role(), tenant_context(LEGACY_PHYSICIAN, LEGACY_ORG):
                 restored = view_version(

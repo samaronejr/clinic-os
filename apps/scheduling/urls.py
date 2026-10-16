@@ -5,9 +5,12 @@ from django.urls.resolvers import URLPattern
 
 from apps.comms.views import reminders_view
 from apps.scheduling import (
+    agenda_grid_views,
     agenda_views,
     booking_views,
+    lifecycle_views,
     patient_views,
+    resource_views,
     transition_views,
     views,
     waitlist_views,
@@ -16,6 +19,11 @@ from apps.scheduling import (
 app_name = "scheduling"
 
 urlpatterns: list[URLPattern] = [
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/settings/",
+        resource_views.resource_settings,
+        name="resource-settings",
+    ),
     path(
         "scheduling/clinics/<uuid:clinic_id>/reminders/",
         reminders_view,
@@ -49,6 +57,11 @@ urlpatterns: list[URLPattern] = [
         name="appointment-create",
     ),
     path(
+        "scheduling/clinics/<uuid:clinic_id>/appointments/lifecycle/",
+        lifecycle_views.appointment_lifecycle_view,
+        name="appointment-lifecycle",
+    ),
+    path(
         "scheduling/clinics/<uuid:clinic_id>/agenda/",
         agenda_views.agenda_view,
         name="agenda",
@@ -57,6 +70,16 @@ urlpatterns: list[URLPattern] = [
         "scheduling/clinics/<uuid:clinic_id>/agenda/<str:view>/<str:day>/<int:page>/",
         agenda_views.agenda_view,
         name="agenda-at",
+    ),
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/agenda/grid/move/",
+        agenda_grid_views.agenda_grid_move_view,
+        name="agenda-grid-move",
+    ),
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/agenda/grid/<str:day>/",
+        agenda_grid_views.agenda_grid_view,
+        name="agenda-grid",
     ),
     path(
         "scheduling/appointments/<uuid:appointment_id>/reschedule/",

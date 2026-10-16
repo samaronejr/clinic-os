@@ -69,6 +69,7 @@ ORDER BY rule_number
 CLOSED_TO_APP_RELATIONS: Final = (
     "audit_event",
     "ehr_discarded_content",
+    "identity_signupregistration",
     "tenancy_tenantdatakey",
 )
 POSTURE_SQL: Final = f"""

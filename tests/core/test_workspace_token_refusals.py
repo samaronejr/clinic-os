@@ -26,6 +26,7 @@ from core.test_navigation import (
     _get,
     _patient_token,
     _post,
+    _reauthenticate,
 )
 from core.test_saved_views import _option_value, _options
 from core.test_workspace_boundaries import remove_permission
@@ -55,6 +56,7 @@ def test_valid_patient_token_then_revoked_permission(rbac_graph: RbacGraph) -> N
     value = _patient_token(client, rbac_graph)
     assert ACTIVE_CLINIC_SESSION_KEY not in client.session
     remove_permission(rbac_graph, "receptionist", "demographics.read")
+    _reauthenticate(client, user.pk, "receptionist")
     before = dict(client.session)
     _unchanged(client, _post(client, RUN, {"token": value}), before)
 

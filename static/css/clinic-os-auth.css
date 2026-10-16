@@ -87,6 +87,11 @@
   margin-top: var(--space-2);
 }
 
+.recovery-codes code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .qr-panel {
   min-width: 0;
   margin-bottom: var(--space-5);

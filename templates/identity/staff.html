@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% load i18n tz clinic_locale %}
+{% block title %}{% trans "Staff and account security · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="staff-title">
+  <h1 id="staff-title">{% trans "Staff and account security" %}</h1>
+  <p class="lede">{% trans "Invite your team and manage account recovery within this clinic." %}</p>
+  {% if invited %}<p class="feedback feedback--success" role="status" data-invitation-queued>{% trans "Invitation queued. Access starts after password and authenticator confirmation." %}</p>{% endif %}
+  {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.non_field_errors }}</div>{% endif %}
+  <section class="panel" aria-labelledby="invite-title">
+    <h2 id="invite-title">{% trans "Invite staff" %}</h2>
+    <form method="post" novalidate>{% csrf_token %}{% for field in form %}{% include "includes/field.html" with field=field %}{% endfor %}<button class="button" type="submit">{% trans "Send invitation" %}</button></form>
+    <p>{% trans "Notifications are synthetic simulations; no live provider is activated here." %}</p>
+    <ul>{% for invitation in invitations %}<li>{{ invitation.email }} · {{ invitation.get_bundle_display }} · {{ invitation.get_state_display }} · {% timezone clinic.timezone %}{{ invitation.expires_at|date:"Y-m-d\TH:i"|clinic_minute }}{% endtimezone %}
+      {% if invitation.state == "pending" %}<form method="post" action="{% url 'identity:invitation-revoke' clinic_id=clinic_id %}">{% csrf_token %}<input type="hidden" name="invitation_id" value="{{ invitation.pk }}"><button class="button button--danger" type="submit">{% trans "Revoke invitation" %}</button></form>{% endif %}
+    </li>{% empty %}<li>{% trans "No invitations yet." %}</li>{% endfor %}</ul>
+    <p>{% trans "For an expired or unavailable invitation, send a new invitation with the same email and role." %}</p>
+  </section>
+  <section class="panel" aria-labelledby="members-title">
+    <h2 id="members-title">{% trans "Current staff" %}</h2>
+    <ul>{% for member in members %}<li>
+      <h3>{{ member.label }}</h3><p>{{ member.bundle_label }}</p>
+      <form method="post" action="{% url 'identity:reset-request' clinic_id=clinic_id %}">{% csrf_token %}<input type="hidden" name="user_id" value="{{ member.user_id }}"><button class="button button--secondary" type="submit">{% trans "Request notified authenticator reset" %}</button></form>
+      <form method="post" action="{% url 'identity:offboarding' clinic_id=clinic_id %}">{% csrf_token %}<input type="hidden" name="user_id" value="{{ member.user_id }}"><label><input type="checkbox" required name="confirm">{% trans "Deactivate login and revoke access. Keep all history." %}</label><button class="button button--danger" type="submit">{% trans "Offboard staff" %}</button></form>
+    </li>{% empty %}<li>{% trans "No staff are available." %}</li>{% endfor %}</ul>
+  </section>
+  <section class="panel" aria-labelledby="reset-title">
+    <h2 id="reset-title">{% trans "Authenticator reset requests" %}</h2>
+    <p>{% trans "Only delivered notification starts the full 24-hour delay. A fresh authenticator confirmation is required for execution." %}</p>
+    <ul>{% for reset in resets %}<li>{% if reset.executed_at %}{% trans "Reset completed" %}{% elif reset.available_at %}{% trans "Available after" %}: {% timezone clinic.timezone %}{{ reset.available_at|date:"Y-m-d\TH:i"|clinic_minute }}{% endtimezone %}{% else %}{% trans "Waiting for notification delivery" %}{% endif %}
+      {% if not reset.executed_at %}<form method="post" action="{% url 'identity:reset-execute' clinic_id=clinic_id %}">{% csrf_token %}<input type="hidden" name="reset_id" value="{{ reset.pk }}"><button class="button button--secondary" type="submit">{% trans "Execute delayed reset" %}</button></form>{% endif %}
+    </li>{% empty %}<li>{% trans "No reset requests." %}</li>{% endfor %}</ul>
+  </section>
+  <div class="actions"><a class="button button--secondary" href="{% url 'identity:onboarding' clinic_id=clinic_id %}">{% trans "First steps" %}</a><a class="button button--secondary" href="{% url 'identity:sessions' %}">{% trans "Your sessions" %}</a></div>
+</section>
+{% endblock %}

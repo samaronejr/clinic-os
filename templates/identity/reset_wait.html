@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Reset not available · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="reset-title">
+  <h1 id="reset-title">{% trans "Reset not available" %}</h1>
+  <p class="feedback feedback--warning" role="status">{% trans "The user must receive the notification and the full 24-hour delay must finish. No authenticator was changed." %}</p>
+  <p><a class="button button--secondary" href="{{ return_href }}">{% trans "Back to staff" %}</a></p>
+</section>
+{% endblock %}

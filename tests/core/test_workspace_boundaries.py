@@ -19,6 +19,7 @@ from apps.core.patient_context import DEMOGRAPHICS_READ, SESSION_PREFIX
 from apps.identity.models import RoleGrant, SavedView, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.identity.saved_views import archive_saved_view, save_view
+from apps.intake.models import PatientClinicEnrollment
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.urls import reverse
@@ -33,6 +34,7 @@ from core.test_navigation import (
     _main,
     _patient_token,
     _post,
+    _reauthenticate,
 )
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
@@ -124,6 +126,29 @@ def _pin_patient(client: Client, graph: RbacGraph, user: User, role: str) -> Non
             {"action": "show", "encounter_id": str(encounter.pk)},
         )
         assert response.status_code == 200
+    elif role in {
+        UserClinicRole.Role.SCHEDULER,
+        UserClinicRole.Role.CLINIC_MANAGER,
+    }:
+        # These roles can read demographics, not create patients or use the
+        # legacy manager palette search. Pin through their real authorized read.
+        seed_patients(graph, graph.shared_user, graph.clinic_a, (PATIENT,))
+        with owner_context(graph.organization_a):
+            enrollment_id = next(
+                row.pk
+                for row in PatientClinicEnrollment.objects.filter(
+                    clinic_id=graph.clinic_a
+                ).select_related("patient")
+                if row.patient.full_name == PATIENT
+            )
+        response = _post(
+            client,
+            reverse(
+                "intake:patient-demographics", kwargs={"clinic_id": graph.clinic_a}
+            ),
+            {"action": "manage", "enrollment_id": str(enrollment_id)},
+        )
+        assert response.status_code == 200
     else:
         seed_patients(graph, user.pk, graph.clinic_a, (PATIENT,))
         response = _post(client, RUN, {"token": _patient_token(client, graph)})
@@ -189,7 +214,18 @@ def test_every_destination_enforces_its_permission_over_http(
     permissions = set(place.permission) & BUNDLES_V1[role]
     for permission in removed:
         remove_permission(rbac_graph, role, permission)
-    # Reuse the graph and login; restore each pre-revocation session exactly.
+    if removed:
+        fresh = _reauthenticate(client, user.pk, role)
+        for state in states:
+            presentation = {
+                key: value
+                for key, value in state.items()
+                if key == "active_clinic_id" or key.startswith(("workspace.", "ehr."))
+            }
+            state.clear()
+            state.update(fresh)
+            state.update(presentation)
+    # Reuse each presentation state with current, freshly authenticated authority.
     for state in states:
         if permissions - set(removed):
             _restore_session(client, state)
@@ -225,6 +261,7 @@ def test_revoked_patient_cannot_be_reopened_or_repinned(rbac_graph: RbacGraph) -
     key = f"workspace.patient.{graph.clinic_a}"
     enrollment = client.session[key]
     remove_permission(graph, "receptionist", "demographics.read")
+    _reauthenticate(client, user.pk, "receptionist")
     response = _post(
         client,
         f"/intake/clinics/{graph.clinic_a}/contacts/",
@@ -245,10 +282,11 @@ def test_revoked_patient_cannot_be_reopened_or_repinned(rbac_graph: RbacGraph) -
 def test_agenda_subroutes_honor_revoked_read_permission(
     rbac_graph: RbacGraph, route: str
 ) -> None:
-    client, _ = _client_for(rbac_graph, "receptionist")
+    client, user = _client_for(rbac_graph, "receptionist")
     own = reverse(route, kwargs={"clinic_id": rbac_graph.clinic_a})
     assert _get(client, own).status_code == 200
     remove_permission(rbac_graph, "receptionist", "appointment.read")
+    _reauthenticate(client, user.pk, "receptionist")
     denied = _get(client, own)
     assert denied.status_code == 404
     for clinic in (uuid4(), rbac_graph.clinic_b, rbac_graph.clinic_c):
@@ -274,6 +312,7 @@ def test_other_clinic_never_resolves_or_serves_a_revoked_pin(
             role=UserClinicRole.Role.RECEPTIONIST,
         )
     remove_permission(graph, "receptionist", DEMOGRAPHICS_READ)
+    _reauthenticate(client, user.pk, "receptionist")
     refused = _get(client, f"/intake/clinics/{graph.clinic_a}/patients/")
     assert refused.status_code == 404
     assert PATIENT.encode() not in refused.content

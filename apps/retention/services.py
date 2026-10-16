@@ -507,8 +507,12 @@ def request_disposal(
     )
 
 
-def release_version(*, clinic_id: UUID, version_id: UUID) -> RecordRelease:
+def release_version(
+    *, clinic_id: UUID, version_id: UUID, restricted_from_delegates: bool = True
+) -> RecordRelease:
     """Release one exact finalized or superseded version to its patient."""
+    if type(restricted_from_delegates) is not bool:
+        raise RetentionAccessDeniedError
     version = (
         ClinicalDocumentVersion.objects.filter(
             pk=version_id, document__encounter__clinic_id=clinic_id
@@ -537,6 +541,7 @@ def release_version(*, clinic_id: UUID, version_id: UUID) -> RecordRelease:
                     patient_id=encounter.patient_id,
                     version_id=version.pk,
                     released_by_id=actor,
+                    restricted_from_delegates=restricted_from_delegates,
                 )
         except IntegrityError:
             # A concurrent release won the partial unique index; return it.

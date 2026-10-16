@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Save your recovery codes · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="codes-title">
+  <h1 id="codes-title">{% trans "Save your recovery codes" %}</h1>
+  <p class="feedback feedback--warning" role="status">{% trans "Shown once. Save these codes offline before leaving this page. Do not share them." %}</p>
+  <ol class="recovery-codes" data-private-recovery-codes>{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ol>
+  <p><a class="button" href="{{ return_href }}">{% trans "I saved my codes" %}</a></p>
+</section>
+{% endblock %}

@@ -12,24 +12,30 @@ from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.db import transaction
 from django.test import override_settings
+from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW
+from auth.test_reset_delay import reset_db_clock
 from identity import legacy_guard_inventory
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
 from identity import legacy_sql_boundaries as sql_boundaries
 from identity import legacy_teleconsult_boundaries as teleconsult
 from identity import legacy_view_boundaries as views
+from identity.cut1_authority_census import run_cut1_census
 from identity.guard_classification import Candidate, assert_staff_coverage
 from identity.legacy_clinical_boundaries import BOUNDARIES as CLINICAL_BOUNDARIES
 from identity.legacy_guard_inventory import declared_probes, discover
 from identity.legacy_identity_boundaries import BOUNDARIES as IDENTITY_BOUNDARIES
+from identity.legacy_lifecycle_boundaries import BOUNDARIES as LIFECYCLE_BOUNDARIES
+from identity.legacy_lifecycle_boundaries import lifecycle_world
 from identity.legacy_owner_boundaries import BOUNDARIES as OWNER_BOUNDARIES
 from identity.legacy_parity_support import LEGACY, exercise, target_code, world
 from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDARIES
 from identity.legacy_scope_boundaries import BOUNDARIES as SCOPE_BOUNDARIES
 from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventory
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
+from identity.legacy_workspace_boundaries import BOUNDARIES as WORKSPACE_BOUNDARIES
 from identity.nonstaff_census import run_nonstaff_census
 from identity.permission_support import owner_context
 from identity.sql_denial_contracts import redeem
@@ -37,6 +43,7 @@ from identity.sql_guard_probes import ALL_ROLES, PROBES, call, seed_sql_world
 from identity.staff_state_analysis import add_sql_staff_analysis, python_staff_analysis
 from identity.test_service_principals import agent_password
 from patient_service_support import runtime_role
+from scheduling.clock_support import frozen_sql_clocks
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -44,7 +51,7 @@ if TYPE_CHECKING:
     from identity.nonstaff_differential import DifferentialReport
     from rbac_fixtures import RbacGraph
 
-__all__ = ("agent_password",)
+__all__ = ("agent_password", "reset_db_clock")
 # The census drives the machine-principal boundary through a real agent login
 # (nonstaff_differential_census requests agent_password).
 pytestmark = pytest.mark.django_db(transaction=True, databases={"default", "agent"})
@@ -54,6 +61,8 @@ CORE = (
     *PREDICATE_BOUNDARIES,
     *SCOPE_BOUNDARIES,
     *OWNER_BOUNDARIES,
+    *WORKSPACE_BOUNDARIES,
+    *LIFECYCLE_BOUNDARIES,
 )
 
 
@@ -76,8 +85,11 @@ def nonstaff_differential_census(
     rbac_graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     record_property: Callable[[str, object], None],
+    superuser_database_url: str,
 ) -> DifferentialReport:
-    receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
+    # Keep authority time fixed without widening a minted session's deadline.
+    with frozen_sql_clocks(superuser_database_url, timezone.now()):
+        receipts = run_nonstaff_census(INVENTORY["candidates"], rbac_graph, monkeypatch)
     record_property("authority_channels", json.dumps(receipts.channels, sort_keys=True))
     record_property(
         "authority_observations", json.dumps(receipts.observations, sort_keys=True)
@@ -99,12 +111,28 @@ def nonstaff_differential_census(
 
 def test_every_authorization_candidate_is_accounted_for(
     nonstaff_differential_census: DifferentialReport,
+    monkeypatch: pytest.MonkeyPatch,
+    synthetic_secret_backend: Path,
+    superuser_database_url: str,
+    record_property: Callable[[str, object], None],
 ) -> None:
     assert INVENTORY["schema_version"] == 2
     candidates = INVENTORY["candidates"]
     assert len({row["symbol"] for row in candidates}) == len(candidates)
     assert discover() == {row["symbol"]: row["signals"] for row in candidates}
-    declared = declared_probes() | set(nonstaff_differential_census.executed)
+    merged = {
+        row["symbol"]
+        for row in candidates
+        if row.get("probes") == [row["symbol"] + "#cut1"]
+    }
+    executed = run_cut1_census(
+        merged,
+        monkeypatch,
+        synthetic_secret_backend,
+        superuser_database_url,
+        record_property,
+    )
+    declared = declared_probes() | set(nonstaff_differential_census.executed) | executed
     assert sorted(declared) == INVENTORY["probes"]
     sql_oracles = {f"clinic_app.{probe.name}" for probe in PROBES.values()}
     bases = {probe.split("#", 1)[0] for probe in declared} | sql_oracles
@@ -154,9 +182,18 @@ def fixed_verification_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize("legacy_role", LEGACY)
 @pytest.mark.parametrize("family", sorted({boundary.family for boundary in CORE}))
 def test_actual_legacy_boundaries(
-    rbac_graph: RbacGraph, legacy_role: str, family: str
+    rbac_graph: RbacGraph,
+    legacy_role: str,
+    family: str,
+    record_property: Callable[[str, object], None],
+    request: pytest.FixtureRequest,
 ) -> None:
     subject = world(rbac_graph, legacy_role)
+    if family == "lifecycle":
+        with override_settings(COMMS_SYNTHETIC_CHANNELS=("email",)):
+            subject = lifecycle_world(
+                subject, request.getfixturevalue("reset_db_clock")
+            )
     if family == "organization":
         with owner_context(rbac_graph.organization_a):
             UserClinicRole.objects.get_or_create(
@@ -168,6 +205,28 @@ def test_actual_legacy_boundaries(
     for boundary in CORE:
         if boundary.family == family:
             exercise(boundary, subject)
+    if family == "workspace_admission":
+        record_property(
+            "executed_authority_probes",
+            json.dumps([boundary.symbol for boundary in WORKSPACE_BOUNDARIES]),
+        )
+
+
+@pytest.mark.parametrize(
+    "role", [role for role in UserClinicRole.Role.values if role not in LEGACY]
+)
+def test_new_permission_admissions_execute_all_remaining_staff_roles(
+    rbac_graph: RbacGraph,
+    role: str,
+    record_property: Callable[[str, object], None],
+) -> None:
+    subject = world(rbac_graph, role)
+    for boundary in WORKSPACE_BOUNDARIES:
+        exercise(boundary, subject)
+    record_property(
+        "executed_authority_probes",
+        json.dumps([boundary.symbol for boundary in WORKSPACE_BOUNDARIES]),
+    )
 
 
 @pytest.mark.parametrize("legacy_role", LEGACY)

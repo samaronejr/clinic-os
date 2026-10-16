@@ -1,12 +1,21 @@
 {% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% trans "No clinic assigned" %} · Clinic OS{% endblock %}
+{% block title %}{% if scheduling_clinics %}{% trans "Settings" %}{% else %}{% trans "No clinic assigned" %}{% endif %} · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow" aria-labelledby="workspace-title">
+  {% if scheduling_clinics %}
+  <h1 id="workspace-title">{% trans "Settings" %}</h1>
+  <div class="actions">
+    {% for clinic in scheduling_clinics %}
+      <a class="button" href="{{ clinic.url }}">{% trans "Scheduling settings" %} · {{ clinic.name }}</a>
+    {% endfor %}
+  </div>
+  {% else %}
   <h1 id="workspace-title">{% trans "No clinic assigned" %}</h1>
   <p class="lede">{% trans "Your account has no active role in a clinic of this organization. Ask the clinic administrator to assign one, then sign in again." %}</p>
   <div class="actions">
     <a class="button button--secondary" href="/auth/logout/">{% trans "Sign out" %}</a>
   </div>
+  {% endif %}
 </section>
 {% endblock %}

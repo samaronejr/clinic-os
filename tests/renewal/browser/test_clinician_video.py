@@ -26,7 +26,6 @@ from psycopg.types.json import Jsonb
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
-from renewal.browser._protected import encrypt
 from renewal.browser.engines import (
     full_page_screenshot,
     install_media,
@@ -119,19 +118,7 @@ def _capture(page: Page, case: _Case, state: str) -> None:
 
 
 def _seed_patient(case: _Case, hour: int, name: str) -> dict[str, str]:
-    data = _seed(case.staff, case.day, hour)
-    with psycopg.connect(case.staff["dsn"]) as conn:
-        conn.execute(
-            "SELECT set_config('app.current_tenant',%s,true)",
-            [case.staff["organization"]],
-        )
-        conn.execute(
-            "UPDATE clinic_app.intake_patient SET full_name=%s WHERE id=%s",
-            [
-                encrypt(conn, "intake.patient.full_name", name.encode()),
-                data["patient"],
-            ],
-        )
+    data = _seed(case.staff, case.day, hour, name=name)
     data["name"] = name
     return data
 

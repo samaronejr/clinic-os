@@ -11,6 +11,7 @@ from otp_test_support import OTP_RAW_CREDENTIAL, login, runtime_role
 from patient_http_support import (
     audit_event_types,
     receptionist_client,
+    relogin,
     verified_physician_client,
 )
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
@@ -70,6 +71,7 @@ def test_route_clinic_must_match_the_stored_block_clinic(
 ) -> None:
     client, actor, block_id = _seeded(rbac_graph)
     other_clinic = create_dst_clinic(rbac_graph, actor, rbac_graph.physician)
+    relogin(client, actor)
 
     with runtime_role():
         response = client.post(availability_retire_url(other_clinic, block_id))
@@ -102,6 +104,7 @@ def test_foreign_and_unknown_block_identifiers_are_indistinguishable(
         rbac_graph.clinic_b,
         UserClinicRole.Role.RECEPTIONIST,
     )
+    relogin(client, actor)
 
     with runtime_role():
         unknown = client.post(availability_retire_url(rbac_graph.clinic_a, uuid4()))

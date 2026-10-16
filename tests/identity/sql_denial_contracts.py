@@ -10,29 +10,34 @@ a composite return type), and the exact denial follows from that shape:
 * any other scalar: exactly one row of NULLs, one per result column;
 * a declared raise: exactly that exception type, SQLSTATE and primary message.
 
-``CONTRACTS`` is the one declared table. It classifies every function the
+``CONTRACTS`` classifies every directly called function the
 census executes, and records the raise where a function refuses by raising
 instead of answering with its sentinel. ``contract()`` fails when the function
 is unclassified, when the catalog disagrees with the table, or when the
 shape or a result column type is one this module cannot compare exactly.
 
-``probe()`` is the single execution and comparison point. It returns an
-issued ``SqlVerdict``, and the census harness decides only through
-``redeem()``, which refuses any verdict ``probe()`` did not issue. An adapter
+``probe()`` executes direct calls; ``probe_dml()`` executes declared real
+INSERT trigger members from ``DML_CONTRACTS`` and verifies stored rows.
+Both return an identity- and content-sealed ``SqlVerdict``. The census
+harness decides only through ``redeem()``, which refuses any unissued,
+mutated, replayed or differently bound verdict. An adapter
 that computes its own allow/deny, or raises a Python denial instead, cannot
 reach a census decision.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
-from weakref import WeakSet
+from weakref import WeakKeyDictionary
 
 import psycopg
 from django.db import DatabaseError, connections, transaction
+from django.db.models import Model
 from psycopg import errors, sql
 
 from identity.sql_probe_catalog import signature
@@ -61,6 +66,64 @@ class Refusal:
 
 
 @dataclass(frozen=True)
+class DmlMember:
+    """One real trigger's relation, operation and TG_TABLE_NAME branch."""
+
+    function: str
+    relation: str
+    operation: str
+    branch: str
+
+
+# Each declaration is checked against a real enabled BEFORE ROW INSERT trigger.
+# New domain members extend this table; they cannot mint their own verdicts.
+DML_CONTRACTS: dict[DmlMember, Refusal] = {
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_consenttext",
+        "INSERT",
+        "consent_consenttext",
+    ): Refusal("42501", "consent staff authority required"),
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_consentacceptance",
+        "INSERT",
+        "consent_consentacceptance",
+    ): Refusal("42501", "patient consent authority required"),
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_consentrevocation",
+        "INSERT",
+        "consent_consentrevocation",
+    ): Refusal("42501", "patient consent authority required"),
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_refusalrecord",
+        "INSERT",
+        "consent_refusalrecord",
+    ): Refusal("42501", "patient consent authority required"),
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_noticeversion",
+        "INSERT",
+        "consent_noticeversion",
+    ): Refusal("42501", "consent staff authority required"),
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_aiusedisclosure",
+        "INSERT",
+        "consent_aiusedisclosure",
+    ): Refusal("42501", "consent staff authority required"),
+    DmlMember(
+        "clinic_app.consent_guard",
+        "clinic_app.consent_participantacknowledgment",
+        "INSERT",
+        "consent_participantacknowledgment",
+    ): Refusal("42501", "consent staff authority required"),
+}
+
+
+@dataclass(frozen=True)
 class Declared:
     shape: Shape
     # Set only where the function refuses by raising instead of its sentinel.
@@ -82,6 +145,9 @@ CONTRACTS: dict[str, Declared] = {
     "clinic_app.ehr_history_care": Declared(Shape.BOOLEAN),
     "clinic_app.ehr_version_scope": Declared(Shape.SCALAR),
     "clinic_app.has_permission": Declared(Shape.BOOLEAN),
+    "clinic_app.identity_invitation_account": Declared(Shape.SCALAR),
+    "clinic_app.identity_reset_target": Declared(Shape.BOOLEAN),
+    "clinic_app.identity_staff_directory": Declared(Shape.SET),
     "clinic_app.list_active_clinic_physicians": Declared(Shape.SET),
     "clinic_app.load_current_user": Declared(Shape.SET),
     "clinic_app.patient_booking_practitioner": Declared(Shape.BOOLEAN),
@@ -227,9 +293,81 @@ class SqlVerdict:
     function: str
     allowed: bool
     observed: SqlRowset | Refusal
+    member: DmlMember | None = None
 
 
-_ISSUED: WeakSet[SqlVerdict] = WeakSet()
+type _Contents = tuple[
+    str, bool, SqlRowset | tuple[str, str], tuple[str, str, str, str] | None
+]
+
+
+def _contents(verdict: SqlVerdict) -> _Contents:
+    invalid = (verdict.function, "changed issued contents")
+    assert type(verdict.function) is str, invalid
+    assert type(verdict.allowed) is bool, invalid
+    member = verdict.member
+    assert member is None or type(member) is DmlMember, invalid
+    identity = (
+        None
+        if member is None
+        else (member.function, member.relation, member.operation, member.branch)
+    )
+    assert identity is None or all(type(field) is str for field in identity), invalid
+    observed = verdict.observed
+    captured: SqlRowset | tuple[str, str]
+    if isinstance(observed, Refusal):
+        assert type(observed) is Refusal, invalid
+        captured = (observed.sqlstate, observed.message)
+        assert all(type(field) is str for field in captured), invalid
+    else:
+        assert type(observed) is tuple, invalid
+        rows: list[SqlRows] = []
+        for row in observed:
+            assert type(row) is tuple, invalid
+            cells: list[SqlCell] = []
+            for cell in row:
+                assert type(cell) is tuple, invalid
+                assert len(cell) == 2, invalid
+                kind, value = cell
+                assert kind is type(value), invalid
+                snapshot: object
+                # Store immutable numeric contents, not UUID equality/display
+                # or a datetime's potentially mutable timezone object.
+                if type(value) is UUID:
+                    snapshot = value.int
+                    assert type(snapshot) is int, invalid
+                elif type(value) is datetime:
+                    offset = value.utcoffset()
+                    snapshot = (
+                        value.year,
+                        value.month,
+                        value.day,
+                        value.hour,
+                        value.minute,
+                        value.second,
+                        value.microsecond,
+                        value.fold,
+                        None
+                        if offset is None
+                        else timedelta.__floordiv__(offset, timedelta(microseconds=1)),
+                    )
+                elif type(value) is date:
+                    snapshot = (value.year, value.month, value.day)
+                else:
+                    assert (
+                        value is None
+                        or type(value) is bool
+                        or type(value) is int
+                        or type(value) is str
+                    ), invalid
+                    snapshot = value
+                cells.append((kind, snapshot))
+            rows.append(tuple(cells))
+        captured = tuple(rows)
+    return verdict.function, verdict.allowed, captured, identity
+
+
+_ISSUED: WeakKeyDictionary[SqlVerdict, _Contents] = WeakKeyDictionary()
 
 
 def probe(
@@ -262,16 +400,123 @@ def probe(
         else:
             allowed, observed = decide(found, rows), sql_rowset(rows)
     verdict = SqlVerdict(function, allowed, observed)
-    _ISSUED.add(verdict)
+    _ISSUED[verdict] = _contents(verdict)
     return verdict
 
 
-def redeem(verdict: object, function: str) -> bool:
+def probe_dml(member: DmlMember, row: Model, *, using: str = "default") -> SqlVerdict:
+    """Execute a fresh real INSERT and issue its stored-row or exact-raise verdict.
+
+    This issuer owns execution. It accepts no callback, Boolean result or
+    fabricated rowset. The branch is the trigger's actual TG_TABLE_NAME, and
+    every successful witness is re-read from the declared qualified relation.
+    """
+    member = replace(member)
+    refusal = DML_CONTRACTS.get(member)
+    assert refusal is not None, (member, "unclassified DML member")
+    assert member.operation == "INSERT", (member, "unsupported operation")
+    function_schema, function_name = member.function.split(".")
+    relation_schema, relation_name = member.relation.split(".")
+    assert member.branch == relation_name, (member, "wrong branch")
+    assert isinstance(row, Model), (member, "unsaved Model row required")
+    assert row._meta.db_table == relation_name, (member, "wrong row relation")
+    assert row._state.adding is True, (member, "fresh unsaved row required")
+    identity = cast("object", row.pk)
+    assert type(identity) is UUID, (member, "UUID row identity required")
+    primary_key = row._meta.pk
+    assert primary_key is not None, (member, "primary key required")
+    column = primary_key.column
+    assert column is not None, (member, "primary-key column required")
+    found = Contract(member.function, Shape.SET, (UUID,), 0, refusal)
+    statement = sql.SQL("SELECT {} FROM {}.{} WHERE {} = %s").format(
+        sql.Identifier(column),
+        sql.Identifier(relation_schema),
+        sql.Identifier(relation_name),
+        sql.Identifier(column),
+    )
+    with connections[using].cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT t.tgtype, t.tgenabled, p.prorettype='pg_catalog.trigger'::regtype,
+                   p.pronargs, current_schema(), a.atttypid='pg_catalog.uuid'::regtype
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+              JOIN pg_catalog.pg_namespace f ON f.oid=p.pronamespace
+              JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attname=%s
+             WHERE f.nspname=%s AND p.proname=%s
+               AND n.nspname=%s AND c.relname=%s
+               AND NOT t.tgisinternal AND (t.tgtype & 7)=7
+            """,
+            [
+                column,
+                function_schema,
+                function_name,
+                relation_schema,
+                relation_name,
+            ],
+        )
+        catalog = cursor.fetchall()
+        assert len(catalog) == 1, (
+            member,
+            "not exactly one live INSERT trigger",
+            catalog,
+        )
+        ((_events, enabled, trigger, arity, schema, uuid_key),) = catalog
+        assert (enabled, trigger, arity, schema, uuid_key) == (
+            "O",
+            True,
+            0,
+            relation_schema,
+            True,
+        ), (member, "live trigger/catalog mismatch", catalog)
+        cursor.execute(statement, [identity])
+        assert cursor.fetchall() == [], (member, "fresh row identity required")
+        observed: SqlRowset | Refusal
+        try:
+            with transaction.atomic(using=using):
+                row.save(force_insert=True, using=using)
+                cursor.execute(statement, [identity])
+                rows = cursor.fetchall()
+                assert sql_rowset(rows) == sql_rowset([(identity,)]), (
+                    member,
+                    "not the exact stored row",
+                    rows,
+                )
+        except DatabaseError as error:
+            if not refused(found, error):
+                raise
+            cause = error.__cause__
+            assert isinstance(cause, psycopg.Error)
+            raising_function = re.search(
+                r"PL/pgSQL function (?:"
+                + re.escape(function_schema)
+                + r"\.)?"
+                + re.escape(function_name)
+                + r"\(\) line \d+ at RAISE(?:\n|$)",
+                cause.diag.context or "",
+            )
+            if raising_function is None:
+                raise
+            allowed, observed = False, refusal
+        else:
+            allowed, observed = True, sql_rowset(rows)
+    verdict = SqlVerdict(member.function, allowed, observed, member)
+    _ISSUED[verdict] = _contents(verdict)
+    return verdict
+
+
+def redeem(verdict: object, function: str | DmlMember) -> bool:
     """The census decision for ``function``: only an issued, unredeemed verdict
     for that same function counts. Anything else is an adapter bypass."""
     bypass = (function, "not an issued contract verdict: bypassed probe()", verdict)
     assert type(verdict) is SqlVerdict, bypass
     assert verdict in _ISSUED, bypass
-    _ISSUED.discard(verdict)
-    assert verdict.function == function, (function, "verdict for", verdict.function)
-    return verdict.allowed
+    sealed = _ISSUED.pop(verdict)
+    assert _contents(verdict) == sealed, (function, "changed issued contents")
+    expected = function.function if isinstance(function, DmlMember) else function
+    assert verdict.function == expected, (function, "verdict for", verdict.function)
+    member = function if isinstance(function, DmlMember) else None
+    assert verdict.member == member, (function, "verdict for member", verdict.member)
+    return sealed[1]

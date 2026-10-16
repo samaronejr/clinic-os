@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from django.db import DataError, transaction
@@ -10,6 +11,7 @@ from django.db import DataError, transaction
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import (
     CurrentActorError,
+    current_actor_id,
     practitioner_display_label,
 )
 from apps.scheduling.access import (
@@ -17,7 +19,18 @@ from apps.scheduling.access import (
     authorized_appointment_manager_clinic,
 )
 from apps.scheduling.models import Appointment
+from apps.scheduling.resource_booking import authorized_transition_clinic
 from apps.scheduling.timezones import format_local_minute
+
+if TYPE_CHECKING:
+    from apps.identity.models import Clinic
+
+
+def _transition_view_clinic(appointment: Appointment) -> Clinic:
+    if appointment.service_type_id is None:
+        return authorized_appointment_manager_clinic(appointment.clinic_id)
+    current_actor_id()
+    return authorized_transition_clinic(appointment)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +48,24 @@ class AppointmentTransitionView:
     cancellation_reason: str | None
 
 
+def authorize_transition_view(*, appointment_id: UUID) -> None:
+    """Decide the transition page's view scope, appending no view event.
+
+    Transition writes re-render or redirect into this page. The tenant
+    transaction commits any response below 500, so this scope is decided
+    before the write: a refusal after it would keep the write.
+    """
+    if type(appointment_id) is not UUID:
+        raise AppointmentAccessDeniedError
+    try:
+        appointment = Appointment.objects.get(pk=appointment_id)
+        clinic = _transition_view_clinic(appointment)
+    except (CurrentActorError, Appointment.DoesNotExist, DataError) as error:
+        raise AppointmentAccessDeniedError from error
+    if clinic.organization_id != appointment.organization_id:
+        raise AppointmentAccessDeniedError
+
+
 def view_appointment_for_transition(
     *,
     appointment_id: UUID,
@@ -47,7 +78,7 @@ def view_appointment_for_transition(
             appointment = Appointment.objects.select_related("patient").get(
                 pk=appointment_id
             )
-            clinic = authorized_appointment_manager_clinic(appointment.clinic_id)
+            clinic = _transition_view_clinic(appointment)
             if clinic.organization_id != appointment.organization_id:
                 raise AppointmentAccessDeniedError
             timezone_key = clinic.timezone

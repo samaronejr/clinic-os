@@ -129,6 +129,80 @@ def test_literal_nonactor_setting_is_resolved() -> None:
     assert not parsed.opaque
 
 
+def test_server_keyword_categories_preserve_every_callable_name() -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT word, catcode FROM pg_catalog.pg_get_keywords()")
+        keywords = cursor.fetchall()
+    assert keywords
+    for word, category in keywords:
+        parsed = references(f"SELECT {word}(NULL)")
+        assert ((word,) in parsed.calls) == (category not in {"R", "C"}), word
+        assert (word,) in references(f'SELECT "{word}"(NULL)').calls, word
+        assert ("pg_temp", word) in references(f"SELECT pg_temp.{word}(NULL)").calls
+
+
+def test_keyword_named_functions_keep_their_executed_authority_edges() -> None:
+    with transaction.atomic(), connection.cursor() as cursor:
+        for word in ("filter", "over", "if", "return", "operator", "from"):
+            cursor.execute(
+                f'CREATE FUNCTION clinic_app."{word}"() RETURNS boolean '
+                "LANGUAGE sql AS $body$ "
+                "SELECT current_setting('app.current_user_id',true) IS NOT NULL "
+                "$body$"
+            )
+        catalog = Catalog()
+        for word in ("filter", "over", "if", "return", "operator", "from"):
+            statement = (
+                f'SELECT "{word}"()'
+                if word in {"from", "operator"}
+                else f"SELECT {word}()"
+            )
+            assert (word,) in references(statement).calls
+            cursor.execute(statement)
+            assert type(cursor.fetchone()[0]) is bool
+            assert "app.current_user_id" in catalog.statement(statement).settings
+        assert (
+            "unresolved function t9_missing"
+            in catalog.statement("SELECT t9_missing()").opaque
+        )
+        transaction.set_rollback(True)
+
+
+def test_subquery_and_aggregate_syntax_keep_nested_authority_reads(
+    rbac_graph: RbacGraph,
+) -> None:
+    for statement in (
+        "SELECT actor FROM (SELECT "
+        "current_setting('app.current_user_id',true) AS actor) AS q",
+        "WITH q AS (SELECT current_setting('app.current_user_id',true) AS actor) "
+        "SELECT actor FROM q",
+        "SELECT count(*) FILTER (WHERE "
+        "current_setting('app.current_user_id',true) IS NOT NULL) "
+        "OVER () FROM (SELECT 1) AS q",
+    ):
+        observer = _observe(rbac_graph, statement)
+        assert ("guc", "app.current_user_id") in observer.touches
+
+
+@pytest.mark.parametrize(
+    ("statement", "calls"),
+    [
+        (
+            "SELECT clinic_app.probe(v) FROM LATERAL (SELECT 1 AS v) q WHERE (v = 1)",
+            {("clinic_app", "probe")},
+        ),
+        ('SELECT "where"(1)', {("where",)}),
+        ('SELECT "lateral"(1)', {("lateral",)}),
+        ("SELECT clinic_app.where(1)", {("clinic_app", "where")}),
+        ("SELECT clinic_app.lateral(1)", {("clinic_app", "lateral")}),
+    ],
+)
+def test_parenthesized_syntax_preserves_actual_function_calls(
+    statement: str, calls: set[tuple[str, ...]]
+) -> None:
+    assert references(statement).calls == calls
+
+
 def test_show_guard_cannot_claim_nonstaff(rbac_graph: RbacGraph) -> None:
     actor = User.objects.create(username="synthetic-show-guard-" + uuid4().hex)
     probe = DifferentialProbe(

@@ -31,6 +31,7 @@ from apps.core.integration import (
 from apps.identity.models import Clinic, User, UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 
@@ -562,7 +563,7 @@ def test_revoked_authority_cancels_without_external_effect(
             UserClinicRole.objects.filter(
                 user_id=tenant_graph.user_a,
                 organization_id=tenant_graph.organization_a,
-            ).delete()
+            ).update(revoked_at=Now())
         else:
             User.objects.filter(pk=tenant_graph.user_a).update(is_active=False)
 
@@ -707,7 +708,7 @@ def test_clinic_revoked_actor_cancels_without_external_effect(
         UserClinicRole.objects.filter(
             user_id=tenant_graph.user_a,
             clinic_id=clinic_id,
-        ).delete()
+        ).update(revoked_at=Now())
 
     with runtime_role():
         assert _run_task(operation_id) == "cancelled"

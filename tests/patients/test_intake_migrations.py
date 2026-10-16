@@ -328,8 +328,8 @@ def _seed_protected_probe() -> None:
                 [str(organization_id)],
             )
             cursor.execute(
-                "INSERT INTO clinic_app.identity_organization (id, name, cnpj) "
-                "VALUES (%s, %s, %s)",
+                "INSERT INTO clinic_app.identity_organization (id, name, cnpj, status) "
+                "VALUES (%s, %s, %s, 'active')",
                 [
                     str(organization_id),
                     f"Synthetic Legacy Organization {organization_id.int}",

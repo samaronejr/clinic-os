@@ -48,6 +48,7 @@ app.conf.update(
         "comms.*": {"queue": "clinic-integrations"},
         # Future domain tasks route by module path (autodiscovered name).
         "apps.ehr.tasks.*": {"queue": "clinical"},
+        "apps.scheduling.tasks.*": {"queue": "clinical"},
         "apps.prescription.tasks.*": {"queue": "clinical"},
         "apps.scribe.tasks.*": {"queue": "ai-interactive"},
         "apps.ai.tasks.*": {"queue": "ai-batch"},
@@ -67,12 +68,20 @@ app.conf.update(
     worker_log_format=_SAFE_WORKER_LOG_FORMAT,
     worker_task_log_format=_SAFE_WORKER_LOG_FORMAT,
     beat_schedule={
+        "workflow-due-scanner": {
+            "task": "apps.workflows.tasks.scan_due",
+            "schedule": 60.0,
+        },
         "appointment-reminders": {
             "task": "comms.dispatch_due_reminders",
             "schedule": 60.0,
         },
         "pending-operation-recovery": {
             "task": "comms.recover_pending_operations",
+            "schedule": 60.0,
+        },
+        "appointment-hold-expiry": {
+            "task": "apps.scheduling.tasks.expire_holds",
             "schedule": 60.0,
         },
     },

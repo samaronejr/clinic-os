@@ -717,8 +717,9 @@ name, so a page that repeats one keeps every landmark name unique.
 - **Resource grid:** resources by clinic-local time in CSS grid with the ARIA
   grid pattern and one roving tab stop. Booked slots on Selection Tint, held
   slots dashed Warning, conflicts on Error tint, completed on Success tint,
-  unavailable cells on sunken paper; every slot is a link, so moving is a
-  dialog, never drag-only.
+  unavailable cells on sunken paper. Record selection uses native POST
+  buttons, never identifier-bearing URLs; moving enhances those buttons with
+  a dialog and is never drag-only.
 - **Command palette:** Ctrl+K / Cmd+K opens a modal combobox of destinations
   and actions grouped under Label headings; keys shown as `<kbd>` on paper.
   In the shell it searches the server (POST, never a URL): destinations,

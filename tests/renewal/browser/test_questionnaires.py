@@ -134,8 +134,8 @@ def _seed(
         conn.execute(
             "INSERT INTO clinic_app.intake_questionnaireresponse "
             "(id,organization_id,clinic_id,patient_id,enrollment_id,template_id,"
-            "state,revision,created_at,updated_at) "
-            "VALUES (%s,%s,%s,%s,%s,%s,'draft',1,now(),now())",
+            "state,revision,restricted_from_delegates,created_at,updated_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,'draft',1,true,now(),now())",
             [
                 values["response"],
                 staff["organization"],

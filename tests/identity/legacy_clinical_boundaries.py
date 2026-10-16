@@ -216,6 +216,14 @@ BOUNDARIES = (
         lambda w, ok: access.authorized_enrollment(w.clinic_for(ok), _enrollment(w)),
     ),
     Boundary(
+        "apps.intake.access.authorized_enrollment_for",
+        "demographics",
+        ("physician", "receptionist", "clinic_admin"),
+        lambda w, ok: access.authorized_enrollment_for(
+            w.clinic_for(ok), _enrollment(w), "demographics.read"
+        ),
+    ),
+    Boundary(
         "apps.retention.services._require_manager",
         "roles",
         ADMINS,

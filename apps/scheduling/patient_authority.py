@@ -53,6 +53,15 @@ def patient_booking_scope() -> PatientBookingScope | None:
     return PatientBookingScope(*row)
 
 
+def patient_booking_requires_approval() -> bool:
+    """Read the session clinic's self-booking approval policy (todo 22)."""
+    require_patient_booking_scope()
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.patient_booking_requires_approval()")
+        row = cursor.fetchone()
+    return row is not None and row[0] is True
+
+
 def require_patient_booking_scope() -> PatientBookingScope:
     """Reject staff and unauthenticated callers of the patient facade."""
     scope = patient_booking_scope()

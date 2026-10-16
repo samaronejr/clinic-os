@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load i18n clinic_locale %}
+{% block title %}{% trans "Move appointment" %} · Clinic OS{% endblock %}
+{% block content %}
+<section class="scheduling-task transition-shell" aria-labelledby="agenda-move-title">
+  <h1 id="agenda-move-title">{% trans "Move appointment" %}</h1>
+  <div class="panel transition-panel">
+    <p><strong>{% trans "Patient" %}:</strong> {{ appointment.patient_display_name }}</p>
+    <p><strong>{% trans "Time" %}:</strong> {{ appointment.start_local|clinic_minute }} – {{ appointment.end_local|clinic_minute }}</p>
+    <form method="post" action="{{ move_url }}" data-native-move-form>
+      {% csrf_token %}
+      <input type="hidden" name="appointment_id" value="{{ appointment_id }}">
+      <input type="hidden" name="expected_revision" value="{{ expected_revision }}">
+      <input type="hidden" name="day" value="{{ day }}">
+      <input type="hidden" name="duration" value="{{ duration }}">
+      <div class="field">
+        <label for="agenda-move-start">{% trans "New start time" %}</label>
+        <input id="agenda-move-start" name="start" type="time" value="{{ start }}" required>
+      </div>
+      <div class="actions">
+        <button type="submit">{% trans "Move" %}</button>
+        <a class="button button--quiet" href="{{ grid_url }}">{% trans "Back to the day's agenda" %}</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

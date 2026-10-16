@@ -12,14 +12,31 @@ class IdentityConfig(AppConfig):
     def ready(self) -> None:
         """Register login behavior that never writes the user table."""
         from django.contrib.auth.models import update_last_login  # noqa: PLC0415
-        from django.contrib.auth.signals import user_logged_in  # noqa: PLC0415
+        from django.contrib.auth.signals import (  # noqa: PLC0415
+            user_logged_in,
+            user_logged_out,
+        )
 
         from apps.identity.services import (  # noqa: PLC0415
+            register_core_onboarding_steps,
+            register_identity_notifications,
+            register_login_session,
+            revoke_logout_session,
             set_active_organization_on_login,
         )
 
+        register_core_onboarding_steps()
+        register_identity_notifications()
         user_logged_in.disconnect(update_last_login, dispatch_uid="update_last_login")
         user_logged_in.connect(
             set_active_organization_on_login,
             dispatch_uid="identity.set_active_organization_on_login",
+        )
+        user_logged_in.connect(
+            register_login_session,
+            dispatch_uid="identity.register_login_session",
+        )
+        user_logged_out.connect(
+            revoke_logout_session,
+            dispatch_uid="identity.revoke_logout_session",
         )
