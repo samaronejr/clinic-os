@@ -3971,6 +3971,9 @@ msgstr "Mídia do médico"
 msgid "Play test sound"
 msgstr "Tocar som de teste"
 
+msgid "Reconnected"
+msgstr "Reconectado"
+
 msgid "Remove the patient from the room"
 msgstr "Retirar o paciente da sala"
 
@@ -4015,6 +4018,9 @@ msgstr "Instável"
 
 msgid "Video and audio"
 msgstr "Vídeo e áudio"
+
+msgid "Video restored"
+msgstr "Vídeo restabelecido"
 
 msgid "We played a short test sound. Did you hear it?"
 msgstr "Tocamos um som curto de teste. Você ouviu?"

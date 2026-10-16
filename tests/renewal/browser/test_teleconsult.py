@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from django.utils.translation import gettext
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_access_code, worker_dsn
@@ -358,7 +359,17 @@ def _happy_path(  # noqa: PLR0913 - the journey needs its full context
     expect(physician.locator(f'[data-session="{session_id}"]')).to_have_attribute(
         "data-state", "ended"
     )
+    removed_label = gettext("Removed from the room")
+    assert removed_label != "Removed from the room"
+    expect(
+        physician.locator(f'[data-session="{session_id}"] [data-event="removed"]')
+    ).to_contain_text(removed_label)
     _capture(physician, root, "staff-ended", width)
+    goto_settled(patient, patient_url)
+    history = patient.locator(f'.tele-history-item[data-session="{session_id}"]')
+    history.locator("summary").click()
+    expect(history.locator('[data-event="removed"]')).to_contain_text(removed_label)
+    _capture(patient, root, "patient-ended-history", width)
     # Terminal sessions never reopen: both roles get a conflict, not a room.
     assert (
         post_action(physician, staff_url, {"action": "join", "session_id": session_id})

@@ -108,6 +108,10 @@ _EVENT_LABELS = {
     "started": "Consulta iniciada",
     "ended": "Consulta encerrada",
     "failed": "Consulta interrompida",
+    "audio_only": _("Audio only"),
+    "video_restored": _("Video restored"),
+    "reconnected": _("Reconnected"),
+    "removed": _("Removed from the room"),
 }
 _ACTOR_LABELS = {"patient": "você", "physician": "médico"}
 _STAFF_ACTOR_LABELS = {"patient": "paciente", "physician": "médico"}
@@ -180,7 +184,7 @@ def _staff_events(session: TeleconsultSession) -> list[dict[str, object]]:
     """Label the history in pt-BR; staff keep the reason code for support."""
     rows = []
     for event in session.events.order_by("created_at", "pk"):
-        label = _EVENT_LABELS.get(event.kind, event.kind)
+        label = str(_EVENT_LABELS.get(event.kind, event.kind))
         actor = _STAFF_ACTOR_LABELS.get(event.actor_role, "")
         rows.append(
             {
@@ -499,7 +503,7 @@ def _patient_events(session: TeleconsultSession) -> list[dict[str, object]]:
     """Label the scoped history in plain language; reason codes stay hidden."""
     rows = []
     for event in session.events.order_by("created_at", "pk"):
-        label = _EVENT_LABELS.get(event.kind, event.kind)
+        label = str(_EVENT_LABELS.get(event.kind, event.kind))
         actor = _ACTOR_LABELS.get(event.actor_role, "")
         rows.append(
             {

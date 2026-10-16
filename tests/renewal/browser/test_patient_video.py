@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
+from django.utils.translation import gettext
 from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
@@ -532,7 +533,23 @@ def _ended_room(patient: Page, physician: Page, case: _Case, session_id: str) ->
     expect(row).to_contain_text("não pode ser reaberta")
     row.locator("summary").click()
     expect(row.locator('[data-event="ended"]')).to_contain_text("Consulta encerrada")
+    history_labels = (
+        ("audio_only", "Audio only"),
+        ("video_restored", "Video restored"),
+        ("reconnected", "Reconnected"),
+    )
+    for kind, msgid in history_labels:
+        label = gettext(msgid)
+        assert label != msgid
+        expect(row.locator(f'[data-event="{kind}"]').first).to_contain_text(label)
     _capture(patient, case, "waiting-ended")
+    goto_settled(physician, case.staff_url)
+    staff_row = physician.locator(f'article[data-session="{session_id}"]')
+    for kind, msgid in history_labels:
+        expect(staff_row.locator(f'[data-event="{kind}"]').first).to_contain_text(
+            gettext(msgid)
+        )
+    _capture(physician, case, "staff-ended-history")
     assert (
         post_action(
             patient, case.patient_url, {"action": "join", "session_id": session_id}
