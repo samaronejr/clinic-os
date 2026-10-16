@@ -1,19 +1,16 @@
 """A permitted revocation committed between a writer's authority decision and its write.
 
-The shipped owner CLI retires the role in its own transaction while an Event
-holds the request at an exact point: just before the first ``ehr.record.viewed``
-append of an audit-first action, or at the model write of a write-first action
-(after any row lock it takes). Each is before the request's first audit append,
-after which the revocation waits for the request to commit (``decided``).
-The late response must be the response to the
-same request made once the revocation has committed: the same refusal and body,
-the same denial record (or none), no other clinical audit event, and unchanged
-rows, stored objects and session. Every wait is a bounded Event; nothing sleeps.
-
-Opening a scheduled encounter and the teleconsult workspace's note actions are
-guarded the same way and have no case here: the owner CLI refuses to retire a
-physician who holds live availability or an occupying appointment, which the
-arrived-appointment fixtures create and every video session binds.
+An Event holds the request at an exact point: just before the first
+``ehr.record.viewed`` append of an audit-first action, or at the model write of a
+write-first action (after any row lock it takes). Each is before the request's
+first audit append, after which the shipped revocation waits for the request to
+commit (``decided``). While it is held the role is retired in its own
+transaction: by the shipped owner CLI or, where that command refuses, by the same
+row update it makes (``superuser_revoker``). The late response must be the
+response to the same request made once the revocation has committed: the same
+refusal and body, the same denial record (or none), no other clinical audit
+event, and unchanged rows, stored objects and session. Every wait is a bounded
+Event; nothing sleeps.
 """
 
 from __future__ import annotations
@@ -28,8 +25,10 @@ from threading import Event
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.audit import services as audit_services
+from apps.core.integration import register_send_adapter
 from apps.ehr.addenda import open_addendum
 from apps.ehr.attachments import AttachmentInput, upload_attachment
 from apps.ehr.episodes import link_encounter, open_episode
@@ -47,9 +46,15 @@ from apps.ehr.models import (
     HistoryAssessment,
     SpecialtyTemplate,
 )
-from apps.ehr.services import SOAP_FIELDS, publish_template, record_clinical_note
+from apps.ehr.services import (
+    SOAP_FIELDS,
+    create_draft,
+    publish_template,
+    record_clinical_note,
+)
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import UserClinicRole
+from apps.teleconsult.adapters import SyntheticRoomAdapter
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test import override_settings
@@ -57,7 +62,7 @@ from django.test import override_settings
 from auth.stepup_test_support import verified_request
 from database_urls import database_url_for_name
 from ehr.test_addenda import clinician, signed_in
-from ehr.test_autosave import NONCE, SECTIONS, as_actor, enrollment
+from ehr.test_autosave import NONCE, SECTIONS, as_actor, enrollment, registration
 from ehr.test_write_ordering import (
     DENIAL,
     audit_mark,
@@ -69,6 +74,9 @@ from ehr.test_write_ordering import (
 from identity.permission_support import owner_context
 from infra.management_command_support import run_management_command
 from renewal.test_attachments import PDF_BYTES
+from renewal.test_encounters import seed as encounter_seed
+from renewal.test_teleconsult_sessions import _create
+from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -78,6 +86,7 @@ if TYPE_CHECKING:
     from django.db.models import Model
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
+    from pytest_django.fixtures import SettingsWrapper
 
     from ehr.test_write_ordering import LateRevocation
     from rbac_fixtures import RbacGraph
@@ -85,6 +94,9 @@ if TYPE_CHECKING:
     type Seam = Callable[[pytest.MonkeyPatch, Callable[[], None]], None]
 
 pytestmark = pytest.mark.django_db(transaction=True)
+# The teleconsult route's own fixed denial (apps/teleconsult/services._denied).
+TELECONSULT_DENIAL = "teleconsult.access.denied"
+CLINICAL = ("ehr.", "teleconsult.")
 
 
 @pytest.fixture
@@ -93,6 +105,13 @@ def storage_root(tmp_path: Path) -> Iterator[Path]:
     root = tmp_path / "objects"
     with override_settings(EHR_ATTACHMENT_ROOT=root):
         yield root
+
+
+@pytest.fixture
+def synthetic_room(settings: SettingsWrapper) -> None:
+    """Video sessions enqueue their room through the synthetic provider."""
+    settings.TELECONSULT_SYNTHETIC_PROVIDER = True
+    register_send_adapter(SyntheticRoomAdapter())
 
 
 def revoker(graph: RbacGraph, target: UUID, role: str) -> Callable[[], int]:
@@ -122,6 +141,45 @@ def revoker(graph: RbacGraph, target: UUID, role: str) -> Callable[[], int]:
         ).exit_code
 
     return revoke
+
+
+def superuser_revoker(graph: RbacGraph, target: UUID, role: str) -> Callable[[], int]:
+    """Retire ``target``'s ``role`` with the row update the owner CLI makes.
+
+    The CLI's revoke_staff_role refuses a physician who holds live availability
+    or an occupying appointment, which every booked visit and video session
+    binds. The test superuser makes the same state change in its own
+    transaction: ``revoked_at`` on the role row, whose trigger revokes the
+    user's sessions exactly as the command's save does. Only the command's
+    ``identity.staff_role.revoked`` event is absent.
+    """
+    database_url = database_url_for_name(
+        os.environ["TEST_SUPERUSER_DATABASE_URL"], str(connection.settings_dict["NAME"])
+    )
+
+    def revoke() -> int:
+        with psycopg.connect(database_url) as database:
+            retired = database.execute(
+                "UPDATE clinic_app.identity_userclinicrole"
+                " SET revoked_at = statement_timestamp()"
+                " WHERE organization_id = %s AND clinic_id = %s AND user_id = %s"
+                " AND role = %s AND revoked_at IS NULL",
+                [graph.organization_a, graph.clinic_a, target, role],
+            ).rowcount
+        return 0 if retired == 1 else 1
+
+    return revoke
+
+
+def member(graph: RbacGraph, user: UUID) -> None:
+    """Clinic membership that outlives a revoked clinical or admin role."""
+    with owner_context(graph.organization_a):
+        UserClinicRole.objects.get_or_create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=user,
+            role=UserClinicRole.Role.RECEPTIONIST,
+        )
 
 
 def viewed_append(patch: pytest.MonkeyPatch, hold: Callable[[], None]) -> None:
@@ -208,6 +266,8 @@ class Scene:
     send: Callable[[Client], _MonkeyPatchedWSGIResponse]
     rows: Callable[[], object]
     select: Callable[[Client], None] | None = None
+    # Retired by the owner CLI, which records identity.staff_role.revoked.
+    cli: bool = True
 
 
 def posting(
@@ -230,9 +290,8 @@ def draft_of(graph: RbacGraph, world: LateRevocation) -> ClinicalDocumentVersion
         )
 
 
-def note_rows(graph: RbacGraph, world: LateRevocation) -> object:
+def note_rows(graph: RbacGraph, encounter: UUID) -> object:
     """The encounter's versions, their edit states and their save receipts."""
-    encounter = world.encounter
     return (
         rows(
             graph,
@@ -278,7 +337,7 @@ def save_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
         world.revoke,
         viewed_append,
         posting(workspace(graph), body),
-        partial(note_rows, graph, world),
+        partial(note_rows, graph, world.encounter),
     )
 
 
@@ -291,7 +350,7 @@ def discard_scene(graph: RbacGraph, root: Path) -> Scene:
         world.revoke,
         viewed_append,
         posting(workspace(graph), {"action": "discard", "version_id": draft.pk}),
-        partial(note_rows, graph, world),
+        partial(note_rows, graph, world.encounter),
     )
 
 
@@ -324,7 +383,7 @@ def amend_scene(graph: RbacGraph, root: Path) -> Scene:
         world.revoke,
         viewed_append,
         posting(workspace(graph), body),
-        partial(note_rows, graph, world),
+        partial(note_rows, graph, world.encounter),
     )
 
 
@@ -338,7 +397,7 @@ def finalize_scene(graph: RbacGraph, root: Path) -> Scene:
         world.revoke,
         model_write(ClinicalDocumentVersion),
         posting(workspace(graph), body),
-        partial(note_rows, graph, world),
+        partial(note_rows, graph, world.encounter),
     )
 
 
@@ -388,7 +447,7 @@ def template_scene(graph: RbacGraph, root: Path) -> Scene:
         world.revoke,
         model_write(ClinicalDocumentVersion),
         posting(workspace(graph), {"action": "template", "template_id": template}),
-        partial(note_rows, graph, world),
+        partial(note_rows, graph, world.encounter),
         select=select,
     )
 
@@ -484,16 +543,9 @@ def colleague(
     graph: RbacGraph, world: LateRevocation
 ) -> tuple[UUID, Callable[[], int]]:
     """A registered care-team physician of the patient whom the owner CLI may revoke."""
-    member = clinician(graph, "physician", world.enrollment)
-    with owner_context(graph.organization_a):
-        # Tenant membership outlives the physician role.
-        UserClinicRole.objects.create(
-            organization_id=graph.organization_a,
-            clinic_id=graph.clinic_a,
-            user_id=member,
-            role=UserClinicRole.Role.RECEPTIONIST,
-        )
-    return member, revoker(graph, member, UserClinicRole.Role.PHYSICIAN)
+    physician = clinician(graph, "physician", world.enrollment)
+    member(graph, physician)
+    return physician, revoker(graph, physician, UserClinicRole.Role.PHYSICIAN)
 
 
 def addendum_api(
@@ -622,6 +674,73 @@ def attachment_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
     )
 
 
+def scheduled_open_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Opening a booked visit, held at the encounter INSERT after its lock."""
+    appointment, _ = encounter_seed(graph)
+    member(graph, graph.physician)
+    return Scene(
+        graph.physician,
+        superuser_revoker(graph, graph.physician, UserClinicRole.Role.PHYSICIAN),
+        model_write(Encounter),
+        posting(workspace(graph), {"action": "open", "appointment_id": appointment.pk}),
+        partial(encounter_rows, graph),
+        cli=False,
+    )
+
+
+def teleconsult_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
+    """A video visit's note action, held where its native twin is held."""
+    _, encounter, _, _, _ = teleconsult_seed(graph)
+    registration(graph, graph.physician, graph.clinic_a)
+    with owner_context(graph.organization_a):
+        template = SpecialtyTemplate.objects.get(clinic_id=graph.clinic_a)
+    with as_actor(graph, graph.physician):
+        version = create_draft(
+            clinic_id=graph.clinic_a, encounter_id=encounter.pk, template_id=template.pk
+        )
+    session = _create(graph, encounter)
+    member(graph, graph.physician)
+    body: dict[str, object] = {"action": action, "session_id": session.pk}
+    seam: Seam = viewed_append
+    if action == "note-template":
+        with as_actor(graph, graph.physician):
+            discard_draft(clinic_id=graph.clinic_a, version_id=version.pk)
+        body["template_id"] = template.pk
+        seam = model_write(ClinicalDocumentVersion)
+    elif action in {"note-finalize", "note-amend"}:
+        with as_actor(graph, graph.physician):
+            version = record_clinical_note(
+                clinic_id=graph.clinic_a,
+                version_id=version.pk,
+                expected_revision=version.revision,
+                content=dict(SECTIONS),
+            )
+        if action == "note-finalize":
+            body |= {"version_id": version.pk, "revision": version.revision}
+            seam = model_write(ClinicalDocumentVersion)
+        else:
+            with as_actor(graph, graph.physician):
+                finalized = finalize_version(
+                    clinic_id=graph.clinic_a,
+                    version_id=version.pk,
+                    expected_revision=version.revision,
+                    request=verified_request(graph.physician),
+                )
+            body |= {"version_id": finalized.pk, "reason": "Correção"}
+    else:
+        body["version_id"] = version.pk
+        if action == "note-save":
+            body |= {"revision": version.revision, **SECTIONS}
+    return Scene(
+        graph.physician,
+        superuser_revoker(graph, graph.physician, UserClinicRole.Role.PHYSICIAN),
+        seam,
+        posting(f"/teleconsult/clinics/{graph.clinic_a}/", body),
+        partial(note_rows, graph, encounter.pk),
+        cli=False,
+    )
+
+
 SCENES: dict[str, Callable[[RbacGraph, Path], Scene]] = {
     "save": partial(save_scene, action="save"),
     "merge": partial(save_scene, action="merge"),
@@ -639,9 +758,23 @@ SCENES: dict[str, Callable[[RbacGraph, Path], Scene]] = {
     "addendum_autosave": addendum_autosave_scene,
     "attachment_upload": partial(attachment_scene, action="upload"),
     "attachment_scan": partial(attachment_scene, action="scan"),
+    "scheduled_open": scheduled_open_scene,
+    **{
+        f"teleconsult_{action.replace('-', '_')}": partial(
+            teleconsult_scene, action=action
+        )
+        for action in (
+            "note-save",
+            "note-discard",
+            "note-amend",
+            "note-finalize",
+            "note-template",
+        )
+    },
 }
 
 
+@pytest.mark.usefixtures("synthetic_room")
 @pytest.mark.parametrize("name", sorted(SCENES))
 def test_late_revocation_at_the_write_is_the_early_refusal(
     rbac_graph: RbacGraph, storage_root: Path, name: str
@@ -665,8 +798,8 @@ def test_late_revocation_at_the_write_is_the_early_refusal(
             scene.select(client)
         # The same request once the revocation has committed.
         early = scene.send(client)
-    early_trail = [e for e in audit_since(graph, before) if e.startswith("ehr.")]
-    late_trail = [e for e in trail if e.startswith("ehr.")]
+    early_trail = [e for e in audit_since(graph, before) if e.startswith(CLINICAL)]
+    late_trail = [e for e in trail if e.startswith(CLINICAL)]
     # Lost authority is the ordinary refusal: no 409, 412 or 5xx.
     assert late.status_code == early.status_code == 403
     if late.headers["Content-Type"].startswith("application/json"):
@@ -674,9 +807,10 @@ def test_late_revocation_at_the_write_is_the_early_refusal(
     else:
         assert NONCE.sub(b"", late.content) == NONCE.sub(b"", early.content)
     # Only the fixed denial event may remain, exactly as the early refusal leaves.
-    assert set(late_trail) <= {DENIAL}
+    assert set(late_trail) <= {DENIAL, TELECONSULT_DENIAL}
     assert late_trail == early_trail
-    assert trail.count("identity.staff_role.revoked") == 1
+    # The owner CLI records the retirement; the row update alone records nothing.
+    assert trail.count("identity.staff_role.revoked") == int(scene.cli)
     assert scene.rows() == unchanged
 
 
@@ -685,14 +819,7 @@ def test_template_publish_after_late_admin_revocation_writes_nothing(
 ) -> None:
     graph = rbac_graph
     admin = clinician(graph, "clinic_admin", enrollment(graph, graph.clinic_a))
-    with owner_context(graph.organization_a):
-        # Tenant membership outlives the clinic-admin role.
-        UserClinicRole.objects.create(
-            organization_id=graph.organization_a,
-            clinic_id=graph.clinic_a,
-            user_id=admin,
-            role=UserClinicRole.Role.RECEPTIONIST,
-        )
+    member(graph, admin)
     revoke = revoker(graph, admin, UserClinicRole.Role.CLINIC_ADMIN)
 
     def publish() -> None:
