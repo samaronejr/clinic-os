@@ -107,10 +107,16 @@ def decided(redecide: Callable[[], object]) -> Iterator[None]:
     raises the early refusal with that decision's own denial record, and with
     authority intact the original exception is re-raised unchanged, so genuine
     storage and lifecycle failures are never relabelled as denials.
+
+    The block's normal exit decides once more, inside the savepoint. A reuse,
+    idempotent-replay or race-winner return writes nothing for RLS to refuse,
+    so without that final decision a revocation committed before it would turn
+    into a success; with it, that return is the early refusal as well.
     """
     try:
         with transaction.atomic():
             yield
+            redecide()
     except LATE_REFUSALS:
         redecide()
         raise
@@ -122,15 +128,13 @@ def pinned_read[T](read: Callable[[], T], decide: Callable[[], object]) -> T:
     The read's audit append holds the organization's audit chain until commit
     (see ``decided``): a revocation not committed before it stays invisible to
     the rest of this transaction, and one committed before it is visible right
-    after. ``decide`` runs once more there. A refusal rolls the read and its
-    audit back and is decided again outside the savepoint, so the response and
-    denial record are an early refusal's; later lifecycle conflicts keep their
-    audited read exactly as before.
+    after. ``decide`` runs once more there, at ``decided``'s exit. A refusal
+    rolls the read and its audit back and is decided again outside the
+    savepoint, so the response and denial record are an early refusal's;
+    later lifecycle conflicts keep their audited read exactly as before.
     """
     with decided(decide):
-        result = read()
-        decide()
-    return result
+        return read()
 
 
 def _appointment(clinic_id: UUID, appointment_id: UUID) -> Appointment:
@@ -538,13 +542,14 @@ def record_clinical_note(
     ):
         msg = "Preencha somente os campos SOAP, com até 20.000 caracteres cada."
         raise ValidationError(msg)
-    # The read audit is the first write. pinned_read decides authorship again
-    # right after it, so a refusal below can only be a lifecycle conflict.
+    # The read audit is the first write; pinned_read decides authorship again
+    # right after it. The locked write decides it once more on every path, the
+    # unchanged no-op included.
     pinned_read(
         partial(view_version, clinic_id=clinic_id, version_id=version_id),
         partial(author_scope, clinic_id=clinic_id, version_id=version_id),
     )
-    with transaction.atomic():
+    with decided(partial(author_scope, clinic_id=clinic_id, version_id=version_id)):
         # A finalized/superseded row is readable but outside the UPDATE
         # policy, so select_for_update filters it out; that non-draft path
         # is the contract's precondition_failed conflict, never a 500.

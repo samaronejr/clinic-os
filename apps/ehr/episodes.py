@@ -198,11 +198,12 @@ def open_episode_for_encounter(
     if not title or len(title) > MAX_EPISODE_TITLE:
         raise ValidationError(INVALID_TITLE)
     validate_overlay_text(title)
-    if EpisodeEncounter.objects.filter(encounter=encounter).exists():
-        msg = "already_linked"
-        raise ClinicalConflictError(msg)
     try:
         with decided(authority):
+            # A conflict found after authority could be lost is decided again.
+            if EpisodeEncounter.objects.filter(encounter=encounter).exists():
+                msg = "already_linked"
+                raise ClinicalConflictError(msg)
             episode = Episode.objects.create(
                 organization_id=encounter.organization_id,
                 clinic_id=clinic_id,

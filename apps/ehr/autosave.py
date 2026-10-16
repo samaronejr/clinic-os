@@ -392,6 +392,9 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         # authority is decided again below, outside the boundary.
         with transaction.atomic():
             result = _decide_locked(command)
+            # A replay, lock refusal or conflict writes nothing for RLS to
+            # refuse; every result is returned on a current decision.
+            author_scope(clinic_id=clinic_id, version_id=version_id)
     except (ClinicalAccessDeniedError, CurrentActorError):
         # A refusal inside the boundary is late. Deciding authority again
         # gives the response and the denial record of an early refusal.

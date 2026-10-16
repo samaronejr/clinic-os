@@ -61,16 +61,17 @@ def open_addendum(*, clinic_id: UUID, encounter_id: UUID) -> EncounterAddendum:
         return found, author
 
     encounter, actor = authority()
-    if actor == encounter.physician_id:
-        msg = "use_main_draft"
-        raise ClinicalConflictError(msg)
-    if encounter.state != Encounter.State.OPEN:
-        msg = "encounter_closed"
-        raise ClinicalConflictError(msg)
     drafts = EncounterAddendum.objects.filter(
         encounter=encounter, author_id=actor, state=EncounterAddendum.State.DRAFT
     )
     with decided(authority):
+        # Lifecycle refusals and the reuse below are decided again with authority.
+        if actor == encounter.physician_id:
+            msg = "use_main_draft"
+            raise ClinicalConflictError(msg)
+        if encounter.state != Encounter.State.OPEN:
+            msg = "encounter_closed"
+            raise ClinicalConflictError(msg)
         existing = drafts.first()
         if existing is not None:
             return existing

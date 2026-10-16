@@ -1,16 +1,17 @@
 """A permitted revocation committed between a writer's authority decision and its write.
 
 An Event holds the request at an exact point: just before the first
-``ehr.record.viewed`` append of an audit-first action, or at the model write of a
-write-first action (after any row lock it takes). Each is before the request's
-first audit append, after which the shipped revocation waits for the request to
-commit (``decided``). While it is held the role is retired in its own
-transaction: by the shipped owner CLI or, where that command refuses, by the same
-row update it makes (``superuser_revoker``). The late response must be the
-response to the same request made once the revocation has committed: the same
-refusal and body, the same denial record (or none), no other clinical audit
-event, and unchanged rows, stored objects and session. Every wait is a bounded
-Event; nothing sleeps.
+``ehr.record.viewed`` append of an audit-first action, at the model write of a
+write-first action (after any row lock it takes), or just before the lookup that
+reuses, replays or retries an earlier result (``first_read``, ``get_read``).
+While it is held the role is retired in its own transaction: by the shipped owner
+CLI, which waits for a request that has already appended an audit row
+(``decided``), or by the same row update it makes (``superuser_revoker``) where
+that command refuses or would wait. The late response must be the response to
+the same request made once the revocation has committed: the same refusal and
+body, the same denial record (or none), no other clinical audit event, and
+unchanged rows, stored objects and session. Every wait is a bounded Event;
+nothing sleeps.
 """
 
 from __future__ import annotations
@@ -29,9 +30,10 @@ import psycopg
 import pytest
 from apps.audit import services as audit_services
 from apps.core.integration import register_send_adapter
-from apps.ehr.addenda import open_addendum
-from apps.ehr.attachments import AttachmentInput, upload_attachment
-from apps.ehr.episodes import link_encounter, open_episode
+from apps.ehr.addenda import autosave_addendum, open_addendum
+from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
+from apps.ehr.autosave import autosave_draft
+from apps.ehr.episodes import close_episode, link_encounter, open_episode
 from apps.ehr.finalization import close_encounter, discard_draft, finalize_version
 from apps.ehr.models import (
     AddendumSaveReceipt,
@@ -49,6 +51,7 @@ from apps.ehr.models import (
 from apps.ehr.services import (
     SOAP_FIELDS,
     create_draft,
+    open_encounter,
     publish_template,
     record_clinical_note,
 )
@@ -57,12 +60,21 @@ from apps.identity.models import UserClinicRole
 from apps.teleconsult.adapters import SyntheticRoomAdapter
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.db.models.query import QuerySet
 from django.test import override_settings
 
 from auth.stepup_test_support import verified_request
 from database_urls import database_url_for_name
 from ehr.test_addenda import clinician, signed_in
-from ehr.test_autosave import NONCE, SECTIONS, as_actor, enrollment, registration
+from ehr.test_autosave import (
+    AUTOSAVE_URL,
+    NONCE,
+    SECTIONS,
+    TAB_A,
+    as_actor,
+    enrollment,
+    registration,
+)
 from ehr.test_write_ordering import (
     DENIAL,
     audit_mark,
@@ -208,6 +220,40 @@ def model_write(model: type[Model]) -> Seam:
             save(*args, **kwargs)
 
         patch.setattr(model, "save", held)
+
+    return install
+
+
+def first_read(model: type[Model], *, locking: bool = False) -> Seam:
+    """Hold before the first ``first()`` of ``model``: a reuse or replay lookup."""
+
+    def install(patch: pytest.MonkeyPatch, hold: Callable[[], None]) -> None:
+        first: Callable[..., object] = QuerySet.first
+
+        def held(queryset: QuerySet[Model], *args: object, **kwargs: object) -> object:
+            locked = bool(queryset.query.select_for_update)
+            if queryset.model is model and locked == locking:
+                hold()
+            return first(queryset, *args, **kwargs)
+
+        patch.setattr(QuerySet, "first", held)
+
+    return install
+
+
+def get_read(model: type[Model], *, locking: bool = False) -> Seam:
+    """Hold before the first ``get()`` of ``model``: a locked retry lookup."""
+
+    def install(patch: pytest.MonkeyPatch, hold: Callable[[], None]) -> None:
+        get: Callable[..., object] = QuerySet.get
+
+        def held(queryset: QuerySet[Model], *args: object, **kwargs: object) -> object:
+            locked = bool(queryset.query.select_for_update)
+            if queryset.model is model and locked == locking:
+                hold()
+            return get(queryset, *args, **kwargs)
+
+        patch.setattr(QuerySet, "get", held)
 
     return install
 
@@ -426,10 +472,11 @@ def close_scene(graph: RbacGraph, root: Path) -> Scene:
     )
 
 
-def template_scene(graph: RbacGraph, root: Path) -> Scene:
-    """Starting a note from a template, held at the version INSERT."""
+def template_scene(graph: RbacGraph, root: Path, *, resume: bool = False) -> Scene:
+    """Starting a note: held at the version INSERT, or before the resume lookup."""
     world = late_revocation(graph)
-    discarded(graph, world)
+    if not resume:
+        discarded(graph, world)
     with owner_context(graph.organization_a):
         template = (
             SpecialtyTemplate.objects.filter(clinic_id=graph.clinic_a)
@@ -447,7 +494,9 @@ def template_scene(graph: RbacGraph, root: Path) -> Scene:
     return Scene(
         world.physician,
         world.revoke,
-        model_write(ClinicalDocumentVersion),
+        first_read(ClinicalDocumentVersion)
+        if resume
+        else model_write(ClinicalDocumentVersion),
         posting(workspace(graph), {"action": "template", "template_id": template}),
         partial(note_rows, graph, world.encounter),
         select=select,
@@ -709,6 +758,10 @@ def teleconsult_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
             discard_draft(clinic_id=graph.clinic_a, version_id=version.pk)
         body["template_id"] = template.pk
         seam = model_write(ClinicalDocumentVersion)
+    elif action == "note-template-resume":
+        # The draft stays: the template action resumes it.
+        body |= {"action": "note-template", "template_id": template.pk}
+        seam = first_read(ClinicalDocumentVersion)
     elif action in {"note-finalize", "note-amend"}:
         with as_actor(graph, graph.physician):
             version = record_clinical_note(
@@ -744,6 +797,224 @@ def teleconsult_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
     )
 
 
+def unscheduled_reuse_scene(graph: RbacGraph, root: Path) -> Scene:
+    """A walk-in start that reuses the open visit, held before that lookup (c6 B1)."""
+    world = late_revocation(graph)
+    body = {
+        "action": "open_unscheduled",
+        "enrollment_id": world.enrollment,
+        "reason": "walk_in",
+    }
+    return Scene(
+        world.physician,
+        world.revoke,
+        first_read(Encounter),
+        posting(workspace(graph), body),
+        partial(encounter_rows, graph),
+    )
+
+
+def scheduled_reuse_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Opening a booked visit that is already open, held before the reuse lookup."""
+    appointment, _ = encounter_seed(graph)
+    with as_actor(graph, graph.physician):
+        open_encounter(clinic_id=graph.clinic_a, appointment_id=appointment.pk)
+    member(graph, graph.physician)
+    return Scene(
+        graph.physician,
+        superuser_revoker(graph, graph.physician, UserClinicRole.Role.PHYSICIAN),
+        first_read(Encounter),
+        posting(workspace(graph), {"action": "open", "appointment_id": appointment.pk}),
+        partial(encounter_rows, graph),
+        cli=False,
+    )
+
+
+def close_retry_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Closing a visit already closed, held before the locked retry read."""
+    world = late_revocation(graph)
+    discarded(graph, world)
+    with as_actor(graph, world.physician):
+        close_encounter(clinic_id=graph.clinic_a, encounter_id=world.encounter)
+    return Scene(
+        world.physician,
+        world.revoke,
+        get_read(Encounter, locking=True),
+        posting(workspace(graph), {"action": "close", "encounter_id": world.encounter}),
+        partial(encounter_rows, graph),
+    )
+
+
+def episode_retry_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
+    """Re-linking or re-closing an episode, held before its reuse or locked read."""
+    world = late_revocation(graph)
+    with as_actor(graph, world.physician):
+        episode = open_episode(
+            clinic_id=graph.clinic_a,
+            enrollment_id=world.enrollment,
+            title="Episódio sintético",
+        )
+        link_encounter(
+            clinic_id=graph.clinic_a,
+            encounter_id=world.encounter,
+            episode_id=episode.pk,
+        )
+        if action == "episode_close":
+            close_episode(clinic_id=graph.clinic_a, episode_id=episode.pk)
+    body = {"action": action, "encounter_id": world.encounter, "episode_id": episode.pk}
+    return Scene(
+        world.physician,
+        world.revoke,
+        first_read(Episode, locking=True)
+        if action == "episode_close"
+        else first_read(EpisodeEncounter),
+        posting(workspace(graph), body),
+        partial(episode_rows, graph),
+    )
+
+
+def addendum_reuse_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Reopening another clinician's addendum draft, held before the reuse lookup."""
+    world = late_revocation(graph)
+    author, revoke = colleague(graph, world)
+    with as_actor(graph, author):
+        open_addendum(clinic_id=graph.clinic_a, encounter_id=world.encounter)
+    return Scene(
+        author,
+        revoke,
+        first_read(EncounterAddendum),
+        addendum_api(
+            "open",
+            lambda: {
+                "clinic_id": str(graph.clinic_a),
+                "encounter_id": str(world.encounter),
+            },
+        ),
+        partial(addendum_rows, graph),
+    )
+
+
+def addendum_replay_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Replaying an addendum autosave command, held before the receipt lookup."""
+    world = late_revocation(graph)
+    author, revoke = colleague(graph, world)
+    command, text = uuid4(), "Complemento sintético"
+    with as_actor(graph, author):
+        addendum = open_addendum(clinic_id=graph.clinic_a, encounter_id=world.encounter)
+        autosave_addendum(
+            clinic_id=graph.clinic_a,
+            addendum_id=addendum.pk,
+            expected_revision=addendum.revision,
+            editor_command_id=command,
+            text=text,
+        )
+    body: dict[str, object] = {
+        "clinic_id": str(graph.clinic_a),
+        "addendum_id": str(addendum.pk),
+        "expected_revision": addendum.revision,
+        "editor_command_id": str(command),
+        "text": text,
+    }
+    return Scene(
+        author,
+        revoke,
+        first_read(AddendumSaveReceipt),
+        addendum_api("autosave", lambda: body),
+        partial(addendum_rows, graph),
+    )
+
+
+def autosave_replay_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Replaying a draft autosave command, held before the receipt lookup.
+
+    The lookup follows the request's read audit, which holds the audit chain: the
+    owner CLI would wait for the request, so the role row is updated instead.
+    """
+    world = late_revocation(graph)
+    draft = draft_of(graph, world)
+    command = uuid4()
+    with as_actor(graph, world.physician):
+        autosave_draft(
+            clinic_id=graph.clinic_a,
+            version_id=draft.pk,
+            expected_revision=draft.revision,
+            editor_command_id=command,
+            editor_session_id=TAB_A,
+            sections=dict(SECTIONS),
+        )
+    body = {
+        "clinic_id": str(graph.clinic_a),
+        "version_id": str(draft.pk),
+        "expected_revision": draft.revision,
+        "editor_session": str(TAB_A),
+        "sections": SECTIONS,
+        "handover": False,
+        "editor_command_id": str(command),
+    }
+
+    def send(client: Client) -> _MonkeyPatchedWSGIResponse:
+        return client.post(AUTOSAVE_URL, json.dumps(body), "application/json")
+
+    return Scene(
+        world.physician,
+        superuser_revoker(graph, world.physician, UserClinicRole.Role.PHYSICIAN),
+        first_read(DraftSaveReceipt),
+        send,
+        partial(note_rows, graph, world.encounter),
+        cli=False,
+    )
+
+
+def scan_retry_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Scanning an attachment already scanned, held before the locked retry read."""
+    world = late_revocation(graph)
+    with as_actor(graph, world.physician):
+        attachment = upload_attachment(
+            clinic_id=graph.clinic_a,
+            encounter_id=world.encounter,
+            upload=AttachmentInput(
+                file_name="exame-sintetico.pdf",
+                declared_type="application/pdf",
+                data=PDF_BYTES,
+            ),
+        )
+        scan_attachment(clinic_id=graph.clinic_a, attachment_id=attachment.pk)
+    body = {
+        "action": "scan",
+        "encounter_id": world.encounter,
+        "attachment_id": attachment.pk,
+    }
+    return Scene(
+        world.physician,
+        world.revoke,
+        first_read(ClinicalAttachment, locking=True),
+        posting(f"/ehr/clinics/{graph.clinic_a}/attachments/", body),
+        partial(attachment_rows, graph, root),
+    )
+
+
+def finalize_retry_scene(graph: RbacGraph, root: Path) -> Scene:
+    """Finalizing a note already final, held before the locked retry read."""
+    world = late_revocation(graph)
+    draft = saved(graph, world)
+    request = verified_request(world.physician)
+    with as_actor(graph, world.physician):
+        final = finalize_version(
+            clinic_id=graph.clinic_a,
+            version_id=draft.pk,
+            expected_revision=draft.revision,
+            request=request,
+        )
+    body = {"action": "finalize", "version_id": final.pk, "revision": final.revision}
+    return Scene(
+        world.physician,
+        world.revoke,
+        first_read(ClinicalDocumentVersion, locking=True),
+        posting(workspace(graph), body),
+        partial(note_rows, graph, world.encounter),
+    )
+
+
 SCENES: dict[str, Callable[[RbacGraph, Path], Scene]] = {
     "save": partial(save_scene, action="save"),
     "merge": partial(save_scene, action="merge"),
@@ -772,8 +1043,20 @@ SCENES: dict[str, Callable[[RbacGraph, Path], Scene]] = {
             "note-amend",
             "note-finalize",
             "note-template",
+            "note-template-resume",
         )
     },
+    "reuse_unscheduled_open": unscheduled_reuse_scene,
+    "reuse_scheduled_open": scheduled_reuse_scene,
+    "retry_close": close_retry_scene,
+    "resume_template": partial(template_scene, resume=True),
+    "reuse_episode_link": partial(episode_retry_scene, action="episode_link"),
+    "retry_episode_close": partial(episode_retry_scene, action="episode_close"),
+    "reuse_addendum_open": addendum_reuse_scene,
+    "replay_addendum_autosave": addendum_replay_scene,
+    "replay_draft_autosave": autosave_replay_scene,
+    "retry_attachment_scan": scan_retry_scene,
+    "retry_finalize": finalize_retry_scene,
 }
 
 

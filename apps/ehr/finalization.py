@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import rfc8785
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import connection
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
@@ -179,7 +179,7 @@ def amend_document(
         partial(view_version, clinic_id=clinic_id, version_id=version_id),
         partial(assignee_scope, clinic_id=clinic_id, version_id=version_id),
     )
-    with transaction.atomic():
+    with decided(partial(assignee_scope, clinic_id=clinic_id, version_id=version_id)):
         current = (
             ClinicalDocumentVersion.objects.select_for_update()
             .filter(document_id=authorized.document_id, state="finalized")
