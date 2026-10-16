@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from apps.scheduling import (
+    agenda_grid_views,
     agenda_views,
     booking_views,
     lifecycle_views,
@@ -44,6 +45,7 @@ SIBLINGS = {
     inspect.unwrap(views.availability_list_view): "scheduling.test_availability_http",
     inspect.unwrap(views.availability_retire_view): "scheduling.test_availability_http",
     inspect.unwrap(agenda_views.agenda_view): "scheduling.test_agenda_http",
+    inspect.unwrap(agenda_grid_views.agenda_grid_view): "scheduling.test_agenda_grid",
 }
 
 
@@ -99,6 +101,8 @@ def write_routes() -> tuple[WriteRoute, ...]:
             result.append(WriteRoute(name, ("reschedule",), "appointment_id"))
         elif callback is inspect.unwrap(transition_views.appointment_cancel_view):
             result.append(WriteRoute(name, ("cancel",), "appointment_id"))
+        elif callback is inspect.unwrap(agenda_grid_views.agenda_grid_move_view):
+            result.append(WriteRoute(name, ("grid_move",), "clinic_id"))
         else:
             assert callback in SIBLINGS, ("unclassified scheduling route", name)
     assert result, "no scheduling appointment routes discovered"

@@ -47,6 +47,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
     assert set(runner.SUITES) == {
         "onboarding",
         "agenda",
+        "agenda-slice",
         "realtime",
         "amendments",
         "attachments",
@@ -78,6 +79,8 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "workspace",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
+    assert {"realtime", "agenda-slice"} == runner.REALTIME_SUITES
+    assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS
     assert set(runner.SUITES) >= runner.FIXTURE_SUITES
@@ -407,6 +410,15 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
         ),
         "test_owner_login_establishes_a_session_and_enters_the_totp_flow": (
             "asserts the session cookie between the press and the URL wait"
+        ),
+    },
+    BROWSER_SUITES / "test_agenda_slice.py": {
+        "press": (
+            "records the keyboard-only move script; its one Enter submits the"
+            " hx-post move form, which swaps the grid; no document"
+        ),
+        "_cancel": (
+            "Enter on the move dialog's type=button Cancel closes it; no document"
         ),
     },
     BROWSER_SUITES / "test_billing.py": {

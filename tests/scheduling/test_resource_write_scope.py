@@ -42,10 +42,12 @@ from scheduling.test_resources import _catalog
 from scheduling.write_scope_routes import write_routes
 
 if TYPE_CHECKING:
+    from apps.scheduling.models import Appointment
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
 
     from conftest import RbacGraph
+    from scheduling.appointment_service_support import AppointmentSetup
 
 pytestmark = [
     pytest.mark.django_db(transaction=True),
@@ -72,6 +74,7 @@ def test_the_matrix_splits_every_write_and_response_scope() -> None:
     assert book_without_agenda - AGENDA_SCOPE, "a booker outside the agenda scope"
     assert set(ROLES) - move_without_page - TRANSITION_SCOPE, "refused both ways"
     assert holds(PHYSICIAN, "appointment.move_own", "appointment.book_own")
+    assert "scheduling:agenda-grid-move" in {route.name for route in write_routes()}
 
 
 def _snapshot(
@@ -84,7 +87,8 @@ def _snapshot(
     with psycopg.connect(database_url) as raw:
         rows = raw.execute(
             "SELECT id, start_at, end_at, status, service_type_id, resource_ids, "
-            "buffer_before, buffer_after FROM clinic_app.scheduling_appointment"
+            "buffer_before, buffer_after, revision "
+            "FROM clinic_app.scheduling_appointment"
         ).fetchall()
         resources = raw.execute(
             "SELECT id, appointment_id, resource_id, unit, start_at, end_at, occupied "
@@ -114,6 +118,47 @@ def _refused_like(
         and not response.cookies
         and not response.wsgi_request.session.modified
     )
+
+
+def _grid_move_data(
+    setup: AppointmentSetup, appointment: Appointment
+) -> dict[str, str | list[str]]:
+    """Use the live revision and free times inside the buffered fixture window."""
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        appointment.refresh_from_db(fields=["revision"])
+    service = appointment.service_type_id is not None
+    return {
+        "appointment_id": str(appointment.pk),
+        "expected_revision": str(appointment.revision),
+        "day": "2035-06-02",
+        "start": "09:10" if service else "08:30",
+        "duration": "30" if service else "15",
+    }
+
+
+def _accepted_response(
+    client: Client,
+    response: _MonkeyPatchedWSGIResponse,
+    mode: str,
+    *,
+    htmx: bool,
+) -> None:
+    """An accepted write returns its authorized partial or a viewable redirect."""
+    expected_status = (
+        200
+        if mode == "prepare" or (mode == "grid_move" and htmx)
+        else 204
+        if htmx
+        else 303
+    )
+    assert response.status_code == expected_status, (mode, response.status_code)
+    if mode == "grid_move" and htmx:
+        appointment = response.wsgi_request.POST["appointment_id"]
+        assert f'data-appointment="{appointment}"'.encode() in response.content
+    elif mode != "prepare":
+        target = response["HX-Redirect" if htmx else "Location"]
+        with runtime_role():
+            assert client.get(target).status_code == 200, mode
 
 
 @pytest.mark.parametrize("role", ROLES)
@@ -175,6 +220,7 @@ def test_writes_decide_their_response_scope_before_writing(
                     moving_allowed,
                 ),
                 "cancel": ({"reason": "clinic_request"}, moving_allowed),
+                "grid_move": (_grid_move_data(setup, appointment), moving_allowed),
             }
             identifier = (
                 setup.clinic_id if route.selector == "clinic_id" else appointment.pk
@@ -187,7 +233,12 @@ def test_writes_decide_their_response_scope_before_writing(
                 response_scope = (
                     AGENDA_SCOPE if mode in {"prepare", "create"} else TRANSITION_SCOPE
                 )
-                allowed = write_allowed and (is_service or role in response_scope)
+                if mode == "grid_move":
+                    allowed = write_allowed and (
+                        role in AGENDA_SCOPE or holds(role, "appointment.book")
+                    )
+                else:
+                    allowed = write_allowed and (is_service or role in response_scope)
                 name = (route.name, mode, "service" if is_service else "legacy", htmx)
                 # Warm step-up and compare the unknown request's own refusal.
                 unknown = _post(client, unknown_url, data, htmx=htmx)
@@ -196,21 +247,17 @@ def test_writes_decide_their_response_scope_before_writing(
                 response = _post(client, url, data, htmx=htmx)
                 after_rows, after_audit = _snapshot(superuser_database_url)
                 if allowed:
-                    expected_status = 200 if mode == "prepare" else 204 if htmx else 303
-                    assert response.status_code == expected_status, (
-                        role,
-                        name,
-                        response.status_code,
-                    )
+                    _accepted_response(client, response, mode, htmx=htmx)
                     assert (after_rows == before_rows) == (mode == "prepare"), (
                         role,
                         name,
                     )
                     assert after_audit > before_audit, (role, name)
-                    if mode != "prepare":
-                        target = response["HX-Redirect" if htmx else "Location"]
-                        with runtime_role():
-                            assert client.get(target).status_code == 200, (role, name)
+                    if mode == "grid_move":
+                        assert (
+                            after_rows[("appointment", appointment.pk)][-1]
+                            == appointment.revision + 1
+                        ), (role, name)
                 else:
                     assert _refused_like(response, unknown), (
                         role,

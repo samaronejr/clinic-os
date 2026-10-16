@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import json
 import os
@@ -97,6 +98,23 @@ def test_tracked_serial_classification_parses() -> None:
     entries = load_manifest()
     assert entries
     assert len({entry.prefix for entry in entries}) == len(entries)
+
+
+def test_grid_refusal_module_stays_in_the_parallel_partition() -> None:
+    path = Path("tests/core/test_workspace_agenda_grid_refusals.py")
+    module = ast.parse((PROJECT_ROOT / path).read_text(encoding="utf-8"))
+    nodes = [
+        f"{path.as_posix()}::{node.name}"
+        for node in module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    ]
+    assert nodes
+    assert not [
+        entry.prefix
+        for entry in load_manifest()
+        if any(entry.matches(nodeid) for nodeid in nodes)
+    ]
 
 
 @pytest.mark.parametrize(

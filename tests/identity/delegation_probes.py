@@ -12,13 +12,12 @@ which must be refused by the permission check itself.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Self
 from unittest import mock
 from uuid import uuid4
 
 from apps.identity import scope_provisioning, service_principals
-from apps.identity.current_context import _UnauthorizedActorError, require_permission
+from apps.identity.current_context import require_permission
 from apps.identity.models import (
     CareTeamMembership,
     ProfessionalRegistration,
@@ -36,6 +35,8 @@ from django.test import Client, override_settings
 from django_otp import DEVICE_ID_SESSION_KEY
 from psycopg import sql
 
+from identity.delegation_probe_support import Case, Seeded
+from identity.grid_delegation_probes import CASES as GRID_CASES
 from identity.nonstaff_differential import DifferentialProbe
 from identity.permission_support import owner_context, permission_actor
 from otp_test_support import create_totp_device, runtime_role
@@ -48,32 +49,6 @@ if TYPE_CHECKING:
 
 # Default deciding permission; agenda subscriptions use their topic permission.
 PERMISSION = "staff.organization"
-
-
-@dataclass(frozen=True)
-class Seeded:
-    """A call on real subjects plus the observable state it may change."""
-
-    call: Callable[[], object]
-    state: Callable[[], object]
-    # For calls without a stored effect: the value proceeding must return,
-    # given the permitted actor.
-    returns: Callable[[UUID], object] | None = None
-    # The exception a refusal surfaces as; its chain must hold the
-    # require_permission denial (see test_delegation_probes).
-    denial: type[Exception] = _UnauthorizedActorError
-
-
-@dataclass(frozen=True)
-class Case:
-    """How a root delegation is driven and which permission decides it."""
-
-    seed: Callable[[RbacGraph, UUID], Seeded]
-    database_role: str = "clinic_owner"
-    permission: str = PERMISSION
-    # The actor comes from a stored login session and the call opens its own
-    # tenant transaction, so it runs outside any enclosing transaction.
-    session: bool = False
 
 
 def _principal(graph: RbacGraph, *, granted: bool) -> ServicePrincipal:
@@ -332,6 +307,7 @@ def _authorize_topics(graph: RbacGraph, actor: UUID) -> Seeded:
 
 AGENDA = TOPIC_PERMISSIONS["agenda"]
 CASES: dict[str, Case] = {
+    **GRID_CASES,
     "apps.identity.current_context.require_permission": Case(
         _require_permission, database_role="clinic_app"
     ),
