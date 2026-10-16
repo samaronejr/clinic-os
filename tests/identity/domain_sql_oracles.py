@@ -1,7 +1,6 @@
 """Executable protocol oracles for scheduling, workflows and representation."""
 
 from ai import test_controls as ai_controls
-from ai import test_gateway as ai_gateway
 from ai import test_posture as ai_posture
 from patients import test_delegates
 from scheduling.test_appointment_states import (
@@ -65,11 +64,6 @@ DELEGATE_PROTOCOLS = frozenset(
     }
 )
 PROTOCOL_ORACLES = {
-    "clinic_app.ai_ledger_guard": [
-        "test_raw_invocation_cannot_forge_a_cheaper_budget_reservation",
-        "test_fake_call_is_metered_once_and_all_content_stays_encrypted",
-        "test_closed_circuit_can_reopen_without_losing_history",
-    ],
     "clinic_app.ai_staff": [
         "test_ai_sql_role_and_scope_decisions_follow_exact_permissions",
         "test_clinical_purposes_recheck_current_patient_authority",
@@ -114,13 +108,5 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     for module, names in (
         (ai_posture, PROTOCOL_ORACLES["clinic_app.ai_staff"]),
         (ai_controls, PROTOCOL_ORACLES["clinic_app.configuration_guard"]),
-        (
-            ai_posture,
-            [
-                PROTOCOL_ORACLES["clinic_app.ai_ledger_guard"][0],
-                PROTOCOL_ORACLES["clinic_app.ai_ledger_guard"][2],
-            ],
-        ),
-        (ai_gateway, [PROTOCOL_ORACLES["clinic_app.ai_ledger_guard"][1]]),
     ):
         assert all(callable(getattr(module, name)) for name in names)

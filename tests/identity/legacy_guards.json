@@ -5791,13 +5791,15 @@
         "policies": [],
         "resolvers": []
       },
-      "kind": "domain_protocol",
+      "kind": "lifecycle_protocol",
       "probes": [
-        "test_raw_invocation_cannot_forge_a_cheaper_budget_reservation",
-        "test_fake_call_is_metered_once_and_all_content_stays_encrypted",
-        "test_closed_circuit_can_reopen_without_losing_history"
+        "ai.test_posture.test_ledger_guard_refuses_inactive_admission_with_raw_actor_context",
+        "ai.test_cancellation.test_revoked_actor_cancellation_releases_the_unspent_reservation",
+        "ai.test_posture.test_raw_invocation_cannot_forge_a_cheaper_budget_reservation",
+        "ai.test_gateway.test_fake_call_is_metered_once_and_all_content_stays_encrypted",
+        "ai.test_posture.test_closed_circuit_can_reopen_without_losing_history"
       ],
-      "reason": "Executed runtime reservation, artifact, actor and outbox binding with raw-SQL refusal and real transport settlement."
+      "reason": "Admission delegates current staff authority to ai_staff; actor binding retains content-free cancellation bookkeeping after revocation. Executable inactive-admission and revoked-cancellation oracles accompany the existing raw reservation, artifact, outbox settlement and circuit-history controls."
     },
     "clinic_app.ai_organization_policy": {
       "discovery": {

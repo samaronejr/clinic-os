@@ -185,6 +185,14 @@ SQL_PROTOCOL_ORACLES = (
         ),
     )
     | {
+        "clinic_app.ai_ledger_guard": (
+            *ACTOR_PROTOCOL_ORACLES["clinic_app.ai_ledger_guard()"],
+            "ai.test_posture."
+            "test_raw_invocation_cannot_forge_a_cheaper_budget_reservation",
+            "ai.test_gateway."
+            "test_fake_call_is_metered_once_and_all_content_stays_encrypted",
+            "ai.test_posture.test_closed_circuit_can_reopen_without_losing_history",
+        ),
         "clinic_app.identity_pending_authority_guard": (
             "identity.test_lifecycle_sql_readers."
             "test_installed_lifecycle_triggers_are_attached_and_enabled",
