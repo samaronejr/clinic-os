@@ -370,12 +370,14 @@ def amend_scene(graph: RbacGraph, root: Path) -> Scene:
     """Native amendment of the finalized note, held before its audited read."""
     world = late_revocation(graph)
     draft = saved(graph, world)
+    # The step-up request reads the user row, which the runtime role may not.
+    request = verified_request(world.physician)
     with as_actor(graph, world.physician):
         finalized = finalize_version(
             clinic_id=graph.clinic_a,
             version_id=draft.pk,
             expected_revision=draft.revision,
-            request=verified_request(world.physician),
+            request=request,
         )
     body = {"action": "amend", "version_id": finalized.pk, "reason": "Correção"}
     return Scene(
@@ -719,12 +721,13 @@ def teleconsult_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
             body |= {"version_id": version.pk, "revision": version.revision}
             seam = model_write(ClinicalDocumentVersion)
         else:
+            request = verified_request(graph.physician)
             with as_actor(graph, graph.physician):
                 finalized = finalize_version(
                     clinic_id=graph.clinic_a,
                     version_id=version.pk,
                     expected_revision=version.revision,
-                    request=verified_request(graph.physician),
+                    request=request,
                 )
             body |= {"version_id": finalized.pk, "reason": "Correção"}
     else:
