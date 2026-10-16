@@ -210,15 +210,18 @@ def test_ledger_guard_refuses_inactive_admission_with_raw_actor_context(
         ]
     with owner_context(rbac_graph.organization_a), connection.cursor() as cursor:
         cursor.execute(
-            "SELECT to_jsonb(a) FROM clinic_app.ai_aiartifact a WHERE id=%s",
+            "SELECT to_jsonb(a)::text FROM clinic_app.ai_aiartifact a WHERE id=%s",
             [inputs[0]],
         )
-        (artifact,) = cursor.fetchone()
+        (artifact_json,) = cursor.fetchone()
+        artifact = json.loads(artifact_json)
         cursor.execute(
-            "SELECT to_jsonb(i) FROM clinic_app.ai_aiinvocation i WHERE id=%s",
+            "SELECT to_jsonb(i)::text FROM clinic_app.ai_aiinvocation i WHERE id=%s",
             [result.invocation_id],
         )
-        (invocation,) = cursor.fetchone()
+        (invocation_json,) = cursor.fetchone()
+        invocation = json.loads(invocation_json)
+    inactive_refusals: set[str] = set()
     for active, input_id in zip((True, False, True), inputs, strict=True):
         with owner_context(rbac_graph.organization_a):
             assert (
@@ -262,6 +265,8 @@ def test_ledger_guard_refuses_inactive_admission_with_raw_actor_context(
                     assert cause.sqlstate == "23514"
                     assert cause.diag.message_primary == refusal
                     assert "ai_ledger_guard()" in (cause.diag.context or "")
+                    inactive_refusals.add(refusal)
+    assert inactive_refusals == {"AI artifact denied", "AI reservation denied"}
 
 
 def test_runtime_cannot_write_global_terms_and_owner_cannot_delete_artifacts(

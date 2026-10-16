@@ -26,6 +26,7 @@ from django.utils import timezone
 from ai.support import policy, seed
 from auth.stepup_test_support import create_role_actor, verified_request
 from core.test_navigation import _client_for, _get, _post, _reauthenticate
+from core.test_workspace_in_view_refusals import assert_session_read_only
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
@@ -188,9 +189,7 @@ def test_http_controls_execute_denied_malformed_and_conflict_refusal_exits(
     before = dict(client.session)
     denied = _post(client, url, submission(world))
     assert denied.status_code == 403
-    assert denied.wsgi_request.session.modified is False
-    assert dict(client.session) == before
-    assert not denied.cookies
+    assert_session_read_only(client, denied, before)
     with owner_context(rbac_graph.organization_a):
         UserClinicRole.objects.create(
             organization_id=rbac_graph.organization_a,
@@ -207,9 +206,7 @@ def test_http_controls_execute_denied_malformed_and_conflict_refusal_exits(
     ):
         response = _post(client, url, data)
         assert response.status_code == expected
-        assert response.wsgi_request.session.modified is False
-        assert dict(client.session) == before
-        assert not response.cookies
+        assert_session_read_only(client, response, before)
 
 
 def test_unknown_and_foreign_clinic_control_reads_refuse_equally(

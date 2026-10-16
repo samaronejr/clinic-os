@@ -14,6 +14,7 @@ from apps.core.api.errors import UI_API_PREFIX
 from apps.ehr.services import SOAP_FIELDS
 from apps.identity.account_views import request_session_key
 from apps.identity.models import UserClinicRole
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from django.test import Client, override_settings
 from django.urls import get_resolver, path
@@ -175,6 +176,19 @@ def _send(
         return client.post(url, data, headers=headers)
 
 
+def assert_session_read_only(
+    client: Client,
+    response: _MonkeyPatchedWSGIResponse,
+    snapshot: dict[str, object],
+) -> None:
+    """Match the collection oracle's session-only cookie boundary."""
+    assert response.wsgi_request.session.modified is False
+    unchanged = dict(client.session) == snapshot
+    session_cookie = settings.SESSION_COOKIE_NAME in response.cookies
+    assert unchanged
+    assert not session_cookie
+
+
 def _probe_route(
     route: WorkspaceRoute,
     client: Client,
@@ -232,8 +246,7 @@ def _probe_route(
                 statuses.add(response.status_code)
                 if response.status_code in {403, 404} and len(entries) > before:
                     refusals += 1
-                    assert response.wsgi_request.session.modified is False
-                    assert dict(client.session) == snapshot
+                    assert_session_read_only(client, response, snapshot)
                     assert not response.cookies
     return refusals, statuses
 
