@@ -10,9 +10,10 @@ same request made once the revocation has committed: the same refusal and body,
 the same denial record (or none), no other clinical audit event, and unchanged
 rows, stored objects and session. Every wait is a bounded Event; nothing sleeps.
 
-Opening a scheduled encounter is guarded the same way and has no case here: the
-owner CLI refuses to retire a physician who holds live availability or an
-occupying appointment, which the arrived-appointment fixtures create.
+Opening a scheduled encounter and the teleconsult workspace's note actions are
+guarded the same way and have no case here: the owner CLI refuses to retire a
+physician who holds live availability or an occupying appointment, which the
+arrived-appointment fixtures create and every video session binds.
 """
 
 from __future__ import annotations

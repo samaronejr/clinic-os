@@ -12,7 +12,7 @@ the physician's edits as unsaved; nothing here writes outside the services.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.db import DatabaseError
@@ -29,7 +29,9 @@ from apps.ehr.services import (
     assignee_scope,
     author_scope,
     create_draft,
+    decided,
     record_clinical_note,
+    resume_encounter,
     view_version,
 )
 from apps.identity.otp import flow_redirect, safe_next_url
@@ -37,6 +39,7 @@ from apps.identity.stepup import StepUpRequired
 from apps.teleconsult.models import TeleconsultRoom
 from apps.teleconsult.services import (
     TeleconsultAccessDeniedError,
+    assigned_session,
     derived_state,
     patient_joined,
 )
@@ -390,6 +393,14 @@ _HANDLERS = {
     "note-discard": _discard,
     "note-amend": _amend,
 }
+# What each version action decides with reads only before its first write. Once
+# the binding holds, finalize's service decides authorship as author_scope does.
+_SCOPES: Final[dict[str, Callable[..., UUID]]] = {
+    "note-save": author_scope,
+    "note-finalize": author_scope,
+    "note-discard": author_scope,
+    "note-amend": assignee_scope,
+}
 
 
 def note_action(
@@ -399,8 +410,28 @@ def note_action(
     action: str,
     workspace: Callable[[], dict[str, object]],
 ) -> HttpResponseBase:
-    """Run one explicit note action and render the notes panel or the page."""
-    result = _HANDLERS[action](request, clinic_id, session)
+    """Run one explicit note action and render the notes panel or the page.
+
+    A refusal inside the action after its decisions is late: they run again,
+    reads only and in request order, so the response and the denial record are
+    an early refusal's and nothing the action wrote survives.
+    """
+
+    def decide() -> None:
+        assigned_session(clinic_id=clinic_id, session_id=session.pk)
+        if action == "note-template":
+            resume_encounter(clinic_id=clinic_id, encounter_id=session.encounter_id)
+            return
+        _session_version(
+            clinic_id,
+            session,
+            request.POST.get("version_id", ""),
+            scope=_SCOPES[action],
+            read=False,
+        )
+
+    with decided(decide):
+        result = _HANDLERS[action](request, clinic_id, session)
     if not isinstance(result, tuple):
         return result
     context, status = result
