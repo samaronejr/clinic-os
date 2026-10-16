@@ -115,6 +115,14 @@ class AgendaBoardQueryView(UiApiView):
 
     @extend_schema(
         operation_id="agenda_board_query",
+        description=(
+            "Adapt ``scheduling.view_agenda_board``; unknown and foreign clinics "
+            "match.\n\nDeviation from the todo 24 plan wording, accepted "
+            "provisionally pending gate review: the plan widens "
+            "``agenda/query`` to the multi-view board. ``agenda/query`` keeps "
+            "its pinned response keys and required ``clinic_id``, so the day, "
+            "week, month and list board is this separate endpoint instead."
+        ),
         tags=["agenda"],
         request=AgendaBoardQueryRequestSerializer,
         responses={200: AgendaBoardSerializer, **ERROR_RESPONSES},

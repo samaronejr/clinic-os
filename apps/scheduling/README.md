@@ -251,6 +251,10 @@ booking key travels in the POST body. Refusals share the unknown-clinic 404
 and write nothing, not even the session; a lost race answers 409 with the
 current board and "Horário acabou de ser ocupado". `POST /api/ui/v1/agenda/board/`
 returns the same read as a typed DTO (`clinic_id` optional: the shell's clinic).
+This deviates from the todo 24 plan wording, which widens `agenda/query` to the
+board; `agenda/query` keeps its pinned response keys and required `clinic_id`,
+so the board is a separate endpoint. Root accepted this provisionally; the gate
+review decides it.
 
 The page stays HTMX over native forms (ADR-001 variant A): realtime hints and
 the polling fallback refetch the board with its filters, a refetch that shows
