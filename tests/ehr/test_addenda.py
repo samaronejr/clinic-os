@@ -202,7 +202,8 @@ def test_addendum_open_is_decided_by_clinical_write(rbac_graph: RbacGraph) -> No
         actor = clinician(rbac_graph, role, enrolled)
         with permission_context(rbac_graph, actor):
             # Roles the encounter read policy hides get the unknown-record
-            # denial before any permission question; the rest ask exactly one.
+            # denial before any permission question. A refused role asks once;
+            # a permitted open asks again at its decided exit.
             visible = Encounter.objects.filter(pk=encounter.pk).exists()
         with permission_context(rbac_graph, actor), asked_permissions() as asked:
             if role in permitted("clinical.write"):
@@ -219,7 +220,8 @@ def test_addendum_open_is_decided_by_clinical_write(rbac_graph: RbacGraph) -> No
                     open_addendum(
                         clinic_id=rbac_graph.clinic_a, encounter_id=encounter.pk
                     )
-        assert asked == (["clinical.write"] if visible else []), role
+        asks = 2 if role in permitted("clinical.write") else 1
+        assert asked == (["clinical.write"] * asks if visible else []), role
         hidden.update(set() if visible else {role})
     # Physicians and every staff role the encounter policy admits reach it.
     assert hidden == {

@@ -27,13 +27,13 @@ import difflib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
+from functools import partial
 from hashlib import sha256
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 import rfc8785
 from django.core.exceptions import ValidationError
-from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
@@ -41,14 +41,13 @@ from apps.ehr.models import ClinicalDocumentVersion, DraftEditState, DraftSaveRe
 from apps.ehr.services import (
     MAX_CONTENT,
     SOAP_FIELDS,
-    ClinicalAccessDeniedError,
     ClinicalConflictError,
     author_scope,
+    decided,
     draft_edit_state,
     record_clinical_note,
     view_version,
 )
-from apps.identity.current_context import CurrentActorError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -385,25 +384,17 @@ def autosave_draft(  # noqa: PLR0913 - the command's exact keyword contract
         handover=request_handover,
     )
     try:
-        # One rollback boundary holds the read audit (the first write) and
-        # every decision that depends on it. Authority committed away after
-        # author_scope hides the draft from RLS exactly as a finalization
-        # does; either way the read audit rolls back with the refusal, and
-        # authority is decided again below, outside the boundary.
-        with transaction.atomic():
+        # One decided boundary holds the read audit (the first write) and every
+        # decision that depends on it: a replay, lock refusal or conflict ends
+        # on a current decision, and authority committed away after
+        # author_scope (RLS then hides the draft or its receipt, or refuses a
+        # later statement) rolls the read audit back with whatever failed and
+        # is decided again outside the boundary.
+        with decided(partial(author_scope, clinic_id=clinic_id, version_id=version_id)):
             result = _decide_locked(command)
-            # A replay, lock refusal or conflict writes nothing for RLS to
-            # refuse; every result is returned on a current decision.
-            author_scope(clinic_id=clinic_id, version_id=version_id)
-    except (ClinicalAccessDeniedError, CurrentActorError):
-        # A refusal inside the boundary is late. Deciding authority again
-        # gives the response and the denial record of an early refusal.
-        author_scope(clinic_id=clinic_id, version_id=version_id)
-        raise
     except _DraftUnavailableError:
-        # Lost authority is the ordinary denial; only a draft that is no
-        # longer editable is the lifecycle conflict.
-        author_scope(clinic_id=clinic_id, version_id=version_id)
+        # decided found authority intact: only a draft that is no longer
+        # editable remains, the lifecycle conflict.
         msg = "precondition_failed"
         raise ClinicalConflictError(msg) from None
     return result

@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from contextlib import contextmanager
 from functools import partial
-from typing import TYPE_CHECKING, Final, NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
-from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -80,17 +80,6 @@ def _denied(clinic_id: UUID, record_id: UUID, reason: str) -> NoReturn:
     raise ClinicalAccessDeniedError
 
 
-# Outcomes of a write attempted after its authority decision that can mean the
-# authority was committed away in between (see ``decided``).
-LATE_REFUSALS: Final = (
-    ClinicalAccessDeniedError,
-    ClinicalConflictError,
-    CurrentActorError,
-    DatabaseError,
-    ObjectDoesNotExist,
-)
-
-
 @contextmanager
 def decided(redecide: Callable[[], object]) -> Iterator[None]:
     """Run writes after their authority decision; lost authority is its refusal.
@@ -102,22 +91,21 @@ def decided(redecide: Callable[[], object]) -> Iterator[None]:
     function) until commit, and the revocation command appends its own event in
     the transaction that retires the role. Before that point RLS rejects the
     next INSERT or UPDATE (SQLSTATE 42501), filters the row an UPDATE or a
-    locking read needs, or a later check refuses. Each such outcome rolls back
-    with this savepoint and ``redecide`` runs again outside it: lost authority
-    raises the early refusal with that decision's own denial record, and with
-    authority intact the original exception is re-raised unchanged, so genuine
-    storage and lifecycle failures are never relabelled as denials.
-
-    The block's normal exit decides once more, inside the savepoint. A reuse,
-    idempotent-replay or race-winner return writes nothing for RLS to refuse,
-    so without that final decision a revocation committed before it would turn
-    into a success; with it, that return is the early refusal as well.
+    locking read needs, or a later check refuses; a reuse, idempotent-replay or
+    race-winner return writes nothing for RLS to refuse, so the block's normal
+    exit decides once more, inside the savepoint. Any failure, that final
+    decision's own refusal included and whatever its error type (a teleconsult
+    refusal is not an EHR one), rolls back with this savepoint and ``redecide``
+    runs again outside it: lost authority raises the early refusal with that
+    decision's own denial record, and with authority intact the original
+    exception is re-raised unchanged, so genuine storage and lifecycle failures
+    are never relabelled as denials.
     """
     try:
         with transaction.atomic():
             yield
             redecide()
-    except LATE_REFUSALS:
+    except Exception:
         redecide()
         raise
 

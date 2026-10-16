@@ -3,8 +3,9 @@
 An Event holds the request at an exact point: just before the first
 ``ehr.record.viewed`` append of an audit-first action, at the model write of a
 write-first action (after any row lock it takes), or just before the lookup that
-reuses, replays or retries an earlier result (``first_read``, ``get_read``).
-While it is held the role is retired in its own transaction: by the shipped owner
+reuses, replays or retries an earlier result (``first_read``, ``get_read``), or
+at a video note action's exit decision (``teleconsult_exit_decision``). While it
+is held the role is retired in its own transaction: by the shipped owner
 CLI, which waits for a request that has already appended an audit row
 (``decided``), or by the same row update it makes (``superuser_revoker``) where
 that command refuses or would wait. The late response must be the response to
@@ -51,13 +52,16 @@ from apps.ehr.models import (
 from apps.ehr.services import (
     SOAP_FIELDS,
     create_draft,
+    decided,
     open_encounter,
     publish_template,
     record_clinical_note,
+    record_denial,
 )
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import UserClinicRole
 from apps.teleconsult.adapters import SyntheticRoomAdapter
+from apps.teleconsult.services import assigned_session
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.db.models.query import QuerySet
@@ -95,6 +99,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from uuid import UUID
 
+    from apps.teleconsult.models import TeleconsultSession
     from django.db.models import Model
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
@@ -256,6 +261,23 @@ def get_read(model: type[Model], *, locking: bool = False) -> Seam:
         patch.setattr(QuerySet, "get", held)
 
     return install
+
+
+def teleconsult_exit_decision(
+    patch: pytest.MonkeyPatch, hold: Callable[[], None]
+) -> None:
+    """Hold a video note action's exit decision (its workspace ``assigned_session``).
+
+    The route decides through its own binding and no handler asks again, so the
+    first call through the workspace's binding is the action's last decision.
+    """
+    decide = assigned_session
+
+    def held(*, clinic_id: UUID, session_id: UUID) -> TeleconsultSession:
+        hold()
+        return decide(clinic_id=clinic_id, session_id=session_id)
+
+    patch.setattr("apps.teleconsult.workspace.assigned_session", held)
 
 
 @contextmanager
@@ -762,7 +784,7 @@ def teleconsult_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
         # The draft stays: the template action resumes it.
         body |= {"action": "note-template", "template_id": template.pk}
         seam = first_read(ClinicalDocumentVersion)
-    elif action in {"note-finalize", "note-amend"}:
+    elif action in {"note-finalize", "note-finalize-stale", "note-amend"}:
         with as_actor(graph, graph.physician):
             version = record_clinical_note(
                 clinic_id=graph.clinic_a,
@@ -773,6 +795,15 @@ def teleconsult_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
         if action == "note-finalize":
             body |= {"version_id": version.pk, "revision": version.revision}
             seam = model_write(ClinicalDocumentVersion)
+        elif action == "note-finalize-stale":
+            # A stale revision is answered by the conflict render, a normal
+            # return: the loss shows at the action's exit decision.
+            body |= {
+                "action": "note-finalize",
+                "version_id": version.pk,
+                "revision": version.revision - 1,
+            }
+            seam = teleconsult_exit_decision
         else:
             request = verified_request(graph.physician)
             with as_actor(graph, graph.physician):
@@ -1044,6 +1075,7 @@ SCENES: dict[str, Callable[[RbacGraph, Path], Scene]] = {
             "note-finalize",
             "note-template",
             "note-template-resume",
+            "note-finalize-stale",
         )
     },
     "reuse_unscheduled_open": unscheduled_reuse_scene,
@@ -1137,3 +1169,57 @@ def test_template_publish_after_late_admin_revocation_writes_nothing(
     assert late_trail == early_trail
     assert trail.count("identity.staff_role.revoked") == 1
     assert templates() == unchanged
+
+
+class _RefusalError(Exception):
+    """A refusal of a type ``decided`` was not written for, as teleconsult's is."""
+
+
+@pytest.mark.parametrize(
+    "outcome", ["exit_refused", "block_failed", "failure_kept", "write_kept"]
+)
+def test_decided_decides_any_failure_again_outside_its_savepoint(
+    rbac_graph: RbacGraph, outcome: str
+) -> None:
+    """Every failure of a decided block, its exit decision's own included, is
+    decided again outside the savepoint, and nothing the block wrote survives it.
+
+    Lost authority raises that decision's refusal with exactly one denial record;
+    intact authority keeps the block's own failure, or its write, unchanged.
+    """
+    graph = rbac_graph
+    lost = outcome in {"exit_refused", "block_failed"}
+
+    def redecide() -> None:
+        if lost:
+            record_denial(graph.clinic_a, uuid4(), "not_assigned")
+            raise _RefusalError
+
+    def block() -> None:
+        audit_services.record_phase1_event(
+            "ehr.encounter.closed", clinic_id=graph.clinic_a, affected_record_id=uuid4()
+        )
+        if outcome in {"block_failed", "failure_kept"}:
+            raise LookupError
+
+    before = audit_mark(graph)
+    with as_actor(graph, graph.physician):
+        if outcome == "write_kept":
+            with decided(redecide):
+                block()
+        else:
+            with (
+                pytest.raises(_RefusalError if lost else LookupError),
+                decided(redecide),
+            ):
+                block()
+    trail = [e for e in audit_since(graph, before) if e.startswith(CLINICAL)]
+    assert (
+        trail
+        == {
+            "exit_refused": [DENIAL],
+            "block_failed": [DENIAL],
+            "failure_kept": [],
+            "write_kept": ["ehr.encounter.closed"],
+        }[outcome]
+    )

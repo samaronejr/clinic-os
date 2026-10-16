@@ -667,7 +667,9 @@ def test_unscheduled_open_is_decided_by_its_exact_permission(
             else:
                 with pytest.raises(ClinicalAccessDeniedError):
                     open_walk_in(rbac_graph, enrolled)
-        assert asked == [UNSCHEDULED], role
+        # A permitted start decides once more at its decided exit.
+        asks = 2 if role in permitted(UNSCHEDULED) else 1
+        assert asked == [UNSCHEDULED] * asks, role
     assert count(rbac_graph, Encounter, appointment__isnull=True) == 1
     assert audit_types(rbac_graph).count("ehr.encounter.opened_unscheduled") == 1
 
@@ -936,7 +938,9 @@ def test_open_episode_is_decided_by_clinical_write(rbac_graph: RbacGraph) -> Non
                         enrollment_id=enrolled,
                         title="Recusado",
                     )
-        assert asked == ["clinical.write"], role
+        # A permitted open decides once more at its decided exit.
+        asks = 2 if role in permitted("clinical.write") else 1
+        assert asked == ["clinical.write"] * asks, role
     assert count(rbac_graph, Episode) == 1
     assert_no_phi_in_audit(rbac_graph)
 
