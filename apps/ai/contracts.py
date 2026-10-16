@@ -188,8 +188,11 @@ class InvocationResult:
     invocation_id: UUID | None
     operation_id: UUID | None
     reason: Reason | None = None
-    message_key: str = gettext_noop(
-        "AI request queued. You can continue working manually."
+    # Telemetry imports this vocabulary while Django settings are still loading.
+    message_key: str = field(
+        default_factory=lambda: gettext_noop(
+            "AI request queued. You can continue working manually."
+        )
     )
 
 
