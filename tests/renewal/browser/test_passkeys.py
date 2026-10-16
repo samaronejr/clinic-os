@@ -19,7 +19,11 @@ from auth.passkey_test_support import AssertionOptions, SoftwareAuthenticator
 from renewal.browser import _onboarding as journeys
 from renewal.browser._navigation import goto_settled
 from renewal.browser._passkey_client import client_evidence
-from renewal.browser.engines import virtual_authenticator
+from renewal.browser.engines import (
+    scroll_width_includes_flex_end_padding,
+    virtual_authenticator,
+)
+from renewal.browser.test_primitives import OVERFLOW_JS
 from renewal.browser.test_retention import seed_manager, sign_in_manager
 
 if TYPE_CHECKING:
@@ -153,8 +157,16 @@ def test_platform_registration_step_up_and_sign_in(
     root = renewal_artifact_root / "passkeys"
     with _recording(browser, root, javascript=renewal_engine == "chromium") as page:
         sign_in_manager(page, base, onboarding_staff, manager)
+        goto_settled(page, base + "/account/passkeys/")
+        for width in journeys.WIDTHS:
+            page.set_viewport_size({"width": width, "height": 850})
+            assert (
+                page.locator("#main-content").evaluate(
+                    OVERFLOW_JS, scroll_width_includes_flex_end_padding(page.context)
+                )
+                == []
+            )
         if renewal_engine != "chromium":
-            goto_settled(page, base + "/account/passkeys/")
             expect(page.locator("[data-passkey-start]")).to_be_hidden()
             expect(page.locator("[data-passkey-unavailable]")).to_be_visible()
             journeys.capture(page, root, f"{renewal_engine}-native-code-fallback")

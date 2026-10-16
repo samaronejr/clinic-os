@@ -45,7 +45,7 @@
       {% if policy_form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ policy_form.errors }}</div>{% endif %}
       <form method="post" action="{% url 'identity:passkey-policy' %}">
         {% csrf_token %}{{ policy_form.clinic_id }}
-        <div class="field">{{ policy_form.enabled }}{{ policy_form.enabled.label_tag }}</div>
+        <div class="field settings-check">{{ policy_form.enabled }}{{ policy_form.enabled.label_tag }}</div>
         <p class="hint">{% trans "This changes every unit in the organization and requires recent verification." %}</p>
         <button type="submit" class="button button--secondary">{% trans "Save verification policy" %}</button>
       </form>
