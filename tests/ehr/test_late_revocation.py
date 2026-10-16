@@ -876,8 +876,14 @@ def close_retry_scene(graph: RbacGraph, root: Path) -> Scene:
     )
 
 
-def episode_retry_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
-    """Re-linking or re-closing an episode, held before its reuse or locked read."""
+def episode_retry_scene(
+    graph: RbacGraph, root: Path, *, action: str, tail: bool = False
+) -> Scene:
+    """Re-linking or re-closing an episode, held before its reuse or locked read.
+
+    ``tail`` holds a re-close at the closed retry's terminal nonlocking read
+    instead (gate c7 B1), after every decision before it has passed.
+    """
     world = late_revocation(graph)
     with as_actor(graph, world.physician):
         episode = open_episode(
@@ -893,12 +899,13 @@ def episode_retry_scene(graph: RbacGraph, root: Path, *, action: str) -> Scene:
         if action == "episode_close":
             close_episode(clinic_id=graph.clinic_a, episode_id=episode.pk)
     body = {"action": action, "encounter_id": world.encounter, "episode_id": episode.pk}
+    seam = first_read(EpisodeEncounter)
+    if action == "episode_close":
+        seam = get_read(Episode) if tail else first_read(Episode, locking=True)
     return Scene(
         world.physician,
         world.revoke,
-        first_read(Episode, locking=True)
-        if action == "episode_close"
-        else first_read(EpisodeEncounter),
+        seam,
         posting(workspace(graph), body),
         partial(episode_rows, graph),
     )
@@ -1084,6 +1091,9 @@ SCENES: dict[str, Callable[[RbacGraph, Path], Scene]] = {
     "resume_template": partial(template_scene, resume=True),
     "reuse_episode_link": partial(episode_retry_scene, action="episode_link"),
     "retry_episode_close": partial(episode_retry_scene, action="episode_close"),
+    "retry_episode_close_tail": partial(
+        episode_retry_scene, action="episode_close", tail=True
+    ),
     "reuse_addendum_open": addendum_reuse_scene,
     "replay_addendum_autosave": addendum_replay_scene,
     "replay_draft_autosave": autosave_replay_scene,

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy
 
@@ -105,20 +105,20 @@ def close_episode(*, clinic_id: UUID, episode_id: UUID) -> Episode:
     with decided(authority):
         # The update policy admits only open episodes under clinical.write.
         locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
-        if locked is not None:
-            locked.state = Episode.State.CLOSED
-            locked.closed_at = timezone.now()
-            locked.closed_by_id = actor
-            locked.save(update_fields=("state", "closed_at", "closed_by"))
-            record_phase1_event(
-                "ehr.episode.closed", clinic_id=clinic_id, affected_record_id=locked.pk
-            )
-            return locked
-    # A closed episode and clinical.write committed away since the check both
-    # hide the row lock. Deciding authority again, outside the locked decision,
-    # gives lost authority the early refusal; only a closed episode is a retry.
-    authority()
-    return Episode.objects.get(pk=episode.pk)
+        if locked is None:
+            # A closed episode and clinical.write committed away both hide the
+            # row lock; only a closed episode is a retry. Its terminal read stays
+            # inside the decision: authority lost before it hides the row too,
+            # and that is the early refusal, never a server error.
+            return Episode.objects.get(pk=episode.pk)
+        locked.state = Episode.State.CLOSED
+        locked.closed_at = timezone.now()
+        locked.closed_by_id = actor
+        locked.save(update_fields=("state", "closed_at", "closed_by"))
+        record_phase1_event(
+            "ehr.episode.closed", clinic_id=clinic_id, affected_record_id=locked.pk
+        )
+        return locked
 
 
 def link_encounter(
@@ -198,39 +198,42 @@ def open_episode_for_encounter(
     if not title or len(title) > MAX_EPISODE_TITLE:
         raise ValidationError(INVALID_TITLE)
     validate_overlay_text(title)
-    try:
-        with decided(authority):
-            # A conflict found after authority could be lost is decided again.
-            if EpisodeEncounter.objects.filter(encounter=encounter).exists():
-                msg = "already_linked"
-                raise ClinicalConflictError(msg)
-            episode = Episode.objects.create(
-                organization_id=encounter.organization_id,
-                clinic_id=clinic_id,
-                patient_id=encounter.patient_id,
-                title=title,
-                opened_by_id=actor,
-            )
-            link = EpisodeEncounter.objects.create(
-                organization_id=encounter.organization_id,
-                episode=episode,
-                encounter=encounter,
-                linked_by_id=actor,
-            )
-            record_phase1_event(
-                "ehr.episode.opened", clinic_id=clinic_id, affected_record_id=episode.pk
-            )
-            record_phase1_event(
-                "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
-            )
-    except IntegrityError:
-        # A parallel link won the one-episode-per-encounter unique; both of
-        # this request's rows rolled back with the savepoint.
-        if not EpisodeEncounter.objects.filter(encounter=encounter).exists():
-            raise
-        msg = "already_linked"
-        raise ClinicalConflictError(msg) from None
-    return link
+    with decided(authority):
+        # A conflict found after authority could be lost is decided again.
+        if EpisodeEncounter.objects.filter(encounter=encounter).exists():
+            msg = "already_linked"
+            raise ClinicalConflictError(msg)
+        try:
+            with transaction.atomic():
+                episode = Episode.objects.create(
+                    organization_id=encounter.organization_id,
+                    clinic_id=clinic_id,
+                    patient_id=encounter.patient_id,
+                    title=title,
+                    opened_by_id=actor,
+                )
+                link = EpisodeEncounter.objects.create(
+                    organization_id=encounter.organization_id,
+                    episode=episode,
+                    encounter=encounter,
+                    linked_by_id=actor,
+                )
+        except IntegrityError:
+            # A parallel link won the one-episode-per-encounter unique and both
+            # of this request's rows rolled back. The winner is read inside the
+            # decision, so authority lost before that read is the early refusal;
+            # any other integrity failure stands unchanged.
+            if not EpisodeEncounter.objects.filter(encounter=encounter).exists():
+                raise
+            msg = "already_linked"
+            raise ClinicalConflictError(msg) from None
+        record_phase1_event(
+            "ehr.episode.opened", clinic_id=clinic_id, affected_record_id=episode.pk
+        )
+        record_phase1_event(
+            "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
+        )
+        return link
 
 
 def encounter_episodes(*, clinic_id: UUID, encounter_id: UUID) -> EncounterEpisodes:
