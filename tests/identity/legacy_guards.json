@@ -5247,6 +5247,14 @@
       "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
+      "function": "_workspace",
+      "legacy_allowed": [
+        "physician"
+      ],
+      "path": "apps/ehr/attachment_views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "authorize_attachment_encounter",
       "legacy_allowed": [
         "physician"
@@ -5279,12 +5287,29 @@
       "roles": "(UserClinicRole.Role.PHYSICIAN,)"
     },
     {
+      "function": "_workspace",
+      "legacy_allowed": [
+        "physician"
+      ],
+      "path": "apps/ehr/history_views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
       "function": "_assigned",
       "legacy_allowed": [
         "physician"
       ],
       "path": "apps/ehr/services.py",
       "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
+      "function": "publish_template",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin"
+      ],
+      "path": "apps/ehr/services.py",
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)"
     },
     {
       "function": "publish_template",
@@ -5305,6 +5330,14 @@
     },
     {
       "function": "_show",
+      "legacy_allowed": [
+        "physician"
+      ],
+      "path": "apps/ehr/views.py",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)"
+    },
+    {
+      "function": "_resume",
       "legacy_allowed": [
         "physician"
       ],
