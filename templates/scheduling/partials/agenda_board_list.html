@@ -2,7 +2,7 @@
 List view: the filtered week as the agenda ledger reads it, with every action
 the actor may take as a native POST form (move opens the move form page; the
 other actions post a per-render command id). Works with JavaScript off.
-{% endcomment %}{% if list_days %}<div class="table-scroll" role="region" aria-labelledby="agenda-list-caption" tabindex="0">
+{% endcomment %}{% if list_days %}<div class="table-scroll agenda-list-scroll" role="region" aria-labelledby="agenda-list-caption" tabindex="0">
   <table class="table agenda-table agenda-table--week agenda-board-list" role="table" aria-labelledby="agenda-list-caption">
     <caption id="agenda-list-caption">{% trans "Appointments in this week" %}</caption>
     <thead role="rowgroup">

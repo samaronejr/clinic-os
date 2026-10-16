@@ -18,7 +18,7 @@ import json
 import secrets
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
@@ -164,8 +164,15 @@ class GridWorld(SliceWorld):
             )
         return username
 
-    def other_unit_booking(self, day: str) -> str:
-        """Book physician A in clinic B at 14:00; return that patient's name."""
+    def other_unit_booking(self) -> tuple[str, str]:
+        """Book physician A in clinic B at 14:00 on a fresh day.
+
+        A practitioner's active availability cannot overlap across clinics, so
+        that day physician A works clinic A 07:00-14:00 and 15:00-20:00 and
+        clinic B 14:00-15:00. Return the day and that patient's name.
+        """
+        day = self.next_day.isoformat()
+        self.next_day += timedelta(days=1)
         name = f"Sintético Outra Unidade {uuid4().hex[:4]}"
         physician = self.staff["physician_a_id"]
         with self._owner() as connection:
@@ -206,23 +213,28 @@ class GridWorld(SliceWorld):
                     secrets.token_bytes(32),
                 ],
             )
-            connection.execute(
-                "INSERT INTO clinic_app.scheduling_availabilityblock (id,"
-                " organization_id, clinic_id, practitioner_id, resource_id, start_at,"
-                " end_at, idempotency_key, create_fingerprint, created_at,"
-                " updated_at, retired_at) VALUES (%s, %s, %s, %s, NULL, %s, %s, %s,"
-                " %s, now(), now(), NULL)",
-                [
-                    str(uuid4()),
-                    self.staff["organization"],
-                    self.staff["clinic_b"],
-                    physician,
-                    _utc(day, "07:00"),
-                    _utc(day, "20:00"),
-                    str(uuid4()),
-                    secrets.token_bytes(32),
-                ],
-            )
+            for clinic, start, end in (
+                (self.staff["clinic_a"], "07:00", "14:00"),
+                (self.staff["clinic_b"], "14:00", "15:00"),
+                (self.staff["clinic_a"], "15:00", "20:00"),
+            ):
+                connection.execute(
+                    "INSERT INTO clinic_app.scheduling_availabilityblock (id,"
+                    " organization_id, clinic_id, practitioner_id, resource_id,"
+                    " start_at, end_at, idempotency_key, create_fingerprint,"
+                    " created_at, updated_at, retired_at) VALUES (%s, %s, %s, %s,"
+                    " NULL, %s, %s, %s, %s, now(), now(), NULL)",
+                    [
+                        str(uuid4()),
+                        self.staff["organization"],
+                        clinic,
+                        physician,
+                        _utc(day, start),
+                        _utc(day, end),
+                        str(uuid4()),
+                        secrets.token_bytes(32),
+                    ],
+                )
             connection.execute(
                 "INSERT INTO clinic_app.scheduling_appointment (id, organization_id,"
                 " clinic_id, patient_id, practitioner_id, start_at, end_at,"
@@ -241,7 +253,7 @@ class GridWorld(SliceWorld):
                     secrets.token_bytes(32),
                 ],
             )
-        return name
+        return day, name
 
     def status(self, appointment: str) -> str:
         """Lifecycle state, read as the runtime role."""
@@ -710,6 +722,9 @@ def test_two_receptionists_racing_the_last_room_slot_hold_it_once(
             (first, names[0], board.world.physicians[2]),
             (second, names[1], board.world.physicians[0]),
         ):
+            # Search runs in the clinic the shell last showed; a desk holding
+            # roles in two clinics would otherwise search its first clinic.
+            _open(page, board.base_url, _url(board.world, "day", seeded.day))
             _pin(page, name)
             _open(page, board.base_url, _url(board.world, "day", seeded.day))
             _connected(page)
@@ -815,14 +830,13 @@ def test_filters_saved_views_and_the_month_drill(board: Board) -> None:
 
 
 def test_other_unit_busy_time_names_no_patient(board: Board) -> None:
-    seeded = board.world.seed_day()
-    other = board.world.other_unit_booking(seeded.day)
+    day, other = board.world.other_unit_booking()
     physician = board.world.staff["physician_a_id"]
     with board.browser.new_context(
         locale="pt-BR", storage_state=board.state
     ) as context:
         page = context.new_page()
-        _open(page, board.base_url, _url(board.world, "day", seeded.day))
+        _open(page, board.base_url, _url(board.world, "day", day))
         cell = page.locator(
             f'[data-grid-cell][data-column="{physician}"][data-slot="14:00"]'
         )

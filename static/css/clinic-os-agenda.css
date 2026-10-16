@@ -170,6 +170,13 @@
   grid-auto-columns: minmax(7.5rem, 1fr);
 }
 
+/* The month and list tables carry .visually-hidden (absolute) labels; the
+   scroll region must be their containing block or they widen the page. */
+.agenda-month-scroll,
+.agenda-list-scroll {
+  position: relative;
+}
+
 /* Month: seven columns that keep their meaning at 320px in the scroll region. */
 .agenda-month {
   min-width: 42rem;
