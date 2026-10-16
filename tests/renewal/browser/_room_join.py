@@ -24,6 +24,7 @@ from renewal.browser._page_wait import _answer, evaluate_js
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+    from typing import Literal
 
     from playwright.sync_api import Page, Request
 
@@ -74,6 +75,22 @@ TRACK_ENDED_SIGNAL: Final = """() => {
   const stream = document.querySelector("#room-panel [data-self-video]").srcObject;
   stream.getAudioTracks()[0].addEventListener("ended", () =>
     console.debug("clinic-room-track-ended"), {once: true});
+}"""
+ROOM_STATE_SIGNAL: Final = """(state) => {
+  const settled = () => document.querySelector("#room-panel")
+    ?.getAttribute("data-connection") === state;
+  const report = () => {
+    if (settled()) {
+      observer.disconnect();
+      console.debug("clinic-room-state:" + state);
+    }
+  };
+  const observer = new MutationObserver(report);
+  observer.observe(document, {subtree: true, childList: true,
+    attributes: true, attributeFilter: ["data-connection"]});
+  const ready = settled();
+  if (ready) report();
+  return ready;
 }"""
 HISTORY: Final = """(() => {
   if (window.__clinicRoomJoin) return;
@@ -196,6 +213,22 @@ def room_action_finished(
     response = finished.value.existing_response
     assert response is not None
     assert response.status == status
+
+
+def refresh_room_state(
+    page: Page, state: Literal["expired", "ended", "failed", "removed"]
+) -> None:
+    """Observe terminal state without requiring another consumed status body."""
+    with page.expect_console_message(
+        predicate=lambda message: (
+            message.type == "debug" and message.text == f"clinic-room-state:{state}"
+        )
+    ):
+        # Expiry consumes headers only; a prior poll can already be terminal.
+        script = f"({ROOM_STATE_SIGNAL})({json.dumps(state)})"
+        page.add_init_script(script)
+        if evaluate_js(page, script) is not True:
+            page.locator("[data-refresh-status]").click()
 
 
 @contextmanager

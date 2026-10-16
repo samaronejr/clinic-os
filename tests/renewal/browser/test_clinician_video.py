@@ -27,6 +27,7 @@ from psycopg.types.json import Jsonb
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import click_when_hittable, evaluate_js, wait_for_js
 from renewal.browser._room_join import (
+    refresh_room_state,
     room_action_finished,
     room_join_readiness,
     room_media_settled,
@@ -538,8 +539,7 @@ def _provider_failure(
     expect(physician.locator("#save-state")).to_have_attribute("data-state", "unsaved")
     _fail_room(case, session_id)
     _show(physician, case, "video")
-    with room_action_finished(physician, case.staff_url):
-        physician.locator("[data-refresh-status]").click()
+    refresh_room_state(physician, "failed")
     panel = physician.locator("#room-panel")
     expect(panel).to_have_attribute("data-connection", "failed")
     expect(panel).to_have_attribute("data-media", "off")
@@ -1565,7 +1565,7 @@ def v2_remove_and_return(
         "Retirado da sala"
     )
     panel = patient.locator("#room-panel")
-    refresh_status(patient)
+    refresh_room_state(patient, "removed")
     expect(panel).to_have_attribute("data-connection", "removed")
     expect(patient.locator("[data-room-error]")).to_have_attribute(
         "data-failure", "removed"

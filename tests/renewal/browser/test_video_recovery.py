@@ -22,6 +22,7 @@ from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._room_join import (
     capture_room_failure,
     is_status_request,
+    refresh_room_state,
     room_action_finished,
     room_join_readiness,
     room_media_settled,
@@ -238,7 +239,7 @@ def end_with_late_status(physician: Page, patient: Page, case: _Case) -> None:
         expect(physician.locator("#room-panel")).to_have_attribute(
             "data-connection", "ended"
         )
-        refresh(patient)
+        refresh_room_state(patient, "ended")
         expect(patient.locator("#room-panel")).to_have_attribute(
             "data-connection", "ended"
         )
@@ -452,8 +453,7 @@ def outage_and_expiry(
             "FROM clinic_app.teleconsult_teleconsultsession WHERE id=%s)",
             [session],
         )
-    with room_action_finished(patient, case.patient_url, status=403):
-        patient.locator("[data-refresh-status]").click()
+    refresh_room_state(patient, "expired")
     expect(patient.locator("#room-panel")).to_have_attribute(
         "data-connection", "expired"
     )
@@ -475,7 +475,7 @@ def outage_and_expiry(
             "SET status='failed' WHERE id=%s",
             [_room_operation(case.staff, session)],
         )
-    refresh(physician)
+    refresh_room_state(physician, "failed")
     expect(physician.locator("#room-panel")).to_have_attribute(
         "data-connection", "failed"
     )

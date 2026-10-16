@@ -17,6 +17,7 @@ from renewal.browser import test_patient_video as patient_video
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import Literal
 
     from playwright.sync_api import Locator
 
@@ -231,6 +232,106 @@ def test_action_wait_requires_the_exact_completed_json_operation(
         events.append("triggered")
     assert events == ["subscribed", "triggered", "finished"]
     assert "timeout" not in page.expect_request_finished.call_args.kwargs
+
+
+@pytest.mark.parametrize(
+    "expiry",
+    ["headers_only", "replacement_document", "already_expired"],
+)
+@pytest.mark.parametrize("state", ["expired", "ended", "failed", "removed"])
+def test_expiry_wait_needs_no_finished_status_request(
+    monkeypatch: pytest.MonkeyPatch,
+    expiry: str,
+    state: Literal["expired", "ended", "failed", "removed"],
+) -> None:
+    # Given: expiry can replace the document or already have disabled refresh.
+    page = create_autospec(Page, instance=True, url=URL)
+    page.expect_request_finished.side_effect = AssertionError(
+        "No completed status request exists in this expiry flow"
+    )
+    page.expect_response.side_effect = AssertionError(
+        "Expiry need not issue another request"
+    )
+    signal: MagicMock = page.expect_console_message.return_value
+    events: list[str] = []
+    expired = False
+
+    def subscribe() -> MagicMock:
+        predicate = page.expect_console_message.call_args.kwargs["predicate"]
+        assert predicate(
+            create_autospec(
+                ConsoleMessage,
+                instance=True,
+                type="debug",
+                text=f"clinic-room-state:{state}",
+            )
+        )
+        assert not predicate(
+            create_autospec(ConsoleMessage, instance=True, type="debug", text="other")
+        )
+        assert not predicate(
+            create_autospec(
+                ConsoleMessage,
+                instance=True,
+                type="error",
+                text=f"clinic-room-state:{state}",
+            )
+        )
+        events.append("subscribed")
+        return signal
+
+    def arm(_page: Page, _script: str) -> bool:
+        nonlocal expired
+        assert _page is page
+        assert events == ["subscribed"]
+        events.append("armed")
+        expired = expiry == "already_expired"
+        if expired:
+            events.append("expired")
+        return expired
+
+    def refresh() -> None:
+        nonlocal expired
+        assert events == ["subscribed", "armed"]
+        events.append("clicked")
+        if expiry == "replacement_document":
+            assert page.add_init_script.call_count == 1
+        expired = True
+        events.append("expired")
+
+    def complete(*_args: object) -> None:
+        assert expired
+        events.append("observed")
+
+    signal.__enter__.side_effect = subscribe
+    signal.__exit__.side_effect = complete
+    monkeypatch.setattr(join, "evaluate_js", arm)
+    page.locator.return_value.click.side_effect = refresh
+    # When: the real helper observes terminal state instead of a network body.
+    join.refresh_room_state(page, state)
+    # Then: a prearmed DOM signal, including an existing state, is sufficient.
+    expected = ["subscribed", "armed"]
+    if expiry != "already_expired":
+        expected.append("clicked")
+    assert events == [*expected, "expired", "observed"]
+    page.expect_request_finished.assert_not_called()
+    page.expect_response.assert_not_called()
+    page.add_init_script.assert_called_once()
+    assert "timeout" not in page.expect_console_message.call_args.kwargs
+
+
+def test_expiry_wait_preserves_a_missing_terminal_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: refreshing neither expires the DOM nor produces its signal.
+    page = create_autospec(Page, instance=True)
+    original = PlaywrightError("synthetic missing expiry signal")
+    page.expect_console_message.return_value.__exit__.side_effect = original
+    monkeypatch.setattr(join, "evaluate_js", MagicMock(return_value=False))
+    # When / Then: the original bounded failure cannot turn into success.
+    with pytest.raises(PlaywrightError) as caught:
+        join.refresh_room_state(page, "expired")
+    assert caught.value is original
 
 
 @pytest.mark.parametrize("kind", ["media", "offline", "track"])

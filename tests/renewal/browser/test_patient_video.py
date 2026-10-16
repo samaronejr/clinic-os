@@ -23,6 +23,7 @@ from playwright.sync_api import expect, sync_playwright
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._room_join import (
+    refresh_room_state,
     room_action_finished,
     room_join_readiness,
     room_media_settled,
@@ -511,8 +512,7 @@ def _ended_room(patient: Page, physician: Page, case: _Case, session_id: str) ->
     panel = patient.locator("#room-panel")
     _stall_media_retry(patient)
     _staff_action(physician, case, session_id, "end")
-    with room_action_finished(patient, case.patient_url):
-        patient.locator("[data-refresh-status]").click()
+    refresh_room_state(patient, "ended")
     expect(panel).to_have_attribute("data-connection", "ended")
     expect(panel).to_have_attribute("data-state", "ended")
     expect(patient.locator("[data-state-badge]")).to_have_text("Consulta encerrada")
@@ -778,8 +778,7 @@ def _denied_path(
     _capture(denied, case, "room-recovered")
     _stall_media_retry(denied)
     _expire_patient_session(case, patient_id)
-    with room_action_finished(denied, case.patient_url, status=FORBIDDEN):
-        denied.locator("[data-refresh-status]").click()
+    refresh_room_state(denied, "expired")
     expect(room).to_have_attribute("data-connection", "expired")
     expect(room_error).to_have_attribute("data-failure", "expired")
     expect(denied.locator("[data-portal]")).to_be_visible()
