@@ -86,6 +86,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     # Given: the celery application behind the integration job boundary
     # When: the delivered task modules are imported and tasks are inspected
     # Registration is deferred until each shared task module is imported.
+    import apps.ai.tasks  # noqa: PLC0415
     import apps.comms.tasks  # noqa: PLC0415
     import apps.scheduling.tasks  # noqa: PLC0415
     import apps.workflows.tasks  # noqa: F401, PLC0415
@@ -97,6 +98,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     # Then: only the delivered comms, workflow and hold-expiry tasks exist
     # beyond built-ins (registration order is not part of the contract)
     assert sorted(project_tasks) == [
+        "apps.ai.tasks.execute",
         "apps.scheduling.tasks.expire_holds",
         "apps.workflows.tasks.escalate",
         "apps.workflows.tasks.execute_step",
@@ -105,3 +107,5 @@ def test_celery_app_registers_only_the_integration_task() -> None:
         "comms.execute_operation",
         "comms.recover_pending_operations",
     ]
+    routed = celery_app.amqp.router.route({}, "apps.ai.tasks.execute")
+    assert routed["queue"].name == "ai-batch"

@@ -231,7 +231,8 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
     clinics = _visible_clinics(
         user.pk,
         settings_scope=(
-            request.resolver_match.view_name == "scheduling:resource-settings"
+            request.resolver_match.view_name
+            in {"scheduling:resource-settings", "ai:settings"}
             or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
         ),
     )

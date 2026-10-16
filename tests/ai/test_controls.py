@@ -25,6 +25,7 @@ from django.utils import timezone
 
 from ai.support import policy, seed
 from auth.stepup_test_support import create_role_actor, verified_request
+from core.test_navigation import _client_for, _get, _post, _reauthenticate
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
@@ -174,6 +175,41 @@ def test_ai_policy_requires_organization_permission_in_every_clinic(
             expected_version=2,
             policy=replace(policy(), enabled=False),
         )
+
+
+def test_http_controls_execute_denied_malformed_and_conflict_refusal_exits(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = seed(rbac_graph, monkeypatch)
+    client, actor = _client_for(rbac_graph, "owner")
+    url = reverse("ai:settings", args=(rbac_graph.clinic_a,))
+    assert _get(client, url).status_code == 200
+    before = dict(client.session)
+    denied = _post(client, url, submission(world))
+    assert denied.status_code == 403
+    assert denied.wsgi_request.session.modified is False
+    assert dict(client.session) == before
+    assert not denied.cookies
+    with owner_context(rbac_graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_b,
+            user=actor,
+            role="owner",
+        )
+    _reauthenticate(client, actor.pk, "owner")
+    assert _get(client, url).status_code == 200
+    before = dict(client.session)
+    for data, expected in (
+        ({**submission(world), "region": "US"}, 400),
+        ({**submission(world), "expected_version": "1"}, 409),
+    ):
+        response = _post(client, url, data)
+        assert response.status_code == expected
+        assert response.wsgi_request.session.modified is False
+        assert dict(client.session) == before
+        assert not response.cookies
 
 
 def test_unknown_and_foreign_clinic_control_reads_refuse_equally(

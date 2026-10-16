@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.ai.adapters import register_provider
 from apps.ai.artifacts import create_input
@@ -12,7 +15,7 @@ from apps.ai.models import AICircuit, AIInvocation
 from apps.ai.owner import reset_circuit
 from apps.ai.rls import COLUMN_GRANTS, RUNTIME_GRANTS
 from apps.core.integration import execute_operation
-from apps.identity.models import CareTeamMembership, UserClinicRole
+from apps.identity.models import CareTeamMembership, User, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
@@ -185,6 +188,80 @@ def test_raw_invocation_cannot_forge_a_cheaper_budget_reservation(
                 reserved_micros=0,
             )
         assert not AIInvocation.objects.exists()
+
+
+def test_ledger_guard_refuses_inactive_admission_with_raw_actor_context(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    world = seed(rbac_graph, monkeypatch)
+    result = enqueue(world)
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        inputs = [
+            create_input(
+                clinic_id=rbac_graph.clinic_a,
+                purpose=Purpose.FRONT_DESK,
+                content=SENTINEL,
+            ).pk
+            for _ in range(3)
+        ]
+    with owner_context(rbac_graph.organization_a), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT to_jsonb(a) FROM clinic_app.ai_aiartifact a WHERE id=%s",
+            [inputs[0]],
+        )
+        (artifact,) = cursor.fetchone()
+        cursor.execute(
+            "SELECT to_jsonb(i) FROM clinic_app.ai_aiinvocation i WHERE id=%s",
+            [result.invocation_id],
+        )
+        (invocation,) = cursor.fetchone()
+    for active, input_id in zip((True, False, True), inputs, strict=True):
+        with owner_context(rbac_graph.organization_a):
+            assert (
+                User.objects.filter(pk=rbac_graph.shared_user).update(is_active=active)
+                == 1
+            )
+        candidates = (
+            (
+                "INSERT INTO clinic_app.ai_aiartifact SELECT "
+                "(jsonb_populate_record(NULL::clinic_app.ai_aiartifact,%s::jsonb)).*",
+                {**artifact, "id": str(uuid4())},
+                "AI artifact denied",
+            ),
+            (
+                "INSERT INTO clinic_app.ai_aiinvocation SELECT "
+                "(jsonb_populate_record(NULL::clinic_app.ai_aiinvocation,%s::jsonb)).*",
+                {
+                    **invocation,
+                    "id": str(uuid4()),
+                    "inputs_ref_id": str(input_id),
+                    "operation_id": None,
+                },
+                "AI reservation denied",
+            ),
+        )
+        for statement, candidate, refusal in candidates:
+            with runtime_role(), transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT set_config('app.current_tenant',%s,true), "
+                    "set_config('app.current_user_id',%s,true)",
+                    [str(rbac_graph.organization_a), str(rbac_graph.shared_user)],
+                )
+                if active:
+                    cursor.execute(statement, [json.dumps(candidate)])
+                    assert cursor.rowcount == 1
+                else:
+                    with pytest.raises(DatabaseError) as denied, transaction.atomic():
+                        cursor.execute(statement, [json.dumps(candidate)])
+                    cause = denied.value.__cause__
+                    assert isinstance(cause, psycopg.Error)
+                    assert cause.sqlstate == "23514"
+                    assert cause.diag.message_primary == refusal
+                    assert "ai_ledger_guard()" in (cause.diag.context or "")
 
 
 def test_runtime_cannot_write_global_terms_and_owner_cannot_delete_artifacts(

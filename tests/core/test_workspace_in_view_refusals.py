@@ -199,16 +199,32 @@ def _probe_route(
     statuses = set()
     with monkeypatch.context() as patch:
         patch.setattr(route.pattern, "callback", entered)
+        attempts = (
+            *_requests(graph, known_encounter),
+            *_autosave_requests(graph, route.name),
+        )
+        if route.name == "ai:settings":
+            attempts += tuple(
+                (
+                    "POST",
+                    {
+                        "expected_version": "1",
+                        "enabled": "on",
+                        "purposes": "front_desk",
+                        "monthly_budget_micros": "100000",
+                        "limit_front_desk": "100000",
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
             else (graph.clinic_a,)
         )
         for clinic_id in clinics:
-            for method, data, htmx in (
-                *_requests(graph, known_encounter),
-                *_autosave_requests(graph, route.name),
-            ):
+            for method, data, htmx in attempts:
                 _restore_session(client, snapshot)
                 before = len(entries)
                 response = _send(client, route.url(clinic_id), method, data, htmx)
@@ -283,6 +299,16 @@ def test_authorised_in_view_refusals_are_session_read_only(
             refused, codes = _probe_route(route, client, rbac_graph, monkeypatch)
             observed[route.name] += refused
             statuses[route.name].update(codes)
+    # This owner can read clinic A's controls but lacks organization authority
+    # in clinic B. A valid AI policy POST therefore reaches the real view's
+    # organization-wide refusal instead of stopping at a schema/auth boundary.
+    owner_client, _owner = _client_for(rbac_graph, "owner")
+    assert _get(owner_client, "/auth/protected/").status_code == 200
+    ai_route = next(route for route in routes if route.name == "ai:settings")
+    refused, codes = _probe_route(ai_route, owner_client, rbac_graph, monkeypatch)
+    assert refused > 0
+    observed[ai_route.name] += refused
+    statuses[ai_route.name].update(codes)
     # The authenticated routes cannot have an absent framework key. A thin
     # HTTP adapter covers the parser's denial using a real anonymous session,
     # without changing the resolver-derived oracle or pretending auth passed.

@@ -281,7 +281,7 @@ def run_cut1_census(
         secret.unlink()
     from identity.ai_authority_census import exercise_ai_authority  # noqa: PLC0415
 
-    exercise_ai_authority(proofs, graph, patch)
+    exercise_ai_authority(proofs, graph, patch, database_url)
     record_property(
         "cut1_authority_certificates",
         {symbol: sorted(labels) for symbol, labels in proofs.certificates.items()},

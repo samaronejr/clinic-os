@@ -106,6 +106,7 @@ def seed(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> GatewayWorld:
         "llm_inference",
         version_input=VersionInput(
             provider="synthetic",
+            account=f"synthetic-{uuid4().hex}",
             environment="synthetic",
             region="synthetic",
             retention_terms="synthetic-no-retention",

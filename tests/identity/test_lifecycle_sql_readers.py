@@ -123,6 +123,14 @@ ACTOR_PROTOCOL_ORACLES = {
     signature: tuple(f"identity.test_lifecycle_sql_readers.{name}" for name in names)
     for signature, names in _ACCOUNT_ORACLES.items()
 } | {
+    # Admission delegates to ai_staff; actor binding also permits retained,
+    # content-free cancellation bookkeeping after the actor becomes inactive.
+    "clinic_app.ai_ledger_guard()": (
+        "ai.test_posture."
+        "test_ledger_guard_refuses_inactive_admission_with_raw_actor_context",
+        "ai.test_cancellation."
+        "test_revoked_actor_cancellation_releases_the_unspent_reservation",
+    ),
     "clinic_app.identity_signup_register(uuid,uuid,uuid,uuid,jsonb,text,bytea,text)": (
         "identity.test_onboarding."
         "test_signup_is_protected_pending_and_confers_no_runtime_membership",
