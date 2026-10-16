@@ -3217,12 +3217,12 @@
       "enforced_by": [
         "apps.scheduling.access.authorized_agenda_scope",
         "apps.scheduling.agenda_grid._move_rules",
-        "apps.scheduling.resource_booking.authorized_service_clinic",
+        "apps.scheduling.agenda_grid._holds",
         "apps.scheduling.resource_booking.service_practitioners",
         "apps.identity.current_context.practitioner_display_label",
         "clinic_app.has_permission"
       ],
-      "reason": "The board uses view_agenda's Wave B scope and professional catalog. Move hooks mirror the legacy, service and own-service move authority, lifecycle hooks the move terms and confirm the booking terms (authorized_service_clinic), as authorize_transition decides them; other-unit occupancy is times only. The board delegation case exercises every catalog role and spies the exact permission names."
+      "reason": "The board uses view_agenda's Wave B scope and professional catalog. Move hooks mirror the legacy, service and own-service move authority, lifecycle hooks the move terms and confirm the booking terms (book, then book_own, through _holds in authorized_service_clinic order), as authorize_transition decides them; other-unit occupancy is times only. The board delegation case exercises every catalog role and spies the exact permission names."
     },
     {
       "symbol": "apps.scheduling.agenda_board_views.agenda_board_action_view",

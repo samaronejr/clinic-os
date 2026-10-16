@@ -28,7 +28,6 @@ from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
 from apps.scheduling.access import (
-    AppointmentAccessDeniedError,
     AvailabilityAccessDeniedError,
     authorized_agenda_scope,
 )
@@ -37,6 +36,7 @@ from apps.scheduling.agenda_grid import (
     LAST_SLOT_END,
     SLOT_MINUTES,
     _columns,
+    _holds,
     _move_rules,
     _MoveRules,
 )
@@ -48,7 +48,6 @@ from apps.scheduling.models import (
     Resource,
     ServiceType,
 )
-from apps.scheduling.resource_booking import authorized_service_clinic
 from apps.scheduling.timezones import civil_day_bounds, format_local_minute
 
 if TYPE_CHECKING:
@@ -210,6 +209,7 @@ class AgendaBoard:
     truncated: bool
     subject: BoardLane | None = None
     statuses: tuple[str, ...] = field(default=AGENDA_STATUSES)
+    can_transition: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,29 +322,54 @@ def _catalog(
     return professionals, resources, services
 
 
-def _book_rule(clinic_id: UUID) -> bool:
-    """Whether the booking terms (book, or book_own on one's column) admit the actor."""
-    try:
-        with transaction.atomic():
-            authorized_service_clinic(clinic_id)
-    except AppointmentAccessDeniedError:
-        return False
-    return True
+@dataclass(frozen=True)
+class _Grant:
+    """One transition term the viewer holds; own-schedule grants name the actor."""
+
+    actor: UUID | None
+    own: bool
+
+
+def _book_grants(clinic_id: UUID) -> tuple[_Grant, ...]:
+    """Ask the booking terms in ``authorized_service_clinic`` order: book, then own."""
+    if _holds("appointment.book", clinic_id) is not None:
+        return (_Grant(None, own=False),)
+    actor = _holds("appointment.book_own", clinic_id)
+    return () if actor is None else (_Grant(actor, own=True),)
+
+
+def _move_grants(rules: _MoveRules) -> tuple[_Grant, ...]:
+    """Reuse the move terms ``_move_rules`` already asked, in the same order."""
+    every = (_Grant(None, own=False),) if rules.service else ()
+    own = () if rules.own is None else (_Grant(rules.own, own=True),)
+    return every + own
+
+
+def _admits(grants: tuple[_Grant, ...], row: Appointment) -> bool:
+    """Match own-schedule grants only to a booked practitioner, never to null."""
+    return any(
+        not grant.own
+        or (row.practitioner_id is not None and grant.actor == row.practitioner_id)
+        for grant in grants
+    )
 
 
 def _actions(
-    row: Appointment, rules: _MoveRules, *, can_book: bool, own: UUID | None
+    row: Appointment,
+    *,
+    book: tuple[_Grant, ...],
+    move: tuple[_Grant, ...],
+    now: datetime,
 ) -> tuple[str, ...]:
-    """Mirror ``authorize_transition``: book terms confirm, move terms the rest."""
-    moving = rules.service or rules.own == row.practitioner_id
-    booking = can_book and (own is None or own == row.practitioner_id)
+    """Offer exactly the transitions ``authorize_transition`` would accept."""
+    moving = _admits(move, row)
     actions: list[str] = []
     pending = {Appointment.Status.REQUESTED, Appointment.Status.HELD}
-    if row.status in pending and booking:
+    if row.status in pending and _admits(book, row):
         actions.append("confirm")
     if row.status == Appointment.Status.SCHEDULED and moving:
         actions.append("arrive")
-        if row.start_at <= timezone.now():
+        if row.start_at <= now:
             actions.append("no_show")
     if moving and row.status in {
         Appointment.Status.REQUESTED,
@@ -450,8 +475,8 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
     row: Appointment,
     rules: _MoveRules,
     *,
-    can_book: bool,
-    own: UUID | None,
+    book: tuple[_Grant, ...],
+    move: tuple[_Grant, ...],
     lane_resources: set[UUID],
     timezone_key: str,
     now: datetime,
@@ -469,7 +494,7 @@ def _presented(  # noqa: PLR0913 - one row needs its full authority context
         status=row.status,
         revision=row.revision,
         movable=rules.allows(row),
-        actions=_actions(row, rules, can_book=can_book, own=own),
+        actions=_actions(row, book=book, move=move, now=now),
         hold_until=""
         if deadline is None
         else format_local_minute(
@@ -523,7 +548,9 @@ def view_agenda_board(
         if not BoardCatalog(professionals, resources, services).admits(selected):
             raise AgendaInputError
         rules = _move_rules(clinic_id)
-        can_book = _book_rule(clinic_id)
+        book = _book_grants(clinic_id)
+        move = _move_grants(rules)
+        can_book = bool(book)
         lanes, subject = _visible_lanes(view, selected, professionals, resources)
         shown = _filtered(rows, selected)
         counts: tuple[DayCount, ...] = ()
@@ -545,8 +572,8 @@ def view_agenda_board(
                 _presented(
                     row,
                     rules,
-                    can_book=can_book,
-                    own=scope.practitioner_id,
+                    book=book,
+                    move=move,
                     lane_resources=lane_resources,
                     timezone_key=timezone_key,
                     now=now,
@@ -585,6 +612,7 @@ def view_agenda_board(
             own_practitioner=scope.practitioner_id,
             truncated=truncated,
             subject=subject,
+            can_transition=bool(book or move),
         )
         record_phase1_event(
             "scheduling.agenda.viewed",

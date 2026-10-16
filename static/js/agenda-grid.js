@@ -69,6 +69,17 @@
     return times;
   }
 
+  // Movable bookings carry data-appointment; action-only bookings carry
+  // data-actions-for, so a move hook never appears where moving is refused.
+  function appointmentOf(link) {
+    return link.getAttribute("data-appointment") || link.getAttribute("data-actions-for");
+  }
+
+  function slotFor(root, id) {
+    return root.querySelector(
+      "[data-appointment=\"" + id + "\"], [data-actions-for=\"" + id + "\"]");
+  }
+
   function actionsOf(link) {
     var raw = link.getAttribute("data-actions") || "";
     return raw ? raw.split(" ") : [];
@@ -80,7 +91,7 @@
       return 0;
     }
     var allowed = actionsOf(link);
-    form.elements.appointment_id.value = link.getAttribute("data-appointment");
+    form.elements.appointment_id.value = appointmentOf(link);
     form.elements.expected_revision.value = link.getAttribute("data-revision");
     form.elements.command_id.value = uuid4();
     form.elements.day.value = cellOf(link).getAttribute("data-day");
@@ -97,7 +108,7 @@
     var movable = link.hasAttribute("data-move");
     var form = box.querySelector("[data-move-form]");
     var cell = cellOf(link);
-    form.elements.appointment_id.value = link.getAttribute("data-appointment");
+    form.elements.appointment_id.value = appointmentOf(link);
     form.elements.expected_revision.value = link.getAttribute("data-revision");
     form.elements.duration.value = link.getAttribute("data-duration");
     form.elements.day.value = cell.getAttribute("data-day");
@@ -119,18 +130,21 @@
     var find = box.querySelector("[data-move-find]");
     if (find) {
       find.hidden = !movable;
-      find.elements.appointment_id.value = link.getAttribute("data-appointment");
+      find.elements.appointment_id.value = appointmentOf(link);
       find.elements.day.value = cell.getAttribute("data-day");
       box.querySelector("[data-move-find-status]").textContent = "";
     }
     var count = fillLifecycle(box, link);
     form.hidden = !movable;
-    box.querySelector("[data-move-close-only]").hidden = movable || !count;
+    var closeOnly = box.querySelector("[data-move-close-only]");
+    if (closeOnly) {
+      closeOnly.hidden = movable || !count;
+    }
     box.querySelector("[data-move-confirm]").disabled = false;
     box.querySelector("[data-move-conflict]").hidden = true;
     box.querySelector("#agenda-move-title").textContent = box.getAttribute(
       movable ? "data-text-move-title" : "data-text-actions-title") || "";
-    editing = link.getAttribute("data-appointment");
+    editing = appointmentOf(link);
     editingRevision = link.getAttribute("data-revision");
     return form;
   }
@@ -357,7 +371,7 @@
     if (!grid) {
       return;
     }
-    var link = id && grid.querySelector("[data-appointment=\"" + id + "\"]");
+    var link = id && slotFor(grid, id);
     var cell = cellOf(link) ||
       grid.querySelector("[role=gridcell][tabindex=\"0\"]") ||
       grid.querySelector("[role=gridcell]");
@@ -429,14 +443,14 @@
     // A realtime refetch replaces the grid under the user: keep their place.
     var cell = cellOf(document.activeElement);
     if (cell && cell.closest("#agenda-grid")) {
-      var link = cell.querySelector("[data-appointment]");
+      var link = cell.querySelector("[data-appointment], [data-actions-for]");
       var row = cell.parentNode;
       pendingPlace = {
         slot: cell.getAttribute("data-slot"),
         index: Array.prototype.indexOf.call(row.children, cell)
       };
       if (!pendingFocus && link) {
-        pendingFocus = link.getAttribute("data-appointment");
+        pendingFocus = appointmentOf(link);
       }
     }
   });
@@ -500,7 +514,7 @@
     if (!box || !box.open || !editing) {
       return;
     }
-    var link = results.querySelector("[data-appointment=\"" + editing + "\"]");
+    var link = slotFor(results, editing);
     if (link && link.getAttribute("data-revision") === editingRevision) {
       return;
     }
@@ -529,7 +543,7 @@
       return;
     }
     var link = pendingFocus &&
-      event.target.querySelector("[data-appointment=\"" + pendingFocus + "\"]");
+      slotFor(event.target, pendingFocus);
     var cell = cellOf(link);
     if (!cell && pendingPlace) {
       var slot = event.target.querySelector("[data-grid-cell][data-slot=\"" + pendingPlace.slot + "\"]");

@@ -43,7 +43,7 @@ formmethod="dialog" submitter would never reach the browser.
     <button type="submit" class="button--secondary">{% trans "Find free times" %}</button>
     <p class="hint" id="agenda-move-find-status" data-move-find-status role="status"></p>
   </form>
-  <form class="agenda-move-lifecycle" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-lifecycle hidden>
+  {% if board.can_transition %}<form class="agenda-move-lifecycle" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-lifecycle hidden>
     {% csrf_token %}
     <input type="hidden" name="view" value="{{ board.view }}">
     <input type="hidden" name="day" value="{{ board.anchor|date:'Y-m-d' }}">
@@ -60,5 +60,5 @@ formmethod="dialog" submitter would never reach the browser.
     <div class="dialog-actions agenda-move-lifecycle-close" data-move-close-only hidden>
       <button type="button" class="button--quiet" data-move-close>{% trans "Close" %}</button>
     </div>
-  </form>
+  </form>{% endif %}
 </dialog>

@@ -187,11 +187,15 @@
   color: var(--color-ink-soft);
 }
 
-.agenda-month-day--today .agenda-month-link {
+.agenda-month .agenda-month-day--today .agenda-month-link {
   border: var(--line-2) solid var(--color-primary);
 }
 
-.agenda-month-link {
+/* Scoped under .agenda-month so the global .table td a inline-flex rule
+   cannot shrink each day to its digit: the whole cell is the 44px target. */
+.agenda-month .agenda-month-link {
+  box-sizing: border-box;
+  inline-size: 100%;
   min-height: calc(var(--control-height) * 1.5);
   padding: var(--space-1) var(--space-2);
   display: flex;
@@ -204,7 +208,7 @@
   text-decoration: none;
 }
 
-.agenda-month-link:hover {
+.agenda-month .agenda-month-link:hover {
   border-color: var(--color-primary-strong);
 }
 

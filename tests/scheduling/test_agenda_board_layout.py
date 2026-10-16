@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
-from typing import Final
+from types import SimpleNamespace
+from typing import Final, cast
 from uuid import UUID, uuid4
 
 from apps.scheduling.agenda_board import (
@@ -16,6 +17,8 @@ from apps.scheduling.agenda_board import (
     DayCount,
     Occupancy,
     ServiceOption,
+    _admits,
+    _Grant,
 )
 from apps.scheduling.agenda_board_presenter import (
     action_rows,
@@ -28,6 +31,7 @@ from apps.scheduling.agenda_board_presenter import (
     saved_spec,
     signature,
 )
+from apps.scheduling.models import Appointment
 
 DAY: Final = date(2035, 6, 2)
 
@@ -226,3 +230,14 @@ def test_the_catalog_admits_only_its_entries_and_drops_retired_ones() -> None:
     assert catalog.known(AgendaFilters(uuid4(), room, uuid4(), "held")) == (
         AgendaFilters(resource_id=room, status="held")
     )
+
+
+def test_an_own_schedule_grant_never_matches_a_null_practitioner() -> None:
+    actor = uuid4()
+    own_only = (_Grant(actor, own=True),)
+    unassigned = cast("Appointment", SimpleNamespace(practitioner_id=None))
+    assert not _admits(own_only, unassigned)
+    assert not _admits(own_only, Appointment(practitioner_id=uuid4()))
+    assert _admits(own_only, Appointment(practitioner_id=actor))
+    assert _admits((_Grant(actor, own=False),), unassigned)
+    assert not _admits((), Appointment(practitioner_id=actor))

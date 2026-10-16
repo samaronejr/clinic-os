@@ -132,7 +132,7 @@ def _shift(view: str, anchor: date, steps: int) -> date:
 
 
 def navigation(clinic_id: UUID, board: AgendaBoard, today: str) -> dict[str, object]:
-    """Previous/next/today steps and the view switch, all state-free links."""
+    """Previous/next steps, the current civil date and the view switch, state-free."""
     today_date = date.fromisoformat(today)
     return {
         "previous_url": board_url(

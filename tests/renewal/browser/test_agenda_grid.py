@@ -78,8 +78,16 @@ PREFERENCES: Final = (("light", "comfortable"), ("dark", "compact"))
 OK: Final = 200
 CONFLICT: Final = 409
 SLOT_TEXT: Final = "That window is no longer free for this physician or patient."
+# The seeded rival shares the mover's room, and the move service reports the
+# shared-resource conflict first.
+RESOURCE_TEXT: Final = "A required resource is unavailable for this window."
 TAKEN_TEXT: Final = "This time was just taken. Choose another time."
 NO_OVERFLOW_JS: Final = "document.documentElement.scrollWidth <= window.innerWidth"
+
+
+def _letters(size: int = 4) -> str:
+    """A letters-only suffix: patient names reject digits."""
+    return "".join(chr(ord("a") + int(char, 16)) for char in uuid4().hex[:size])
 
 
 class GridWorld(SliceWorld):
@@ -194,6 +202,23 @@ class GridWorld(SliceWorld):
                     self.staff["organization"],
                     self.staff["clinic_b"],
                     patient,
+                    str(uuid4()),
+                    secrets.token_bytes(32),
+                ],
+            )
+            connection.execute(
+                "INSERT INTO clinic_app.scheduling_availabilityblock (id,"
+                " organization_id, clinic_id, practitioner_id, resource_id, start_at,"
+                " end_at, idempotency_key, create_fingerprint, created_at,"
+                " updated_at, retired_at) VALUES (%s, %s, %s, %s, NULL, %s, %s, %s,"
+                " %s, now(), now(), NULL)",
+                [
+                    str(uuid4()),
+                    self.staff["organization"],
+                    self.staff["clinic_b"],
+                    physician,
+                    _utc(day, "07:00"),
+                    _utc(day, "20:00"),
                     str(uuid4()),
                     secrets.token_bytes(32),
                 ],
@@ -627,7 +652,7 @@ def test_a_target_taken_meanwhile_leaves_the_original_unchanged(
         with page.expect_response(_is_post("/agenda/grid/move/")) as lost:
             page.locator("[data-move-confirm]").click()
         assert lost.value.status == CONFLICT
-        expect(_notice(page)).to_contain_text(gettext(SLOT_TEXT))
+        expect(_notice(page)).to_contain_text(gettext(RESOURCE_TEXT))
         expect(page.locator("[data-remote-change] .state-note")).to_have_count(1)
         capture = _shot(page, board.root, "taken-meanwhile")
         axe = _axe(page, board.base_url, board.root, "taken-meanwhile")
@@ -657,8 +682,8 @@ def test_two_receptionists_racing_the_last_room_slot_hold_it_once(
     slot = "09:30"
     room = board.world.rooms[0]
     names = (
-        f"Sintética Recepção A {uuid4().hex[:4]}",
-        f"Sintética Recepção B {uuid4().hex[:4]}",
+        f"Sintética Recepção A {_letters().title()}",
+        f"Sintética Recepção B {_letters().title()}",
     )
     for name in names:
         board.world.patient(name)

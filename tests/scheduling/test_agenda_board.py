@@ -234,6 +234,38 @@ def test_a_physician_sees_only_their_own_lane(rbac_graph: RbacGraph) -> None:
     assert f'data-appointment="{booked.pk}"'.encode() not in page.content
 
 
+def test_a_physician_never_receives_another_lanes_appointment(
+    rbac_graph: RbacGraph,
+) -> None:
+    _, _, setup, _ = _world(rbac_graph)
+    colleague = create_role_actor(rbac_graph, UserClinicRole.Role.PHYSICIAN)
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        create_availability(
+            clinic_id=setup.clinic_id,
+            practitioner_id=colleague.pk,
+            start_local=f"{DAY}T11:00",
+            end_local=f"{DAY}T12:00",
+            idempotency_key=uuid4(),
+        )
+        foreign = create_appointment(
+            clinic_id=setup.clinic_id,
+            enrollment_id=setup.enrollment_id,
+            practitioner_id=colleague.pk,
+            local_range=AppointmentLocalRange(f"{DAY}T11:00", f"{DAY}T12:00"),
+            idempotency_key=uuid4(),
+        )
+    client = verified_physician_client(rbac_graph)
+    with runtime_role():
+        pages = {
+            "day": client.get(_grid(setup.clinic_id)),
+            "week": client.get(_board(setup.clinic_id, "week")),
+            "list": client.get(_board(setup.clinic_id, "list")),
+        }
+    for view, page in pages.items():
+        assert page.status_code == 200, view
+        assert str(foreign.pk).encode() not in page.content, view
+
+
 # --------------------------------------------------------------------------
 # Filters, saved views and unit
 # --------------------------------------------------------------------------
