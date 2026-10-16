@@ -432,14 +432,13 @@ def _racer(
     url: str,
     data: dict[str, str | list[str]],
     gate: Barrier,
-    outcomes: Queue[int | bytes],
+    outcomes: Queue[tuple[int, bytes]],
 ) -> None:
     try:
         with runtime_role():
             gate.wait(timeout=10)
             response = client.post(url, data, HTTP_HX_REQUEST="true")
-        outcomes.put(response.status_code)
-        outcomes.put(response.content)
+        outcomes.put((response.status_code, response.content))
     finally:
         connections.close_all()
 
@@ -459,7 +458,7 @@ def test_two_receptionists_racing_the_last_room_slot_book_once(
     _pin(first, setup.clinic_id, setup.enrollment_id)
     _pin(second, setup.clinic_id, rival)
     gate = Barrier(2)
-    outcomes: Queue[int | bytes] = Queue()
+    outcomes: Queue[tuple[int, bytes]] = Queue()
 
     def payload() -> dict[str, str | list[str]]:
         fields: dict[str, str | list[str]] = {
@@ -480,7 +479,7 @@ def test_two_receptionists_racing_the_last_room_slot_book_once(
     for thread in threads:
         thread.join(timeout=30)
         assert not thread.is_alive()
-    results = [(outcomes.get_nowait(), outcomes.get_nowait()) for _ in threads]
+    results = [outcomes.get_nowait() for _ in threads]
     statuses = sorted(status for status, _ in results)
     assert statuses == [200, 409], statuses
     [(_, loser)] = [item for item in results if item[0] == 409]

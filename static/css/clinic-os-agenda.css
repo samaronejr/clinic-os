@@ -237,7 +237,21 @@
   color: var(--color-ink-soft);
 }
 
+/* The inherited action cell is 1% wide. Board POST buttons, unlike the
+   classic agenda's .button links, need their own intrinsic text-width floor. */
+@media (min-width: 48rem) {
+  .agenda-board-list .agenda-actions button {
+    white-space: nowrap;
+  }
+}
+
 /* Dialogs: the conflict line, finder and action section under the move form. */
+.agenda-move-controls {
+  margin: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
 .agenda-move-conflict {
   margin: 0 0 var(--space-3);
   padding: var(--space-2) var(--space-3);

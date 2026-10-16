@@ -10,11 +10,12 @@ view and holds panel carry the other actions as native forms. Cancel is a
 plain button closed by the script: HTMX owns this form's submit event, so a
 formmethod="dialog" submitter would never reach the browser.
 {% endcomment %}<dialog class="dialog agenda-move-dialog" id="agenda-move-dialog" aria-labelledby="agenda-move-title" aria-describedby="agenda-move-summary" data-dialog data-move-dialog data-text-offline="{% trans "Nothing was sent. Reconnect, then try again." %}" data-text-move-title="{% trans "Move appointment" %}" data-text-actions-title="{% trans "Appointment actions" %}" data-text-found="{% trans "__N__ free times on that day." %}" data-text-none="{% trans "No free time on that day. Try another day." %}">
-  <form class="dialog-form" method="post" action="{{ move_url }}" hx-post="{{ move_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-form>
-    {% csrf_token %}
+  <div class="dialog-form">
     <h2 class="dialog-title" id="agenda-move-title">{% trans "Move appointment" %}</h2>
     <p class="dialog-body" id="agenda-move-summary" data-move-summary></p>
     <p class="agenda-move-conflict" data-move-conflict role="alert" hidden>{% trans "Someone else changed this appointment while this dialog was open. Close it and select the appointment again." %}</p>
+  <form class="agenda-move-controls" method="post" action="{{ move_url }}" hx-post="{{ move_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-form>
+    {% csrf_token %}
     <input type="hidden" name="appointment_id" value="">
     <input type="hidden" name="expected_revision" value="">
     <input type="hidden" name="day" value="{{ board.anchor|date:'Y-m-d' }}">
@@ -31,6 +32,7 @@ formmethod="dialog" submitter would never reach the browser.
       <button type="submit" data-move-confirm>{% trans "Move" %}</button>
     </div>
   </form>
+  </div>
   <form class="agenda-move-find" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-move-start" hx-swap="innerHTML" data-move-find>
     {% csrf_token %}
     <input type="hidden" name="intent" value="find">

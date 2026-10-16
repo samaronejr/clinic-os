@@ -38,7 +38,7 @@ from renewal.browser._navigation import (
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import encrypt, kek
 from renewal.browser.a11y_support import AXE_RUN_JS, AXE_URL
-from renewal.browser.engines import selected_engine
+from renewal.browser.engines import full_page_screenshot, new_context, selected_engine
 from renewal.browser.test_agenda import (
     SETTLED_JS,
     _sign_in,
@@ -83,6 +83,39 @@ SLOT_TEXT: Final = "That window is no longer free for this physician or patient.
 RESOURCE_TEXT: Final = "A required resource is unavailable for this window."
 TAKEN_TEXT: Final = "This time was just taken. Choose another time."
 NO_OVERFLOW_JS: Final = "document.documentElement.scrollWidth <= window.innerWidth"
+REFLOW_WINDOW: Final = (1280, 900)
+REFLOW_SCALES: Final = (2, 4)
+BOARD_CONTENT: Final = (
+    ".agenda-grid .resource-slot,"
+    " .agenda-month-link:has(.agenda-month-count),"
+    " .agenda-board-list .agenda-row"
+)
+VIEWPORT_JS: Final = """() => ({
+  css_width: innerWidth, css_height: innerHeight,
+  device_pixel_ratio: devicePixelRatio,
+  visual_viewport_scale: visualViewport.scale,
+  root_font_size: getComputedStyle(document.documentElement).fontSize,
+  reduced_motion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+})"""
+MOTION_JS: Final = """() => [...document.querySelectorAll('#agenda-shell *')]
+  .filter(node => node.getClientRects().length)
+  .flatMap(node => ['', '::before', '::after'].flatMap(pseudo => {
+    const style = getComputedStyle(node, pseudo || null);
+    return [style.transitionDuration, style.animationDuration]
+      .some(value => value.split(',').some(duration => parseFloat(duration) !== 0))
+      ? [{tag: node.tagName, pseudo}] : [];
+  }))"""
+ACTION_LINES_JS: Final = """() => Math.max(0,
+  ...[...document.querySelectorAll('.agenda-board-list .agenda-actions button')]
+    .filter(node => node.getClientRects().length)
+    .map(node => {
+      const style = getComputedStyle(node);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const borders = parseFloat(style.borderTopWidth)
+        + parseFloat(style.borderBottomWidth);
+      return (node.getBoundingClientRect().height - padding - borders)
+        / parseFloat(style.lineHeight);
+    }))"""
 
 
 def _letters(size: int = 4) -> str:
@@ -367,7 +400,9 @@ def _open(page: Page, base_url: str, path: str) -> None:
     assert response is not None
     assert response.status == OK
     expect(page.locator("#agenda-grid-results")).to_have_count(1)
-    wait_for_js(page, SETTLED_JS)
+    # The stream's ready ACK immediately refetches the board to close the
+    # subscription gap. Do not measure/capture a region it is about to replace.
+    _connected(page)
 
 
 def _open_native(page: Page, base_url: str, path: str) -> None:
@@ -457,6 +492,30 @@ def _shot(page: Page, root: Path, name: str) -> str:
     return path.name
 
 
+def _board_shot(page: Page, root: Path, name: str) -> str:
+    """Capture populated board content, not the shell or a table-row box."""
+    row = page.locator(BOARD_CONTENT).first
+    row.scroll_into_view_if_needed()
+    expect(row).to_be_in_viewport()
+    action_lines = evaluate_js(page, ACTION_LINES_JS)
+    assert action_lines <= 2, (name, action_lines)
+    return _shot(page, root, name)
+
+
+def _dialog_captures(board: Board, page: Page, name: str) -> list[str]:
+    """Check and capture every scroll segment of the actual open dialog."""
+    box = page.locator("[data-move-dialog]")
+    assert _axe(page, board.base_url, board.root, name) == []
+    assert evaluate_js(page, TARGETS_JS) == [], name
+    assert box.evaluate("(node) => node.scrollWidth <= node.clientWidth"), name
+    height, extent = box.evaluate("(node) => [node.clientHeight, node.scrollHeight]")
+    captures = []
+    for index, top in enumerate(range(0, int(extent), int(height))):
+        box.evaluate("(node, top) => { node.scrollTop = top; }", top)
+        captures.append(_shot(page, board.root, f"{name}-{index}"))
+    return captures
+
+
 def _set_preferences(page: Page, base_url: str, theme: str, density: str) -> None:
     goto_settled(page, f"{base_url}/account/preferences/")
     page.locator(
@@ -530,7 +589,10 @@ def test_every_view_is_axe_clean_with_44px_targets_at_every_width(
                                 "no_overflow": overflow,
                                 "axe": len(violations),
                                 "csp": csp,
-                                "capture": _shot(page, board.root, name),
+                                "max_action_line_boxes": evaluate_js(
+                                    page, ACTION_LINES_JS
+                                ),
+                                "capture": _board_shot(page, board.root, name),
                             }
                             assert small == [], (name, small)
                             assert overflow, name
@@ -539,6 +601,117 @@ def test_every_view_is_axe_clean_with_44px_targets_at_every_width(
         finally:
             _set_preferences(setter, board.base_url, "light", "comfortable")
     board.report["checks"]["views"] = results
+
+
+@pytest.mark.parametrize("scale", REFLOW_SCALES)
+def test_board_zoom_reflow_and_reduced_motion(
+    board: Board, scale: int, csp_console_violations: list[dict[str, str]]
+) -> None:
+    """1280x900 physical window, 200%/400% equivalent; no CSS zoom override."""
+    seeded = board.world.seed_day()
+    results: dict[str, Any] = {}
+    size: ViewportSize = {
+        "width": REFLOW_WINDOW[0] // scale,
+        "height": REFLOW_WINDOW[1] // scale,
+    }
+    with board.browser.new_context(
+        locale="pt-BR", storage_state=board.state
+    ) as preferences:
+        setter = preferences.new_page()
+        try:
+            for theme, density in PREFERENCES:
+                _set_preferences(setter, board.base_url, theme, density)
+                # The shared helper keeps Firefox's DPR across COOP navigations.
+                with new_context(
+                    board.browser,
+                    locale="pt-BR",
+                    storage_state=board.state,
+                    viewport=size,
+                    device_scale_factor=scale,
+                    reduced_motion="reduce",
+                ) as context:
+                    page = context.new_page()
+                    for view in VIEWS:
+                        name = f"{view}-zoom-{scale * 100}-{theme}-{density}"
+                        _open(page, board.base_url, _url(board.world, view, seeded.day))
+                        metrics = evaluate_js(page, VIEWPORT_JS)
+                        assert metrics == {
+                            "css_width": size["width"],
+                            "css_height": size["height"],
+                            "device_pixel_ratio": scale,
+                            "visual_viewport_scale": 1,
+                            "root_font_size": "16px",
+                            "reduced_motion": True,
+                        }, metrics
+                        expect(page.locator("html")).to_have_attribute(
+                            "data-theme", theme
+                        )
+                        expect(page.locator("html")).to_have_attribute(
+                            "data-density", density
+                        )
+                        captures = [
+                            path.name
+                            for path in full_page_screenshot(
+                                page, board.root / f"{name}-full.png"
+                            )
+                        ]
+                        captures.append(_board_shot(page, board.root, name))
+                        assert evaluate_js(page, NO_OVERFLOW_JS), name
+                        assert evaluate_js(page, TARGETS_JS) == [], name
+                        motion = evaluate_js(page, MOTION_JS)
+                        assert motion == [], (name, motion)
+                        assert _axe(page, board.base_url, board.root, name) == []
+                        dialogs: dict[str, list[str]] = {}
+                        if view in {"day", "week"}:
+                            appointment = page.locator("[data-move]").first
+                            appointment_id = appointment.get_attribute(
+                                "data-appointment"
+                            )
+                            assert appointment_id
+                            appointment.focus()
+                            page.keyboard.press("m")
+                            box = page.locator("[data-move-dialog]")
+                            expect(box).to_have_attribute("open", "")
+                            expect(box.locator("[data-move-start]")).to_be_focused()
+                            assert evaluate_js(page, MOTION_JS) == [], name
+                            dialog_captures = _dialog_captures(
+                                board, page, f"{name}-dialog"
+                            )
+                            page.keyboard.press("Tab")
+                            assert evaluate_js(
+                                page,
+                                "!!document.activeElement.closest('[data-move-dialog]')",
+                            )
+                            page.keyboard.press("Escape")
+                            expect(box).not_to_have_attribute("open", "")
+                            wait_for_js(
+                                page,
+                                f"(id) => ({FOCUSED_APPOINTMENT_JS})() === id",
+                                arg=appointment_id,
+                            )
+                            dialogs["move"] = dialog_captures
+                        # The shared guard recognizes only WebKit's own
+                        # per-frame screenshot stylesheet refusal, and still
+                        # rejects application CSP violations during captures.
+                        csp = len(csp_console_violations)
+                        assert csp == 0, name
+                        results[name] = {
+                            "method": "halved/quartered CSS viewport plus device scale",
+                            "physical_window": list(REFLOW_WINDOW),
+                            "equivalent_zoom_percent": scale * 100,
+                            "metrics": metrics,
+                            "motion_offenders": motion,
+                            "axe": 0,
+                            "small_targets": [],
+                            "no_overflow": True,
+                            "csp": csp,
+                            "max_action_line_boxes": evaluate_js(page, ACTION_LINES_JS),
+                            "captures": captures,
+                            "dialogs": dialogs,
+                        }
+        finally:
+            _set_preferences(setter, board.base_url, "light", "comfortable")
+    board.report["checks"][f"reflow_{scale * 100}"] = results
 
 
 # --------------------------------------------------------------------------
@@ -682,6 +855,133 @@ def test_a_target_taken_meanwhile_leaves_the_original_unchanged(
 # --------------------------------------------------------------------------
 # 4. Two receptionists, the last free room: one hold, one worded refusal
 # --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("initial", "intent"), [("held", "confirm"), ("arrived", "cancel")]
+)
+def test_action_only_dialog_shows_remote_conflict(
+    board: Board,
+    initial: str,
+    intent: str,
+    csp_console_violations: list[dict[str, str]],
+) -> None:
+    seeded = board.world.seed_day()
+    appointment: str | None
+    action_url = (
+        f"/scheduling/clinics/{board.world.staff['clinic_a']}/agenda/grid/action/"
+    )
+    with board.browser.new_context(
+        locale="pt-BR", storage_state=board.state
+    ) as context:
+        page, remote = context.new_page(), context.new_page()
+        _open(page, board.base_url, _url(board.world, "day", seeded.day))
+        if initial == "held":
+            name = f"Sintética Reserva {_letters().title()}"
+            board.world.patient(name)
+            _pin(page, name)
+            status = evaluate_js(
+                page,
+                REMOTE_MOVE_JS,
+                [
+                    action_url,
+                    {
+                        "intent": "hold",
+                        "view": "day",
+                        "day": seeded.day,
+                        "practitioner": board.world.physicians[0],
+                        "service": board.world.services["remote"],
+                        "start": seeded.free[board.world.physicians[0]][0],
+                        "duration": "30",
+                        "idempotency_key": str(uuid4()),
+                    },
+                ],
+            )
+        else:
+            appointment = seeded.by_physician[board.world.physicians[0]][0]
+            status = evaluate_js(
+                page,
+                REMOTE_MOVE_JS,
+                [
+                    action_url,
+                    {
+                        "intent": "arrive",
+                        "view": "day",
+                        "day": seeded.day,
+                        "appointment_id": appointment,
+                        "expected_revision": str(board.world.stored(appointment)[1]),
+                        "command_id": str(uuid4()),
+                    },
+                ],
+            )
+        assert status == OK
+        for each in (page, remote):
+            _open(each, board.base_url, _url(board.world, "day", seeded.day))
+        _connected(page)
+        opener = page.locator(".agenda-slot-actions").first
+        appointment = opener.get_attribute("data-actions-for")
+        revision = opener.get_attribute("data-revision")
+        assert appointment
+        assert revision
+        assert board.world.status(appointment) == initial
+        summary = (
+            f"{opener.locator('strong').inner_text()} · "
+            f"{opener.locator('.resource-slot-meta').inner_text()}"
+        )
+        opener.focus()
+        page.keyboard.press("Enter")
+        box = page.locator("[data-move-dialog]")
+        expect(box).to_have_attribute("open", "")
+        expect(box.locator("[data-move-form]")).to_be_hidden()
+        expect(box.locator("[data-move-find]")).to_be_hidden()
+        expect(box.locator("#agenda-move-title")).to_be_visible()
+        expect(box.locator("[data-move-summary]")).to_be_visible()
+        expect(box.locator("[data-move-summary]")).to_have_text(summary)
+        with page.expect_response(_is_refetch(seeded.day)) as refetched:
+            status = evaluate_js(
+                remote,
+                REMOTE_MOVE_JS,
+                [
+                    action_url,
+                    {
+                        "intent": intent,
+                        "view": "day",
+                        "day": seeded.day,
+                        "appointment_id": appointment,
+                        "expected_revision": revision,
+                        "command_id": str(uuid4()),
+                    },
+                ],
+            )
+        assert status == OK
+        assert refetched.value.status == OK
+        expect(box.locator("[data-move-conflict]")).to_be_visible()
+        expect(box.locator("[data-move-summary]")).to_have_text(summary)
+        expect(
+            box.locator('[data-move-lifecycle] input[name="expected_revision"]')
+        ).to_have_value(revision)
+        assert board.world.stored(appointment)[1] == int(revision) + 1
+        captures = _dialog_captures(board, page, f"{initial}-remote-conflict")
+        page.keyboard.press("Tab")
+        assert evaluate_js(
+            page, "!!document.activeElement.closest('[data-move-dialog]')"
+        )
+        page.keyboard.press("Escape")
+        expect(box).not_to_have_attribute("open", "")
+        wait_for_js(
+            page,
+            "!!document.activeElement.matches('[data-grid-cell]') && "
+            "!document.activeElement.closest('dialog')",
+        )
+        assert csp_console_violations == []
+    board.report["checks"][f"{initial}_remote_conflict"] = {
+        "initial_status": initial,
+        "remote_action": intent,
+        "revision_delta": 1,
+        "captures": captures,
+        "axe": 0,
+        "focus_returned": True,
+    }
 
 
 def test_two_receptionists_racing_the_last_room_slot_hold_it_once(
