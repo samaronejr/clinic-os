@@ -118,6 +118,10 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
             {
                 "scheduling:agenda",
                 "scheduling:agenda-at",
+                "scheduling:agenda-grid",
+                "scheduling:agenda-board",
+                "scheduling:agenda-grid-move",
+                "scheduling:agenda-grid-action",
                 "scheduling:appointment-create",
                 "scheduling:appointment-reschedule",
                 "scheduling:appointment-cancel",

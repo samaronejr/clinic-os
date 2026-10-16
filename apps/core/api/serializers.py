@@ -9,7 +9,8 @@ from rest_framework import serializers
 
 from apps.core.api.errors import ERROR_CODES
 from apps.core.command_search import MAX_COMMAND_QUERY
-from apps.scheduling.agenda_queries import AgendaPage
+from apps.scheduling.agenda_board import BOARD_VIEWS, AgendaBoard
+from apps.scheduling.agenda_queries import AGENDA_STATUSES, AgendaPage
 
 
 class ErrorSerializer(serializers.Serializer[None]):
@@ -72,6 +73,109 @@ class AgendaPageSerializer(serializers.Serializer[AgendaPage]):
     page_count = serializers.IntegerField(read_only=True)
     start_at = serializers.DateTimeField(read_only=True)
     end_at = serializers.DateTimeField(read_only=True)
+
+
+class AgendaBoardFiltersSerializer(serializers.Serializer[None]):
+    """Optional board filters; unknown catalog entries answer ``invalid_input``."""
+
+    professional_id = serializers.UUIDField(required=False)
+    resource_id = serializers.UUIDField(required=False)
+    service_type_id = serializers.UUIDField(required=False)
+    status = serializers.ChoiceField(
+        choices=[(status, status) for status in AGENDA_STATUSES], required=False
+    )
+
+
+class AgendaBoardQueryRequestSerializer(serializers.Serializer[None]):
+    """POST body of ``agenda/board``: the range is the view containing ``date``.
+
+    ``clinic_id`` is optional: without it the shell's current clinic is used.
+    Record selectors never appear here; filters name only catalog entries.
+    """
+
+    clinic_id = serializers.UUIDField(required=False)
+    view = serializers.ChoiceField(choices=[(view, view) for view in BOARD_VIEWS])
+    date = serializers.DateField(
+        help_text=(
+            f"Clinic-local civil date from {AGENDA_FIRST_DATE.isoformat()} "
+            f"to {AGENDA_LAST_DATE.isoformat()}; the day, ISO week or month "
+            "containing it."
+        )
+    )
+    filters = AgendaBoardFiltersSerializer(required=False)
+
+    def validate_date(self, value: datetime.date) -> datetime.date:
+        """Refuse civil dates outside the supported agenda window."""
+        if not AGENDA_FIRST_DATE <= value <= AGENDA_LAST_DATE:
+            message = "date outside the supported agenda window"
+            raise serializers.ValidationError(message)
+        return value
+
+
+class BoardLaneSerializer(serializers.Serializer[Any]):
+    """Adapt ``scheduling.BoardLane``: a professional, room or equipment lane."""
+
+    kind = serializers.CharField(read_only=True)
+    lane_id = serializers.UUIDField(read_only=True)
+
+    def get_fields(self) -> dict[str, serializers.Field[Any, Any, Any, Any]]:
+        """Add ``label`` here: as a class attribute it would shadow ``Field.label``."""
+        fields = super().get_fields()
+        fields["label"] = serializers.CharField(read_only=True)
+        return fields
+
+
+class BoardAppointmentSerializer(serializers.Serializer[Any]):
+    """Adapt ``scheduling.BoardAppointment``; no birth date or contact data."""
+
+    appointment_id = serializers.UUIDField(read_only=True)
+    patient_display_name = serializers.CharField(read_only=True)
+    practitioner_id = serializers.UUIDField(read_only=True)
+    resource_ids = serializers.ListField(child=serializers.UUIDField(), read_only=True)
+    service_type_id = serializers.UUIDField(read_only=True, allow_null=True)
+    start_local = serializers.CharField(read_only=True)
+    end_local = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    revision = serializers.IntegerField(read_only=True)
+    movable = serializers.BooleanField(read_only=True)
+    actions = serializers.ListField(child=serializers.CharField(), read_only=True)
+    hold_until = serializers.CharField(read_only=True)
+    hold_expiring = serializers.BooleanField(read_only=True)
+
+
+class OccupancySerializer(serializers.Serializer[Any]):
+    """Adapt ``scheduling.Occupancy``: a busy interval, other units unnamed."""
+
+    lane_id = serializers.UUIDField(read_only=True)
+    start_local = serializers.CharField(read_only=True)
+    end_local = serializers.CharField(read_only=True)
+    other_unit = serializers.BooleanField(read_only=True)
+
+
+class DayCountSerializer(serializers.Serializer[Any]):
+    """Adapt ``scheduling.DayCount``: appointments starting on one date."""
+
+    day = serializers.DateField(read_only=True)
+    total = serializers.IntegerField(read_only=True)
+
+
+class AgendaBoardSerializer(serializers.Serializer[AgendaBoard]):
+    """Adapt ``scheduling.AgendaBoard``: slots and appointments of one view."""
+
+    view = serializers.ChoiceField(
+        choices=[(view, view) for view in BOARD_VIEWS], read_only=True
+    )
+    anchor = serializers.DateField(read_only=True)
+    first_day = serializers.DateField(read_only=True)
+    last_day = serializers.DateField(read_only=True)
+    lanes = BoardLaneSerializer(many=True, read_only=True)
+    slots = serializers.ListField(child=serializers.CharField(), read_only=True)
+    appointments = BoardAppointmentSerializer(many=True, read_only=True)
+    occupancy = OccupancySerializer(many=True, read_only=True)
+    counts = DayCountSerializer(many=True, read_only=True)
+    can_move = serializers.BooleanField(read_only=True)
+    can_book = serializers.BooleanField(read_only=True)
+    truncated = serializers.BooleanField(read_only=True)
 
 
 class CommandSearchRequestSerializer(serializers.Serializer[None]):

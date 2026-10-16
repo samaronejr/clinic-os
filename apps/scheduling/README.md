@@ -217,6 +217,50 @@ inactive rows reuse the design system's warning, success and muted treatments.
 Professional column names come from the service catalog and agenda label
 resolver, including nurse/allied practitioners, rather than raw UUIDs.
 
+## Agenda board (todo 24)
+
+`view_agenda_board(*, clinic_id, view, date, filters=None)` widens the todo 23
+grid to four clinic-local views: `day` (every active professional, then active
+rooms and equipment), `week` (one lane's ISO week: the filtered professional
+or resource, else the first lane), `month` (appointments starting on each day,
+counts only) and `list` (the filtered week as a ledger). `AgendaFilters`
+narrows by professional, resource, service type and status; the unit filter is
+the clinic itself, switched by a POST that redirects to the other clinic's
+board. A filter naming anything outside the actor's catalog (`board_catalog`)
+is an input error. Filters never hide capacity: every capacity-consuming
+booking still makes its lane busy. A professional's bookings in another unit
+of the organization appear as "Ocupado (outra unidade)" intervals with no
+patient, unit or service detail; opt-in cross-organization busy time is a
+disabled capability (`CROSS_ORGANIZATION_BUSY = False`) pending a separate
+owner decision. Hooks mirror the services: move hooks follow `_move_rules`,
+arrive/no-show/cancel the move terms and confirm the booking terms, as
+`authorize_transition` decides them; no-show appears only once the start time
+has passed, and the database decides again.
+
+Routes carry only the clinic, the civil view and the civil date
+(`.../agenda/grid/<day>/` for the day, `.../agenda/board/<view>/<day>/`).
+Filters live in the server-side session; saved views are
+`identity.saved_views` rows (destination `agenda`, view `grid-<view>`, and the
+catalog identifiers `professional`, `resource`, `service` plus a status slug).
+The board action POST (`.../agenda/grid/action/`) books for the patient in
+context (pinned through Search) as an expiring hold (`create_hold`, or
+`create_service_hold` with rooms and equipment), then confirms it (`book`),
+cancels, records arrival or no-show, or finds a movable booking's free starts
+on another day (`free_move_slots`). Every selector, revision, command id and
+booking key travels in the POST body. Refusals share the unknown-clinic 404
+and write nothing, not even the session; a lost race answers 409 with the
+current board and "Horário acabou de ser ocupado". `POST /api/ui/v1/agenda/board/`
+returns the same read as a typed DTO (`clinic_id` optional: the shell's clinic).
+
+The page stays HTMX over native forms (ADR-001 variant A): realtime hints and
+the polling fallback refetch the board with its filters, a refetch that shows
+someone else's change raises the remote-change note, an open appointment
+dialog warns when its booking changed meanwhile, and holds near their database
+deadline read "Reserva expirando". With JavaScript off the list view carries
+every action as a native form, the move form page has the slot finder, and the
+classic ledger remains the agenda's fallback. `view_day_grid` keeps its todo
+23 contract.
+
 ## Appointment reminders
 
 Booking (including patient and waitlist booking) atomically schedules eligible

@@ -1,20 +1,26 @@
 {% load i18n %}{% comment %}
-Move dialog of the agenda grid (variant A): opened by static/js/agenda-grid.js
-from an appointment (click, Enter or M), filled with that practitioner's free
-times, and posted with the revision the grid rendered. JS off never reaches
-it; each appointment POSTs its selector to the native move form instead.
-Cancel is a plain button closed by the script: HTMX owns this form's submit event, so a
+Appointment dialog of the agenda board (variant A): opened by
+static/js/agenda-grid.js from an appointment (click, Enter or M). The move form
+comes first (start time, Cancel, Move) and posts the revision the board
+rendered; the slot finder asks the server for the professional's free times on
+another day; the action section offers only the lifecycle actions the board
+rendered for that appointment (data-actions). JS off never reaches it: each
+movable appointment POSTs its selector to the native move form, and the list
+view and holds panel carry the other actions as native forms. Cancel is a
+plain button closed by the script: HTMX owns this form's submit event, so a
 formmethod="dialog" submitter would never reach the browser.
-{% endcomment %}<dialog class="dialog agenda-move-dialog" id="agenda-move-dialog" aria-labelledby="agenda-move-title" aria-describedby="agenda-move-summary" data-dialog data-move-dialog data-text-offline="{% trans "Nothing was sent. Reconnect, then try again." %}">
+{% endcomment %}<dialog class="dialog agenda-move-dialog" id="agenda-move-dialog" aria-labelledby="agenda-move-title" aria-describedby="agenda-move-summary" data-dialog data-move-dialog data-text-offline="{% trans "Nothing was sent. Reconnect, then try again." %}" data-text-move-title="{% trans "Move appointment" %}" data-text-actions-title="{% trans "Appointment actions" %}" data-text-found="{% trans "__N__ free times on that day." %}" data-text-none="{% trans "No free time on that day. Try another day." %}">
   <form class="dialog-form" method="post" action="{{ move_url }}" hx-post="{{ move_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-form>
     {% csrf_token %}
     <h2 class="dialog-title" id="agenda-move-title">{% trans "Move appointment" %}</h2>
     <p class="dialog-body" id="agenda-move-summary" data-move-summary></p>
+    <p class="agenda-move-conflict" data-move-conflict role="alert" hidden>{% trans "Someone else changed this appointment while this dialog was open. Close it and select the appointment again." %}</p>
     <input type="hidden" name="appointment_id" value="">
     <input type="hidden" name="expected_revision" value="">
-    <input type="hidden" name="day" value="{{ grid.date|date:'Y-m-d' }}">
+    <input type="hidden" name="day" value="{{ board.anchor|date:'Y-m-d' }}">
+    <input type="hidden" name="view" value="{{ board.view }}">
     <input type="hidden" name="duration" value="">
-    <div class="field">
+    <div class="field" data-move-field>
       <label for="agenda-move-start">{% trans "New start time" %}</label>
       <select id="agenda-move-start" name="start" aria-describedby="agenda-move-start-hint" data-move-start></select>
       <p class="hint" id="agenda-move-start-hint">{% trans "Only this practitioner's free times are listed. The room is checked when you confirm." %}</p>
@@ -23,6 +29,36 @@ formmethod="dialog" submitter would never reach the browser.
     <div class="dialog-actions">
       <button type="button" class="button--quiet" data-dialog-close>{% trans "Cancel" %}</button>
       <button type="submit" data-move-confirm>{% trans "Move" %}</button>
+    </div>
+  </form>
+  <form class="agenda-move-find" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-move-start" hx-swap="innerHTML" data-move-find>
+    {% csrf_token %}
+    <input type="hidden" name="intent" value="find">
+    <input type="hidden" name="view" value="{{ board.view }}">
+    <input type="hidden" name="appointment_id" value="">
+    <div class="field">
+      <label for="agenda-move-find-day">{% trans "Find free times on another day" %}</label>
+      <input id="agenda-move-find-day" name="day" type="date" value="{{ board.anchor|date:'Y-m-d' }}" required aria-describedby="agenda-move-find-status">
+    </div>
+    <button type="submit" class="button--secondary">{% trans "Find free times" %}</button>
+    <p class="hint" id="agenda-move-find-status" data-move-find-status role="status"></p>
+  </form>
+  <form class="agenda-move-lifecycle" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-move-lifecycle hidden>
+    {% csrf_token %}
+    <input type="hidden" name="view" value="{{ board.view }}">
+    <input type="hidden" name="day" value="{{ board.anchor|date:'Y-m-d' }}">
+    <input type="hidden" name="appointment_id" value="">
+    <input type="hidden" name="expected_revision" value="">
+    <input type="hidden" name="command_id" value="">
+    <h3 class="agenda-move-lifecycle-title">{% trans "Other actions" %}</h3>
+    <div class="agenda-action-group">
+      <button type="submit" name="intent" value="confirm" data-lifecycle="confirm" hidden>{% trans "Confirm booking" %}</button>
+      <button type="submit" name="intent" value="arrive" class="button--secondary" data-lifecycle="arrive" hidden>{% trans "Mark arrived" %}</button>
+      <button type="submit" name="intent" value="no_show" class="button--secondary" data-lifecycle="no_show" hidden>{% trans "Mark no-show" %}</button>
+      <button type="submit" name="intent" value="cancel" class="button--danger" data-lifecycle="cancel" hidden>{% trans "Cancel appointment" %}</button>
+    </div>
+    <div class="dialog-actions agenda-move-lifecycle-close" data-move-close-only hidden>
+      <button type="button" class="button--quiet" data-move-close>{% trans "Close" %}</button>
     </div>
   </form>
 </dialog>

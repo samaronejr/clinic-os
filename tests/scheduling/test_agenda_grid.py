@@ -13,7 +13,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from queue import Queue
 from threading import Barrier, Thread
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Final, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -21,16 +21,16 @@ from apps.identity.current_context import MANAGER_ROLES, require_permission
 from apps.identity.models import UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.identity.scope_provisioning import narrow_role
-from apps.scheduling.agenda_grid import (
-    DayGrid,
-    GridAppointment,
-    GridColumn,
-    view_day_grid,
+from apps.scheduling.agenda_board import (
+    AgendaBoard,
+    AgendaFilters,
+    BoardAppointment,
+    BoardLane,
+    Occupancy,
 )
-from apps.scheduling.agenda_grid_views import (
-    MOVED_MESSAGE,
-    grid_context,
-)
+from apps.scheduling.agenda_board_presenter import grid_rows
+from apps.scheduling.agenda_grid import view_day_grid
+from apps.scheduling.agenda_grid_views import MOVED_MESSAGE
 from apps.scheduling.appointment_lifecycle import AppointmentLifecycleError
 from apps.scheduling.models import Appointment
 from apps.scheduling.resource_definitions import ResourceInput, create_resource
@@ -305,17 +305,54 @@ def test_move_authority_is_exactly_reschedule_authority_for_every_role(
 
 def _item(
     start: str, end: str, practitioner: UUID, rooms: tuple[UUID, ...]
-) -> GridAppointment:
-    return GridAppointment(
+) -> BoardAppointment:
+    return BoardAppointment(
         appointment_id=uuid4(),
         patient_display_name="Sintetico",
         practitioner_id=practitioner,
-        room_ids=rooms,
+        resource_ids=rooms,
+        service_type_id=None,
         start_local=f"{DAY}T{start}",
         end_local=f"{DAY}T{end}",
         status="scheduled",
         revision=1,
         movable=True,
+        actions=(),
+    )
+
+
+def _day_board(
+    lanes: tuple[BoardLane, ...],
+    slots: tuple[str, ...],
+    appointments: tuple[BoardAppointment, ...],
+) -> AgendaBoard:
+    """Build a day board whose occupancy follows the lifecycle, as the service does."""
+    day = date(2035, 6, 2)
+    return AgendaBoard(
+        view="day",
+        anchor=day,
+        first_day=day,
+        last_day=day,
+        timezone_key="America/Sao_Paulo",
+        lanes=lanes,
+        days=(day,),
+        slots=slots,
+        appointments=appointments,
+        occupancy=tuple(
+            Occupancy(lane, item.start_local, item.end_local)
+            for item in appointments
+            if item.occupies
+            for lane in (item.practitioner_id, *item.resource_ids)
+        ),
+        counts=(),
+        professionals=tuple(lane for lane in lanes if lane.kind == "practitioner"),
+        resources=tuple(lane for lane in lanes if lane.kind != "practitioner"),
+        services=(),
+        filters=AgendaFilters(),
+        can_move=True,
+        can_book=False,
+        own_practitioner=None,
+        truncated=False,
     )
 
 
@@ -323,21 +360,16 @@ def test_grid_places_each_appointment_in_its_practitioner_and_room_columns() -> 
     practitioner, room, other = uuid4(), uuid4(), uuid4()
     first = _item("09:00", "10:00", practitioner, (room,))
     second = _item("10:15", "10:45", practitioner, ())
-    grid = DayGrid(
-        date=date(2035, 6, 2),
-        timezone_key="America/Sao_Paulo",
-        columns=(
-            GridColumn("practitioner", practitioner, "Dra. Sintetica"),
-            GridColumn("room", room, "Sala 1"),
-            GridColumn("room", other, "Sala 2"),
+    board = _day_board(
+        (
+            BoardLane("practitioner", practitioner, "Dra. Sintetica"),
+            BoardLane("room", room, "Sala 1"),
+            BoardLane("room", other, "Sala 2"),
         ),
-        slots=("09:00", "09:30", "10:00", "10:30"),
-        appointments=(first, second),
-        can_move=True,
-        truncated=False,
+        ("09:00", "09:30", "10:00", "10:30"),
+        (first, second),
     )
-    rows = cast("list[dict[str, Any]]", grid_context(uuid4(), grid)["rows"])
-    kinds = [[cell["kind"] for cell in row["cells"]] for row in rows]
+    kinds = [[cell.kind for cell in row.cells] for row in grid_rows(board)]
     assert kinds == [
         ["booked", "booked", "free"],
         ["continues", "continues", "free"],
@@ -651,19 +683,16 @@ def test_owner_sees_no_move_hook_on_a_service_booking_it_cannot_move(
 def test_cell_occupancy_follows_lifecycle_not_visible_history(status: str) -> None:
     practitioner = uuid4()
     item = replace(_item("09:00", "10:00", practitioner, ()), status=status)
-    grid = DayGrid(
-        date=date(2035, 6, 2),
-        timezone_key="America/Sao_Paulo",
-        columns=(GridColumn("practitioner", practitioner, "Sintetico"),),
-        slots=("09:00", "09:30"),
-        appointments=(item,),
-        can_move=False,
-        truncated=False,
+    board = _day_board(
+        (BoardLane("practitioner", practitioner, "Sintetico"),),
+        ("09:00", "09:30"),
+        (item,),
     )
-    rows = cast("list[dict[str, Any]]", grid_context(uuid4(), grid)["rows"])
+    rows = grid_rows(board)
     occupying = status in {"held", "scheduled", "arrived", "in_progress"}
-    assert [row["cells"][0]["free"] for row in rows] == [not occupying] * 2
-    assert rows[1]["cells"][0]["kind"] == ("continues" if occupying else "free")
+    cells = [row.cells[0] for row in rows]
+    assert [cell.free for cell in cells] == [not occupying] * 2
+    assert cells[1].kind == ("continues" if occupying else "free")
 
 
 def test_grid_reads_every_lifecycle_state_and_hides_due_holds_at_equality(

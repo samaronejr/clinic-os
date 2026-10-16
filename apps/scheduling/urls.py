@@ -5,6 +5,7 @@ from django.urls.resolvers import URLPattern
 
 from apps.comms.views import reminders_view
 from apps.scheduling import (
+    agenda_board_views,
     agenda_grid_views,
     agenda_views,
     booking_views,
@@ -77,9 +78,19 @@ urlpatterns: list[URLPattern] = [
         name="agenda-grid-move",
     ),
     path(
+        "scheduling/clinics/<uuid:clinic_id>/agenda/grid/action/",
+        agenda_board_views.agenda_board_action_view,
+        name="agenda-grid-action",
+    ),
+    path(
         "scheduling/clinics/<uuid:clinic_id>/agenda/grid/<str:day>/",
         agenda_grid_views.agenda_grid_view,
         name="agenda-grid",
+    ),
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/agenda/board/<str:view>/<str:day>/",
+        agenda_grid_views.agenda_grid_view,
+        name="agenda-board",
     ),
     path(
         "scheduling/appointments/<uuid:appointment_id>/reschedule/",

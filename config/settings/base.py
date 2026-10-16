@@ -197,6 +197,11 @@ SPECTACULAR_SETTINGS: dict[str, object] = {
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api/ui/v1",
     "PREPROCESSING_HOOKS": ["apps.core.api.schema.ui_api_endpoints_only"],
+    # Two endpoints name a "view" choice: the ledger page and the agenda board.
+    "ENUM_NAME_OVERRIDES": {
+        "AgendaLedgerViewEnum": ["day", "week"],
+        "AgendaBoardViewEnum": ["day", "week", "month", "list"],
+    },
 }
 
 AUTH_PASSWORD_VALIDATORS = [

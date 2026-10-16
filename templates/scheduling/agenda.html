@@ -11,6 +11,7 @@
   {% if can_manage %}<a class="button button--secondary" href="{% url 'scheduling:waitlist' clinic_id %}">Lista de espera</a>
   <a class="button button--secondary" href="{% url 'scheduling:reminders' clinic_id %}">Lembretes de consulta</a>{% endif %}
   <p class="lede" id="agenda-lede">{% blocktrans %}Appointments use the clinic time zone ({{ timezone_key }}).{% endblocktrans %}</p>
+  {% if board_url %}<p class="agenda-board-entry"><a class="button button--secondary" href="{{ board_url }}">{% trans "Open the resource grid" %}</a></p>{% endif %}
   {% for message in messages %}
     {% if "scheduling.appointment.booked" in message.tags %}
       <div class="feedback feedback--success" id="appointment-booked" role="status">

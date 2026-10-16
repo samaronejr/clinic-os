@@ -1,0 +1,303 @@
+/* Agenda board (todo 24): toolbar, holds, other-unit busy cells, month and
+   list views, and the appointment and booking dialogs. Loaded only by
+   templates/scheduling/agenda_grid.html, after clinic-os-components.css.
+   Semantic tokens only; raw values live in clinic-os.css :root. */
+
+.agenda-toolbar {
+  margin-bottom: var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  align-items: flex-start;
+}
+
+.agenda-filters {
+  min-width: 0;
+  flex: 1 1 36rem;
+}
+
+.agenda-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.agenda-filter-fields .field {
+  margin: 0;
+}
+
+.agenda-filter-actions {
+  margin-top: var(--space-3);
+}
+
+.agenda-saved {
+  min-width: 0;
+  flex: 0 1 22rem;
+}
+
+.agenda-saved > summary {
+  list-style: none;
+}
+
+.agenda-saved > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agenda-saved-body {
+  margin-top: var(--space-2);
+  padding: var(--density-panel-pad);
+  display: grid;
+  gap: var(--space-3);
+  border: var(--line-1) solid var(--color-line);
+  border-radius: var(--radius-1);
+  background: var(--color-surface-raised);
+}
+
+.agenda-saved-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.agenda-saved-item {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.agenda-saved-label {
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-label);
+}
+
+.agenda-saved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.agenda-remote-change > .state-note,
+.agenda-book-fallback {
+  margin-bottom: var(--space-4);
+}
+
+/* Holds awaiting confirmation: dashed warning, like a held slot. */
+.agenda-holds {
+  margin-bottom: var(--space-4);
+  padding: var(--density-panel-pad);
+  border: var(--line-1) dashed var(--color-warning);
+  border-radius: var(--radius-1);
+  background: var(--color-warning-tint);
+}
+
+.agenda-holds-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-body);
+}
+
+.agenda-holds-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+  list-style: none;
+}
+
+.agenda-hold {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agenda-hold-text {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.agenda-hold-meta {
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-hold-actions,
+.agenda-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.agenda-hold--expiring {
+  padding-inline-start: var(--space-2);
+  border-inline-start: var(--line-3) solid var(--color-warning);
+}
+
+/* Grid additions: bookable free cells, other-unit capacity, hold badge. */
+.agenda-cell--bookable {
+  cursor: pointer;
+}
+
+.agenda-cell--bookable:hover .resource-grid-free {
+  color: var(--color-primary-strong);
+  text-decoration: underline;
+}
+
+.agenda-cell--other-unit {
+  background: var(--color-surface-sunken);
+}
+
+.agenda-busy-other {
+  color: var(--color-ink-soft);
+  font-style: italic;
+}
+
+.agenda-slot-actions {
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.agenda-hold-badge {
+  margin-top: var(--space-1);
+  align-self: flex-start;
+}
+
+.agenda-grid--week .resource-grid-row {
+  grid-auto-columns: minmax(7.5rem, 1fr);
+}
+
+/* Month: seven columns that keep their meaning at 320px in the scroll region. */
+.agenda-month {
+  min-width: 42rem;
+  table-layout: fixed;
+}
+
+.agenda-month th,
+.agenda-month td {
+  padding: var(--space-1);
+  vertical-align: top;
+}
+
+.agenda-month-day--outside {
+  background: var(--color-surface-sunken);
+  color: var(--color-ink-soft);
+}
+
+.agenda-month-day--today .agenda-month-link {
+  border: var(--line-2) solid var(--color-primary);
+}
+
+.agenda-month-link {
+  min-height: calc(var(--control-height) * 1.5);
+  padding: var(--space-1) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  align-items: flex-start;
+  border: var(--line-1) solid transparent;
+  border-radius: var(--radius-1);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.agenda-month-link:hover {
+  border-color: var(--color-primary-strong);
+}
+
+.agenda-month-number {
+  font-weight: var(--weight-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-month-count {
+  white-space: normal;
+}
+
+.agenda-resources,
+.agenda-no-resource {
+  overflow-wrap: anywhere;
+}
+
+.agenda-no-resource {
+  color: var(--color-ink-soft);
+}
+
+/* Dialogs: the conflict line, finder and action section under the move form. */
+.agenda-move-conflict {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: var(--line-1) solid var(--color-warning);
+  border-radius: var(--radius-1);
+  background: var(--color-warning-tint);
+  color: var(--color-warning);
+}
+
+.agenda-move-find,
+.agenda-move-lifecycle {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  border-top: var(--line-1) solid var(--color-line);
+}
+
+.agenda-move-find .field {
+  margin: 0;
+}
+
+.agenda-move-lifecycle-title {
+  margin: 0;
+  font-size: var(--text-body);
+}
+
+.agenda-move-dialog [hidden],
+.agenda-book-dialog [hidden],
+.agenda-move-find[hidden],
+.agenda-move-lifecycle[hidden] {
+  display: none;
+}
+
+.agenda-book-missing {
+  color: var(--color-warning);
+}
+
+.agenda-book-resources {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  border: 0;
+}
+
+.agenda-book-resources legend {
+  margin-bottom: var(--space-1);
+  font-weight: var(--weight-label);
+}
+
+.agenda-check {
+  min-height: var(--control-height);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.agenda-check input {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  margin: 0;
+}
+
+@media (max-width: 48rem) {
+  .agenda-saved {
+    flex-basis: 100%;
+  }
+
+  .agenda-hold-actions,
+  .agenda-hold-actions button {
+    width: 100%;
+  }
+}

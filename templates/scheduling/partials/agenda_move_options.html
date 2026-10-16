@@ -1,0 +1,4 @@
+{% comment %}
+Slot finder answer: the free start times of one clinic-local date as the move
+dialog's options. data-day carries the civil date the move must post.
+{% endcomment %}{% for start in found.starts %}<option value="{{ start }}" data-day="{{ found.day|date:'Y-m-d' }}">{{ start }}</option>{% endfor %}

@@ -30,6 +30,8 @@ from apps.core.api.errors import (
     ui_api_not_found_response,
 )
 from apps.core.api.serializers import (
+    AgendaBoardQueryRequestSerializer,
+    AgendaBoardSerializer,
     AgendaPageSerializer,
     AgendaQueryRequestSerializer,
     CommandResultSerializer,
@@ -40,6 +42,7 @@ from apps.core.command_search import CommandResult, CommandSearch, search_comman
 from apps.core.command_views import tokenized
 from apps.core.workspace import ACTIVE_CLINIC_SESSION_KEY, clinic_of_actor
 from apps.identity.models import User
+from apps.scheduling.agenda_board import AgendaFilters, view_agenda_board
 from apps.scheduling.services import (
     AgendaInputError,
     AvailabilityAccessDeniedError,
@@ -105,6 +108,43 @@ class AgendaQueryView(UiApiView):
         except AgendaInputError as error:
             raise UiApiError(INVALID_INPUT) from error
         return Response(AgendaPageSerializer(page).data)
+
+
+class AgendaBoardQueryView(UiApiView):
+    """Return one authorized clinic-local day, week, month or list board."""
+
+    @extend_schema(
+        operation_id="agenda_board_query",
+        tags=["agenda"],
+        request=AgendaBoardQueryRequestSerializer,
+        responses={200: AgendaBoardSerializer, **ERROR_RESPONSES},
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``scheduling.view_agenda_board``; unknown and foreign clinics match."""
+        query = AgendaBoardQueryRequestSerializer(data=request.data)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+        clinic_id = data.get("clinic_id") or _remembered_clinic(request)
+        if clinic_id is None:
+            raise UiApiError(ACCESS_DENIED)
+        filters = data.get("filters", {})
+        try:
+            board = view_agenda_board(
+                clinic_id=clinic_id,
+                view=data["view"],
+                date=data["date"].isoformat(),
+                filters=AgendaFilters(
+                    professional_id=filters.get("professional_id"),
+                    resource_id=filters.get("resource_id"),
+                    service_type_id=filters.get("service_type_id"),
+                    status=filters.get("status"),
+                ),
+            )
+        except AvailabilityAccessDeniedError as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except AgendaInputError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        return Response(AgendaBoardSerializer(board).data)
 
 
 class CommandSearchView(UiApiView):

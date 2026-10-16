@@ -196,7 +196,11 @@ def _expected(symbol: str, role: str) -> tuple[bool, list[str]]:
     allowed = readable and moving
     expected = agenda + (transition * (2 if moving else 1) if readable else [])
     if allowed:
-        expected += [*agenda, "appointment.move", "appointment.move_own"]
+        # The move answers the board: scope, move hooks, then booking hooks.
+        booking = ["appointment.book"]
+        if "appointment.book" not in BUNDLES_V1[role]:
+            booking.append("appointment.book_own")
+        expected += [*agenda, "appointment.move", "appointment.move_own", *booking]
     return allowed, expected
 
 
@@ -225,6 +229,7 @@ def _exercise(graph: RbacGraph, symbol: str) -> None:
         else:
             assert set(asked) <= {
                 "appointment.book",
+                "appointment.book_own",
                 "appointment.move",
                 "appointment.move_own",
             }

@@ -3184,6 +3184,63 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
+      "symbol": "apps.scheduling.agenda_board.board_catalog",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.access.authorized_agenda_scope",
+        "apps.scheduling.resource_booking.service_practitioners",
+        "apps.identity.current_context.practitioner_display_label"
+      ],
+      "reason": "The board's filter catalog reads no appointment: it authorizes the agenda scope first, then names professionals through the service catalog and agenda label resolver (only the physician themself for own-scope viewers) and the clinic's active rooms, equipment and service types. Filters and saved views naming anything else are refused before any session or saved-view write."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_board.free_move_slots",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.access.authorized_agenda_scope",
+        "apps.scheduling.agenda_grid._move_rules"
+      ],
+      "reason": "The slot finder answers only for a scheduled booking the board would render a move hook for: agenda scope, the own-physician column and the move rules decide before any availability read. Unknown, foreign, other-physician and unmovable selectors share one refusal; the move itself keeps reschedule_appointment's locked authority."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_board.view_agenda_board",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scheduling.access.authorized_agenda_scope",
+        "apps.scheduling.agenda_grid._move_rules",
+        "apps.scheduling.resource_booking.authorized_service_clinic",
+        "apps.scheduling.resource_booking.service_practitioners",
+        "apps.identity.current_context.practitioner_display_label",
+        "clinic_app.has_permission"
+      ],
+      "reason": "The board uses view_agenda's Wave B scope and professional catalog. Move hooks mirror the legacy, service and own-service move authority, lifecycle hooks the move terms and confirm the booking terms (authorized_service_clinic), as authorize_transition decides them; other-unit occupancy is times only. The board delegation case exercises every catalog role and spies the exact permission names."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_board_views.agenda_board_action_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "apps.scheduling.access.authorized_agenda_scope",
+        "apps.scheduling.agenda_grid._move_rules",
+        "apps.scheduling.resource_booking.authorized_service_clinic",
+        "clinic_app.has_permission"
+      ],
+      "reason": "The board action POST authorizes the agenda scope before any write, then hold/confirm/cancel/arrive/no-show go through create_hold/create_service_hold and the lifecycle services, which re-decide their has_permission terms under the write locks; the slot finder uses free_move_slots. Refusals are the unknown-clinic 404 with no session or record write; the board delegation case covers every role and the booked physician."
+    },
+    {
       "symbol": "apps.scheduling.agenda_grid._columns",
       "signals": [
         "denial"
@@ -3256,7 +3313,7 @@
         "apps.identity.otp.privileged_totp_required",
         "apps.scheduling.access.authorized_agenda_scope"
       ],
-      "reason": "The grid GET renders view_day_grid under authorized_agenda_scope; refusals share the unknown-clinic 404."
+      "reason": "The board GET renders view_agenda_board under authorized_agenda_scope; its POST checks the same scope through board_catalog before any filter, unit or saved-view write. Refusals share the unknown-clinic 404 and never write the session."
     },
     {
       "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_move_view",
@@ -3271,7 +3328,7 @@
         "apps.scheduling.patient_authority.authorized_appointment_clinic",
         "clinic_app.has_permission"
       ],
-      "reason": "The move POST checks agenda scope before move_appointment, which retains reschedule_appointment's locked authority. HTTP tests cover every role and the booked physician with silent, side-effect-free refusals."
+      "reason": "The move POST checks agenda scope before move_appointment, which retains reschedule_appointment's locked authority, then renders the board (view_agenda_board). HTTP tests cover every role and the booked physician with silent, side-effect-free refusals."
     },
     {
       "symbol": "apps.scheduling.agenda_queries._labels",

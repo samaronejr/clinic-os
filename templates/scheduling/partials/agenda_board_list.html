@@ -1,0 +1,33 @@
+{% load i18n clinic_locale %}{% comment %}
+List view: the filtered week as the agenda ledger reads it, with every action
+the actor may take as a native POST form (move opens the move form page; the
+other actions post a per-render command id). Works with JavaScript off.
+{% endcomment %}{% if list_days %}<div class="table-scroll" role="region" aria-labelledby="agenda-list-caption" tabindex="0">
+  <table class="table agenda-table agenda-table--week agenda-board-list" role="table" aria-labelledby="agenda-list-caption">
+    <caption id="agenda-list-caption">{% trans "Appointments in this week" %}</caption>
+    <thead role="rowgroup">
+      <tr role="row">
+        <th scope="col" role="columnheader">{% trans "Time" %}</th>
+        <th scope="col" role="columnheader">{% trans "Patient" %}</th>
+        <th scope="col" role="columnheader">{% trans "Professional" %}</th>
+        <th scope="col" role="columnheader">{% trans "Rooms and equipment" %}</th>
+        <th scope="col" role="columnheader">{% trans "Status" %}</th>
+        <th scope="col" role="columnheader">{% trans "Actions" %}</th>
+      </tr>
+    </thead>
+    {% for day in list_days %}<tbody class="agenda-day" role="rowgroup">
+      <tr class="agenda-day-row" role="row"><th scope="rowgroup" role="rowheader" colspan="6"><time datetime="{{ day.day|date:'Y-m-d' }}">{{ day.day|date:"l"|capfirst }}, {{ day.day|date:"SHORT_DATE_FORMAT" }}</time></th></tr>
+      {% for row in day.rows %}{% with item=row.item %}<tr class="agenda-row{% if item.appearance == 'inactive' %} table-row--muted{% endif %}" role="row" data-appointment-status="{{ item.status }}">
+        <th scope="row" role="rowheader" class="agenda-time"><time datetime="{{ item.start_local }}">{{ item.start_time }}</time> – <time datetime="{{ item.end_local }}">{{ item.end_time }}</time></th>
+        <td role="cell" class="agenda-patient">{{ item.patient_display_name }}</td>
+        <td role="cell" class="agenda-physician" data-label="{% trans "Professional" %}">{% for pk, label in names.items %}{% if pk == item.practitioner_id %}{{ label }}{% endif %}{% endfor %}</td>
+        <td role="cell" class="agenda-resources" data-label="{% trans "Rooms and equipment" %}">{% for resource_id in item.resource_ids %}{% for pk, label in names.items %}{% if pk == resource_id %}{{ label }}{% endif %}{% endfor %}{% if not forloop.last %}, {% endif %}{% empty %}<span class="agenda-no-resource">{% trans "None" %}</span>{% endfor %}</td>
+        <td role="cell" class="agenda-state"><span class="badge{% if item.appearance == 'inactive' %} badge--muted{% elif item.appearance == 'held' %} badge--warning{% endif %}">{{ item.status|appointment_label }}</span>{% if item.hold_expiring %} <span class="badge badge--warning">{% trans "Hold expiring" %}</span>{% endif %}</td>
+        <td role="cell" class="agenda-actions">{% if item.movable or item.actions %}<div class="agenda-action-group">
+          {% if item.movable %}<form class="agenda-list-move" method="post" action="{{ move_url }}">{% csrf_token %}<input type="hidden" name="select" value="1"><input type="hidden" name="expected_revision" value="{{ item.revision }}"><input type="hidden" name="day" value="{{ item.day }}"><input type="hidden" name="view" value="{{ board.view }}"><input type="hidden" name="start" value="{{ item.start_time }}"><input type="hidden" name="duration" value="{{ item.duration_minutes }}"><button type="submit" name="appointment_id" value="{{ item.appointment_id }}" class="button--secondary">{% trans "Move" %}<span class="visually-hidden"> {% blocktrans with patient=item.patient_display_name start=item.start_time %}{{ patient }} at {{ start }}{% endblocktrans %}</span></button></form>{% endif %}
+          {% if item.actions %}<form class="agenda-list-lifecycle" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-board-action>{% csrf_token %}<input type="hidden" name="view" value="{{ board.view }}"><input type="hidden" name="day" value="{{ board.anchor|date:'Y-m-d' }}"><input type="hidden" name="appointment_id" value="{{ item.appointment_id }}"><input type="hidden" name="expected_revision" value="{{ item.revision }}"><input type="hidden" name="command_id" value="{{ row.command_id }}">{% for action in item.actions %}<button type="submit" name="intent" value="{{ action }}" class="{% if action == 'cancel' %}button--quiet{% else %}button--secondary{% endif %}">{% if action == "confirm" %}{% trans "Confirm booking" %}{% elif action == "arrive" %}{% trans "Mark arrived" %}{% elif action == "no_show" %}{% trans "Mark no-show" %}{% else %}{% trans "Cancel appointment" %}{% endif %}<span class="visually-hidden"> {% blocktrans with patient=item.patient_display_name start=item.start_time %}{{ patient }} at {{ start }}{% endblocktrans %}</span></button>{% endfor %}</form>{% endif %}
+        </div>{% else %}<span class="agenda-no-action">{% trans "No action available" %}</span>{% endif %}</td>
+      </tr>{% endwith %}{% endfor %}
+    </tbody>{% endfor %}
+  </table>
+</div>{% else %}<div class="table-empty agenda-empty" id="agenda-board-empty"><p>{% trans "No appointment matches these filters in this week." %}</p></div>{% endif %}

@@ -17,6 +17,7 @@ from apps.scheduling.appointment_creation import (
     create_appointment,
     create_hold,
     create_service_appointment,
+    create_service_hold,
 )
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
@@ -122,6 +123,7 @@ __all__ = (
     "create_hold",
     "create_series",
     "create_service_appointment",
+    "create_service_hold",
     "edit_series",
     "expire",
     "expire_due_holds",

@@ -239,6 +239,16 @@ LIFECYCLE_TRANSITIONS = (
                 "idempotency_key",
             ],
         ),
+        (
+            "create_service_hold",
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "booking",
+                "idempotency_key",
+            ],
+        ),
         ("edit_series", ["clinic_id", "series_id", "edit", "command_id"]),
     ],
 )

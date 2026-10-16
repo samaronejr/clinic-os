@@ -1,0 +1,15 @@
+{% load i18n %}{% comment %}
+Month view: Monday-first weeks; each day of the month links (GET, civil date
+only) to that day's grid and states how many visible appointments start then.
+Counts follow the board's filters and never name a patient.
+{% endcomment %}<div class="table-scroll agenda-month-scroll" role="region" aria-labelledby="agenda-month-caption" tabindex="0">
+  <table class="table agenda-month" aria-labelledby="agenda-month-caption">
+    <caption id="agenda-month-caption">{% blocktrans with month=board.anchor|date:"F Y" %}Appointments per day in {{ month }}{% endblocktrans %}</caption>
+    <thead>
+      <tr>{% for cell in weeks.0 %}<th scope="col"><span aria-hidden="true">{{ cell.day|date:"D"|capfirst }}</span><span class="visually-hidden">{{ cell.day|date:"l" }}</span></th>{% endfor %}</tr>
+    </thead>
+    <tbody>{% for week in weeks %}
+      <tr>{% for cell in week %}<td class="agenda-month-day{% if not cell.in_month %} agenda-month-day--outside{% endif %}{% if cell.is_today %} agenda-month-day--today{% endif %}">{% if cell.in_month %}<a class="agenda-month-link" href="{{ cell.href }}"{% if cell.is_today %} aria-current="date"{% endif %}><time class="agenda-month-number" datetime="{{ cell.day|date:'Y-m-d' }}">{{ cell.day|date:"j" }}</time><span class="visually-hidden"> {{ cell.day|date:"l"|capfirst }}, {{ cell.day|date:"SHORT_DATE_FORMAT" }}:</span>{% if cell.total %}<span class="badge agenda-month-count">{% blocktrans count total=cell.total %}{{ total }} appointment{% plural %}{{ total }} appointments{% endblocktrans %}</span>{% else %}<span class="visually-hidden">{% trans "No appointment" %}</span>{% endif %}</a>{% else %}<span class="agenda-month-number" aria-hidden="true">{{ cell.day|date:"j" }}</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}
+    </tbody>
+  </table>
+</div>

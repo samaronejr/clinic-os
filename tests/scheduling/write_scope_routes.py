@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from apps.scheduling import (
+    agenda_board_views,
     agenda_grid_views,
     agenda_views,
     booking_views,
@@ -46,6 +47,9 @@ SIBLINGS = {
     inspect.unwrap(views.availability_retire_view): "scheduling.test_availability_http",
     inspect.unwrap(agenda_views.agenda_view): "scheduling.test_agenda_http",
     inspect.unwrap(agenda_grid_views.agenda_grid_view): "scheduling.test_agenda_grid",
+    inspect.unwrap(agenda_board_views.agenda_board_action_view): (
+        "scheduling.test_agenda_board"
+    ),
 }
 
 

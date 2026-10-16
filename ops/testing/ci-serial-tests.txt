@@ -78,6 +78,7 @@ server-state tests/scheduling/test_lifecycle_migration.py
 server-state tests/scheduling/test_lifecycle_service_bookings.py
 server-state tests/scheduling/test_series.py
 server-state tests/scheduling/test_agenda_audit.py::test_read_events_are_exact_once_transactional_and_denials_are_silent
+server-state tests/scheduling/test_agenda_board.py
 server-state tests/scheduling/test_agenda_grid.py
 server-state tests/scheduling/test_agenda_http.py::test_a_completely_skipped_civil_date_renders_an_empty_agenda
 server-state tests/scheduling/test_agenda_http.py::test_a_nonexistent_local_minute_is_never_booked
