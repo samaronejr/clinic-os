@@ -23,18 +23,24 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
-from threading import Event
+from threading import Event, get_ident
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
 import pytest
 from apps.audit import services as audit_services
+from apps.audit.models import AuditEvent
 from apps.core.integration import register_send_adapter
 from apps.ehr.addenda import autosave_addendum, open_addendum
 from apps.ehr.attachments import AttachmentInput, scan_attachment, upload_attachment
 from apps.ehr.autosave import autosave_draft
-from apps.ehr.episodes import close_episode, link_encounter, open_episode
+from apps.ehr.episodes import (
+    close_episode,
+    link_encounter,
+    open_episode,
+    open_episode_for_encounter,
+)
 from apps.ehr.finalization import close_encounter, discard_draft, finalize_version
 from apps.ehr.models import (
     AddendumSaveReceipt,
@@ -63,9 +69,10 @@ from apps.identity.models import UserClinicRole
 from apps.teleconsult.adapters import SyntheticRoomAdapter
 from apps.teleconsult.services import assigned_session
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
+from django.db import IntegrityError, connection, connections
 from django.db.models.query import QuerySet
 from django.test import override_settings
+from django.utils.translation import gettext
 
 from auth.stepup_test_support import verified_request
 from database_urls import database_url_for_name
@@ -89,6 +96,8 @@ from ehr.test_write_ordering import (
 )
 from identity.permission_support import owner_context
 from infra.management_command_support import run_management_command
+from otp_test_support import fixed_otp_time
+from otp_test_support import runtime_role as http_runtime_role
 from renewal.test_attachments import PDF_BYTES
 from renewal.test_encounters import seed as encounter_seed
 from renewal.test_teleconsult_sessions import _create
@@ -1233,3 +1242,237 @@ def test_decided_decides_any_failure_again_outside_its_savepoint(
             "write_kept": ["ehr.encounter.closed"],
         }[outcome]
     )
+
+
+@contextmanager
+def racing_link(
+    graph: RbacGraph, world: LateRevocation, *, revoke: bool
+) -> Iterator[list[UUID]]:
+    """Let a competing link commit after this thread's request passed its check.
+
+    The request is held at its first Episode write, after its no-link decision,
+    until a real competing transaction has committed an episode and link for the
+    same encounter; the request's own link then loses the unique index. With
+    ``revoke`` it is held again immediately before its winner lookup while the
+    owner CLI retires the role. Every Event exists before the request starts.
+    """
+    main = get_ident()
+    checked, committed, at_winner, revoked = Event(), Event(), Event(), Event()
+    failures: list[IntegrityError] = []
+    winner: list[UUID] = []
+
+    def compete() -> int:
+        try:
+            assert checked.wait(timeout=120), "the loser never passed its check"
+            try:
+                with as_actor(graph, world.physician):
+                    winner.append(
+                        open_episode_for_encounter(
+                            clinic_id=graph.clinic_a,
+                            encounter_id=world.encounter,
+                            title="Episódio vencedor",
+                        ).pk
+                    )
+            finally:
+                connections.close_all()
+        finally:
+            committed.set()
+        if not revoke:
+            return 0
+        try:
+            assert at_winner.wait(timeout=120), "the loser never looked up the winner"
+            return world.revoke()
+        finally:
+            revoked.set()
+
+    save_link: Callable[..., None] = EpisodeEncounter.save
+    exists: Callable[..., bool] = QuerySet.exists
+
+    def before_episode_save() -> None:
+        if get_ident() == main and not checked.is_set():
+            checked.set()
+            assert committed.wait(timeout=120), "the competing link never committed"
+
+    def losing_save(link: EpisodeEncounter, *args: object, **kwargs: object) -> None:
+        try:
+            save_link(link, *args, **kwargs)
+        except IntegrityError as error:
+            if get_ident() == main:
+                failures.append(error)
+            raise
+
+    def held_exists(queryset: QuerySet[Model]) -> bool:
+        if (
+            revoke
+            and get_ident() == main
+            and failures
+            and queryset.model is EpisodeEncounter
+            and not at_winner.is_set()
+        ):
+            at_winner.set()
+            assert revoked.wait(timeout=120), "the revocation did not finish"
+        return exists(queryset)
+
+    with (
+        pytest.MonkeyPatch.context() as patch,
+        ThreadPoolExecutor(max_workers=1) as pool,
+    ):
+        model_write(Episode)(patch, before_episode_save)
+        patch.setattr(EpisodeEncounter, "save", losing_save)
+        patch.setattr(QuerySet, "exists", held_exists)
+        competitor = pool.submit(compete)
+        yield winner
+        assert competitor.result(timeout=180) == 0
+        assert len(failures) == 1
+        assert isinstance(failures[0].__cause__, psycopg.errors.UniqueViolation)
+        assert at_winner.is_set() == revoke
+
+
+def lost_race_body(world: LateRevocation) -> dict[str, object]:
+    return {
+        "encounter_id": world.encounter,
+        "action": "episode_open",
+        "title": "Episódio perdedor",
+    }
+
+
+def test_a_unique_loser_refused_by_late_revocation_is_the_early_refusal(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Gate c8 E1: a native episode open that loses the one-link-per-encounter
+    unique, with the owner CLI's revocation committed immediately before its
+    winner lookup, is the early refusal; the committed winner stays.
+    """
+    graph = rbac_graph
+    world = late_revocation(graph)
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        session = dict(client.session)
+        with racing_link(graph, world, revoke=True) as winner:
+            late = client.post(workspace(graph), lost_race_body(world))
+        assert dict(client.session) == session
+    trail = audit_since(graph, before)
+    late_denials = rows(
+        graph,
+        AuditEvent,
+        "actor_user_id",
+        "affected_record_type",
+        "affected_record_id",
+        "payload",
+        event_type=DENIAL,
+        seq__gt=before,
+    )
+    before = audit_mark(graph)
+    with signed_in(world.physician) as client:
+        # The same request once the revocation has committed.
+        early = client.post(workspace(graph), lost_race_body(world))
+    early_trail = [e for e in audit_since(graph, before) if e.startswith(CLINICAL)]
+    assert late_denials == rows(
+        graph,
+        AuditEvent,
+        "actor_user_id",
+        "affected_record_type",
+        "affected_record_id",
+        "payload",
+        event_type=DENIAL,
+        seq__gt=before,
+    )
+    assert late.status_code == early.status_code == 403
+    assert NONCE.sub(b"", late.content) == NONCE.sub(b"", early.content)
+    # The winner's own two events, then exactly the early refusal's denial.
+    assert early_trail == [DENIAL]
+    assert [e for e in trail if e.startswith(CLINICAL)] == [
+        "ehr.episode.opened",
+        "ehr.episode.linked",
+        DENIAL,
+    ]
+    assert trail.count("identity.staff_role.revoked") == 1
+    with owner_context(graph.organization_a):
+        # The committed winner is retained; the loser left no episode or link.
+        assert list(EpisodeEncounter.objects.values_list("pk", flat=True)) == winner
+        assert Episode.objects.count() == 1
+
+
+def test_a_unique_loser_with_authority_intact_is_the_already_linked_conflict(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The same real lost race without a revocation is the ordinary conflict."""
+    graph = rbac_graph
+    world = late_revocation(graph)
+    with signed_in(world.physician) as client:
+        assert (
+            client.post(
+                workspace(graph), {"action": "show", "encounter_id": world.encounter}
+            ).status_code
+            == 200
+        )
+    before = audit_mark(graph)
+    with http_runtime_role(), fixed_otp_time():
+        session = dict(client.session)
+        with racing_link(graph, world, revoke=False) as winner:
+            lost = client.post(workspace(graph), lost_race_body(world))
+        assert dict(client.session) == session
+    assert lost.status_code == 409
+    assert lost.context["error"] == gettext(
+        "This encounter already belongs to another episode."
+    )
+    trail = audit_since(graph, before)
+    before = audit_mark(graph)
+    with http_runtime_role(), fixed_otp_time():
+        ordinary = client.post(workspace(graph), lost_race_body(world))
+        assert dict(client.session) == session
+    ordinary_trail = [e for e in audit_since(graph, before) if e.startswith(CLINICAL)]
+    assert ordinary.status_code == 409
+    assert ordinary.context["error"] == lost.context["error"]
+    assert ordinary_trail == ["ehr.history.viewed"]
+    # Only the winner's writes and the ordinary conflict's authorized read.
+    assert [e for e in trail if e.startswith(CLINICAL)] == [
+        "ehr.episode.opened",
+        "ehr.episode.linked",
+        *ordinary_trail,
+    ]
+    assert DENIAL not in trail
+    with owner_context(graph.organization_a):
+        assert list(EpisodeEncounter.objects.values_list("pk", flat=True)) == winner
+        assert Episode.objects.count() == 1
+
+
+def test_an_integrity_failure_without_a_winner_keeps_its_original_error(
+    rbac_graph: RbacGraph,
+) -> None:
+    """An integrity failure that is not a lost race is no conflict or denial.
+
+    The link names no episode, so the real binding guard refuses it (SQLSTATE
+    23514); with no winner and authority intact, that error stands unchanged.
+    """
+    graph = rbac_graph
+    world = late_revocation(graph)
+    save: Callable[..., None] = EpisodeEncounter.save
+    original: list[IntegrityError] = []
+
+    def unbound(link: EpisodeEncounter, *args: object, **kwargs: object) -> None:
+        link.episode_id = uuid4()
+        try:
+            save(link, *args, **kwargs)
+        except IntegrityError as error:
+            original.append(error)
+            raise
+
+    before = audit_mark(graph)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(EpisodeEncounter, "save", unbound)
+        with (
+            as_actor(graph, world.physician),
+            pytest.raises(IntegrityError) as failure,
+        ):
+            open_episode_for_encounter(
+                clinic_id=graph.clinic_a,
+                encounter_id=world.encounter,
+                title="Sem vencedor",
+            )
+    assert original == [failure.value]
+    assert isinstance(failure.value.__cause__, psycopg.errors.CheckViolation)
+    assert [e for e in audit_since(graph, before) if e.startswith(CLINICAL)] == []
+    with owner_context(graph.organization_a):
+        assert not Episode.objects.exists()
+        assert not EpisodeEncounter.objects.exists()
