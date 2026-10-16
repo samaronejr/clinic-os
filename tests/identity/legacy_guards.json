@@ -5951,7 +5951,8 @@
         "migrations": [
           "apps/billing/migrations/0007_patient_charge_detail.py",
           "apps/billing/migrations/0009_protected_fields.py",
-          "apps/billing/migrations/0010_delegate_charges.py"
+          "apps/billing/migrations/0010_delegate_charges.py",
+          "apps/billing/migrations/_patient_alias_read_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -5972,7 +5973,8 @@
         ],
         "migrations": [
           "apps/billing/migrations/0010_delegate_charges.py",
-          "apps/billing/migrations/_invoice_sql.py"
+          "apps/billing/migrations/_invoice_sql.py",
+          "apps/billing/migrations/_patient_alias_read_sql.py"
         ],
         "policies": [],
         "resolvers": []
@@ -6525,12 +6527,16 @@
         ],
         "policies": [
           "clinic_app.consent_aiusedisclosure:consent_ai_disclosure_read",
+          "clinic_app.consent_aiusedisclosure:consent_alias_read",
           "clinic_app.consent_consentacceptance:consent_acceptance_insert",
           "clinic_app.consent_consentacceptance:consent_acceptance_read",
+          "clinic_app.consent_consentacceptance:consent_alias_read",
+          "clinic_app.consent_consentrevocation:consent_alias_read",
           "clinic_app.consent_consentrevocation:consent_revocation_insert",
           "clinic_app.consent_consentrevocation:consent_revocation_read",
           "clinic_app.consent_consenttext:consent_text_read",
           "clinic_app.consent_noticeversion:consent_notice_read",
+          "clinic_app.consent_refusalrecord:consent_alias_read",
           "clinic_app.consent_refusalrecord:consent_refusal_insert",
           "clinic_app.consent_refusalrecord:consent_refusal_read"
         ],
@@ -6688,7 +6694,8 @@
           }
         ],
         "migrations": [
-          "apps/ehr/migrations/_clinical_sql.py"
+          "apps/ehr/migrations/_clinical_sql.py",
+          "apps/ehr/migrations/_patient_alias_read_sql.py"
         ],
         "policies": [
           "clinic_app.ehr_clinicalattachment:attachment_read",
@@ -6738,7 +6745,8 @@
           }
         ],
         "migrations": [
-          "apps/ehr/migrations/_history_sql.py"
+          "apps/ehr/migrations/_history_sql.py",
+          "apps/ehr/migrations/_patient_alias_read_sql.py"
         ],
         "policies": [
           "clinic_app.ehr_historyassessment:history_read"
@@ -6938,6 +6946,8 @@
           "clinic_app.identity_reset_target",
           "clinic_app.identity_session_step_up",
           "clinic_app.identity_staff_directory",
+          "clinic_app.intake_duplicate_detection_guard",
+          "clinic_app.intake_merge_authorized",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -7669,6 +7679,7 @@
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
           "apps/prescription/migrations/0011_delegate_confidentiality.py",
+          "apps/prescription/migrations/_patient_alias_read_sql.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
         "policies": [],
@@ -7697,6 +7708,7 @@
         "migrations": [
           "apps/prescription/migrations/0010_protected_documents.py",
           "apps/prescription/migrations/0011_delegate_confidentiality.py",
+          "apps/prescription/migrations/_patient_alias_read_sql.py",
           "apps/prescription/migrations/_verification_sql.py"
         ],
         "policies": [],
@@ -8333,6 +8345,7 @@
           "clinic_app.ehr_care",
           "clinic_app.ehr_history_care",
           "clinic_app.ehr_version_scope",
+          "clinic_app.intake_duplicate_detection_guard",
           "clinic_app.questionnaire_completion",
           "clinic_app.questionnaire_response_guard",
           "clinic_app.retention_author_label",
@@ -8402,6 +8415,7 @@
           }
         ],
         "migrations": [
+          "apps/retention/migrations/_patient_alias_read_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [
@@ -8493,6 +8507,7 @@
         "migrations": [
           "apps/retention/migrations/0003_protected_fields.py",
           "apps/retention/migrations/0004_delegate_confidentiality.py",
+          "apps/retention/migrations/_patient_alias_read_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [],
@@ -10260,7 +10275,8 @@
         ],
         "policies": [],
         "resolvers": [
-          "clinic_app.identity_session_step_up"
+          "clinic_app.identity_session_step_up",
+          "clinic_app.intake_merge_authorized"
         ]
       },
       "kind": "lifecycle_protocol",
@@ -10404,6 +10420,8 @@
           "clinic_app.billing_patient_charges",
           "clinic_app.consent_session",
           "clinic_app.delegate_purpose_allowed",
+          "clinic_app.patient_alias_overview",
+          "clinic_app.patient_alias_set",
           "clinic_app.patient_booking_scope",
           "clinic_app.patient_session_overview",
           "clinic_app.questionnaire_patient_enrollment",
@@ -11160,19 +11178,19 @@
     },
     "clinic_app.intake_duplicate_detection_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_duplicate_detection_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_duplicate_detection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11182,19 +11200,19 @@
     },
     "clinic_app.intake_duplicate_history_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_duplicate_detection_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": false,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": false
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_duplicate_detection_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "row_integrity",
       "probes": [],
@@ -11202,19 +11220,19 @@
     },
     "clinic_app.intake_duplicate_transition_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_alias_guard_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11224,6 +11242,14 @@
     },
     "clinic_app.intake_merge_authorized": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_session uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/intake/migrations/_alias_scope_sql.py"
         ],
@@ -11233,14 +11259,6 @@
           "clinic_app.intake_merge_decision_guard",
           "clinic_app.intake_merge_mutation_allowed",
           "clinic_app.intake_patient_alias_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, requested_session uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -11251,19 +11269,19 @@
     },
     "clinic_app.intake_merge_decision_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_alias_guard_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11273,6 +11291,14 @@
     },
     "clinic_app.intake_merge_mutation_allowed": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_patient uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/intake/migrations/_alias_scope_sql.py"
         ],
@@ -11285,14 +11311,6 @@
         ],
         "resolvers": [
           "clinic_app.intake_merge_transfer_guard"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_clinic uuid, requested_patient uuid",
-            "returns": "bool",
-            "security_definer": true,
-            "set_returning": false
-          }
         ]
       },
       "kind": "domain_protocol",
@@ -11303,19 +11321,19 @@
     },
     "clinic_app.intake_merge_receipt_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_alias_guard_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11325,19 +11343,19 @@
     },
     "clinic_app.intake_merge_transfer_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_merge_transfer_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_merge_transfer_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11348,19 +11366,19 @@
     },
     "clinic_app.intake_patient_alias_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_alias_guard_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_alias_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11370,19 +11388,19 @@
     },
     "clinic_app.intake_survivor_write_guard": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_survivor_write_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "trigger",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_survivor_write_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "domain_protocol",
       "probes": [
@@ -11392,19 +11410,19 @@
     },
     "clinic_app.patient_alias_overview": {
       "discovery": {
-        "migrations": [
-          "apps/intake/migrations/_alias_portal_sql.py"
-        ],
-        "policies": [],
-        "resolvers": [],
         "signatures": [
           {
             "arguments": "",
             "returns": "timestamptz",
-            "security_definer": true,
-            "set_returning": false
+            "set_returning": false,
+            "security_definer": true
           }
-        ]
+        ],
+        "migrations": [
+          "apps/intake/migrations/_alias_portal_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
       },
       "kind": "patient_principal",
       "probes": [],
@@ -11412,6 +11430,14 @@
     },
     "clinic_app.patient_alias_set": {
       "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_patient uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
         "migrations": [
           "apps/intake/migrations/_alias_scope_sql.py"
         ],
@@ -11427,18 +11453,9 @@
           "clinic_app.ehr_care",
           "clinic_app.ehr_history_care",
           "clinic_app.patient_alias_overview",
-          "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_patient_documents",
           "clinic_app.retention_care",
           "clinic_app.retention_patient_releases"
-        ],
-        "signatures": [
-          {
-            "arguments": "requested_patient uuid",
-            "returns": "record",
-            "security_definer": true,
-            "set_returning": true
-          }
         ]
       },
       "kind": "domain_protocol",

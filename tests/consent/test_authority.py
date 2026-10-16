@@ -467,14 +467,18 @@ def test_database_policies_and_trigger_check_the_same_bundle_names() -> None:
         ("consent_aiusedisclosure", "consent_ai_disclosure_insert", "INSERT"),
         ("consent_aiusedisclosure", "consent_ai_disclosure_read", "SELECT"),
         ("consent_aiusedisclosure", "consent_alias_read", "SELECT"),
+        ("consent_aiusedisclosure", "delegate_confidentiality", "ALL"),
         ("consent_consentacceptance", "consent_acceptance_insert", "INSERT"),
         ("consent_consentacceptance", "consent_acceptance_read", "SELECT"),
         ("consent_consentacceptance", "consent_alias_read", "SELECT"),
+        ("consent_consentacceptance", "delegate_purpose", "ALL"),
         ("consent_consentrevocation", "consent_alias_read", "SELECT"),
         ("consent_consentrevocation", "consent_revocation_insert", "INSERT"),
         ("consent_consentrevocation", "consent_revocation_read", "SELECT"),
+        ("consent_consentrevocation", "delegate_purpose", "ALL"),
         ("consent_consenttext", "consent_text_insert", "INSERT"),
         ("consent_consenttext", "consent_text_read", "SELECT"),
+        ("consent_consenttext", "delegate_purpose", "ALL"),
         ("consent_noticeversion", "consent_notice_insert", "INSERT"),
         ("consent_noticeversion", "consent_notice_read", "SELECT"),
         ("consent_participantacknowledgment", "consent_participant_insert", "INSERT"),
@@ -482,6 +486,7 @@ def test_database_policies_and_trigger_check_the_same_bundle_names() -> None:
         ("consent_refusalrecord", "consent_alias_read", "SELECT"),
         ("consent_refusalrecord", "consent_refusal_insert", "INSERT"),
         ("consent_refusalrecord", "consent_refusal_read", "SELECT"),
+        ("consent_refusalrecord", "delegate_purpose", "ALL"),
     }
     for body in bodies:
         assert "questionnaire_staff" not in body

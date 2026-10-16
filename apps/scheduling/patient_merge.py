@@ -49,7 +49,7 @@ def transfer_patient_forward(*, clinic_id: UUID, merge_decision_id: UUID) -> Non
             .order_by("id")
         )
         for old in appointments:
-            old = cancel_appointment(
+            cancel_appointment(
                 appointment_id=old.pk,
                 reason=Appointment.CancellationReason.DUPLICATE,
             )

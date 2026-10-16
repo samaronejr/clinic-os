@@ -1,14 +1,6 @@
 """Executable protocol oracles for scheduling, workflows and representation."""
 
 from patients import test_delegates
-from scheduling.test_appointment_states import (
-    test_database_trigger_decides_every_status_pair_by_actor,
-    test_guards_decide_by_the_exact_permission_not_a_sibling,
-    test_python_guard_decides_each_action_by_its_pinned_terms,
-)
-from scheduling.test_lifecycle_service_bookings import (
-    test_every_service_booking_status_change_keeps_the_todo_21_guard,
-)
 from patients.duplicate_authority_cases import (
     SQL_PROTOCOL_ORACLES as DUPLICATE_SQL_ORACLES,
 )
@@ -22,6 +14,14 @@ from patients.duplicate_signal_cases import (
     test_forward_waitlist_keeps_integer_source_and_replacement_links,
 )
 from patients.test_duplicates import test_new_charge_for_an_aliased_identity_is_rejected
+from scheduling.test_appointment_states import (
+    test_database_trigger_decides_every_status_pair_by_actor,
+    test_guards_decide_by_the_exact_permission_not_a_sibling,
+    test_python_guard_decides_each_action_by_its_pinned_terms,
+)
+from scheduling.test_lifecycle_service_bookings import (
+    test_every_service_booking_status_change_keeps_the_todo_21_guard,
+)
 from scheduling.test_resource_permission_identity import GUARDS
 from scheduling.test_resource_role_matrix import (
     test_effective_interval_is_actor_invariant,
