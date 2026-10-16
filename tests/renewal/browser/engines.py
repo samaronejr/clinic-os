@@ -388,7 +388,14 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     return track;
   };
   const audioSource = () => {
-    const audio = new AudioContext();
+    // WebKit/WPE 2311 twice hit SIGSEGV in WebKitWebRTCSig at
+    // libgstaudio-1.0.so.0.2402.0+0x638d8 while this loopback initialized.
+    // WebKit bug 323217 (320924@main) fixes underfed, non-48 kHz capture:
+    // Source/WebCore/platform/mediastream/libwebrtc/gstreamer/
+    // RealtimeOutgoingAudioSourceLibWebRTC.cpp, pullAudioData().
+    // Use 48 kHz to bypass that resampler while retaining native RTC
+    // and genuine source-ended events.
+    const audio = new AudioContext({sampleRate: 48000});
     resources.audio.push(audio);
     const tone = audio.createOscillator();
     const sink = audio.createMediaStreamDestination();
