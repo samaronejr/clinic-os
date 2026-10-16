@@ -25,7 +25,7 @@ from apps.ehr.history import (
 )
 from apps.ehr.history_forms import HistoryForm
 from apps.ehr.models import HistoryAssessment
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, decided
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
@@ -159,7 +159,17 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         if action in ("new", "edit"):
             editing = _editor_kind(request, encounter)
         else:
-            form, status = _save(request, encounter)
+            # A refusal inside the save after the checks above is late; deciding
+            # them again leaves exactly an early refusal's record.
+            with decided(
+                lambda: (
+                    require_current_actor_clinic_roles(
+                        clinic_id, (UserClinicRole.Role.PHYSICIAN,)
+                    ),
+                    authorize_history(clinic_id, encounter.pk, write=True),
+                )
+            ):
+                form, status = _save(request, encounter)
             if status == OK:
                 request.session[key] = str(encounter.pk)
                 messages.success(

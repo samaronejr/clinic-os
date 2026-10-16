@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Final
 from uuid import UUID, uuid4
 
@@ -44,8 +45,10 @@ from apps.ehr.services import (
     assignee_scope,
     author_scope,
     create_draft,
+    decided,
     open_encounter,
     open_unscheduled_encounter,
+    pinned_read,
     record_clinical_note,
     resume_encounter,
     view_version,
@@ -187,8 +190,13 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     version_id = UUID(request.POST.get("version_id", ""))
     # Authorship is decided with reads only before the audited read below: a
     # care reader passes view_version but may not write (round-2 B1).
-    author_scope(clinic_id=clinic_id, version_id=version_id)
-    version = view_version(clinic_id=clinic_id, version_id=version_id)
+    decide = partial(author_scope, clinic_id=clinic_id, version_id=version_id)
+    decide()
+    # pinned_read decides authorship again right after the read's audit, so a
+    # revocation committed just before it is refused with no viewed audit left.
+    version = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id), decide
+    )
     data = request.POST.copy()
     if data.get("action") == "merge":
         # Explicit merge after a compare: the author saves the combined text
@@ -284,8 +292,11 @@ def _amend(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """Open the linked amendment draft; the base version is never overwritten."""
     version_id = UUID(request.POST.get("version_id", ""))
     # Only the encounter's assignee amends; decided before the audited read.
-    assignee_scope(clinic_id=clinic_id, version_id=version_id)
-    version = view_version(clinic_id=clinic_id, version_id=version_id)
+    decide = partial(assignee_scope, clinic_id=clinic_id, version_id=version_id)
+    decide()
+    version = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id), decide
+    )
     form = AmendmentForm(request.POST)
     if not form.is_valid():
         context = _context(request, clinic_id, version.document.encounter)
@@ -311,8 +322,11 @@ def _amend(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
 def _discard(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """Retire the draft; discarded versions keep metadata and never serve content."""
     version_id = UUID(request.POST.get("version_id", ""))
-    author_scope(clinic_id=clinic_id, version_id=version_id)
-    version = view_version(clinic_id=clinic_id, version_id=version_id)
+    decide = partial(author_scope, clinic_id=clinic_id, version_id=version_id)
+    decide()
+    version = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id), decide
+    )
     try:
         discard_draft(clinic_id=clinic_id, version_id=version.pk)
     except ClinicalConflictError as error:
@@ -477,11 +491,21 @@ def _resume(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     if request.method == "POST":
         if request.POST.get("action") not in RESUME_ACTIONS:
             raise ClinicalAccessDeniedError
-        create_draft(
-            clinic_id=clinic_id,
-            encounter_id=encounter.pk,
-            template_id=UUID(request.POST.get("template_id", "")),
-        )
+        # A refusal inside create_draft after this view's own checks is late;
+        # deciding them again leaves exactly an early refusal's record.
+        with decided(
+            lambda: (
+                require_current_actor_clinic_roles(
+                    clinic_id, (UserClinicRole.Role.PHYSICIAN,)
+                ),
+                _selected(clinic_id, encounter.pk),
+            )
+        ):
+            create_draft(
+                clinic_id=clinic_id,
+                encounter_id=encounter.pk,
+                template_id=UUID(request.POST.get("template_id", "")),
+            )
         return redirect(continuation(clinic_id))
     return render(
         request, "ehr/encounter.html", _context(request, clinic_id, encounter)

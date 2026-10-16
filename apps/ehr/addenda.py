@@ -41,6 +41,7 @@ from apps.ehr.services import (
     MAX_CONTENT,
     ClinicalAccessDeniedError,
     ClinicalConflictError,
+    decided,
 )
 
 INVALID_ADDENDUM: Final = "Addendum autosave request is invalid."
@@ -48,12 +49,18 @@ INVALID_ADDENDUM: Final = "Addendum autosave request is invalid."
 
 def open_addendum(*, clinic_id: UUID, encounter_id: UUID) -> EncounterAddendum:
     """Open (or resume) the caller's addendum draft on one encounter."""
-    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
-        raise ClinicalAccessDeniedError
-    actor = _require(
-        "clinical.write", clinic_id, _enrollment_id(clinic_id, encounter.patient_id)
-    )
+
+    def authority() -> tuple[Encounter, UUID]:
+        # Reads only: the encounter and clinical.write for its patient.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        author = _require(
+            "clinical.write", clinic_id, _enrollment_id(clinic_id, found.patient_id)
+        )
+        return found, author
+
+    encounter, actor = authority()
     if actor == encounter.physician_id:
         msg = "use_main_draft"
         raise ClinicalConflictError(msg)
@@ -63,7 +70,7 @@ def open_addendum(*, clinic_id: UUID, encounter_id: UUID) -> EncounterAddendum:
     drafts = EncounterAddendum.objects.filter(
         encounter=encounter, author_id=actor, state=EncounterAddendum.State.DRAFT
     )
-    with transaction.atomic():
+    with decided(authority):
         existing = drafts.first()
         if existing is not None:
             return existing
@@ -139,7 +146,7 @@ def autosave_addendum(
     _authorized(clinic_id, addendum_id)
     digest = _digest(addendum_id, expected_revision, text)
     now = autosave.utc_now()
-    with transaction.atomic():
+    with decided(lambda: _authorized(clinic_id, addendum_id)):
         locked = (
             EncounterAddendum.objects.select_for_update().filter(pk=addendum_id).first()
         )

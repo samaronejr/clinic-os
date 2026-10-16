@@ -9,6 +9,7 @@ is not a provider-verified digital signature; signing is a later capability.
 
 from __future__ import annotations
 
+from functools import partial
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,8 @@ from apps.ehr.services import (
     _denied,
     _encounter_actor,
     assignee_scope,
+    decided,
+    pinned_read,
     record_denial,
     view_version,
 )
@@ -115,7 +118,7 @@ def finalize_version(
     if request.user.pk != authorized.author_id:
         record_denial(clinic_id, authorized.pk, "step_up_required")
         raise StepUpRequired
-    with transaction.atomic():
+    with decided(lambda: _author_version(clinic_id, version_id)):
         version = (
             ClinicalDocumentVersion.objects.select_for_update()
             .filter(pk=version_id)
@@ -172,7 +175,10 @@ def amend_document(
     if not reason or len(reason) > MAX_REASON:
         msg = "Informe o motivo da retificação."
         raise ValidationError(msg)
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
+    authorized = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id),
+        partial(assignee_scope, clinic_id=clinic_id, version_id=version_id),
+    )
     with transaction.atomic():
         current = (
             ClinicalDocumentVersion.objects.select_for_update()
@@ -217,7 +223,7 @@ def amend_document(
 def discard_draft(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersion:
     """Retire one draft without content; discarded versions are never served."""
     _author_version(clinic_id, version_id)
-    with transaction.atomic():
+    with decided(lambda: _author_version(clinic_id, version_id)):
         version = (
             ClinicalDocumentVersion.objects.select_for_update()
             .filter(pk=version_id)
@@ -241,11 +247,17 @@ def discard_draft(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersi
 
 def close_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:
     """Close once every version is terminal; a retry returns the closed row."""
-    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
-        raise ClinicalAccessDeniedError
-    _encounter_actor(clinic_id, encounter)
-    with transaction.atomic():
+
+    def authority() -> Encounter:
+        # Reads only: the encounter and its assigned physician.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        _encounter_actor(clinic_id, found)
+        return found
+
+    encounter = authority()
+    with decided(authority):
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         if encounter.state == Encounter.State.CLOSED:
             return encounter

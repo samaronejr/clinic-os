@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy
 
@@ -27,6 +27,7 @@ from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
     _encounter_actor,
+    decided,
 )
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.overlay_content import validate_overlay_text
@@ -73,7 +74,7 @@ def open_episode(*, clinic_id: UUID, enrollment_id: UUID, title: str) -> Episode
         raise ValidationError(INVALID_TITLE)
     validate_overlay_text(title)
     enrollment = PatientClinicEnrollment.objects.get(pk=enrollment_id)
-    with transaction.atomic():
+    with decided(lambda: _require("clinical.write", clinic_id, enrollment_id)):
         episode = Episode.objects.create(
             organization_id=enrollment.organization_id,
             clinic_id=clinic_id,
@@ -101,7 +102,7 @@ def close_episode(*, clinic_id: UUID, episode_id: UUID) -> Episode:
         return episode, actor
 
     episode, actor = authority()
-    with transaction.atomic():
+    with decided(authority):
         # The update policy admits only open episodes under clinical.write.
         locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
         if locked is not None:
@@ -142,7 +143,7 @@ def link_encounter(
         return encounter, episode, actor
 
     encounter, episode, actor = authority()
-    with transaction.atomic():
+    with decided(authority):
         # The update policy admits only open episodes under clinical.write.
         locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
         if locked is not None:
@@ -180,12 +181,19 @@ def open_episode_for_encounter(
     commit together or not at all. Opening first and linking second would
     leave an orphan episode committed behind a later refusal (todo 23 B1).
     """
-    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
-        raise ClinicalAccessDeniedError
-    actor = _encounter_actor(clinic_id, encounter)
-    enrollment_id = _enrollment_id(clinic_id, encounter.patient_id)
-    _require("clinical.write", clinic_id, enrollment_id)
+
+    def authority() -> tuple[Encounter, UUID]:
+        # Reads only: the assignee and clinical.write for the patient.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        assignee = _encounter_actor(clinic_id, found)
+        _require(
+            "clinical.write", clinic_id, _enrollment_id(clinic_id, found.patient_id)
+        )
+        return found, assignee
+
+    encounter, actor = authority()
     title = title.strip() if isinstance(title, str) else ""
     if not title or len(title) > MAX_EPISODE_TITLE:
         raise ValidationError(INVALID_TITLE)
@@ -194,7 +202,7 @@ def open_episode_for_encounter(
         msg = "already_linked"
         raise ClinicalConflictError(msg)
     try:
-        with transaction.atomic():
+        with decided(authority):
             episode = Episode.objects.create(
                 organization_id=encounter.organization_id,
                 clinic_id=clinic_id,

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, NoReturn
+from contextlib import contextmanager
+from functools import partial
+from typing import TYPE_CHECKING, Final, NoReturn
 
-from django.core.exceptions import ValidationError
-from django.db import IntegrityError, connection, transaction
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -36,6 +38,7 @@ from apps.intake.models import (
 from apps.scheduling.models import Appointment
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
     from uuid import UUID
 
 SOAP_FIELDS = ("subjective", "objective", "assessment", "plan")
@@ -75,6 +78,59 @@ def record_denial(clinic_id: UUID, record_id: UUID, reason: str) -> None:
 def _denied(clinic_id: UUID, record_id: UUID, reason: str) -> NoReturn:
     record_denial(clinic_id, record_id, reason)
     raise ClinicalAccessDeniedError
+
+
+# Outcomes of a write attempted after its authority decision that can mean the
+# authority was committed away in between (see ``decided``).
+LATE_REFUSALS: Final = (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    CurrentActorError,
+    DatabaseError,
+    ObjectDoesNotExist,
+)
+
+
+@contextmanager
+def decided(redecide: Callable[[], object]) -> Iterator[None]:
+    """Run writes after their authority decision; lost authority is its refusal.
+
+    ``redecide`` is the caller's early authority decision, made with reads only
+    before this block. A role revocation can commit after it until this
+    transaction appends its first audit row: every append takes the
+    organization's audit-chain lock (``pg_advisory_xact_lock`` in the append
+    function) until commit, and the revocation command appends its own event in
+    the transaction that retires the role. Before that point RLS rejects the
+    next INSERT or UPDATE (SQLSTATE 42501), filters the row an UPDATE or a
+    locking read needs, or a later check refuses. Each such outcome rolls back
+    with this savepoint and ``redecide`` runs again outside it: lost authority
+    raises the early refusal with that decision's own denial record, and with
+    authority intact the original exception is re-raised unchanged, so genuine
+    storage and lifecycle failures are never relabelled as denials.
+    """
+    try:
+        with transaction.atomic():
+            yield
+    except LATE_REFUSALS:
+        redecide()
+        raise
+
+
+def pinned_read[T](read: Callable[[], T], decide: Callable[[], object]) -> T:
+    """Run a writer's first audited read, then pin the authority decided before it.
+
+    The read's audit append holds the organization's audit chain until commit
+    (see ``decided``): a revocation not committed before it stays invisible to
+    the rest of this transaction, and one committed before it is visible right
+    after. ``decide`` runs once more there. A refusal rolls the read and its
+    audit back and is decided again outside the savepoint, so the response and
+    denial record are an early refusal's; later lifecycle conflicts keep their
+    audited read exactly as before.
+    """
+    with decided(decide):
+        result = read()
+        decide()
+    return result
 
 
 def _appointment(clinic_id: UUID, appointment_id: UUID) -> Appointment:
@@ -149,7 +205,14 @@ def publish_template(
     validate_overlay_text(title)
     for prompt in prompts.values():
         validate_overlay_text(prompt)
-    with transaction.atomic(), connection.cursor() as cursor:
+    with (
+        decided(
+            lambda: require_current_actor_clinic_roles(
+                clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
+            )
+        ),
+        connection.cursor() as cursor,
+    ):
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             [f"ehr-template:{clinic_id}:{key}"],
@@ -182,7 +245,7 @@ def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
     """
     appointment = _appointment(clinic_id, appointment_id)
     actor = _assigned(appointment)
-    with transaction.atomic():
+    with decided(lambda: _assigned(_appointment(clinic_id, appointment_id))):
         appointment = Appointment.objects.select_for_update().get(pk=appointment.pk)
         existing = Encounter.objects.filter(appointment=appointment).first()
         if existing is not None:
@@ -238,14 +301,20 @@ def open_unscheduled_encounter(
     encounter with this patient; the database binding guard and insert policy
     re-decide the same shape and permission.
     """
-    try:
-        actor = require_permission(
-            "encounter.open_unscheduled",
-            clinic_id=clinic_id,
-            patient_enrollment_id=enrollment_id,
-        )
-    except CurrentActorError as error:
-        raise ClinicalAccessDeniedError from error
+
+    def authority() -> UUID:
+        # Reads only: encounter.open_unscheduled for this clinic and enrollment.
+        try:
+            actor = require_permission(
+                "encounter.open_unscheduled",
+                clinic_id=clinic_id,
+                patient_enrollment_id=enrollment_id,
+            )
+        except CurrentActorError as error:
+            raise ClinicalAccessDeniedError from error
+        return actor
+
+    actor = authority()
     if reason not in Encounter.UnscheduledReason.values:
         msg = "Invalid unscheduled encounter reason."
         raise ValidationError(msg)
@@ -261,7 +330,7 @@ def open_unscheduled_encounter(
         appointment__isnull=True,
         state=Encounter.State.OPEN,
     )
-    with transaction.atomic():
+    with decided(authority):
         existing = open_visit.first()
         if existing is not None:
             return existing
@@ -322,11 +391,16 @@ def create_draft(
     *, clinic_id: UUID, encounter_id: UUID, template_id: UUID
 ) -> ClinicalDocumentVersion:
     """Create or resume the exact first SOAP version without replacing its template."""
-    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
-        raise ClinicalAccessDeniedError
-    actor = _encounter_actor(clinic_id, encounter)
-    with transaction.atomic():
+
+    def authority() -> tuple[Encounter, UUID]:
+        # Reads only: the encounter and its assigned physician.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        return found, _encounter_actor(clinic_id, found)
+
+    encounter, actor = authority()
+    with decided(authority):
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         existing = (
             ClinicalDocumentVersion.objects.filter(document__encounter=encounter)
@@ -464,8 +538,12 @@ def record_clinical_note(
     ):
         msg = "Preencha somente os campos SOAP, com até 20.000 caracteres cada."
         raise ValidationError(msg)
-    # The read audit is the first write: every refusal was decided above.
-    view_version(clinic_id=clinic_id, version_id=version_id)
+    # The read audit is the first write. pinned_read decides authorship again
+    # right after it, so a refusal below can only be a lifecycle conflict.
+    pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id),
+        partial(author_scope, clinic_id=clinic_id, version_id=version_id),
+    )
     with transaction.atomic():
         # A finalized/superseded row is readable but outside the UPDATE
         # policy, so select_for_update filters it out; that non-draft path

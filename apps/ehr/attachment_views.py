@@ -28,7 +28,7 @@ from apps.ehr.attachments import (
     scan_attachment,
     upload_attachment,
 )
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, decided
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
@@ -145,9 +145,19 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         if action not in WRITE_ACTIONS:
             raise ClinicalAccessDeniedError
         authorize_attachment_encounter(clinic_id, encounter.pk, write=True)
-        if action == "scan":
-            return _scan(request, clinic_id, key, encounter)
-        form, status, error = _upload(request, clinic_id, encounter)
+        # A refusal inside a scan or an upload after the checks above is late;
+        # deciding them again leaves exactly an early refusal's record.
+        with decided(
+            lambda: (
+                require_current_actor_clinic_roles(
+                    clinic_id, (UserClinicRole.Role.PHYSICIAN,)
+                ),
+                authorize_attachment_encounter(clinic_id, encounter.pk, write=True),
+            )
+        ):
+            if action == "scan":
+                return _scan(request, clinic_id, key, encounter)
+            form, status, error = _upload(request, clinic_id, encounter)
         if status == OK:
             request.session[key] = str(encounter.pk)
             messages.success(
