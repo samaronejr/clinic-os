@@ -79,6 +79,18 @@ class DmlMember:
 # New domain members extend this table; they cannot mint their own verdicts.
 DML_CONTRACTS: dict[DmlMember, Refusal] = {
     DmlMember(
+        "clinic_app.teleconsult_binding_guard",
+        "clinic_app.teleconsult_teleconsultdevicecheck",
+        "INSERT",
+        "teleconsult_teleconsultdevicecheck",
+    ): Refusal("42501", "teleconsult participant authority required"),
+    DmlMember(
+        "clinic_app.teleconsult_binding_guard",
+        "clinic_app.teleconsult_teleconsultevent",
+        "INSERT",
+        "teleconsult_teleconsultevent",
+    ): Refusal("42501", "teleconsult participant authority required"),
+    DmlMember(
         "clinic_app.consent_guard",
         "clinic_app.consent_consenttext",
         "INSERT",
@@ -163,7 +175,9 @@ CONTRACTS: dict[str, Declared] = {
     "clinic_app.retention_care_patients": Declared(Shape.SET),
     "clinic_app.retention_record_scope": Declared(Shape.SET),
     "clinic_app.teleconsult_assigned": Declared(Shape.BOOLEAN),
+    "clinic_app.teleconsult_clinician": Declared(Shape.BOOLEAN),
     "clinic_app.teleconsult_fail": Declared(Shape.BOOLEAN),
+    "clinic_app.teleconsult_mode_transition_scope": Declared(Shape.SET),
     "clinic_app.teleconsult_room_state": Declared(Shape.SCALAR),
     "clinic_app.teleconsult_session_scope": Declared(Shape.SET),
     "clinic_app.user_has_org": Declared(Shape.BOOLEAN),
@@ -404,6 +418,31 @@ def probe(
     return verdict
 
 
+def _dml_identity(
+    cursor: CursorWrapper,
+    member: DmlMember,
+    row: Model,
+    column: str,
+    identity_type: type[UUID | int],
+) -> UUID | int:
+    """Reserve an auto identity through its real sequence, never fabricate one."""
+    identity = cast("object", row.pk)
+    if identity is None and identity_type is int:
+        cursor.execute(
+            "SELECT nextval(pg_get_serial_sequence(%s,%s))",
+            [member.relation, column],
+        )
+        reserved = cursor.fetchone()
+        assert reserved is not None
+        identity = reserved[0]
+        row.pk = identity
+    assert type(identity) is identity_type, (
+        member,
+        f"exact {identity_type.__name__} row identity required",
+    )
+    return identity
+
+
 def probe_dml(member: DmlMember, row: Model, *, using: str = "default") -> SqlVerdict:
     """Execute a fresh real INSERT and issue its stored-row or exact-raise verdict.
 
@@ -421,13 +460,10 @@ def probe_dml(member: DmlMember, row: Model, *, using: str = "default") -> SqlVe
     assert isinstance(row, Model), (member, "unsaved Model row required")
     assert row._meta.db_table == relation_name, (member, "wrong row relation")
     assert row._state.adding is True, (member, "fresh unsaved row required")
-    identity = cast("object", row.pk)
-    assert type(identity) is UUID, (member, "UUID row identity required")
     primary_key = row._meta.pk
     assert primary_key is not None, (member, "primary key required")
     column = primary_key.column
     assert column is not None, (member, "primary-key column required")
-    found = Contract(member.function, Shape.SET, (UUID,), 0, refusal)
     statement = sql.SQL("SELECT {} FROM {}.{} WHERE {} = %s").format(
         sql.Identifier(column),
         sql.Identifier(relation_schema),
@@ -438,7 +474,9 @@ def probe_dml(member: DmlMember, row: Model, *, using: str = "default") -> SqlVe
         cursor.execute(
             """
             SELECT t.tgtype, t.tgenabled, p.prorettype='pg_catalog.trigger'::regtype,
-                   p.pronargs, current_schema(), a.atttypid='pg_catalog.uuid'::regtype
+                   p.pronargs, current_schema(),
+                   a.atttypid='pg_catalog.uuid'::regtype,
+                   a.atttypid='pg_catalog.int8'::regtype
               FROM pg_catalog.pg_trigger t
               JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
               JOIN pg_catalog.pg_namespace f ON f.oid=p.pronamespace
@@ -463,14 +501,20 @@ def probe_dml(member: DmlMember, row: Model, *, using: str = "default") -> SqlVe
             "not exactly one live INSERT trigger",
             catalog,
         )
-        ((_events, enabled, trigger, arity, schema, uuid_key),) = catalog
-        assert (enabled, trigger, arity, schema, uuid_key) == (
+        ((_events, enabled, trigger, arity, schema, uuid_key, bigint_key),) = catalog
+        assert (enabled, trigger, arity, schema) == (
             "O",
             True,
             0,
             relation_schema,
-            True,
         ), (member, "live trigger/catalog mismatch", catalog)
+        assert (uuid_key, bigint_key) in {(True, False), (False, True)}, (
+            member,
+            "unsupported primary-key catalog type",
+        )
+        identity_type = UUID if uuid_key else int
+        identity = _dml_identity(cursor, member, row, column, identity_type)
+        found = Contract(member.function, Shape.SET, (identity_type,), 0, refusal)
         cursor.execute(statement, [identity])
         assert cursor.fetchall() == [], (member, "fresh row identity required")
         observed: SqlRowset | Refusal

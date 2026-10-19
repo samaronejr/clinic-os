@@ -102,6 +102,7 @@ from renewal.test_attachments import PDF_BYTES
 from renewal.test_encounters import seed as encounter_seed
 from renewal.test_teleconsult_sessions import _create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
+from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -137,6 +138,7 @@ def storage_root(tmp_path: Path) -> Iterator[Path]:
 def synthetic_room(settings: SettingsWrapper) -> None:
     """Video sessions enqueue their room through the synthetic provider."""
     settings.TELECONSULT_SYNTHETIC_PROVIDER = True
+    seed_video_versions()
     register_send_adapter(SyntheticRoomAdapter())
 
 

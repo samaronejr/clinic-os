@@ -287,6 +287,8 @@ def test_sql_guards_allow_and_deny_all_staff_roles(
             for valid in (True, False):
                 expected = valid and role in probe.roles
                 with transaction.atomic():
-                    actual = redeem(call(probe, subject, valid), probe.function)
+                    actual = redeem(
+                        call(probe, subject, valid), probe.member or probe.function
+                    )
                     transaction.set_rollback(True)
                 assert actual is expected, (name, role, valid, actual)

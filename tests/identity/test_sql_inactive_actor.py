@@ -26,6 +26,7 @@ from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
+from consent.test_purposes import register_physician
 from identity.authority_sql import _tokenize, references
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
 from identity.permission_support import owner_context
@@ -36,12 +37,14 @@ from identity.test_lifecycle_sql_readers import (
 from patient_service_support import runtime_role
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
+from renewal.test_teleconsult_sessions import synthetic_provider
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from rbac_fixtures import RbacGraph
 
+__all__ = ("synthetic_provider",)
 pytestmark = pytest.mark.django_db(transaction=True)
 
 ACTOR_SETTING = "app.current_user_id"
@@ -460,6 +463,9 @@ DELEGATE_PROBES = {
     "clinic_app.teleconsult_assigned(uuid)": (
         "SELECT clinic_app.teleconsult_assigned(%(session)s)"
     ),
+    "clinic_app.teleconsult_clinician(uuid)": (
+        "SELECT clinic_app.teleconsult_clinician(%(session)s)"
+    ),
     "clinic_app.workflows_owned(uuid,uuid,text)": (
         "SELECT clinic_app.workflows_owned(%(clinic)s, %(physician)s, '')"
     ),
@@ -611,9 +617,12 @@ def _open_invoices(graph: RbacGraph, patient: UUID) -> list[UUID]:
     return invoices
 
 
-def test_delegating_gates_refuse_inactive_actor(rbac_graph: RbacGraph) -> None:
+def test_delegating_gates_refuse_inactive_actor(
+    rbac_graph: RbacGraph, synthetic_provider: object
+) -> None:
     graph = rbac_graph
     appointment, encounter, _consent, _patient, _manager = teleconsult_seed(graph)
+    register_physician(graph)
     session = teleconsult_create(graph, encounter)
     with owner_context(graph.organization_a):
         assert (

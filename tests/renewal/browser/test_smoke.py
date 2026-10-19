@@ -11,6 +11,7 @@ in the iPhone 15 and Pixel 8 emulation profiles.
 
 from __future__ import annotations
 
+import html
 import http.server
 import json
 import math
@@ -28,6 +29,7 @@ from renewal.browser._navigation import (
     click_to_navigate,
     goto_settled,
     settle_service_worker,
+    wait_for_document,
 )
 from renewal.browser._page_wait import (
     EvaluateTimeoutError,
@@ -43,6 +45,7 @@ from renewal.browser.engines import (
     MOBILE_PROFILES,
     PAGE_EXTENT_JS,
     element_box,
+    enforces_coop,
     full_page_screenshot,
     mobile_context,
 )
@@ -200,6 +203,101 @@ def test_owner_login_establishes_a_session_and_enters_the_totp_flow(  # noqa: PL
             "capture": _capture(renewal_page, renewal_artifact_root, "login-enrolled"),
             "engine": renewal_engine,
             "surface": "auth/enroll",
+        }
+    )
+
+
+# COOP: the app's same-origin policy must sever a cross-origin opener wherever
+# the engine applies it (engines.enforces_coop). target=_blank implies
+# noopener, so the link keeps its opener explicitly: without the policy the
+# opened sign-in page would still see it.
+OPENER_PAGE = (
+    '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>opener</title>'
+    '<a id="open" href="{target}" target="_blank" rel="opener">Abrir</a></html>'
+)
+OPENER_SEVERED_JS = "() => window.opener === null"
+
+
+class _OpenerOrigin(http.server.ThreadingHTTPServer):
+    """A second loopback origin serving one link to the app's sign-in page."""
+
+    def __init__(self, target: str) -> None:
+        super().__init__(("127.0.0.1", 0), _OpenerHandler)
+        self.page = OPENER_PAGE.format(target=html.escape(target)).encode()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.server_address[1]}/"
+
+
+class _OpenerHandler(http.server.BaseHTTPRequestHandler):
+    server: _OpenerOrigin
+
+    def do_GET(self) -> None:
+        found = self.path == "/"
+        body = self.server.page if found else b""
+        self.send_response(OK_STATUS if found else 404)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib signature
+        del format, args
+
+
+@pytest.fixture
+def opener_origin(renewal_base_url: str) -> Iterator[_OpenerOrigin]:
+    origin = _OpenerOrigin(f"{renewal_base_url}/auth/login/")
+    serving = threading.Thread(target=origin.serve_forever, daemon=True)
+    serving.start()
+    try:
+        yield origin
+    finally:
+        origin.shutdown()
+        serving.join()
+        origin.server_close()
+
+
+def test_sign_in_page_severs_a_cross_origin_opener(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_engine: str,
+    opener_origin: _OpenerOrigin,
+    browser_report: dict[str, object],
+) -> None:
+    sign_in = f"{renewal_base_url}/auth/login/"
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context()
+    try:
+        # The header on the wire, whatever the engine then does with it.
+        wire = context.request.get(sign_in)
+        assert wire.status == OK_STATUS
+        assert wire.headers["cross-origin-opener-policy"] == "same-origin"
+        page = context.new_page()
+        goto_settled(page, opener_origin.url)
+        with context.expect_page() as opened:
+            page.locator("#open").click()
+        popup = opened.value
+        wait_for_document(popup, sign_in)
+        assert popup.url == sign_in
+        severed = evaluate_js(popup, OPENER_SEVERED_JS)
+        assert severed is enforces_coop(context)
+    finally:
+        context.close()
+    checks = browser_report["checks"]
+    assert isinstance(checks, list)
+    checks.append(
+        {
+            "assertion": (
+                "sign-in sends COOP same-origin; a cross-origin opener is"
+                " severed wherever the engine applies COOP"
+            ),
+            "engine": renewal_engine,
+            "opener_severed": severed,
+            "surface": "auth/login",
         }
     )
 

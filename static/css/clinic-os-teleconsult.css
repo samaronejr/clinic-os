@@ -570,3 +570,59 @@
     text-underline-offset: 0.3em;
   }
 }
+
+/* Device check v2: speaker/network results, self-report and the report line. */
+.tele-device-report {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.tele-device-report .tele-device-list {
+  margin: 0;
+}
+
+.tele-device-manual {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tele-device-manual legend {
+  margin-bottom: var(--space-2);
+  font-weight: var(--weight-label);
+}
+
+.tele-device-manual select {
+  min-height: var(--control-height);
+}
+
+.tele-speaker p {
+  margin: 0 0 var(--space-2);
+}
+
+.tc-devices {
+  margin-top: var(--space-4);
+}
+
+.tc-devices > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  cursor: pointer;
+  font-weight: var(--weight-label);
+}
+
+.tele-device-summary {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tc-remove {
+  margin-top: var(--space-3);
+}

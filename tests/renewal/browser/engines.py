@@ -67,6 +67,28 @@ Playwright 1.61.0, so this module owns the one place each differs:
   .omo/evidence/clinic-ops-premium-intelligence/task-14/fix1/webkit-clipped-mediastream-probe.txt).
   ``displays_clipped_video`` gates only the painted-first-frame check; on
   WebKit the element must still be playing a live camera track.
+* Cross-origin opener policy. Firefox applies the app's
+  ``Cross-Origin-Opener-Policy: same-origin`` (Django's default) by replacing
+  the page's browsing context, and Playwright's profile keeps the
+  replacement in the same content process
+  (``fission.webContentIsolationStrategy`` 0). Juggler in the pinned
+  firefox-1532 then gives the new context's message channel the old
+  channel's identifier while restarting its message ids, so a reply the old
+  channel never acknowledged answers one of the new channel's first events,
+  which is lost. A page's first navigation from ``about:blank`` always
+  replaces its context. patient-video@firefox lost the new document's
+  ``Runtime.executionContextCreated``, so the next ``page.evaluate`` (the
+  worker settle) never answered; losing ``Page.navigationCommitted`` instead
+  hangs ``goto`` (https://github.com/microsoft/playwright/issues/42731,
+  closed as fixed for Playwright 1.64; reproduction:
+  .omo/evidence/clinic-ops-premium-intelligence/task-37/c2/st_01a134a9/FIREFOX-COOP-CHANNEL.md).
+  ``launch`` and the throwaway Firefox profiles below therefore turn COOP
+  processing off (``FIREFOX_USER_PREFS``): no browsing context is replaced,
+  so no context ever has a second channel. The app still sends the header,
+  and Chromium and WebKit still apply it: ``enforces_coop`` says which
+  engines do, the smoke suite checks that the sign-in page severs a
+  cross-origin opener there, and tests/core/test_opener_policy.py checks the
+  exact header without any browser.
 * Device scale factor. Firefox drops a context's ``device_scale_factor``
   whenever a ``Cross-Origin-Opener-Policy`` response swaps the browsing
   context group (every sign-in and form POST here; reproduction:
@@ -74,6 +96,12 @@ Playwright 1.61.0, so this module owns the one place each differs:
   ``new_context`` therefore applies a requested scale on Firefox through its
   own ``layout.css.devPixelsPerPx`` pref in a throwaway profile, which holds
   for every navigation. Other engines use ``browser.new_context`` unchanged.
+  The pref alone is not enough: Playwright 1.61.0 sends every Firefox
+  viewport with ``deviceScaleFactor || 1`` (coreBundle
+  ``FFBrowserContext.doUpdateDefaultViewport``), an override that hides the
+  pref until a COOP swap drops it. With COOP processing off (above) nothing
+  drops it, so these profiles also request the scale themselves; the pref
+  still holds if a swap ever comes back.
 * Screenshot size. Firefox and WebKit refuse a screenshot taller or wider
   than 32767 device pixels ("Cannot take screenshot larger than 32767").
   ``full_page_screenshot`` captures such a page as consecutive full-width
@@ -205,6 +233,10 @@ ENGINES: Final = ("chromium", "firefox", "webkit")
 DEFAULT_ENGINE: Final = "chromium"
 CHROMIUM_ARGS: Final = ("--no-sandbox", "--disable-dev-shm-usage")
 CHROMIUM_FAKE_MEDIA_ARG: Final = "--use-fake-device-for-media-stream"
+# Every Firefox the suites start (see Cross-origin opener policy above).
+FIREFOX_USER_PREFS: Final[dict[str, str | float | bool]] = {
+    "browser.tabs.remote.useCrossOriginOpenerPolicy": False,
+}
 MEDIA_PERMISSIONS: Final = ("camera", "microphone")
 CLIPBOARD_PERMISSIONS: Final = ("clipboard-read", "clipboard-write")
 PASTE_TARGET_JS: Final = """() => {
@@ -234,8 +266,8 @@ SYNTHETIC_MEDIA_BINDING: Final = "__clinicSyntheticMediaGranted"
 # video (it paints its first frame at once) and an oscillator for audio,
 # delivered through a loopback RTCPeerConnection. They are real
 # MediaStreamTracks, so enabled, readyState and stop() behave as they do for
-# devices, and __clinicSyntheticMedia.end(audioTrack) ends the audio the way
-# an unplugged microphone does: the source stops and the track fires a
+# devices, and __clinicSyntheticMedia.end(track) ends audio or video the way
+# an unplugged device does: the source stops and the track fires a
 # genuine "ended". Firefox never delivers a script-dispatched "ended" to a
 # MediaStreamTrack listener. Browsers exempt real capture streams from
 # autoplay restrictions; WebKit does not know these streams are capture
@@ -251,6 +283,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
   if (!proto) return;
   const endings = new WeakMap();
   const captured = new WeakSet();
+  const resources = {peers: [], audio: [], closing: []};
   const srcObject = Object.getOwnPropertyDescriptor(
     HTMLMediaElement.prototype, 'srcObject');
   Object.defineProperty(HTMLMediaElement.prototype, 'srcObject', {
@@ -265,6 +298,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     },
   });
   window.__clinicSyntheticMedia = {
+    resources,
     end: (track) => {
       const end = endings.get(track);
       if (!end) throw new Error('not a synthetic media track');
@@ -274,22 +308,66 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
   const loopback = async (source) => {
     const sender = new RTCPeerConnection();
     const receiver = new RTCPeerConnection();
+    resources.peers.push(sender, receiver);
     const relay = (peer) => (event) =>
       event.candidate && peer.addIceCandidate(event.candidate);
     sender.onicecandidate = relay(receiver);
     receiver.onicecandidate = relay(sender);
-    const received = new Promise((resolve) => { receiver.ontrack = resolve; });
+    const received = new Promise((resolve, reject) => {
+      let incoming = null;
+      const ready = () => {
+        const states = [sender.connectionState, receiver.connectionState];
+        const failed = states.some(state =>
+          state === 'failed' || state === 'closed') ||
+          Boolean(incoming && incoming.track.readyState === 'ended');
+        if (!failed && (!incoming || incoming.track.muted ||
+            states.some(state => state !== 'connected'))) return;
+        sender.removeEventListener('connectionstatechange', ready);
+        receiver.removeEventListener('connectionstatechange', ready);
+        if (incoming) {
+          incoming.track.removeEventListener('unmute', ready);
+          incoming.track.removeEventListener('ended', ready);
+        }
+        if (failed) {
+          reject(new DOMException(
+            'Synthetic media unavailable before readiness', 'NotReadableError'));
+        } else {
+          resolve(incoming);
+        }
+      };
+      sender.addEventListener('connectionstatechange', ready);
+      receiver.addEventListener('connectionstatechange', ready);
+      receiver.ontrack = (event) => {
+        incoming = event;
+        incoming.track.addEventListener('unmute', ready);
+        incoming.track.addEventListener('ended', ready);
+        ready();
+      };
+    });
     sender.addTrack(source);
     await sender.setLocalDescription(await sender.createOffer());
     await receiver.setRemoteDescription(sender.localDescription);
     await receiver.setLocalDescription(await receiver.createAnswer());
     await sender.setRemoteDescription(receiver.localDescription);
     const {track, transceiver} = await received;
-    endings.set(track, () => {
-      transceiver.stop();
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      sender.onicecandidate = null;
+      receiver.onicecandidate = null;
       source.stop();
       sender.close();
       receiver.close();
+    };
+    const stop = track.stop.bind(track);
+    track.stop = () => {
+      stop();
+      release();
+    };
+    endings.set(track, () => {
+      transceiver.stop();
+      release();
     });
     return track;
   };
@@ -311,12 +389,31 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     return track;
   };
   const audioSource = () => {
-    const audio = new AudioContext();
+    // WebKit/WPE 2311 twice hit SIGSEGV in WebKitWebRTCSig at
+    // libgstaudio-1.0.so.0.2402.0+0x638d8 while this loopback initialized.
+    // WebKit bug 323217 (320924@main) fixes underfed, non-48 kHz capture:
+    // Source/WebCore/platform/mediastream/libwebrtc/gstreamer/
+    // RealtimeOutgoingAudioSourceLibWebRTC.cpp, pullAudioData().
+    // Use 48 kHz to bypass that resampler while retaining native RTC
+    // and genuine source-ended events.
+    const audio = new AudioContext({sampleRate: 48000});
+    resources.audio.push(audio);
     const tone = audio.createOscillator();
     const sink = audio.createMediaStreamDestination();
     tone.connect(sink);
     tone.start();
-    return sink.stream.getAudioTracks()[0];
+    const track = sink.stream.getAudioTracks()[0];
+    const stop = track.stop.bind(track);
+    let released = false;
+    track.stop = () => {
+      if (released) return;
+      released = true;
+      stop();
+      tone.stop();
+      tone.disconnect();
+      resources.closing.push(audio.close().catch(() => {}));
+    };
+    return track;
   };
   proto.getUserMedia = async function getUserMedia(constraints = {}) {
     if (!(await window.__clinicSyntheticMediaGranted())) {
@@ -326,8 +423,7 @@ SYNTHETIC_MEDIA_JS: Final = """(() => {
     if (constraints.video) sources.push(videoSource());
     if (constraints.audio) sources.push(audioSource());
     if (!sources.length) throw new TypeError('audio or video must be requested');
-    const tracks = sources.map((source) =>
-      source.kind === 'audio' ? loopback(source) : source);
+    const tracks = sources.map(loopback);
     const stream = new MediaStream(await Promise.all(tracks));
     captured.add(stream);
     return stream;
@@ -401,6 +497,10 @@ def launch(
         args = [*CHROMIUM_ARGS, *([CHROMIUM_FAKE_MEDIA_ARG] if media else [])]
         return driver.chromium.launch(executable_path=executable, args=args)
     browser_type = {"firefox": driver.firefox, "webkit": driver.webkit}[engine]
+    if engine == "firefox":
+        return browser_type.launch(
+            executable_path=executable, firefox_user_prefs=FIREFOX_USER_PREFS
+        )
     return browser_type.launch(executable_path=executable)
 
 
@@ -420,9 +520,11 @@ def _engine_of(context: BrowserContext) -> str:
     return browser.browser_type.name
 
 
-def install_media(context: BrowserContext, origin: str, *, granted: bool) -> None:
+def install_media(
+    context: BrowserContext, origin: str, *, granted: bool, scripted: bool = False
+) -> None:
     """Set a fresh context's camera/microphone permission (before any page)."""
-    if _engine_of(context) == "chromium":
+    if _engine_of(context) == "chromium" and not scripted:
         if granted:
             context.grant_permissions(list(MEDIA_PERMISSIONS), origin=origin)
         return
@@ -434,7 +536,7 @@ def install_media(context: BrowserContext, origin: str, *, granted: bool) -> Non
 
 def grant_media(context: BrowserContext, origin: str) -> None:
     """Grant camera/microphone later, as a user fixing the permission would."""
-    if _engine_of(context) == "chromium":
+    if _engine_of(context) == "chromium" and context not in _SYNTHETIC_GRANTS:
         context.grant_permissions(list(MEDIA_PERMISSIONS), origin=origin)
         return
     _SYNTHETIC_GRANTS[context]["granted"] = True
@@ -442,7 +544,7 @@ def grant_media(context: BrowserContext, origin: str) -> None:
 
 def media_source(context: BrowserContext) -> str:
     """Describe the capture source a context's media comes from (evidence)."""
-    if _engine_of(context) == "chromium":
+    if context not in _SYNTHETIC_GRANTS:
         return f"chromium {CHROMIUM_FAKE_MEDIA_ARG}"
     return f"{_engine_of(context)} synthetic canvas/oscillator getUserMedia"
 
@@ -498,7 +600,11 @@ def new_context(browser: Browser, **options: Any) -> BrowserContext:  # noqa: AN
         profile,
         executable_path=os.environ["CLINIC_RENEWAL_BROWSER_EXECUTABLE"],
         headless=True,
-        firefox_user_prefs={"layout.css.devPixelsPerPx": str(float(scale))},
+        device_scale_factor=scale,
+        firefox_user_prefs={
+            **FIREFOX_USER_PREFS,
+            "layout.css.devPixelsPerPx": str(float(scale)),
+        },
         **options,
     )
     context.on("close", lambda _: shutil.rmtree(profile, ignore_errors=True))
@@ -566,6 +672,15 @@ def offline_navigation_error(context: BrowserContext) -> str:
 
 def navigations_are_worker_controlled(context: BrowserContext) -> bool:
     """Whether a navigated page is controlled by the active service worker."""
+    return _engine_of(context) != "firefox"
+
+
+def enforces_coop(context: BrowserContext) -> bool:
+    """Whether a COOP response severs a cross-origin opener on this engine.
+
+    False only on Firefox, whose COOP processing the harness turns off (see
+    Cross-origin opener policy); Chromium and WebKit apply the policy.
+    """
     return _engine_of(context) != "firefox"
 
 
@@ -801,7 +916,11 @@ def browser_zoom_200(page: Page, profile_root: Path) -> Iterator[tuple[Page, str
                 headless=True,
                 locale="pt-BR",
                 viewport={"width": 640, "height": 450},
-                firefox_user_prefs={"layout.css.devPixelsPerPx": "2.0"},
+                device_scale_factor=2,
+                firefox_user_prefs={
+                    **FIREFOX_USER_PREFS,
+                    "layout.css.devPixelsPerPx": "2.0",
+                },
             )
             try:
                 context.set_storage_state(page.context.storage_state())

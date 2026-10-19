@@ -115,6 +115,7 @@ from rbac_fixtures import RBAC_RAW_CREDENTIAL
 from renewal.test_consent import accept as accept_text
 from renewal.test_encounters import setup_context
 from scheduling.appointment_service_support import arrive_appointment
+from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -316,6 +317,7 @@ def dispatched(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 def room_adapter(settings: SettingsWrapper) -> Iterator[SyntheticRoomAdapter]:
     """Enable the synthetic room gate and re-register the boundary adapter."""
     settings.TELECONSULT_SYNTHETIC_PROVIDER = True
+    seed_video_versions()
     adapter = SyntheticRoomAdapter()
     register_send_adapter(adapter)
     try:
@@ -1136,7 +1138,8 @@ def test_queue_dispatch_failure_leaves_committed_recoverable_operation(
         operation = IntegrationOperation.objects.get(pk=operation.pk)
         assert operation.status == IntegrationOperation.Status.SUCCEEDED
         assert operation.attempt_count == 1
-        assert operation.provider_reference == f"synthetic:room:tc-{session.pk}"
+        room = TeleconsultRoom.objects.get(session_id=session.pk)
+        assert operation.provider_reference == f"synthetic:room:{room.room_name}"
     # The recovered session still admits its physician; the issued credential
     # is itself a canary that must never reach the logs.
     with runtime_role(), tenant_context(graph.physician_a, graph.organization_a):

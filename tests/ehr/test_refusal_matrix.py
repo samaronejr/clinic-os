@@ -86,6 +86,7 @@ from ehr.test_autosave import (
 from identity.permission_support import owner_context
 from renewal.test_teleconsult_sessions import _create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
+from teleconsult_support import seed_video_versions
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -166,7 +167,12 @@ URL_VARIABLES: dict[str, Callable[[UUID], str]] = {
 }
 # Project scripts that post an action, and the form target they post to (the
 # clinician poller reads ``data-status-url``, rendered from ``staff_url``).
-SCRIPT_TARGETS = {"js/teleconsult-clinician.js": "{{ staff_url }}"}
+DEVICE_ACTION_TARGET = "{{ device_url }}"
+SCRIPT_TARGETS = {
+    "js/teleconsult-clinician.js": "{{ staff_url }}",
+    "js/teleconsult-patient.js": "{% url 'teleconsult:patient' %}",
+    "js/teleconsult-devices.js": DEVICE_ACTION_TARGET,
+}
 THIRD_PARTY_SCRIPTS = "vendor/"
 URL_TAG = re.compile(r"\{%\s*url\s+'(?P<name>[^']+)'(?P<args>[^%]*)%\}")
 URL_VARIABLE = re.compile(r"\{\{\s*(?P<name>\w+)\s*\}\}")
@@ -180,6 +186,17 @@ SCRIPT_ACTION = re.compile(
     r"""\.(?:set|append)\(\s*["']action["']\s*,\s*["'](?P<value>[a-z][a-z_-]*)["']\s*\)"""
 )
 SCRIPT_ACTION_KEY = re.compile(r"""["']action["']""")
+SCRIPT_DELEGATED_ACTION = re.compile(
+    r"""\.(?:set|append)\(\s*["']action["']\s*,\s*action\s*\)"""
+)
+SCRIPT_HELPER_ACTION = re.compile(
+    r"""\bpostAction\(\s*["'](?P<value>[a-z][a-z_-]*)["']\s*[,)]"""
+)
+SCRIPT_HELPER_DEFINITION = re.compile(
+    r"\bfunction\s+postAction\(\s*action\s*,\s*extra\s*\)"
+)
+SCRIPT_HELPER_REFERENCE = re.compile(r"\bpostAction\b")
+SCRIPT_TARGET_READ = re.compile(r"""\.getAttribute\(\s*["']action["']\s*\)""")
 API_ROUTES = (AUTOSAVE, ADDENDUM_OPEN, ADDENDUM_AUTOSAVE)
 FORM_MODES = ("native", "htmx")
 # The assignee again, signed in with a step-up verified long ago.
@@ -214,6 +231,7 @@ class World:
 @pytest.fixture
 def synthetic_room(settings: SettingsWrapper) -> None:
     settings.TELECONSULT_SYNTHETIC_PROVIDER = True
+    seed_video_versions()
     register_send_adapter(SyntheticRoomAdapter())
 
 
@@ -355,6 +373,12 @@ def target_views(target: str) -> set[object]:
     """Resolve literal targets and the patient banner's finite registry."""
     if match := SPECIMEN_TARGET.fullmatch(target):
         target = match["live"]
+    if target == DEVICE_ACTION_TARGET:
+        # The shared device component is included with staff_url for physicians.
+        return {
+            resolve(reverse("teleconsult:patient")).func,
+            resolve(staff_url(uuid4())).func,
+        }
     if target == PATIENT_ACTION_TARGET:
         found = set()
         for action in PATIENT_ACTIONS:
@@ -419,12 +443,21 @@ def ui_actions() -> dict[str, set[str]]:
                 text
             ):
                 continue
+            delegated = len(SCRIPT_DELEGATED_ACTION.findall(text))
+            helper_values = [m["value"] for m in SCRIPT_HELPER_ACTION.finditer(text)]
+            helpers = len(SCRIPT_HELPER_DEFINITION.findall(text))
             if (
-                len(SCRIPT_ACTION_KEY.findall(text)) != len(values)
-                or name not in SCRIPT_TARGETS
-            ):
+                len(SCRIPT_ACTION_KEY.findall(text)),
+                delegated,
+                len(SCRIPT_HELPER_REFERENCE.findall(text)),
+            ) != (
+                len(values) + delegated + len(SCRIPT_TARGET_READ.findall(text)),
+                helpers,
+                len(helper_values) + helpers,
+            ) or name not in SCRIPT_TARGETS:
                 problems.append(f"{name}: unclassified action key")
                 continue
+            values += helper_values
             routes = posted_routes({SCRIPT_TARGETS[name]}, set())
             posts += [(f"{name}: {value!r}", value, routes) for value in values]
     for where, value, routes in posts:
@@ -658,10 +691,31 @@ def test_matrix_covers_every_ehr_route_and_action() -> None:
     }
     # Every action the UI posts to an EHR workspace is in its dispatch table.
     ui = ui_actions()
+    assert {"audio_only", "resume", "device_check"} <= ui[TELECONSULT]
     assert set(ui) <= set(FORM_ACTIONS)
     for route in TABLED:
         assert ui.get(route, set()) <= FORM_ACTIONS[route], route
     assert {route for _actor, route, _action in PERMITTED} <= set(ROUTE_VIEWS)
+
+
+def test_computed_post_action_is_not_treated_as_a_finite_inventory(
+    settings: SettingsWrapper, tmp_path: Path
+) -> None:
+    scripts = tmp_path / "js"
+    scripts.mkdir()
+    script = scripts / "teleconsult-clinician.js"
+    helper = "function postAction(action, extra) { body.set('action', action); }\n"
+    settings.STATICFILES_DIRS = [tmp_path]
+    script.write_text(helper + 'postAction("audio_only");\n', encoding="utf-8")
+    assert "audio_only" in ui_actions()[TELECONSULT]
+    for call in (
+        "postAction(computedAction);",
+        'postAction("audio_only" + suffix);',
+        'postAction("audio_only".replace("only", x));',
+    ):
+        script.write_text(helper + call + "\n", encoding="utf-8")
+        with pytest.raises(AssertionError):
+            ui_actions()
 
 
 def test_every_refused_ehr_write_leaves_no_committed_row(
