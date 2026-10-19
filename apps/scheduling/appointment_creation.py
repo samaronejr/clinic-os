@@ -204,6 +204,35 @@ def create_hold(
     )
 
 
+def create_service_hold(
+    *,
+    clinic_id: UUID,
+    enrollment_id: UUID,
+    practitioner_id: UUID,
+    booking: ServiceBooking,
+    idempotency_key: UUID,
+) -> Appointment:
+    """Create an expiring service hold that reserves its rooms and equipment.
+
+    The agenda's book step: the same permission-bound authority, deadline and
+    capacity guards as ``create_hold``, with the service's duration, buffers
+    and selected resources bound like ``create_service_appointment``.
+    """
+    return _create_appointment(
+        CreateAppointmentRequest(
+            clinic_id,
+            enrollment_id,
+            practitioner_id,
+            booking.local_range,
+            idempotency_key,
+            booking.service_type_id,
+            booking.resource_ids,
+            initial_status="held",
+            permission_authority=True,
+        )
+    )
+
+
 def create_series_occurrence(
     request: CreateAppointmentRequest, *, series_id: UUID, series_index: int
 ) -> Appointment:

@@ -3864,9 +3864,6 @@ msgstr "Esta consulta mudou enquanto isso. Recarregue antes de tentar novamente.
 msgid "Agenda grid · Clinic OS"
 msgstr "Grade da agenda · Clinic OS"
 
-msgid "See the clinic-local day by practitioner and room, and move appointments without exposing patient identifiers in the address bar."
-msgstr "Veja o dia no horário da clínica por profissional e sala, e reagende consultas sem expor identificadores de pacientes na barra de endereço."
-
 msgid "Grid"
 msgstr "Grade"
 
@@ -3890,10 +3887,6 @@ msgstr "Ocupado"
 
 msgid "To move an appointment, drag it to a free time, or select it and press M."
 msgstr "Para reagendar uma consulta, arraste-a até um horário livre ou selecione-a e pressione M."
-
-#, python-format
-msgid "Practitioners and rooms on %(day)s"
-msgstr "Profissionais e salas em %(day)s"
 
 #, python-format
 msgid "Appointment moved to %(start)s."
@@ -4133,3 +4126,224 @@ msgstr "Entrar com chave de acesso"
 
 msgid "Confirm with a passkey"
 msgstr "Confirmar com chave de acesso"
+
+msgid "See the clinic-local day, week or month by professional, room and equipment, and book or move appointments without exposing patient identifiers in the address bar."
+msgstr "Veja o dia, a semana ou o mês da clínica por profissional, sala e equipamento, e agende ou reagende consultas sem expor identificadores de pacientes na barra de endereço."
+
+msgid "Agenda updated"
+msgstr "Agenda atualizada"
+
+msgid "Someone else changed this agenda. It now shows their change."
+msgstr "Outra pessoa alterou esta agenda. Ela já mostra a alteração."
+
+msgid "Dismiss"
+msgstr "Fechar aviso"
+
+msgid "Agenda filters"
+msgstr "Filtros da agenda"
+
+msgid "Unit"
+msgstr "Unidade"
+
+msgid "All professionals"
+msgstr "Todos os profissionais"
+
+msgid "Room or equipment"
+msgstr "Sala ou equipamento"
+
+msgid "All rooms and equipment"
+msgstr "Todas as salas e equipamentos"
+
+msgid "All service types"
+msgstr "Todos os tipos de atendimento"
+
+msgid "Apply filters"
+msgstr "Aplicar filtros"
+
+msgid "Open unit"
+msgstr "Abrir unidade"
+
+msgid "Clear filters"
+msgstr "Limpar filtros"
+
+msgid "Classic agenda"
+msgstr "Agenda clássica"
+
+msgid "Remove"
+msgstr "Remover"
+
+msgid "No saved view yet. Save this view to open it again later with its filters."
+msgstr "Nenhuma visão salva ainda. Salve esta visão para abri-la depois com os mesmos filtros."
+
+msgid "Save this view"
+msgstr "Salvar esta visão"
+
+msgid "To book without scripts, find the patient in the registry and press “Book appointment”."
+msgstr "Sem JavaScript, encontre o paciente no cadastro e pressione “Agendar consulta”."
+
+msgid "Only the first 400 appointments are shown. Narrow the filters to see the rest."
+msgstr "Apenas as primeiras 400 consultas são exibidas. Refine os filtros para ver as demais."
+
+msgid "To book, select a free time and press Enter."
+msgstr "Para agendar, selecione um horário livre e pressione Enter."
+
+#, python-format
+msgid "Professionals, rooms and equipment on %(day)s"
+msgstr "Profissionais, salas e equipamentos em %(day)s"
+
+#, python-format
+msgid "%(name)s: week of %(start)s to %(end)s"
+msgstr "%(name)s: semana de %(start)s a %(end)s"
+
+msgid "Busy (other unit)"
+msgstr "Ocupado (outra unidade)"
+
+msgid "Nothing to show"
+msgstr "Nada para mostrar"
+
+msgid "No professional, room or equipment matches these filters. Clear the filters to see the whole clinic."
+msgstr "Nenhum profissional, sala ou equipamento corresponde a estes filtros. Limpe os filtros para ver toda a clínica."
+
+#, python-format
+msgid "held until %(time)s"
+msgstr "reservado até %(time)s"
+
+msgid "Hold expiring"
+msgstr "Reserva expirando"
+
+msgid "Reserved times awaiting confirmation"
+msgstr "Horários reservados aguardando confirmação"
+
+msgid "Confirm booking"
+msgstr "Confirmar agendamento"
+
+msgid "Release time"
+msgstr "Liberar horário"
+
+#, python-format
+msgid "Appointments per day in %(month)s"
+msgstr "Consultas por dia em %(month)s"
+
+msgid "No appointment"
+msgstr "Nenhuma consulta"
+
+msgid "Rooms and equipment"
+msgstr "Salas e equipamentos"
+
+msgid "None"
+msgstr "Nenhum"
+
+msgid "Mark arrived"
+msgstr "Registrar chegada"
+
+msgid "Mark no-show"
+msgstr "Registrar falta"
+
+msgid "No appointment matches these filters in this week."
+msgstr "Nenhuma consulta corresponde a estes filtros nesta semana."
+
+msgid "Appointment actions"
+msgstr "Ações da consulta"
+
+msgid "__N__ free times on that day."
+msgstr "__N__ horários livres nesse dia."
+
+msgid "No free time on that day. Try another day."
+msgstr "Nenhum horário livre nesse dia. Tente outro dia."
+
+msgid "Someone else changed this appointment while this dialog was open. Close it and select the appointment again."
+msgstr "Outra pessoa alterou esta consulta enquanto esta janela estava aberta. Feche-a e selecione a consulta novamente."
+
+msgid "Find free times on another day"
+msgstr "Buscar horários livres em outro dia"
+
+msgid "Find free times"
+msgstr "Buscar horários livres"
+
+msgid "Other actions"
+msgstr "Outras ações"
+
+#, python-format
+msgid "Patient in context: %(name)s"
+msgstr "Paciente em contexto: %(name)s"
+
+msgid "No patient is in context. Search for the patient with Search (Ctrl K), then choose this time again."
+msgstr "Nenhum paciente em contexto. Busque o paciente em Buscar (Ctrl K) e escolha este horário de novo."
+
+msgid "Duration"
+msgstr "Duração"
+
+#, python-format
+msgid "%(minutes)s minutes"
+msgstr "%(minutes)s minutos"
+
+msgid "A service type books its own duration."
+msgstr "Um tipo de atendimento usa a própria duração."
+
+msgid "No service type"
+msgstr "Sem tipo de atendimento"
+
+msgid "Rooms and equipment are reserved only together with a service type."
+msgstr "Salas e equipamentos só são reservados junto com um tipo de atendimento."
+
+msgid "Reserving…"
+msgstr "Reservando…"
+
+msgid "Reserve time"
+msgstr "Reservar horário"
+
+#, python-format
+msgid "New start time on %(day)s"
+msgstr "Novo horário de início em %(day)s"
+
+msgid "Open the resource grid"
+msgstr "Abrir a grade de recursos"
+
+msgid "This time was just taken. Choose another time."
+msgstr "Horário acabou de ser ocupado. Escolha outro horário."
+
+msgid "Choose the patient first: search for them with Search (Ctrl K), then come back to this time."
+msgstr "Escolha o paciente primeiro: busque-o em Buscar (Ctrl K) e volte a este horário."
+
+msgid "This view could not be saved. Remove a saved view you no longer use."
+msgstr "Não foi possível salvar esta visão. Remova uma visão salva que você não usa mais."
+
+msgid "View saved. Open it again from Saved views."
+msgstr "Visão salva. Abra-a de novo em Visões salvas."
+
+#, python-format
+msgid "Time reserved until %(time)s. Confirm it to book the appointment."
+msgstr "Horário reservado até %(time)s. Confirme para agendar a consulta."
+
+msgid "Appointment booked."
+msgstr "Consulta agendada."
+
+msgid "Appointment cancelled. The time is free again."
+msgstr "Consulta cancelada. O horário está livre novamente."
+
+msgid "Arrival recorded."
+msgstr "Chegada registrada."
+
+msgid "No-show recorded."
+msgstr "Falta registrada."
+
+msgid "List"
+msgstr "Lista"
+
+#, python-format
+msgid "%(total)s saved view"
+msgid_plural "%(total)s saved views"
+msgstr[0] "%(total)s visão salva"
+msgstr[1] "%(total)s visões salvas"
+
+#, python-format
+msgid "%(total)s appointment in this month."
+msgid_plural "%(total)s appointments in this month."
+msgstr[0] "%(total)s consulta neste mês."
+msgstr[1] "%(total)s consultas neste mês."
+
+#, python-format
+msgid "%(total)s appointment"
+msgid_plural "%(total)s appointments"
+msgstr[0] "%(total)s consulta"
+msgstr[1] "%(total)s consultas"

@@ -35,6 +35,7 @@ from django.test import Client, override_settings
 from django_otp import DEVICE_ID_SESSION_KEY
 from psycopg import sql
 
+from identity.board_delegation_probes import CASES as BOARD_CASES
 from identity.delegation_probe_support import Case, Seeded
 from identity.grid_delegation_probes import CASES as GRID_CASES
 from identity.nonstaff_differential import DifferentialProbe
@@ -308,6 +309,7 @@ def _authorize_topics(graph: RbacGraph, actor: UUID) -> Seeded:
 AGENDA = TOPIC_PERMISSIONS["agenda"]
 CASES: dict[str, Case] = {
     **GRID_CASES,
+    **BOARD_CASES,
     "apps.identity.current_context.require_permission": Case(
         _require_permission, database_role="clinic_app"
     ),

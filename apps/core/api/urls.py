@@ -9,6 +9,7 @@ app_name = "ui_api"
 
 urlpatterns: list[URLPattern] = [
     path("agenda/query/", views.AgendaQueryView.as_view(), name="agenda-query"),
+    path("agenda/board/", views.AgendaBoardQueryView.as_view(), name="agenda-board"),
     path("command/search/", views.CommandSearchView.as_view(), name="command-search"),
     path("ehr/autosave/", views.DraftAutosaveView.as_view(), name="ehr-autosave"),
     path(

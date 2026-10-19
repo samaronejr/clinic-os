@@ -17,6 +17,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
+from apps.scheduling.agenda_board_presenter import board_url
 from apps.scheduling.agenda_presenter import (
     DAY_VIEW,
     AgendaScreen,
@@ -75,6 +76,9 @@ def _context(
             row.reschedule_url for day in days for row in day.rows
         )
         context.update(navigation(clinic_id, agenda, today=today))
+        context["board_url"] = board_url(
+            clinic_id, "day" if agenda.view == DAY_VIEW else "week", agenda.date
+        )
     return context
 
 

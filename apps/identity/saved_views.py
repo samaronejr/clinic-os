@@ -4,7 +4,10 @@ Authority comes from the transaction's GUCs: row security limits every read
 and write to the current user, the current tenant and a clinic where the user
 still holds a role. Parameters are closed slugs, so no saved view can carry
 patient data; ``apps.core.saved_views`` decides which destinations and values
-the workspace offers.
+the workspace offers. The only identifier-valued parameters are the clinic
+catalog filters of the agenda board (professional, resource, service type),
+which the board checks against the clinic catalog before saving; patient,
+enrollment and appointment identifiers never become parameters.
 """
 
 from __future__ import annotations
@@ -24,9 +27,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from uuid import UUID
 
-MAX_PARAMS: Final = 4
+MAX_PARAMS: Final = 5
 MAX_ACTIVE_VIEWS: Final = 20
+CATALOG_KEYS: Final = frozenset({"professional", "resource", "service"})
 _SLUG: Final = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+_CATALOG_ID: Final = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
 
 
 class SavedViewError(ValueError):
@@ -53,12 +60,10 @@ def _validated(destination: object, params: object) -> tuple[str, dict[str, str]
         raise SavedViewError
     clean: dict[str, str] = {}
     for key, value in params.items():
-        if not (
-            isinstance(key, str)
-            and isinstance(value, str)
-            and _SLUG.fullmatch(key)
-            and _SLUG.fullmatch(value)
-        ):
+        if not (isinstance(key, str) and isinstance(value, str)):
+            raise SavedViewError
+        shape = _CATALOG_ID if key in CATALOG_KEYS else _SLUG
+        if not (_SLUG.fullmatch(key) and shape.fullmatch(value)):
             raise SavedViewError
         clean[key] = value
     return destination, clean

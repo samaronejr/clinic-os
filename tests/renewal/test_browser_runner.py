@@ -48,6 +48,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "onboarding",
         "agenda",
         "agenda-slice",
+        "agenda-grid",
         "realtime",
         "amendments",
         "attachments",
@@ -79,7 +80,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "workspace",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
-    assert {"realtime", "agenda-slice"} == runner.REALTIME_SUITES
+    assert {"realtime", "agenda-slice", "agenda-grid"} == runner.REALTIME_SUITES
     assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS
@@ -419,6 +420,12 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
         ),
         "_cancel": (
             "Enter on the move dialog's type=button Cancel closes it; no document"
+        ),
+    },
+    BROWSER_SUITES / "test_agenda_grid.py": {
+        "press": (
+            "records the keyboard-only board move; its one Enter submits the"
+            " hx-post move form, which swaps the board; no document"
         ),
     },
     BROWSER_SUITES / "test_billing.py": {

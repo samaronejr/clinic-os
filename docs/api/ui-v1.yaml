@@ -6,6 +6,73 @@ info:
     travel only in request bodies. Session authentication with the X-CSRFToken header;
     errors are {code, message_key}.
 paths:
+  /api/ui/v1/agenda/board/:
+    post:
+      operationId: agenda_board_query
+      description: |-
+        Adapt ``scheduling.view_agenda_board``; unknown and foreign clinics match.
+
+        Deviation from the todo 24 plan wording, accepted provisionally pending gate review: the plan widens ``agenda/query`` to the multi-view board. ``agenda/query`` keeps its pinned response keys and required ``clinic_id``, so the day, week, month and list board is this separate endpoint instead.
+      tags:
+      - agenda
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgendaBoardQueryRequest'
+        required: true
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgendaBoard'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/ui/v1/agenda/query/:
     post:
       operationId: agenda_query
@@ -449,6 +516,124 @@ components:
       required:
       - revision
       - saved_at
+    AgendaBoard:
+      type: object
+      description: 'Adapt ``scheduling.AgendaBoard``: slots and appointments of one
+        view.'
+      properties:
+        view:
+          allOf:
+          - $ref: '#/components/schemas/AgendaBoardViewEnum'
+          readOnly: true
+        anchor:
+          type: string
+          format: date
+          readOnly: true
+        first_day:
+          type: string
+          format: date
+          readOnly: true
+        last_day:
+          type: string
+          format: date
+          readOnly: true
+        lanes:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardLane'
+          readOnly: true
+        slots:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        appointments:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardAppointment'
+          readOnly: true
+        occupancy:
+          type: array
+          items:
+            $ref: '#/components/schemas/Occupancy'
+          readOnly: true
+        counts:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayCount'
+          readOnly: true
+        can_move:
+          type: boolean
+          readOnly: true
+        can_book:
+          type: boolean
+          readOnly: true
+        truncated:
+          type: boolean
+          readOnly: true
+      required:
+      - anchor
+      - appointments
+      - can_book
+      - can_move
+      - counts
+      - first_day
+      - lanes
+      - last_day
+      - occupancy
+      - slots
+      - truncated
+      - view
+    AgendaBoardFilters:
+      type: object
+      description: Optional board filters; unknown catalog entries answer ``invalid_input``.
+      properties:
+        professional_id:
+          type: string
+          format: uuid
+        resource_id:
+          type: string
+          format: uuid
+        service_type_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/StatusEnum'
+    AgendaBoardQueryRequest:
+      type: object
+      description: |-
+        POST body of ``agenda/board``: the range is the view containing ``date``.
+
+        ``clinic_id`` is optional: without it the shell's current clinic is used.
+        Record selectors never appear here; filters name only catalog entries.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        view:
+          $ref: '#/components/schemas/AgendaBoardViewEnum'
+        date:
+          type: string
+          format: date
+          description: Clinic-local civil date from 2000-01-01 to 2199-12-31; the
+            day, ISO week or month containing it.
+        filters:
+          $ref: '#/components/schemas/AgendaBoardFilters'
+      required:
+      - date
+      - view
+    AgendaBoardViewEnum:
+      enum:
+      - day
+      - week
+      - month
+      - list
+      type: string
+      description: |-
+        * `day` - day
+        * `week` - week
+        * `month` - month
+        * `list` - list
     AgendaItem:
       type: object
       description: 'Adapt ``scheduling.AgendaItem``: one clinic-local appointment
@@ -485,6 +670,14 @@ components:
       - practitioner_id
       - start_local
       - status
+    AgendaLedgerViewEnum:
+      enum:
+      - day
+      - week
+      type: string
+      description: |-
+        * `day` - day
+        * `week` - week
     AgendaPage:
       type: object
       description: 'Adapt ``scheduling.AgendaPage``: one bounded agenda page.'
@@ -496,7 +689,7 @@ components:
           readOnly: true
         view:
           allOf:
-          - $ref: '#/components/schemas/ViewEnum'
+          - $ref: '#/components/schemas/AgendaLedgerViewEnum'
           readOnly: true
         date:
           type: string
@@ -537,7 +730,7 @@ components:
           type: string
           format: uuid
         view:
-          $ref: '#/components/schemas/ViewEnum'
+          $ref: '#/components/schemas/AgendaLedgerViewEnum'
         date:
           type: string
           format: date
@@ -551,6 +744,92 @@ components:
       - clinic_id
       - date
       - view
+    BoardAppointment:
+      type: object
+      description: Adapt ``scheduling.BoardAppointment``; no birth date or contact
+        data.
+      properties:
+        appointment_id:
+          type: string
+          format: uuid
+          readOnly: true
+        patient_display_name:
+          type: string
+          readOnly: true
+        practitioner_id:
+          type: string
+          format: uuid
+          readOnly: true
+        resource_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+        service_type_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        start_local:
+          type: string
+          readOnly: true
+        end_local:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        revision:
+          type: integer
+          readOnly: true
+        movable:
+          type: boolean
+          readOnly: true
+        actions:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        hold_until:
+          type: string
+          readOnly: true
+        hold_expiring:
+          type: boolean
+          readOnly: true
+      required:
+      - actions
+      - appointment_id
+      - end_local
+      - hold_expiring
+      - hold_until
+      - movable
+      - patient_display_name
+      - practitioner_id
+      - resource_ids
+      - revision
+      - service_type_id
+      - start_local
+      - status
+    BoardLane:
+      type: object
+      description: 'Adapt ``scheduling.BoardLane``: a professional, room or equipment
+        lane.'
+      properties:
+        kind:
+          type: string
+          readOnly: true
+        lane_id:
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          type: string
+          readOnly: true
+      required:
+      - kind
+      - label
+      - lane_id
     CodeEnum:
       enum:
       - access_denied
@@ -667,6 +946,20 @@ components:
           pattern: ^/[A-Za-z0-9/_.-]*$
       required:
       - q
+    DayCount:
+      type: object
+      description: 'Adapt ``scheduling.DayCount``: appointments starting on one date.'
+      properties:
+        day:
+          type: string
+          format: date
+          readOnly: true
+        total:
+          type: integer
+          readOnly: true
+      required:
+      - day
+      - total
     DraftAutosaveConflict:
       type: object
       description: 'A stale revision: nothing was written; merge explicitly.'
@@ -799,6 +1092,28 @@ components:
       description: |-
         * `held` - held
         * `handed_over` - handed_over
+    Occupancy:
+      type: object
+      description: 'Adapt ``scheduling.Occupancy``: a busy interval, other units unnamed.'
+      properties:
+        lane_id:
+          type: string
+          format: uuid
+          readOnly: true
+        start_local:
+          type: string
+          readOnly: true
+        end_local:
+          type: string
+          readOnly: true
+        other_unit:
+          type: boolean
+          readOnly: true
+      required:
+      - end_local
+      - lane_id
+      - other_unit
+      - start_local
     SoapSections:
       type: object
       description: Exactly the four SOAP sections as plain text; never trimmed.
@@ -820,14 +1135,26 @@ components:
       - objective
       - plan
       - subjective
-    ViewEnum:
+    StatusEnum:
       enum:
-      - day
-      - week
+      - scheduled
+      - cancelled
+      - requested
+      - held
+      - arrived
+      - in_progress
+      - completed
+      - no_show
       type: string
       description: |-
-        * `day` - day
-        * `week` - week
+        * `scheduled` - scheduled
+        * `cancelled` - cancelled
+        * `requested` - requested
+        * `held` - held
+        * `arrived` - arrived
+        * `in_progress` - in_progress
+        * `completed` - completed
+        * `no_show` - no_show
   securitySchemes:
     csrfHeader:
       type: apiKey

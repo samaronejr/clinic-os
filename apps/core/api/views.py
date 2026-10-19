@@ -40,6 +40,8 @@ from apps.core.api.serializers import (
     AddendumOpenedSerializer,
     AddendumOpenRequestSerializer,
     AddendumSavedSerializer,
+    AgendaBoardQueryRequestSerializer,
+    AgendaBoardSerializer,
     AgendaPageSerializer,
     AgendaQueryRequestSerializer,
     CommandResultSerializer,
@@ -62,6 +64,7 @@ from apps.ehr.autosave import (
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import Clinic, User
+from apps.scheduling.agenda_board import AgendaFilters, view_agenda_board
 from apps.scheduling.services import (
     AgendaInputError,
     AvailabilityAccessDeniedError,
@@ -127,6 +130,51 @@ class AgendaQueryView(UiApiView):
         except AgendaInputError as error:
             raise UiApiError(INVALID_INPUT) from error
         return Response(AgendaPageSerializer(page).data)
+
+
+class AgendaBoardQueryView(UiApiView):
+    """Return one authorized clinic-local day, week, month or list board."""
+
+    @extend_schema(
+        operation_id="agenda_board_query",
+        description=(
+            "Adapt ``scheduling.view_agenda_board``; unknown and foreign clinics "
+            "match.\n\nDeviation from the todo 24 plan wording, accepted "
+            "provisionally pending gate review: the plan widens "
+            "``agenda/query`` to the multi-view board. ``agenda/query`` keeps "
+            "its pinned response keys and required ``clinic_id``, so the day, "
+            "week, month and list board is this separate endpoint instead."
+        ),
+        tags=["agenda"],
+        request=AgendaBoardQueryRequestSerializer,
+        responses={200: AgendaBoardSerializer, **ERROR_RESPONSES},
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``scheduling.view_agenda_board``; unknown and foreign clinics match."""
+        query = AgendaBoardQueryRequestSerializer(data=request.data)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+        clinic_id = data.get("clinic_id") or _remembered_clinic(request)
+        if clinic_id is None:
+            raise UiApiError(ACCESS_DENIED)
+        filters = data.get("filters", {})
+        try:
+            board = view_agenda_board(
+                clinic_id=clinic_id,
+                view=data["view"],
+                date=data["date"].isoformat(),
+                filters=AgendaFilters(
+                    professional_id=filters.get("professional_id"),
+                    resource_id=filters.get("resource_id"),
+                    service_type_id=filters.get("service_type_id"),
+                    status=filters.get("status"),
+                ),
+            )
+        except AvailabilityAccessDeniedError as error:
+            raise UiApiError(ACCESS_DENIED) from error
+        except AgendaInputError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        return Response(AgendaBoardSerializer(board).data)
 
 
 class CommandSearchView(UiApiView):

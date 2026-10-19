@@ -1,33 +1,90 @@
 {% extends "base.html" %}
-{% load i18n static %}
+{% load i18n static clinic_locale %}
 {% block title %}{% trans "Agenda grid · Clinic OS" %}{% endblock %}
-{% block meta_description %}{% trans "See the clinic-local day by practitioner and room, and move appointments without exposing patient identifiers in the address bar." %}{% endblock %}
+{% block meta_description %}{% trans "See the clinic-local day, week or month by professional, room and equipment, and book or move appointments without exposing patient identifiers in the address bar." %}{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-agenda.css' %}">
 <script src="{% static 'js/realtime.js' %}" defer></script>
 <script src="{% static 'js/components/resource-grid.js' %}" defer></script>
 <script src="{% static 'js/components/dialog.js' %}" defer></script>
 <script src="{% static 'js/agenda-grid.js' %}" defer></script>{% endblock %}
-{% block content %}
+{% block content %}{% comment %}
+Agenda board (todo 24, ADR-001 variant A): day by professional, room and
+equipment; one professional's or resource's week; month counts that drill into
+the day; and a list. URLs carry only the clinic, view and civil date. Filters
+and saved views are POSTed and kept on the server; record selectors travel
+only in POST bodies.
+{% endcomment %}
 <section class="agenda-shell" id="agenda-shell" aria-labelledby="agenda-title" data-realtime-topic="clinic:{{ clinic_id }}:agenda" data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}" data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
   {% csrf_token %}
   <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
   <h1 id="agenda-title">{% trans "Clinic agenda" %}</h1>
-  {% for message in messages %}{% if "scheduling.appointment.moved" in message.tags %}{% include "includes/components/state.html" with state="success" message=message id="agenda-grid-moved" only %}{% endif %}{% endfor %}
+  {% for message in messages %}{% if "scheduling.appointment.moved" in message.tags %}{% include "includes/components/state.html" with state="success" message=message id="agenda-grid-moved" only %}{% elif "scheduling.board.outcome" in message.tags %}{% if message.level_tag == "warning" %}{% include "includes/components/state.html" with state="conflict" message=message only %}{% else %}{% include "includes/components/state.html" with state="success" message=message only %}{% endif %}{% endif %}{% endfor %}
+  <div class="agenda-remote-change" id="agenda-remote-change" aria-live="polite" data-remote-change></div>
+  <template id="agenda-remote-change-note">{% trans "Agenda updated" as remote_title %}{% trans "Someone else changed this agenda. It now shows their change." as remote_message %}{% trans "Dismiss" as remote_action %}{% include "includes/components/state.html" with state="stale" title=remote_title message=remote_message action_label=remote_action only %}</template>
   <div class="agenda-bar">
-    <h2 class="agenda-period" id="agenda-range-title"><span class="agenda-period-text"><time datetime="{{ grid.date|date:'Y-m-d' }}">{{ grid.date|date:"l"|capfirst }}, {{ grid.date|date:"SHORT_DATE_FORMAT" }}</time></span></h2>
+    <h2 class="agenda-period" id="agenda-range-title">
+      <span class="agenda-period-text">{% if board.view == "day" %}<time datetime="{{ board.anchor|date:'Y-m-d' }}">{{ board.anchor|date:"l"|capfirst }}, {{ board.anchor|date:"SHORT_DATE_FORMAT" }}</time>{% elif board.view == "month" %}<time datetime="{{ board.anchor|date:'Y-m' }}">{{ board.anchor|date:"F Y"|capfirst }}</time>{% else %}{% blocktrans with start=board.first_day|date:"SHORT_DATE_FORMAT" end=board.last_day|date:"SHORT_DATE_FORMAT" start_iso=board.first_day|date:"Y-m-d" end_iso=board.last_day|date:"Y-m-d" %}Week of <time datetime="{{ start_iso }}">{{ start }}</time> to <time datetime="{{ end_iso }}">{{ end }}</time>{% endblocktrans %}{% endif %}</span>
+      {% if is_today %}<span class="badge badge--success">{% trans "today" %}</span>{% endif %}
+    </h2>
     <nav class="agenda-nav" aria-label="{% trans "Agenda navigation" %}">
       <ul class="agenda-steps">
-        <li><a class="button button--secondary" href="{{ previous_url }}">{% trans "Previous day" %}</a></li>
+        <li><a class="button button--secondary" href="{{ previous_url }}">{% if board.view == "day" %}{% trans "Previous day" %}{% elif board.view == "month" %}{% trans "Previous month" %}{% else %}{% trans "Previous week" %}{% endif %}</a></li>
         <li><a class="button button--quiet" href="{{ today_url }}">{% trans "Today" %}</a></li>
-        <li><a class="button button--secondary" href="{{ next_url }}">{% trans "Next day" %}</a></li>
+        <li><a class="button button--secondary" href="{{ next_url }}">{% if board.view == "day" %}{% trans "Next day" %}{% elif board.view == "month" %}{% trans "Next month" %}{% else %}{% trans "Next week" %}{% endif %}</a></li>
       </ul>
       <ul class="agenda-views" aria-label="{% trans "Agenda view" %}">
-        <li><a class="button button--quiet" href="{{ list_url }}">{% trans "Day" %}</a></li>
-        <li><a class="button button--quiet" href="{{ grid_url }}" aria-current="page">{% trans "Grid" %}</a></li>
+        {% for link in view_links %}<li><a class="button button--quiet" href="{{ link.href }}"{% if link.current %} aria-current="page"{% endif %}>{{ link.label }}</a></li>{% endfor %}
       </ul>
     </nav>
   </div>
+  <div class="agenda-toolbar">
+    <form class="agenda-filters" method="post" action="{{ grid_url }}" aria-labelledby="agenda-filters-title">
+      {% csrf_token %}
+      <h2 class="visually-hidden" id="agenda-filters-title">{% trans "Agenda filters" %}</h2>
+      <div class="agenda-filter-fields">
+        {% if workspace.clinic and workspace.other_clinics %}<div class="field">
+          <label for="agenda-filter-unit">{% trans "Unit" %}</label>
+          <select id="agenda-filter-unit" name="unit"><option value="{{ workspace.clinic.id }}" selected>{{ workspace.clinic.name }}</option>{% for unit in workspace.other_clinics %}<option value="{{ unit.id }}">{{ unit.name }}</option>{% endfor %}</select>
+        </div>{% endif %}
+        <div class="field">
+          <label for="agenda-filter-professional">{% trans "Professional" %}</label>
+          <select id="agenda-filter-professional" name="professional"><option value="">{% trans "All professionals" %}</option>{% for lane in board.professionals %}<option value="{{ lane.lane_id }}"{% if lane.lane_id == board.filters.professional_id %} selected{% endif %}>{{ lane.label }}</option>{% endfor %}</select>
+        </div>
+        <div class="field">
+          <label for="agenda-filter-resource">{% trans "Room or equipment" %}</label>
+          <select id="agenda-filter-resource" name="resource"><option value="">{% trans "All rooms and equipment" %}</option>{% for lane in board.resources %}<option value="{{ lane.lane_id }}"{% if lane.lane_id == board.filters.resource_id %} selected{% endif %}>{{ lane.label }}</option>{% endfor %}</select>
+        </div>
+        <div class="field">
+          <label for="agenda-filter-service">{% trans "Service type" %}</label>
+          <select id="agenda-filter-service" name="service"><option value="">{% trans "All service types" %}</option>{% for option in board.services %}<option value="{{ option.service_type_id }}"{% if option.service_type_id == board.filters.service_type_id %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>
+        </div>
+        <div class="field">
+          <label for="agenda-filter-status">{% trans "Status" %}</label>
+          <select id="agenda-filter-status" name="status"><option value="">{% trans "All statuses" %}</option>{% for status in status_options %}<option value="{{ status }}"{% if status == board.filters.status %} selected{% endif %}>{{ status|appointment_label }}</option>{% endfor %}</select>
+        </div>
+      </div>
+      <div class="actions agenda-filter-actions">
+        <button type="submit" name="intent" value="filter">{% trans "Apply filters" %}</button>
+        {% if workspace.clinic and workspace.other_clinics %}<button type="submit" name="intent" value="unit" class="button--secondary">{% trans "Open unit" %}</button>{% endif %}
+        <button type="submit" name="intent" value="clear" class="button--quiet">{% trans "Clear filters" %}</button>
+        <a class="button button--quiet" href="{{ ledger_url }}">{% trans "Classic agenda" %}</a>
+      </div>
+    </form>
+    <details class="agenda-saved">
+      <summary class="button button--quiet">{% blocktrans count total=saved|length %}{{ total }} saved view{% plural %}{{ total }} saved views{% endblocktrans %}</summary>
+      <div class="agenda-saved-body">
+        {% if saved %}<ul class="agenda-saved-list">{% for item in saved %}<li class="agenda-saved-item">
+          <span class="agenda-saved-label">{{ item.label }}</span>
+          <form class="agenda-saved-actions" method="post" action="{{ grid_url }}">{% csrf_token %}<input type="hidden" name="saved_view" value="{{ item.view_id }}"><button type="submit" name="intent" value="open" class="button--secondary">{% trans "Open" %}<span class="visually-hidden"> {{ item.label }}</span></button><button type="submit" name="intent" value="archive" class="button--quiet">{% trans "Remove" %}<span class="visually-hidden"> {{ item.label }}</span></button></form>
+        </li>{% endfor %}</ul>{% else %}<p class="hint">{% trans "No saved view yet. Save this view to open it again later with its filters." %}</p>{% endif %}
+        <form method="post" action="{{ grid_url }}">{% csrf_token %}<button type="submit" name="intent" value="save" class="button--secondary">{% trans "Save this view" %}</button></form>
+      </div>
+    </details>
+  </div>
+  {% if board.can_book %}<noscript><p class="hint agenda-book-fallback">{% trans "To book without scripts, find the patient in the registry and press “Book appointment”." %} <a href="{{ registry_url }}">{% trans "Open the patient registry" %}</a></p></noscript>{% endif %}
   {% include "scheduling/partials/agenda_grid.html" %}
-  {% if grid.can_move %}{% include "scheduling/partials/agenda_move_dialog.html" %}{% endif %}
+  {% if board.can_move or board.can_book %}{% include "scheduling/partials/agenda_move_dialog.html" %}{% endif %}
+  {% if board.can_book %}{% include "scheduling/partials/agenda_book_dialog.html" %}{% endif %}
 </section>
 {% endblock %}

@@ -1,20 +1,19 @@
-"""Multi-resource day grid and its move command (HTMX over native forms).
+"""Multi-resource agenda board routes and its move command (HTMX over forms).
 
-The grid route carries only the clinic and the civil date. The move POST
-carries the appointment, the revision the grid rendered and the new
+The board routes carry only the clinic, the civil view and the civil date. The
+move POST carries the appointment, the revision the board rendered and the new
 clinic-local start in its body. Unknown, foreign and unauthorized
 appointments share one 404 and write nothing; a move that loses a race or
-meets a taken time answers 409 with the current grid, never a silent write.
+meets a taken time answers 409 with the current board, never a silent write.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
-from django.conf import settings
 from django.contrib import messages
 from django.http import Http404, HttpResponseBase, HttpResponseRedirect
 from django.shortcuts import render
@@ -23,15 +22,10 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
-from apps.scheduling.agenda_grid import (
-    SLOT_MINUTES,
-    DayGrid,
-    GridAppointment,
-    GridColumn,
-    authorize_grid_move,
-    view_day_grid,
-)
-from apps.scheduling.agenda_presenter import clinic_local_today
+from apps.scheduling.agenda_board import BOARD_VIEWS
+from apps.scheduling.agenda_board_presenter import board_url
+from apps.scheduling.agenda_board_views import apply_board_preferences, render_board
+from apps.scheduling.agenda_grid import authorize_grid_move
 from apps.scheduling.appointment_forms import (
     BOOKING_PRACTITIONER_MESSAGE,
     INVALID_RESCHEDULE_MESSAGE,
@@ -44,7 +38,6 @@ from apps.scheduling.appointment_values import AppointmentLocalRange
 from apps.scheduling.models import Appointment
 from apps.scheduling.resource_errors import SchedulingRuleError
 from apps.scheduling.services import (
-    AgendaInputError,
     AppointmentAccessDeniedError,
     AppointmentAvailabilityError,
     AppointmentPractitionerError,
@@ -60,8 +53,6 @@ if TYPE_CHECKING:
     from django.http import HttpRequest
     from django.utils.functional import Promise
 
-GRID_TEMPLATE: Final = "scheduling/agenda_grid.html"
-GRID_PARTIAL: Final = "scheduling/partials/agenda_grid.html"
 CONFLICT_STATUS: Final = 409
 SEE_OTHER: Final = 303
 MOVED_TAG: Final = "scheduling.appointment.moved"
@@ -74,6 +65,7 @@ FIELDS: Final = frozenset(
         "start",
         "duration",
         "select",
+        "view",
     }
 )
 CLOCK: Final = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
@@ -85,9 +77,13 @@ REVISION_MESSAGE: Final = _(
 )
 
 
-def grid_continuation(clinic_id: UUID, day: str) -> str:
-    """Resume a grid challenge at the same clinic-local day."""
-    return _grid_url(clinic_id, day)
+def grid_continuation(clinic_id: UUID, day: str, view: str = "day") -> str:
+    """Resume a board challenge at the same civil view and clinic-local day."""
+    selected = view if view in BOARD_VIEWS else "day"
+    try:
+        return board_url(clinic_id, selected, date.fromisoformat(day))
+    except ValueError:
+        return reverse("scheduling:agenda", args=(clinic_id,))
 
 
 def move_continuation(clinic_id: UUID) -> str:
@@ -99,110 +95,25 @@ def _is_htmx(request: HttpRequest) -> bool:
     return request.headers.get("HX-Request") == "true"
 
 
-def _grid_url(clinic_id: UUID, day: str) -> str:
-    return reverse("scheduling:agenda-grid", args=(clinic_id, day))
-
-
-def _neighbours(clinic_id: UUID, grid: DayGrid) -> dict[str, str]:
-    return {
-        "previous_url": _grid_url(
-            clinic_id, (grid.date - timedelta(days=1)).isoformat()
-        ),
-        "next_url": _grid_url(clinic_id, (grid.date + timedelta(days=1)).isoformat()),
-        "today_url": _grid_url(clinic_id, clinic_local_today(grid.timezone_key)),
-        "list_url": reverse(
-            "scheduling:agenda-at", args=(clinic_id, "day", grid.date.isoformat(), 1)
-        ),
-    }
-
-
-def _minute(hhmm: str) -> int:
-    return int(hhmm[:2]) * 60 + int(hhmm[3:5])
-
-
-def _in_column(item: GridAppointment, column: GridColumn) -> bool:
-    if column.kind == "practitioner":
-        return item.practitioner_id == column.column_id
-    return column.column_id in item.room_ids
-
-
-def _cell(grid: DayGrid, column: GridColumn, slot: int) -> dict[str, object]:
-    starting: list[GridAppointment] = []
-    busy = False
-    for item in grid.appointments:
-        if not _in_column(item, column):
-            continue
-        start = _minute(item.start_time)
-        end = _minute(item.end_time)
-        if slot <= start < slot + SLOT_MINUTES:
-            starting.append(item)
-        if item.occupies and start < slot + SLOT_MINUTES and slot < end:
-            busy = True
-    kind = "booked" if starting else "continues" if busy else "free"
-    return {"kind": kind, "column": column, "appointments": starting, "free": not busy}
-
-
-def grid_context(clinic_id: UUID, grid: DayGrid) -> dict[str, object]:
-    """Lay every appointment into the (slot x column) cells the template walks."""
-    names = {column.column_id: column.label for column in grid.columns}
-    rows = [
-        {
-            "time": time,
-            "cells": [_cell(grid, column, _minute(time)) for column in grid.columns],
-        }
-        for time in grid.slots
-    ]
-    return {
-        "clinic_id": clinic_id,
-        "grid": grid,
-        "rows": rows,
-        "names": names,
-        "practitioner_count": sum(
-            1 for column in grid.columns if column.kind == "practitioner"
-        ),
-    }
-
-
-def _render(
-    request: HttpRequest,
-    clinic_id: UUID,
-    day: str,
-    *,
-    notice: tuple[str, str] = ("", ""),
-    status: int = 200,
-) -> HttpResponseBase:
-    try:
-        grid = view_day_grid(clinic_id=clinic_id, date=day)
-    except (AvailabilityAccessDeniedError, AgendaInputError) as error:
-        raise Http404 from error
-    context = {
-        **grid_context(clinic_id, grid),
-        **_neighbours(clinic_id, grid),
-        "grid_url": _grid_url(clinic_id, day),
-        "realtime_enabled": settings.REALTIME_ENABLED,
-        "realtime_polling": settings.REALTIME_POLLING_FALLBACK,
-        "move_url": reverse("scheduling:agenda-grid-move", args=(clinic_id,)),
-        "notice": notice[0],
-        "notice_tone": notice[1],
-    }
-    template = GRID_PARTIAL if _is_htmx(request) else GRID_TEMPLATE
-    return render(request, template, context, status=status)
-
-
 @privileged_totp_required(grid_continuation)
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "POST"])
 def agenda_grid_view(
-    request: HttpRequest, clinic_id: UUID, day: str
+    request: HttpRequest, clinic_id: UUID, day: str, view: str = "day"
 ) -> HttpResponseBase:
-    """Render one authorized clinic-local day by practitioner and room."""
-    return _render(request, clinic_id, day)
+    """Render one authorized board view; a POST changes filters or saved views."""
+    if request.method == "POST":
+        return apply_board_preferences(request, clinic_id, view, day)
+    return render_board(request, clinic_id, view, day)
 
 
-def _inputs(request: HttpRequest) -> tuple[UUID, int, str, AppointmentLocalRange]:
+def _inputs(
+    request: HttpRequest,
+) -> tuple[UUID, int, str, str, AppointmentLocalRange]:
     if set(request.POST) - FIELDS:
         raise Http404
     start = request.POST.get("start", "")
     day = request.POST.get("day", "")
+    view = request.POST.get("view", "day")
     try:
         appointment_id = UUID(request.POST.get("appointment_id", ""))
         revision = int(request.POST.get("expected_revision", ""))
@@ -214,13 +125,14 @@ def _inputs(request: HttpRequest) -> tuple[UUID, int, str, AppointmentLocalRange
         CLOCK.fullmatch(start) is None
         or begin.date().isoformat() != day
         or not 1 <= duration <= MAX_DURATION
+        or view not in BOARD_VIEWS
     ):
         raise Http404
     end = begin + timedelta(minutes=duration)
     local_range = AppointmentLocalRange(
         begin.strftime("%Y-%m-%dT%H:%M"), end.strftime("%Y-%m-%dT%H:%M")
     )
-    return appointment_id, revision, day, local_range
+    return appointment_id, revision, day, view, local_range
 
 
 REFUSED: Final = (
@@ -250,7 +162,7 @@ def agenda_grid_move_view(request: HttpRequest, clinic_id: UUID) -> HttpResponse
     foreign clinic, an actor outside the agenda, an unknown appointment)
     is the unknown-clinic 404 and changes nothing.
     """
-    appointment_id, revision, day, local_range = _inputs(request)
+    appointment_id, revision, day, view, local_range = _inputs(request)
     try:
         authorize_grid_move(clinic_id)
         if "select" in request.POST:
@@ -273,10 +185,14 @@ def agenda_grid_move_view(request: HttpRequest, clinic_id: UUID) -> HttpResponse
                     "day": day,
                     "start": local_range.start_local[11:16],
                     "duration": request.POST["duration"],
+                    "view": view,
                     "move_url": reverse(
                         "scheduling:agenda-grid-move", args=(clinic_id,)
                     ),
-                    "grid_url": _grid_url(clinic_id, day),
+                    "action_url": reverse(
+                        "scheduling:agenda-grid-action", args=(clinic_id,)
+                    ),
+                    "grid_url": board_url(clinic_id, view, date.fromisoformat(day)),
                 },
             )
         move_appointment(
@@ -296,11 +212,20 @@ def agenda_grid_move_view(request: HttpRequest, clinic_id: UUID) -> HttpResponse
     else:
         moved = str(MOVED_MESSAGE % {"start": local_range.start_local[11:16]})
         if _is_htmx(request):
-            return _render(request, clinic_id, day, notice=(moved, "success"))
+            return render_board(
+                request, clinic_id, view, day, notice=(moved, "success")
+            )
         messages.success(request, moved, extra_tags=MOVED_TAG)
-        accepted = HttpResponseRedirect(_grid_url(clinic_id, day))
+        accepted = HttpResponseRedirect(
+            board_url(clinic_id, view, date.fromisoformat(day))
+        )
         accepted.status_code = SEE_OTHER
         return accepted
-    return _render(
-        request, clinic_id, day, notice=(refusal, "warning"), status=CONFLICT_STATUS
+    return render_board(
+        request,
+        clinic_id,
+        view,
+        day,
+        notice=(refusal, "warning"),
+        status=CONFLICT_STATUS,
     )

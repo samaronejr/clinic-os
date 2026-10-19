@@ -100,8 +100,7 @@ def test_tracked_serial_classification_parses() -> None:
     assert len({entry.prefix for entry in entries}) == len(entries)
 
 
-def test_grid_refusal_module_stays_in_the_parallel_partition() -> None:
-    path = Path("tests/core/test_workspace_agenda_grid_refusals.py")
+def _assert_parallel_partition(path: Path) -> None:
     module = ast.parse((PROJECT_ROOT / path).read_text(encoding="utf-8"))
     nodes = [
         f"{path.as_posix()}::{node.name}"
@@ -115,6 +114,18 @@ def test_grid_refusal_module_stays_in_the_parallel_partition() -> None:
         for entry in load_manifest()
         if any(entry.matches(nodeid) for nodeid in nodes)
     ]
+
+
+def test_grid_refusal_module_stays_in_the_parallel_partition() -> None:
+    _assert_parallel_partition(
+        Path("tests/core/test_workspace_agenda_grid_refusals.py")
+    )
+
+
+def test_board_refusal_module_stays_in_the_parallel_partition() -> None:
+    _assert_parallel_partition(
+        Path("tests/core/test_workspace_agenda_board_refusals.py")
+    )
 
 
 @pytest.mark.parametrize(

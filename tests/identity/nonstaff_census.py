@@ -16,6 +16,7 @@ from django.utils import timezone
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.delegation_probes import delegation_probes
 from identity.lifecycle_differential_probes import lifecycle_probes
+from identity.nonstaff_agenda_board_probes import agenda_board_probes
 from identity.nonstaff_agenda_grid_probes import agenda_grid_probes
 from identity.nonstaff_differential import (
     DifferentialProbe,
@@ -90,6 +91,7 @@ def run_nonstaff_census(
             *appointment_lifecycle_probes(data, graph),
             *agenda_grid_probes(data, graph),
             *ehr_probes(data, graph),
+            *agenda_board_probes(data, graph),
             *delegation_probes(graph, data.actor.pk),
             *lifecycle_probes(graph),
         ]:
