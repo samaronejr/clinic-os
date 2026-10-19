@@ -918,7 +918,7 @@ def test_action_only_dialog_shows_remote_conflict(
         for each in (page, remote):
             _open(each, board.base_url, _url(board.world, "day", seeded.day))
         _connected(page)
-        opener = page.locator(".agenda-slot-actions").first
+        opener = page.locator('button[type="button"].agenda-slot-actions').first
         appointment = opener.get_attribute("data-actions-for")
         revision = opener.get_attribute("data-revision")
         assert appointment
@@ -929,9 +929,10 @@ def test_action_only_dialog_shows_remote_conflict(
             f"{opener.locator('.resource-slot-meta').inner_text()}"
         )
         opener.focus()
-        page.keyboard.press("Enter")
+        page.keyboard.press("Space")
         box = page.locator("[data-move-dialog]")
         expect(box).to_have_attribute("open", "")
+        expect(box).to_be_visible()
         expect(box.locator("[data-move-form]")).to_be_hidden()
         expect(box.locator("[data-move-find]")).to_be_hidden()
         expect(box.locator("#agenda-move-title")).to_be_visible()
