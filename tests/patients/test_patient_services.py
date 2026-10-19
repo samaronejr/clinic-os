@@ -98,6 +98,12 @@ def test_distinct_keys_allow_duplicates_and_equal_replay_is_a_noop(
             birth_date=date(2000, 1, 2),
             idempotency_key=uuid4(),
         )
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT event_type, affected_record_id "
+                "FROM clinic_app.audit_event_tenant ORDER BY seq"
+            )
+            audit_before_replay = cursor.fetchall()
         replay = create_patient(
             clinic_id=rbac_graph.clinic_a,
             full_name="Ana Synthetic",
@@ -111,8 +117,11 @@ def test_distinct_keys_allow_duplicates_and_equal_replay_is_a_noop(
                 "SELECT count(*) FROM clinic_app.intake_patientclinicenrollment"
             )
             enrollment_count = cursor.fetchone()
-            cursor.execute("SELECT count(*) FROM clinic_app.audit_event_tenant")
-            audit_count = cursor.fetchone()
+            cursor.execute(
+                "SELECT event_type, affected_record_id "
+                "FROM clinic_app.audit_event_tenant ORDER BY seq"
+            )
+            audit_after_replay = cursor.fetchall()
 
     assert duplicate.patient.pk != first.patient.pk
     assert duplicate.enrollment.pk != first.enrollment.pk
@@ -120,7 +129,17 @@ def test_distinct_keys_allow_duplicates_and_equal_replay_is_a_noop(
     assert replay.enrollment.pk == first.enrollment.pk
     assert patient_count == (2,)
     assert enrollment_count == (2,)
-    assert audit_count == (2,)
+    assert audit_after_replay == audit_before_replay
+    assert {
+        record
+        for event, record in audit_after_replay
+        if event == "intake.patient.created"
+    } == {str(first.patient.pk), str(duplicate.patient.pk)}
+    assert [
+        event
+        for event, _record in audit_after_replay
+        if event != "intake.patient.created"
+    ] == ["intake.duplicate.detected"]
 
 
 def test_failed_first_attempt_leaves_key_reusable_and_mismatch_conflicts(

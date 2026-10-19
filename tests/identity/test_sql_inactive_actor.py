@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -20,8 +21,10 @@ from apps.ehr.history import HistoryChange, save_history
 from apps.ehr.models import SpecialtyTemplate
 from apps.ehr.services import create_draft
 from apps.identity.models import User, UserClinicRole
+from apps.intake.services import create_patient
 from apps.scheduling.resource_services import ServiceInput, create_service_type
 from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import _kek
 from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
@@ -35,6 +38,9 @@ from identity.test_lifecycle_sql_readers import (
     assert_lifecycle_oracles,
 )
 from patient_service_support import runtime_role
+from patients.duplicate_authority_cases import (
+    ACTOR_PROTOCOL_ORACLES as MERGE_ACTOR_PROTOCOL_ORACLES,
+)
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 from renewal.test_teleconsult_sessions import synthetic_provider
@@ -135,13 +141,16 @@ PROBES = {
     ),
     "clinic_app.patient_registry_count(text,uuid,text,date)": Probe(
         "SELECT clinic_app.patient_registry_count("
-        "'sintetico-kek', %(clinic)s, 'SINTETICO', NULL) = 0",
+        "%(kek)s, %(clinic)s, 'SINTETICO', NULL) = 0",
         raises=True,
     ),
     "clinic_app.patient_registry_page(text,uuid,text,date,integer,integer)": Probe(
         "SELECT NOT EXISTS (SELECT 1 FROM clinic_app.patient_registry_page("
-        "'sintetico-kek', %(clinic)s, 'SINTETICO', NULL, 0, 10))",
+        "%(kek)s, %(clinic)s, 'SINTETICO', NULL, 0, 10))",
         raises=True,
+    ),
+    "clinic_app.patient_alias_set(uuid)": Probe(
+        "SELECT EXISTS (SELECT 1 FROM clinic_app.patient_alias_set(%(patient)s))"
     ),
 }
 
@@ -328,8 +337,8 @@ def _query_requires(items: list[Tok], checked: set[str]) -> bool:
 def _delegates(reader: Reader, checked: set[str]) -> bool:
     """SQL bodies must require a checked call on every branch; plpgsql, a call.
 
-    plpgsql control flow is not analysed here: every plpgsql delegator is a
-    trigger guard whose own refusal is executed by GUARD_PROBES.
+    plpgsql control flow is not analysed here: every plpgsql delegator's own
+    refusal is executed by GUARD_PROBES or an actor protocol oracle.
     """
     names = {name for name, edge in reader.callees.items() if edge <= checked}
     if reader.language != "sql":
@@ -362,7 +371,8 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
 def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
-    protocols = set(ACTOR_PROTOCOL_ORACLES)
+    protocol_oracles = ACTOR_PROTOCOL_ORACLES | MERGE_ACTOR_PROTOCOL_ORACLES
+    protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
     # INSERT of an inactive account. It is not an active-caller proof. Those
     # readers need executable capability/creation/cleanup contracts instead.
@@ -375,7 +385,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     assert (
         set(DELEGATE_PROBES) | set(GUARD_PROBES) | set(LIFECYCLE_DELEGATE_PROBES)
     ) - protocols == delegating - protocols
-    assert_lifecycle_oracles(ACTOR_PROTOCOL_ORACLES.values())
+    assert_lifecycle_oracles(protocol_oracles.values())
 
 
 def _staff_actor(graph: RbacGraph) -> UUID:
@@ -395,7 +405,7 @@ def _decide(
     graph: RbacGraph,
     actor: UUID,
     statement: str,
-    params: Mapping[str, UUID | int],
+    params: Mapping[str, UUID | int | str],
     *,
     raises: bool = False,
 ) -> bool:
@@ -431,10 +441,22 @@ def _set_active(actor: UUID, *, active: bool) -> None:
 def test_sql_clause_refuses_inactive_actor(rbac_graph: RbacGraph) -> None:
     # One graph and one flush for all gates; a fresh actor per gate. The exact
     # map names every gate whose decision does not follow is_active alone.
-    params = {
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        patient = create_patient(
+            clinic_id=rbac_graph.clinic_a,
+            full_name="Synthetic alias actor probe",
+            birth_date=date(1990, 1, 2),
+            idempotency_key=uuid4(),
+        ).patient
+    params: dict[str, UUID | str] = {
+        "kek": _kek(),
         "clinic": rbac_graph.clinic_a,
         "organization": rbac_graph.organization_a,
         "physician": rbac_graph.physician,
+        "patient": patient.pk,
     }
     decisions = {}
     for function, probe in PROBES.items():

@@ -206,6 +206,7 @@ def run_cut1_census(
 
     from consent import test_authority as consent  # noqa: PLC0415
     from identity.domain_sql_oracles import DELEGATE_CASES  # noqa: PLC0415
+    from patients import test_duplicates  # noqa: PLC0415
     from workflows import decision_sites, test_authority, test_engine  # noqa: PLC0415
     from workflows.guard_cases import seed_guard_world  # noqa: PLC0415
     from workflows.guard_discovery import discover_guards  # noqa: PLC0415
@@ -224,6 +225,25 @@ def run_cut1_census(
                     )
         return result
 
+    duplicate_cases = (
+        test_duplicates.test_equal_identifiers_create_an_open_candidate_without_merging,
+        test_duplicates.test_merge_recreates_forward_rows_with_links_and_fresh_access,
+        test_duplicates.test_new_charge_for_an_aliased_identity_is_rejected,
+        test_duplicates.test_native_review_form_applies_displayed_versions_and_requires_csrf,
+        test_duplicates.test_survivor_portal_preserves_released_history_and_original_receipts,
+        test_duplicates.test_unmerge_separates_views_without_moving_later_survivor_charges,
+    )
+    for duplicate_oracle in duplicate_cases:
+        proofs.run(duplicate_oracle.__name__, partial(duplicate_oracle, graph()))
+    for role in UserClinicRole.Role.values:
+        proofs.run(
+            f"duplicate exact role and persisted session:{role}",
+            partial(
+                test_duplicates.test_merge_authority_checks_every_stored_role_and_exact_live_session,
+                graph(),
+                role,
+            ),
+        )
     for consent_oracle in (
         consent.test_every_guard_refuses_every_catalog_role_without_its_permission,
         consent.test_inactive_foreign_clinic_and_narrowed_bundles_are_refused,

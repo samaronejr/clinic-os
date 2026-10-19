@@ -224,6 +224,15 @@
     "returns": "bytea",
     "volatility": "i"
   },
+  "pg_catalog.encode(bytea, text)": {
+    "extension": "",
+    "implementation": "binary_encode",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached verified merge-session hash comparisons; admits the exact immutable binary-to-text encoder while retaining its opaque native risk.",
+    "returns": "text",
+    "volatility": "i"
+  },
   "pg_catalog.extract(text, date)": {
     "extension": "",
     "implementation": "extract_date",
@@ -1661,6 +1670,15 @@
     "language": "internal",
     "library": "",
     "reason": "Required equality comparison of supplied identity keys.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.uuid_lt(uuid, uuid)": {
+    "extension": "",
+    "implementation": "uuid_lt",
+    "language": "internal",
+    "library": "",
+    "reason": "Reached canonical duplicate-enrollment ordering; admits the exact immutable UUID comparator while retaining its opaque native risk.",
     "returns": "boolean",
     "volatility": "i"
   },

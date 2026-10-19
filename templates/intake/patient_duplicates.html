@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Duplicate review · Clinic OS" %}{% endblock %}
+{% block meta_description %}{% trans "Review possible duplicate registrations without rewriting historical records." %}{% endblock %}
+{% block content %}
+{% trans "Review pair" as review_pair_label %}
+<section class="intake-shell" aria-labelledby="duplicate-title">
+  <h1 id="duplicate-title">{% trans "Review possible duplicates" %}</h1>
+  <p class="lede">{% trans "Matching signals are hints. Confirm the identity, choose a surviving registration and review every field before merging." %}</p>
+  {% if notice %}<div class="feedback feedback--success" role="status" tabindex="-1" autofocus><p>{{ notice }}</p></div>{% endif %}
+  {% if error or form.errors or unmerge_form.errors %}<div id="duplicate-errors" class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error>
+    <h2>{% trans "The decision was not saved" %}</h2>{% if error %}<p>{{ error }}</p>{% endif %}
+    {% for field in form %}{% for error in field.errors %}<p><a href="#{{ field.id_for_label }}">{{ field.label }}: {{ error }}</a></p>{% endfor %}{% endfor %}
+    {% for field in unmerge_form %}{% for error in field.errors %}<p><a href="#{{ field.id_for_label }}">{{ field.label }}: {{ error }}</a></p>{% endfor %}{% endfor %}
+  </div>{% endif %}
+  {% if candidate and candidate.state == "open" %}
+  <section class="panel" aria-labelledby="pair-title">
+    <h2 id="pair-title">{{ first.display_name }} / {{ second.display_name }}</h2>
+    <p>{% trans "Only a new demographics version on the survivor receives your choices. Signed documents, finalized notes, charges and consent receipts keep their original identity." %}</p>
+    <form method="post" novalidate data-auth-form>
+      {% csrf_token %}
+      {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+      {% for field in form.visible_fields %}<div class="field{% if field.errors %} field--error{% endif %}">
+        {{ field.label_tag }}{{ field }}
+        {% if field.errors %}<div id="{{ field.auto_id }}_error" class="field-errors">{% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>{% endfor %}
+      <div class="actions">
+        <button name="action" value="merge" type="submit">{% trans "Confirm reviewed merge" %}</button>
+        <button class="button--secondary" name="action" value="dismiss" type="submit">{% trans "Dismiss this hint" %}</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+  {% if review %}
+  <section class="panel" aria-labelledby="review-title">
+    <h2 id="review-title">{% trans "Retained decision and later survivor records" %}</h2>
+    <p>{% blocktrans with date=review.decision.created_at|date:"SHORT_DATE_FORMAT" %}Decision recorded on {{ date }}.{% endblocktrans %}</p>
+    <p>{% blocktrans with clinic=review.clinic.name %}Reviewing retained rows in {{ clinic }}.{% endblocktrans %}</p>
+    <div class="actions">
+      {% for clinic in review.review_clinics %}{% if clinic.pk != clinic_id %}
+      <form method="post" action="{% url 'intake:patient-duplicates' clinic.pk %}">
+        {% csrf_token %}<input type="hidden" name="merge_decision_id" value="{{ review.decision.pk }}">
+        <button class="button--secondary" name="action" value="review_decision" type="submit">{% blocktrans with clinic=clinic.name %}Review retained rows in {{ clinic }}{% endblocktrans %}</button>
+      </form>
+      {% endif %}{% endfor %}
+    </div>
+    <p>{% trans "These later records stay on the survivor after reversal. Review them individually; reversal does not move them." %}</p>
+    <dl class="patient-details">
+      <div><dt>{% trans "Appointments" %}</dt><dd>{{ review.later_appointments|length }}</dd></div>
+      <div><dt>{% trans "Encounters" %}</dt><dd>{{ review.later_encounters|length }}</dd></div>
+      <div><dt>{% trans "Charges" %}</dt><dd>{{ review.later_invoices|length }}</dd></div>
+    </dl>
+    <details><summary>{% trans "Retained forward links and rows for review" %}</summary>
+      <ul>{% for row in review.transfers %}<li>{% if row.kind == "appointment" %}{% trans "Appointment" %}{% elif row.kind == "waitlist" %}{% trans "Waitlist" %}{% elif row.kind == "contact" %}{% trans "Contact" %}{% elif row.kind == "preference" %}{% trans "Preference" %}{% else %}{% trans "Access invitation" %}{% endif %}: {{ row.original_id }} &rarr; {{ row.replacement_id }}</li>{% endfor %}
+        {% for id in review.later_appointments %}<li>{% trans "Appointment" %}: {{ id }}</li>{% endfor %}
+        {% for id in review.later_encounters %}<li>{% trans "Encounter" %}: {{ id }}</li>{% endfor %}
+        {% for id in review.later_invoices %}<li>{% trans "Charge" %}: {{ id }}</li>{% endfor %}
+      </ul>
+    </details>
+    {% if review.decision.clinic_id == clinic_id and review.decision.decision == "merge" and review.decision.patientalias.active %}
+    <form method="post" novalidate data-auth-form>
+      {% csrf_token %}<input type="hidden" name="merge_decision_id" value="{{ review.decision.pk }}">
+      <div class="field{% if unmerge_form.reason.errors %} field--error{% endif %}">
+        {{ unmerge_form.reason.label_tag }}{{ unmerge_form.reason }}
+        {% if unmerge_form.reason.errors %}<div id="{{ unmerge_form.reason.auto_id }}_error" class="field-errors">{% for error in unmerge_form.reason.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <button class="button--danger" name="action" value="unmerge" type="submit">{% trans "Separate registrations" %}</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endif %}
+  {% if issued_invitations %}<section class="panel" aria-labelledby="new-access-title">
+    <h2 id="new-access-title">{% trans "Fresh access invitations" %}</h2>
+    <p>{% trans "Old access was revoked. Give these new codes to the patient now; they are shown only once." %}</p>
+    {% for invitation in issued_invitations %}<p><code>{{ invitation.secret }}</code></p>{% endfor %}
+  </section>{% endif %}
+  <div class="table-scroll" role="region" aria-labelledby="candidate-caption" tabindex="0">
+    <table class="table">
+      <caption id="candidate-caption">{% trans "Latest possible duplicate pairs in this clinic" %}</caption>
+      <thead><tr><th scope="col">{% trans "Registrations" %}</th><th scope="col">{% trans "Signals" %}</th><th scope="col">{% trans "Review" %}</th></tr></thead>
+      <tbody>{% for row in candidates %}<tr>
+        <th scope="row">{{ row.enrollment_a.patient.full_name }} / {{ row.enrollment_b.patient.full_name }}</th>
+        <td>{% for signal in row.signals %}{% if signal == "exact_identifier" %}{% trans "Exact document match" %}{% elif signal == "contact" %}{% trans "Contact match" %}{% else %}{% trans "Birth date and name prefix match" %}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td><span class="badge">{% trans row.get_state_display context "duplicate candidate state" %}</span><form method="post">{% csrf_token %}<input type="hidden" name="candidate_id" value="{{ row.pk }}"><button class="button--secondary" name="action" value="review" type="submit" aria-label="{{ review_pair_label }} {{ row.enrollment_a.patient.full_name }} / {{ row.enrollment_b.patient.full_name }}">{{ review_pair_label }}</button></form></td>
+      </tr>{% empty %}<tr><td colspan="3">{% trans "No possible duplicates are waiting for review." %}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

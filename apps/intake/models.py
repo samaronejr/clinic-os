@@ -10,6 +10,8 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 from apps.identity.models import Clinic
+from apps.intake.alias_models import MergeDecision, PatientAlias, PatientMergeTransfer
+from apps.intake.duplicate_models import DuplicateCandidate, PatientDuplicateIndex
 from apps.tenancy.fields import (
     EncryptedDateField,
     EncryptedJSONField,
@@ -17,6 +19,43 @@ from apps.tenancy.fields import (
     EncryptedTextField,
 )
 from apps.tenancy.models import TenantScopedModel
+
+__all__ = (
+    "ADDRESS_KIND_VALUES",
+    "CONTACT_CHANNEL_VALUES",
+    "CONTACT_EVENT_TYPES",
+    "CONTACT_EVENT_TYPE_VALUES",
+    "CONTACT_PURPOSE_VALUES",
+    "DEMOGRAPHICS_SOURCE_VALUES",
+    "GENDER_IDENTITY_VALUES",
+    "IDENTIFIER_KIND_VALUES",
+    "PATIENT_OPERATION_VALUES",
+    "PREFERENCE_EVENT_TYPES",
+    "SEX_AT_BIRTH_VALUES",
+    "UNKNOWN_DEMOGRAPHIC_VALUES",
+    "ClinicIntakePolicy",
+    "DemographicsCorrection",
+    "DuplicateCandidate",
+    "EmergencyContact",
+    "InsuranceMembership",
+    "MergeDecision",
+    "Patient",
+    "PatientAccessGrant",
+    "PatientAddress",
+    "PatientAlias",
+    "PatientChannelPreference",
+    "PatientClinicEnrollment",
+    "PatientContact",
+    "PatientContactEvent",
+    "PatientDemographics",
+    "PatientDuplicateIndex",
+    "PatientIdentifier",
+    "PatientMergeTransfer",
+    "PatientSession",
+    "QuestionnaireEvent",
+    "QuestionnaireResponse",
+    "QuestionnaireTemplate",
+)
 
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Final
 
 from django.db import connection, transaction
@@ -12,6 +12,7 @@ from apps.audit.services import record_phase1_event
 from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.intake.access import PatientAccessDeniedError, authorized_manager_clinic
+from apps.intake.alias_access import patient_alias_set
 from apps.intake.models import PatientClinicEnrollment, PatientDemographics
 from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.envelope import _kek
@@ -40,6 +41,7 @@ class PatientSearchItem:
     full_name: str
     birth_date: date | None
     display_name: str = ""
+    unified_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,33 @@ class PatientSearchPage:
     page: int
     total: int
     page_count: int
+
+
+def project_search_item(
+    *, clinic_id: UUID, item: PatientSearchItem
+) -> PatientSearchItem:
+    """Keep historical search matches but select their current survivor."""
+    enrollment = PatientClinicEnrollment.objects.get(
+        pk=item.enrollment_id, clinic_id=clinic_id
+    )
+    aliases = patient_alias_set(clinic_id=clinic_id, patient_id=enrollment.patient_id)
+    survivor = PatientClinicEnrollment.objects.select_related("patient").get(
+        clinic_id=clinic_id, patient_id=aliases.survivor_patient_id
+    )
+    current = (
+        PatientDemographics.objects.filter(patient_id=survivor.patient_id)
+        .order_by("-version")
+        .first()
+    )
+    return PatientSearchItem(
+        enrollment_id=survivor.pk,
+        full_name=survivor.patient.full_name,
+        birth_date=survivor.patient.birth_date,
+        display_name=current.social_name or current.legal_name
+        if current
+        else survivor.patient.full_name,
+        unified_at=aliases.unified_at,
+    )
 
 
 def _normalized_query(query: str) -> str:
@@ -96,7 +125,9 @@ def search_patients_exact(
                     ),
                 )
             )
-    items = tuple(items_list)
+    items = tuple(
+        project_search_item(clinic_id=clinic_id, item=item) for item in items_list
+    )
     record_phase1_event(
         "intake.patient.searched", clinic_id=clinic_id, affected_record_id=clinic_id
     )
@@ -142,11 +173,14 @@ def search_patients(
             )
             rows = cursor.fetchall()
         items = tuple(
-            PatientSearchItem(
-                enrollment_id=enrollment_id,
-                full_name=full_name,
-                birth_date=stored_birth,
-                display_name=social_name or full_name,
+            project_search_item(
+                clinic_id=clinic_id,
+                item=PatientSearchItem(
+                    enrollment_id=enrollment_id,
+                    full_name=full_name,
+                    birth_date=stored_birth,
+                    display_name=social_name or full_name,
+                ),
             )
             for enrollment_id, full_name, stored_birth, social_name in rows
         )

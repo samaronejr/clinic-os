@@ -47,6 +47,36 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "intake.patient_session",
         "session_switched",
     ),
+    "intake.duplicate.detected": (
+        "tenant",
+        "clinic-os-web",
+        "intake.duplicate_candidate",
+        "detected",
+    ),
+    "intake.duplicate.merged": (
+        "tenant",
+        "clinic-os-web",
+        "intake.merge_decision",
+        "merged",
+    ),
+    "intake.duplicate.dismissed": (
+        "tenant",
+        "clinic-os-web",
+        "intake.merge_decision",
+        "dismissed",
+    ),
+    "intake.duplicate.unmerged": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_alias",
+        "unmerged",
+    ),
+    "intake.duplicate.forward_transferred": (
+        "tenant",
+        "clinic-os-web",
+        "intake.patient_merge_transfer",
+        "transferred",
+    ),
     "identity.passkey.registered": (
         "tenant",
         "clinic-os-web",

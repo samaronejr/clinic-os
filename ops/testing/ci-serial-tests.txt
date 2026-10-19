@@ -33,6 +33,7 @@ server-state tests/audit/test_phase1_audit_migration.py::test_v2_append_contract
 server-state tests/auth/test_totp_device_isolation.py::test_totp_rls_migration_reverse_and_reapply_restore_exact_catalogs
 server-state tests/ehr/test_ehr_migrations.py::test_migrated_accented_soap_note_amends_and_finalizes
 server-state tests/patients/test_intake_migrations.py::test_populated_protected_migration_runs_on_real_schema
+server-state tests/patients/test_survivor_confirmation_migration.py::test_survivor_confirmation_reverse_reapply_restores_exact_catalog
 # Todo 7's session fixture identity.test_service_principals.agent_password
 # commits ALTER ROLE clinic_agent PASSWORD to a per-session secret and restores
 # the old one at session end (pg_authid): a real clinic_agent login even where no

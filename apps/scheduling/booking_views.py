@@ -16,9 +16,11 @@ from django.db import transaction
 from django.http import Http404, HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
 
 from apps.identity.otp import privileged_totp_required
+from apps.intake.alias_access import PatientAliasedError
 from apps.scheduling.access import authorized_agenda_scope, authorized_view_scope
 from apps.scheduling.agenda_presenter import (
     DAY_VIEW,
@@ -288,5 +290,10 @@ def appointment_create_view(
         return _created(request, clinic_id)
     except (AppointmentAccessDeniedError, AvailabilityAccessDeniedError) as error:
         raise Http404 from error
+    except PatientAliasedError:
+        return HttpResponse(
+            _("Choose the surviving registration to create a new appointment."),
+            status=409,
+        )
     except SchedulingRuleError as error:
         return HttpResponse(str(error.message), status=409)

@@ -84,6 +84,7 @@ def test_appointment_migration_catalog_is_immediate_versioned_and_indexed() -> N
             ("scheduling_appointment_no_delete", "O"),
             ("scheduling_capacity_after", "O"),
             ("scheduling_capacity_before", "O"),
+            ("zz_intake_survivor_binding", "O"),
         ]
         cursor.execute(
             "SELECT proname, proowner::regrole::text, "

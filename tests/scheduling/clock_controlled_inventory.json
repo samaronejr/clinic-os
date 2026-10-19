@@ -288,6 +288,7 @@
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
       "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_appointment.zz_intake_survivor_binding",
       "trigger:scheduling_availabilityblock.scheduling_generated_block_guard",
       "trigger:scheduling_availabilitytemplate.scheduling_definition_guard",
       "trigger:scheduling_holiday.scheduling_definition_guard"
@@ -520,6 +521,7 @@
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
       "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_appointment.zz_intake_survivor_binding",
       "trigger:scheduling_availabilityblock.scheduling_generated_block_guard",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]
@@ -618,6 +620,7 @@
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
       "trigger:scheduling_appointment.scheduling_capacity_before",
+      "trigger:scheduling_appointment.zz_intake_survivor_binding",
       "trigger:scheduling_availabilitytemplate.scheduling_definition_guard",
       "trigger:scheduling_resource.scheduling_definition_guard"
     ]

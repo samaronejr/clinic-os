@@ -31,6 +31,7 @@ Context (include with `only` and pass csrf_token):
       {% if patient.social_name %}<span class="patient-banner-meta">{% trans "Legal name:" %} {{ patient.name }}</span>{% endif %}
       <span class="patient-banner-meta">{{ patient.age_label }}</span>
       {% for identifier in patient.identifiers %}<span class="patient-banner-meta">{{ identifier.kind }} {{ identifier.masked }}</span>{% endfor %}
+      {% if patient.unified_at %}<span class="patient-banner-meta">{% blocktrans with date=patient.unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</span>{% endif %}
     </p>
     {% if patient.allergy_state or patient.active_encounter or patient.delegate or patient.restricted %}
     <ul class="patient-banner-flags" aria-label="{% trans "Patient indicators" %}">

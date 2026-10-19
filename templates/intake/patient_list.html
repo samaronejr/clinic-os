@@ -56,6 +56,7 @@
       <button type="submit">{% trans "Search registry" %}</button>
       <span class="htmx-indicator" id="intake-progress" role="status">{% trans "Searching…" %}</span>
       <a class="button button--secondary" href="{{ create_url }}">{% trans "Register a new patient" %}</a>
+      {% if can_review_duplicates %}<a class="button button--quiet" href="{% url 'intake:patient-duplicates' clinic_id=clinic_id %}">{% trans "Review possible duplicates" %}</a>{% endif %}
     </div>
   </form>
   {% include "intake/partials/patient_results.html" %}

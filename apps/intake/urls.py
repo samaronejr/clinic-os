@@ -3,7 +3,7 @@
 from django.urls import path
 from django.urls.resolvers import URLPattern
 
-from apps.intake import delegate_views, questionnaire_views, views
+from apps.intake import delegate_views, duplicate_views, questionnaire_views, views
 
 app_name = "intake"
 
@@ -17,6 +17,16 @@ urlpatterns: list[URLPattern] = [
         "patient/delegation/renew/",
         delegate_views.renew_representation,
         name="delegate-renew",
+    ),
+    path(
+        "intake/clinics/<uuid:clinic_id>/patients/duplicates/",
+        duplicate_views.patient_duplicates,
+        name="patient-duplicates",
+    ),
+    path(
+        "intake/clinics/<uuid:clinic_id>/patients/timeline/",
+        duplicate_views.patient_timeline,
+        name="patient-timeline",
     ),
     path(
         "intake/clinics/<uuid:clinic_id>/patients/demographics/",

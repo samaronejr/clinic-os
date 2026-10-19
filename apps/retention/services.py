@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
-from typing import TYPE_CHECKING, NoReturn, cast
+from typing import TYPE_CHECKING, NoReturn, TypedDict, Unpack, cast
 from uuid import uuid4
 
 import rfc8785
@@ -46,6 +46,7 @@ from apps.identity.current_context import (
     require_current_actor_clinic_roles,
 )
 from apps.identity.models import Clinic, UserClinicRole
+from apps.intake.alias_access import patient_alias_set
 from apps.retention.models import (
     RECORD_CLASSES,
     LegalHold,
@@ -612,9 +613,12 @@ def _released_for_patient_staff(
     metadata-only ``ehr.record.viewed`` event under the actual staff actor,
     exactly like the patient read path.
     """
+    aliases = patient_alias_set(clinic_id=clinic_id, patient_id=patient_id)
     releases = list(
         RecordRelease.objects.filter(
-            clinic_id=clinic_id, patient_id=patient_id, revoked_at__isnull=True
+            clinic_id=clinic_id,
+            patient_id__in=aliases.patient_ids,
+            revoked_at__isnull=True,
         ).order_by("created_at", "pk")
     )
     versions = {
@@ -774,6 +778,10 @@ def _record_document(record: ReleasedRecord) -> dict[str, JsonValue]:
     }
 
 
+class _ExportLineageOptions(TypedDict, total=False):
+    unified_at: datetime | None
+
+
 def _build_package(
     *,
     export_id: UUID,
@@ -781,6 +789,7 @@ def _build_package(
     patient_id: UUID,
     kind: str,
     records: list[ReleasedRecord],
+    **lineage: Unpack[_ExportLineageOptions],
 ) -> tuple[bytes, dict[str, JsonValue], str]:
     """Build the deterministic zip and its manifest/digest in memory."""
     files: list[tuple[str, bytes]] = []
@@ -820,6 +829,8 @@ def _build_package(
             "other_clinic_data",
         ],
     }
+    if (unified_at := lineage.get("unified_at")) is not None:
+        manifest["unified_at"] = unified_at.isoformat()
     manifest["manifest_sha256"] = sha256(rfc8785.dumps(manifest)).hexdigest()
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -854,6 +865,7 @@ def export_staff_records(*, clinic_id: UUID, patient_id: UUID) -> ExportPackage:
         )
     clinic = _clinic(clinic_id)
     records = _released_for_patient_staff(clinic_id, patient_id)
+    aliases = patient_alias_set(clinic_id=clinic_id, patient_id=patient_id)
     if len(records) > MAX_EXPORT_RECORDS:
         msg = "export_too_large"
         raise RetentionConflictError(msg)
@@ -864,6 +876,7 @@ def export_staff_records(*, clinic_id: UUID, patient_id: UUID) -> ExportPackage:
         patient_id=patient_id,
         kind="staff",
         records=records,
+        unified_at=aliases.unified_at,
     )
     with transaction.atomic():
         export = RecordExport.objects.create(
@@ -895,6 +908,12 @@ def export_patient_records() -> ExportPackage:
     """Export the session patient's released records as a database receipt."""
     session_id, organization_id, clinic_id, patient_id = _session_scope()
     records = patient_released_records()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT max(unified_at) FROM clinic_app.patient_alias_set(%s)",
+            [patient_id],
+        )
+        lineage = cursor.fetchone()
     if len(records) > MAX_EXPORT_RECORDS:
         msg = "export_too_large"
         raise RetentionConflictError(msg)
@@ -905,6 +924,7 @@ def export_patient_records() -> ExportPackage:
         patient_id=patient_id,
         kind="patient",
         records=records,
+        unified_at=lineage[0] if lineage else None,
     )
     with transaction.atomic():
         export = RecordExport.objects.create(

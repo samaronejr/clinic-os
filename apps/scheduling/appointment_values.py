@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.core.idempotency import create_fingerprint
 from apps.identity.current_context import list_active_clinic_physicians
+from apps.intake.alias_access import require_survivor
 from apps.intake.models import PatientClinicEnrollment
 from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.appointment_errors import (
@@ -138,6 +139,10 @@ def validate_new_appointment(
     prepared: PreparedAppointment,
 ) -> None:
     """Require one positive future clinic-local date range."""
+    # Replays return before this path; only genuinely new operations are refused.
+    require_survivor(
+        clinic_id=request.clinic_id, patient_id=prepared.enrollment.patient_id
+    )
     if (
         request.local_range.start_local[:10] != request.local_range.end_local[:10]
         or prepared.end_at <= prepared.start_at

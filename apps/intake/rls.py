@@ -18,6 +18,11 @@ INTAKE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
         ("intake_emergencycontact", "organization_id"),
         ("intake_insurancemembership", "organization_id"),
         ("intake_clinicintakepolicy", "organization_id"),
+        ("intake_duplicatecandidate", "organization_id"),
+        ("intake_patientduplicateindex", "organization_id"),
+        ("intake_mergedecision", "organization_id"),
+        ("intake_patientalias", "organization_id"),
+        ("intake_patientmergetransfer", "organization_id"),
     }
 )
 
@@ -52,10 +57,21 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "intake_emergencycontact": frozenset({"SELECT", "INSERT"}),
     "intake_insurancemembership": frozenset({"SELECT", "INSERT"}),
     "intake_clinicintakepolicy": frozenset({"SELECT", "INSERT"}),
+    "intake_duplicatecandidate": frozenset({"SELECT", "INSERT"}),
+    "intake_patientduplicateindex": frozenset({"SELECT", "INSERT"}),
+    "intake_mergedecision": frozenset({"SELECT", "INSERT"}),
+    "intake_patientalias": frozenset({"SELECT", "INSERT"}),
+    "intake_patientmergetransfer": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
+        ("intake_duplicatecandidate", "state", "UPDATE"),
+        ("intake_patientalias", "active", "UPDATE"),
+        ("intake_patientalias", "deactivated_at", "UPDATE"),
+        ("intake_patientalias", "deactivated_by_id", "UPDATE"),
+        ("intake_patientalias", "deactivation_session_id", "UPDATE"),
+        ("intake_patientalias", "deactivation_reason", "UPDATE"),
         ("intake_patient", "full_name", "UPDATE"),
         ("intake_patient", "full_name_index", "UPDATE"),
         ("intake_patient", "birth_date", "UPDATE"),

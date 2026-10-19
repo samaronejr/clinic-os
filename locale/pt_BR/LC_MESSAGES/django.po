@@ -3970,6 +3970,218 @@ msgstr "Consulta reagendada para %(start)s."
 msgid "Someone else changed this appointment first. The grid shows their change; yours was not saved."
 msgstr "Outra pessoa alterou esta consulta antes. A grade mostra essa alteração; a sua não foi salva."
 
+msgid "Unified registration since %(date)s"
+msgstr "Registro unificado de %(date)s"
+
+msgid "Reason for the decision"
+msgstr "Motivo da decisão"
+
+msgid "Surviving registration"
+msgstr "Cadastro principal"
+
+msgid "Choose a registration"
+msgstr "Escolha um cadastro"
+
+msgid "Registrations separated. Later survivor records remain there and require review."
+msgstr "Cadastros separados. Os registros posteriores permanecem no cadastro principal e precisam de revisão."
+
+msgid "Decision recorded. Historical records keep their original registration."
+msgstr "Decisão registrada. Os registros históricos mantêm o cadastro de origem."
+
+msgid "This pair changed. Open the current registrations before deciding."
+msgstr "Este par mudou. Abra os cadastros atuais antes de decidir."
+
+msgid "Enter a reason and review each demographic choice."
+msgstr "Informe um motivo e revise a escolha de cada dado cadastral."
+
+msgid "Duplicate review · Clinic OS"
+msgstr "Revisão de duplicidades · Clinic OS"
+
+msgid "Review possible duplicate registrations without rewriting historical records."
+msgstr "Revise possíveis cadastros duplicados sem alterar os registros históricos."
+
+msgid "Review possible duplicates"
+msgstr "Revisar possíveis duplicidades"
+
+msgid "Matching signals are hints. Confirm the identity, choose a surviving registration and review every field before merging."
+msgstr "Os sinais de correspondência são apenas indícios. Confirme a identidade, escolha o cadastro principal e revise cada campo antes de unificar."
+
+msgid "The decision was not saved"
+msgstr "A decisão não foi salva"
+
+msgid "Only a new demographics version on the survivor receives your choices. Signed documents, finalized notes, charges and consent receipts keep their original identity."
+msgstr "Suas escolhas são aplicadas somente a uma nova versão dos dados do cadastro principal. Documentos assinados, registros finalizados, cobranças e comprovantes de consentimento mantêm a identidade de origem."
+
+msgid "Confirm reviewed merge"
+msgstr "Confirmar a unificação revisada"
+
+msgid "Dismiss this hint"
+msgstr "Descartar este indício"
+
+msgid "Retained decision and later survivor records"
+msgstr "Decisão preservada e registros posteriores do cadastro principal"
+
+msgid "Decision recorded on %(date)s."
+msgstr "Decisão registrada em %(date)s."
+
+msgid "These later records stay on the survivor after reversal. Review them individually; reversal does not move them."
+msgstr "Estes registros posteriores permanecem no cadastro principal após a separação. Revise cada um; a separação não os transfere."
+
+msgid "Retained forward links and rows for review"
+msgstr "Vínculos preservados e registros para revisão"
+
+msgid "Separate registrations"
+msgstr "Separar cadastros"
+
+msgid "Fresh access invitations"
+msgstr "Novos convites de acesso"
+
+msgid "Old access was revoked. Give these new codes to the patient now; they are shown only once."
+msgstr "O acesso anterior foi revogado. Entregue agora estes novos códigos ao paciente; eles são exibidos apenas uma vez."
+
+msgid "Latest possible duplicate pairs in this clinic"
+msgstr "Pares recentes de possíveis duplicidades nesta clínica"
+
+msgid "Registrations"
+msgstr "Cadastros"
+
+msgid "Signals"
+msgstr "Sinais"
+
+msgid "Review pair"
+msgstr "Revisar este par"
+
+msgid "Exact document match"
+msgstr "Documento idêntico"
+
+msgid "Contact match"
+msgstr "Contato idêntico"
+
+msgid "Birth date and name prefix match"
+msgstr "Data de nascimento e início do nome coincidem"
+
+msgid "No possible duplicates are waiting for review."
+msgstr "Não há possíveis duplicidades aguardando revisão."
+
+msgid "Patient timeline · Clinic OS"
+msgstr "Linha do tempo do paciente · Clinic OS"
+
+msgid "Patient timeline"
+msgstr "Linha do tempo do paciente"
+
+msgid "Each record retains its original patient, encounter and finalized digest."
+msgstr "Cada registro mantém o paciente, o atendimento e o resumo criptográfico de finalização de origem."
+
+msgid "Original registration"
+msgstr "Cadastro de origem"
+
+msgid "Finalized digest"
+msgstr "Resumo criptográfico de finalização"
+
+msgid "No finalized records are available under your current permissions."
+msgstr "Não há registros finalizados disponíveis com suas permissões atuais."
+
+msgid "Choose the surviving registration to create a new appointment."
+msgstr "Escolha o cadastro principal para criar uma nova consulta."
+
+msgctxt "duplicate candidate state"
+msgid "Open"
+msgstr "Em aberto"
+
+msgctxt "duplicate candidate state"
+msgid "Dismissed"
+msgstr "Descartado"
+
+msgctxt "duplicate candidate state"
+msgid "Merged"
+msgstr "Unificado"
+
+msgid "Not informed"
+msgstr "Não informado"
+
+msgid "Female"
+msgstr "Feminino"
+
+msgid "Intersex"
+msgstr "Intersexo"
+
+msgid "Male"
+msgstr "Masculino"
+
+msgid "Declined to answer"
+msgstr "Prefere não informar"
+
+msgid "Woman"
+msgstr "Mulher"
+
+msgid "Man"
+msgstr "Homem"
+
+msgid "Non-binary"
+msgstr "Não binário"
+
+msgid "Legal name"
+msgstr "Nome civil"
+
+msgid "Social name"
+msgstr "Nome social"
+
+msgid "Preferred name"
+msgstr "Nome de preferência"
+
+msgid "Sex at birth"
+msgstr "Sexo atribuído ao nascer"
+
+msgid "Gender identity"
+msgstr "Identidade de gênero"
+
+msgid "Pronouns"
+msgstr "Pronomes"
+
+msgid "Preferred language"
+msgstr "Idioma de preferência"
+
+msgid "Accessibility needs"
+msgstr "Necessidades de acessibilidade"
+
+msgid "Occupation"
+msgstr "Ocupação"
+
+msgid "Appointments"
+msgstr "Consultas"
+
+msgid "Encounters"
+msgstr "Atendimentos"
+
+msgid "Charges"
+msgstr "Cobranças"
+
+msgid "Waitlist"
+msgstr "Lista de espera"
+
+msgid "Contact"
+msgstr "Contato"
+
+msgid "Preference"
+msgstr "Preferência"
+
+msgid "Access invitation"
+msgstr "Convite de acesso"
+
+msgid "Charge"
+msgstr "Cobrança"
+
+#, python-format
+msgid "Reviewing retained rows in %(clinic)s."
+msgstr "Revisando registros preservados em %(clinic)s."
+
+#, python-format
+msgid "Review retained rows in %(clinic)s"
+msgstr "Revisar registros preservados em %(clinic)s"
+
+msgctxt "gender identity"
+msgid "Other"
+msgstr "Outra"
 # Plan item 27: EHR autosave, conflict compare, episodes and unscheduled encounters.
 msgid "__ADDED__ added · __REMOVED__ removed"
 msgstr "__ADDED__ adicionada(s) · __REMOVED__ removida(s)"

@@ -58,6 +58,7 @@ from apps.intake.access import (
     authorized_enrollment_for,
     authorized_manager_clinic,
 )
+from apps.intake.duplicate_detection import refresh_duplicate_candidates
 from apps.intake.models import (
     ADDRESS_KIND_VALUES,
     DEMOGRAPHICS_SOURCE_VALUES,
@@ -84,8 +85,16 @@ from apps.intake.patient_creation import (
     validate_birth_date,
 )
 from apps.intake.patient_name_index import name_indexes
-from apps.intake.patient_search import PatientSearchItem, PatientSearchPage
-from apps.scheduling.locks import acquire_advisory_locks, patient_lock_key
+from apps.intake.patient_search import (
+    PatientSearchItem,
+    PatientSearchPage,
+    project_search_item,
+)
+from apps.scheduling.locks import (
+    acquire_advisory_locks,
+    clinic_lock_key,
+    patient_lock_key,
+)
 from apps.tenancy.envelope import blind_indexes_with_versions, protect
 
 DEMOGRAPHICS_FIELD_VALUES: Final = (
@@ -683,6 +692,7 @@ def _apply_demographics(mutation: _DemographicsMutation) -> PatientDemographics:
     reason = mutation.reason
     source = mutation.source
     patient = enrollment.patient
+    acquire_advisory_locks((clinic_lock_key(clinic.pk),))
     acquire_advisory_locks((patient_lock_key(clinic.organization_id, patient.pk),))
     patient.refresh_from_db()
     current = _latest_demographics(clinic.organization_id, patient.pk)
@@ -761,6 +771,7 @@ def _apply_demographics(mutation: _DemographicsMutation) -> PatientDemographics:
         clinic_id=clinic.pk,
         affected_record_id=row.pk,
     )
+    refresh_duplicate_candidates(clinic_id=clinic.pk, patient_id=patient.pk)
     return row
 
 
@@ -1083,6 +1094,7 @@ def _append_identifier(
     normalized: str,
     issuer: str | None,
 ) -> IdentifierOutcome:
+    acquire_advisory_locks((clinic_lock_key(clinic.pk),))
     acquire_advisory_locks((patient_lock_key(clinic.organization_id, patient_id),))
     digests = _identifier_digests(kind, normalized)
     digest, key_version = digests[-1]
@@ -1123,6 +1135,7 @@ def _append_identifier(
         clinic_id=clinic.pk,
         affected_record_id=identifier.pk,
     )
+    refresh_duplicate_candidates(clinic_id=clinic.pk, patient_id=patient_id)
     return IdentifierOutcome(
         identifier_id=identifier.pk,
         matching_enrollment_id=matching_enrollment_id,
@@ -1256,12 +1269,15 @@ def search_patient_identifiers(
         ).order_by("version"):
             latest[row.patient_id] = row
         items = tuple(
-            PatientSearchItem(
-                enrollment_id=enrollment.pk,
-                full_name=enrollment.patient.full_name,
-                birth_date=enrollment.patient.birth_date,
-                display_name=_display_name(
-                    enrollment.patient, latest.get(enrollment.patient_id)
+            project_search_item(
+                clinic_id=clinic_id,
+                item=PatientSearchItem(
+                    enrollment_id=enrollment.pk,
+                    full_name=enrollment.patient.full_name,
+                    birth_date=enrollment.patient.birth_date,
+                    display_name=_display_name(
+                        enrollment.patient, latest.get(enrollment.patient_id)
+                    ),
                 ),
             )
             for enrollment in enrollments

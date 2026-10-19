@@ -22,6 +22,7 @@ from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.utils.translation import gettext_lazy as _
 
 from apps.identity.current_context import CurrentActorError, require_permission
+from apps.intake.alias_access import require_survivor
 from apps.scheduling.access import AppointmentAccessDeniedError
 from apps.scheduling.appointment_errors import (
     AppointmentAvailabilityError,
@@ -252,6 +253,8 @@ def _transition(
             raise AppointmentLifecycleError(REVISION_CONFLICT)
         if current.status not in sources:
             raise AppointmentLifecycleError(ILLEGAL_TRANSITION)
+        if target_status in ("held", "scheduled"):
+            require_survivor(clinic_id=clinic_id, patient_id=current.patient_id)
         current.status = target_status
         current.last_command_id = command_id
         fields: tuple[str, ...] = ("status", "last_command_id", "updated_at")

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Patient timeline · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="intake-shell" aria-labelledby="timeline-title">
+  <h1 id="timeline-title">{% trans "Patient timeline" %}</h1>
+  {% if timeline.unified_at %}<p class="feedback">{% blocktrans with date=timeline.unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</p>{% endif %}
+  <p>{% trans "Each record retains its original patient, encounter and finalized digest." %}</p>
+  <ol>{% for row in timeline.records %}<li>
+    <time datetime="{{ row.finalized_at|date:'c' }}">{{ row.finalized_at|date:"d/m/Y H:i" }}</time>
+    <dl class="patient-details">
+      <div><dt>{% trans "Original registration" %}</dt><dd>{{ row.patient_id }}</dd></div>
+      <div><dt>{% trans "Encounter" %}</dt><dd>{{ row.encounter_id }}</dd></div>
+      <div><dt>{% trans "Version" %}</dt><dd>{{ row.version }}</dd></div>
+      <div><dt>{% trans "Finalized digest" %}</dt><dd><code>{{ row.content_digest }}</code></dd></div>
+    </dl>
+  </li>{% empty %}<li>{% trans "No finalized records are available under your current permissions." %}</li>{% endfor %}</ol>
+</section>
+{% endblock %}

@@ -3,11 +3,12 @@ from typing import Final
 import pytest
 from django.db import connection
 
-from infra import identity_lifecycle_catalog
+from infra import duplicate_catalog, identity_lifecycle_catalog
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    *duplicate_catalog.TABLE_GRANTS,
     ("identity_passkey", "SELECT"),
     *identity_lifecycle_catalog.TABLE_GRANTS,
     ("identity_patientdelegategrant", "SELECT"),
@@ -109,6 +110,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowstep", "SELECT"),
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *duplicate_catalog.COLUMN_GRANTS,
     ("identity_organization", "passkey_step_up_enabled", "UPDATE"),
     ("identity_passkey", "last_used", "UPDATE"),
     ("identity_passkey", "removed_at", "UPDATE"),
@@ -183,6 +185,7 @@ POSTURE_OVERRIDES: Final = {
         True,
         ["clinic_app", "clinic_owner", "clinic_resolver"],
     ),
+    **duplicate_catalog.POSTURE,
     "scheduling_capacity_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_definition_guard": ("v", False, ["clinic_resolver"]),
     "scheduling_generated_block_guard": ("v", False, ["clinic_resolver"]),
@@ -350,6 +353,7 @@ FUNCTION_SIGNATURES: Final = {
     ("delegate_purpose_allowed", "requested_purpose text"),
     ("patient_is_delegate", ""),
     ("delegate_audit_scope", "record_id uuid, event_name text"),
+    *duplicate_catalog.RESULTS,
     ("scheduling_capacity_guard", ""),
     ("scheduling_definition_guard", ""),
     ("scheduling_generated_block_guard", ""),
@@ -589,6 +593,7 @@ FUNCTION_RESULTS: Final = {
         "delegate_audit_scope",
         "record_id uuid, event_name text",
     ): "TABLE(session_id uuid, organization_id uuid, clinic_id uuid)",
+    **duplicate_catalog.RESULTS,
     ("scheduling_capacity_guard", ""): "trigger",
     ("scheduling_definition_guard", ""): "trigger",
     ("scheduling_generated_block_guard", ""): "trigger",
@@ -969,6 +974,7 @@ def test_resolver_functions_have_exact_hardened_catalog_posture() -> None:
             [
                 "search_path=pg_catalog, pg_temp"
                 if name in identity_lifecycle_catalog.POSTURE
+                or name in duplicate_catalog.POSTURE
                 else "search_path=pg_catalog, clinic_app, pg_temp"
             ],
             True,

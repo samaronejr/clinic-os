@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from inspect import Parameter, signature
+from threading import Event
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -9,6 +10,8 @@ import psycopg
 import pytest
 from apps.core.idempotency import create_fingerprint
 from apps.intake.services import create_patient
+from apps.scheduling import appointment_creation
+from apps.scheduling.appointment_persistence import insert_appointment
 from apps.scheduling.models import Appointment
 from apps.scheduling.services import SlotConflict, create_appointment
 from apps.tenancy.db import tenant_context
@@ -26,6 +29,14 @@ from scheduling.appointment_service_support import (
 )
 
 if TYPE_CHECKING:
+    from threading import Thread
+
+    from apps.identity.models import Clinic
+    from apps.scheduling.appointment_values import (
+        CreateAppointmentRequest,
+        PreparedAppointment,
+    )
+
     from conftest import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -136,29 +147,56 @@ def test_named_practitioner_exclusion_maps_to_opaque_slot_conflict(
 
 def test_named_patient_exclusion_maps_to_opaque_slot_conflict(
     rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first, second = seed_cross_clinic_appointment_setups(rbac_graph)
-    with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
-            [str(first.organization_id)],
-        )
-        Appointment.objects.create(
-            organization_id=second.organization_id,
-            clinic_id=second.clinic_id,
-            patient_id=second.patient_id,
-            practitioner_id=second.practitioner_id,
-            start_at=datetime(2035, 6, 2, 12, 0, tzinfo=UTC),
-            end_at=datetime(2035, 6, 2, 13, 0, tzinfo=UTC),
-            idempotency_key=uuid4(),
-            create_fingerprint=b"q" * 32,
-        )
-        thread, backend_pids, outcomes = start_appointment_creator(first, uuid4())
-        wait_for_row_waiter(backend_pids.get(timeout=5), outcomes)
-    thread.join(timeout=10)
+    inserting = Event()
 
+    def at_insert(
+        clinic: Clinic,
+        request: CreateAppointmentRequest,
+        prepared: PreparedAppointment,
+    ) -> tuple[Appointment, bool]:
+        # Conflict selection has completed while the parent row is invisible.
+        # The real INSERT still executes the alias guard and exclusion check.
+        inserting.set()
+        return insert_appointment(clinic, request, prepared)
+
+    monkeypatch.setattr(appointment_creation, "insert_appointment", at_insert)
+    thread: Thread | None = None
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                [str(first.organization_id)],
+            )
+            Appointment.objects.create(
+                organization_id=second.organization_id,
+                clinic_id=second.clinic_id,
+                patient_id=second.patient_id,
+                practitioner_id=second.practitioner_id,
+                start_at=datetime(2035, 6, 2, 12, 0, tzinfo=UTC),
+                end_at=datetime(2035, 6, 2, 13, 0, tzinfo=UTC),
+                idempotency_key=uuid4(),
+                create_fingerprint=b"q" * 32,
+            )
+            thread, _backend_pids, outcomes = start_appointment_creator(first, uuid4())
+            assert inserting.wait(timeout=5), "creator did not reach the real INSERT"
+    finally:
+        if thread is not None:
+            thread.join(timeout=10)
+
+    assert thread is not None
     assert not thread.is_alive()
-    assert isinstance(outcomes.get_nowait(), SlotConflict)
+    conflict = outcomes.get_nowait()
+    assert isinstance(conflict, SlotConflict)
+    integrity = conflict.__cause__
+    assert isinstance(integrity, IntegrityError)
+    assert isinstance(integrity.__cause__, psycopg.Error)
+    assert (
+        integrity.__cause__.diag.constraint_name
+        == "scheduling_appointment_scheduled_patient_excl"
+    )
 
 
 def test_adjacent_half_open_slots_are_both_accepted(

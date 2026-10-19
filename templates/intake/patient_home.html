@@ -4,9 +4,9 @@
 {% block meta_description %}{% trans "View the enrollment this access session is bound to." %}{% endblock %}
 {% block content %}
 <section class="intake-shell" aria-labelledby="patient-home-title">
-  <p class="eyebrow">{% trans "Patient portal" %}</p>
   <h1 id="patient-home-title">{% trans "Your enrollment" %}</h1>
   <p class="lede">{% trans "This session shows only the enrollment your invitation was issued for." %}</p>
+  {% if unified_at %}<p class="feedback">{% blocktrans with date=unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</p>{% endif %}
   <section class="panel" aria-labelledby="patient-enrollment">
     <h2 id="patient-enrollment">{% trans "Enrollment details" %}</h2>
     <dl class="patient-details">
