@@ -22,6 +22,7 @@ from apps.ehr.models import (
     EncounterIntakeReference,
     SpecialtyTemplate,
 )
+from apps.ehr.template_schema import validate_template
 from apps.identity.current_context import (
     CurrentActorError,
     current_actor_id,
@@ -179,30 +180,26 @@ def _encounter_actor(clinic_id: UUID, encounter: Encounter) -> UUID:
 
 
 def publish_template(
-    *, clinic_id: UUID, key: str, title: str, prompts: dict[str, str]
+    *, clinic_id: UUID, key: str, title: str, prompts: object
 ) -> SpecialtyTemplate:
-    """Publish immutable data-only SOAP prompts with serialized version allocation."""
-    require_current_actor_clinic_roles(
-        clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
+    """Append a v1 or schema-validated v2 definition without replacing history."""
+    roles = (
+        UserClinicRole.Role.OWNER,
+        UserClinicRole.Role.CLINIC_ADMIN,
+        UserClinicRole.Role.PHYSICIAN,
     )
+    actor = require_current_actor_clinic_roles(clinic_id, roles)
     if (
         not re.fullmatch(r"[a-z0-9_-]{1,64}", key)
         or not title.strip()
         or len(title) > MAX_TITLE
-        or set(prompts) != set(SOAP_FIELDS)
-        or any(not isinstance(v, str) or len(v) > MAX_PROMPT for v in prompts.values())
     ):
         msg = "Modelo de especialidade inválido."
         raise ValidationError(msg)
     validate_overlay_text(title)
-    for prompt in prompts.values():
-        validate_overlay_text(prompt)
+    validate_template(prompts, clinician_id=actor)
     with (
-        decided(
-            lambda: require_current_actor_clinic_roles(
-                clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
-            )
-        ),
+        decided(lambda: require_current_actor_clinic_roles(clinic_id, roles)),
         connection.cursor() as cursor,
     ):
         cursor.execute(
@@ -223,8 +220,18 @@ def publish_template(
             prompts=prompts,
             version=previous.version + 1 if previous else 1,
         )
+        state = (
+            prompts["state"]
+            if isinstance(prompts, dict) and "schema_version" in prompts
+            else "published"
+        )
+        event_type = {
+            "draft": "ehr.template.draft_created",
+            "published": "ehr.template.published",
+            "retired": "ehr.template.retired",
+        }[state]
         record_phase1_event(
-            "ehr.template.published", clinic_id=clinic_id, affected_record_id=result.pk
+            event_type, clinic_id=clinic_id, affected_record_id=result.pk
         )
         return result
 

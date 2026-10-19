@@ -7,6 +7,81 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Invalid template definition."
+msgstr "Definição de modelo inválida."
+
+msgid "Invalid questionnaire branching rule."
+msgstr "Regra de ramificação do questionário inválida."
+
+msgid "Complete all visible required questions."
+msgstr "Preencha todas as perguntas obrigatórias visíveis."
+
+msgid "Invalid answer confirmation."
+msgstr "Confirmação de resposta inválida."
+
+msgid "Review carried-forward answers before submitting."
+msgstr "Revise as respostas reaproveitadas antes de enviar."
+
+msgid "Carry-forward requires an empty current draft."
+msgstr "O reaproveitamento exige um rascunho atual vazio."
+
+msgid "Carried-forward answers are unverified. Review each answer."
+msgstr "As respostas reaproveitadas não foram verificadas. Revise cada resposta."
+
+msgid "Carried-forward answer: unverified."
+msgstr "Resposta reaproveitada: não verificada."
+
+msgid "I reviewed this carried-forward answer."
+msgstr "Revisei esta resposta reaproveitada."
+
+msgid "Previous submission"
+msgstr "Envio anterior"
+
+msgid "Carry forward for review"
+msgstr "Reaproveitar para revisão"
+
+msgid "Number"
+msgstr "Número"
+
+msgid "Show only after question"
+msgstr "Mostrar somente após a pergunta"
+
+msgid "Always visible"
+msgstr "Sempre visível"
+
+msgid "Comparison"
+msgstr "Comparação"
+
+msgid "Equals"
+msgstr "Igual a"
+
+msgid "One of"
+msgstr "Uma destas opções"
+
+msgid "Greater than"
+msgstr "Maior que"
+
+msgid "Less than"
+msgstr "Menor que"
+
+msgid "Comparison value"
+msgstr "Valor de comparação"
+
+msgid "Use yes or no for booleans. For One of, use one value per line."
+msgstr "Use sim ou não para respostas booleanas. Para Uma destas opções, use um valor por linha."
+
+msgid "Choose an earlier filled question."
+msgstr "Escolha uma pergunta anterior preenchida."
+
+msgid "Use yes or no for this comparison."
+msgstr "Use sim ou não nesta comparação."
+
+msgid "Enter a finite number."
+msgstr "Informe um número finito."
+
+msgid "Questions are configuration, not medical advice. Branches use only a previous answer and a fixed comparison; no expressions or calculated answers. Assigned questionnaires retain their original version."
+msgstr "As perguntas são configurações, não orientação médica. As ramificações usam somente uma resposta anterior e uma comparação fixa, sem expressões nem respostas calculadas. Os questionários atribuídos mantêm a versão original."
+
 msgid "Clinic OS secure clinical workspace."
 msgstr "Clinic OS: seu espaço de trabalho clínico seguro."
 

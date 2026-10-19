@@ -665,6 +665,33 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.jsonb_array_elements(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_elements",
+    "language": "internal",
+    "library": "",
+    "reason": "Template v2 field iteration reaches jsonfuncs.c elements_worker_jsonb, which validates an array and materializes supplied elements; retain this exact native implementation as opaque risk.",
+    "returns": "jsonb",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_array_length(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_length",
+    "language": "internal",
+    "library": "",
+    "reason": "Template v2 field, phrase and optional-section bounds reach jsonfuncs.c array-root validation and JB_ROOT_COUNT; retain this exact native implementation as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_path_query(jsonb, jsonpath, jsonb, boolean)": {
+    "extension": "",
+    "implementation": "jsonb_path_query",
+    "language": "internal",
+    "library": "",
+    "reason": "Template v2 plain-text validation uses a fixed recursive string-leaf path. Reviewed jsonpath_exec.c jsonb_path_query_internal and executeJsonPath with useTz=false; retain the exact native executor as opaque risk, not a clock-free exemption for arbitrary paths.",
+    "returns": "jsonb",
+    "volatility": "i"
+  },
   "pg_catalog.jsonb_typeof(jsonb)": {
     "extension": "",
     "implementation": "jsonb_typeof",
@@ -672,6 +699,78 @@
     "library": "",
     "reason": "Reached JSON-shape validation; retained native risk.",
     "returns": "text",
+    "volatility": "i"
+  },
+  "pg_catalog.length(bit)": {
+    "extension": "",
+    "implementation": "bitlength",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches varbit.c bitlength returning VARBITLEN of the supplied bit string; retain this exact overload as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.length(bytea)": {
+    "extension": "",
+    "implementation": "byteaoctetlen",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches varlena.c byteaoctetlen reading the supplied datum size; retain this exact overload as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.length(bytea, name)": {
+    "extension": "",
+    "implementation": "length_in_encoding",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches mbutils.c length_in_encoding, resolving the supplied encoding and verifying/counting supplied bytes; retain its exact stable native identity as opaque risk.",
+    "returns": "integer",
+    "volatility": "s"
+  },
+  "pg_catalog.length(character)": {
+    "extension": "",
+    "implementation": "bpcharlen",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches varchar.c bpcharlen, trimming trailing spaces and counting supplied characters in the database encoding; retain this exact overload as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.length(lseg)": {
+    "extension": "",
+    "implementation": "lseg_length",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches geo_ops.c lseg_length and point_dt computing endpoint distance; retain this exact overload as opaque risk.",
+    "returns": "double precision",
+    "volatility": "i"
+  },
+  "pg_catalog.length(path)": {
+    "extension": "",
+    "implementation": "path_length",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches geo_ops.c path_length summing supplied segment distances with point_dt; retain this exact overload as opaque risk.",
+    "returns": "double precision",
+    "volatility": "i"
+  },
+  "pg_catalog.length(text)": {
+    "extension": "",
+    "implementation": "textlen",
+    "language": "internal",
+    "library": "",
+    "reason": "Template SOAP prompt bounds reach varlena.c textlen/text_length, counting supplied characters using database encoding or datum size; retain this exact native implementation as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.length(tsvector)": {
+    "extension": "",
+    "implementation": "tsvector_length",
+    "language": "internal",
+    "library": "",
+    "reason": "Conservative resolution of template SOAP length checks reaches tsvector_op.c tsvector_length reading the supplied vector size; retain this exact overload as opaque risk.",
+    "returns": "integer",
     "volatility": "i"
   },
   "pg_catalog.lower(anymultirange)": {

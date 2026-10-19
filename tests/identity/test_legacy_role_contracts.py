@@ -81,11 +81,26 @@ def test_inventory_enumerates_every_current_actor_guard() -> None:
                             str(keyword.arg): keyword.value for keyword in node.keywords
                         },
                     )
+                    roles = bound.arguments["roles"]
+                    if isinstance(roles, ast.Name):
+                        assignments = [
+                            statement.value
+                            for statement in function.body
+                            if isinstance(statement, ast.Assign)
+                            and any(
+                                isinstance(target, ast.Name) and target.id == roles.id
+                                for target in statement.targets
+                            )
+                        ]
+                        if assignments:
+                            assert len(assignments) == 1
+                            assert isinstance(assignments[0], ast.Tuple)
+                            roles = assignments[0]
                     observed.append(
                         (
                             str(path.relative_to(ROOT)),
                             function.name,
-                            ast.unparse(bound.arguments["roles"]),
+                            ast.unparse(roles),
                         )
                     )
     assert observed == [(g["path"], g["function"], g["roles"]) for g in GUARDS]

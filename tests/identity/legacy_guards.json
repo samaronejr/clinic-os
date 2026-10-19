@@ -2105,6 +2105,17 @@
       ]
     },
     {
+      "symbol": "apps.intake.questionnaires.carry_forward_response",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.intake.questionnaires.patient_response"
+      ],
+      "reason": "Both response identifiers are authorized only by the live patient-session boundary; remaining denials concern clinic, enrollment, template and source-state input, not a distinct staff-role grant."
+    },
+    {
       "symbol": "apps.intake.questionnaires.clinical_response",
       "signals": [
         "denial",
@@ -5572,19 +5583,21 @@
       "function": "publish_template",
       "legacy_allowed": [
         "owner",
-        "clinic_admin"
+        "clinic_admin",
+        "physician"
       ],
       "path": "apps/ehr/services.py",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)"
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN, UserClinicRole.Role.PHYSICIAN)"
     },
     {
       "function": "publish_template",
       "legacy_allowed": [
         "owner",
-        "clinic_admin"
+        "clinic_admin",
+        "physician"
       ],
       "path": "apps/ehr/services.py",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)"
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN, UserClinicRole.Role.PHYSICIAN)"
     },
     {
       "function": "view_version",
@@ -5774,10 +5787,11 @@
       "function": "publish_template",
       "legacy_allowed": [
         "owner",
-        "clinic_admin"
+        "clinic_admin",
+        "physician"
       ],
       "path": "apps/intake/questionnaires.py",
-      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)"
+      "roles": "(UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN, UserClinicRole.Role.PHYSICIAN)"
     },
     {
       "function": "assign_questionnaire",
@@ -7103,6 +7117,26 @@
       "kind": "data_allocator",
       "probes": [],
       "reason": "Document version allocation after service authorization; this function has no authority predicate."
+    },
+    "clinic_app.ehr_template_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_template_v2_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Version-aware template shape, plain-text and published-binding trigger, not a staff-role grant. Exact resolver posture and template v2 domain integrity tests cover writes."
     },
     "clinic_app.ehr_version_scope": {
       "discovery": {
@@ -8603,6 +8637,26 @@
       "kind": "row_integrity",
       "probes": [],
       "reason": "Row binding, lifecycle, immutability or audit trigger, not a staff-role grant. Deployed trigger/policy posture and domain integrity tests cover writes."
+    },
+    "clinic_app.questionnaire_template_state_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ],
+        "migrations": [
+          "apps/intake/migrations/0015_questionnaire_branching.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Questionnaire assignment binds the same clinic and organization to a published template snapshot; it is row integrity, not a staff-role grant. Exact posture and branching domain tests cover writes."
     },
     "clinic_app.questionnaire_staff": {
       "discovery": {

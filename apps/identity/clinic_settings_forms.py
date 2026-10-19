@@ -3,8 +3,10 @@
 from typing import Any
 
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from apps.identity.clinic_configuration import REMINDER_HOURS
+from apps.intake.branching import is_number
 
 
 class ClinicSettingsForm(forms.Form):
@@ -71,6 +73,7 @@ QUESTION_TYPES = (
     ("text", "Texto livre"),
     ("selection", "Escolha entre opções"),
     ("boolean", "Sim ou não"),
+    ("number", _("Number")),
 )
 DEFAULT_TEXT_LIMIT = 500
 DEFAULT_OPTION_LIMIT = 200
@@ -125,10 +128,44 @@ class QuestionnaireForm(forms.Form):
                 widget=forms.Textarea(attrs={"rows": 3}),
                 help_text="Somente para escolha entre opções.",
             )
+            self.fields[f"q{index}_when_question"] = forms.ChoiceField(
+                label=_("Show only after question"),
+                choices=[("", _("Always visible"))]
+                + [(str(prior), str(prior)) for prior in range(1, index)],
+                required=False,
+            )
+            self.fields[f"q{index}_when_op"] = forms.ChoiceField(
+                label=_("Comparison"),
+                choices=[
+                    ("eq", _("Equals")),
+                    ("in", _("One of")),
+                    ("gt", _("Greater than")),
+                    ("lt", _("Less than")),
+                ],
+                required=False,
+            )
+            self.fields[f"q{index}_when_value"] = forms.CharField(
+                label=_("Comparison value"),
+                max_length=4000,
+                required=False,
+                widget=forms.Textarea(attrs={"rows": 2}),
+                help_text=_(
+                    "Use yes or no for booleans. For One of, use one value per line."
+                ),
+            )
 
     def question_rows(self) -> list[list[forms.BoundField]]:
         """Group the bound fields by question for the fieldset layout."""
-        names = ("label", "type", "required", "max_length", "options")
+        names = (
+            "label",
+            "type",
+            "required",
+            "max_length",
+            "options",
+            "when_question",
+            "when_op",
+            "when_value",
+        )
         return [
             [self[f"q{index}_{name}"] for name in names]
             for index in range(1, QUESTION_ROWS + 1)
@@ -176,4 +213,69 @@ class QuestionnaireForm(forms.Form):
                 }
             )
         cleaned["questions"] = questions
+        rules = self._branch_rules(questions)
+        if rules:
+            cleaned["questions"] = {
+                "schema_version": 2,
+                "state": "published",
+                "questions": questions,
+                "rules": rules,
+            }
         return cleaned
+
+    @staticmethod
+    def _comparison_value(kind: str, value: str) -> str | bool | float:
+        """Parse one literal, never an expression or a nested value."""
+        if kind == "boolean":
+            booleans = {"yes": True, "no": False, "sim": True, "não": False}
+            if value.casefold() not in booleans:
+                raise forms.ValidationError(_("Use yes or no for this comparison."))
+            return booleans[value.casefold()]
+        if kind == "number":
+            try:
+                number = float(value)
+            except ValueError:
+                raise forms.ValidationError(_("Enter a finite number.")) from None
+            if not is_number(number):
+                raise forms.ValidationError(_("Enter a finite number."))
+            return number
+        return value
+
+    def _branch_rules(
+        self, questions: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Bind each conditional row to one earlier filled question."""
+        cleaned = self.cleaned_data
+        by_id = {question["id"]: question for question in questions}
+        rules: list[dict[str, object]] = []
+        for index in range(1, QUESTION_ROWS + 1):
+            source = cleaned.get(f"q{index}_when_question")
+            if not source:
+                continue
+            source_id = f"q_{source}"
+            if source_id not in by_id or f"q_{index}" not in by_id:
+                self.add_error(
+                    f"q{index}_when_question", _("Choose an earlier filled question.")
+                )
+                continue
+            raw = str(cleaned.get(f"q{index}_when_value") or "")
+            op = str(cleaned.get(f"q{index}_when_op") or "eq")
+            try:
+                values = [
+                    self._comparison_value(str(by_id[source_id]["type"]), line.strip())
+                    for line in (raw.splitlines() if op == "in" else [raw])
+                ]
+            except forms.ValidationError as error:
+                self.add_error(f"q{index}_when_value", error)
+                continue
+            rules.append(
+                {
+                    "when": {
+                        "question": source_id,
+                        "op": op,
+                        "value": values if op == "in" else values[0],
+                    },
+                    "show": [f"q_{index}"],
+                }
+            )
+        return rules

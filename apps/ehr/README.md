@@ -20,12 +20,22 @@ point to immutable `QuestionnaireEvent` receipts, not mutable response answers.
 Clinical audit events contain record identifiers and fixed reason codes only.
 
 The binding lifecycle is `docs/clinical/record-contract.md`. Publishing a
-specialty template is an admin/owner service, exposed through the clinic settings
+specialty template is an admin/owner/physician service, exposed through the clinic settings
 screen rather than the encounter screen. Its four SOAP prompts and title accept
 only bounded plain text; HTML, scripts and CSS are rejected by the service and
 database. Each publication appends fixed metadata-only audit evidence. Existing
 drafts and finalized versions keep their original template reference.
 External interoperability remains the separate, deferred `apps.interop` boundary.
+
+Todo 29 adds schema-validated v2 definitions alongside the exact four-key v1
+contract. The v2 schema is `docs/clinical/template-schema-v2.json`; publication
+accepts typed fields, units/ranges, explicit optional sections and clinic or
+publisher-bound clinician phrases, never defaults or executable content.
+`draft`, `published` and `retired` are immutable version snapshots; only
+published snapshots bind new notes. Typed definitions never populate findings.
+The template-specific trigger is isolated from the encounter binding guard.
+The detailed definition and branching contracts are in
+`docs/clinical/questionnaires.md`.
 
 Task 24 adds finalization, amendments, discard and encounter closure.
 `finalization.finalize_version` freezes a draft with a fixed SHA-256 content

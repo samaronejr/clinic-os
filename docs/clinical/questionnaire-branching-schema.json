@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Declarative questionnaire v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "state", "questions", "rules"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 2},
+    "state": {"enum": ["draft", "published", "retired"]},
+    "questions": {"type": "array", "minItems": 1, "maxItems": 40, "items": {"$ref": "#/$defs/question"}},
+    "rules": {"type": "array", "maxItems": 80, "items": {"$ref": "#/$defs/rule"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^q_[a-z0-9_]{1,32}$"},
+    "literal": {
+      "oneOf": [
+        {"type": "boolean"},
+        {"type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991},
+        {"type": "string", "maxLength": 4000, "pattern": "^[^<>{}();`]*$"}
+      ]
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "type", "required", "max_length", "options"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S"},
+        "type": {"enum": ["text", "selection", "boolean", "number"]},
+        "required": {"type": "boolean"},
+        "max_length": {"type": "integer", "minimum": 1, "maximum": 4000},
+        "options": {"type": "array", "maxItems": 30, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 200}}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when", "show"],
+      "properties": {
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["question", "op", "value"],
+          "properties": {
+            "question": {"$ref": "#/$defs/id"},
+            "op": {"enum": ["eq", "in", "gt", "lt"]},
+            "value": {}
+          },
+          "oneOf": [
+            {"properties": {"op": {"const": "in"}, "value": {"type": "array", "minItems": 1, "maxItems": 30, "uniqueItems": true, "items": {"$ref": "#/$defs/literal"}}}},
+            {"properties": {"op": {"enum": ["eq", "gt", "lt"]}, "value": {"$ref": "#/$defs/literal"}}}
+          ]
+        },
+        "show": {"type": "array", "minItems": 1, "maxItems": 40, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+      }
+    }
+  }
+}

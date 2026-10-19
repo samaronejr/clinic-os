@@ -45,7 +45,7 @@
   </section>
   <section class="panel" aria-labelledby="questionnaire-title">
     <h2 id="questionnaire-title">Nova versão de questionário pré-consulta</h2>
-    <p>Perguntas de configuração, não orientação médica. Somente texto livre, escolha entre opções ou sim/não; sem fórmulas nem condições. A publicação cria a próxima versão do código; questionários já atribuídos mantêm a versão original. O médico atribui o questionário pela agenda.</p>
+    <p>{% trans "Questions are configuration, not medical advice. Branches use only a previous answer and a fixed comparison; no expressions or calculated answers. Assigned questionnaires retain their original version." %}</p>
     <ul>{% for model in questionnaires %}<li data-questionnaire-version="{{ model.version }}">{{ model.title }} · {{ model.key }} · versão {{ model.version }}</li>{% empty %}<li>Nenhum questionário publicado.</li>{% endfor %}</ul>
     <form method="post" novalidate data-settings-form="questionnaire">
       {% csrf_token %}{{ questionnaire_form.non_field_errors }}

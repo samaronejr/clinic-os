@@ -84,7 +84,7 @@ BOUNDARIES = (
     Boundary(
         "apps.ehr.services.publish_template",
         "service",
-        ADMINS,
+        (*ADMINS, *PHYSICIAN),
         lambda w, ok: services.publish_template(
             clinic_id=w.clinic_for(ok),
             key="synthetic-parity",

@@ -595,6 +595,7 @@ def test_questionnaire_database_policy_and_resolver_catalog() -> None:
             "questionnaire_immutable",
             "questionnaire_response_guard",
             "questionnaire_receipt",
+            "questionnaire_template_state_guard",
         }
         for name, owner, definer, config, executable, public in functions:
             assert owner == "clinic_resolver"

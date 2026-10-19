@@ -346,7 +346,7 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
         Boundary(
             "apps.intake.questionnaires.publish_template",
             "operational",
-            ADMINS,
+            (*ADMINS, *PHYSICIAN),
             lambda w, ok: questionnaires.publish_template(
                 clinic_id=w.clinic_for(ok),
                 key="parity-second",

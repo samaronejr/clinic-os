@@ -21,6 +21,9 @@ GIT: Final = shutil.which("git")
 APPLICATION_EXACT: Final = frozenset(
     {
         "Dockerfile",
+        # Runtime validation authorities read at import by apps.ehr/apps.intake.
+        "docs/clinical/questionnaire-branching-schema.json",
+        "docs/clinical/template-schema-v2.json",
         "manage.py",
         "ops/testing/timezone_contract.py",
         "pyproject.toml",

@@ -202,6 +202,21 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.template.published": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.specialty_template", "published"
         ),
+        "ehr.template.draft_created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_template", "draft_created"
+        ),
+        "ehr.template.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_template", "retired"
+        ),
+        "intake.questionnaire_template.draft_created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.questionnaire_template", "draft_created"
+        ),
+        "intake.questionnaire_template.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.questionnaire_template", "published"
+        ),
+        "intake.questionnaire_template.retired": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "intake.questionnaire_template", "retired"
+        ),
         "consent.text.published": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "consent.text", "published"
         ),

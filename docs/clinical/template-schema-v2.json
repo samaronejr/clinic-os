@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Specialty template v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "state", "subjective", "objective", "assessment", "plan", "fields", "phrases", "optional_sections"],
+  "properties": {
+    "schema_version": {"const": 2, "type": "integer"},
+    "state": {"enum": ["draft", "published", "retired"]},
+    "subjective": {"$ref": "#/$defs/prompt"},
+    "objective": {"$ref": "#/$defs/prompt"},
+    "assessment": {"$ref": "#/$defs/prompt"},
+    "plan": {"$ref": "#/$defs/prompt"},
+    "fields": {"type": "array", "maxItems": 80, "items": {"$ref": "#/$defs/field"}},
+    "phrases": {"type": "array", "maxItems": 80, "items": {"$ref": "#/$defs/phrase"}},
+    "optional_sections": {"type": "array", "uniqueItems": true, "maxItems": 4, "items": {"$ref": "#/$defs/section"}}
+  },
+  "$defs": {
+    "prompt": {"type": "string", "maxLength": 1000},
+    "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+    "label": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S"},
+    "section": {"enum": ["subjective", "objective", "assessment", "plan"]},
+    "options": {"type": "array", "minItems": 1, "maxItems": 30, "uniqueItems": true, "items": {"$ref": "#/$defs/label"}},
+    "baseField": {
+      "type": "object",
+      "required": ["id", "section", "label", "type", "required"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "section": {"$ref": "#/$defs/section"},
+        "label": {"$ref": "#/$defs/label"},
+        "required": {"type": "boolean"},
+        "type": {"enum": ["text", "number", "choice", "multichoice", "date", "boolean", "scale-ref"]}
+      }
+    },
+    "field": {
+      "allOf": [
+        {"$ref": "#/$defs/baseField"},
+        {
+          "oneOf": [
+            {"properties": {"type": {"const": "text"}, "max_length": {"type": "integer", "minimum": 1, "maximum": 20000}}, "required": ["max_length"]},
+            {"properties": {"type": {"const": "number"}, "unit": {"$ref": "#/$defs/label"}, "range": {"type": "object", "additionalProperties": false, "required": ["min", "max"], "properties": {"min": {"type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991}, "max": {"type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991}}}}, "required": ["unit", "range"]},
+            {"properties": {"type": {"enum": ["choice", "multichoice"]}, "options": {"$ref": "#/$defs/options"}}, "required": ["options"]},
+            {"properties": {"type": {"enum": ["date", "boolean"]}}},
+            {"properties": {"type": {"const": "scale-ref"}, "scale_ref": {"$ref": "#/$defs/identifier"}, "scale_version": {"type": "integer", "minimum": 1}}, "required": ["scale_ref", "scale_version"]}
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "phrase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "scope", "clinician_id"],
+      "properties": {
+        "id": {"$ref": "#/$defs/identifier"},
+        "text": {"type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S"},
+        "scope": {"enum": ["clinic", "clinician"]},
+        "clinician_id": {"type": ["string", "null"], "format": "uuid"}
+      },
+      "oneOf": [
+        {"properties": {"scope": {"const": "clinic"}, "clinician_id": {"type": "null"}}},
+        {"properties": {"scope": {"const": "clinician"}, "clinician_id": {"type": "string", "format": "uuid"}}}
+      ]
+    }
+  }
+}
