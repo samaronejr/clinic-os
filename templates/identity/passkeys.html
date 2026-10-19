@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load i18n static tz clinic_locale %}
+{% block title %}{% trans "Your passkeys · Clinic OS" %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-passkeys.css' %}">
+<script src="{% static 'js/passkey.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="passkeys-title">
+  <h1 id="passkeys-title">{% trans "Your passkeys" %}</h1>
+  <p class="lede">{% trans "Sign in with your device PIN or biometric verification. Your private key stays on your device." %}</p>
+  <section class="panel" aria-labelledby="passkey-register-title">
+    <h2 id="passkey-register-title">{% trans "Add a passkey" %}</h2>
+    {% url 'identity:passkeys' as passkey_next %}{% trans "Register this device" as register_label %}
+    {% include "includes/passkey.html" with id="passkey-register" kind="register" label=register_label next=passkey_next clinic_id=clinic.pk registration_form=registration_form csrf_token=csrf_token only %}
+    <p><a class="button button--secondary" href="{% url 'identity:step-up' %}?next={{ passkey_next|urlencode }}">{% trans "Use an authenticator code" %}</a></p>
+  </section>
+  <section class="panel" aria-labelledby="passkey-list-title">
+    <h2 id="passkey-list-title">{% trans "Registered devices" %}</h2>
+    <ul class="passkey-list">
+    {% for passkey in passkeys %}
+      <li data-passkey-record="{{ passkey.pk }}">
+        <h3>{% if passkey.nickname %}{{ passkey.nickname }}{% else %}{% trans "Passkey" %}{% endif %}</h3>
+        {% if passkey.removed_at %}
+          <span class="badge">{% trans "Removed" %}</span>
+        {% else %}
+          <span class="badge badge--success">{% trans "Active" %}</span>
+          {% if passkey.last_used %}<p class="hint">{% trans "Last verified" %}: {% timezone clinic.timezone %}{{ passkey.last_used|date:"Y-m-d\\TH:i"|clinic_minute }}{% endtimezone %}</p>{% endif %}
+          <form method="post" action="{% url 'identity:passkey-remove' %}">
+            {% csrf_token %}<input type="hidden" name="clinic_id" value="{{ clinic.pk }}">
+            <input type="hidden" name="passkey_id" value="{{ passkey.pk }}">
+            <button type="submit" class="button button--danger">{% trans "Remove passkey" %}<span class="visually-hidden"> {{ passkey.nickname }}</span></button>
+          </form>
+        {% endif %}
+      </li>
+    {% empty %}
+      <li class="table-empty">{% trans "No passkeys yet. Register a device or keep using your authenticator code." %}</li>
+    {% endfor %}
+    </ul>
+  </section>
+  <section class="panel" aria-labelledby="passkey-policy-title">
+    <h2 id="passkey-policy-title">{% trans "Organization verification policy" %}</h2>
+    <p>{% if policy_enabled %}{% trans "Passkeys can confirm privileged sign-in and sensitive actions in this organization." %}{% else %}{% trans "Privileged accounts still require the authenticator code. An organization administrator must explicitly enable passkey verification." %}{% endif %}</p>
+    {% if can_manage_policy %}
+      {% if policy_form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ policy_form.errors }}</div>{% endif %}
+      <form method="post" action="{% url 'identity:passkey-policy' %}">
+        {% csrf_token %}{{ policy_form.clinic_id }}
+        <div class="field settings-check">{{ policy_form.enabled }}{{ policy_form.enabled.label_tag }}</div>
+        <p class="hint">{% trans "This changes every unit in the organization and requires recent verification." %}</p>
+        <button type="submit" class="button button--secondary">{% trans "Save verification policy" %}</button>
+      </form>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

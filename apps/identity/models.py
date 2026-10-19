@@ -12,9 +12,12 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
+from apps.identity import passkey_models
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
+
+Passkey = passkey_models.Passkey
 
 if TYPE_CHECKING:
     from django.db.models.constraints import BaseConstraint
@@ -60,6 +63,7 @@ class Organization(models.Model):
     name = models.CharField(max_length=255)
     cnpj = models.CharField(max_length=14)
     status = models.CharField(max_length=20, choices=Status, default=Status.ACTIVE)
+    passkey_step_up_enabled = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         """Keep pending capture out of the legacy plaintext identity fields."""
@@ -805,6 +809,10 @@ class SessionRecord(models.Model):
         blank=True,
     )
     verified_at = models.DateTimeField(null=True, blank=True)
+    verification_passkey_id: uuid.UUID | None
+    verification_passkey = models.ForeignKey(
+        Passkey, on_delete=models.PROTECT, null=True, blank=True
+    )
 
     class Meta:
         """Distinguish superseded keys without weakening revocation."""
@@ -816,6 +824,13 @@ class SessionRecord(models.Model):
                     | models.Q(revoked_at__isnull=False)
                 ),
                 name="identity_session_superseded_is_revoked",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(verification_device__isnull=True)
+                    | models.Q(verification_passkey__isnull=True)
+                ),
+                name="identity_session_single_verification",
             ),
         ]
 

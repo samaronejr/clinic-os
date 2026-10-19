@@ -12,7 +12,14 @@ from apps.core.integration import (
     enqueue_operation,
 )
 from apps.ehr.services import record_clinical_note
-from apps.identity import delegates, scope_provisioning, service_principals
+from apps.identity import (
+    delegates,
+    passkey_authentication,
+    passkey_controls,
+    passkeys,
+    scope_provisioning,
+    service_principals,
+)
 from apps.identity.current_context import require_permission
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
@@ -68,6 +75,36 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            passkeys.register_passkey,
+            ["clinic_id", "credential", "challenge", "nickname", "session_key"],
+        ),
+        (passkey_authentication.lookup_credential, ["credential_id"]),
+        (
+            passkey_authentication.verify_assertion,
+            ["credential", "challenge", "clinic_id"],
+        ),
+        (
+            passkey_controls.remove_passkey,
+            ["clinic_id", "passkey_id", "session_key"],
+        ),
+        (
+            passkey_controls.set_passkey_policy,
+            ["clinic_id", "enabled", "session_key"],
+        ),
+    ],
+)
+def test_passkey_boundaries_are_exact_and_derive_current_authority(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 @pytest.mark.parametrize(

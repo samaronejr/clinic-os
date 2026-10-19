@@ -169,6 +169,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     assert policies == {
         (table, "tenant_isolation") for table in EXPECTED_TENANT_COLUMNS
     } | {
+        ("identity_passkey", "passkey_owner_only"),
         ("identity_organization", "active_organization_runtime"),
         ("scheduling_availabilityblock", "patient_booking_read"),
         ("scheduling_availabilityblock", "agent_grant"),
@@ -297,6 +298,7 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     assert user_grants == []
     assert tenant_column_updates == {
         ("scheduling_appointment", "last_command_id"),
+        ("identity_passkey", "removed_at"),
         ("comms_integrationoperation", "attempt_count"),
         ("comms_integrationoperation", "last_callback_event_id"),
         ("comms_integrationoperation", "last_error"),

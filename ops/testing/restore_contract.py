@@ -61,6 +61,7 @@ DOMAIN_RELATIONS: Final = (
     "identity_clinicconfiguration",
     "identity_onboardingprogress",
     "identity_organization",
+    "identity_passkey",
     # Verified representation and revoked history are durable authority data.
     "identity_patientdelegategrant",
     "identity_physicianevidence",

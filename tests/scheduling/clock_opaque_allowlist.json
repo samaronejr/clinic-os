@@ -1591,5 +1591,32 @@
     "reason": "The PL/pgSQL version identifier matches the catalog version routine; retain that conservative native candidate as opaque risk.",
     "returns": "text",
     "volatility": "s"
+  },
+  "pg_catalog.int84ge(bigint, integer)": {
+    "extension": "",
+    "implementation": "int84ge",
+    "language": "internal",
+    "library": "",
+    "reason": "The generated nonnegative Passkey.sign_count CHECK compares a supplied bigint counter with integer zero; retain this exact native comparison as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int8le(bigint, bigint)": {
+    "extension": "",
+    "implementation": "int8le",
+    "language": "internal",
+    "library": "",
+    "reason": "The explicit identity_passkey_counter_uint32 CHECK compares a supplied bigint counter with the uint32 upper bound; retain this exact native comparison as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_array_length(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_length",
+    "language": "internal",
+    "library": "",
+    "reason": "identity_passkey_guard bounds the supplied transport array to eight entries during registration; retain this exact native JSON array-length implementation as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
   }
 }

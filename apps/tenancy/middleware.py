@@ -40,6 +40,10 @@ BYPASS_PATHS: Final = frozenset(
         "/readyz",
         "/readyz/",
         "/auth/login/",
+        # WebAuthn assertions authenticate their own exact stored credential,
+        # then open tenant_context; no body-supplied tenant is accepted.
+        "/auth/passkey/assert/begin/",
+        "/auth/passkey/assert/finish/",
         "/auth/signup/",
         "/auth/invitation/",
         "/auth/identity-notification/callback/",

@@ -29,6 +29,7 @@ SYNTHETIC_AUTH_VALUE_A = "synthetic-hash-a"
 SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
 AUDIT_ROW_TRIGGER = "audit_event_immutable_row"
 AUDIT_TRUNCATE_TRIGGER = "audit_event_immutable_truncate"
+PASSKEY_TRUNCATE_TRIGGER = "identity_passkey_no_truncate"
 __all__: Final = (
     "RbacGraph",
     "rbac_graph",
@@ -312,7 +313,22 @@ def pytest_runtest_teardown(
     database_url = _test_superuser_database_url()
     triggers_present = False
     started_enabled = True
+    passkey_trigger_present = False
+    passkey_started_enabled = True
     with psycopg.connect(database_url) as raw_connection:
+        passkey_trigger = raw_connection.execute(
+            "SELECT tgenabled FROM pg_trigger "
+            "WHERE tgrelid = to_regclass('clinic_app.identity_passkey') "
+            "AND tgname = %s",
+            [PASSKEY_TRUNCATE_TRIGGER],
+        ).fetchone()
+        if passkey_trigger is not None:
+            passkey_trigger_present = True
+            passkey_started_enabled = passkey_trigger == ("O",)
+            raw_connection.execute(
+                "ALTER TABLE clinic_app.identity_passkey DISABLE TRIGGER "
+                f"{PASSKEY_TRUNCATE_TRIGGER}"
+            )
         rows = raw_connection.execute(
             "SELECT tgname, tgenabled FROM pg_trigger "
             "WHERE tgrelid = to_regclass('clinic_app.audit_event') "
@@ -340,6 +356,19 @@ def pytest_runtest_teardown(
     try:
         yield
     finally:
+        if passkey_trigger_present:
+            with psycopg.connect(database_url) as raw_connection:
+                raw_connection.execute(
+                    "ALTER TABLE clinic_app.identity_passkey ENABLE TRIGGER "
+                    f"{PASSKEY_TRUNCATE_TRIGGER}"
+                )
+                assert raw_connection.execute(
+                    "SELECT tgenabled FROM pg_trigger "
+                    "WHERE tgrelid = 'clinic_app.identity_passkey'::regclass "
+                    "AND tgname = %s",
+                    [PASSKEY_TRUNCATE_TRIGGER],
+                ).fetchone() == ("O",)
+            assert passkey_started_enabled is True
         if triggers_present:
             with psycopg.connect(database_url) as raw_connection:
                 raw_connection.execute(

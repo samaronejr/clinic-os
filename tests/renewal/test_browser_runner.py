@@ -1688,6 +1688,44 @@ def test_renewal_settings_reject_an_owner_role_dsn(tmp_path: Path) -> None:
     assert completed.returncode == 0, completed.stderr.decode()[-500:]
 
 
+def test_renewal_passkey_challenge_uses_a_browser_valid_loopback_origin() -> None:
+    # Given the actual renewal serving environment, without opening its database.
+    environment = runner._server_environment(
+        "postgresql://clinic_app:pw@127.0.0.1:55432/clinic"
+    )
+    # When a browser on localhost starts a ceremony at the ephemeral server port.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import json\n"
+            "import django\n"
+            "django.setup()\n"
+            "from django.test import RequestFactory\n"
+            "from apps.identity.passkey_challenges import new_challenge\n"
+            "request = RequestFactory().post(\n"
+            "    '/auth/passkey/register/begin/', HTTP_HOST='localhost:49152'\n"
+            ")\n"
+            "challenge = new_challenge(request, purpose='register')\n"
+            "print(json.dumps({\n"
+            "    'rp_id': challenge.rp_id, 'origin': challenge.origin\n"
+            "}))\n",
+        ],
+        check=False,
+        cwd=REPOSITORY,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    # Then the RP is a domain, not an IP address, and the actual port stays bound.
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "rp_id": "localhost",
+        "origin": "http://localhost:49152",
+    }
+
+
 def test_excluded_predicate_matches_the_snapshot_contract() -> None:
     for path in (
         ".omo/evidence/x.json",

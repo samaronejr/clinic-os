@@ -16,8 +16,9 @@ HTMX_SHA384 = "H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
 def test_todo18_and_todo19_dependencies_are_exact_and_isolated() -> None:
     document = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
 
-    assert document["project"]["dependencies"][-2:] == [
+    assert document["project"]["dependencies"][-3:] == [
         "tzdata==2026.3",
+        "webauthn==3.0.1",
         "whitenoise==6.12.0",
     ]
     assert document["dependency-groups"]["browser"] == [

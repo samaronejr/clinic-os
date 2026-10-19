@@ -335,7 +335,10 @@ def test_evaluate_js_answers_once_like_evaluate(csp_page: Page) -> None:
     # A falsy answer comes straight back; it is never waited on.
     assert evaluate_js(csp_page, "document.documentElement.scrollWidth < 0") is False
     assert evaluate_js(csp_page, "(n) => n + 1", 1) == 2
-    assert evaluate_js(csp_page.locator("form"), "(form) => form.method") == "post"
+    assert (
+        evaluate_js(csp_page.locator("[data-auth-form]"), "(form) => form.method")
+        == "post"
+    )
     fields = csp_page.locator("form input").count()
     assert fields > 0
     assert evaluate_all_js(csp_page.locator("form input"), "(all) => all.length") == (
@@ -437,7 +440,7 @@ def test_csp_console_hook_tolerates_only_playwright_screenshot_style(
     # violation, but an app inline style right after it still is.
     before = len(csp_console_violations)
     csp_page.screenshot()
-    csp_page.locator("form").screenshot()
+    csp_page.locator("[data-auth-form]").screenshot()
     assert csp_console_violations[before:] == []
     with csp_page.expect_console_message(lambda m: m.type == "error") as refused:
         csp_page.evaluate(INJECT_INLINE_STYLE_JS)

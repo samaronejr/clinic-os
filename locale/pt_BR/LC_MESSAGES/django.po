@@ -4043,3 +4043,93 @@ msgstr "Objetivo"
 
 msgid "Assessment"
 msgstr "Avaliação"
+
+msgid "Your passkeys · Clinic OS"
+msgstr "Suas chaves de acesso · Clinic OS"
+
+msgid "Your passkeys"
+msgstr "Suas chaves de acesso"
+
+msgid "Sign in with your device PIN or biometric verification. Your private key stays on your device."
+msgstr "Entre com o PIN ou a biometria do seu dispositivo. Sua chave privada fica no dispositivo."
+
+msgid "Add a passkey"
+msgstr "Adicionar chave de acesso"
+
+msgid "Register this device"
+msgstr "Cadastrar este dispositivo"
+
+msgid "Device nickname"
+msgstr "Nome do dispositivo"
+
+msgid "Choose a short name so you can recognize this device later."
+msgstr "Escolha um nome curto para reconhecer este dispositivo depois."
+
+msgid "Waiting for your device verification…"
+msgstr "Aguardando a verificação no dispositivo…"
+
+msgid "We could not verify the passkey. Try again or use your authenticator code."
+msgstr "Não foi possível verificar a chave de acesso. Tente novamente ou use o código do autenticador."
+
+msgid "Passkey verification cancelled. Try again or use your authenticator code."
+msgstr "Verificação cancelada. Tente novamente ou use o código do autenticador."
+
+msgid "You are offline. Reconnect before verifying your identity."
+msgstr "Você está sem conexão. Conecte-se novamente para verificar sua identidade."
+
+msgid "Start passkey verification again. The previous request is no longer current."
+msgstr "Inicie a verificação novamente. A solicitação anterior não está mais válida."
+
+msgid "Cancel verification"
+msgstr "Cancelar verificação"
+
+msgid "Without a compatible device or JavaScript, use your password and authenticator code."
+msgstr "Sem um dispositivo compatível ou JavaScript, use sua senha e o código do autenticador."
+
+msgid "Use an authenticator code"
+msgstr "Usar código do autenticador"
+
+msgid "Registered devices"
+msgstr "Dispositivos cadastrados"
+
+msgid "Passkey"
+msgstr "Chave de acesso"
+
+msgid "Removed"
+msgstr "Removida"
+
+msgid "Last verified"
+msgstr "Última verificação"
+
+msgid "Remove passkey"
+msgstr "Remover chave de acesso"
+
+msgid "No passkeys yet. Register a device or keep using your authenticator code."
+msgstr "Nenhuma chave de acesso cadastrada. Cadastre um dispositivo ou continue usando o código do autenticador."
+
+msgid "Organization verification policy"
+msgstr "Política de verificação da organização"
+
+msgid "Passkeys can confirm privileged sign-in and sensitive actions in this organization."
+msgstr "As chaves de acesso podem confirmar o acesso privilegiado e as ações sensíveis nesta organização."
+
+msgid "Privileged accounts still require the authenticator code. An organization administrator must explicitly enable passkey verification."
+msgstr "As contas privilegiadas ainda exigem o código do autenticador. Um administrador da organização precisa habilitar o uso de chaves de acesso."
+
+msgid "Allow passkeys for privileged sign-in and sensitive actions"
+msgstr "Permitir chaves de acesso para contas privilegiadas e ações sensíveis"
+
+msgid "Choose whether passkey verification is allowed."
+msgstr "Escolha se a verificação por chave de acesso é permitida."
+
+msgid "This changes every unit in the organization and requires recent verification."
+msgstr "A alteração vale para todas as unidades da organização e exige verificação recente."
+
+msgid "Save verification policy"
+msgstr "Salvar política de verificação"
+
+msgid "Sign in with a passkey"
+msgstr "Entrar com chave de acesso"
+
+msgid "Confirm with a passkey"
+msgstr "Confirmar com chave de acesso"

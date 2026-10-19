@@ -90,6 +90,10 @@ LOGIN_URL: str = "/auth/login/"
 OTP_LOGIN_URL: str = "/auth/verify/"
 OTP_TOTP_ISSUER: str = "Clinic OS"
 STEP_UP_MAX_AGE_SECONDS: int = 300
+WEBAUTHN_RP_ID: str = env("CLINIC_WEBAUTHN_RP_ID", default="localhost")
+# Synthetic loopback environments can bind their ephemeral port at begin;
+# every non-loopback environment supplies its exact origin explicitly.
+WEBAUTHN_ORIGIN: str = env("CLINIC_WEBAUTHN_ORIGIN", default="")
 
 MIDDLEWARE: list[str] = [
     # Request id binding, latency SLI and access log; outermost so every

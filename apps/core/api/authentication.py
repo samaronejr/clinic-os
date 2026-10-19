@@ -13,6 +13,7 @@ from rest_framework.permissions import BasePermission
 from apps.core.api.errors import CsrfFailedError, StepUpRequiredError
 from apps.identity.models import User
 from apps.identity.otp import is_confirmed_verified_user, is_privileged_user
+from apps.identity.passkey_sessions import is_passkey_verified
 
 if TYPE_CHECKING:
     from drf_spectacular.openapi import AutoSchema
@@ -41,7 +42,9 @@ class StepUpVerified(BasePermission):
         user = request.user
         if not isinstance(user, User) or not is_privileged_user(user):
             return True
-        if is_confirmed_verified_user(user):
+        if is_confirmed_verified_user(user) or is_passkey_verified(
+            session=request.session
+        ):
             return True
         raise StepUpRequiredError
 

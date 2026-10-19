@@ -47,6 +47,36 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "intake.patient_session",
         "session_switched",
     ),
+    "identity.passkey.registered": (
+        "tenant",
+        "clinic-os-web",
+        "identity.passkey",
+        "created",
+    ),
+    "identity.passkey.verified": (
+        "tenant",
+        "clinic-os-web",
+        "identity.passkey",
+        "verified",
+    ),
+    "identity.passkey.counter_regression": (
+        "tenant",
+        "clinic-os-web",
+        "identity.passkey",
+        "denied",
+    ),
+    "identity.passkey.removed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.passkey",
+        "revoked",
+    ),
+    "identity.passkey.policy_changed": (
+        "tenant",
+        "clinic-os-web",
+        "identity.organization",
+        "policy_changed",
+    ),
     "workflows.task.created": (
         "tenant",
         "clinic-os-web",
