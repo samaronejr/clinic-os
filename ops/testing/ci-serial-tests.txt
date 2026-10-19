@@ -75,6 +75,7 @@ server-state tests/scheduling/test_appointment_states.py
 server-state tests/scheduling/test_appointment_expiry_audit.py
 server-state tests/scheduling/test_agenda_lifecycle_controls.py
 server-state tests/scheduling/test_lifecycle_http.py
+server-state tests/scheduling/test_arrivals_queue.py
 server-state tests/scheduling/test_lifecycle_migration.py
 server-state tests/scheduling/test_lifecycle_service_bookings.py
 server-state tests/scheduling/test_series.py
@@ -263,6 +264,7 @@ server-state tests/scheduling/test_resource_rules.py::test_selection_preparation
 server-state tests/scheduling/test_resource_staff_outcomes.py::test_authorized_staff_prepare_book_move_and_reach_safe_destinations
 server-state tests/scheduling/test_resource_staff_outcomes.py::test_physician_service_agenda_keeps_only_own_service_transition_links
 server-state tests/scheduling/test_resource_write_scope.py::test_writes_decide_their_response_scope_before_writing
+server-state tests/scheduling/test_resource_write_scope.py::test_reception_writes_decide_their_response_scope_before_writing
 server-state tests/scheduling/test_resources.py::test_same_room_barrier_has_one_success
 server-state tests/scheduling/test_resources.py::test_service_reserves_room_and_ultrasound_with_buffers
 server-state tests/scheduling/test_scheduling_accessibility.py::test_booked_agenda_keeps_its_transition_links_state_free

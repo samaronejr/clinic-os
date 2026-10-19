@@ -9,6 +9,11 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
     *duplicate_catalog.TABLE_GRANTS,
+    ("intake_patientidentifier", "SELECT"),
+    ("scheduling_cliniciandelay", "SELECT"),
+    ("scheduling_displaydevice", "SELECT"),
+    ("scheduling_queueentry", "SELECT"),
+    ("scheduling_roomstatus", "SELECT"),
     ("identity_passkey", "SELECT"),
     *identity_lifecycle_catalog.TABLE_GRANTS,
     ("identity_patientdelegategrant", "SELECT"),
@@ -152,6 +157,10 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    "reception_guard": ("v", False, ["clinic_resolver"]),
+    "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
+    "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
+    "reception_practitioners": ("s", True, ["clinic_app", "clinic_resolver"]),
     "delegate_now": ("s", False, ["clinic_resolver"]),
     "patient_identity": ("s", False, ["clinic_resolver"]),
     "delegate_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
@@ -322,6 +331,10 @@ POSTURE_OVERRIDES: Final = {
     "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
+    ("reception_guard", ""),
+    ("reception_display", "token_digest text"),
+    ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
+    ("reception_practitioners", "requested_clinic uuid"),
     ("delegate_now", ""),
     ("patient_identity", "requested_session uuid"),
     ("delegate_staff", "requested_clinic uuid"),
@@ -537,6 +550,19 @@ FUNCTION_SIGNATURES: Final = {
     ("workflows_task_scope", "requested_task uuid"),
 }
 FUNCTION_RESULTS: Final = {
+    ("reception_guard", ""): "trigger",
+    ("reception_display", "token_digest text"): "jsonb",
+    (
+        "reception_practitioners",
+        "requested_clinic uuid",
+    ): "TABLE(user_id uuid, display_label text)",
+    (
+        "reception_readiness",
+        "requested_clinic uuid, requested_appointment uuid",
+    ): (
+        "TABLE(forms_pending bigint, consents_pending bigint, "
+        "payment_pending boolean, identity_document_recorded boolean)"
+    ),
     ("delegate_now", ""): "timestamp with time zone",
     (
         "patient_identity",

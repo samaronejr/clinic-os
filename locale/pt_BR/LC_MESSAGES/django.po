@@ -4841,3 +4841,210 @@ msgstr "Seu acesso a esta sala terminou."
 
 msgid "Return to the session list and enter again. Your notes remain on this page."
 msgstr "Volte à lista de sessões e entre de novo. As anotações continuam nesta página."
+
+msgid "Reception Today · Clinic OS"
+msgstr "Recepção hoje · Clinic OS"
+
+msgid "Reception Today"
+msgstr "Recepção hoje"
+
+msgid "Arrivals, readiness and rooms in one place."
+msgstr "Chegadas, pendências e salas no mesmo lugar."
+
+msgid "The queue changed. Finish this form, then refresh."
+msgstr "A fila mudou. Termine este formulário e atualize a página."
+
+msgid "Open day"
+msgstr "Abrir dia"
+
+msgid "This day exceeds the reception limit. Use the agenda to review all appointments."
+msgstr "Este dia ultrapassa o limite da recepção. Use a agenda para consultar todos os agendamentos."
+
+msgid "Device token — shown only once"
+msgstr "Código do dispositivo — exibido uma única vez"
+
+msgid "Copy this token to the waiting display. It permits only ticket and room codes."
+msgstr "Copie este código para o painel de espera. Ele permite consultar somente senhas e códigos de sala."
+
+msgid "Arrivals and readiness"
+msgstr "Chegadas e pendências"
+
+msgid "Readiness is informational. Optional consent, documents and payment never prevent arrival."
+msgstr "As pendências são informativas. Consentimentos opcionais, documentos e pagamentos nunca impedem o registro da chegada."
+
+msgid "Late"
+msgstr "Atrasado"
+
+msgid "Room unavailable"
+msgstr "Sala indisponível"
+
+msgid "Payment status unavailable for this role"
+msgstr "Situação do pagamento indisponível para este perfil"
+
+msgid "Payment pending"
+msgstr "Pagamento pendente"
+
+msgid "No issued payment pending"
+msgstr "Nenhuma cobrança emitida pendente"
+
+msgid "Identity document recorded"
+msgstr "Documento de identificação registrado"
+
+msgid "Identity document not recorded"
+msgstr "Documento de identificação não registrado"
+
+msgid "Arrival location"
+msgstr "Local de chegada"
+
+msgid "Register arrival"
+msgstr "Registrar chegada"
+
+msgid "Configure an arrival location in Scheduling settings before registering arrivals."
+msgstr "Configure um local de chegada nas configurações da agenda antes de registrar chegadas."
+
+msgid "Arrival registered"
+msgstr "Chegada registrada"
+
+msgid "Care in progress"
+msgstr "Atendimento em andamento"
+
+msgid "Arrival is unavailable for this state or role."
+msgstr "O registro da chegada não está disponível para este estado ou perfil."
+
+msgid "No arrivals to manage for this day."
+msgstr "Nenhuma chegada para acompanhar neste dia."
+
+msgid "Location queues"
+msgstr "Filas por local"
+
+msgid "Called"
+msgstr "Chamado"
+
+msgid "In room"
+msgstr "Em sala"
+
+msgid "Call to room"
+msgstr "Chamar para a sala"
+
+msgid "The arrival queue is empty."
+msgstr "A fila de chegadas está vazia."
+
+msgid "Room status"
+msgstr "Situação das salas"
+
+msgid "Display code"
+msgstr "Código no painel"
+
+msgid "Occupied"
+msgstr "Ocupada"
+
+msgid "Condition"
+msgstr "Condição"
+
+msgid "Available"
+msgstr "Disponível"
+
+msgid "Cleaning"
+msgstr "Em limpeza"
+
+msgid "Update room"
+msgstr "Atualizar sala"
+
+msgid "No active room configured."
+msgstr "Nenhuma sala ativa configurada."
+
+msgid "Clinician delays"
+msgstr "Atrasos dos profissionais"
+
+msgid "Broadcast delay"
+msgstr "Informar atraso"
+
+msgid "No active clinician configured."
+msgstr "Nenhum profissional ativo configurado."
+
+msgid "Waiting display devices"
+msgstr "Dispositivos do painel de espera"
+
+msgid "Public screens show ticket and room codes only, never patient names or service details."
+msgstr "As telas públicas mostram somente senhas e códigos de sala, nunca nomes de pacientes ou detalhes dos serviços."
+
+msgid "Issue display token"
+msgstr "Gerar código do painel"
+
+msgid "Display device"
+msgstr "Dispositivo do painel"
+
+msgid "Revoke device"
+msgstr "Revogar dispositivo"
+
+msgid "No connected display device."
+msgstr "Nenhum dispositivo do painel conectado."
+
+msgid "%(late)s late arrivals · %(conflicts)s room conflicts"
+msgstr "%(late)s chegadas em atraso · %(conflicts)s conflitos de sala"
+
+msgid "%(count)s pending tasks"
+msgstr "%(count)s tarefas pendentes"
+
+msgid "Pending questionnaires: %(count)s"
+msgstr "Questionários pendentes: %(count)s"
+
+msgid "Optional consents to review: %(count)s"
+msgstr "Consentimentos opcionais para revisar: %(count)s"
+
+msgid "Position %(position)s"
+msgstr "Posição %(position)s"
+
+msgid "Unit %(unit)s"
+msgstr "Unidade %(unit)s"
+
+msgid "%(name)s — delay in minutes"
+msgstr "%(name)s — atraso em minutos"
+
+msgid "Waiting display · Clinic OS"
+msgstr "Painel de espera · Clinic OS"
+
+msgid "Now calling"
+msgstr "Chamando agora"
+
+msgid "Please follow your ticket and room code."
+msgstr "Acompanhe sua senha e o código da sala."
+
+msgid "Please wait for your ticket to be called."
+msgstr "Aguarde a chamada da sua senha."
+
+msgid "Device disconnected"
+msgstr "Dispositivo desconectado"
+
+msgid "Ask reception to connect this display with a new device token."
+msgstr "Peça à recepção para conectar este painel com um novo código do dispositivo."
+
+msgid "Device token"
+msgstr "Código do dispositivo"
+
+msgid "Pause automatic updates"
+msgstr "Pausar atualizações automáticas"
+
+msgid "Show device token"
+msgstr "Mostrar código do dispositivo"
+
+msgid "Connect display"
+msgstr "Conectar painel"
+
+msgid "The queue or room changed meanwhile. Reload before trying again."
+msgstr "A fila ou a sala mudou. Atualize a página antes de tentar novamente."
+
+msgid "Reception updated."
+msgstr "Recepção atualizada."
+
+msgid "Add to arrival queue"
+msgstr "Adicionar à fila de chegadas"
+
+msgid "The display code is assigned when this room unit is first used."
+msgstr "O código do painel é atribuído no primeiro uso desta unidade da sala."
+
+msgid "Updating reception..."
+msgstr "Atualizando a recepção..."
+
+msgid "Connection unavailable. No update has been confirmed. Refresh when you reconnect."
+msgstr "Conexão indisponível. Nenhuma atualização foi confirmada. Atualize a página quando a conexão voltar."

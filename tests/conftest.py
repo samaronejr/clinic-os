@@ -30,6 +30,12 @@ SYNTHETIC_AUTH_VALUE_B = "synthetic-hash-b"
 AUDIT_ROW_TRIGGER = "audit_event_immutable_row"
 AUDIT_TRUNCATE_TRIGGER = "audit_event_immutable_truncate"
 PASSKEY_TRUNCATE_TRIGGER = "identity_passkey_no_truncate"
+RECEPTION_TABLES = (
+    "scheduling_queueentry",
+    "scheduling_roomstatus",
+    "scheduling_cliniciandelay",
+    "scheduling_displaydevice",
+)
 __all__: Final = (
     "RbacGraph",
     "rbac_graph",
@@ -344,7 +350,23 @@ def pytest_runtest_teardown(
     started_enabled = True
     passkey_trigger_present = False
     passkey_started_enabled = True
+    reception_triggers: list[tuple[str, str]] = []
     with psycopg.connect(database_url) as raw_connection:
+        for table in RECEPTION_TABLES:
+            reception_trigger = raw_connection.execute(
+                "SELECT tgenabled FROM pg_trigger "
+                "WHERE tgrelid = to_regclass(%s) "
+                "AND tgname = 'reception_guard_truncate'",
+                ["clinic_app." + table],
+            ).fetchone()
+            if reception_trigger is not None:
+                reception_triggers.append((table, reception_trigger[0]))
+                raw_connection.execute(
+                    psycopg.sql.SQL(
+                        "ALTER TABLE clinic_app.{} DISABLE TRIGGER "
+                        "reception_guard_truncate"
+                    ).format(psycopg.sql.Identifier(table))
+                )
         passkey_trigger = raw_connection.execute(
             "SELECT tgenabled FROM pg_trigger "
             "WHERE tgrelid = to_regclass('clinic_app.identity_passkey') "
@@ -385,6 +407,21 @@ def pytest_runtest_teardown(
     try:
         yield
     finally:
+        with psycopg.connect(database_url) as raw_connection:
+            for table, started in reception_triggers:
+                raw_connection.execute(
+                    psycopg.sql.SQL(
+                        "ALTER TABLE clinic_app.{} ENABLE TRIGGER "
+                        "reception_guard_truncate"
+                    ).format(psycopg.sql.Identifier(table))
+                )
+                assert raw_connection.execute(
+                    "SELECT tgenabled FROM pg_trigger "
+                    "WHERE tgrelid = to_regclass(%s) "
+                    "AND tgname = 'reception_guard_truncate'",
+                    ["clinic_app." + table],
+                ).fetchone() == ("O",)
+                assert started == "O"
         if passkey_trigger_present:
             with psycopg.connect(database_url) as raw_connection:
                 raw_connection.execute(

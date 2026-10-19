@@ -40,6 +40,7 @@ from apps.scheduling.patient_authority import (
     patient_booking_scope,
     record_appointment_event,
 )
+from apps.scheduling.reception_progress import synchronize_queue
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -267,6 +268,7 @@ def _transition(
             fields = (*fields, "cancellation_reason")
         _save(current, fields)
         current.refresh_from_db()
+        synchronize_queue(appointment=current)
         record_appointment_event(
             AUDIT_EVENTS[action], clinic_id=clinic_id, affected_record_id=current.pk
         )

@@ -3,6 +3,7 @@
 from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
+from identity.test_reception_sql_principal import test_reception_display_device_contract
 from patients import test_delegates
 from patients.duplicate_authority_cases import (
     SQL_PROTOCOL_ORACLES as DUPLICATE_SQL_ORACLES,
@@ -86,6 +87,7 @@ DELEGATE_PROTOCOLS = frozenset(
 )
 PROTOCOL_ORACLES = {
     **DUPLICATE_SQL_ORACLES,
+    "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **SCHEDULING_CASES,
     "clinic_app.scheduling_capacity_guard": [
         *SCHEDULING_CASES["clinic_app.scheduling_capacity_guard"],
@@ -116,6 +118,7 @@ PROTOCOL_ORACLES = {
 def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
+    assert callable(test_reception_display_device_contract)
     assert all(case in GUARDS for cases in SCHEDULING_CASES.values() for case in cases)
     assert all(callable(case) for case in SQL_CASES.values())
     assert callable(test_effective_interval_is_actor_invariant)

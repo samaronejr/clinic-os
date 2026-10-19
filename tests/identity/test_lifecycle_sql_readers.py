@@ -147,6 +147,9 @@ ACTOR_PROTOCOL_ORACLES = {
     signature: tuple(f"identity.test_lifecycle_sql_readers.{name}" for name in names)
     for signature, names in _ACCOUNT_ORACLES.items()
 } | {
+    "clinic_app.reception_readiness(uuid,uuid)": (
+        "identity.test_reception_readiness_actor.test_readiness_sql_refuses_inactive_existing_actor",
+    ),
     "clinic_app.identity_signup_register(uuid,uuid,uuid,uuid,jsonb,text,bytea,text)": (
         "identity.test_onboarding."
         "test_signup_is_protected_pending_and_confers_no_runtime_membership",
@@ -164,6 +167,9 @@ SQL_PROTOCOL_ORACLES = (
         not in {
             "clinic_app.identity_offboarding_clinics(uuid,uuid)",
             "clinic_app.identity_reset_guard()",
+            # A sealed staff-role oracle already classifies this SQL guard;
+            # the actor protocol above adds independent inactive-caller proof.
+            "clinic_app.reception_readiness(uuid,uuid)",
         }
     }
     | {

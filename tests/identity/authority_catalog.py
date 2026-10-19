@@ -40,6 +40,7 @@ CONTEXT_PRIMITIVES = frozenset(
         "gen_random_uuid",
         "jsonb_build_object",
         "jsonb_build_array",
+        "jsonb_agg",
         "to_jsonb",
         "row_to_json",
         "format",
@@ -92,6 +93,7 @@ class Function:
     library: str | None
     native_types: bool
     defaults: str | None
+    signature: str
 
 
 @dataclass(frozen=True)
@@ -175,7 +177,9 @@ class Catalog:
                          JOIN pg_namespace tn ON tn.oid=t.typnamespace
                          WHERE tn.nspname<>'pg_catalog'
                        ),
-                       pg_get_expr(p.proargdefaults, 0)
+                       pg_get_expr(p.proargdefaults, 0),
+                       n.nspname||'.'||p.proname||'('||
+                         oidvectortypes(p.proargtypes)||')'
                 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                 JOIN pg_language l ON l.oid=p.prolang
                 JOIN pg_roles r ON r.oid=p.proowner
@@ -566,6 +570,11 @@ class Catalog:
                 function.extension == "pgcrypto"
                 and function.library == "$libdir/pgcrypto"
                 and CRYPTO_PRIMITIVES.get(name) == function.source
+            )
+            # Data aggregation is trusted only for the deployed built-in
+            # signature. A same-named application or shadow stays opaque.
+            safe &= name != "jsonb_agg" or (
+                builtin and function.signature == "pg_catalog.jsonb_agg(anyelement)"
             )
             if not safe:
                 result.opaque.add("opaque function " + function.name)

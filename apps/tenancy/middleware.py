@@ -54,6 +54,7 @@ BYPASS_PATHS: Final = frozenset(
     }
 )
 BYPASS_PREFIXES: Final = (
+    "/waiting-display/",  # Device capability only; staff cookies grant nothing.
     "/static/",
     "/rt/",  # Ticket endpoint owns a short, independently authenticated txn.
     "/workflows/synthetic/callback/",  # HMAC before stored-scope resolution.

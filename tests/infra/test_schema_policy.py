@@ -179,6 +179,10 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         ("scheduling_appointment", "patient_booking_update"),
         # Lifecycle v2: patients read their own appointments' receipts (replay).
         ("scheduling_appointmenttransition", "patient_booking_read"),
+        ("scheduling_queueentry", "reception_scope"),
+        ("scheduling_roomstatus", "reception_scope"),
+        ("scheduling_cliniciandelay", "reception_scope"),
+        ("scheduling_displaydevice", "reception_scope"),
     }
 
 
@@ -298,6 +302,12 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     }
     assert user_grants == []
     assert tenant_column_updates == {
+        ("scheduling_queueentry", "state"),
+        ("scheduling_queueentry", "room_id"),
+        ("scheduling_queueentry", "room_unit"),
+        ("scheduling_roomstatus", "state"),
+        ("scheduling_cliniciandelay", "minutes"),
+        ("scheduling_displaydevice", "active"),
         ("scheduling_appointment", "last_command_id"),
         ("intake_duplicatecandidate", "state"),
         ("intake_patientalias", "active"),

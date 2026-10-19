@@ -20,7 +20,7 @@ from apps.identity.models import (
     ProfessionalRegistration,
     RoleGrant,
 )
-from apps.identity.permissions import ENCOUNTER_PERMISSIONS_V2
+from apps.identity.permissions import ENCOUNTER_PERMISSIONS_V2, RECEPTION_PERMISSIONS_V2
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -84,7 +84,11 @@ def narrow_role(
         clinic=clinic,
         role=role,
         permission=permission,
-        bundle_version=2 if permission in ENCOUNTER_PERMISSIONS_V2 else 1,
+        bundle_version=(
+            2
+            if permission in ENCOUNTER_PERMISSIONS_V2 | RECEPTION_PERMISSIONS_V2
+            else 1
+        ),
         valid_from=valid_from,
         valid_to=valid_to,
     )

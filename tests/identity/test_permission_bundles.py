@@ -112,6 +112,7 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
             "tasks.complete",
             "tasks.reassign",
             "encounter.open_unscheduled",
+            "reception.queue",
         }
         == PERMISSIONS
     )
@@ -122,6 +123,8 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
             added.add("tasks.reassign")
         if role == "physician":
             added.add("encounter.open_unscheduled")
+        if role in {"receptionist", "nurse"}:
+            added.add("reception.queue")
         assert bundle == BUNDLES_V1[role] | added, role
     assert len(RP) * len(COLUMNS) == 117
     for role in COLUMNS[:6]:

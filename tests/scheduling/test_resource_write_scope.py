@@ -24,15 +24,29 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
-from apps.identity.current_context import MANAGER_ROLES
+from apps.identity.current_context import (
+    MANAGER_ROLES,
+    CurrentActorError,
+    require_permission,
+)
 from apps.identity.models import User, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
+from apps.scheduling.models import QueueEntry
+from apps.scheduling.reception import (
+    ReceptionAccessDeniedError,
+    issue_display_device,
+    mark_arrived,
+)
+from apps.scheduling.resource_services import ResourceInput, create_resource
 from apps.tenancy.db import tenant_context
+from django.db import connection
 from django.urls import reverse
+from psycopg import sql
 
 from auth.stepup_test_support import create_role_actor
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
+    arrive_appointment,
     create_synthetic_appointment,
     seed_appointment_setup,
 )
@@ -42,7 +56,7 @@ from scheduling.test_resources import _catalog
 from scheduling.write_scope_routes import write_routes
 
 if TYPE_CHECKING:
-    from apps.scheduling.models import Appointment
+    from apps.scheduling.models import Appointment, Resource
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
 
@@ -75,6 +89,7 @@ def test_the_matrix_splits_every_write_and_response_scope() -> None:
     assert set(ROLES) - move_without_page - TRANSITION_SCOPE, "refused both ways"
     assert holds(PHYSICIAN, "appointment.move_own", "appointment.book_own")
     assert "scheduling:agenda-grid-move" in {route.name for route in write_routes()}
+    assert {route.family for route in write_routes()} == {"appointment", "reception"}
 
 
 def _snapshot(
@@ -94,11 +109,26 @@ def _snapshot(
             "SELECT id, appointment_id, resource_id, unit, start_at, end_at, occupied "
             "FROM clinic_app.scheduling_appointmentresource"
         ).fetchall()
+        reception_rows: dict[tuple[str, UUID], tuple[object, ...]] = {}
+        for table in (
+            "scheduling_queueentry",
+            "scheduling_roomstatus",
+            "scheduling_cliniciandelay",
+            "scheduling_displaydevice",
+        ):
+            records = raw.execute(
+                sql.SQL(
+                    "SELECT id, to_jsonb(reception_row)-'token_hash' "
+                    "FROM clinic_app.{} AS reception_row"
+                ).format(sql.Identifier(table))
+            ).fetchall()
+            reception_rows.update({(table, row[0]): (row[1],) for row in records})
         audit = raw.execute("SELECT count(*) FROM clinic_app.audit_event").fetchone()
     assert audit is not None
     return {
         **{("appointment", row[0]): tuple(row[1:]) for row in rows},
         **{("resource", row[0]): tuple(row[1:]) for row in resources},
+        **reception_rows,
     }, int(audit[0])
 
 
@@ -186,7 +216,7 @@ def test_writes_decide_their_response_scope_before_writing(
     books_service = holds(role, "appointment.book") or (
         own and holds(role, "appointment.book_own")
     )
-    for route in write_routes():
+    for route in (row for row in write_routes() if row.family == "appointment"):
         for is_service, appointment in ((False, legacy), (True, serviced)):
             booking_allowed = books_service if is_service else role in MANAGER_ROLES
             moving_allowed = moves_service if is_service else role in MANAGER_ROLES
@@ -271,3 +301,151 @@ def test_writes_decide_their_response_scope_before_writing(
     if role == PHYSICIAN:
         assert moves_service
         assert PHYSICIAN not in TRANSITION_SCOPE
+
+
+def _assert_nurse_queue_scope(
+    setup: AppointmentSetup,
+    legacy: Appointment,
+    arrived: Appointment,
+    location: Resource,
+) -> None:
+    with pytest.raises(CurrentActorError):
+        require_permission("appointment.move", clinic_id=setup.clinic_id)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM clinic_app.reception_readiness(%s,%s)",
+            [setup.clinic_id, legacy.pk],
+        )
+        assert cursor.fetchone() is None
+    with pytest.raises(ReceptionAccessDeniedError):
+        mark_arrived(
+            clinic_id=setup.clinic_id,
+            appointment_id=legacy.pk,
+            location_id=location.pk,
+            expected_revision=legacy.revision,
+            command_id=uuid4(),
+        )
+    before_revision = arrived.revision
+    inserted = QueueEntry.objects.create(
+        organization_id=setup.organization_id,
+        clinic_id=setup.clinic_id,
+        appointment_id=arrived.pk,
+        location_id=location.pk,
+    )
+    assert QueueEntry.objects.filter(pk=inserted.pk).exists()
+    arrived.refresh_from_db()
+    assert (arrived.status, arrived.revision) == ("arrived", before_revision)
+
+
+@pytest.mark.parametrize("role", ROLES)
+@pytest.mark.parametrize("htmx", [False, True], ids=["native", "htmx"])
+def test_reception_writes_decide_their_response_scope_before_writing(
+    rbac_graph: RbacGraph, role: str, superuser_database_url: str, *, htmx: bool
+) -> None:
+    setup = seed_appointment_setup(rbac_graph)
+    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+        room, equipment, service = _catalog(setup)
+        location = create_resource(
+            clinic_id=setup.clinic_id,
+            content=ResourceInput(name="Response scope location", kind="location"),
+        )
+        legacy = create_synthetic_appointment(
+            setup, start_local="2035-06-02T08:00", end_local="2035-06-02T08:30"
+        )
+        serviced = book(setup, (room, equipment, service), start="09:00")
+        waiting = create_synthetic_appointment(
+            setup, start_local="2035-06-02T11:00", end_local="2035-06-02T11:15"
+        )
+        queued = mark_arrived(
+            clinic_id=setup.clinic_id,
+            appointment_id=waiting.pk,
+            location_id=location.pk,
+            expected_revision=waiting.revision,
+            command_id=uuid4(),
+        )
+        device = issue_display_device(clinic_id=setup.clinic_id)
+        arrived = arrive_appointment(
+            create_synthetic_appointment(
+                setup, start_local="2035-06-02T10:00", end_local="2035-06-02T10:15"
+            )
+        )
+    user = (
+        User.objects.get(pk=rbac_graph.physician)
+        if role == PHYSICIAN
+        else create_role_actor(rbac_graph, UserClinicRole.Role(role))
+    )
+    client = _verified_client(user)
+    if role == UserClinicRole.Role.NURSE:
+        with runtime_role(), tenant_context(user.pk, setup.organization_id):
+            _assert_nurse_queue_scope(setup, legacy, arrived, location)
+    cases: dict[str, dict[str, str | list[str]]] = {
+        "view": {},
+        "arrive": {"location_id": str(location.pk)},
+        "room": {
+            "room_id": str(room.pk),
+            "unit": "1",
+            "state": "available",
+            "expected_revision": "0",
+        },
+        "delay": {
+            "practitioner_id": str(setup.practitioner_id),
+            "minutes": "5",
+            "expected_revision": "0",
+        },
+        "issue_device": {},
+        "revoke_device": {"device_id": str(device.device_id)},
+        "call": {
+            "queue_entry_id": str(queued.pk),
+            "room_id": str(room.pk),
+            "unit": "1",
+            "expected_revision": str(queued.revision),
+        },
+    }
+    routes = [route for route in write_routes() if route.family == "reception"]
+    assert routes, "no reception write aliases discovered"
+    for route in routes:
+        assert set(route.modes) == set(cases), (route.name, route.modes)
+        url = reverse(route.name, kwargs={route.selector: setup.clinic_id})
+        unknown_url = reverse(route.name, kwargs={route.selector: uuid4()})
+        for intent, fields in cases.items():
+            allowed = role == "receptionist" or (
+                role == "nurse" and intent in {"view", "room", "call"}
+            )
+            for appointment in (legacy, serviced) if intent == "arrive" else (legacy,):
+                data = {"intent": intent, "day": "2035-06-02", **fields}
+                if intent == "arrive":
+                    data.update(
+                        appointment_id=str(appointment.pk),
+                        expected_revision=str(appointment.revision),
+                        command_id=str(uuid4()),
+                    )
+                unknown = _post(client, unknown_url, data, htmx=htmx)
+                before_session = dict(client.session)
+                before_rows, before_audit = _snapshot(superuser_database_url)
+                response = _post(client, url, data, htmx=htmx)
+                after_rows, after_audit = _snapshot(superuser_database_url)
+                case = (
+                    role,
+                    route.name,
+                    intent,
+                    "service" if appointment.service_type_id is not None else "legacy",
+                    htmx,
+                )
+                if allowed:
+                    assert response.status_code == 200, case
+                    if role == UserClinicRole.Role.NURSE:
+                        screen = response.context["screen"]
+                        assert screen.arrivals == ()
+                        assert screen.devices == ()
+                        assert screen.pending_tasks is None
+                        assert queued.pk in {entry.pk for entry in screen.queue}
+                        assert room.pk in {entry.room.pk for entry in screen.rooms}
+                    assert (after_rows == before_rows) == (intent == "view"), case
+                    assert (after_audit == before_audit) == (intent == "view"), case
+                    if intent != "view":
+                        assert after_audit > before_audit, case
+                else:
+                    assert _refused_like(response, unknown), case
+                    assert dict(client.session) == before_session, case
+                    assert after_rows == before_rows, case
+                    assert after_audit == before_audit, case

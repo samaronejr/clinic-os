@@ -32,6 +32,8 @@ from identity.legacy_lifecycle_boundaries import lifecycle_world
 from identity.legacy_owner_boundaries import BOUNDARIES as OWNER_BOUNDARIES
 from identity.legacy_parity_support import LEGACY, exercise, target_code, world
 from identity.legacy_predicate_boundaries import BOUNDARIES as PREDICATE_BOUNDARIES
+from identity.legacy_reception_boundaries import BOUNDARIES as RECEPTION_BOUNDARIES
+from identity.legacy_reception_boundaries import reception_world
 from identity.legacy_scope_boundaries import BOUNDARIES as SCOPE_BOUNDARIES
 from identity.legacy_sql_inventory import SqlInventoryEntry, assert_sql_inventory
 from identity.legacy_tenant_boundaries import exercise_tenant_boundaries
@@ -63,6 +65,7 @@ CORE = (
     *OWNER_BOUNDARIES,
     *WORKSPACE_BOUNDARIES,
     *LIFECYCLE_BOUNDARIES,
+    *RECEPTION_BOUNDARIES,
 )
 
 
@@ -189,6 +192,8 @@ def test_actual_legacy_boundaries(
     request: pytest.FixtureRequest,
 ) -> None:
     subject = world(rbac_graph, legacy_role)
+    if family == "reception":
+        subject = reception_world(subject)
     if family == "lifecycle":
         with override_settings(COMMS_SYNTHETIC_CHANNELS=("email",)):
             subject = lifecycle_world(
@@ -220,12 +225,17 @@ def test_new_permission_admissions_execute_all_remaining_staff_roles(
     role: str,
     record_property: Callable[[str, object], None],
 ) -> None:
-    subject = world(rbac_graph, role)
-    for boundary in WORKSPACE_BOUNDARIES:
+    subject = reception_world(world(rbac_graph, role))
+    for boundary in (*WORKSPACE_BOUNDARIES, *RECEPTION_BOUNDARIES):
         exercise(boundary, subject)
     record_property(
         "executed_authority_probes",
-        json.dumps([boundary.symbol for boundary in WORKSPACE_BOUNDARIES]),
+        json.dumps(
+            [
+                boundary.symbol
+                for boundary in (*WORKSPACE_BOUNDARIES, *RECEPTION_BOUNDARIES)
+            ]
+        ),
     )
 
 

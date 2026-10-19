@@ -10,17 +10,16 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from importlib import import_module
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 import psycopg
 import pytest
 from apps.ehr.migrations import _arrival_sql as arrival
 from apps.scheduling.migrations import _expiry_audit_sql as expiry_audit
 from apps.scheduling.migrations import _lifecycle_sql as lifecycle
-from apps.scheduling.services import arrive
 from apps.tenancy.db import tenant_context
 from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
+from psycopg import sql
 
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
@@ -80,7 +79,9 @@ def test_populated_upgrade_and_rollback_refusal(
         assert _exclusion_predicates() == {"(((status)::text = 'scheduled'::text))"}
         assert snapshot() == before
         # Populated upgrade: the legacy booking survives with v2 defaults.
-        MigrationExecutor(connection).migrate([V2])
+        executor = MigrationExecutor(connection)
+        executor.migrate([V2])
+        historical_apps = executor.loader.project_state([V2]).apps
         assert snapshot() == before
         assert _exclusion_predicates() == {
             f"(((status)::text = ANY ((ARRAY[{OCCUPYING}])::text[])))"
@@ -91,15 +92,23 @@ def test_populated_upgrade_and_rollback_refusal(
             [legacy.pk],
         ).fetchone()
         assert defaults == (1, None, None, "", None)
-    # Once a v2 state exists, the reverse refuses and nothing is rewritten.
-    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
-        arrived = arrive(
-            clinic_id=setup.clinic_id,
-            appointment_id=legacy.pk,
-            expected_revision=1,
-            command_id=uuid4(),
+        # Populate the historical table as the migration-test superuser. Runtime
+        # ACLs remain closed; the current service requires later reception tables.
+        appointment_model = historical_apps.get_model("scheduling", "Appointment")
+        superuser.execute(
+            "SELECT set_config('app.current_user_id', %s, false), "
+            "set_config('app.current_tenant', %s, false)",
+            [str(setup.actor_id), str(setup.organization_id)],
         )
-    assert arrived.status == "arrived"
+        populated = superuser.execute(
+            sql.SQL(
+                "UPDATE clinic_app.{} SET status=%s, revision=%s "
+                "WHERE id=%s RETURNING status, revision"
+            ).format(sql.Identifier(appointment_model._meta.db_table)),
+            ["arrived", 2, legacy.pk],
+        ).fetchone()
+        assert populated == ("arrived", 2)
+    # Once a v2 state exists, the reverse refuses and nothing is rewritten.
     with pytest.raises(IntegrityError) as refused:
         MigrationExecutor(connection).migrate([V1])
     assert _constraint(refused.value) == "scheduling_lifecycle_rollback"

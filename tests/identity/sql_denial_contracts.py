@@ -79,6 +79,30 @@ class DmlMember:
 # New domain members extend this table; they cannot mint their own verdicts.
 DML_CONTRACTS: dict[DmlMember, Refusal] = {
     DmlMember(
+        "clinic_app.reception_guard",
+        "clinic_app.scheduling_queueentry",
+        "INSERT",
+        "scheduling_queueentry",
+    ): Refusal("42501", "reception access denied"),
+    DmlMember(
+        "clinic_app.reception_guard",
+        "clinic_app.scheduling_roomstatus",
+        "INSERT",
+        "scheduling_roomstatus",
+    ): Refusal("42501", "reception access denied"),
+    DmlMember(
+        "clinic_app.reception_guard",
+        "clinic_app.scheduling_cliniciandelay",
+        "INSERT",
+        "scheduling_cliniciandelay",
+    ): Refusal("42501", "reception access denied"),
+    DmlMember(
+        "clinic_app.reception_guard",
+        "clinic_app.scheduling_displaydevice",
+        "INSERT",
+        "scheduling_displaydevice",
+    ): Refusal("42501", "reception access denied"),
+    DmlMember(
         "clinic_app.teleconsult_binding_guard",
         "clinic_app.teleconsult_teleconsultdevicecheck",
         "INSERT",
@@ -149,6 +173,8 @@ MANAGER_REFUSAL = Refusal("42501", "clinic manager authority is required")
 # pg_proc on every probe; a refusal is checked against the function definition
 # by test_sql_probe_catalog and against the raised error on every probe.
 CONTRACTS: dict[str, Declared] = {
+    "clinic_app.reception_readiness": Declared(Shape.SET),
+    "clinic_app.reception_practitioners": Declared(Shape.SET),
     "clinic_app.auth_lookup": Declared(Shape.SET),
     "clinic_app.billing_payment_event_recorder": Declared(Shape.BOOLEAN),
     "clinic_app.billing_staff_invoice": Declared(Shape.BOOLEAN),

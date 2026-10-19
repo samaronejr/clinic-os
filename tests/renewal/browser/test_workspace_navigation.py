@@ -65,9 +65,16 @@ COMMAND_TRIGGER_ROLES: Final = frozenset(
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
     "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": ["agenda", "patients", "finance", "operations", "settings"],
+    "receptionist": [
+        "today",
+        "agenda",
+        "patients",
+        "finance",
+        "operations",
+        "settings",
+    ],
     "physician": ["agenda", "patients", "operations"],
-    "nurse": [],
+    "nurse": ["today"],
     "allied_professional": [],
     "scheduler": ["settings"],
     "clinic_manager": ["settings"],
@@ -369,8 +376,13 @@ def test_every_role_sees_exactly_its_destinations(
             expect(page.locator(".nav-command")).to_have_count(
                 1 if role in COMMAND_TRIGGER_ROLES else 0
             )
+            expect(page.locator("#command-palette")).to_have_count(
+                1 if role in COMMAND_TRIGGER_ROLES else 0
+            )
             for key in ("today", "inbox", "messages", "automations", "reports"):
-                expect(page.locator(f'[data-module="{key}"]')).to_have_count(0)
+                expect(page.locator(f'[data-module="{key}"]')).to_have_count(
+                    int(key in expected)
+                )
             violations = _axe(page, renewal_base_url)
             axe_results[role] = violations
             assert violations == [], (role, violations)

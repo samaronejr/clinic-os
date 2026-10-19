@@ -11,6 +11,7 @@ from apps.scheduling import (
     booking_views,
     lifecycle_views,
     patient_views,
+    reception_views,
     resource_views,
     transition_views,
     views,
@@ -20,6 +21,16 @@ from apps.scheduling import (
 app_name = "scheduling"
 
 urlpatterns: list[URLPattern] = [
+    path(
+        "scheduling/clinics/<uuid:clinic_id>/reception/",
+        reception_views.reception_view,
+        name="reception",
+    ),
+    path(
+        "waiting-display/",
+        reception_views.waiting_display,
+        name="waiting-display",
+    ),
     path(
         "scheduling/clinics/<uuid:clinic_id>/settings/",
         resource_views.resource_settings,

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Reception Today · Clinic OS" %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-reception.css' %}">
+<script src="{% static 'js/realtime.js' %}" defer></script>
+<script src="{% static 'js/reception.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<section class="reception" aria-labelledby="reception-title"
+  data-realtime-topic="clinic:{{ clinic_id }}:queue"
+  data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}"
+  data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <header class="reception-header">
+    <div><h1 id="reception-title">{% trans "Reception Today" %}</h1>
+      <p>{% trans "Arrivals, readiness and rooms in one place." %}</p></div>
+    <a class="button button--secondary" href="{{ action_url }}">{% trans "Refresh" %}</a>
+  </header>
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  <p class="feedback feedback--warning" data-reception-stale role="status" hidden>{% trans "The queue changed. Finish this form, then refresh." %}</p>
+  <p class="feedback" data-reception-saving role="status" hidden>{% trans "Updating reception..." %}</p>
+  <p class="feedback feedback--warning" data-reception-offline role="status" hidden>{% trans "Connection unavailable. No update has been confirmed. Refresh when you reconnect." %}</p>
+  {% if not error %}{% for message in messages %}{% if "reception" in message.tags %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endif %}{% endfor %}{% endif %}
+  {% include "scheduling/partials/reception_board.html" %}
+</section>
+{% endblock %}

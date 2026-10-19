@@ -64,12 +64,21 @@ class WorkspaceClinic:
     name: str
     timezone: str
     roles: frozenset[str]
+    command_context: bool = False
+
+    @property
+    def has_command_palette(self) -> bool:
+        """Retain command presentation for pre-existing clinic contexts."""
+        return bool(self.roles.intersection(_STAFF_ROLES) or self.command_context)
 
     @property
     def agenda_url(self) -> str:
         """Return the first delivered workspace this clinic's roles can open."""
         if not self.roles.intersection(_STAFF_ROLES):
-            if "tasks.view" in granted_permissions(self.id):
+            granted = granted_permissions(self.id)
+            if "reception.queue" in granted:
+                return reverse("scheduling:reception", args=(self.id,))
+            if "tasks.view" in granted:
                 return reverse("workflows:tasks", args=(self.id,))
             return reverse("scheduling:resource-settings", args=(self.id,))
         return reverse("scheduling:agenda", args=(self.id,))
@@ -127,6 +136,7 @@ def _visible_clinics(
     user_id: UUID, *, settings_scope: bool = False
 ) -> tuple[WorkspaceClinic, ...]:
     grouped: dict[UUID, tuple[str, str, set[str]]] = {}
+    command_clinics: set[UUID] = set()
     roles = (
         (*_SHELL_ROLES, UserClinicRole.Role.ORG_ADMIN)
         if settings_scope
@@ -141,17 +151,26 @@ def _visible_clinics(
         clinic = assignment.clinic
         if assignment.role not in _STAFF_ROLES:
             granted = granted_permissions(clinic.pk)
-            if "tasks.view" not in granted and not (
+            command_context = "tasks.view" in granted or (
                 settings_scope
-                and {"appointment.book", "configuration.organization"} & granted
-            ):
+                and bool({"appointment.book", "configuration.organization"} & granted)
+            )
+            if not command_context and "reception.queue" not in granted:
                 continue
+            if command_context:
+                command_clinics.add(clinic.pk)
         # The database rejects blank zones; str() only narrows the field type.
         zone = str(clinic.timezone)
         entry = grouped.setdefault(clinic.pk, (clinic.name, zone, set()))
         entry[2].add(assignment.role)
     return tuple(
-        WorkspaceClinic(id=clinic_id, name=name, timezone=zone, roles=frozenset(roles))
+        WorkspaceClinic(
+            id=clinic_id,
+            name=name,
+            timezone=zone,
+            roles=frozenset(roles),
+            command_context=clinic_id in command_clinics,
+        )
         for clinic_id, (name, zone, roles) in grouped.items()
     )
 

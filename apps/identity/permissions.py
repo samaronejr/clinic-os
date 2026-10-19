@@ -127,6 +127,7 @@ BUNDLES_V1: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
 # Workflow and unscheduled encounter permissions extend, never edit, released v1.
 TASK_PERMISSIONS_V2: Final = frozenset({"tasks.view", "tasks.assign", "tasks.complete"})
 ENCOUNTER_PERMISSIONS_V2: Final = frozenset({"encounter.open_unscheduled"})
+RECEPTION_PERMISSIONS_V2: Final = frozenset({"reception.queue"})
 BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     {
         role: permissions
@@ -137,6 +138,11 @@ BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
             else set()
         )
         | (ENCOUNTER_PERMISSIONS_V2 if role == "physician" else frozenset())
+        | (
+            RECEPTION_PERMISSIONS_V2
+            if role in {"receptionist", "nurse"}
+            else frozenset()
+        )
         for role, permissions in BUNDLES_V1.items()
     }
 )

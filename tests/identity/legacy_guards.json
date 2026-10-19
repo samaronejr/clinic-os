@@ -5284,6 +5284,150 @@
       "probes": [
         "apps.teleconsult.participants.authorize_room_topic"
       ]
+    },
+    {
+      "symbol": "apps.scheduling.reception._write",
+      "signals": [
+        "denial"
+      ],
+      "kind": "data_operation",
+      "reason": "Transaction/advisory-lock wrapper with SQL error translation, not a staff authority reader. Real callers are directly role-probed."
+    },
+    {
+      "symbol": "apps.scheduling.reception.arrival_readiness",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.arrival_readiness"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.broadcast_clinician_delay",
+      "signals": [
+        "denial",
+        "membership"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.broadcast_clinician_delay"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.call_to_room",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.call_to_room"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.mark_arrived",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.mark_arrived"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.reception_admin_clinic",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.reception_admin_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.reception_clinic",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.reception_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.revoke_display_device",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.revoke_display_device"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception.update_room_status",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception.update_room_status"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_queries.reception_practitioners",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_queries.reception_practitioners"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_queries.view_reception_day",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_queries.view_reception_day"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_views._render",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_views._render"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_views.reception_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_views.reception_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_views.waiting_display",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "probes": [
+        "apps.scheduling.reception_views.waiting_display"
+      ],
+      "reason": "Device-cookie or bearer possession is the principal; valid and invalid device tokens are executed for every staff role independently of staff membership."
     }
   ],
   "probes": [
@@ -5573,6 +5717,20 @@
     "apps.scheduling.patient_authority.require_patient_booking_scope#observed",
     "apps.scheduling.patient_booking._slot#observed",
     "apps.scheduling.patient_booking.patient_appointment#observed",
+    "apps.scheduling.reception.arrival_readiness",
+    "apps.scheduling.reception.broadcast_clinician_delay",
+    "apps.scheduling.reception.call_to_room",
+    "apps.scheduling.reception.issue_display_device",
+    "apps.scheduling.reception.mark_arrived",
+    "apps.scheduling.reception.reception_admin_clinic",
+    "apps.scheduling.reception.reception_clinic",
+    "apps.scheduling.reception.revoke_display_device",
+    "apps.scheduling.reception.update_room_status",
+    "apps.scheduling.reception_queries.reception_practitioners",
+    "apps.scheduling.reception_queries.view_reception_day",
+    "apps.scheduling.reception_views._render",
+    "apps.scheduling.reception_views.reception_view",
+    "apps.scheduling.reception_views.waiting_display",
     "apps.scheduling.resource_booking.authorized_service_clinic#cut1",
     "apps.scheduling.resource_booking.authorized_transition_clinic#cut1",
     "apps.scheduling.resource_booking.booking_selection#cut1",
@@ -7470,6 +7628,10 @@
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
           "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.scheduling_cliniciandelay:reception_scope",
+          "clinic_app.scheduling_displaydevice:reception_scope",
+          "clinic_app.scheduling_queueentry:reception_scope",
+          "clinic_app.scheduling_roomstatus:reception_scope",
           "clinic_app.workflows_task:workflow_read",
           "clinic_app.workflows_task:workflow_update",
           "clinic_app.workflows_workflowdefinitionversion:workflow_read",
@@ -7492,6 +7654,9 @@
           "clinic_app.identity_staff_directory",
           "clinic_app.intake_duplicate_detection_guard",
           "clinic_app.intake_merge_authorized",
+          "clinic_app.reception_guard",
+          "clinic_app.reception_practitioners",
+          "clinic_app.reception_readiness",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_definition_guard",
           "clinic_app.scheduling_generated_block_guard",
@@ -12370,6 +12535,97 @@
         "teleconsult_mode_transition_scope"
       ],
       "reason": "Private resolver validates the requested participant channel and derives the actual originating actor and current immutable mode receipt. The owner-call oracle retains the acting staff GUCs and covers every stored role plus unknown subjects; patient-channel controls are covered by the two-valid-session HTTP/SQL mode suite."
+    },
+    "clinic_app.reception_display": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "token_digest text",
+            "returns": "jsonb",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_reception_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_reception_display_device_contract"
+      ],
+      "reason": "Read-only public device-possession protocol: every role needs an active valid token, malformed and revoked tokens deny."
+    },
+    "clinic_app.reception_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_reception_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "reception_guard#queue",
+        "reception_guard#room",
+        "reception_guard#delay",
+        "reception_guard#display"
+      ],
+      "reason": "Exact reception and nurse queue/room authority is exercised against the live resolver or each real INSERT trigger branch."
+    },
+    "clinic_app.reception_practitioners": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_reception_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "reception_practitioners"
+      ],
+      "reason": "Exact reception and nurse queue/room authority is exercised against the live resolver or each real INSERT trigger branch."
+    },
+    "clinic_app.reception_readiness": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_clinic uuid, requested_appointment uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/scheduling/migrations/_reception_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "staff_guard",
+      "probes": [
+        "reception_readiness"
+      ],
+      "reason": "Existing appointment.move or owned-clinician appointment.move_own authority; queue capability alone never admits readiness. Sealed role probes and raw-GUC inactive-actor oracles execute the actual function."
     }
   },
   "sql_method": [

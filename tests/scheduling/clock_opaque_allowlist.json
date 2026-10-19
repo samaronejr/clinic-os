@@ -103,27 +103,27 @@
     "implementation": "bpcharlen",
     "language": "internal",
     "library": "",
+    "reason": "Reached audit-ledger text-length constraints; conservative overload resolution retains this exact length implementation as opaque risk.",
     "returns": "integer",
-    "volatility": "i",
-    "reason": "Reached audit-ledger text-length constraints; conservative overload resolution retains this exact length implementation as opaque risk."
+    "volatility": "i"
   },
   "pg_catalog.char_length(text)": {
     "extension": "",
     "implementation": "textlen",
     "language": "internal",
     "library": "",
+    "reason": "Reached audit-ledger text-length constraints; conservative overload resolution retains this exact length implementation as opaque risk.",
     "returns": "integer",
-    "volatility": "i",
-    "reason": "Reached audit-ledger text-length constraints; conservative overload resolution retains this exact length implementation as opaque risk."
+    "volatility": "i"
   },
   "pg_catalog.convert_to(text, name)": {
     "extension": "",
     "implementation": "pg_convert_to",
     "language": "internal",
     "library": "",
+    "reason": "Required UTF-8 encoding of the machine expiry event's canonical content before hashing; retained native risk, not a clock-free exemption.",
     "returns": "bytea",
-    "volatility": "s",
-    "reason": "Required UTF-8 encoding of the machine expiry event's canonical content before hashing; retained native risk, not a clock-free exemption."
+    "volatility": "s"
   },
   "pg_catalog.count(\"any\")": {
     "extension": "",
@@ -166,9 +166,9 @@
     "implementation": "current_user",
     "language": "internal",
     "library": "",
+    "reason": "Recovery, authenticator-reset and session-change guards test the effective PostgreSQL role to authorize their resolver-only write paths. Admit only the exact PostgreSQL current-role identity implementation; it is not a temporal input.",
     "returns": "name",
-    "volatility": "s",
-    "reason": "Recovery, authenticator-reset and session-change guards test the effective PostgreSQL role to authorize their resolver-only write paths. Admit only the exact PostgreSQL current-role identity implementation; it is not a temporal input."
+    "volatility": "s"
   },
   "pg_catalog.date(timestamp without time zone)": {
     "extension": "",
@@ -292,9 +292,9 @@
     "implementation": "network_family",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger component address constraint; retained native risk.",
     "returns": "integer",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger component address constraint; retained native risk."
+    "volatility": "i"
   },
   "pg_catalog.gen_random_uuid()": {
     "extension": "",
@@ -490,72 +490,81 @@
     "implementation": "bittoint8",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(double precision)": {
     "extension": "",
     "implementation": "dtoi8",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(integer)": {
     "extension": "",
     "implementation": "int48",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(jsonb)": {
     "extension": "",
     "implementation": "jsonb_int8",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(numeric)": {
     "extension": "",
     "implementation": "numeric_int8",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(oid)": {
     "extension": "",
     "implementation": "oidtoi8",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(real)": {
     "extension": "",
     "implementation": "ftoi8",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
   },
   "pg_catalog.int8(smallint)": {
     "extension": "",
     "implementation": "int28",
     "language": "internal",
     "library": "",
+    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted.",
     "returns": "bigint",
-    "volatility": "i",
-    "reason": "The intake immutable version/correction guards reach this exact bigint conversion overload conservatively by name. It converts supplied numeric, bit, OID or JSONB input without reading time; no other overload is admitted."
+    "volatility": "i"
+  },
+  "pg_catalog.int84ge(bigint, integer)": {
+    "extension": "",
+    "implementation": "int84ge",
+    "language": "internal",
+    "library": "",
+    "reason": "The generated nonnegative Passkey.sign_count CHECK compares a supplied bigint counter with integer zero; retain this exact native comparison as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
   },
   "pg_catalog.int8eq(bigint, bigint)": {
     "extension": "",
@@ -563,6 +572,15 @@
     "language": "internal",
     "library": "",
     "reason": "Required bigint equality comparison.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
+  "pg_catalog.int8le(bigint, bigint)": {
+    "extension": "",
+    "implementation": "int8le",
+    "language": "internal",
+    "library": "",
+    "reason": "The explicit identity_passkey_counter_uint32 CHECK compares a supplied bigint counter with the uint32 upper bound; retain this exact native comparison as opaque risk.",
     "returns": "boolean",
     "volatility": "i"
   },
@@ -589,45 +607,63 @@
     "implementation": "date_finite",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk.",
     "returns": "boolean",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+    "volatility": "i"
   },
   "pg_catalog.isfinite(interval)": {
     "extension": "",
     "implementation": "interval_finite",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk.",
     "returns": "boolean",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+    "volatility": "i"
   },
   "pg_catalog.isfinite(timestamp with time zone)": {
     "extension": "",
     "implementation": "timestamp_finite",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk.",
     "returns": "boolean",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+    "volatility": "i"
   },
   "pg_catalog.isfinite(timestamp without time zone)": {
     "extension": "",
     "implementation": "timestamp_finite",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk.",
     "returns": "boolean",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_array_elements(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_elements",
+    "language": "internal",
+    "library": "",
+    "reason": "Template v2 field iteration reaches jsonfuncs.c elements_worker_jsonb, which validates an array and materializes supplied elements; retain this exact native implementation as opaque risk.",
+    "returns": "jsonb",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_array_length(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_length",
+    "language": "internal",
+    "library": "",
+    "reason": "identity_passkey_guard bounds the supplied transport array to eight entries during registration; retain this exact native JSON array-length implementation as opaque risk.",
+    "returns": "integer",
+    "volatility": "i"
   },
   "pg_catalog.jsonb_delete(jsonb, text)": {
     "extension": "",
     "implementation": "jsonb_delete",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk.",
     "returns": "jsonb",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk."
+    "volatility": "i"
   },
   "pg_catalog.jsonb_delete(jsonb, text[])": {
     "extension": "",
@@ -661,9 +697,9 @@
     "implementation": "jsonb_object_field_text",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk.",
     "returns": "text",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk."
+    "volatility": "i"
   },
   "pg_catalog.jsonb_path_exists(jsonb, jsonpath, jsonb, boolean)": {
     "extension": "",
@@ -672,24 +708,6 @@
     "library": "",
     "reason": "Reached JSON-path constraint validation; the native interpreter remains an explicit opaque risk, not certified independent of its inputs.",
     "returns": "boolean",
-    "volatility": "i"
-  },
-  "pg_catalog.jsonb_array_elements(jsonb)": {
-    "extension": "",
-    "implementation": "jsonb_array_elements",
-    "language": "internal",
-    "library": "",
-    "reason": "Template v2 field iteration reaches jsonfuncs.c elements_worker_jsonb, which validates an array and materializes supplied elements; retain this exact native implementation as opaque risk.",
-    "returns": "jsonb",
-    "volatility": "i"
-  },
-  "pg_catalog.jsonb_array_length(jsonb)": {
-    "extension": "",
-    "implementation": "jsonb_array_length",
-    "language": "internal",
-    "library": "",
-    "reason": "Template v2 field, phrase and optional-section bounds reach jsonfuncs.c array-root validation and JB_ROOT_COUNT; retain this exact native implementation as opaque risk.",
-    "returns": "integer",
     "volatility": "i"
   },
   "pg_catalog.jsonb_path_query(jsonb, jsonpath, jsonb, boolean)": {
@@ -823,9 +841,9 @@
     "implementation": "network_masklen",
     "language": "internal",
     "library": "",
+    "reason": "Reached the audit-ledger component address constraint; retained native risk.",
     "returns": "integer",
-    "volatility": "i",
-    "reason": "Reached the audit-ledger component address constraint; retained native risk."
+    "volatility": "i"
   },
   "pg_catalog.max(anyarray)": {
     "extension": "",
@@ -1151,6 +1169,33 @@
     "returns": "boolean",
     "volatility": "s"
   },
+  "pg_catalog.position(bit, bit)": {
+    "extension": "",
+    "implementation": "bitposition",
+    "language": "internal",
+    "library": "",
+    "reason": "Reception queue position identifiers conservatively reach these supplied-value substring search overloads. Retain each exact native implementation as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.position(bytea, bytea)": {
+    "extension": "",
+    "implementation": "byteapos",
+    "language": "internal",
+    "library": "",
+    "reason": "Reception queue position identifiers conservatively reach these supplied-value substring search overloads. Retain each exact native implementation as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "integer",
+    "volatility": "i"
+  },
+  "pg_catalog.position(text, text)": {
+    "extension": "",
+    "implementation": "textpos",
+    "language": "internal",
+    "library": "",
+    "reason": "Reception queue position identifiers conservatively reach these supplied-value substring search overloads. Retain each exact native implementation as reviewed opaque risk, not a claim of clock independence.",
+    "returns": "integer",
+    "volatility": "i"
+  },
   "pg_catalog.range_overlaps(anyrange, anyrange)": {
     "extension": "",
     "implementation": "range_overlaps",
@@ -1165,18 +1210,18 @@
     "implementation": "session_user",
     "language": "internal",
     "library": "",
+    "reason": "Workflow bundle issuance tests the authenticated database login, not the effective role. Admit only the exact PostgreSQL login-identity implementation; it is not a temporal input.",
     "returns": "name",
-    "volatility": "s",
-    "reason": "Workflow bundle issuance tests the authenticated database login, not the effective role. Admit only the exact PostgreSQL login-identity implementation; it is not a temporal input."
+    "volatility": "s"
   },
   "pg_catalog.set_config(text, text, boolean)": {
     "extension": "",
     "implementation": "set_config_by_name",
     "language": "internal",
     "library": "",
+    "reason": "Todo 22 hold release clears and then restores the transaction-local human actor settings so due holds expire as the machine (W) actor; this exact setting writer never reads a clock.",
     "returns": "text",
-    "volatility": "v",
-    "reason": "Todo 22 hold release clears and then restores the transaction-local human actor settings so due holds expire as the machine (W) actor; this exact setting writer never reads a clock."
+    "volatility": "v"
   },
   "pg_catalog.sha256(bytea)": {
     "extension": "",
@@ -1516,72 +1561,72 @@
     "implementation": "int8_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(double precision, text)": {
     "extension": "",
     "implementation": "float8_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(integer, text)": {
     "extension": "",
     "implementation": "int4_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(interval, text)": {
     "extension": "",
     "implementation": "interval_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(numeric, text)": {
     "extension": "",
     "implementation": "numeric_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(real, text)": {
     "extension": "",
     "implementation": "float4_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(timestamp with time zone, text)": {
     "extension": "",
     "implementation": "timestamptz_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_char(timestamp without time zone, text)": {
     "extension": "",
     "implementation": "timestamp_to_char",
     "language": "internal",
     "library": "",
+    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk.",
     "returns": "text",
-    "volatility": "s",
-    "reason": "Reached formatting of the expiry event's supplied UTC timestamp; conservative overload resolution retains this exact formatting implementation as opaque risk."
+    "volatility": "s"
   },
   "pg_catalog.to_jsonb(anyelement)": {
     "extension": "",
@@ -1708,32 +1753,5 @@
     "reason": "The PL/pgSQL version identifier matches the catalog version routine; retain that conservative native candidate as opaque risk.",
     "returns": "text",
     "volatility": "s"
-  },
-  "pg_catalog.int84ge(bigint, integer)": {
-    "extension": "",
-    "implementation": "int84ge",
-    "language": "internal",
-    "library": "",
-    "reason": "The generated nonnegative Passkey.sign_count CHECK compares a supplied bigint counter with integer zero; retain this exact native comparison as opaque risk.",
-    "returns": "boolean",
-    "volatility": "i"
-  },
-  "pg_catalog.int8le(bigint, bigint)": {
-    "extension": "",
-    "implementation": "int8le",
-    "language": "internal",
-    "library": "",
-    "reason": "The explicit identity_passkey_counter_uint32 CHECK compares a supplied bigint counter with the uint32 upper bound; retain this exact native comparison as opaque risk.",
-    "returns": "boolean",
-    "volatility": "i"
-  },
-  "pg_catalog.jsonb_array_length(jsonb)": {
-    "extension": "",
-    "implementation": "jsonb_array_length",
-    "language": "internal",
-    "library": "",
-    "reason": "identity_passkey_guard bounds the supplied transport array to eight entries during registration; retain this exact native JSON array-length implementation as opaque risk.",
-    "returns": "integer",
-    "volatility": "i"
   }
 }

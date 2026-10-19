@@ -53,6 +53,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "agenda-slice",
         "agenda-grid",
         "realtime",
+        "reception",
         "amendments",
         "attachments",
         "availability",
@@ -83,7 +84,12 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "workspace",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
-    assert {"realtime", "agenda-slice", "agenda-grid"} == runner.REALTIME_SUITES
+    assert {
+        "realtime",
+        "agenda-slice",
+        "agenda-grid",
+        "reception",
+    } == runner.REALTIME_SUITES
     assert runner.REALTIME_SUITES <= runner.FIXTURE_SUITES
     assert runner.SIGNING_SUITES <= runner.FIXTURE_SUITES
     assert "--cov=apps.prescription" in runner.COVERAGE_TARGETS

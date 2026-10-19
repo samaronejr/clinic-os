@@ -265,6 +265,59 @@ every action as a native form, the move form page has the slot finder, and the
 classic ledger remains the agenda's fallback. `view_day_grid` keeps its todo
 23 contract.
 
+## Reception operations (todo 25)
+
+Reception Today is `/scheduling/clinics/<clinic_id>/reception/`. Native POST forms
+register arrivals, call tickets to rooms, change room conditions and broadcast
+bounded clinician-delay estimates. The clinic-local date is selectable; record
+selectors stay in POST bodies. Queue hints use `clinic:<id>:queue` and contain
+only the existing closed `{kind, version}` envelope. Realtime refresh preserves
+an active form and prompts the operator to refresh rather than overwriting edits.
+
+`mark_arrived` preserves lifecycle arrival authority (`appointment.move`, or
+`appointment.move_own` for the booked clinician). It atomically performs arrival
+and allocates one retained location ticket. An already-arrived appointment can
+be added to its arrival-location queue without another appointment transition.
+The existing command receipt handles arrival retries; a ticket cannot be moved
+to a different location by replaying the command.
+
+The single additive permission `reception.queue` belongs only to receptionists
+and nurses. It permits `call_to_room`, `update_room_status` and administrative
+reception reads. It grants no arrival, cancellation, rescheduling, start or
+completion authority. Delay broadcasts and display-device issuance/revocation
+also require the existing `appointment.move` permission; nurses do not gain them.
+Permission subtraction and current membership are checked in Python and SQL.
+
+Readiness is computed server-side from draft questionnaires, current optional
+consent metadata, issued open charges and recorded identity-document metadata.
+Payment status is unavailable when the actor lacks `charge.read`. These flags
+do not block arrival or care, and they expose no clinical answers, document
+values, consent text or amounts. An open charge is not described as a mandatory
+deposit when the clinic has no deposit-specific requirement.
+
+Queue states are `waiting`, `called`, `in_room` and `done`. The existing clinician
+start/completion transaction advances its ticket; it does not transfer those
+clinical permissions to nurses. Room calls honor reservation bindings, immutable
+capacity, room conditions and an exclusive active occupancy constraint. Room
+conditions are `available`, `cleaning` and `unavailable`; an occupied room cannot
+be released through the condition form. Display room numbers are allocated once,
+under the clinic write lock, and are unique per clinic and room unit.
+
+`/waiting-display/` is independent of staff sessions. It accepts a high-entropy
+device bearer token, or a token paired through its native POST form into a
+path-scoped HttpOnly, SameSite=Strict cookie. The database stores only the digest.
+Its SECURITY DEFINER projection returns ticket codes, generated room numbers and
+closed queue states, never free text, patient names, services, clinicians or
+clinical identifiers. The initial clinic display policy is ticket codes only.
+Every read rechecks revocation. Absent, forged and revoked credentials all show
+the same disconnected 403, even with a valid staff cookie. The response is
+private/no-store and uses no browser storage or service-worker precache.
+
+All operational transitions append registered metadata-only audit events in the
+same transaction and emit only post-commit hints. The four reception tables
+retain history, use FORCE RLS, have column-only runtime update grants and reject
+DELETE/TRUNCATE. A populated reception schema can be rolled back only by restore.
+
 ## Appointment reminders
 
 Booking (including patient and waitlist booking) atomically schedules eligible

@@ -287,6 +287,36 @@ LIFECYCLE_TRANSITIONS = (
             ],
         ),
         ("edit_series", ["clinic_id", "series_id", "edit", "command_id"]),
+        (
+            "mark_arrived",
+            [
+                "clinic_id",
+                "appointment_id",
+                "location_id",
+                "expected_revision",
+                "command_id",
+            ],
+        ),
+        (
+            "call_to_room",
+            [
+                "clinic_id",
+                "queue_entry_id",
+                "room_id",
+                "room_unit",
+                "expected_revision",
+            ],
+        ),
+        (
+            "update_room_status",
+            ["clinic_id", "room_id", "unit", "state", "expected_revision"],
+        ),
+        (
+            "broadcast_clinician_delay",
+            ["clinic_id", "practitioner_id", "minutes", "expected_revision"],
+        ),
+        ("issue_display_device", ["clinic_id"]),
+        ("revoke_display_device", ["clinic_id", "device_id"]),
     ],
 )
 def test_lifecycle_services_are_keyword_scoped(name: str, expected: list[str]) -> None:

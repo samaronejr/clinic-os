@@ -388,14 +388,17 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     assert_lifecycle_oracles(protocol_oracles.values())
 
 
-def _staff_actor(graph: RbacGraph) -> UUID:
+def _staff_actor(
+    graph: RbacGraph,
+    role: UserClinicRole.Role = UserClinicRole.Role.CLINIC_ADMIN,
+) -> UUID:
     actor = User.objects.create(username=f"sintetico-sql-inactive-{uuid4().hex}")
     with owner_context(graph.organization_a):
         UserClinicRole.objects.create(
             organization_id=graph.organization_a,
             clinic_id=graph.clinic_a,
             user=actor,
-            role=UserClinicRole.Role.CLINIC_ADMIN,
+            role=role,
             workflow_bundle_version=2,
         )
     return actor.pk
@@ -573,6 +576,14 @@ GUARD_PROBES = {
 # eligibility), rather than being classified solely through a delegated gate.
 # Their native INSERT still has to prove the current actor's refusal.
 OWN_GUARD_PROBES = {
+    "clinic_app.reception_guard()": GuardProbe(
+        "INSERT INTO clinic_app.scheduling_displaydevice "
+        "(id, organization_id, clinic_id, token_hash, active, created_at) "
+        "VALUES (%(id)s, %(organization)s, %(clinic)s, "
+        "md5(%(id)s::text)||md5(%(id)s::text), true, now())",
+        "reception access denied",
+        inactive_denial=("42501", "reception access denied"),
+    ),
     "clinic_app.scheduling_capacity_guard()": GuardProbe(
         "INSERT INTO clinic_app.scheduling_appointment (id, organization_id, "
         "clinic_id, patient_id, practitioner_id, service_type_id, resource_ids, "
@@ -700,6 +711,7 @@ def test_delegating_gates_refuse_inactive_actor(
                 cursor.execute(probe.latest, scope)
                 ((latest[function],),) = cursor.fetchall()
     manager = _staff_actor(graph)
+    reception_actor = _staff_actor(graph, UserClinicRole.Role.RECEPTIONIST)
     rows: dict[str, list[bool | Outcome]] = {
         name: [] for name in [*DELEGATE_PROBES, *guards]
     }
@@ -707,18 +719,24 @@ def test_delegating_gates_refuse_inactive_actor(
     for phase, active in enumerate((True, False, True)):
         _set_active(graph.physician, active=active)
         _set_active(manager, active=active)
+        _set_active(reception_actor, active=active)
         for function, statement in DELEGATE_PROBES.items():
             rows[function].append(_decide(graph, graph.physician, statement, scope))
         for function, probe in guards.items():
+            actor = (
+                reception_actor
+                if function == "clinic_app.reception_guard()"
+                else manager
+            )
             params = {
                 **scope,
                 "id": uuid4(),
-                "actor": manager,
+                "actor": actor,
                 "amount": AMOUNT,
                 "invoice": invoices[min(phase, 1)],
                 "version": latest.get(function, 0) + min(phase, 1) + 1,
             }
-            rows[function].append(_insert(graph, manager, probe, params))
+            rows[function].append(_insert(graph, actor, probe, params))
     # One exact map, so every gate that does not follow is_active is named.
     assert {name: tuple(row) for name, row in rows.items()} == {
         **dict.fromkeys(DELEGATE_PROBES, (True, False, True)),

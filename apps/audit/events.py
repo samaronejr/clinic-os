@@ -46,6 +46,27 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "scheduling.queue.arrived": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.queue", "arrived"
+        ),
+        "scheduling.queue.called": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.queue", "called"
+        ),
+        "scheduling.queue.progressed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.queue", "progressed"
+        ),
+        "scheduling.room.updated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.room", "updated"
+        ),
+        "scheduling.delay.updated": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.delay", "updated"
+        ),
+        "scheduling.display.issued": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.display", "issued"
+        ),
+        "scheduling.display.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "scheduling.display", "revoked"
+        ),
         "identity.delegate.requested": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.patient_delegate_grant", "requested"
         ),

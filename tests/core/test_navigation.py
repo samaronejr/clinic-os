@@ -75,9 +75,16 @@ PRIVILEGED: Final = frozenset(
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
     "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": ["agenda", "patients", "finance", "operations", "settings"],
+    "receptionist": [
+        "today",
+        "agenda",
+        "patients",
+        "finance",
+        "operations",
+        "settings",
+    ],
     "physician": ["agenda", "patients", "operations"],
-    "nurse": [],
+    "nurse": ["today"],
     "allied_professional": [],
     "scheduler": ["settings"],
     "clinic_manager": ["settings"],
@@ -85,7 +92,7 @@ EXPECTED: Final = {
     "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
-UNDELIVERED: Final = frozenset({"today", "inbox", "messages", "automations", "reports"})
+UNDELIVERED: Final = frozenset({"inbox", "messages", "automations", "reports"})
 
 
 def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
@@ -192,10 +199,10 @@ def test_each_role_sees_its_exact_destination_set(
     assert _modules(response) == EXPECTED[role]
     html = response.content.decode()
     assert not UNDELIVERED.intersection(_modules(response))
-    # The palette exists exactly when a workspace clinic does.
-    has_workspace = any(module != "settings" for module in EXPECTED[role])
-    assert ('data-command-open="command-palette"' in html) is has_workspace
-    assert ('id="command-palette"' in html) is has_workspace
+    # Queue-only clinic context does not expand command presentation.
+    has_palette = role in {"owner", "clinic_admin", "receptionist", "physician"}
+    assert ('data-command-open="command-palette"' in html) is has_palette
+    assert ('id="command-palette"' in html) is has_palette
 
 
 @pytest.mark.parametrize("role", ["scheduler", "clinic_manager", "receptionist"])
@@ -262,6 +269,8 @@ def test_workflow_candidate_opens_only_delivered_operations(
     assert _modules(response) == (
         ["operations", "settings"]
         if role in {"scheduler", "clinic_manager"}
+        else ["today", "operations"]
+        if role == "nurse"
         else ["operations"]
     )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
@@ -305,6 +314,7 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
 
     _reauthenticate(client, user.pk, "receptionist")
     assert _modules(_get(client, "/auth/protected/")) == [
+        "today",
         "agenda",
         "patients",
         "operations",
@@ -315,7 +325,6 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
 def test_registry_never_renders_an_undelivered_destination() -> None:
     undelivered = {d.key for d in DESTINATIONS if d.url_name is None}
     assert undelivered == {
-        "today",
         "inbox",
         "messages",
         "operations",

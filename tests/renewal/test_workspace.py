@@ -101,6 +101,7 @@ def test_receptionist_sees_manager_modules_for_the_url_clinic(
     assert response.status_code == OK
     modules = _modules(response.content)
     assert modules == {
+        "today": (f"/scheduling/clinics/{rbac_graph.clinic_a}/reception/", False),
         "agenda": (agenda, True),
         "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
         "patients": (f"/intake/clinics/{rbac_graph.clinic_a}/patients/", False),

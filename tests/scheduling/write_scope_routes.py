@@ -14,6 +14,7 @@ from apps.scheduling import (
     booking_views,
     lifecycle_views,
     patient_views,
+    reception_views,
     resource_views,
     transition_views,
     views,
@@ -31,11 +32,15 @@ class WriteRoute:
     name: str
     modes: tuple[str, ...]
     selector: str
+    family: str = "appointment"
 
 
 # These siblings have their own HTTP suites; a new callback cannot silently
 # fall outside the appointment matrix. GET-only callbacks are classified too.
 SIBLINGS = {
+    # Device possession is a public read principal, covered by the reception
+    # HTTP and direct SQL token oracles rather than an appointment write.
+    inspect.unwrap(reception_views.waiting_display): ("scheduling.test_arrivals_queue"),
     inspect.unwrap(lifecycle_views.appointment_lifecycle_view): (
         "scheduling.test_lifecycle_http"
     ),
@@ -99,7 +104,13 @@ def write_routes() -> tuple[WriteRoute, ...]:
     result = []
     for name, pattern in _leaves(get_resolver().url_patterns):
         callback = inspect.unwrap(pattern.callback)
-        if callback is inspect.unwrap(booking_views.appointment_create_view):
+        if callback is inspect.unwrap(reception_views.reception_view):
+            result.append(
+                WriteRoute(
+                    name, tuple(reception_views.ACTION_FIELDS), "clinic_id", "reception"
+                )
+            )
+        elif callback is inspect.unwrap(booking_views.appointment_create_view):
             result.append(WriteRoute(name, _booking_modes(callback), "clinic_id"))
         elif callback is inspect.unwrap(transition_views.appointment_reschedule_view):
             result.append(WriteRoute(name, ("reschedule",), "appointment_id"))

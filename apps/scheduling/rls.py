@@ -23,11 +23,16 @@ LIFECYCLE_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
     (f"scheduling_{table}", "organization_id")
     for table in ("appointmentseries", "seriesexception", "appointmenttransition")
 )
+RECEPTION_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset(
+    (f"scheduling_{table}", "organization_id")
+    for table in ("queueentry", "roomstatus", "cliniciandelay", "displaydevice")
+)
 ALL_SCHEDULING_RLS_TARGETS: Final[frozenset[tuple[str, str]]] = (
     SCHEDULING_RLS_TARGETS
     | APPOINTMENT_RLS_TARGETS
     | RESOURCE_RLS_TARGETS
     | LIFECYCLE_RLS_TARGETS
+    | RECEPTION_RLS_TARGETS
 )
 
 # Posture registry declarations consumed by apps.tenancy.posture.
@@ -58,6 +63,10 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "scheduling_appointmentseries": frozenset({"SELECT", "INSERT"}),
     "scheduling_seriesexception": frozenset({"SELECT", "INSERT"}),
     "scheduling_appointmenttransition": frozenset({"SELECT"}),
+    "scheduling_queueentry": frozenset({"SELECT", "INSERT"}),
+    "scheduling_roomstatus": frozenset({"SELECT", "INSERT"}),
+    "scheduling_cliniciandelay": frozenset({"SELECT", "INSERT"}),
+    "scheduling_displaydevice": frozenset({"SELECT", "INSERT"}),
 }
 # Task 7: restrictive agent_grant RLS additionally checks the current principal.
 AGENT_GRANTS: Final[dict[str, frozenset[str]]] = {
@@ -66,6 +75,12 @@ AGENT_GRANTS: Final[dict[str, frozenset[str]]] = {
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
+        ("scheduling_queueentry", "state", "UPDATE"),
+        ("scheduling_queueentry", "room_id", "UPDATE"),
+        ("scheduling_queueentry", "room_unit", "UPDATE"),
+        ("scheduling_roomstatus", "state", "UPDATE"),
+        ("scheduling_cliniciandelay", "minutes", "UPDATE"),
+        ("scheduling_displaydevice", "active", "UPDATE"),
         ("scheduling_appointment", "cancellation_reason", "UPDATE"),
         ("scheduling_appointment", "cancelled_at", "UPDATE"),
         ("scheduling_appointment", "end_at", "UPDATE"),

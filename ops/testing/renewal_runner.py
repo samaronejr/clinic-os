@@ -88,6 +88,7 @@ SUITES: Final = {
     "agenda": ("tests/renewal/browser/test_agenda.py",),
     "agenda-slice": ("tests/renewal/browser/test_agenda_slice.py",),
     "agenda-grid": ("tests/renewal/browser/test_agenda_grid.py",),
+    "reception": ("tests/renewal/browser/test_reception.py",),
     "realtime": ("tests/renewal/browser/test_realtime.py",),
     "availability": ("tests/renewal/browser/test_availability.py",),
     "contacts": ("tests/renewal/browser/test_contacts.py",),
@@ -115,6 +116,7 @@ FIXTURE_SUITES: Final = frozenset(
         "agenda",
         "agenda-slice",
         "agenda-grid",
+        "reception",
         "realtime",
         "clinic-settings",
         "billing",
@@ -145,7 +147,9 @@ FIXTURE_SUITES: Final = frozenset(
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
-REALTIME_SUITES: Final = frozenset({"realtime", "agenda-slice", "agenda-grid"})
+REALTIME_SUITES: Final = frozenset(
+    {"realtime", "agenda-slice", "agenda-grid", "reception"}
+)
 # Suites that exercise the synthetic room provider through the real outbox.
 # ``realtime`` drives teleconsult status refetches from realtime hints (todo 37).
 VIDEO_SUITES: Final = frozenset(

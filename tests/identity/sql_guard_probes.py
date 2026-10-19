@@ -18,9 +18,21 @@ from django.utils import timezone
 from identity.legacy_operational_boundaries import seed_operational
 from identity.legacy_owner_boundaries import _owner_call
 from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
+from identity.legacy_reception_boundaries import READINESS_ROLES
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
+from identity.reception_subjects import ReceptionSubjects, seed_reception
 from identity.sql_denial_contracts import DmlMember, SqlArgument, SqlVerdict, probe
+from identity.sql_reception_probes import (
+    DELAY_MEMBER,
+    DISPLAY_MEMBER,
+    QUEUE_MEMBER,
+    ROOM_MEMBER,
+    insert_delay,
+    insert_display,
+    insert_queue,
+    insert_room,
+)
 from identity.sql_teleconsult_probes import (
     DEVICE_MEMBER,
     MODE_MEMBER,
@@ -52,6 +64,7 @@ class SqlWorld:
     teleconsult: TeleconsultSubjects
     manager_payment: UUID
     actor_payment: UUID
+    reception: ReceptionSubjects
 
 
 def seed_sql_world(
@@ -99,7 +112,14 @@ def seed_sql_world(
             purpose="teleconsultation",
             text="Sintetico superseded",
         )
-    return SqlWorld(actor, op, tc, manager_payment.pk, actor_payment.pk)
+    return SqlWorld(
+        actor,
+        op,
+        tc,
+        manager_payment.pk,
+        actor_payment.pk,
+        seed_reception(graph, actor.appointment),
+    )
 
 
 @dataclass(frozen=True)
@@ -153,6 +173,44 @@ def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
 
 
 PROBES = {
+    "reception_readiness": SqlProbe(
+        "reception_readiness",
+        READINESS_ROLES,
+        lambda w, ok: [w.actor.clinic_for(ok), w.actor.appointment.pk],
+    ),
+    "reception_practitioners": SqlProbe(
+        "reception_practitioners",
+        ("receptionist", "nurse"),
+        lambda w, ok: [w.actor.clinic_for(ok)],
+    ),
+    "reception_guard#queue": SqlProbe(
+        "reception_guard",
+        tuple(dict.fromkeys((*READINESS_ROLES, "nurse"))),
+        lambda w, ok: [],
+        member=QUEUE_MEMBER,
+        execute=insert_queue,
+    ),
+    "reception_guard#room": SqlProbe(
+        "reception_guard",
+        ("receptionist", "nurse"),
+        lambda w, ok: [],
+        member=ROOM_MEMBER,
+        execute=insert_room,
+    ),
+    "reception_guard#delay": SqlProbe(
+        "reception_guard",
+        ("receptionist",),
+        lambda w, ok: [],
+        member=DELAY_MEMBER,
+        execute=insert_delay,
+    ),
+    "reception_guard#display": SqlProbe(
+        "reception_guard",
+        ("receptionist",),
+        lambda w, ok: [],
+        member=DISPLAY_MEMBER,
+        execute=insert_display,
+    ),
     "identity_invitation_account": SqlProbe(
         "identity_invitation_account",
         STAFF_MANAGERS,

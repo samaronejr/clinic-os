@@ -35,6 +35,7 @@ SQL_CLOCKS: Final = {
     "scheduling_clock()": {"statement_timestamp()": 1},
 }
 SOURCE_CLOCKS: Final = {
+    "_reception_sql.py": {"statement_timestamp()": 4},
     "_appointment_sql.py": {"current_timestamp": 1},
     "_patient_booking_sql.py": {"statement_timestamp()": 4},
     "_resource_slots_sql.py": {"statement_timestamp()": 1},

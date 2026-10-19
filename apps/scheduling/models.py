@@ -24,6 +24,12 @@ from apps.scheduling.lifecycle_models import (
     AppointmentTransition,
     SeriesException,
 )
+from apps.scheduling.reception_models import (
+    ClinicianDelay,
+    DisplayDevice,
+    QueueEntry,
+    RoomStatus,
+)
 from apps.scheduling.resource_models import (
     Absence,
     AppointmentResource,
@@ -46,9 +52,13 @@ __all__ = (
     "AppointmentTransition",
     "AvailabilityBlock",
     "AvailabilityTemplate",
+    "ClinicianDelay",
+    "DisplayDevice",
     "Holiday",
     "PatientBookingEvent",
+    "QueueEntry",
     "Resource",
+    "RoomStatus",
     "SeriesException",
     "ServiceType",
     "WaitlistEntry",

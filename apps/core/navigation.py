@@ -104,9 +104,11 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "today",
         gettext_noop("Today"),
-        None,
-        _AGENDA_READ,
-        owner_todo=32,
+        "scheduling:reception",
+        ("reception.queue",),
+        route_roles=frozenset({_ROLE.RECEPTIONIST, _ROLE.NURSE}),
+        views=frozenset({"scheduling:reception"}),
+        owner_todo=25,
     ),
     Destination(
         "agenda",
