@@ -18,6 +18,10 @@ from typing import TYPE_CHECKING, Final
 from coverage import Coverage, CoverageData
 from coverage.exceptions import CoverageException
 
+from ops.testing.ci_pytest_collection import (
+    validate_execution_collections,
+    validate_execution_union,
+)
 from ops.testing.ci_pytest_partition import (
     ALGORITHM,
     NODE_ID_ENCODING,
@@ -49,6 +53,7 @@ PERCENT_TOLERANCE: Final = 1e-8
 SERVER_FIELD_COUNT: Final = 4
 FILES: Final = (
     "collected.json",
+    "execution-collections.json",
     "parallel-reports.json",
     "serial-reports.json",
     "catalog.json",
@@ -84,6 +89,8 @@ class ShardEvidence:
     serial: frozenset[str]
     receipts: tuple[JsonObject, ...]
     hashes: JsonObject
+    live: frozenset[str]
+    executed: tuple[str, ...]
 
 
 def _fail(message: str) -> Never:
@@ -177,7 +184,7 @@ def publish(
         hashes[name] = _digest(destination / name)
     revision, tree = source_identity(REPOSITORY)
     manifest: JsonObject = {
-        "schema_version": 1,
+        "schema_version": 2,
         "algorithm": ALGORITHM,
         "node_id_encoding": NODE_ID_ENCODING,
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
@@ -288,7 +295,7 @@ def _receipt(path: Path) -> JsonObject:
 def _load_shard(root: Path, version: str, number: int) -> ShardEvidence:
     manifest, _ = load_json(root / "manifest.json")
     expected: JsonObject = {
-        "schema_version": 1,
+        "schema_version": 2,
         "algorithm": ALGORITHM,
         "node_id_encoding": NODE_ID_ENCODING,
         "python_version": version,
@@ -324,6 +331,8 @@ def _load_shard(root: Path, version: str, number: int) -> ShardEvidence:
             _fail("serial classification matches no test")
         serial.update(matches)
     expected_population = partition(reference, serial)[number]
+    collections, _ = load_json(root / "execution-collections.json")
+    live = validate_execution_collections(collections, reference, expected_population)
     reports = {phase: _reports(root / f"{phase}-reports.json") for phase in PHASES}
     failures = population_failures(expected_population, reports)
     if failures:
@@ -341,6 +350,8 @@ def _load_shard(root: Path, version: str, number: int) -> ShardEvidence:
             _receipt(root / f"{phase}-refusal.json") for phase in ("collect", *PHASES)
         ),
         hashes,
+        live,
+        tuple(nodeid for phase in PHASES for nodeid in reports[phase]),
     )
 
 
@@ -406,16 +417,11 @@ def load_version(
         ):
             _fail("shards disagree on source identity or reference population")
     selections = partition(first.reference, set(first.serial))
-    flattened = [
-        nodeid
-        for phases in selections.values()
-        for nodes in phases.values()
-        for nodeid in nodes
-    ]
-    if sorted(flattened) != sorted(first.reference):
-        _fail("shard union differs from unsharded reference population")
+    executed = [nodeid for shard in shards for nodeid in shard.executed]
+    live = {nodeid for shard in shards for nodeid in shard.live}
+    validate_execution_union(executed, live)
     proof: JsonObject = {
-        "schema_version": 1,
+        "schema_version": 2,
         "algorithm": ALGORITHM,
         "node_id_encoding": NODE_ID_ENCODING,
         "python_version": version,
@@ -425,6 +431,14 @@ def load_version(
         "reference_count": len(first.reference),
         "reference_sha256": hashlib.sha256(
             json.dumps(sorted(first.reference)).encode()
+        ).hexdigest(),
+        "live_collection_count": len(live),
+        "live_collection_sha256": hashlib.sha256(
+            json.dumps(sorted(live)).encode()
+        ).hexdigest(),
+        "executed_count": len(executed),
+        "executed_sha256": hashlib.sha256(
+            json.dumps(sorted(executed)).encode()
         ).hexdigest(),
         "shards": {
             str(shard.shard): {
@@ -437,6 +451,7 @@ def load_version(
         },
         "refusal": _census(shards),
         "catalog_certificates": len(shards),
+        "union_equals_live_collection": True,
         "union_equals_reference": True,
     }
     return shards, proof

@@ -39,7 +39,8 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from ops.testing.ci_pytest_partition import SHARDS, partition
+from ops.testing.ci_pytest_collection import serial_collection_scope
+from ops.testing.ci_pytest_partition import SHARDS, partition, public_nodeid
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -288,13 +289,8 @@ class CiPhase:
         self, config: pytest.Config, items: list[pytest.Item]
     ) -> None:
         """Apply the serial classification after every other selection hook."""
-        entries = load_manifest()
-        serial = {
-            item.nodeid
-            for item in items
-            if any(entry.matches(item.nodeid) for entry in entries)
-        }
         if self.phase == "collect":
+            entries = load_manifest()
             matches = {
                 entry.prefix: [i.nodeid for i in items if entry.matches(i.nodeid)]
                 for entry in entries
@@ -304,21 +300,38 @@ class CiPhase:
                 {"items": [item.nodeid for item in items], "manifest": matches},
             )
             return
-        keep_serial = self.phase == "serial"
-        if self.shard is None:
-            keep = {
-                item.nodeid for item in items if (item.nodeid in serial) == keep_serial
+        collected = json.loads((self.record / "collected.json").read_text("utf-8"))
+        reference: list[str] = collected["items"]
+        classified = {
+            nodeid for nodeids in collected["manifest"].values() for nodeid in nodeids
+        }
+        selection = (
+            {
+                "parallel": sorted(set(reference) - classified),
+                "serial": sorted(classified),
             }
-        else:
-            collected = json.loads((self.record / "collected.json").read_text("utf-8"))
-            classified = {
-                nodeid
-                for nodeids in collected["manifest"].values()
-                for nodeid in nodeids
-            }
-            keep = set(
-                partition(collected["items"], classified)[self.shard][self.phase]
+            if self.shard is None
+            else partition(reference, classified)[self.shard]
+        )
+        live = [item.nodeid for item in items]
+        _write_json(
+            self.record / f"{self.phase}-{self.worker}-collection.json",
+            {"items": [public_nodeid(nodeid) for nodeid in live]},
+        )
+        scope = (
+            set(reference)
+            if self.phase == "parallel"
+            else serial_collection_scope(reference, selection["serial"])
+        )
+        observed = set(live)
+        if len(live) != len(observed) or observed != scope:
+            _fail(
+                f"execution collection differs from reference scope: "
+                f"missing={len(scope - observed)} "
+                f"unexpected={len(observed - scope)} "
+                f"duplicates={len(live) - len(observed)}"
             )
+        keep = set(selection[self.phase])
         selected = [item for item in items if item.nodeid in keep]
         deselected = [item for item in items if item.nodeid not in keep]
         if deselected:
@@ -467,7 +480,10 @@ class ServerStateGuard:
 
 
 def _write_json(path: Path, value: object) -> None:
-    text = json.dumps(value, indent=2, sort_keys=True) + "\n"
+    text = (
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        + "\n"
+    )
     path.write_text(text, encoding="utf-8")
 
 

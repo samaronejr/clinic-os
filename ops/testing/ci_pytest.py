@@ -59,6 +59,12 @@ import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict
 
+from ops.testing.ci_pytest_collection import (
+    MAX_WORKERS,
+    validate_execution_collections,
+    validate_execution_union,
+    write_execution_collections,
+)
 from ops.testing.ci_pytest_partition import (
     NODE_ID_ENCODING,
     PHASES,
@@ -68,7 +74,11 @@ from ops.testing.ci_pytest_partition import (
     public_nodeid,
 )
 from ops.testing.ci_pytest_plugin import Counters, catalog_writes, read_counters
-from ops.testing.isolation_common import ensure_private_directory
+from ops.testing.isolation_common import (
+    IsolationError,
+    ensure_private_directory,
+    load_json,
+)
 from ops.testing.runtime_paths import runtime_directory
 
 if TYPE_CHECKING:
@@ -79,7 +89,6 @@ COVERAGE_TARGETS_FILE: Final = REPOSITORY / "ops/testing/coverage-targets.txt"
 PLUGIN: Final = ("-p", "ops.testing.ci_pytest_plugin")
 COVERAGE_FLOOR: Final = "--cov-fail-under=90"
 PYTEST_ENVIRONMENT: Final = {"COVERAGE_CORE": "sysmon"}
-MAX_WORKERS: Final = 32
 # PostgreSQL publishes a backend's pending counts when it closes, and while it
 # is connected within 10 s (PGSTAT_IDLE_INTERVAL) of going idle.
 COUNTER_LAG_SECONDS: Final = 10.0
@@ -189,6 +198,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ],
             coverage_file=coverage_file,
         )
+        write_execution_collections(work, arguments.workers)
         failures = [
             *verify(work, reference, expected_serial, shard=arguments.shard),
             *catalog_failures,
@@ -227,7 +237,7 @@ def verify(
     *,
     shard: int | None = None,
 ) -> list[str]:
-    """Compare the executed populations with the reference collection."""
+    """Compare phase execution with the independent and live collections."""
     failures: list[str] = []
     if len(set(reference)) != len(reference):
         failures.append("reference collection repeats a node ID")
@@ -246,7 +256,23 @@ def verify(
         else {}
         for phase in PHASES
     }
-    failures.extend(population_failures(expected, reports))
+    try:
+        collections, _ = load_json(work / "execution-collections.json")
+        live = validate_execution_collections(
+            collections, [public_nodeid(node) for node in reference], expected
+        )
+        failures.extend(population_failures(expected, reports))
+        if shard is None:
+            validate_execution_union(
+                [
+                    public_nodeid(nodeid)
+                    for phase in PHASES
+                    for nodeid in reports[phase]
+                ],
+                live,
+            )
+    except (IsolationError, OSError, ValueError) as error:
+        return [*failures, str(error), *_guard_violations(work)]
     failures.extend(_guard_violations(work))
     return failures
 

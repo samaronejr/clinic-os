@@ -20,6 +20,7 @@ from coverage.core import Core
 from coverage.sysmon import SysMonitor
 from ops.testing import ci_pytest
 from ops.testing import renewal_runner as runner
+from ops.testing.ci_pytest_partition import public_nodeid
 from ops.testing.ci_pytest_plugin import (
     UNFINGERPRINTED_SHARED,
     CatalogCounters,
@@ -30,6 +31,7 @@ from ops.testing.ci_pytest_plugin import (
     load_manifest,
     read_counters,
 )
+from ops.testing.isolation_common import canonical_bytes
 from psycopg import sql
 
 if TYPE_CHECKING:
@@ -151,7 +153,7 @@ class FakePhases:
         self.calls: dict[str, list[str]] = {}
         self.coverage_files: dict[str, Path | None] = {}
         self.events: list[str] = []
-        self.parallel = list(PARALLEL)
+        self.parallel: list[str] = list(PARALLEL)
         self.serial = [SERIAL]
         self.guard: list[dict[str, object]] = []
         self.catalog_failures: list[str] = []
@@ -186,6 +188,22 @@ class FakePhases:
             for nodeid in executed
         }
         (work / f"{name}-reports.json").write_text(json.dumps(reports))
+        workers = (
+            [f"gw{number}" for number in range(4)] if name == "parallel" else ["main"]
+        )
+        for worker in workers:
+            (work / f"{name}-{worker}-collection.json").write_bytes(
+                canonical_bytes(
+                    {
+                        "items": [
+                            public_nodeid(nodeid)
+                            for nodeid in (
+                                [*PARALLEL, SERIAL] if name == "parallel" else [SERIAL]
+                            )
+                        ]
+                    }
+                )
+            )
         for violation in self.guard if name == "parallel" else []:
             with (work / "guard-gw0.jsonl").open("a") as handle:
                 handle.write(json.dumps(violation) + "\n")

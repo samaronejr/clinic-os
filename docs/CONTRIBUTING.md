@@ -75,6 +75,14 @@ coverage before enforcing the same 90% floor. `Renewal RC acceptance` requires
 the shard and merge jobs and revalidates all their bound artifacts. Local
 `make ci` and renewal-runner coverage remain unsharded.
 
+Every execution process records its complete collection before shard
+deselection. Additions or missing reference nodes fail the job, with serial
+collection checked against all reference items in its selected files. Bound
+live unions and per-process count/digest certificates let the combined gate
+compare actual reported node lifecycles with the full live collection, not
+just the saved reference. Accounted nodes include existing skips; they are
+not a count of passing test bodies.
+
 For uncommitted work, the renewal runner is the verified current-source
 route:
 

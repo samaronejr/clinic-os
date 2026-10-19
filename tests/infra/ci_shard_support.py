@@ -8,7 +8,14 @@ from typing import TYPE_CHECKING
 
 from coverage import CoverageData
 from ops.testing import ci_pytest_artifacts as artifacts
-from ops.testing.ci_pytest_partition import PHASES, PYTHONS, SHARDS, partition
+from ops.testing.ci_pytest_collection import write_execution_collections
+from ops.testing.ci_pytest_partition import (
+    PHASES,
+    PYTHONS,
+    SHARDS,
+    partition,
+    public_nodeid,
+)
 from ops.testing.ci_pytest_plugin import COUNTED_SHARED, CatalogCounters, Counters
 from ops.testing.isolation_common import JsonObject, canonical_bytes, load_json
 
@@ -24,7 +31,7 @@ REFERENCE = (
     "tests/c.py::test_serial",
     "tests/d.py::test_serial",
 )
-SERIAL = set(REFERENCE[-2:])
+SERIAL: set[str] = set(REFERENCE[-2:])
 EXITS = ["apps/core/workspace.py:1 (raise)", "apps/core/workspace.py:2 (raise)"]
 
 
@@ -76,6 +83,25 @@ def write_python_artifacts(
                 },
             }
             write_json(work / "collected.json", collected)
+            serial_files = {
+                nodeid.split("::", 1)[0] for nodeid in selection[number]["serial"]
+            }
+            for worker in range(4):
+                write_json(
+                    work / f"parallel-gw{worker}-collection.json",
+                    {"items": [public_nodeid(nodeid) for nodeid in REFERENCE]},
+                )
+            write_json(
+                work / "serial-main-collection.json",
+                {
+                    "items": [
+                        public_nodeid(nodeid)
+                        for nodeid in REFERENCE
+                        if nodeid.split("::", 1)[0] in serial_files
+                    ]
+                },
+            )
+            write_execution_collections(work, 4)
             for phase in PHASES:
                 reports: JsonObject = {
                     nodeid: [

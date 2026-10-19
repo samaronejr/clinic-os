@@ -367,6 +367,8 @@ def test_raw_coverage_is_unioned_before_enforcing_the_floor(
                 frozenset(),
                 (),
                 {},
+                frozenset(),
+                (),
             )
         )
     destination = tmp_path / "combined"
