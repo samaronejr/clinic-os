@@ -297,7 +297,9 @@ def create_session(*, clinic_id: UUID, encounter_id: UUID) -> TeleconsultSession
     committed outbox inside the same tenant transaction.
     """
     encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
+    # A video session binds a booked appointment; an unscheduled encounter
+    # (plan item 27) has none, so it is refused like an unknown encounter.
+    if encounter is None or encounter.appointment_id is None:
         raise TeleconsultAccessDeniedError
     try:
         actor = require_current_actor_clinic_roles(

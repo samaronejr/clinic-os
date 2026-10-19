@@ -7,11 +7,16 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import connection
 
 from apps.audit.services import record_phase1_event
 from apps.ehr.models import Allergy, Encounter, HistoryAssessment, Problem
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, _denied
+from apps.ehr.services import (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    _denied,
+    decided,
+)
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
@@ -121,6 +126,17 @@ def _context(encounter: Encounter, kind: str) -> HistoryContext:
     )
 
 
+def entry_encounter(encounter: Encounter, kind: str, entry_id: UUID) -> UUID | None:
+    """Return the encounter of an entry's current version, reads only.
+
+    Callers decide write authority for that encounter before the audited
+    ``read_history``, so an edit refusal never follows a history-view row.
+    """
+    context = _context(encounter, kind)
+    entry = next((e for e in context.entries if e.entry_id == entry_id), None)
+    return None if entry is None else entry.assessment.encounter_id
+
+
 def read_history(*, clinic_id: UUID, encounter_id: UUID, kind: str) -> HistoryContext:
     """Audit clinical reads before materializing current and historical values."""
     encounter = authorize_history(clinic_id, encounter_id)
@@ -159,7 +175,10 @@ def save_history(
     actor = require_current_actor_clinic_roles(
         clinic_id, (UserClinicRole.Role.PHYSICIAN,)
     )
-    with transaction.atomic(), connection.cursor() as cursor:
+    with (
+        decided(lambda: authorize_history(clinic_id, encounter_id, write=True)),
+        connection.cursor() as cursor,
+    ):
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             [f"ehr-history:{clinic_id}:{encounter.patient_id}:{kind}"],

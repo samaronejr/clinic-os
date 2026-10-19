@@ -9,12 +9,13 @@ is not a provider-verified digital signature; signing is a later capability.
 
 from __future__ import annotations
 
+from functools import partial
 from hashlib import sha256
 from typing import TYPE_CHECKING
 
 import rfc8785
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import connection
 from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
@@ -23,9 +24,11 @@ from apps.ehr.services import (
     SOAP_FIELDS,
     ClinicalAccessDeniedError,
     ClinicalConflictError,
-    _appointment,
-    _assigned,
     _denied,
+    _encounter_actor,
+    assignee_scope,
+    decided,
+    pinned_read,
     record_denial,
     view_version,
 )
@@ -85,9 +88,7 @@ def _author_version(clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     )
     if version is None:
         _denied(clinic_id, version_id, "no_care_relationship")
-    actor = _assigned(
-        _appointment(clinic_id, version.document.encounter.appointment_id)
-    )
+    actor = _encounter_actor(clinic_id, version.document.encounter)
     if version.author_id != actor:
         _denied(clinic_id, version_id, "not_assigned")
     return version
@@ -117,7 +118,7 @@ def finalize_version(
     if request.user.pk != authorized.author_id:
         record_denial(clinic_id, authorized.pk, "step_up_required")
         raise StepUpRequired
-    with transaction.atomic():
+    with decided(lambda: _author_version(clinic_id, version_id)):
         version = (
             ClinicalDocumentVersion.objects.select_for_update()
             .filter(pk=version_id)
@@ -167,15 +168,18 @@ def amend_document(
     *, clinic_id: UUID, version_id: UUID, reason: str
 ) -> ClinicalDocumentVersion:
     """Open one linked amendment draft on the document's current version."""
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _assigned(
-        _appointment(clinic_id, authorized.document.encounter.appointment_id)
-    )
+    # Every refusal is decided with reads only: the read audit below is the
+    # first write, and a care reader may pass view_version but not amend.
+    actor = assignee_scope(clinic_id=clinic_id, version_id=version_id)
     reason = reason.strip()
     if not reason or len(reason) > MAX_REASON:
         msg = "Informe o motivo da retificação."
         raise ValidationError(msg)
-    with transaction.atomic():
+    authorized = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id),
+        partial(assignee_scope, clinic_id=clinic_id, version_id=version_id),
+    )
+    with decided(partial(assignee_scope, clinic_id=clinic_id, version_id=version_id)):
         current = (
             ClinicalDocumentVersion.objects.select_for_update()
             .filter(document_id=authorized.document_id, state="finalized")
@@ -219,7 +223,7 @@ def amend_document(
 def discard_draft(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersion:
     """Retire one draft without content; discarded versions are never served."""
     _author_version(clinic_id, version_id)
-    with transaction.atomic():
+    with decided(lambda: _author_version(clinic_id, version_id)):
         version = (
             ClinicalDocumentVersion.objects.select_for_update()
             .filter(pk=version_id)
@@ -243,11 +247,17 @@ def discard_draft(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersi
 
 def close_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:
     """Close once every version is terminal; a retry returns the closed row."""
-    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
-        raise ClinicalAccessDeniedError
-    _assigned(_appointment(clinic_id, encounter.appointment_id))
-    with transaction.atomic():
+
+    def authority() -> Encounter:
+        # Reads only: the encounter and its assigned physician.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        _encounter_actor(clinic_id, found)
+        return found
+
+    encounter = authority()
+    with decided(authority):
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         if encounter.state == Encounter.State.CLOSED:
             return encounter

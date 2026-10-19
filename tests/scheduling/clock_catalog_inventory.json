@@ -296,12 +296,14 @@
     "direct": {},
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
       "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -359,12 +361,14 @@
     "direct": {},
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
       "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -520,6 +524,12 @@
       "trigger:scheduling_appointment.scheduling_appointment_lifecycle_receipt",
       "trigger:scheduling_appointment.scheduling_capacity_after",
       "trigger:scheduling_appointment.scheduling_capacity_before"
+    ]
+  },
+  "constraint:ehr_encounter.ehr_encounter_binding_shape": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
     ]
   },
   "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id": {
@@ -2192,12 +2202,14 @@
     "direct": {},
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
       "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -3868,6 +3880,7 @@
     "direct": {},
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -3903,6 +3916,7 @@
       "function:clinic_app.questionnaire_staff(uuid, text[])",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
+      "index:ehr_encounter_one_open_unscheduled",
       "index:scheduling_appointment_scheduled_patient_excl",
       "index:scheduling_appointment_scheduled_practitioner_excl",
       "index:scheduling_z_buffer_practitioner_excl",
@@ -3935,6 +3949,7 @@
     },
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -3943,6 +3958,7 @@
       "constraint:ehr_encounter.ehr_encounter_state_check",
       "function:clinic_app.ehr_assigned(uuid)",
       "function:pg_catalog.sha256(bytea)",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -3974,6 +3990,7 @@
       "constraint:ehr_clinicaldocumentversion.ehr_version_positive",
       "constraint:ehr_clinicaldocumentversion.ehr_version_state_check",
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -4070,6 +4087,7 @@
       "function:pg_catalog.version()",
       "index:ehr_document_one_current",
       "index:ehr_document_one_draft",
+      "index:ehr_encounter_one_open_unscheduled",
       "index:scheduling_appointment_scheduled_patient_excl",
       "index:scheduling_appointment_scheduled_practitioner_excl",
       "index:scheduling_z_buffer_practitioner_excl",
@@ -4139,6 +4157,7 @@
       "constraint:ehr_clinicaldocumentversion.ehr_version_positive",
       "constraint:ehr_clinicaldocumentversion.ehr_version_state_check",
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -4176,6 +4195,7 @@
       "function:pg_catalog.current_setting(text, boolean)",
       "index:ehr_document_one_current",
       "index:ehr_document_one_draft",
+      "index:ehr_encounter_one_open_unscheduled",
       "index:scheduling_appointment_scheduled_patient_excl",
       "index:scheduling_appointment_scheduled_practitioner_excl",
       "index:scheduling_z_buffer_practitioner_excl",
@@ -4211,7 +4231,9 @@
     ]
   },
   "function:clinic_app.ehr_encounter_close_guard()": {
-    "direct": {},
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2
+    },
     "via": [
       "constraint:ehr_clinicaldocument.ehr_clinicaldocument_encounter_id_f4cb8564_fk_ehr_encounter_id",
       "constraint:ehr_clinicaldocument.ehr_clinicaldocument_organization_id_497e4b82_fk_identity_",
@@ -4236,6 +4258,7 @@
       "function:pg_catalog.text(inet)",
       "function:pg_catalog.text(name)",
       "function:pg_catalog.text(xml)",
+      "function:pg_catalog.to_jsonb(anyelement)",
       "index:ehr_document_one_current",
       "index:ehr_document_one_draft",
       "policy:ehr_clinicaldocument.clinical_insert",
@@ -4264,6 +4287,7 @@
     },
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -4319,6 +4343,7 @@
       "function:pg_catalog.text(xml)",
       "function:pg_catalog.timestamptz(date, time with time zone)",
       "function:pg_catalog.timestamptz(timestamp with time zone, integer)",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -5016,6 +5041,7 @@
     },
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -5023,6 +5049,7 @@
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
       "function:pg_catalog.version()",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -7036,6 +7063,12 @@
       "function:pg_catalog.texteq(text, text)"
     ]
   },
+  "index:ehr_encounter_one_open_unscheduled": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "index:scheduling_appointment_scheduled_patient_excl": {
     "direct": {},
     "via": [
@@ -7160,6 +7193,7 @@
     "direct": {},
     "via": [
       "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
       "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
       "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
       "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
@@ -7167,6 +7201,7 @@
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
@@ -7256,6 +7291,7 @@
   "policy:ehr_encounter.clinical_insert": {
     "direct": {},
     "via": [
+      "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.questionnaire_staff(uuid, text[])",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",

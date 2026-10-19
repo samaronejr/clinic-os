@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
+from functools import partial
 from typing import TYPE_CHECKING, NoReturn
 
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -15,6 +17,7 @@ from apps.audit.services import record_event, record_phase1_event
 from apps.ehr.models import (
     ClinicalDocument,
     ClinicalDocumentVersion,
+    DraftEditState,
     Encounter,
     EncounterIntakeReference,
     SpecialtyTemplate,
@@ -23,6 +26,7 @@ from apps.identity.current_context import (
     CurrentActorError,
     current_actor_id,
     require_current_actor_clinic_roles,
+    require_permission,
 )
 from apps.identity.models import Clinic, UserClinicRole
 from apps.identity.overlay_content import validate_overlay_text
@@ -34,6 +38,7 @@ from apps.intake.models import (
 from apps.scheduling.models import Appointment
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
     from uuid import UUID
 
 SOAP_FIELDS = ("subjective", "objective", "assessment", "plan")
@@ -75,6 +80,51 @@ def _denied(clinic_id: UUID, record_id: UUID, reason: str) -> NoReturn:
     raise ClinicalAccessDeniedError
 
 
+@contextmanager
+def decided(redecide: Callable[[], object]) -> Iterator[None]:
+    """Run writes after their authority decision; lost authority is its refusal.
+
+    ``redecide`` is the caller's early authority decision, made with reads only
+    before this block. A role revocation can commit after it until this
+    transaction appends its first audit row: every append takes the
+    organization's audit-chain lock (``pg_advisory_xact_lock`` in the append
+    function) until commit, and the revocation command appends its own event in
+    the transaction that retires the role. Before that point RLS rejects the
+    next INSERT or UPDATE (SQLSTATE 42501), filters the row an UPDATE or a
+    locking read needs, or a later check refuses; a reuse, idempotent-replay or
+    race-winner return writes nothing for RLS to refuse, so the block's normal
+    exit decides once more, inside the savepoint. Any failure, that final
+    decision's own refusal included and whatever its error type (a teleconsult
+    refusal is not an EHR one), rolls back with this savepoint and ``redecide``
+    runs again outside it: lost authority raises the early refusal with that
+    decision's own denial record, and with authority intact the original
+    exception is re-raised unchanged, so genuine storage and lifecycle failures
+    are never relabelled as denials.
+    """
+    try:
+        with transaction.atomic():
+            yield
+            redecide()
+    except Exception:
+        redecide()
+        raise
+
+
+def pinned_read[T](read: Callable[[], T], decide: Callable[[], object]) -> T:
+    """Run a writer's first audited read, then pin the authority decided before it.
+
+    The read's audit append holds the organization's audit chain until commit
+    (see ``decided``): a revocation not committed before it stays invisible to
+    the rest of this transaction, and one committed before it is visible right
+    after. ``decide`` runs once more there, at ``decided``'s exit. A refusal
+    rolls the read and its audit back and is decided again outside the
+    savepoint, so the response and denial record are an early refusal's;
+    later lifecycle conflicts keep their audited read exactly as before.
+    """
+    with decided(decide):
+        return read()
+
+
 def _appointment(clinic_id: UUID, appointment_id: UUID) -> Appointment:
     appointment = Appointment.objects.filter(
         pk=appointment_id, clinic_id=clinic_id
@@ -101,6 +151,33 @@ def _assigned(appointment: Appointment) -> UUID:
     return actor
 
 
+def _encounter_actor(clinic_id: UUID, encounter: Encounter) -> UUID:
+    """Return the encounter's assigned physician, the same rule as ``ehr_assigned``.
+
+    A scheduled-bound encounter keeps the appointment predicate unchanged. An
+    unscheduled encounter has no appointment: its opener is its assignee. A
+    foreign-clinic actor or encounter is indistinguishable from an unknown one.
+    """
+    if encounter.appointment_id is not None:
+        return _assigned(_appointment(clinic_id, encounter.appointment_id))
+    actor = current_actor_id()
+    if (
+        encounter.clinic_id != clinic_id
+        or not UserClinicRole.objects.filter(
+            clinic_id=clinic_id, user_id=actor
+        ).exists()
+    ):
+        raise ClinicalAccessDeniedError
+    # The database predicate every clinical policy uses decides: an active
+    # physician of the clinic who opened this unscheduled encounter.
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT clinic_app.ehr_assigned(%s)", [encounter.pk])
+        assigned = cursor.fetchone() == (True,)
+    if not assigned:
+        _denied(clinic_id, encounter.pk, "not_assigned")
+    return actor
+
+
 def publish_template(
     *, clinic_id: UUID, key: str, title: str, prompts: dict[str, str]
 ) -> SpecialtyTemplate:
@@ -120,7 +197,14 @@ def publish_template(
     validate_overlay_text(title)
     for prompt in prompts.values():
         validate_overlay_text(prompt)
-    with transaction.atomic(), connection.cursor() as cursor:
+    with (
+        decided(
+            lambda: require_current_actor_clinic_roles(
+                clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
+            )
+        ),
+        connection.cursor() as cursor,
+    ):
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             [f"ehr-template:{clinic_id}:{key}"],
@@ -153,7 +237,7 @@ def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
     """
     appointment = _appointment(clinic_id, appointment_id)
     actor = _assigned(appointment)
-    with transaction.atomic():
+    with decided(lambda: _assigned(_appointment(clinic_id, appointment_id))):
         appointment = Appointment.objects.select_for_update().get(pk=appointment.pk)
         existing = Encounter.objects.filter(appointment=appointment).first()
         if existing is not None:
@@ -197,15 +281,118 @@ def open_encounter(*, clinic_id: UUID, appointment_id: UUID) -> Encounter:
         return encounter
 
 
+def open_unscheduled_encounter(
+    *, clinic_id: UUID, enrollment_id: UUID, reason: str
+) -> Encounter:
+    """Open a walk-in, phone follow-up or documentation-only encounter.
+
+    Authority is ``encounter.open_unscheduled`` for this clinic and enrollment
+    (``has_permission`` also refuses an inactive actor, a foreign clinic and an
+    enrollment outside the clinic, with one indistinguishable denial). Repeated
+    or parallel starts converge on the physician's one open unscheduled
+    encounter with this patient; the database binding guard and insert policy
+    re-decide the same shape and permission.
+    """
+
+    def authority() -> UUID:
+        # Reads only: encounter.open_unscheduled for this clinic and enrollment.
+        try:
+            actor = require_permission(
+                "encounter.open_unscheduled",
+                clinic_id=clinic_id,
+                patient_enrollment_id=enrollment_id,
+            )
+        except CurrentActorError as error:
+            raise ClinicalAccessDeniedError from error
+        return actor
+
+    actor = authority()
+    if reason not in Encounter.UnscheduledReason.values:
+        msg = "Invalid unscheduled encounter reason."
+        raise ValidationError(msg)
+    enrollment = PatientClinicEnrollment.objects.filter(
+        pk=enrollment_id, clinic_id=clinic_id
+    ).first()
+    if enrollment is None:
+        raise ClinicalAccessDeniedError
+    open_visit = Encounter.objects.filter(
+        clinic_id=clinic_id,
+        patient_id=enrollment.patient_id,
+        physician_id=actor,
+        appointment__isnull=True,
+        state=Encounter.State.OPEN,
+    )
+    with decided(authority):
+        existing = open_visit.first()
+        if existing is not None:
+            return existing
+        try:
+            with transaction.atomic():
+                encounter = Encounter.objects.create(
+                    organization_id=enrollment.organization_id,
+                    clinic_id=clinic_id,
+                    appointment=None,
+                    unscheduled_reason=reason,
+                    patient_id=enrollment.patient_id,
+                    physician_id=actor,
+                )
+        except IntegrityError:
+            # A parallel start won the one-open-unscheduled unique index; any
+            # other integrity refusal (binding guard) propagates unchanged.
+            winner = open_visit.first()
+            if winner is None:
+                raise
+            return winner
+        for response in QuestionnaireResponse.objects.filter(
+            clinic_id=clinic_id,
+            patient_id=enrollment.patient_id,
+            state="submitted",
+            appointment_id__isnull=True,
+        ):
+            EncounterIntakeReference.objects.create(
+                organization_id=encounter.organization_id,
+                encounter=encounter,
+                submission=QuestionnaireEvent.objects.get(
+                    response=response, revision=response.revision, action="submitted"
+                ),
+            )
+        record_phase1_event(
+            "ehr.encounter.opened_unscheduled",
+            clinic_id=clinic_id,
+            affected_record_id=encounter.pk,
+        )
+        return encounter
+
+
+def resume_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:
+    """Recheck the current assignment of an already open or closed encounter.
+
+    Scheduled-bound encounters keep the appointment recheck (including a
+    cancelled appointment); unscheduled ones recheck their assigned physician.
+    """
+    found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+    if found is None:
+        raise ClinicalAccessDeniedError
+    if found.appointment_id is not None:
+        return open_encounter(clinic_id=clinic_id, appointment_id=found.appointment_id)
+    _encounter_actor(clinic_id, found)
+    return found
+
+
 def create_draft(
     *, clinic_id: UUID, encounter_id: UUID, template_id: UUID
 ) -> ClinicalDocumentVersion:
     """Create or resume the exact first SOAP version without replacing its template."""
-    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if encounter is None:
-        raise ClinicalAccessDeniedError
-    actor = _assigned(_appointment(clinic_id, encounter.appointment_id))
-    with transaction.atomic():
+
+    def authority() -> tuple[Encounter, UUID]:
+        # Reads only: the encounter and its assigned physician.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        return found, _encounter_actor(clinic_id, found)
+
+    encounter, actor = authority()
+    with decided(authority):
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
         existing = (
             ClinicalDocumentVersion.objects.filter(document__encounter=encounter)
@@ -290,6 +477,45 @@ def view_version(*, clinic_id: UUID, version_id: UUID) -> ClinicalDocumentVersio
     return version
 
 
+def assignee_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
+    """Decide the version's clinic scope and its encounter's assignee, reads only.
+
+    Writers that act as the encounter's assigned physician rather than as the
+    version's author (amendment) call this before their first write, the read
+    audit included. Unknown and foreign versions share the undistinguished
+    denial; in-clinic refusals keep the fixed ``ehr.access.denied`` record.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ehr_version_scope(%s, %s)", [clinic_id, version_id]
+        )
+        scope = cursor.fetchone()
+    if scope is None or scope[0] is None:
+        raise ClinicalAccessDeniedError
+    encounter = Encounter.objects.filter(pk=scope[0], clinic_id=clinic_id).first()
+    if encounter is None:
+        raise ClinicalAccessDeniedError
+    return _encounter_actor(clinic_id, encounter)
+
+
+def author_scope(*, clinic_id: UUID, version_id: UUID) -> UUID:
+    """Decide clinic scope, assignee and authorship with reads only.
+
+    Every writer of a draft calls this before its first write (the read audit
+    included), so a refusal can never follow a committed row: the request
+    transaction commits any response below 500. Unknown and foreign versions
+    share the undistinguished denial; in-clinic refusals keep the fixed
+    metadata-only ``ehr.access.denied`` record.
+    """
+    actor = assignee_scope(clinic_id=clinic_id, version_id=version_id)
+    version = (
+        ClinicalDocumentVersion.objects.filter(pk=version_id).only("author_id").first()
+    )
+    if version is None or version.author_id != actor:
+        _denied(clinic_id, version_id, "not_assigned")
+    return actor
+
+
 def record_clinical_note(
     *,
     clinic_id: UUID,
@@ -298,18 +524,20 @@ def record_clinical_note(
     content: dict[str, str],
 ) -> ClinicalDocumentVersion:
     """Save explicitly; stale editors and failed transactions retain prior data."""
-    authorized = view_version(clinic_id=clinic_id, version_id=version_id)
-    actor = _assigned(
-        _appointment(clinic_id, authorized.document.encounter.appointment_id)
-    )
-    if authorized.author_id != actor:
-        _denied(clinic_id, version_id, "not_assigned")
+    author_scope(clinic_id=clinic_id, version_id=version_id)
     if set(content) != set(SOAP_FIELDS) or any(
         not isinstance(v, str) or len(v) > MAX_CONTENT for v in content.values()
     ):
         msg = "Preencha somente os campos SOAP, com até 20.000 caracteres cada."
         raise ValidationError(msg)
-    with transaction.atomic():
+    # The read audit is the first write; pinned_read decides authorship again
+    # right after it. The locked write decides it once more on every path, the
+    # unchanged no-op included.
+    pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id),
+        partial(author_scope, clinic_id=clinic_id, version_id=version_id),
+    )
+    with decided(partial(author_scope, clinic_id=clinic_id, version_id=version_id)):
         # A finalized/superseded row is readable but outside the UPDATE
         # policy, so select_for_update filters it out; that non-draft path
         # is the contract's precondition_failed conflict, never a 500.
@@ -325,6 +553,7 @@ def record_clinical_note(
             msg = "stale_revision"
             raise ClinicalConflictError(msg)
         stored_sha256 = version.content_sha256
+        previous = version.soap
         version.set_soap(content)
         if version.content_sha256 == stored_sha256:
             # An unchanged save is a no-op: re-encrypting the same plaintext
@@ -335,7 +564,40 @@ def record_clinical_note(
         version.save(
             update_fields=("content", "content_sha256", "revision", "updated_at")
         )
+        advance_section_epochs(version, previous, content)
         record_phase1_event(
             "ehr.document.saved", clinic_id=clinic_id, affected_record_id=version.pk
         )
         return version
+
+
+def draft_edit_state(version: ClinicalDocumentVersion) -> DraftEditState:
+    """Lock (or create) the draft's autosave state row in the caller's txn."""
+    state = DraftEditState.objects.select_for_update().filter(version=version).first()
+    if state is not None:
+        return state
+    return DraftEditState.objects.create(
+        organization_id=version.organization_id,
+        version=version,
+        author_id=version.author_id,
+        section_edit_epochs=dict.fromkeys(SOAP_FIELDS, 0),
+    )
+
+
+def advance_section_epochs(
+    version: ClinicalDocumentVersion,
+    previous: dict[str, str],
+    content: dict[str, str],
+) -> None:
+    """Count one accepted edit for every section this write changed.
+
+    Called by the single revision writer, so explicit saves, autosaves and
+    merges all advance the epochs todo 42 compares against (N1).
+    """
+    state = draft_edit_state(version)
+    epochs = dict(state.section_edit_epochs)
+    for field in SOAP_FIELDS:
+        if previous.get(field, "") != content[field]:
+            epochs[field] = int(epochs[field]) + 1
+    state.section_edit_epochs = epochs
+    state.save(update_fields=("section_edit_epochs", "updated_at"))

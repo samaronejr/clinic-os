@@ -124,8 +124,9 @@ BUNDLES_V1: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
         "owner": _ORG_ADMIN,
     }
 )
-# Workflow eligibility is an unissued successor, never an edit to released v1.
+# Workflow and unscheduled encounter permissions extend, never edit, released v1.
 TASK_PERMISSIONS_V2: Final = frozenset({"tasks.view", "tasks.assign", "tasks.complete"})
+ENCOUNTER_PERMISSIONS_V2: Final = frozenset({"encounter.open_unscheduled"})
 BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
     {
         role: permissions
@@ -135,6 +136,7 @@ BUNDLES_V2: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
             if role in {"owner", "org_admin", "clinic_admin", "clinic_manager"}
             else set()
         )
+        | (ENCOUNTER_PERMISSIONS_V2 if role == "physician" else frozenset())
         for role, permissions in BUNDLES_V1.items()
     }
 )

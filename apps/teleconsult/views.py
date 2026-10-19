@@ -248,7 +248,6 @@ def _join(request: HttpRequest, clinic_id: UUID, session_id: UUID) -> HttpRespon
 
 def _note(request: HttpRequest, clinic_id: UUID, session_id: UUID) -> HttpResponseBase:
     session = assigned_session(clinic_id=clinic_id, session_id=session_id)
-    bind_encounter_context(request, session.encounter)
     # The action's own notes context is complete; the page adds the video facts.
     return _private(
         note_action(

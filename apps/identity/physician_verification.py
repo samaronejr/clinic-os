@@ -72,6 +72,7 @@ def _assigned_encounter(
     if (
         encounter is None
         or encounter.physician_id != actor
+        or encounter.appointment is None
         or encounter.appointment.practitioner_id != actor
     ):
         reason = "assigned_physician_required"

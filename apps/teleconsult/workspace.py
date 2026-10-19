@@ -12,21 +12,26 @@ the physician's edits as unsaved; nothing here writes outside the services.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.db import DatabaseError
 from django.shortcuts import render
 from django.urls import reverse
 
+from apps.core.patient_context import bind_encounter_context
 from apps.ehr.finalization import amend_document, discard_draft, finalize_version
 from apps.ehr.forms import AmendmentForm, DraftForm
 from apps.ehr.models import ClinicalDocumentVersion, Encounter, SpecialtyTemplate
 from apps.ehr.services import (
     SOAP_FIELDS,
     ClinicalConflictError,
+    assignee_scope,
+    author_scope,
     create_draft,
+    decided,
     record_clinical_note,
+    resume_encounter,
     view_version,
 )
 from apps.identity.otp import flow_redirect, safe_next_url
@@ -34,9 +39,11 @@ from apps.identity.stepup import StepUpRequired
 from apps.teleconsult.models import TeleconsultRoom
 from apps.teleconsult.services import (
     TeleconsultAccessDeniedError,
+    assigned_session,
     derived_state,
     patient_joined,
 )
+from apps.tenancy.middleware import HANDLED_REJECTION_ATTR
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -208,13 +215,35 @@ def posted_notes_context(
 
 
 def _session_version(
-    clinic_id: UUID, session: TeleconsultSession, raw: str
+    clinic_id: UUID,
+    session: TeleconsultSession,
+    raw: str,
+    *,
+    scope: Callable[..., UUID] | None = None,
+    read: bool = True,
 ) -> ClinicalDocumentVersion:
-    """Admit only a version of this session's own encounter."""
-    version = view_version(clinic_id=clinic_id, version_id=UUID(raw))
-    if version.document.encounter_id != session.encounter_id:
+    """Admit only a version of this session's own encounter.
+
+    The binding and then the action's own authority (``scope``) are decided
+    with reads only; the audited clinical read comes last, so no refusal
+    follows an ``ehr.record.viewed`` row. Finalize renders no content and
+    skips that read (``read=False``); its service decides the rest.
+    """
+    version_id = UUID(raw)
+    bound = (
+        ClinicalDocumentVersion.objects.filter(
+            pk=version_id, document__encounter_id=session.encounter_id
+        )
+        .only("pk")
+        .first()
+    )
+    if bound is None:
         raise TeleconsultAccessDeniedError
-    return version
+    if scope is not None:
+        scope(clinic_id=clinic_id, version_id=version_id)
+    if not read:
+        return bound
+    return view_version(clinic_id=clinic_id, version_id=version_id)
 
 
 def _render(
@@ -234,7 +263,9 @@ def _save(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int]:
     """Save explicitly; a failed save keeps the edits on screen as unsaved."""
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), scope=author_scope
+    )
     form = DraftForm(version, request.POST)
     status = _INVALID
     if form.is_valid():
@@ -268,7 +299,9 @@ def _finalize(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int] | HttpResponseBase:
     """Freeze the saved draft; the service enforces recent step-up."""
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), read=False
+    )
     try:
         finalize_version(
             clinic_id=clinic_id,
@@ -278,7 +311,9 @@ def _finalize(
         )
     except StepUpRequired:
         target = safe_next_url(request, staff_url(clinic_id))
-        return flow_redirect(request, "identity:step-up", target)
+        response = flow_redirect(request, "identity:step-up", target)
+        setattr(response, HANDLED_REJECTION_ATTR, True)
+        return response
     except ClinicalConflictError as error:
         return _conflict(clinic_id, session, error)
     return notes_context(
@@ -289,7 +324,9 @@ def _finalize(
 def _discard(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int]:
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), scope=author_scope
+    )
     try:
         discard_draft(clinic_id=clinic_id, version_id=version.pk)
     except ClinicalConflictError as error:
@@ -302,7 +339,9 @@ def _discard(
 def _amend(
     request: HttpRequest, clinic_id: UUID, session: TeleconsultSession
 ) -> tuple[dict[str, object], int]:
-    version = _session_version(clinic_id, session, request.POST.get("version_id", ""))
+    version = _session_version(
+        clinic_id, session, request.POST.get("version_id", ""), scope=assignee_scope
+    )
     form = AmendmentForm(request.POST)
     if not form.is_valid():
         context = notes_context(clinic_id, session)
@@ -354,6 +393,14 @@ _HANDLERS = {
     "note-discard": _discard,
     "note-amend": _amend,
 }
+# What each version action decides with reads only before its first write. Once
+# the binding holds, finalize's service decides authorship as author_scope does.
+_SCOPES: Final[dict[str, Callable[..., UUID]]] = {
+    "note-save": author_scope,
+    "note-finalize": author_scope,
+    "note-discard": author_scope,
+    "note-amend": assignee_scope,
+}
 
 
 def note_action(
@@ -363,9 +410,30 @@ def note_action(
     action: str,
     workspace: Callable[[], dict[str, object]],
 ) -> HttpResponseBase:
-    """Run one explicit note action and render the notes panel or the page."""
-    result = _HANDLERS[action](request, clinic_id, session)
+    """Run one explicit note action and render the notes panel or the page.
+
+    A refusal inside the action after its decisions is late: they run again,
+    reads only and in request order, so the response and the denial record are
+    an early refusal's and nothing the action wrote survives.
+    """
+
+    def decide() -> None:
+        assigned_session(clinic_id=clinic_id, session_id=session.pk)
+        if action == "note-template":
+            resume_encounter(clinic_id=clinic_id, encounter_id=session.encounter_id)
+            return
+        _session_version(
+            clinic_id,
+            session,
+            request.POST.get("version_id", ""),
+            scope=_SCOPES[action],
+            read=False,
+        )
+
+    with decided(decide):
+        result = _HANDLERS[action](request, clinic_id, session)
     if not isinstance(result, tuple):
         return result
     context, status = result
+    bind_encounter_context(request, session.encounter)
     return _render(request, context, status, workspace)
