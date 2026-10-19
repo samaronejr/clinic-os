@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ops.testing.validate_action_pins import validate_repository
+import pytest
+from ops.testing.isolation_common import IsolationError
+from ops.testing.validate_action_pins import _validate_workflow, validate_repository
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = PROJECT_ROOT / ".github/workflows/ci.yml"
@@ -24,7 +26,7 @@ def test_hosted_jobs_are_snapshot_first_and_service_free() -> None:
     assert "\n    services:" not in source
     provenance = validate_repository(PROJECT_ROOT)
     assert len(provenance) == 5
-    assert source.count(f"run: {SNAPSHOT}") == 7
+    assert source.count(f"run: {SNAPSHOT}") == 8
 
 
 def test_database_jobs_source_the_claimed_postgres_environment() -> None:
@@ -44,3 +46,24 @@ def test_database_jobs_source_the_claimed_postgres_environment() -> None:
     assert source.index("trap 'ops/testing/ci_postgres.sh down'") < source.index(
         "ops/testing/ci_postgres.sh up"
     )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run pytest tests",
+        "uv run python -m pytest tests",
+        "uv run python -m ops.testing.ci_pytest --workers 4",
+    ],
+)
+def test_artifact_combiner_cannot_hide_a_database_consumer(command: str) -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    altered = source.replace(
+        "uv run --frozen --no-sync --no-env-file python -m "
+        "ops.testing.ci_pytest_artifacts",
+        command,
+    )
+    with pytest.raises(
+        IsolationError, match="consumes PostgreSQL before claimed startup"
+    ):
+        _validate_workflow(altered, "ci.yml")

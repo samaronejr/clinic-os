@@ -32,10 +32,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Final
 
+from ops.testing.ci_pytest_artifacts import load_version, validate_combined
+from ops.testing.ci_pytest_partition import PYTHONS, SHARDS
+from ops.testing.isolation_common import IsolationError
 from ops.testing.renewal_runner import DEFAULT_ENGINE, ENGINES, SUITES
 
 REQUIRED_JOBS: Final = (
     "test",
+    "python-coverage",
     "contracts",
     "renewal-browser",
     "worker-integration",
@@ -50,6 +54,7 @@ NEEDS_LIST = re.compile(r"renewal-acceptance:.*?needs:\s*\[([^\]]*)\]", re.DOTAL
 DIGEST_HEX_LENGTH: Final = 64
 SHA_HEX_LENGTH: Final = 40
 EXPECTED_OPTIONS: Final = 3
+JOB_BLOCK: Final = re.compile(r"(?m)^  ([a-z][a-z0-9-]*):\s*$")
 
 
 def _shard_entries(workflow: str) -> tuple[list[str], list[str]]:
@@ -191,7 +196,7 @@ def _binding_failures(
     workflow: str, registered: set[str]
 ) -> tuple[list[str], set[tuple[str, str]]]:
     """Return (failures, bound (suite, engine) legs) for the workflow contract."""
-    failures: list[str] = []
+    failures = _python_bindings(workflow)
     declared = _declared_needs(workflow)
     failures.extend(
         f"acceptance job does not declare need on {job}"
@@ -215,6 +220,71 @@ def _binding_failures(
         if (suite, DEFAULT_ENGINE) not in seen
     )
     return failures, seen
+
+
+def _python_bindings(workflow: str) -> list[str]:
+    """Require the closed two-version, two-shard matrix and both merge legs."""
+    blocks = list(JOB_BLOCK.finditer(workflow))
+    jobs = {
+        match.group(1): workflow[
+            match.end() : (
+                blocks[index + 1].start() if index + 1 < len(blocks) else len(workflow)
+            )
+        ]
+        for index, match in enumerate(blocks)
+    }
+    failures: list[str] = []
+    for job, expected in (
+        ("test", {"python-version": list(PYTHONS), "shard": list(SHARDS)}),
+        ("python-coverage", {"python-version": list(PYTHONS)}),
+    ):
+        block = jobs.get(job, "")
+        matrix = re.search(r"(?ms)^      matrix:\n(.*?)^    steps:", block)
+        if matrix is None:
+            failures.append(f"workflow {job} Python matrix is missing")
+            continue
+        entries = re.findall(r"(?m)^        ([a-z-]+): (\[[^\n]+\])\s*$", matrix[1])
+        try:
+            parsed = {name: json.loads(raw) for name, raw in entries}
+        except json.JSONDecodeError:
+            parsed = {}
+        if (
+            len(entries) != len(expected)
+            or parsed != expected
+            or (
+                any(
+                    line.strip()
+                    and not re.fullmatch(r"        [a-z-]+: \[[^\n]+\]", line)
+                    for line in matrix[1].splitlines()
+                )
+            )
+        ):
+            failures.append(
+                f"workflow {job} does not bind every Python shard exactly once"
+            )
+        if "name: Python ${{ matrix.python-version }}" not in block:
+            failures.append(f"workflow {job} Python job name is not machine-parseable")
+    if "shard ${{ matrix.shard }}/2" not in jobs.get("test", ""):
+        failures.append("workflow Python shard job names omit the shard identity")
+    if "    needs: [test]" not in jobs.get("python-coverage", ""):
+        failures.append("workflow Python coverage does not require every test shard")
+    return failures
+
+
+def _python_reports(
+    artifacts: Path,
+) -> tuple[list[str], set[tuple[str, str]]]:
+    failures: list[str] = []
+    identities: set[tuple[str, str]] = set()
+    for version in PYTHONS:
+        try:
+            shards, proof = load_version(artifacts, version)
+            validate_combined(artifacts, version, proof)
+        except (IsolationError, OSError, ValueError, KeyError, ET.ParseError) as error:
+            failures.append(f"Python {version}: {error}")
+        else:
+            identities.add((shards[0].revision, shards[0].tree))
+    return failures, identities
 
 
 def _report_failures(
@@ -250,6 +320,9 @@ def validate(workflow: str, needs: dict[str, object], artifacts: Path) -> list[s
     legs = {(suite, DEFAULT_ENGINE) for suite in registered} | bound
     report_failures, identities = _report_failures(legs, artifacts)
     failures.extend(report_failures)
+    python_failures, python_identities = _python_reports(artifacts)
+    failures.extend(python_failures)
+    identities.update(python_identities)
     if not failures and len(identities) != 1:
         failures.append("suite reports disagree on the tested source revision")
     return failures

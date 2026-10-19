@@ -60,11 +60,14 @@ _CONFTEST_KEYS = (
     ("GUARD_STATS", 0, 3),
     ("REFUSAL_BEFORE", 1, 2),
     ("REFUSAL_COUNTS", 1, 2),
+    # Shard deferral is bound once before fixtures, never read from late options.
+    ("REFUSAL_DEFER_EXITS", 1, 2),
     ("REFUSAL_FAILED", 1, 3),
     ("REFUSAL_INTEGRITY", 1, 2),
     ("REFUSAL_ISSUES", 1, 3),
     ("REFUSAL_OBSERVER", 1, 6),
-    ("REFUSAL_RECEIPTS", 1, 3),
+    # The additional read binds the exported controller census to its workers.
+    ("REFUSAL_RECEIPTS", 1, 4),
     ("REFUSAL_SEAL", 1, 2),
     ("REFUSAL_SESSION_ERRORS", 1, 2),
     ("TAMPERING_BEFORE", 1, 2),

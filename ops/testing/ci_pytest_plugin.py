@@ -39,6 +39,8 @@ import psycopg
 import pytest
 from psycopg import sql
 
+from ops.testing.ci_pytest_partition import SHARDS, partition
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -236,6 +238,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption("--ci-pytest-phase", choices=PHASES, default=None)
     group.addoption("--ci-pytest-record", default=None)
     group.addoption("--ci-pytest-guard", action="store_true", default=False)
+    group.addoption("--ci-pytest-shard", type=int, choices=SHARDS, default=None)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -243,8 +246,9 @@ def pytest_configure(config: pytest.Config) -> None:
     phase = config.getoption("--ci-pytest-phase")
     record = config.getoption("--ci-pytest-record")
     guard = bool(config.getoption("--ci-pytest-guard"))
+    shard = config.getoption("--ci-pytest-shard")
     if phase is None:
-        if record is not None or guard:
+        if record is not None or guard or shard is not None:
             _fail("--ci-pytest-record/--ci-pytest-guard need --ci-pytest-phase")
         return
     if record is None or not Path(record).is_absolute() or not Path(record).is_dir():
@@ -254,18 +258,28 @@ def pytest_configure(config: pytest.Config) -> None:
     workerinput = getattr(config, "workerinput", None)
     worker = "main" if workerinput is None else str(workerinput["workerid"])
     config.pluginmanager.register(
-        CiPhase(phase, Path(record), worker, guard=guard), "ci-pytest-phase"
+        CiPhase(phase, Path(record), worker, guard=guard, shard=shard),
+        "ci-pytest-phase",
     )
 
 
 class CiPhase:
     """Select, record and guard one phase inside one pytest process."""
 
-    def __init__(self, phase: str, record: Path, worker: str, *, guard: bool) -> None:
+    def __init__(
+        self,
+        phase: str,
+        record: Path,
+        worker: str,
+        *,
+        guard: bool,
+        shard: int | None = None,
+    ) -> None:
         """Bind the phase, record directory and worker identity."""
         self.phase = phase
         self.record = record
         self.worker = worker
+        self.shard = shard
         self.guard = ServerStateGuard(record, worker) if guard else None
         self.reports: dict[str, list[dict[str, str]]] = {}
 
@@ -291,8 +305,22 @@ class CiPhase:
             )
             return
         keep_serial = self.phase == "serial"
-        selected = [item for item in items if (item.nodeid in serial) == keep_serial]
-        deselected = [item for item in items if (item.nodeid in serial) != keep_serial]
+        if self.shard is None:
+            keep = {
+                item.nodeid for item in items if (item.nodeid in serial) == keep_serial
+            }
+        else:
+            collected = json.loads((self.record / "collected.json").read_text("utf-8"))
+            classified = {
+                nodeid
+                for nodeids in collected["manifest"].values()
+                for nodeid in nodeids
+            }
+            keep = set(
+                partition(collected["items"], classified)[self.shard][self.phase]
+            )
+        selected = [item for item in items if item.nodeid in keep]
+        deselected = [item for item in items if item.nodeid not in keep]
         if deselected:
             config.hook.pytest_deselected(items=deselected)
             items[:] = selected

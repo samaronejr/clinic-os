@@ -53,7 +53,6 @@ DATABASE_CONSUMERS: Final = (
     "make db-bootstrap",
     "make migrate",
     "make db-posture",
-    "pytest",
     "image_smoke.sh",
     "browser_runner.sh",
     "tls_stack.sh",
@@ -129,7 +128,16 @@ def _validate_job(name: str, block: list[str]) -> None:
         _fail(f"job {name} does not snapshot as its first command")
     joined = "\n".join("\n".join(step) for step in steps)
     first_consumer = min(
-        (joined.find(token) for token in DATABASE_CONSUMERS if token in joined),
+        [
+            *(joined.find(token) for token in DATABASE_CONSUMERS if token in joined),
+            *(
+                match.start()
+                for match in re.finditer(
+                    r"(?:^|[\s/])(?:pytest|ops\.testing\.ci_pytest)(?=\s|$)",
+                    joined,
+                )
+            ),
+        ],
         default=-1,
     )
     if first_consumer >= 0:

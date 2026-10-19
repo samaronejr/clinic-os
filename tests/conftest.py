@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast
 from uuid import UUID, uuid4
 
@@ -21,7 +22,6 @@ from workspace_refusal_support import GUARD_STATS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterator
-    from pathlib import Path
 
     from _pytest.terminal import TerminalReporter
 
@@ -43,6 +43,7 @@ REFUSAL_INTEGRITY: pytest.StashKey[Callable[[], list[str]]] = pytest.StashKey()
 REFUSAL_SESSION_ERRORS: pytest.StashKey[Callable[..., list[str]]] = pytest.StashKey()
 REFUSAL_BEFORE: pytest.StashKey[int] = pytest.StashKey()
 REFUSAL_COUNTS: pytest.StashKey[tuple[int, int, int]] = pytest.StashKey()
+REFUSAL_DEFER_EXITS: pytest.StashKey[bool] = pytest.StashKey()
 REFUSAL_SEAL: pytest.StashKey[tuple[tuple[str, object, str, object], ...]] = (
     pytest.StashKey()
 )
@@ -86,6 +87,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     observer = RefusalObserver()
+    # Only startup intent may defer an aggregate census to the hosted merger.
+    # A fixture changing public options after collection must not disable it.
+    session.config.stash[REFUSAL_DEFER_EXITS] = (
+        session.config.getoption("--ci-pytest-shard", default=None) is not None
+    )
     session.config.stash[REFUSAL_OBSERVER] = observer
     session.config.stash[REFUSAL_RECEIPTS] = []
     session.config.stash[GUARD_STATS] = observer.stats
@@ -173,7 +179,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     worker = hasattr(config, "workerinput")
     if config.pluginmanager.hasplugin("dsession"):
         # xdist drops a worker's session exit status: merge every receipt here.
-        observer.tampering.extend(observer.merge(config.stash[REFUSAL_RECEIPTS]))
+        observer.tampering.extend(
+            observer.merge(
+                config.stash[REFUSAL_RECEIPTS],
+                require_exits=not config.stash[REFUSAL_DEFER_EXITS],
+            )
+        )
     errors = config.stash[REFUSAL_SESSION_ERRORS](totals=not worker)
     observer.tampering.extend(errors)
     if errors:
@@ -185,6 +196,24 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         gate = any(item.name == EXIT_GATE for item in session.items)
         cast("_XdistWorker", config).workeroutput[WORKER_RECEIPT] = observer.receipt(
             errors, gate_selected=gate
+        )
+    elif config.getoption("--ci-pytest-phase", default=None) is not None:
+        phase = config.getoption("--ci-pytest-phase")
+        gate = any(item.name == EXIT_GATE for item in session.items) or any(
+            isinstance(receipt, dict) and receipt.get("gate") is True
+            for receipt in config.stash[REFUSAL_RECEIPTS]
+        )
+        receipt = observer.receipt(errors, gate_selected=gate)
+        prefix = f"{Path(__file__).resolve().parents[1]}/"
+        receipt["seen"] = sorted(
+            site.location.removeprefix(prefix) for site in observer.trace.seen
+        )
+        receipt["exits"] = sorted(
+            site.location.removeprefix(prefix) for site in observer.trace.exits
+        )
+        record = Path(config.getoption("--ci-pytest-record"))
+        (record / f"{phase}-refusal.json").write_text(
+            json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
 
 

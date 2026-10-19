@@ -41,7 +41,7 @@ SERIAL = "tests/b.py::test_server_write"
 DRIVER = (
     "CLINIC_PDF_TOOLS=required uv run python -m ops.testing.ci_pytest --workers 4 "
     '--work-root "$RUNNER_TEMP/clinic-ci-pytest" '
-    '--cov-xml "$RUNNER_TEMP/coverage-${{ matrix.python-version }}.xml"'
+    '--shard "${{ matrix.shard }}" --artifact-root "$RUNNER_TEMP/python-shard"'
 )
 # Cross-check only: the guard derives its set from pg_class.relisshared.
 EXPECTED_SHARED = {
@@ -149,18 +149,26 @@ class FakePhases:
 
     def __init__(self) -> None:
         self.calls: dict[str, list[str]] = {}
+        self.coverage_files: dict[str, Path | None] = {}
         self.events: list[str] = []
         self.parallel = list(PARALLEL)
         self.serial = [SERIAL]
         self.guard: list[dict[str, object]] = []
         self.catalog_failures: list[str] = []
 
-    def __call__(self, pytest_args: list[str], *, quiet: bool = False) -> int:
+    def __call__(
+        self,
+        pytest_args: list[str],
+        *,
+        quiet: bool = False,
+        coverage_file: Path | None = None,
+    ) -> int:
         phase = next(a for a in pytest_args if a.startswith("--ci-pytest-phase="))
         record = next(a for a in pytest_args if a.startswith("--ci-pytest-record="))
         name = phase.split("=", 1)[1]
         work = Path(record.split("=", 1)[1])
         self.calls[name] = pytest_args
+        self.coverage_files[name] = coverage_file
         self.events.append(name)
         if name == "collect":
             (work / "collected.json").write_text(
@@ -270,6 +278,44 @@ def test_driver_passes_extra_pytest_arguments_to_both_phases(
     assert "-q" not in phases.calls["collect"]
 
 
+def test_hosted_shard_keeps_guards_and_defers_only_combined_checks(
+    tmp_path: Path, phases: FakePhases, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ops.testing import ci_pytest_artifacts  # noqa: PLC0415
+
+    published: list[tuple[int, dict[str, int], list[str]]] = []
+
+    def publish(
+        work: Path,
+        destination: Path,
+        *,
+        shard: int,
+        exits: dict[str, int],
+        failures: list[str],
+    ) -> None:
+        published.append((shard, exits, failures))
+
+    monkeypatch.setattr(ci_pytest_artifacts, "publish", publish)
+    assert (
+        ci_pytest.main(
+            [
+                "--workers=4",
+                f"--work-root={tmp_path / 'work'}",
+                "--shard=1",
+                f"--artifact-root={tmp_path / 'artifact'}",
+            ]
+        )
+        == 0
+    )
+    assert published == [(1, {"parallel": 0, "serial": 0}, [])]
+    assert "--ci-pytest-guard" in phases.calls["parallel"]
+    for phase in ("parallel", "serial"):
+        assert "--ci-pytest-shard=1" in phases.calls[phase]
+        assert "--cov-fail-under=90" not in phases.calls[phase]
+    assert phases.coverage_files["parallel"] is not None
+    assert phases.coverage_files["parallel"] == phases.coverage_files["serial"]
+
+
 def test_pytest_phases_measure_with_the_sysmon_core(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -350,7 +396,12 @@ def test_clones_are_dropped_after_the_catalog_check_and_before_the_serial_phase(
 def test_clones_are_dropped_when_the_parallel_phase_raises(
     tmp_path: Path, phases: FakePhases, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def interrupted(pytest_args: list[str], *, quiet: bool = False) -> int:
+    def interrupted(
+        pytest_args: list[str],
+        *,
+        quiet: bool = False,
+        coverage_file: Path | None = None,
+    ) -> int:
         if "--ci-pytest-phase=parallel" in pytest_args:
             raise KeyboardInterrupt
         return phases(pytest_args, quiet=quiet)
@@ -773,15 +824,12 @@ def test_hosted_job_make_ci_and_runner_run_the_shared_driver(
     assert DRIVER in lines
     assert not [line for line in lines if "run pytest" in line or "-m pytest" in line]
     artifact = next(
-        step
-        for step in steps
-        if step.get("name") == "Publish machine-readable coverage"
+        step for step in steps if step.get("name") == "Publish Python shard evidence"
     )
-    assert artifact["with"]["name"] == "renewal-coverage-py${{ matrix.python-version }}"
-    assert (
-        artifact["with"]["path"]
-        == "${{ runner.temp }}/coverage-${{ matrix.python-version }}.xml"
+    assert artifact["with"]["name"] == (
+        "renewal-python-py${{ matrix.python-version }}-shard-${{ matrix.shard }}"
     )
+    assert artifact["with"]["path"] == "${{ runner.temp }}/python-shard/"
     makefile = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "CI_PYTEST_WORKERS ?= 4" in makefile.splitlines()
     recipe = makefile.split("\nci:\n", maxsplit=1)[1].split("\n\n", maxsplit=1)[0]
