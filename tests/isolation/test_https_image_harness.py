@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from ops.testing import https_stack_runtime
 from ops.testing.https_contract import TLS_COMMAND
+from ops.testing.https_service_specs import application_environment, credentials_for
 from ops.testing.https_stack_specs import HttpsStackInput, build_https_stack_plan
 from ops.testing.isolation_stack_claim import validate_stack_desired
 from ops.testing.process_helpers import run_process
+from ops.testing.runtime_paths import runtime_directory
+from ops.testing.tls_contract import SOURCE_DATABASE_HOST
 from ops.testing.tls_specs import materializer_volume_names
 
 if TYPE_CHECKING:
@@ -15,6 +21,48 @@ if TYPE_CHECKING:
     from ops.testing.isolation_common import JsonObject
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_run_process = subprocess.run
+
+
+def test_https_application_environment_imports_production_settings(
+    tmp_path: Path,
+) -> None:
+    # Given the actual web environment, with only its mounted CA relocated.
+    environment = application_environment(
+        "clinic_https_fixture_db",
+        SOURCE_DATABASE_HOST,
+        "web",
+        credentials_for("11111111-1111-4111-8111-111111111111"),
+    )
+    with runtime_directory(tmp_path, purpose="https-settings") as directory:
+        ca = directory / "db-ca.pem"
+        _ = ca.write_text("synthetic CA fixture\n", encoding="ascii")
+        ca.chmod(0o444)
+        database_url = urlsplit(environment["APP_DATABASE_URL"])
+        query = dict(parse_qsl(database_url.query))
+        query["sslrootcert"] = str(ca)
+        environment["APP_DATABASE_URL"] = database_url._replace(
+            query=urlencode(query)
+        ).geturl()
+
+        # When production settings load without inheriting the caller's env.
+        result = _run_process(
+            (
+                sys.executable,
+                "-c",
+                "import config.settings.prod as s; print(s.CLINIC_PROCESS_ROLE)",
+            ),
+            check=False,
+            capture_output=True,
+            cwd=PROJECT_ROOT,
+            env=environment,
+            text=True,
+            timeout=15,
+        )
+
+    # Then the production runtime role is available after successful startup.
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "clinic_app\n"
 
 
 def test_https_command_is_an_exact_harness_only_override() -> None:
