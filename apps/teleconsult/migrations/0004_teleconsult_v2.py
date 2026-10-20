@@ -19,6 +19,8 @@ from django.db import migrations, models
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._provider_seed import seed_synthetic_video_version
 from ._teleconsult_v2_sql import REVERSE_SQL, SQL
 
@@ -86,7 +88,7 @@ class Migration(migrations.Migration):
             name="provider_environment",
             field=models.CharField(blank=True, default="", max_length=32),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultevent",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -109,7 +111,7 @@ class Migration(migrations.Migration):
                 name="teleconsult_event_kind_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultroom",
             constraint=models.UniqueConstraint(
                 fields=("room_name",), name="teleconsult_room_name_uniq"
@@ -131,14 +133,14 @@ class Migration(migrations.Migration):
                 to="teleconsult.teleconsultsession",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultdevicecheck",
             constraint=models.CheckConstraint(
                 condition=models.Q(("role__in", ("physician", "patient"))),
                 name="teleconsult_device_role_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultdevicecheck",
             constraint=models.CheckConstraint(
                 condition=models.Q(

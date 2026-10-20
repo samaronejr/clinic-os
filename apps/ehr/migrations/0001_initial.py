@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Introduce the task-21 clinical record schema."""
@@ -243,7 +245,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounter",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -254,38 +256,38 @@ class Migration(migrations.Migration):
                 name="ehr_encounter_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocument",
             constraint=models.UniqueConstraint(
                 fields=("encounter", "kind"), name="ehr_document_kind_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounterintakereference",
             constraint=models.UniqueConstraint(
                 fields=("encounter", "submission"), name="ehr_intake_reference_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="specialtytemplate",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "key", "version"), name="ehr_template_version_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="specialtytemplate",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)),
                 name="ehr_template_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.UniqueConstraint(
                 fields=("document", "version"), name="ehr_document_version_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("state", "draft")),
@@ -293,7 +295,7 @@ class Migration(migrations.Migration):
                 name="ehr_document_one_draft",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("state", "finalized")),
@@ -301,7 +303,7 @@ class Migration(migrations.Migration):
                 name="ehr_document_one_current",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -310,7 +312,7 @@ class Migration(migrations.Migration):
                 name="ehr_version_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicaldocumentversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(("revision__gte", 1), ("version__gte", 1)),

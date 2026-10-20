@@ -11,6 +11,8 @@ from django.conf import settings
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._waitlist_sql import REVERSE_SQL, SQL
 
 
@@ -174,14 +176,14 @@ class Migration(migrations.Migration):
                 name="waitlist_fifo_idx",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistentry",
             constraint=models.CheckConstraint(
                 condition=models.Q(("end_at__gt", models.F("start_at"))),
                 name="waitlist_entry_window",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistentry",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -193,7 +195,7 @@ class Migration(migrations.Migration):
                 name="waitlist_entry_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistoffer",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -203,7 +205,7 @@ class Migration(migrations.Migration):
                 name="waitlist_offer_window",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistoffer",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -215,7 +217,7 @@ class Migration(migrations.Migration):
                 name="waitlist_offer_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistoffer",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -229,7 +231,7 @@ class Migration(migrations.Migration):
                 name="waitlist_offer_booking",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistoffer",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("state", "pending")),
@@ -237,7 +239,7 @@ class Migration(migrations.Migration):
                 name="waitlist_entry_one_offer",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="waitlistoffer",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(("state", "pending")),

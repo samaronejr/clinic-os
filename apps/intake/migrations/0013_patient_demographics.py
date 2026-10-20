@@ -42,6 +42,7 @@ from django.db import connection, migrations, models, transaction
 
 import apps.tenancy.fields
 from apps.intake.rls import apply_intake_rls
+from apps.tenancy.migration_operations import AddConstraint
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1333,27 +1334,27 @@ class Migration(migrations.Migration):
                 ],
             },
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientdemographics",
             constraint=models.UniqueConstraint(
                 fields=("organization", "id"), name="intake_demographics_org_id_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientdemographics",
             constraint=models.UniqueConstraint(
                 fields=("organization", "patient", "version"),
                 name="intake_demographics_org_patient_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientdemographics",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)),
                 name="intake_demographics_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientdemographics",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -1362,21 +1363,21 @@ class Migration(migrations.Migration):
                 name="intake_demographics_source_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="demographicscorrection",
             constraint=models.UniqueConstraint(
                 fields=("organization", "id"),
                 name="intake_demographics_correction_org_id_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="demographicscorrection",
             constraint=models.UniqueConstraint(
                 fields=("organization", "demographics"),
                 name="intake_demographics_correction_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="demographicscorrection",
             constraint=models.CheckConstraint(
                 condition=django.db.models.expressions.RawSQL(
@@ -1387,20 +1388,20 @@ class Migration(migrations.Migration):
                 name="intake_demographics_correction_fields_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientidentifier",
             constraint=models.UniqueConstraint(
                 fields=("organization", "id"), name="intake_identifier_org_id_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientidentifier",
             constraint=models.UniqueConstraint(
                 fields=("organization", "patient", "kind", "version"),
                 name="intake_identifier_org_patient_kind_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientidentifier",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -1409,14 +1410,14 @@ class Migration(migrations.Migration):
                 name="intake_identifier_kind_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientidentifier",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)),
                 name="intake_identifier_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientidentifier",
             constraint=models.CheckConstraint(
                 condition=django.db.models.expressions.RawSQL(

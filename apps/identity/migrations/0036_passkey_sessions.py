@@ -9,6 +9,7 @@ from django.db.migrations.operations.base import Operation
 
 from apps.identity.migrations._passkey_assertion_sql import ASSERTION_SQL
 from apps.identity.migrations._passkey_session_sql import PASSKEY_SESSION_SQL
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -33,7 +34,7 @@ class Migration(migrations.Migration):
                 to="identity.passkey",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="sessionrecord",
             constraint=models.CheckConstraint(
                 condition=(

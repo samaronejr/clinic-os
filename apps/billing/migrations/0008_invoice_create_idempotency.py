@@ -15,6 +15,8 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint, SeparateDatabaseAndState
+
 SQL = """
 ALTER TABLE clinic_app.billing_invoice
  ADD COLUMN idempotency_key uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -36,7 +38,7 @@ class Migration(migrations.Migration):
 
     dependencies: ClassVar = [("billing", "0007_patient_charge_detail")]
     operations: ClassVar = [
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[migrations.RunSQL(SQL, REVERSE_SQL)],
             state_operations=[
                 migrations.AddField(
@@ -51,7 +53,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="invoice",
             constraint=models.UniqueConstraint(
                 fields=("organization", "idempotency_key"),

@@ -29,6 +29,7 @@ import rfc8785
 from django.db import migrations
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import SeparateDatabaseAndState
 from apps.tenancy.migrations._protected_migration import (
     drop_constraint_sql,
     drop_legacy_sql,
@@ -333,7 +334,7 @@ class Migration(migrations.Migration):
     ]
 
     operations: ClassVar[list[Operation]] = [
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=_SCHEMA_SQL, reverse_sql=None),
             ],
@@ -434,7 +435,7 @@ class Migration(migrations.Migration):
         migrations.RunSQL(sql=_GUARD_SQL, reverse_sql=None),
         migrations.RunSQL(sql=_OVERVIEW_SQL, reverse_sql=None),
         migrations.RunPython(code=_seal, reverse_code=irreversible),
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=_DROP_SQL, reverse_sql=None),
             ],

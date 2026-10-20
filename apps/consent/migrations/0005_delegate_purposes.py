@@ -5,6 +5,8 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 SQL = """
 SET LOCAL ROLE clinic_resolver;
 CREATE FUNCTION clinic_app.consent_delegate_guard()
@@ -80,7 +82,7 @@ class Migration(migrations.Migration):
         migrations.RemoveConstraint(
             model_name="refusalrecord", name="consent_refusal_authority_check"
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="consentacceptance",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -92,7 +94,7 @@ class Migration(migrations.Migration):
                 name="consent_authority_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="refusalrecord",
             constraint=models.CheckConstraint(
                 condition=models.Q(

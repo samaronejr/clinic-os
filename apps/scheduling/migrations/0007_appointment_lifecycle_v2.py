@@ -36,6 +36,7 @@ from apps.scheduling.rls import (
     apply_scheduling_rls,
     remove_scheduling_rls,
 )
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -255,7 +256,7 @@ class Migration(migrations.Migration):
                 to="scheduling.appointmentseries",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointment",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(
@@ -277,7 +278,7 @@ class Migration(migrations.Migration):
                 name="scheduling_appointment_scheduled_practitioner_excl",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointment",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(
@@ -299,7 +300,7 @@ class Migration(migrations.Migration):
                 name="scheduling_appointment_scheduled_patient_excl",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointment",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(
@@ -322,14 +323,14 @@ class Migration(migrations.Migration):
                 name="scheduling_z_buffer_practitioner_excl",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointment",
             constraint=models.UniqueConstraint(
                 fields=("series", "series_index"),
                 name="scheduling_appointment_series_index_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointment",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -390,20 +391,20 @@ class Migration(migrations.Migration):
                 to="scheduling.appointmentseries",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmentseries",
             constraint=models.UniqueConstraint(
                 fields=("organization", "idempotency_key"),
                 name="scheduling_series_org_idempotency_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmentseries",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"), name="scheduling_series_scope"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmentseries",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -438,35 +439,35 @@ class Migration(migrations.Migration):
                 name="scheduling_series_rule",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmenttransition",
             constraint=models.UniqueConstraint(
                 fields=("organization", "command_id"),
                 name="scheduling_transition_command_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmenttransition",
             constraint=models.UniqueConstraint(
                 fields=("appointment", "revision"),
                 name="scheduling_transition_revision_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmenttransition",
             constraint=models.CheckConstraint(
                 condition=models.Q(("actor_kind__in", ["staff", "patient", "machine"])),
                 name="scheduling_transition_actor_kind",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="seriesexception",
             constraint=models.UniqueConstraint(
                 fields=("organization", "command_id"),
                 name="scheduling_series_exception_command_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="seriesexception",
             constraint=models.CheckConstraint(
                 condition=models.Q(

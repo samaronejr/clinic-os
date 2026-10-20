@@ -15,6 +15,7 @@ from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import AddConstraint
 
 from ._taxonomy_sql import REVERSE_SQL, SQL
 
@@ -160,7 +161,7 @@ class Migration(migrations.Migration):
                 max_length=32,
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="consenttext",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -319,7 +320,7 @@ class Migration(migrations.Migration):
                 to="consent.consenttext",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="aiusedisclosure",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -328,14 +329,14 @@ class Migration(migrations.Migration):
                 name="consent_ai_disclosure_coherent_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="noticeversion",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "topic", "version"),
                 name="consent_notice_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="noticeversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -354,14 +355,14 @@ class Migration(migrations.Migration):
                 name="consent_notice_scope_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="participantacknowledgment",
             constraint=models.UniqueConstraint(
                 fields=("session", "participant_kind"),
                 name="consent_participant_ack_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="participantacknowledgment",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -373,13 +374,13 @@ class Migration(migrations.Migration):
                 name="consent_participant_kind_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="refusalrecord",
             constraint=models.UniqueConstraint(
                 fields=("enrollment", "text"), name="consent_refusal_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="refusalrecord",
             constraint=models.CheckConstraint(
                 condition=models.Q(("authority", "patient_explicit_action")),

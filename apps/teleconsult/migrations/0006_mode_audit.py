@@ -5,6 +5,8 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._mode_transition_sql import REVERSE_SQL, SQL
 
 
@@ -17,7 +19,7 @@ class Migration(migrations.Migration):
     ]
     operations: ClassVar[list[Operation]] = [
         migrations.RunSQL(SQL, REVERSE_SQL),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultevent",
             constraint=models.CheckConstraint(
                 condition=(

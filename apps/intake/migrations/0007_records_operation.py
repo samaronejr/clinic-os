@@ -5,6 +5,8 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Extend only the closed patient-operation vocabulary."""
@@ -23,7 +25,7 @@ class Migration(migrations.Migration):
         )
         for operation in (
             migrations.RemoveConstraint(model_name=model, name=name),
-            migrations.AddConstraint(
+            AddConstraint(
                 model_name=model,
                 constraint=models.CheckConstraint(
                     condition=models.expressions.RawSQL(

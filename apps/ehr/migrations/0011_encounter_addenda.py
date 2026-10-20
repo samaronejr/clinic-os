@@ -16,6 +16,7 @@ from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import AddConstraint
 
 from ._addendum_sql import REVERSE_SQL, SQL
 
@@ -131,7 +132,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounteraddendum",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("state", "draft")),
@@ -139,14 +140,14 @@ class Migration(migrations.Migration):
                 name="ehr_addendum_one_draft",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounteraddendum",
             constraint=models.CheckConstraint(
                 condition=models.Q(("revision__gte", 1), ("state__in", ["draft"])),
                 name="ehr_addendum_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounteraddendum",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -157,21 +158,21 @@ class Migration(migrations.Migration):
                 name="ehr_addendum_digest_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="addendumsavereceipt",
             constraint=models.UniqueConstraint(
                 fields=("addendum", "command_id"),
                 name="ehr_addendumreceipt_command_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="addendumsavereceipt",
             constraint=models.CheckConstraint(
                 condition=models.Q(("request_sha256__regex", "^[0-9a-f]{64}$")),
                 name="ehr_addendumreceipt_digest_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="addendumsavereceipt",
             constraint=models.CheckConstraint(
                 condition=models.Q(

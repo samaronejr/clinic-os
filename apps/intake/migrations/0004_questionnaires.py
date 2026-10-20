@@ -10,6 +10,7 @@ from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
 from apps.intake.migrations._questionnaire_sql import REVERSE_SQL, SQL
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -95,7 +96,7 @@ class Migration(migrations.Migration):
             model_name="patientsession",
             name="intake_session_operations_check",
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientaccessgrant",
             constraint=models.CheckConstraint(
                 condition=django.db.models.expressions.RawSQL(
@@ -107,7 +108,7 @@ class Migration(migrations.Migration):
                 name="intake_grant_operations_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="patientsession",
             constraint=models.CheckConstraint(
                 condition=django.db.models.expressions.RawSQL(
@@ -202,21 +203,21 @@ class Migration(migrations.Migration):
                 to="intake.questionnairetemplate",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="questionnairetemplate",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "key", "version"),
                 name="intake_questionnaire_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="questionnairetemplate",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)),
                 name="intake_questionnaire_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="questionnaireresponse",
             constraint=models.CheckConstraint(
                 condition=models.Q(

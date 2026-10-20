@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Introduce the task-25 retention schema; disposal stays unimplemented."""
@@ -281,14 +283,14 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="retentionpolicy",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "record_class", "version"),
                 name="retention_policy_version_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="retentionpolicy",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("state", "approved")),
@@ -296,7 +298,7 @@ class Migration(migrations.Migration):
                 name="retention_policy_one_approved",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="retentionpolicy",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -315,21 +317,21 @@ class Migration(migrations.Migration):
                 name="retention_policy_class_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="retentionpolicy",
             constraint=models.CheckConstraint(
                 condition=models.Q(("state__in", ["proposed", "approved", "retired"])),
                 name="retention_policy_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="retentionpolicy",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)),
                 name="retention_policy_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="retentionpolicy",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -357,7 +359,7 @@ class Migration(migrations.Migration):
                 name="retention_policy_transition_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="legalhold",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -376,7 +378,7 @@ class Migration(migrations.Migration):
                 name="retention_hold_class_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="legalhold",
             constraint=models.CheckConstraint(
                 condition=models.Q(("authority__regex", "\\S"))
@@ -384,7 +386,7 @@ class Migration(migrations.Migration):
                 name="retention_hold_authority_reason_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="legalhold",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -405,7 +407,7 @@ class Migration(migrations.Migration):
                 name="retention_hold_release_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="recordrelease",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("revoked_at__isnull", True)),
@@ -413,7 +415,7 @@ class Migration(migrations.Migration):
                 name="retention_release_one_active",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="recordrelease",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -429,14 +431,14 @@ class Migration(migrations.Migration):
                 name="retention_release_revocation_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="recordexport",
             constraint=models.CheckConstraint(
                 condition=models.Q(("kind__in", ["staff", "patient"])),
                 name="retention_export_kind_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="recordexport",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -455,7 +457,7 @@ class Migration(migrations.Migration):
                 name="retention_export_actor_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="recordexport",
             constraint=models.CheckConstraint(
                 condition=models.Q(("manifest_digest__regex", "^[0-9a-f]{64}$")),

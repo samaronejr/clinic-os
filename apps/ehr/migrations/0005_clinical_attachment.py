@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Introduce the task-23 attachment schema; bytes live in object storage."""
@@ -94,7 +96,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicalattachment",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -103,7 +105,7 @@ class Migration(migrations.Migration):
                 name="ehr_attachment_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicalattachment",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -112,7 +114,7 @@ class Migration(migrations.Migration):
                 name="ehr_attachment_size_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicalattachment",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -130,7 +132,7 @@ class Migration(migrations.Migration):
                 name="ehr_attachment_type_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicalattachment",
             constraint=models.CheckConstraint(
                 condition=models.Q(("sha256__regex", "^[0-9a-f]{64}$"))
@@ -138,7 +140,7 @@ class Migration(migrations.Migration):
                 name="ehr_attachment_digest_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicalattachment",
             constraint=models.CheckConstraint(
                 condition=models.Q(scanned_at__isnull=True, state="quarantined")

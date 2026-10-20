@@ -25,6 +25,7 @@ from apps.scheduling.rls import (
     apply_scheduling_rls,
     remove_scheduling_rls,
 )
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -380,7 +381,7 @@ class Migration(migrations.Migration):
                 to="scheduling.resource",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilityblock",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -395,7 +396,7 @@ class Migration(migrations.Migration):
                 name="scheduling_availability_subject",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilityblock",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -410,14 +411,14 @@ class Migration(migrations.Migration):
                 name="scheduling_availability_generation",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilityblock",
             constraint=models.UniqueConstraint(
                 fields=("template", "generated_date"),
                 name="scheduling_template_date_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilityblock",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(("retired_at__isnull", True)),
@@ -461,7 +462,7 @@ class Migration(migrations.Migration):
                 to="scheduling.servicetype",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointment",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(
@@ -484,42 +485,42 @@ class Migration(migrations.Migration):
                 name="scheduling_z_buffer_practitioner_excl",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="holiday",
             constraint=models.CheckConstraint(
                 condition=models.Q(("end_at__gt", models.F("start_at"))),
                 name="scheduling_holiday_window",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="holiday",
             constraint=models.CheckConstraint(
                 condition=models.Q(("reason__in", ["holiday", "closure"])),
                 name="scheduling_holiday_reason",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="resource",
             constraint=models.CheckConstraint(
                 condition=models.Q(("capacity__gte", 1), ("capacity__lte", 64)),
                 name="scheduling_resource_capacity",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="resource",
             constraint=models.CheckConstraint(
                 condition=models.Q(("kind__in", ["room", "equipment", "location"])),
                 name="scheduling_resource_kind",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="resource",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"),
                 name="scheduling_resource_scope",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilitytemplate",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -534,7 +535,7 @@ class Migration(migrations.Migration):
                 name="scheduling_template_subject",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilitytemplate",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -544,21 +545,21 @@ class Migration(migrations.Migration):
                 name="scheduling_template_window",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="availabilitytemplate",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"),
                 name="scheduling_template_scope",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmentresource",
             constraint=models.UniqueConstraint(
                 fields=("appointment", "resource"),
                 name="scheduling_appointment_resource_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmentresource",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -569,7 +570,7 @@ class Migration(migrations.Migration):
                 name="scheduling_reservation_window",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="appointmentresource",
             constraint=django.contrib.postgres.constraints.ExclusionConstraint(
                 condition=models.Q(("occupied", True)),
@@ -590,7 +591,7 @@ class Migration(migrations.Migration):
                 name="scheduling_resource_capacity_excl",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="absence",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -605,21 +606,21 @@ class Migration(migrations.Migration):
                 name="scheduling_absence_subject",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="absence",
             constraint=models.CheckConstraint(
                 condition=models.Q(("end_at__gt", models.F("start_at"))),
                 name="scheduling_absence_window",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="absence",
             constraint=models.CheckConstraint(
                 condition=models.Q(("reason__in", ["unavailable", "maintenance"])),
                 name="scheduling_absence_reason",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="servicetype",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -631,7 +632,7 @@ class Migration(migrations.Migration):
                 name="scheduling_service_duration",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="servicetype",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"), name="scheduling_service_scope"

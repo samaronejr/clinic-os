@@ -10,6 +10,7 @@ from apps.identity.phase1a_timezone_migration import (
     clear_clinic_timezones,
 )
 from apps.scheduling.timezones import IanaTimezoneField, validate_iana_timezone
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -37,7 +38,7 @@ class Migration(migrations.Migration):
                 validators=[validate_iana_timezone],
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinic",
             constraint=models.CheckConstraint(
                 condition=models.expressions.RawSQL(

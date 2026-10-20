@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 from django.db import migrations
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import SeparateDatabaseAndState
 from apps.tenancy.migrations._protected_migration import (
     drop_legacy_sql,
     encrypt_backfill,
@@ -131,7 +132,7 @@ class Migration(migrations.Migration):
     ]
 
     operations: ClassVar[list[Operation]] = [
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=_SCHEMA_SQL, reverse_sql=None),
             ],
@@ -161,7 +162,7 @@ class Migration(migrations.Migration):
             code=require_backfill_complete(table="consent_consenttext", plans=_PLANS),
             reverse_code=irreversible,
         ),
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=_DROP_SQL, reverse_sql=None),
             ],

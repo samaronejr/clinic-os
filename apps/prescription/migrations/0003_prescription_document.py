@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Keep artifact identity separate from draft content rows."""
@@ -92,28 +94,28 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocument",
             constraint=models.UniqueConstraint(
                 fields=("draft", "document_version"),
                 name="prescription_document_version_unique",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocument",
             constraint=models.CheckConstraint(
                 condition=models.Q(("document_version__gte", 1)),
                 name="prescription_document_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocument",
             constraint=models.CheckConstraint(
                 condition=models.Q(("state__in", ["rendered"])),
                 name="prescription_document_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocument",
             constraint=models.CheckConstraint(
                 condition=models.Q(("input_digest__regex", "^[0-9a-f]{64}$"))
@@ -121,7 +123,7 @@ class Migration(migrations.Migration):
                 name="prescription_document_digests",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondocument",
             constraint=models.CheckConstraint(
                 condition=models.Q(("qr_handle__regex", "^[A-Za-z0-9_-]{32,64}$")),

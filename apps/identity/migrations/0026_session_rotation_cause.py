@@ -6,6 +6,8 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._session_rotation_sql import GUARD_SQL, SQL
 
 
@@ -21,7 +23,7 @@ class Migration(migrations.Migration):
             name="superseded_at",
             field=models.DateTimeField(editable=False, null=True),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="sessionrecord",
             constraint=models.CheckConstraint(
                 condition=(

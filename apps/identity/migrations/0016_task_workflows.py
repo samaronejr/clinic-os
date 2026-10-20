@@ -6,6 +6,8 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._workflow_eligibility_sql import SQL
 
 
@@ -19,7 +21,7 @@ class Migration(migrations.Migration):
             name="workflow_bundle_version",
             field=models.PositiveSmallIntegerField(default=1),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="userclinicrole",
             constraint=models.CheckConstraint(
                 condition=models.Q(workflow_bundle_version__in=(1, 2)),
@@ -29,7 +31,7 @@ class Migration(migrations.Migration):
         migrations.RemoveConstraint(
             model_name="rolegrant", name="identity_rolegrant_remove_only"
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="rolegrant",
             constraint=models.CheckConstraint(
                 condition=models.Q(effect="remove", bundle_version__in=(1, 2)),

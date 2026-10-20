@@ -12,6 +12,7 @@ from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
 from apps.identity.migrations._lifecycle_sql import FORWARD_SQL
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -259,7 +260,7 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.PROTECT, to=settings.AUTH_USER_MODEL
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="userclinicrole",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("revoked_at__isnull", True)),
@@ -427,14 +428,14 @@ class Migration(migrations.Migration):
                 to=settings.AUTH_USER_MODEL,
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="onboardingprogress",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "step_key"),
                 name="identity_onboarding_clinic_step_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="staffinvitation",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -443,14 +444,14 @@ class Migration(migrations.Migration):
                 name="identity_invitation_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="staffinvitation",
             constraint=models.CheckConstraint(
                 condition=models.Q(("expires_at__gt", models.F("created_at"))),
                 name="identity_invitation_expiry",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="staffinvitation",
             constraint=models.CheckConstraint(
                 condition=models.Q(

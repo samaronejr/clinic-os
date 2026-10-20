@@ -11,6 +11,7 @@ from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
 from apps.identity.migrations._signup_sql import REMOVE_SIGNUP_SQL, SIGNUP_SQL
+from apps.tenancy.migration_operations import AddConstraint
 
 
 class Migration(migrations.Migration):
@@ -35,14 +36,14 @@ class Migration(migrations.Migration):
                 max_length=20,
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="organization",
             constraint=models.CheckConstraint(
                 condition=models.Q(status__in=("active", "pending_activation")),
                 name="identity_organization_status",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="organization",
             constraint=models.CheckConstraint(
                 condition=~models.Q(status="pending_activation")

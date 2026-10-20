@@ -6,6 +6,8 @@ from typing import ClassVar
 import django.db.models.deletion
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._principal_sql import REVERSE_SQL, SQL
 
 
@@ -82,13 +84,13 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="serviceprincipal",
             constraint=models.UniqueConstraint(
                 fields=("organization", "id"), name="identity_principal_org_id_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="serviceprincipal",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -100,7 +102,7 @@ class Migration(migrations.Migration):
                 name="identity_principal_v1_identity",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="serviceprincipalgrant",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("active", True)),
@@ -108,7 +110,7 @@ class Migration(migrations.Migration):
                 name="identity_principal_active_grant",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="serviceprincipalgrant",
             constraint=models.CheckConstraint(
                 condition=models.Q(

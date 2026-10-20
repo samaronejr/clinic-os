@@ -17,6 +17,7 @@ from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import AddConstraint
 
 from ._autosave_sql import REVERSE_SQL, SQL
 
@@ -141,7 +142,7 @@ class Migration(migrations.Migration):
                 to="scheduling.appointment",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounter",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -160,7 +161,7 @@ class Migration(migrations.Migration):
                 name="ehr_encounter_binding_shape",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="encounter",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("appointment__isnull", True), ("state", "open")),
@@ -276,7 +277,7 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.CASCADE, to="identity.organization"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="drafteditstate",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -292,7 +293,7 @@ class Migration(migrations.Migration):
                 name="ehr_draftstate_lock_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="drafteditstate",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -303,20 +304,20 @@ class Migration(migrations.Migration):
                 name="ehr_draftstate_handover_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="draftsavereceipt",
             constraint=models.UniqueConstraint(
                 fields=("version", "command_id"), name="ehr_draftreceipt_command_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="draftsavereceipt",
             constraint=models.CheckConstraint(
                 condition=models.Q(("request_sha256__regex", "^[0-9a-f]{64}$")),
                 name="ehr_draftreceipt_digest_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="draftsavereceipt",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -332,7 +333,7 @@ class Migration(migrations.Migration):
                 name="ehr_draftreceipt_revision_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="episode",
             constraint=models.CheckConstraint(
                 condition=models.Q(

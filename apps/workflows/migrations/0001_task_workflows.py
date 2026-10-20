@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import migrations, models
 
 import apps.tenancy.fields
+from apps.tenancy.migration_operations import AddConstraint
 
 from ._workflow_sql import REVERSE_SQL, SQL
 
@@ -344,20 +345,20 @@ class Migration(migrations.Migration):
                 fields=["clinic", "state", "due_at"], name="workflows_task_due"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "idempotency_key"), name="workflows_task_command_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"),
                 name="workflows_task_scope_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -369,14 +370,14 @@ class Migration(migrations.Migration):
                 name="workflows_task_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.CheckConstraint(
                 condition=models.Q(("kind__in", ("checklist", "review", "follow_up"))),
                 name="workflows_task_kind",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -385,14 +386,14 @@ class Migration(migrations.Migration):
                 name="workflows_task_priority",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.CheckConstraint(
                 condition=models.Q(("escalation_policy_version", 1)),
                 name="workflows_task_escalation",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -401,39 +402,39 @@ class Migration(migrations.Migration):
                 name="workflows_task_one_owner",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowdefinitionversion",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "key", "version"), name="workflows_definition_version"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowdefinitionversion",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "idempotency_key"),
                 name="workflows_publication_command",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowdefinitionversion",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"),
                 name="workflows_definition_scope",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowrun",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "idempotency_key"), name="workflows_run_command_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowrun",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "id"), name="workflows_run_scope_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowrun",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -458,13 +459,13 @@ class Migration(migrations.Migration):
                 fields=["state", "wake_at", "claim_until"], name="workflows_step_due"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowstep",
             constraint=models.UniqueConstraint(
                 fields=("run", "position"), name="workflows_step_position"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowstep",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -483,7 +484,7 @@ class Migration(migrations.Migration):
                 name="workflows_step_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowstep",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -500,28 +501,28 @@ class Migration(migrations.Migration):
                 name="workflows_step_error",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="task",
             constraint=models.CheckConstraint(
                 condition=models.Q(fingerprint__regex=r"^[0-9a-f]{64}$"),
                 name="workflows_task_fingerprint",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowdefinitionversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(fingerprint__regex=r"^[0-9a-f]{64}$"),
                 name="workflows_definition_digest",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowdefinitionversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(creation_fingerprint__regex=r"^[0-9a-f]{64}$"),
                 name="workflows_definition_creation",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowdefinitionversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -530,7 +531,7 @@ class Migration(migrations.Migration):
                 name="workflows_definition_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="workflowrun",
             constraint=models.CheckConstraint(
                 condition=models.Q(fingerprint__regex=r"^[0-9a-f]{64}$"),

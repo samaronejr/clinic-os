@@ -4,6 +4,8 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Additive columns with database defaults; existing snapshots keep defaults."""
@@ -21,7 +23,7 @@ class Migration(migrations.Migration):
             name="hold_ttl_minutes",
             field=models.PositiveSmallIntegerField(db_default=10, default=10),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicconfiguration",
             constraint=models.CheckConstraint(
                 condition=models.Q(
