@@ -2,12 +2,41 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from decimal import ROUND_DOWN, localcontext
+from pathlib import Path
 
 import pytest
 from apps.ehr.calculators import calculate
 from apps.ehr.calculators.catalog import DEFINITIONS
 from apps.ehr.calculators.contracts import Calculation, Refusal
+
+_run_process = subprocess.run
+
+
+def test_dispatch_import_does_not_require_django_setup() -> None:
+    completed = _run_process(
+        (
+            sys.executable,
+            "-c",
+            "from django.conf import settings; "
+            "assert not settings.configured; "
+            "from apps.ehr.calculators import calculate; "
+            "result = calculate(key='bmi', version=1, inputs={"
+            "'weight':'70','weight_unit':'kg','height':'175','height_unit':'cm'}); "
+            "assert not settings.configured; "
+            "print(result.value)",
+        ),
+        check=False,
+        capture_output=True,
+        cwd=Path(__file__).resolve().parents[2],
+        env={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONTZPATH": ""},
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "22.86"
 
 
 @pytest.mark.parametrize("key", DEFINITIONS)

@@ -11,7 +11,7 @@ from playwright.sync_api import expect
 
 from renewal.browser._navigation import click_to_navigate, goto_settled
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import full_page_screenshot
+from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.patient_workspace_support import submit as _submit
 from renewal.browser.patient_workspace_support import tab as _tab
 from renewal.browser.test_availability import _sign_in_physician
@@ -246,6 +246,7 @@ def test_specialty_pack_native_and_responsive_controls(
     page = renewal_page
     folder = renewal_artifact_root / "specialty-packs"
     folder.mkdir(mode=0o700, exist_ok=True)
+    targets: list[dict[str, object]] = []
     for theme, width in (
         ("light", 320),
         ("light", 1280),
@@ -259,14 +260,25 @@ def test_specialty_pack_native_and_responsive_controls(
             "summary, input:not([type=hidden]), select, button"
         ).all():
             if control.is_visible():
-                bounds = control.bounding_box()
-                assert bounds
-                assert bounds["width"] >= 44
-                assert bounds["height"] >= 44
+                bounds = element_box(control)
+                targets.append(
+                    {
+                        "theme": theme,
+                        "viewport_width": width,
+                        "control": control.evaluate(
+                            "node => node.name || node.tagName.toLowerCase()"
+                        ),
+                        "box": bounds,
+                        "playwright_box": control.bounding_box(),
+                    }
+                )
+                assert bounds["width"] >= 44, targets[-1]
+                assert bounds["height"] >= 44, targets[-1]
         full_page_screenshot(page, folder / f"calculator-{theme}-{width}.png")
         check_page(
             page, renewal_base_url, renewal_artifact_root, f"calculator-{theme}-{width}"
         )
+    browser_report["calculator_target_geometry"] = targets
     browser = page.context.browser
     assert browser
     with browser.new_context(
