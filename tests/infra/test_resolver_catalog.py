@@ -3,7 +3,12 @@ from typing import Final
 import pytest
 from django.db import connection
 
-from infra import duplicate_catalog, identity_lifecycle_catalog, longitudinal_catalog
+from infra import (
+    duplicate_catalog,
+    identity_lifecycle_catalog,
+    longitudinal_catalog,
+    orders_catalog,
+)
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -114,6 +119,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowdefinitionversion", "SELECT"),
     ("workflows_workflowrun", "SELECT"),
     ("workflows_workflowstep", "SELECT"),
+    *orders_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     *duplicate_catalog.COLUMN_GRANTS,
@@ -332,6 +338,7 @@ POSTURE_OVERRIDES: Final = {
     "workflows_reference_valid": ("s", False, ["clinic_resolver"]),
     "workflows_staff_catalog": ("v", True, ["clinic_app", "clinic_resolver"]),
     "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
+    **orders_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
     ("reception_guard", ""),
@@ -552,6 +559,7 @@ FUNCTION_SIGNATURES: Final = {
     ("workflows_step_scope", "requested_step uuid"),
     ("workflows_steps_valid", "steps jsonb"),
     ("workflows_task_scope", "requested_task uuid"),
+    *orders_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
     ("reception_guard", ""): "trigger",
@@ -907,6 +915,7 @@ FUNCTION_RESULTS: Final = {
     ("workflows_task_scope", "requested_task uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
     ),
+    **orders_catalog.RESULTS,
 }
 
 

@@ -153,6 +153,20 @@ DOMAIN_RELATIONS: Final = (
     "workflows_workflowdefinitionversion",
     "workflows_workflowrun",
     "workflows_workflowstep",
+    # Task 31: sources, exact matches, exceptions and audience history are durable.
+    "orders_labaccount",
+    "orders_order",
+    "orders_orderitem",
+    "orders_orderevent",
+    "orders_result",
+    "orders_resultversion",
+    "orders_resultobservation",
+    "orders_resultmatch",
+    "orders_resultquarantine",
+    "orders_resultrejection",
+    "orders_resultacknowledgment",
+    "orders_resultrelease",
+    "orders_resultworkitem",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 SEQUENCE_TARGETS: Final = {

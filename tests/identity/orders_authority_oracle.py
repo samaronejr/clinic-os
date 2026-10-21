@@ -1,0 +1,52 @@
+"""Execute the orders domain witnesses inside the merged authority census."""
+
+from __future__ import annotations
+
+from functools import partial
+from typing import TYPE_CHECKING
+
+from pytest_django.fixtures import SettingsWrapper
+
+from orders import (
+    test_http,
+    test_identity_matrix,
+    test_order_states,
+    test_patient_sources,
+    test_posture,
+    test_review,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from identity.cut1_authority_census import ExecutedProofs
+    from rbac_fixtures import RbacGraph
+
+
+def run_orders_census(proofs: ExecutedProofs, graph: Callable[[], RbacGraph]) -> None:
+    """Require actual boundary entry and passing response/state/authority oracles."""
+    settings = SettingsWrapper()
+    try:
+        for oracle in (
+            test_http.test_native_result_lifecycle_downloads_only_the_exact_authorized_source,
+            test_http.test_lab_http_boundary_replays_without_borrowing_a_staff_session,
+            test_posture.test_every_new_populated_relation_denies_cross_organization_reads,
+        ):
+            proofs.run(oracle.__name__, partial(oracle, graph(), settings))
+        for simple_oracle in (
+            test_identity_matrix.test_unknown_order_can_be_resolved_only_against_immutable_source_evidence,
+            test_order_states.test_order_progression_is_replayed_once_and_cannot_reverse,
+            test_patient_sources.test_patient_sources_require_current_acknowledgment_and_exact_patient_release,
+        ):
+            proofs.run(simple_oracle.__name__, partial(simple_oracle, graph()))
+        for role in ("receptionist", "nurse", "clinic_admin", "finance"):
+            proofs.run(
+                f"orders clinical acknowledgment and release:{role}",
+                partial(
+                    test_review.test_nonclinical_actor_cannot_acknowledge_or_release,
+                    graph(),
+                    role,
+                ),
+            )
+    finally:
+        settings.finalize()

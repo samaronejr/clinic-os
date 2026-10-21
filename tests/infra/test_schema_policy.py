@@ -171,6 +171,20 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "workflows_workflowdefinitionversion",
         "workflows_workflowrun",
         "workflows_workflowstep",
+        # Task 31: exact custom policies/ACLs are checked in tests/orders.
+        "orders_labaccount",
+        "orders_order",
+        "orders_orderitem",
+        "orders_orderevent",
+        "orders_result",
+        "orders_resultversion",
+        "orders_resultobservation",
+        "orders_resultmatch",
+        "orders_resultquarantine",
+        "orders_resultrejection",
+        "orders_resultacknowledgment",
+        "orders_resultrelease",
+        "orders_resultworkitem",
     }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS

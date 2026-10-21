@@ -216,7 +216,44 @@ def record_phase1_event(
             row = cursor.fetchone()
         if row is not None and row[0] is not None:
             return _record_delegate_event(append, affected_record_id)
+    if event_type.startswith("orders."):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT NULLIF(current_setting('app.current_principal',true),'')"
+            )
+            row = cursor.fetchone()
+        if row is not None and row[0] is not None:
+            return _record_lab_event(append, affected_record_id)
     return record_event(append.event, payload=append.payload)
+
+
+def _record_lab_event(append: Phase1AuditAppend, record_id: UUID) -> int:
+    """Bind lab audit to the authenticated source principal without a staff GUC."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM clinic_app.orders_audit_scope(%s,%s)",
+            [record_id, append.event.event_type],
+        )
+        scope = cursor.fetchone()
+        if scope is None or append.payload.get("clinic_id") != str(scope[2]):
+            raise AuditContextRejectedError(setting="orders_audit_scope")
+        context = AuditTrustedContext(organization_id=scope[1], actor_user_id=scope[0])
+        content_hash = _content_hash(
+            append.event, context, _normalize_payload(append.payload)
+        )
+        cursor.execute(
+            "SELECT clinic_app.orders_lab_audit(%s,%s,%s,%s)",
+            [
+                record_id,
+                append.event.event_type,
+                append.event.occurred_at_utc,
+                content_hash,
+            ],
+        )
+        result = cursor.fetchone()
+    if result is None:
+        raise AuditContextRejectedError(setting="orders_lab_audit")
+    return int(result[0])
 
 
 def _record_delegate_event(append: Phase1AuditAppend, record_id: UUID) -> int:

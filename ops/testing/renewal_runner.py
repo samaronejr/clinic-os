@@ -109,6 +109,8 @@ SUITES: Final = {
         "tests/renewal/browser/test_workspace.py",
         "tests/renewal/browser/test_workspace_navigation.py",
     ),
+    # Task 31: keep this registration block separate from active lanes.
+    "results": ("tests/renewal/browser/test_results.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -146,6 +148,7 @@ FIXTURE_SUITES: Final = frozenset(
         "retention",
         "staff-intake",
         "workspace",
+        "results",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.
@@ -783,6 +786,7 @@ def _synthetic_adapters(suite: str) -> dict[str, str]:
             else {}
         ),
         **({"BILLING_SYNTHETIC_PIX": "true"} if suite in PAYMENT_SUITES else {}),
+        **({"ORDERS_SYNTHETIC_LAB_ENABLED": "true"} if suite == "results" else {}),
     }
 
 

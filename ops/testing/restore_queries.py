@@ -239,7 +239,11 @@ ATTACHMENT_MANIFEST_SQL: Final = """
 SELECT storage_key || '|' || organization_id || '|' || sha256 || '|' ||
   size_bytes
 FROM clinic_app.ehr_clinicalattachment
-ORDER BY storage_key
+UNION ALL
+SELECT 'orders/' || storage_key || '|' || organization_id || '|' ||
+  sha256 || '|' || size_bytes
+FROM clinic_app.orders_resultversion
+ORDER BY 1
 """
 SOURCE_SCOPE_SQL: Final = f"""
 
