@@ -153,6 +153,9 @@ DOMAIN_RELATIONS: Final = (
     "workflows_workflowdefinitionversion",
     "workflows_workflowrun",
     "workflows_workflowstep",
+    # Plan item 30: live-catalog durable relations, retained on uninstall.
+    "ehr_specialtyentry",
+    "ehr_specialtypack",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
 SEQUENCE_TARGETS: Final = {

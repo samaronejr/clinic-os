@@ -15,6 +15,7 @@ from apps.ehr.longitudinal import (
 )
 from apps.ehr.longitudinal_values import CODES
 from apps.ehr.services import ClinicalAccessDeniedError
+from apps.ehr.specialty_forms import record_specialty_form
 from apps.ehr.workspace_forms import MedicationForm, ObservationForm, VitalsForm
 
 if TYPE_CHECKING:
@@ -29,6 +30,8 @@ def record_form(
 ) -> bool:
     """Retain invalid input and never infer clinician confirmation from saving."""
     action = data.get("action", "")
+    if action in {"immunization", "procedure"}:
+        return record_specialty_form(scope=scope, data=data, forms_by_name=forms)
     form_type = {
         "observation": ObservationForm,
         "vitals": VitalsForm,

@@ -20,7 +20,9 @@ from apps.ehr.models import (
     Observation,
 )
 from apps.ehr.note_models import CopiedNoteBlock, RestrictedNote
+from apps.ehr.pack_models import SpecialtyEntry, SpecialtyPack
 from apps.ehr.services import ClinicalAccessDeniedError
+from apps.ehr.specialty_forms import specialty_forms
 from apps.ehr.timeline import TIMELINE_KINDS, TimelineFilters, timeline
 from apps.ehr.workspace_forms import MedicationForm, ObservationForm, VitalsForm
 from apps.identity.current_context import CurrentActorError, require_permission
@@ -43,6 +45,7 @@ TABS = (
     ("forms", _("Forms"), "f", True),
     ("messages", _("Messages"), "c", False),
     ("vitals", _("Vitals and observations"), "v", True),
+    ("specialty", _("Specialty records"), "s", True),
 )
 
 
@@ -209,6 +212,19 @@ def workspace_context(
     if tab == "documents":
         context["document_encounters"] = Encounter.objects.filter(
             clinic_id=scope.clinic_id, patient_id=scope.patient_id
+        ).order_by("-created_at")[:100]
+    if tab == "specialty":
+        forms.update(
+            {
+                name: forms.get(name) or form
+                for name, form in specialty_forms(scope=scope).items()
+            }
+        )
+        context["specialty_packs"] = SpecialtyPack.objects.filter(
+            clinic_id=scope.clinic_id, uninstalled_at__isnull=True
+        ).order_by("position", "key")
+        context["specialty_entries"] = SpecialtyEntry.objects.filter(
+            clinic_id=scope.clinic_id, encounter__patient_id=scope.patient_id
         ).order_by("-created_at")[:100]
     return context
 

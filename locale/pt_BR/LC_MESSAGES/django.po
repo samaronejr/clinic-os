@@ -7,6 +7,285 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Open linked consent document"
+msgstr "Abrir documento de consentimento vinculado"
+
+msgid "Open linked image"
+msgstr "Abrir imagem vinculada"
+
+msgid "No images linked."
+msgstr "Nenhuma imagem vinculada."
+
+msgid "Move up"
+msgstr "Mover para cima"
+
+msgid "Move down"
+msgstr "Mover para baixo"
+
+msgid "Choose each installed pack exactly once."
+msgstr "Escolha cada pacote instalado exatamente uma vez."
+
+msgid "Pack order saved."
+msgstr "Ordem dos pacotes salva."
+
+msgid "Specialty packs"
+msgstr "Pacotes de especialidade"
+
+msgid "Specialty packs · Clinic OS"
+msgstr "Pacotes de especialidade · Clinic OS"
+
+msgid "Versioned clinical templates and sourced calculations. Installing a pack does not authorize live clinical use."
+msgstr "Modelos clínicos versionados e cálculos com fonte. Instalar um pacote não autoriza uso clínico real."
+
+msgid "Open patient registry"
+msgstr "Abrir cadastro de pacientes"
+
+msgid "Clinic settings"
+msgstr "Configurações da clínica"
+
+msgid "Only clinic administrators can install or uninstall packs."
+msgstr "Somente administradores da clínica podem instalar ou desinstalar pacotes."
+
+msgid "Installed"
+msgstr "Instalado"
+
+msgid "Uninstalled; history preserved"
+msgstr "Desinstalado; histórico preservado"
+
+msgid "Not installed"
+msgstr "Não instalado"
+
+msgid "Record growth in vitals and immunization history in the patient workspace. Growth percentiles require authorized reference data under EG-13."
+msgstr "Registre crescimento em sinais vitais e histórico vacinal no prontuário do paciente. Percentis exigem dados de referência autorizados pelo EG-13."
+
+msgid "Mental status notes are restricted from creation. Other clinicians need an explicit, revocable note grant in addition to ordinary care access."
+msgstr "Notas de exame do estado mental são restritas desde a criação. Outros profissionais precisam de concessão explícita e revogável, além do acesso assistencial habitual."
+
+msgid "Record the plan and link an available consent document and encounter images in the patient workspace. Materials linkage is unavailable until the inventory release."
+msgstr "Registre o plano e vincule um documento de consentimento disponível e imagens do atendimento no prontuário. O vínculo com materiais fica indisponível até a entrega de estoque."
+
+msgid "Uninstall pack"
+msgstr "Desinstalar pacote"
+
+msgid "Install pack"
+msgstr "Instalar pacote"
+
+msgid "Unavailable: license pending"
+msgstr "Indisponível: licença pendente"
+
+msgid "The exact reference data or validated instrument version is not authorized in this release. No score or percentile is computed."
+msgstr "Os dados de referência ou a versão validada do instrumento não estão autorizados nesta versão. Nenhuma pontuação ou percentil é calculado."
+
+msgid "Check the marked fields. No result was calculated."
+msgstr "Confira os campos marcados. Nenhum resultado foi calculado."
+
+msgid "Calculate"
+msgstr "Calcular"
+
+msgid "Calculating…"
+msgstr "Calculando…"
+
+msgid "Calculator results are not saved automatically and never diagnose, prescribe or populate normal findings."
+msgstr "Resultados não são salvos automaticamente e nunca diagnosticam, prescrevem ou preenchem achados normais."
+
+msgid "Specialty pack installed."
+msgstr "Pacote de especialidade instalado."
+
+msgid "Pack uninstalled. Existing records are preserved."
+msgstr "Pacote desinstalado. Registros existentes foram preservados."
+
+msgid "Choose a published specialty pack version."
+msgstr "Escolha uma versão publicada do pacote de especialidade."
+
+msgid "The pack changed. Reload and review its current version."
+msgstr "O pacote mudou. Recarregue e confira a versão atual."
+
+msgid "Enter valid values with a decimal point and explicit units."
+msgstr "Informe valores válidos com ponto decimal e unidades explícitas."
+
+msgid "Use a decimal point, without thousands separators."
+msgstr "Use ponto decimal, sem separadores de milhares."
+
+msgid "Choose an option"
+msgstr "Escolha uma opção"
+
+msgid "General practice"
+msgstr "Clínica geral"
+
+msgid "Pediatrics"
+msgstr "Pediatria"
+
+msgid "Psychiatry"
+msgstr "Psiquiatria"
+
+msgid "Procedures"
+msgstr "Procedimentos"
+
+msgid "Reason for consultation"
+msgstr "Motivo da consulta"
+
+msgid "Relevant history"
+msgstr "História relevante"
+
+msgid "Observed findings"
+msgstr "Achados observados"
+
+msgid "Information you want the clinician to review"
+msgstr "Informações que deseja que o profissional revise"
+
+msgid "Growth measurements and their source"
+msgstr "Medidas de crescimento e sua fonte"
+
+msgid "Reported immunization history"
+msgstr "Histórico vacinal relatado"
+
+msgid "Immunizations and dates documented in your vaccination record"
+msgstr "Vacinas e datas documentadas na sua caderneta de vacinação"
+
+msgid "Appearance and behavior"
+msgstr "Aparência e comportamento"
+
+msgid "Speech"
+msgstr "Fala"
+
+msgid "Mood and affect"
+msgstr "Humor e afeto"
+
+msgid "Thought form and content"
+msgstr "Forma e conteúdo do pensamento"
+
+msgid "Perception"
+msgstr "Percepção"
+
+msgid "Cognition"
+msgstr "Cognição"
+
+msgid "Insight and judgment"
+msgstr "Consciência e juízo crítico"
+
+msgid "Concerns you want to discuss privately"
+msgstr "Questões que deseja discutir em particular"
+
+msgid "Procedure plan"
+msgstr "Plano do procedimento"
+
+msgid "Consent document and discussion"
+msgstr "Documento de consentimento e discussão"
+
+msgid "Images attached to this encounter"
+msgstr "Imagens anexadas a este atendimento"
+
+msgid "Questions about the planned procedure"
+msgstr "Dúvidas sobre o procedimento planejado"
+
+msgid "Weight unit"
+msgstr "Unidade do peso"
+
+msgid "Height unit"
+msgstr "Unidade da altura"
+
+msgid "Estimated glomerular filtration rate"
+msgstr "Taxa de filtração glomerular estimada"
+
+msgid "Completed age"
+msgstr "Idade em anos completos"
+
+msgid "Sex used by the published equation"
+msgstr "Sexo usado pela fórmula publicada"
+
+msgid "Serum creatinine"
+msgstr "Creatinina sérica"
+
+msgid "Creatinine unit"
+msgstr "Unidade da creatinina"
+
+msgid "Corrected age"
+msgstr "Idade corrigida"
+
+msgid "Chronological age"
+msgstr "Idade cronológica"
+
+msgid "Gestational age at birth"
+msgstr "Idade gestacional ao nascer"
+
+msgid "Growth percentiles"
+msgstr "Percentis de crescimento"
+
+msgid "Item score"
+msgstr "Pontuação do item"
+
+msgid "female"
+msgstr "feminino"
+
+msgid "male"
+msgstr "masculino"
+
+msgid "Specialty records"
+msgstr "Registros de especialidade"
+
+msgid "Growth measurements remain in vitals. Entries below retain their source and never infer a vaccine schedule, consent or normal finding."
+msgstr "As medidas de crescimento ficam em sinais vitais. Os registros abaixo preservam a fonte e nunca inferem calendário vacinal, consentimento ou achado normal."
+
+msgid "Specialty packs and calculators"
+msgstr "Pacotes de especialidade e calculadoras"
+
+msgid "Record immunization history"
+msgstr "Registrar histórico vacinal"
+
+msgid "Save immunization record"
+msgstr "Salvar registro vacinal"
+
+msgid "Record a procedure plan"
+msgstr "Registrar plano de procedimento"
+
+msgid "Attach and scan the consent document and images in the encounter attachment workspace first."
+msgstr "Primeiro anexe e verifique o documento de consentimento e as imagens na área de anexos do atendimento."
+
+msgid "Save procedure plan"
+msgstr "Salvar plano de procedimento"
+
+msgid "No specialty pack is installed. Existing records below remain available."
+msgstr "Nenhum pacote de especialidade está instalado. Os registros existentes abaixo permanecem disponíveis."
+
+msgid "Recorded history"
+msgstr "Histórico registrado"
+
+msgid "Immunization history"
+msgstr "Histórico vacinal"
+
+msgid "Unconfirmed source"
+msgstr "Fonte não confirmada"
+
+msgid "Consent source and images remain linked to this encounter."
+msgstr "A fonte do consentimento e as imagens permanecem vinculadas a este atendimento."
+
+msgid "No specialty records have been recorded."
+msgstr "Nenhum registro de especialidade foi incluído."
+
+msgid "Vaccine as documented"
+msgstr "Vacina conforme documentada"
+
+msgid "Administration date"
+msgstr "Data da aplicação"
+
+msgid "Use DD/MM/YYYY as recorded in the source."
+msgstr "Use DD/MM/AAAA conforme registrado na fonte."
+
+msgid "Dose as documented"
+msgstr "Dose conforme documentada"
+
+msgid "Consent document"
+msgstr "Documento de consentimento"
+
+msgid "Encounter images"
+msgstr "Imagens do atendimento"
+
+msgid "Check the immunization record and its source."
+msgstr "Confira o registro vacinal e sua fonte."
+
+msgid "Check the procedure plan and source documents."
+msgstr "Confira o plano do procedimento e os documentos de origem."
+
 msgid "Invalid template definition."
 msgstr "Definição de modelo inválida."
 

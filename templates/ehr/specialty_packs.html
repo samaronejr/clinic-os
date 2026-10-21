@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Specialty packs · Clinic OS" %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+{% endblock %}
+{% block content %}
+<section aria-labelledby="packs-title" hx-history="false">
+  <h1 id="packs-title">{% trans "Specialty packs" %}</h1>
+  <p class="lede">{% trans "Versioned clinical templates and sourced calculations. Installing a pack does not authorize live clinical use." %}</p>
+  <div class="actions">
+    <a class="button button--secondary" href="{% url 'intake:patient-list' clinic_id=clinic_id %}">{% trans "Open patient registry" %}</a>
+    {% if can_install %}<a class="button button--quiet" href="{% url 'identity:clinic-settings' clinic_id=clinic_id %}">{% trans "Clinic settings" %}</a>{% endif %}
+  </div>
+  {% if error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ error }}</p>{% endif %}
+  {% if outcome %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus>{{ outcome }}</p>{% endif %}
+  {% if not can_install %}<p class="feedback">{% trans "Only clinic administrators can install or uninstall packs." %}</p>{% endif %}
+  {% for card in cards %}
+  <section class="panel" aria-labelledby="pack-{{ card.definition.key }}" data-pack="{{ card.definition.key }}">
+    <h2 id="pack-{{ card.definition.key }}">{{ card.definition.title }}</h2>
+    <p>{% trans "Version" %} {{ card.definition.version }} · {% if card.active %}<span class="badge badge--success">{% trans "Installed" %}</span>{% elif card.retired %}<span class="badge">{% trans "Uninstalled; history preserved" %}</span>{% else %}<span class="badge">{% trans "Not installed" %}</span>{% endif %}</p>
+    {% if card.definition.key == "pediatrics" %}<p>{% trans "Record growth in vitals and immunization history in the patient workspace. Growth percentiles require authorized reference data under EG-13." %}</p>{% endif %}
+    {% if card.definition.key == "psychiatry" %}<p>{% trans "Mental status notes are restricted from creation. Other clinicians need an explicit, revocable note grant in addition to ordinary care access." %}</p>{% endif %}
+    {% if card.definition.key == "procedures" %}<p>{% trans "Record the plan and link an available consent document and encounter images in the patient workspace. Materials linkage is unavailable until the inventory release." %}</p>{% endif %}
+    {% if can_install %}
+    <form method="post" novalidate data-auth-form data-auth-errors hx-post="{% url 'ehr:specialty-packs' clinic_id=clinic_id %}" hx-target="#main-content" hx-select="#main-content" hx-swap="outerHTML">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="pack_key" value="{{ card.definition.key }}"><input type="hidden" name="version" value="{{ card.definition.version }}">
+      <div class="actions">
+        {% if card.active %}<button class="button button--secondary" type="submit" name="action" value="uninstall">{% trans "Uninstall pack" %} <span class="visually-hidden">{{ card.definition.title }}</span></button>{% else %}<button class="button" type="submit" name="action" value="install"{% if card.retired %} disabled{% endif %}>{% trans "Install pack" %} <span class="visually-hidden">{{ card.definition.title }}</span></button>{% endif %}
+        <span class="htmx-indicator">{% trans "Saving…" %}</span>
+      </div>
+    </form>
+    {% if card.active %}
+    <form method="post" novalidate data-auth-form data-auth-errors hx-post="{% url 'ehr:specialty-packs' clinic_id=clinic_id %}" hx-target="#main-content" hx-select="#main-content" hx-swap="outerHTML">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="pack_key" value="{{ card.definition.key }}"><input type="hidden" name="version" value="{{ card.definition.version }}">
+      <div class="actions"><button class="button button--quiet" type="submit" name="action" value="move_up"{% if not card.can_move_up %} disabled{% endif %}>{% trans "Move up" %} <span class="visually-hidden">{{ card.definition.title }}</span></button><button class="button button--quiet" type="submit" name="action" value="move_down"{% if not card.can_move_down %} disabled{% endif %}>{% trans "Move down" %} <span class="visually-hidden">{{ card.definition.title }}</span></button></div>
+    </form>
+    {% endif %}
+    {% endif %}
+    {% if card.active %}
+    {% for calculator in card.calculators %}
+    <details data-calculator="{{ calculator.definition.key }}"{% if calculator.form.is_bound %} open{% endif %}>
+      <summary class="button button--quiet">{{ calculator.title }}</summary>
+      <p class="help-text">{% trans "Source" %}: {{ calculator.definition.source }} · {% trans "Version" %} {{ calculator.definition.version }}</p>
+      {% if not calculator.available %}
+      {% include "includes/components/state.html" with state="disabled" title=_("Unavailable: license pending") message=_("The exact reference data or validated instrument version is not authorized in this release. No score or percentile is computed.") only %}
+      {% else %}
+      <form method="post" novalidate data-auth-form data-auth-errors hx-post="{% url 'ehr:specialty-packs' clinic_id=clinic_id %}" hx-target="#main-content" hx-select="#main-content" hx-swap="outerHTML">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+        <input type="hidden" name="pack_key" value="{{ card.definition.key }}"><input type="hidden" name="version" value="{{ calculator.definition.version }}"><input type="hidden" name="calculator_key" value="{{ calculator.definition.key }}">
+        {% if calculator.form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ calculator.form.non_field_errors }}{% trans "Check the marked fields. No result was calculated." %}</div>{% endif %}
+        {% for field in calculator.form %}{% include "includes/field.html" with field=field hint=field.help_text hint_id=field.auto_id|add:"_helptext" %}{% endfor %}
+        <div class="actions"><button class="button" type="submit" name="action" value="calculate">{% trans "Calculate" %} <span class="visually-hidden">{{ calculator.title }}</span></button><span class="htmx-indicator">{% trans "Calculating…" %}</span></div>
+        {% if calculator.result %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus data-calculation-result>{{ calculator.result.value }} {{ calculator.result.unit }}</p>{% endif %}
+      </form>
+      {% endif %}
+    </details>
+    {% endfor %}
+    {% endif %}
+  </section>
+  {% endfor %}
+  <p class="help-text">{% trans "Calculator results are not saved automatically and never diagnose, prescribe or populate normal findings." %}</p>
+</section>
+{% endblock %}

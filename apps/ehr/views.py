@@ -39,6 +39,7 @@ from apps.ehr.models import (
     EncounterIntakeReference,
     SpecialtyTemplate,
 )
+from apps.ehr.pack_models import SpecialtyPack
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
@@ -154,9 +155,15 @@ def _context(
         context["version"] = current
         context["amend_form"] = AmendmentForm(initial={"version_id": current.pk})
     else:
-        context["templates"] = SpecialtyTemplate.objects.filter(
-            clinic_id=clinic_id
-        ).order_by("title", "-version")
+        context["templates"] = (
+            SpecialtyTemplate.objects.filter(clinic_id=clinic_id)
+            .exclude(
+                pk__in=SpecialtyPack.objects.filter(
+                    clinic_id=clinic_id, uninstalled_at__isnull=False
+                ).values("template_id")
+            )
+            .order_by("title", "-version")
+        )
     return context
 
 

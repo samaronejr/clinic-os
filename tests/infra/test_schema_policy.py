@@ -171,6 +171,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "workflows_workflowdefinitionversion",
         "workflows_workflowrun",
         "workflows_workflowstep",
+        # Plan item 30: exact specialty policies are checked in tests/ehr.
+        "ehr_specialtypack",
+        "ehr_specialtyentry",
     }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS

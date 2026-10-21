@@ -1030,6 +1030,31 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "providers.capability_version",
         "revoked",
     ),
+    # Plan item 30: kept together for independent Wave B landing.
+    "ehr.pack.installed": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.specialty_pack",
+        "installed",
+    ),
+    "ehr.pack.uninstalled": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.specialty_pack",
+        "uninstalled",
+    ),
+    "ehr.specialty.recorded": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.specialty_entry",
+        "recorded",
+    ),
+    "ehr.pack.reordered": (
+        "tenant",
+        "clinic-os-web",
+        "ehr.specialty_pack",
+        "reordered",
+    ),
 }
 
 

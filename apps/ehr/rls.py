@@ -34,6 +34,9 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "ehr_copiednoteblock",
         "ehr_timelinerefresh",
         "ehr_timelineprojection",
+        # Plan item 30.
+        "ehr_specialtypack",
+        "ehr_specialtyentry",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
@@ -60,6 +63,9 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "ehr_draftsavereceipt": frozenset({"SELECT", "INSERT"}),
     "ehr_encounteraddendum": frozenset({"SELECT", "INSERT"}),
     "ehr_addendumsavereceipt": frozenset({"SELECT", "INSERT"}),
+    # Plan item 30.
+    "ehr_specialtypack": frozenset({"SELECT", "INSERT"}),
+    "ehr_specialtyentry": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
@@ -104,5 +110,8 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("ehr_episode", "closed_at", "UPDATE"),
         ("ehr_episode", "closed_by_id", "UPDATE"),
         ("ehr_episode", "state", "UPDATE"),
+        # Plan item 30.
+        ("ehr_specialtypack", "uninstalled_at", "UPDATE"),
+        ("ehr_specialtypack", "position", "UPDATE"),
     }
 )

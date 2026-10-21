@@ -6,12 +6,23 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
+import pytest
 from playwright.sync_api import expect
 
 from renewal.browser._navigation import goto_settled
 from renewal.browser._protected import encrypt
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot
+from renewal.browser.patient_workspace_support import submit as _submit
+from renewal.browser.patient_workspace_support import tab as _tab
+from renewal.browser.specialty_packs_scenario import (
+    filled_bmi,
+    installed_pediatrics,
+    test_specialty_immunization_uses_a_real_open_encounter,
+    test_specialty_pack_growth_license_and_decimal_refusal,
+    test_specialty_pack_native_and_responsive_controls,
+    test_specialty_pack_offline_and_denial_states,
+)
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_encounter import seed
 from renewal.browser.test_retention import post_action
@@ -19,9 +30,17 @@ from renewal.browser.test_retention import post_action
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from playwright.sync_api import Locator, Page
+    from playwright.sync_api import Page
 
-__all__ = ("availability_staff",)
+__all__ = (
+    "availability_staff",
+    "filled_bmi",
+    "installed_pediatrics",
+    "test_specialty_immunization_uses_a_real_open_encounter",
+    "test_specialty_pack_growth_license_and_decimal_refusal",
+    "test_specialty_pack_native_and_responsive_controls",
+    "test_specialty_pack_offline_and_denial_states",
+)
 
 
 def _patient(staff: dict[str, str], day: str) -> dict[str, str]:
@@ -66,39 +85,12 @@ def _patient(staff: dict[str, str], day: str) -> dict[str, str]:
     return data
 
 
-def _submit(page: Page, button: Locator, *, status: int = 200) -> None:
-    before = page.locator("#patient-workspace").get_attribute("data-workspace-render")
-    token = uuid4().hex
-    enhanced = page.evaluate("() => Boolean(window.htmx)")
-    if enhanced:
-        page.evaluate(
-            """token => {
-              const settled = event => {
-                if (event.detail.target?.id !== "patient-workspace") return;
-                document.documentElement.dataset.workspaceSettled = token;
-                document.removeEventListener("htmx:afterSettle", settled);
-              };
-              document.addEventListener("htmx:afterSettle", settled);
-            }""",
-            token,
-        )
-    url = page.url
-    with page.expect_response(
-        lambda response: response.url == url and response.request.method == "POST"
-    ) as pending:
-        button.click()
-    assert pending.value.status == status
-    expect(page.locator("#patient-workspace")).not_to_have_attribute(
-        "data-workspace-render", before or ""
-    )
-    if enhanced:
-        expect(page.locator("html")).to_have_attribute("data-workspace-settled", token)
-    expect(button).to_be_enabled()
-    expect(page.locator("#patient-workspace.htmx-settling")).to_have_count(0)
-
-
-def _tab(page: Page, key: str) -> None:
-    _submit(page, page.locator(f'button[name="tab"][value="{key}"]'))
+@pytest.fixture
+def specialty_patient(
+    availability_staff: dict[str, str],
+    request: pytest.FixtureRequest,
+) -> tuple[dict[str, str], dict[str, str]]:
+    return availability_staff, _patient(availability_staff, str(request.param))
 
 
 def _capture(page: Page, root: Path, state: str) -> None:

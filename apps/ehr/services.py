@@ -425,6 +425,9 @@ def create_draft(
             document = ClinicalDocument.objects.create(
                 organization_id=encounter.organization_id, encounter=encounter
             )
+        from apps.ehr.pack_notes import bind_pack_note  # noqa: PLC0415
+
+        bind_pack_note(clinic_id=clinic_id, template=template, document=document)
         with connection.cursor() as cursor:
             cursor.execute("SELECT clinic_app.ehr_next_version(%s)", [document.pk])
             next_version = int(cursor.fetchone()[0])

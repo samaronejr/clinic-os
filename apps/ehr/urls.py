@@ -4,11 +4,17 @@ from django.urls import path
 
 from apps.ehr.attachment_views import attachment_workspace
 from apps.ehr.history_views import history_workspace
+from apps.ehr.pack_views import specialty_packs
 from apps.ehr.views import encounter_workspace
 from apps.ehr.workspace_views import patient_workspace
 
 app_name = "ehr"
 urlpatterns = [
+    path(
+        "ehr/clinics/<uuid:clinic_id>/specialty-packs/",
+        specialty_packs,
+        name="specialty-packs",
+    ),
     path(
         "ehr/clinics/<uuid:clinic_id>/patient-workspace/",
         patient_workspace,

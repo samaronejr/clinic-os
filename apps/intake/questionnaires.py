@@ -255,9 +255,16 @@ def assign_questionnaire(
 
 def published_templates(*, clinic_id: UUID) -> list[QuestionnaireTemplate]:
     """List the newest version of each configuration for a clinic physician."""
+    from apps.ehr.pack_models import SpecialtyPack  # noqa: PLC0415
+
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     latest = list(
         QuestionnaireTemplate.objects.filter(clinic_id=clinic_id)
+        .exclude(
+            pk__in=SpecialtyPack.objects.filter(
+                clinic_id=clinic_id, uninstalled_at__isnull=False
+            ).values("questionnaire_id")
+        )
         .order_by("key", "-version")
         .distinct("key")
     )

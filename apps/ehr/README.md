@@ -1,5 +1,14 @@
 # EHR
 
+Todo 30 adds immutable clinic specialty bundles, pure source-bound
+calculators, reported immunization history and procedure plans linked to real
+consent/image attachments. Psychiatry notes are restricted before their first
+version. Retiring a bundle hides future use without deleting clinical history.
+Growth percentiles and unbound instrument artifacts remain visibly
+unavailable. The binding contract is
+`docs/clinical/specialty-packs.md`; migration 0015 is irreversible, rollback =
+restore. Live/provider activation remains BLOCKED-ON-EG.
+
 Task 21 implements assigned-physician encounters, immutable specialty-template
 versions and explicit SOAP draft saves. Open an appointment from the physician
 agenda; PostgreSQL uniqueness and locking converge parallel starts on one encounter

@@ -42,7 +42,7 @@ from apps.core.api.views import (
 )
 from apps.core.integration import register_send_adapter
 from apps.core.navigation import PATIENT_ACTIONS
-from apps.ehr import attachment_views, history_views, views, workspace_views
+from apps.ehr import attachment_views, history_views, pack_views, views, workspace_views
 from apps.ehr.addenda import open_addendum
 from apps.ehr.finalization import finalize_version
 from apps.ehr.history import HistoryChange, save_history
@@ -137,6 +137,8 @@ OUTSIDE_EHR: dict[object, str] = {
     patient_documents_view: "patient prescription downloads",
     patient_timeline: "care-authorized finalized timeline, no clinical writes",
     retention_workspace: "retention holds and exports",
+    # Plan item 30: configuration and transient arithmetic; no patient selector.
+    pack_views.specialty_packs: "pack metadata; tested in test_specialty_surfaces.py",
 }
 # Each form route's action table. The EHR workspaces dispatch from theirs, so
 # every action their UI posts must be in it; teleconsult's full table is local

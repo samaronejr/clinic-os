@@ -41,6 +41,8 @@ POST_ACTIONS = frozenset(
         "observation",
         "vitals",
         "medication",
+        "immunization",
+        "procedure",
         "reconcile",
         "confirm_observation",
         "restrict",
@@ -57,6 +59,13 @@ def _binding(*, scope: PatientScope, data: QueryDict) -> None:
     action = data.get("action")
     visible = True
     match action:
+        case "immunization" | "procedure":
+            prefix = f"{action}-encounter_id"
+            visible = Encounter.objects.filter(
+                pk=UUID(data.get(prefix, "")),
+                clinic_id=scope.clinic_id,
+                patient_id=scope.patient_id,
+            ).exists()
         case "reconcile":
             visible = MedicationStatement.objects.filter(
                 pk=UUID(data.get("statement_id", "")),
@@ -111,7 +120,7 @@ def apply_action(
     match action:
         case "open" | "tab" | "filter":
             return ""
-        case "observation" | "vitals" | "medication":
+        case "observation" | "vitals" | "medication" | "immunization" | "procedure":
             if not record_form(scope=scope, data=data, forms=forms):
                 return ""
         case "reconcile":

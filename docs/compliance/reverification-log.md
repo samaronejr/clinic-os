@@ -2,6 +2,26 @@
 
 **Status: UNAPPROVED — DO NOT USE LIVE DATA**
 
+## Specialty instrument permission re-check, 2026-10-21
+
+Todo 30 fetched the primary publisher's
+[PHQ Screeners terms](https://www.phqscreeners.com/terms). The terms explicitly
+exempt screener content from Pfizer's general copyright restrictions and
+describe download and use as free. This verifies that permission statement,
+not a public-domain claim or EG-13 approval. The publisher's
+[scoring instructions](https://www.phqscreeners.com/images/sites/g/files/g10016261/f/201412/instructions.pdf)
+were also fetched and read: pages 3 and 5-6 define complete integer 0-3
+item-score sums for PHQ-9 and GAD-7, including a PHQ-9 worked example of 16.
+The release implements only that score-entry arithmetic; no item wording,
+translated substitute instrument, diagnostic algorithm or thresholds ship.
+Local clinical review and live use remain blocked on their external records.
+Growth percentiles remain
+BLOCKED-ON-EG-13; recording growth does not compute percentiles.
+
+The formula/source/version and input contracts are recorded in
+[specialty-packs.md](../clinical/specialty-packs.md). No external gate is
+closed by this retrieval.
+
 This log turns every regulatory row that wasn't backed by a fetched primary
 text into a dated re-check step. It records what was actually retrieved, from
 where and when. It draws no legal conclusions and clears no gate. Todo 77

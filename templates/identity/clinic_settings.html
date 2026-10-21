@@ -6,6 +6,7 @@
   <p class="eyebrow">{{ clinic.name }} · Administração</p>
   <h1 id="settings-title">Configurações da clínica</h1>
   <div class="actions">
+    <a class="button button--secondary" href="{% url 'ehr:specialty-packs' clinic_id=clinic.pk %}">{% trans "Specialty packs" %}</a>
     <a class="button button--secondary" href="{% url 'scheduling:resource-settings' clinic.pk %}">{% trans "Scheduling settings" %}</a>
     <a class="button button--secondary" href="{% url 'identity:onboarding' clinic_id=clinic.pk %}">{% trans "First steps" %}</a>
     <a class="button button--secondary" href="{% url 'identity:staff' clinic_id=clinic.pk %}">{% trans "Staff and account security" %}</a>

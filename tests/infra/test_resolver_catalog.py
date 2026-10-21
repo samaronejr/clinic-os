@@ -114,6 +114,9 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("workflows_workflowdefinitionversion", "SELECT"),
     ("workflows_workflowrun", "SELECT"),
     ("workflows_workflowstep", "SELECT"),
+    # Plan item 30.
+    ("ehr_specialtypack", "SELECT"),
+    ("ehr_specialtyentry", "SELECT"),
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     *duplicate_catalog.COLUMN_GRANTS,
@@ -332,6 +335,9 @@ POSTURE_OVERRIDES: Final = {
     "workflows_reference_valid": ("s", False, ["clinic_resolver"]),
     "workflows_staff_catalog": ("v", True, ["clinic_app", "clinic_resolver"]),
     "workflows_steps_valid": ("i", False, ["clinic_resolver"]),
+    # Plan item 30.
+    "ehr_pack_guard": ("v", False, ["clinic_resolver"]),
+    "ehr_pack_use_guard": ("v", False, ["clinic_resolver"]),
 }
 FUNCTION_SIGNATURES: Final = {
     ("reception_guard", ""),
@@ -552,6 +558,9 @@ FUNCTION_SIGNATURES: Final = {
     ("workflows_step_scope", "requested_step uuid"),
     ("workflows_steps_valid", "steps jsonb"),
     ("workflows_task_scope", "requested_task uuid"),
+    # Plan item 30.
+    ("ehr_pack_guard", ""),
+    ("ehr_pack_use_guard", ""),
 }
 FUNCTION_RESULTS: Final = {
     ("reception_guard", ""): "trigger",
@@ -907,6 +916,9 @@ FUNCTION_RESULTS: Final = {
     ("workflows_task_scope", "requested_task uuid"): (
         "TABLE(organization_id uuid, clinic_id uuid, actor_id uuid)"
     ),
+    # Plan item 30.
+    ("ehr_pack_guard", ""): "trigger",
+    ("ehr_pack_use_guard", ""): "trigger",
 }
 
 

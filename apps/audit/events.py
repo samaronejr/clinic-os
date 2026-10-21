@@ -751,6 +751,19 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "providers.capability_version",
             "revoked",
         ),
+        # Plan item 30: specialty bundle and retained clinical entry transitions.
+        "ehr.pack.installed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_pack", "installed"
+        ),
+        "ehr.pack.uninstalled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_pack", "uninstalled"
+        ),
+        "ehr.specialty.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_entry", "recorded"
+        ),
+        "ehr.pack.reordered": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.specialty_pack", "reordered"
+        ),
     }
 )
 
