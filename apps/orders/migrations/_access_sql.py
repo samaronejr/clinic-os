@@ -29,17 +29,72 @@ CREATE OR REPLACE FUNCTION clinic_app.orders_can_read_version(version uuid)
 RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  SELECT EXISTS(SELECT 1 FROM clinic_app.orders_resultversion v
+ LEFT JOIN clinic_app.orders_resultmatch m ON m.version_id=v.id
+ LEFT JOIN clinic_app.orders_order o ON o.id=coalesce(m.order_id,v.proposed_order_id)
  WHERE v.id=version AND v.organization_id=__TENANT__ AND (
  clinic_app.has_permission('order.route',v.clinic_id,NULL)
- OR (v.uploader_id=__ACTOR__ AND EXISTS(
- SELECT 1 FROM clinic_app.orders_order o WHERE o.id=v.proposed_order_id
+ OR ((m.id IS NOT NULL OR v.uploader_id=__ACTOR__)
  AND o.clinic_id=v.clinic_id AND o.organization_id=v.organization_id
- AND clinic_app.has_permission('result.read',v.clinic_id,o.enrollment_id)))
- OR EXISTS(SELECT 1 FROM clinic_app.orders_resultmatch m
- JOIN clinic_app.orders_order o ON o.id=m.order_id
- WHERE m.version_id=v.id AND clinic_app.has_permission(
- 'result.read',v.clinic_id,o.enrollment_id))))
+ AND (m.id IS NULL OR (
+ m.clinic_id=v.clinic_id AND m.organization_id=v.organization_id))
+ AND clinic_app.has_permission('result.read',v.clinic_id,o.enrollment_id))))
 $f$;
+"""
+
+CURRENT_INGEST_SCOPE_SQL = """
+CREATE OR REPLACE FUNCTION clinic_app.orders_ingest_scope(
+ clinic uuid, requested_order uuid, result uuid, predecessor uuid)
+RETURNS TABLE(organization_id uuid,lab_account_id uuid,number integer)
+LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+ SELECT __TENANT__,clinic_app.orders_lab_account(clinic),
+ CASE WHEN predecessor IS NULL THEN 1 ELSE (
+ SELECT v.number+1 FROM clinic_app.orders_resultversion v WHERE v.id=predecessor
+ AND v.result_id=result AND v.clinic_id=clinic AND v.organization_id=__TENANT__
+ AND coalesce((SELECT m.order_id FROM clinic_app.orders_resultmatch m
+ WHERE m.version_id=v.id),v.proposed_order_id) IS NOT DISTINCT FROM requested_order
+ AND (clinic_app.orders_lab_account(clinic) IS NULL
+ OR v.lab_account_id=clinic_app.orders_lab_account(clinic))
+ AND clinic_app.orders_is_current(v.id)) END
+ WHERE clinic_app.orders_ingest_allowed(clinic,requested_order)
+ AND ((result IS NULL AND predecessor IS NULL) OR EXISTS(
+ SELECT 1 FROM clinic_app.orders_resultversion v WHERE v.id=predecessor
+ AND v.result_id=result AND v.clinic_id=clinic AND v.organization_id=__TENANT__
+ AND coalesce((SELECT m.order_id FROM clinic_app.orders_resultmatch m
+ WHERE m.version_id=v.id),v.proposed_order_id) IS NOT DISTINCT FROM requested_order
+ AND (clinic_app.orders_lab_account(clinic) IS NULL
+ OR v.lab_account_id=clinic_app.orders_lab_account(clinic))
+ AND clinic_app.orders_is_current(v.id)))
+$f$;
+"""
+
+CURRENT_EVENT_RECEIPT_SQL = """
+CREATE OR REPLACE FUNCTION clinic_app.orders_event_receipt(clinic uuid,event uuid)
+RETURNS TABLE(result_id uuid,version_id uuid,number integer,state text,fingerprint text)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+DECLARE v clinic_app.orders_resultversion; requested_order uuid;
+BEGIN
+ SELECT * INTO v FROM clinic_app.orders_resultversion r WHERE r.event_id=event
+ AND r.clinic_id=clinic AND r.organization_id=__TENANT__;
+ IF v.id IS NULL THEN RETURN; END IF;
+ SELECT m.order_id INTO requested_order FROM clinic_app.orders_resultmatch m
+ WHERE m.version_id=v.id;
+ IF NOT clinic_app.orders_ingest_allowed(
+ clinic,coalesce(requested_order,v.proposed_order_id))
+ OR (clinic_app.orders_lab_account(clinic) IS NOT NULL
+ AND v.lab_account_id IS DISTINCT FROM clinic_app.orders_lab_account(clinic)) THEN
+ RAISE EXCEPTION 'result denied' USING ERRCODE='42501'; END IF;
+ RETURN QUERY SELECT v.result_id,v.id,v.number,
+ CASE WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultrelease r
+ WHERE r.version_id=v.id) THEN 'released'
+ WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultacknowledgment r
+ WHERE r.version_id=v.id) THEN 'acknowledged'
+ WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultmatch m
+ WHERE m.version_id=v.id) THEN 'matched'
+ WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultrejection r
+ WHERE r.version_id=v.id) THEN 'rejected' ELSE 'quarantined' END,v.fingerprint::text;
+END $f$;
 """
 
 
@@ -99,48 +154,9 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 $f$;
 """
 FUNCTIONS += CURRENT_RESULT_READ_SQL
+FUNCTIONS += CURRENT_INGEST_SCOPE_SQL
+FUNCTIONS += CURRENT_EVENT_RECEIPT_SQL
 FUNCTIONS += """
-CREATE FUNCTION clinic_app.orders_ingest_scope(
- clinic uuid, requested_order uuid, result uuid, predecessor uuid)
-RETURNS TABLE(organization_id uuid,lab_account_id uuid,number integer)
-LANGUAGE sql VOLATILE SECURITY DEFINER
-SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
- SELECT __TENANT__,clinic_app.orders_lab_account(clinic),
- CASE WHEN predecessor IS NULL THEN 1 ELSE (
- SELECT v.number+1 FROM clinic_app.orders_resultversion v WHERE v.id=predecessor
- AND v.result_id=result AND v.clinic_id=clinic AND v.organization_id=__TENANT__
- AND v.proposed_order_id IS NOT DISTINCT FROM requested_order
- AND (clinic_app.orders_lab_account(clinic) IS NULL
- OR v.lab_account_id=clinic_app.orders_lab_account(clinic))
- AND clinic_app.orders_is_current(v.id)) END
- WHERE clinic_app.orders_ingest_allowed(clinic,requested_order)
- AND ((result IS NULL AND predecessor IS NULL) OR EXISTS(
- SELECT 1 FROM clinic_app.orders_resultversion v WHERE v.id=predecessor
- AND v.result_id=result AND v.clinic_id=clinic AND v.organization_id=__TENANT__
- AND v.proposed_order_id IS NOT DISTINCT FROM requested_order
- AND (clinic_app.orders_lab_account(clinic) IS NULL
- OR v.lab_account_id=clinic_app.orders_lab_account(clinic))
- AND clinic_app.orders_is_current(v.id)))
-$f$;
-CREATE FUNCTION clinic_app.orders_event_receipt(clinic uuid,event uuid)
-RETURNS TABLE(result_id uuid,version_id uuid,number integer,state text,fingerprint text)
-LANGUAGE sql VOLATILE SECURITY DEFINER
-SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
- SELECT v.result_id,v.id,v.number,
- CASE WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultrelease r
- WHERE r.version_id=v.id) THEN 'released'
- WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultacknowledgment r
- WHERE r.version_id=v.id) THEN 'acknowledged'
- WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultmatch m
- WHERE m.version_id=v.id) THEN 'matched'
- WHEN EXISTS(SELECT 1 FROM clinic_app.orders_resultrejection r
- WHERE r.version_id=v.id) THEN 'rejected' ELSE 'quarantined' END,v.fingerprint
- FROM clinic_app.orders_resultversion v WHERE v.event_id=event
- AND v.clinic_id=clinic AND v.organization_id=__TENANT__
- AND clinic_app.orders_ingest_allowed(clinic,v.proposed_order_id)
- AND (clinic_app.orders_lab_account(clinic) IS NULL
- OR v.lab_account_id=clinic_app.orders_lab_account(clinic))
-$f$;
 CREATE FUNCTION clinic_app.orders_delegate_allowed(version uuid, grant_id uuid)
 RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$

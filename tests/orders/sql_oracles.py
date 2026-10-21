@@ -10,6 +10,7 @@ from orders import (
     test_identity_matrix,
     test_patient_sources,
     test_posture,
+    test_rematched_authority,
     test_review,
 )
 
@@ -33,6 +34,12 @@ CASES = {
         test_posture.test_a_null_creator_cannot_forge_the_private_source_task_bridge,
         test_confidentiality.test_routing_upload_does_not_grant_structured_clinical_read,
         test_current_uploader_authority.test_former_uploader_cannot_read_after_current_authority_loss,
+        test_rematched_authority.test_proposed_patient_authority_cannot_read_a_different_matched_patient,
+        test_rematched_authority.test_matched_patient_reader_keeps_exact_source_access,
+        test_rematched_authority.test_stale_proposed_scope_cannot_supersede_a_rematched_source,
+        test_rematched_authority.test_matched_patient_clinician_can_correct_without_inheriting_review,
+        test_rematched_authority.test_stale_proposed_scope_cannot_replay_a_rematched_source,
+        test_rematched_authority.test_raw_correction_guard_rejects_the_historical_proposed_patient,
     )
 }
 
@@ -47,6 +54,8 @@ SQL_PROTOCOL_ORACLES = {
         "test_lab_principal_cannot_select_sources_or_acknowledge",
         "test_routing_upload_does_not_grant_structured_clinical_read",
         "test_former_uploader_cannot_read_after_current_authority_loss",
+        "test_proposed_patient_authority_cannot_read_a_different_matched_patient",
+        "test_matched_patient_reader_keeps_exact_source_access",
     ],
     "clinic_app.orders_correlated_order": [
         "test_signed_replay_creates_one_source_version_and_review_task",
@@ -61,11 +70,14 @@ SQL_PROTOCOL_ORACLES = {
     "clinic_app.orders_event_receipt": [
         "test_signed_replay_creates_one_source_version_and_review_task",
         "test_altered_event_replay_has_no_second_effect",
+        "test_stale_proposed_scope_cannot_replay_a_rematched_source",
     ],
     "clinic_app.orders_guard": [
         "test_source_rows_refuse_raw_updates_and_deletes",
         "test_nonclinical_actor_cannot_acknowledge_or_release",
         "test_correction_retains_old_bytes_but_resets_acknowledgment_and_release",
+        "test_raw_correction_guard_rejects_the_historical_proposed_patient",
+        "test_matched_patient_clinician_can_correct_without_inheriting_review",
     ],
     "clinic_app.orders_ingest_allowed": [
         "test_cross_tenant_ingest_has_identical_payload_free_denial",
@@ -74,6 +86,8 @@ SQL_PROTOCOL_ORACLES = {
     "clinic_app.orders_ingest_scope": [
         "test_cross_tenant_ingest_has_identical_payload_free_denial",
         "test_signed_replay_creates_one_source_version_and_review_task",
+        "test_stale_proposed_scope_cannot_supersede_a_rematched_source",
+        "test_matched_patient_clinician_can_correct_without_inheriting_review",
     ],
     "clinic_app.orders_is_current": [
         "test_correction_retains_old_bytes_but_resets_acknowledgment_and_release",

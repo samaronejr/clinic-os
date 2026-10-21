@@ -26,6 +26,9 @@ Missing, conflicting or unknown-order evidence creates a quarantine receipt and
 an accountable receptionist task, not a patient chart entry. An operator may
 select a verified order but cannot override the immutable source identity.
 Unresolved operator attempts return `match_ambiguous` or `quarantined`.
+After verified routing, source reads, event receipts and correction lineage use
+the matched order's current patient authority. The original proposed order
+remains immutable provenance and grants no access to the matched patient.
 
 Every matched version has an assigned review task for its ordering clinician.
 An explicit critical source flag gives that task urgent priority immediately,

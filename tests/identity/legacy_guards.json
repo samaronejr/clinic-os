@@ -5815,6 +5815,7 @@
     {
       "symbol": "apps.orders.ingestion._receipt",
       "signals": [
+        "denial",
         "resolver"
       ],
       "kind": "direct",
@@ -13689,7 +13690,9 @@
         "test_nonclinical_actor_cannot_acknowledge_or_release",
         "test_lab_principal_cannot_select_sources_or_acknowledge",
         "test_routing_upload_does_not_grant_structured_clinical_read",
-        "test_former_uploader_cannot_read_after_current_authority_loss"
+        "test_former_uploader_cannot_read_after_current_authority_loss",
+        "test_proposed_patient_authority_cannot_read_a_different_matched_patient",
+        "test_matched_patient_reader_keeps_exact_source_access"
       ],
       "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
     },
@@ -13782,7 +13785,8 @@
       "kind": "domain_protocol",
       "probes": [
         "test_signed_replay_creates_one_source_version_and_review_task",
-        "test_altered_event_replay_has_no_second_effect"
+        "test_altered_event_replay_has_no_second_effect",
+        "test_stale_proposed_scope_cannot_replay_a_rematched_source"
       ],
       "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
     },
@@ -13806,7 +13810,9 @@
       "probes": [
         "test_source_rows_refuse_raw_updates_and_deletes",
         "test_nonclinical_actor_cannot_acknowledge_or_release",
-        "test_correction_retains_old_bytes_but_resets_acknowledgment_and_release"
+        "test_correction_retains_old_bytes_but_resets_acknowledgment_and_release",
+        "test_raw_correction_guard_rejects_the_historical_proposed_patient",
+        "test_matched_patient_clinician_can_correct_without_inheriting_review"
       ],
       "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
     },
@@ -13860,7 +13866,9 @@
       "kind": "domain_protocol",
       "probes": [
         "test_cross_tenant_ingest_has_identical_payload_free_denial",
-        "test_signed_replay_creates_one_source_version_and_review_task"
+        "test_signed_replay_creates_one_source_version_and_review_task",
+        "test_stale_proposed_scope_cannot_supersede_a_rematched_source",
+        "test_matched_patient_clinician_can_correct_without_inheriting_review"
       ],
       "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
     },

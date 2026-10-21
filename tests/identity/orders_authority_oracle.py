@@ -14,6 +14,7 @@ from orders import (
     test_order_states,
     test_patient_sources,
     test_posture,
+    test_rematched_authority,
     test_review,
 )
 
@@ -38,6 +39,12 @@ def run_orders_census(proofs: ExecutedProofs, graph: Callable[[], RbacGraph]) ->
             test_identity_matrix.test_unknown_order_can_be_resolved_only_against_immutable_source_evidence,
             test_order_states.test_order_progression_is_replayed_once_and_cannot_reverse,
             test_patient_sources.test_patient_sources_require_current_acknowledgment_and_exact_patient_release,
+            test_rematched_authority.test_proposed_patient_authority_cannot_read_a_different_matched_patient,
+            test_rematched_authority.test_matched_patient_reader_keeps_exact_source_access,
+            test_rematched_authority.test_stale_proposed_scope_cannot_supersede_a_rematched_source,
+            test_rematched_authority.test_matched_patient_clinician_can_correct_without_inheriting_review,
+            test_rematched_authority.test_stale_proposed_scope_cannot_replay_a_rematched_source,
+            test_rematched_authority.test_raw_correction_guard_rejects_the_historical_proposed_patient,
         ):
             proofs.run(simple_oracle.__name__, partial(simple_oracle, graph()))
         for role in ("receptionist", "nurse", "clinic_admin", "finance"):
