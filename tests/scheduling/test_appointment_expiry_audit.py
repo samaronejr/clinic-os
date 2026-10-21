@@ -48,7 +48,6 @@ pytestmark = [
 ]
 
 EVENT = "scheduling.appointment.expired"
-LIFECYCLE = ("scheduling", "0007_appointment_lifecycle_v2")
 EXPIRY_AUDIT = ("scheduling", "0008_expiry_audit")
 EXPIRE_HOLD = "clinic_app.scheduling_expire_hold(uuid,uuid,integer,uuid)"
 TIMEOUT = 10
@@ -441,12 +440,15 @@ def test_empty_reverse_restores_and_reapply_reinstalls_exactly(
     assert installed[1]
     assert "clinic-lock-v1:patient:" in installed[0]
     assert "scheduling.appointment.expired" in installed[2]
-    MigrationExecutor(connection).migrate([LIFECYCLE])
+    executor = MigrationExecutor(connection)
+    migration = executor.loader.get_migration(*EXPIRY_AUDIT)
+    state = executor.loader.project_state(EXPIRY_AUDIT, at_end=False)
+    state = executor.unapply_migration(state, migration)
     reversed_function, trigger, scope = _catalog()
     assert not trigger
     assert "clinic-lock-v1" not in reversed_function
     assert "scheduling.appointment.expired" not in scope
-    MigrationExecutor(connection).migrate([EXPIRY_AUDIT])
+    executor.apply_migration(state, migration)
     assert _catalog() == installed
 
 
@@ -456,8 +458,11 @@ def test_populated_reverse_refuses_and_keeps_the_ledger(
     # Building the world expired one hold through the real W service.
     expired = expiry_world.rows["expired"]
     _assert_event(expired)
+    executor = MigrationExecutor(connection)
+    migration = executor.loader.get_migration(*EXPIRY_AUDIT)
+    state = executor.loader.project_state(EXPIRY_AUDIT, at_end=False)
     with pytest.raises(IntegrityError) as refused:
-        MigrationExecutor(connection).migrate([LIFECYCLE])
+        _ = executor.unapply_migration(state, migration)
     cause = refused.value.__cause__
     assert isinstance(cause, psycopg.Error)
     assert cause.diag.constraint_name == "scheduling_expiry_audit_rollback"

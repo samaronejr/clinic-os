@@ -106,7 +106,12 @@ def _requests(
         )
         yield (
             "POST",
-            {"action": "invalid", "token": "invalid", "clinic_id": "invalid"},
+            {
+                "action": "invalid",
+                "token": "invalid",
+                "clinic_id": "invalid",
+                "version_id": unknown,
+            },
             htmx,
         )
         yield (

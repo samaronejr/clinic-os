@@ -14,6 +14,26 @@ from orders import (
     test_review,
 )
 
+ACTOR_PROTOCOL_ORACLES = {
+    "clinic_app.orders_can_read_version(uuid)": (
+        "orders.test_sql_inactive_actor."
+        "test_staff_result_protocol_requires_current_active_actor",
+    ),
+    "clinic_app.orders_verify_identity(uuid,uuid,uuid,text)": (
+        "orders.test_sql_inactive_actor."
+        "test_staff_result_protocol_requires_current_active_actor",
+    ),
+    "clinic_app.orders_guard()": (
+        "orders.test_sql_inactive_actor.test_raw_orders_guard_refuses_inactive_actor",
+    ),
+    "clinic_app.orders_lab_account(uuid)": (
+        "orders.test_sql_inactive_actor.test_lab_sql_requires_absent_staff_actor",
+    ),
+    "clinic_app.orders_resolve_lab(uuid,text)": (
+        "orders.test_sql_inactive_actor.test_lab_sql_requires_absent_staff_actor",
+    ),
+}
+
 CASES = {
     case.__name__: case
     for case in (

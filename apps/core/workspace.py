@@ -68,7 +68,7 @@ class WorkspaceClinic:
 
     @property
     def has_command_palette(self) -> bool:
-        """Retain command presentation for pre-existing clinic contexts."""
+        """Expose commands for the clinic's delivered, authorized workspaces."""
         return bool(self.roles.intersection(_STAFF_ROLES) or self.command_context)
 
     @property
@@ -80,6 +80,8 @@ class WorkspaceClinic:
                 return reverse("scheduling:reception", args=(self.id,))
             if "tasks.view" in granted:
                 return reverse("workflows:tasks", args=(self.id,))
+            if "demographics.read" in granted and "appointment.book" not in granted:
+                return reverse("orders:results", args=(self.id,))
             return reverse("scheduling:resource-settings", args=(self.id,))
         return reverse("scheduling:agenda", args=(self.id,))
 
@@ -151,7 +153,7 @@ def _visible_clinics(
         clinic = assignment.clinic
         if assignment.role not in _STAFF_ROLES:
             granted = granted_permissions(clinic.pk)
-            command_context = "tasks.view" in granted or (
+            command_context = bool({"tasks.view", "demographics.read"} & granted) or (
                 settings_scope
                 and bool({"appointment.book", "configuration.organization"} & granted)
             )

@@ -1,5 +1,7 @@
 """Source-backed system tasks reuse the workflow queue without staff impersonation."""
 
+from apps.workflows.migrations._workflow_sql import SQL as WORKFLOW_SQL
+
 FUNCTIONS = """
 SET LOCAL ROLE clinic_resolver;
 CREATE FUNCTION clinic_app.orders_system_task_valid(row_data jsonb)
@@ -75,18 +77,18 @@ REVOKE EXECUTE ON FUNCTION clinic_app.orders_emit_task() FROM clinic_owner;
 RESET ROLE;
 """
 
-WORKFLOW_BRIDGE = """
-DO $patch$
-DECLARE body text; needle text:=' IF TG_TABLE_NAME=''workflows_task'' THEN';
-BEGIN
- body:=pg_get_functiondef('clinic_app.workflows_guard()'::regprocedure);
- IF length(body)-length(replace(body,needle,''))<>length(needle) THEN
-  RAISE EXCEPTION 'workflow guard shape changed'; END IF;
- body:=replace(body,'CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
- body:=replace(body,needle,'
- IF TG_TABLE_NAME=''workflows_task'' AND TG_OP=''INSERT''
+_GUARD_START = WORKFLOW_SQL.index("CREATE FUNCTION clinic_app.workflows_guard()")
+_GUARD_END = WORKFLOW_SQL.index("$f$;", _GUARD_START) + len("$f$;")
+_TASK_BRANCH = " IF TG_TABLE_NAME='workflows_task' THEN"
+WORKFLOW_BRIDGE = (
+    WORKFLOW_SQL[_GUARD_START:_GUARD_END]
+    .replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1)
+    .replace(
+        _TASK_BRANCH,
+        """
+ IF TG_TABLE_NAME='workflows_task' AND TG_OP='INSERT'
  AND clinic_app.orders_system_task_valid(to_jsonb(NEW)) THEN RETURN NEW; END IF;
- '||needle);
- EXECUTE body;
-END $patch$;
-"""
+ """
+        + _TASK_BRANCH,
+    )
+)

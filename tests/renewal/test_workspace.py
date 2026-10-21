@@ -49,7 +49,7 @@ PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
 # A physician sees every IA destination their bundle and routes open (plan
 # annex IA, todo 13): Patients leads to consent, never to the registry, and
 # the clinic billing ledger stays hidden.
-PHYSICIAN_MODULES: Final = {"agenda", "patients", "operations"}
+PHYSICIAN_MODULES: Final = {"agenda", "patients", "inbox", "operations"}
 
 
 def _modules(content: bytes) -> dict[str, tuple[str, bool]]:
@@ -105,6 +105,7 @@ def test_receptionist_sees_manager_modules_for_the_url_clinic(
         "agenda": (agenda, True),
         "finance": (f"/billing/clinics/{rbac_graph.clinic_a}/charges/", False),
         "patients": (f"/intake/clinics/{rbac_graph.clinic_a}/patients/", False),
+        "inbox": (f"/clinics/{rbac_graph.clinic_a}/results/", False),
         "operations": (f"/retention/clinics/{rbac_graph.clinic_a}/", False),
         "settings": (
             f"/scheduling/clinics/{rbac_graph.clinic_a}/settings/",

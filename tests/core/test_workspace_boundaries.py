@@ -127,6 +127,8 @@ def _pin_patient(client: Client, graph: RbacGraph, user: User, role: str) -> Non
         )
         assert response.status_code == 200
     elif role in {
+        UserClinicRole.Role.NURSE,
+        UserClinicRole.Role.ALLIED_PROFESSIONAL,
         UserClinicRole.Role.SCHEDULER,
         UserClinicRole.Role.CLINIC_MANAGER,
     }:

@@ -229,12 +229,17 @@ READS = {
        WHERE v.result_id=orders_result.id
        AND clinic_app.orders_can_read_version(v.id))""",
     "orders_resultversion": "clinic_app.orders_can_read_version(id)",
-    **dict.fromkeys(TABLES[6:], "clinic_app.orders_can_read_version(version_id)"),
     "orders_resultobservation": """EXISTS(
       SELECT 1 FROM clinic_app.orders_resultmatch m
       JOIN clinic_app.orders_order o ON o.id=m.order_id
       WHERE m.version_id=orders_resultobservation.version_id
       AND clinic_app.has_permission('result.read',o.clinic_id,o.enrollment_id))""",
+    "orders_resultmatch": "clinic_app.orders_can_read_version(version_id)",
+    "orders_resultquarantine": "clinic_app.orders_can_read_version(version_id)",
+    "orders_resultrejection": "clinic_app.orders_can_read_version(version_id)",
+    "orders_resultacknowledgment": "clinic_app.orders_can_read_version(version_id)",
+    "orders_resultrelease": "clinic_app.orders_can_read_version(version_id)",
+    "orders_resultworkitem": "clinic_app.orders_can_read_version(version_id)",
 }
 POLICIES = "".join(
     f"""

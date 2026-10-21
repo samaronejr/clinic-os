@@ -37,6 +37,9 @@ from identity.test_lifecycle_sql_readers import (
     ACTOR_PROTOCOL_ORACLES,
     assert_lifecycle_oracles,
 )
+from orders.sql_oracles import (
+    ACTOR_PROTOCOL_ORACLES as ORDERS_ACTOR_PROTOCOL_ORACLES,
+)
 from patient_service_support import runtime_role
 from patients.duplicate_authority_cases import (
     ACTOR_PROTOCOL_ORACLES as MERGE_ACTOR_PROTOCOL_ORACLES,
@@ -372,7 +375,11 @@ def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
 def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     readers = _actor_readers()
     own, delegating = _checked(readers)
-    protocol_oracles = ACTOR_PROTOCOL_ORACLES | MERGE_ACTOR_PROTOCOL_ORACLES
+    protocol_oracles = (
+        ACTOR_PROTOCOL_ORACLES
+        | MERGE_ACTOR_PROTOCOL_ORACLES
+        | ORDERS_ACTOR_PROTOCOL_ORACLES
+    )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an
     # INSERT of an inactive account. It is not an active-caller proof. Those
