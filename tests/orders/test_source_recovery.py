@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from apps.ehr.attachment_storage import AttachmentStorageError
 from apps.orders.models import ResultVersion
 from apps.orders.services import ingest_result
 from apps.orders.storage import (
@@ -52,6 +53,8 @@ def test_rolled_back_source_is_tracked_until_owner_reconciliation(
         assert not ResultVersion.objects.exists()
         assert reconcile_result_uploads() == 1
     assert not backend.pending_uploads()
+    with pytest.raises(AttachmentStorageError):
+        backend.get(pending[0].key)
 
 
 def test_pending_commit_receipt_retains_the_original_source(
