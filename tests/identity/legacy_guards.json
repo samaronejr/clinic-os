@@ -1,6 +1,174 @@
 {
   "candidates": [
     {
+      "symbol": "apps.ai.action_audit.record_agent_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_audit.record_agent_event#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_payload._authority",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_payload._authority#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_runtime.action_scope",
+      "signals": [
+        "actor",
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_runtime.action_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_store.load_action",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_store.load_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_validation._source_facts",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation._source_facts#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_validation.authority_snapshot",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation.authority_snapshot#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_validation.current_controls",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation.current_controls#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_validation.database_time",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation.database_time#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_validation.source_snapshot",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation.source_snapshot#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.action_validation.validate_current",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.action_validation.validate_current#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.agent_policies.policy_administrator",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.agent_policies.policy_administrator#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.agent_views.agent_queue",
+      "signals": [
+        "decorator",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.agent_views.agent_queue#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.agent_views.agent_settings",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.agent_views.agent_settings#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.approvals.approve_action",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.approvals.approve_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.approvals.reject_action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.approvals.reject_action#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.approvals.verify_approvals",
+      "signals": [
+        "actor",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.approvals.verify_approvals#cut1"
+      ]
+    },
+    {
       "symbol": "apps.ai.artifacts.check_authority",
       "signals": [
         "permission",
@@ -34,6 +202,17 @@
       ]
     },
     {
+      "symbol": "apps.ai.attestations.step_up_evidence",
+      "signals": [
+        "actor",
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.attestations.step_up_evidence#cut1"
+      ]
+    },
+    {
       "symbol": "apps.ai.controls.current_policy",
       "signals": [
         "permission"
@@ -52,6 +231,16 @@
       "kind": "direct",
       "probes": [
         "apps.ai.controls.set_organization_policy#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.execution_tasks.dispatch_approved",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.execution_tasks.dispatch_approved#cut1"
       ]
     },
     {
@@ -125,6 +314,18 @@
       ]
     },
     {
+      "symbol": "apps.ai.proposals.propose_action",
+      "signals": [
+        "actor",
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.proposals.propose_action#cut1"
+      ]
+    },
+    {
       "symbol": "apps.ai.services.invoke",
       "signals": [
         "actor",
@@ -134,6 +335,16 @@
       "kind": "direct",
       "probes": [
         "apps.ai.services.invoke#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.tasks.run_agent",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.tasks.run_agent#cut1"
       ]
     },
     {
@@ -5800,11 +6011,29 @@
     }
   ],
   "probes": [
+    "apps.ai.action_audit.record_agent_event#cut1",
+    "apps.ai.action_payload._authority#cut1",
+    "apps.ai.action_runtime.action_scope#cut1",
+    "apps.ai.action_store.load_action#cut1",
+    "apps.ai.action_validation._source_facts#cut1",
+    "apps.ai.action_validation.authority_snapshot#cut1",
+    "apps.ai.action_validation.current_controls#cut1",
+    "apps.ai.action_validation.database_time#cut1",
+    "apps.ai.action_validation.source_snapshot#cut1",
+    "apps.ai.action_validation.validate_current#cut1",
+    "apps.ai.agent_policies.policy_administrator#cut1",
+    "apps.ai.agent_views.agent_queue#cut1",
+    "apps.ai.agent_views.agent_settings#cut1",
+    "apps.ai.approvals.approve_action#cut1",
+    "apps.ai.approvals.reject_action#cut1",
+    "apps.ai.approvals.verify_approvals#cut1",
     "apps.ai.artifacts.check_authority#cut1",
     "apps.ai.artifacts.input_for#cut1",
     "apps.ai.artifacts.read_artifact#cut1",
+    "apps.ai.attestations.step_up_evidence#cut1",
     "apps.ai.controls.current_policy#cut1",
     "apps.ai.controls.set_organization_policy#cut1",
+    "apps.ai.execution_tasks.dispatch_approved#cut1",
     "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
     "apps.ai.outbox.GatewayActionAdapter.send#cut1",
     "apps.ai.owner.propose_model#cut1",
@@ -5812,7 +6041,9 @@
     "apps.ai.owner.set_global_switch#cut1",
     "apps.ai.owner.transition_model#cut1",
     "apps.ai.policy.organization_policy#cut1",
+    "apps.ai.proposals.propose_action#cut1",
     "apps.ai.services.invoke#cut1",
+    "apps.ai.tasks.run_agent#cut1",
     "apps.ai.views.settings_view#cut1",
     "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_system_event#observed",
@@ -6771,6 +7002,369 @@
       "kind": "migration_only",
       "probes": [],
       "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
+    },
+    "clinic_app.agent_action_payload": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, kek text",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_approval_current": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, approval_id uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_bound_snapshot": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_approval_current",
+          "clinic_app.agent_snapshot"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, actor uuid, perm text, tenant uuid",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_controls": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_mutation_lock": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_proposal_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_action_payload",
+          "clinic_app.agent_approval_current",
+          "clinic_app.agent_controls",
+          "clinic_app.agent_source"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_record_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_snapshot": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_record_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, perm text",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_source": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, source_id uuid",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_staff": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_access_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_actionexecution:agent_staff",
+          "clinic_app.ai_actionproposal:agent_staff",
+          "clinic_app.ai_actionreceipt:agent_staff",
+          "clinic_app.ai_agentpolicyversion:agent_staff",
+          "clinic_app.ai_agentrun:agent_staff",
+          "clinic_app.ai_approval:agent_staff",
+          "clinic_app.ai_compensation:agent_staff"
+        ],
+        "resolvers": [
+          "clinic_app.agent_approval_current",
+          "clinic_app.agent_controls"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.agent_transition": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_agent_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_record_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "previous text, following text",
+            "returns": "bool",
+            "security_definer": false,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
     "clinic_app.ai_budget_usage": {
       "discovery": {
@@ -8167,6 +8761,7 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.agent_audit",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
@@ -8897,6 +9492,7 @@
       "discovery": {
         "migrations": [
           "apps/identity/migrations/0030_workflow_current_membership.py",
+          "apps/identity/migrations/_agent_authority_sql.py",
           "apps/identity/migrations/_encounter_permission_sql.py",
           "apps/identity/migrations/_lifecycle_sql.py",
           "apps/identity/migrations/_permission_sql.py",
@@ -8943,6 +9539,8 @@
           "clinic_app.workflows_workflowstep:workflow_update"
         ],
         "resolvers": [
+          "clinic_app.agent_record_guard",
+          "clinic_app.agent_staff",
           "clinic_app.ai_staff",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
@@ -9015,6 +9613,62 @@
       "kind": "crypto_protocol",
       "probes": [],
       "reason": "Envelope/key context, cryptographic primitive or key lifecycle, not a staff role decision. Private helpers cannot be executed by clinic_app; protected-field and encryption/ACL tests cover public callers."
+    },
+    "clinic_app.identity_actor_permission": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_agent_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.agent_bound_snapshot",
+          "clinic_app.agent_controls",
+          "clinic_app.has_permission"
+        ],
+        "signatures": [
+          {
+            "arguments": "perm text, clinic uuid, enrollment uuid, actor uuid, tenant uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
+    },
+    "clinic_app.identity_agent_grant_version": {
+      "discovery": {
+        "migrations": [
+          "apps/identity/migrations/_agent_authority_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+      ],
+      "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
     "clinic_app.identity_invitation_accept": {
       "discovery": {
@@ -11341,9 +11995,19 @@
           "apps/identity/migrations/_principal_sql.py"
         ],
         "policies": [
+          "clinic_app.ai_actionexecution:agent_machine",
+          "clinic_app.ai_actionproposal:agent_machine",
+          "clinic_app.ai_actionreceipt:agent_machine",
+          "clinic_app.ai_agentpolicyversion:agent_machine",
+          "clinic_app.ai_agentrun:agent_machine",
+          "clinic_app.ai_approval:agent_machine",
+          "clinic_app.ai_compensation:agent_machine",
           "clinic_app.scheduling_availabilityblock:agent_grant"
         ],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.agent_audit_scope",
+          "clinic_app.agent_proposal_scope"
+        ],
         "signatures": [
           {
             "arguments": "perm text, clinic uuid",
@@ -11363,9 +12027,18 @@
     "clinic_app.principal_scope": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/_agent_authority_sql.py",
           "apps/identity/migrations/_principal_sql.py"
         ],
-        "policies": [],
+        "policies": [
+          "clinic_app.ai_actionexecution:agent_machine",
+          "clinic_app.ai_actionproposal:agent_machine",
+          "clinic_app.ai_actionreceipt:agent_machine",
+          "clinic_app.ai_agentpolicyversion:agent_machine",
+          "clinic_app.ai_agentrun:agent_machine",
+          "clinic_app.ai_approval:agent_machine",
+          "clinic_app.ai_compensation:agent_machine"
+        ],
         "resolvers": [
           "clinic_app.principal_has"
         ],
@@ -12855,6 +13528,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.agent_action_payload",
           "clinic_app.identity_signup_register",
           "clinic_app.prescription_document_open",
           "clinic_app.protected_decrypt",

@@ -358,7 +358,7 @@ class ServicePrincipal(TenantScopedModel):
                 fields=("organization", "id"), name="identity_principal_org_id_uniq"
             ),
             models.CheckConstraint(
-                condition=models.Q(grant_set_version=1)
+                condition=models.Q(grant_set_version__in=(1, 2))
                 & models.Q(db_identity__regex=r"^clinic_agent(_[a-z0-9_]+)?$")
                 & models.Q(name__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$")
                 & models.Q(purpose__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$"),
@@ -373,6 +373,7 @@ class ServicePrincipalGrant(TenantScopedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     principal = models.ForeignKey(ServicePrincipal, on_delete=models.PROTECT)
     permission = models.CharField(max_length=64)
+    grant_set_version = models.PositiveSmallIntegerField(default=1)
     subject_scope = models.CharField(max_length=16, default="clinic")
     active = models.BooleanField(default=True)
 
@@ -386,9 +387,11 @@ class ServicePrincipalGrant(TenantScopedModel):
                 name="identity_principal_active_grant",
             ),
             models.CheckConstraint(
-                condition=models.Q(
-                    permission="appointment.read", subject_scope="clinic"
-                ),
+                condition=(
+                    models.Q(grant_set_version=1, permission="appointment.read")
+                    | models.Q(grant_set_version=2, permission="agent.execute")
+                )
+                & models.Q(subject_scope="clinic"),
                 name="identity_principal_grant_v1_scope",
             ),
         ]

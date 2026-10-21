@@ -35,7 +35,7 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     )
     # Derived from live tables minus exact exclusions; keep this pin aligned
     # with the full catalog set checked by tests/infra/test_recovery_manifest.py.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 134
+    assert len(restore_contract.DOMAIN_RELATIONS) == 141
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(
         restore_contract.DOMAIN_RELATIONS
     )

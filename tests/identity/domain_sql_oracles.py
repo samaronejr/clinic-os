@@ -1,5 +1,6 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
+from ai import test_agent_execution, test_agent_guards
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
 from ehr.test_note_grant_lifecycle import (
@@ -177,6 +178,32 @@ PROTOCOL_ORACLES = {
     **DUPLICATE_SQL_ORACLES,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
+    **{
+        name: [
+            "test_agent_scope_and_approval_refusals_are_side_effect_free",
+            "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+            "test_revoked_approver_blocks_after_approval",
+            "test_superseded_source_publication_blocks_execution",
+            "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        ]
+        for name in (
+            "clinic_app.agent_action_payload",
+            "clinic_app.agent_approval_current",
+            "clinic_app.agent_audit",
+            "clinic_app.agent_audit_scope",
+            "clinic_app.agent_bound_snapshot",
+            "clinic_app.agent_controls",
+            "clinic_app.agent_mutation_lock",
+            "clinic_app.agent_proposal_scope",
+            "clinic_app.agent_record_guard",
+            "clinic_app.agent_snapshot",
+            "clinic_app.agent_source",
+            "clinic_app.agent_staff",
+            "clinic_app.agent_transition",
+            "clinic_app.identity_actor_permission",
+            "clinic_app.identity_agent_grant_version",
+        )
+    },
     "clinic_app.ai_staff": [
         "test_ai_sql_role_and_scope_decisions_follow_exact_permissions",
         "test_clinical_purposes_recheck_current_patient_authority",
@@ -250,6 +277,21 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
     for module, names in (
+        (
+            test_agent_guards,
+            (
+                "test_agent_scope_and_approval_refusals_are_side_effect_free",
+                "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+                "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+            ),
+        ),
+        (
+            test_agent_execution,
+            (
+                "test_revoked_approver_blocks_after_approval",
+                "test_superseded_source_publication_blocks_execution",
+            ),
+        ),
         (ai_posture, PROTOCOL_ORACLES["clinic_app.ai_staff"]),
         (ai_controls, PROTOCOL_ORACLES["clinic_app.configuration_guard"]),
     ):

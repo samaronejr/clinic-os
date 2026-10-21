@@ -7,9 +7,11 @@ from uuid import UUID
 
 from celery import shared_task
 
+from apps.ai.action_contracts import ActionAccessDeniedError
 from apps.ai.completion import finish_failure
 from apps.ai.contracts import Purpose
-from apps.ai.models import AIInvocation
+from apps.ai.execution import execute_action
+from apps.ai.models import ActionProposal, AgentRun, AIInvocation
 from apps.comms.models import IntegrationOperation
 from apps.core.fairness import DEFER_COUNTDOWN_SECONDS, fair_acquire
 from apps.core.integration import (
@@ -18,6 +20,7 @@ from apps.core.integration import (
     _stored_scope_context,
     execute_operation,
 )
+from apps.tenancy.db import service_principal_context
 
 if TYPE_CHECKING:
     from apps.comms.adapters import OperationScope
@@ -91,3 +94,42 @@ def run_operation(*, operation_id: str) -> ExecutionResult:
 
 
 execute: _TaskSender = shared_task(name="apps.ai.tasks.execute")(run_operation)
+
+
+def run_agent(*, clinic_id: str, proposal_id: str, principal_id: str) -> str:
+    """Reauthenticate the exact database principal before fairness or execution."""
+    clinic, proposal, principal = UUID(clinic_id), UUID(proposal_id), UUID(principal_id)
+    with service_principal_context(principal_id=principal, clinic_id=clinic):
+        action = (
+            ActionProposal.objects.using("agent")
+            .defer("payload")
+            .filter(pk=proposal, clinic_id=clinic)
+            .first()
+        )
+        if action is None:
+            raise ActionAccessDeniedError
+        run = (
+            AgentRun.objects.using("agent")
+            .defer("contract", "reviewer_edits")
+            .select_related("policy")
+            .get(pk=action.run_id)
+        )
+        organization = action.organization_id
+        queue = "ai-batch" if run.policy.capability == "analyst" else "ai-interactive"
+    if not fair_acquire(organization_id=organization, queue=queue):
+        execute_agent.apply_async(
+            kwargs={
+                "clinic_id": clinic_id,
+                "proposal_id": proposal_id,
+                "principal_id": principal_id,
+            },
+            queue=queue,
+            countdown=DEFER_COUNTDOWN_SECONDS,
+        )
+        return "deferred"
+    return execute_action(
+        clinic_id=clinic, proposal_id=proposal, principal_id=principal
+    ).state
+
+
+execute_agent: _TaskSender = shared_task(name="apps.ai.tasks.execute_agent")(run_agent)

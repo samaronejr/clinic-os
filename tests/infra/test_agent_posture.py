@@ -37,7 +37,23 @@ def test_agent_table_column_sequence_and_default_privileges_are_exact() -> None:
         for table, privileges in posture.agent_grants().items()
         for privilege in privileges
     }
-    assert expected == {("scheduling_availabilityblock", "SELECT")}
+    assert expected == {
+        ("ai_actionexecution", "INSERT"),
+        ("ai_actionexecution", "SELECT"),
+        ("ai_actionexecution", "UPDATE"),
+        ("ai_actionproposal", "SELECT"),
+        ("ai_actionproposal", "UPDATE"),
+        ("ai_actionreceipt", "INSERT"),
+        ("ai_actionreceipt", "SELECT"),
+        ("ai_agentpolicyversion", "SELECT"),
+        ("ai_agentrun", "SELECT"),
+        ("ai_agentrun", "UPDATE"),
+        ("ai_approval", "SELECT"),
+        ("ai_compensation", "INSERT"),
+        ("ai_compensation", "SELECT"),
+        ("ai_compensation", "UPDATE"),
+        ("scheduling_availabilityblock", "SELECT"),
+    }
     with connection.cursor() as cursor:
         cursor.execute(
             "SELECT c.relname, p.privilege FROM pg_class c "
@@ -81,8 +97,19 @@ def test_agent_definer_execute_surface_is_exact() -> None:
             "AND has_function_privilege('clinic_agent',p.oid,'EXECUTE')"
         )
         assert set(cursor.fetchall()) == {
-            ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
+            ("agent_action_payload", "requested uuid, kek text"),
+            ("agent_approval_current", "requested uuid, approval_id uuid"),
+            (
+                "agent_audit",
+                "record_id uuid, event_name text, "
+                "occurred_at_utc timestamp with time zone, content_hash bytea",
+            ),
+            ("agent_audit_scope", "record_id uuid, event_name text"),
+            ("agent_controls", "requested uuid"),
+            ("agent_proposal_scope", "requested uuid"),
+            ("agent_source", "requested uuid, source_id uuid"),
             ("principal_has", "perm text, clinic uuid"),
+            ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
         }
 
 

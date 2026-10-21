@@ -16,6 +16,15 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("scheduling_roomstatus", "SELECT"),
     ("identity_passkey", "SELECT"),
     *longitudinal_catalog.TABLE_GRANTS,
+    ("ai_agentpolicyversion", "SELECT"),
+    ("ai_agentrun", "SELECT"),
+    ("ai_actionproposal", "SELECT"),
+    ("ai_approval", "SELECT"),
+    ("ai_actionexecution", "SELECT"),
+    ("ai_actionreceipt", "SELECT"),
+    ("ai_compensation", "SELECT"),
+    ("providers_providercapability", "SELECT"),
+    ("providers_capabilityversion", "SELECT"),
     ("ai_aiartifact", "SELECT"),
     ("ai_aicircuit", "SELECT"),
     ("ai_aiinvocation", "SELECT"),
@@ -169,6 +178,28 @@ POSTURE_OVERRIDES: Final = {
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_practitioners": ("s", True, ["clinic_app", "clinic_resolver"]),
     **longitudinal_catalog.POSTURE,
+    "agent_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "agent_snapshot": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
+    "agent_bound_snapshot": ("v", False, ["clinic_resolver"]),
+    "identity_actor_permission": ("v", False, ["clinic_resolver"]),
+    "agent_action_payload": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "agent_proposal_scope": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "agent_source": ("v", False, ["clinic_agent", "clinic_resolver"]),
+    "agent_approval_current": (
+        "v",
+        True,
+        ["clinic_agent", "clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "agent_controls": (
+        "v",
+        True,
+        ["clinic_agent", "clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "agent_audit_scope": (
+        "v",
+        False,
+        ["clinic_agent", "clinic_owner", "clinic_resolver"],
+    ),
     "ai_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_organization_policy": (
         "s",
@@ -354,6 +385,19 @@ FUNCTION_SIGNATURES: Final = {
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
     ("reception_practitioners", "requested_clinic uuid"),
     *longitudinal_catalog.RESULTS,
+    ("agent_staff", "clinic uuid"),
+    ("agent_snapshot", "clinic uuid, perm text"),
+    ("agent_bound_snapshot", "clinic uuid, actor uuid, perm text, tenant uuid"),
+    (
+        "identity_actor_permission",
+        "perm text, clinic uuid, enrollment uuid, actor uuid, tenant uuid",
+    ),
+    ("agent_action_payload", "requested uuid, kek text"),
+    ("agent_proposal_scope", "requested uuid"),
+    ("agent_source", "requested uuid, source_id uuid"),
+    ("agent_approval_current", "requested uuid, approval_id uuid"),
+    ("agent_controls", "requested uuid"),
+    ("agent_audit_scope", "record_id uuid, event_name text"),
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"),
     ("ai_organization_policy", ""),
     ("ai_budget_usage", "requested_purpose text"),
@@ -589,6 +633,27 @@ FUNCTION_RESULTS: Final = {
         "payment_pending boolean, identity_document_recorded boolean)"
     ),
     **longitudinal_catalog.RESULTS,
+    ("agent_staff", "clinic uuid"): "boolean",
+    ("agent_snapshot", "clinic uuid, perm text"): "jsonb",
+    (
+        "agent_bound_snapshot",
+        "clinic uuid, actor uuid, perm text, tenant uuid",
+    ): "jsonb",
+    (
+        "identity_actor_permission",
+        "perm text, clinic uuid, enrollment uuid, actor uuid, tenant uuid",
+    ): "boolean",
+    ("agent_action_payload", "requested uuid, kek text"): "text",
+    ("agent_proposal_scope", "requested uuid"): (
+        "TABLE(organization_id uuid, clinic_id uuid, principal_id uuid)"
+    ),
+    ("agent_source", "requested uuid, source_id uuid"): "jsonb",
+    ("agent_approval_current", "requested uuid, approval_id uuid"): "boolean",
+    ("agent_controls", "requested uuid"): "jsonb",
+    ("agent_audit_scope", "record_id uuid, event_name text"): (
+        "TABLE(organization_id uuid, clinic_id uuid, "
+        "principal_id uuid, record_type text)"
+    ),
     ("ai_staff", "clinic uuid, purpose text, enrollment uuid"): "boolean",
     ("ai_organization_policy", ""): "jsonb",
     ("ai_budget_usage", "requested_purpose text"): (

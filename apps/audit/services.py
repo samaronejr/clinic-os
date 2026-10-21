@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from django.db import connection
+from django.db import connection, connections
 
 from apps.audit.canonical import (
     AUDIT_PAYLOAD_ALLOWED,
@@ -208,6 +208,10 @@ def record_phase1_event(
     )
     if append.chain == "system":
         return _record_system_event(append.event, payload=append.payload)
+    if "agent" in connections and connections["agent"].in_atomic_block:
+        from apps.ai.action_audit import record_agent_event  # noqa: PLC0415
+
+        return record_agent_event(append, affected_record_id)
     if event_type.startswith("identity.delegate."):
         with connection.cursor() as cursor:
             cursor.execute(

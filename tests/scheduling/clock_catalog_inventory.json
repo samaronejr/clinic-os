@@ -202,6 +202,7 @@
   "constraint:comms_integrationoperation.comms_integrationope_actor_id_2efcba8f_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -358,6 +359,7 @@
   "constraint:ehr_clinicalattachment.ehr_clinicalattachment_uploader_id_f4ad57ce_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -398,6 +400,7 @@
   "constraint:ehr_clinicaldocumentversion.ehr_clinicaldocument_author_id_1922e31b_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -513,6 +516,7 @@
   "constraint:ehr_copiednoteblock.ehr_copiednoteblock_reviewed_by_id_df3f89c3_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -662,6 +666,7 @@
   "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -689,6 +694,7 @@
   "constraint:ehr_noteaccessgrant.ehr_noteaccessgrant_granted_by_id_02e71cb0_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -696,6 +702,7 @@
   "constraint:ehr_noteaccessgrant.ehr_noteaccessgrant_grantee_id_e92d8515_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -755,6 +762,7 @@
   "constraint:ehr_restrictednote.ehr_restrictednote_restricted_by_id_82ac5f04_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -872,6 +880,7 @@
   "constraint:identity_authenticatorreset.identity_authenticat_requested_by_id_c5eb8de1_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -879,6 +888,7 @@
   "constraint:identity_authenticatorreset.identity_authenticat_user_id_dd827c3e_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -899,6 +909,7 @@
   "constraint:identity_authenticatorretirement.identity_authenticat_user_id_dc706685_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -960,6 +971,7 @@
   "constraint:identity_careteammembership.identity_careteammem_user_id_5749fdcf_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1041,6 +1053,7 @@
   "constraint:identity_clinicconfiguration.identity_clinicconfi_published_by_id_bf237669_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1145,6 +1158,7 @@
   "constraint:identity_passkey.identity_passkey_user_id_aef1dd23_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1305,6 +1319,7 @@
   "constraint:identity_patientdelegategrant.identity_patientdele_requested_by_id_c5b23e84_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1312,6 +1327,7 @@
   "constraint:identity_patientdelegategrant.identity_patientdele_verified_by_id_85c88804_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1342,6 +1358,7 @@
   "constraint:identity_physicianprofile.identity_physicianprofile_user_id_cc4656bc_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1377,6 +1394,7 @@
   "constraint:identity_professionalregistration.identity_professiona_user_id_80b580f6_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1503,12 +1521,14 @@
       "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
       "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
       "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
       "trigger:identity_serviceprincipal.principal_immutable"
     ]
   },
   "constraint:identity_serviceprincipalgrant.identity_principal_grant_v1_scope": {
     "direct": {},
     "via": [
+      "function:pg_catalog.int24eq(smallint, integer)",
       "function:pg_catalog.texteq(text, text)"
     ]
   },
@@ -1531,7 +1551,14 @@
       "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
       "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
       "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
       "trigger:identity_serviceprincipal.principal_immutable"
+    ]
+  },
+  "constraint:identity_serviceprincipalgrant.identity_serviceprincipalgrant_grant_set_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int24ge(smallint, integer)"
     ]
   },
   "constraint:identity_sessionrecord.identity_sessionreco_verification_device__9df6c3b7_fk_otp_totp_": {
@@ -1566,6 +1593,7 @@
   "constraint:identity_sessionrecord.identity_sessionrecord_user_id_b02e92f8_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1599,6 +1627,7 @@
   "constraint:identity_userclinicrole.identity_userclinicrole_user_id_f253a70d_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1677,6 +1706,7 @@
   "constraint:intake_demographicscorrection.intake_demographicsc_actor_id_70a8cb16_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -1820,6 +1850,7 @@
   "constraint:intake_mergedecision.intake_mergedecision_adjudicator_id_bdd7c6d0_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2010,6 +2041,7 @@
   "constraint:intake_patientaccessgrant.intake_patientaccess_issued_by_id_a73e9224_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2041,6 +2073,7 @@
   "constraint:intake_patientalias.intake_patientalias_deactivated_by_id_f099f7b4_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2801,6 +2834,7 @@
   "constraint:otp_static_staticdevice.otp_static_staticdevice_user_id_7f9cff2b_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2832,6 +2866,7 @@
   "constraint:otp_totp_totpdevice.otp_totp_totpdevice_user_id_0fb18292_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2876,6 +2911,7 @@
   "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2945,6 +2981,7 @@
   "constraint:scheduling_absence.scheduling_absence_practitioner_id_26b1943c_fk_identity_user_id": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -2987,6 +3024,7 @@
   "constraint:scheduling_appointment.scheduling_appointme_practitioner_id_092c1b4b_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -3378,6 +3416,7 @@
   "constraint:scheduling_appointmentseries.scheduling_appointme_practitioner_id_b8c87553_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -3577,6 +3616,7 @@
   "constraint:scheduling_availabilityblock.scheduling_availabil_practitioner_id_0e03600f_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -3708,6 +3748,7 @@
   "constraint:scheduling_availabilitytemplate.scheduling_availabil_practitioner_id_1f1049f1_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -3761,6 +3802,7 @@
   "constraint:scheduling_cliniciandelay.scheduling_clinician_practitioner_id_0a776878_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -4297,6 +4339,7 @@
   "constraint:scheduling_waitlistentry.scheduling_waitliste_practitioner_id_bca36b22_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -4402,6 +4445,7 @@
   "constraint:scheduling_waitlistoffer.scheduling_waitlisto_practitioner_id_9cee537b_fk_identity_": {
     "direct": {},
     "via": [
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -4475,6 +4519,14 @@
       "function:pg_catalog.int2(integer)"
     ]
   },
+  "function:clinic_app.agent_mutation_lock()": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)"
+    ]
+  },
   "function:clinic_app.ai_organization_policy()": {
     "direct": {},
     "via": [
@@ -4495,6 +4547,7 @@
       "policy:identity_clinicconfiguration.configuration_insert",
       "policy:identity_clinicconfiguration.configuration_read",
       "policy:identity_clinicconfiguration.setup_tenant",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
       "trigger:identity_clinicconfiguration.configuration_plain_text"
     ]
@@ -4658,6 +4711,7 @@
       "policy:intake_patientchannelpreference.tenant_isolation",
       "policy:intake_patientcontact.tenant_isolation",
       "trigger:comms_integrationoperation.identity_reset_delivered_clock",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
       "trigger:identity_clinicconfiguration.configuration_plain_text"
     ]
@@ -4724,6 +4778,7 @@
       "policy:identity_clinicconfiguration.configuration_insert",
       "policy:identity_clinicconfiguration.configuration_read",
       "policy:identity_clinicconfiguration.setup_tenant",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
       "trigger:identity_clinicconfiguration.configuration_plain_text"
     ]
@@ -5336,8 +5391,10 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5433,8 +5490,10 @@
       "trigger:ehr_noteaccessgrant.ehr_note_binding",
       "trigger:ehr_noteaccessgrant.ehr_note_revocation_audit",
       "trigger:ehr_restrictednote.ehr_note_binding",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5646,6 +5705,14 @@
     "via": []
   },
   "function:clinic_app.has_permission(text, uuid, uuid)": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.identity_actor_permission(text, uuid, uuid, uuid, uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)"
+    ]
+  },
+  "function:clinic_app.identity_actor_permission(text, uuid, uuid, uuid, uuid)": {
     "direct": {
       "pg_catalog.statement_timestamp()": 1,
       "pg_catalog.timestamptz(date)": 1,
@@ -5700,8 +5767,6 @@
       "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
       "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
-      "function:pg_catalog.current_setting(text)",
-      "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.text(\"char\")",
       "function:pg_catalog.text(boolean)",
       "function:pg_catalog.text(character)",
@@ -5733,14 +5798,30 @@
       "trigger:ehr_encounter.zz_intake_survivor_binding",
       "trigger:identity_careteammembership.scope_immutable",
       "trigger:identity_professionalregistration.scope_immutable",
+      "trigger:identity_rolegrant.agent_send_mutation",
       "trigger:identity_rolegrant.identity_rolegrant_session_rejection",
       "trigger:identity_rolegrant.scope_immutable",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
       "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
+    ]
+  },
+  "function:clinic_app.identity_agent_grant_version()": {
+    "direct": {},
+    "via": [
+      "constraint:identity_serviceprincipal.identity_principal_clinic_fk",
+      "constraint:identity_serviceprincipal.identity_principal_v1_identity",
+      "constraint:identity_serviceprincipal.identity_serviceprin_clinic_id_806c6da3_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprin_organization_id_7b3141a5_fk_identity_",
+      "constraint:identity_serviceprincipal.identity_serviceprincipal_grant_set_version_check",
+      "policy:identity_serviceprincipal.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
+      "trigger:identity_serviceprincipal.principal_immutable"
     ]
   },
   "function:clinic_app.identity_passkey_guard()": {
@@ -5762,6 +5843,7 @@
       "function:pg_catalog.octet_length(character)",
       "function:pg_catalog.octet_length(text)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5795,6 +5877,7 @@
       "policy:identity_organization.tenant_isolation",
       "policy:identity_userclinicrole.tenant_isolation",
       "trigger:identity_organization.pending_organization_guard",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5894,8 +5977,10 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5928,6 +6013,7 @@
       "policy:identity_sessionrecord.own_user",
       "policy:identity_userclinicrole.tenant_isolation",
       "trigger:identity_sessionrecord.identity_session_change",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5953,8 +6039,10 @@
       "policy:identity_physicianprofile.physician_provision",
       "policy:identity_physicianprofile.physician_self",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -5992,6 +6080,7 @@
       "policy:otp_totp_totpdevice.otp_totp_device_user_isolation",
       "trigger:identity_authenticatorretirement.identity_retirement_boundary",
       "trigger:identity_sessionrecord.identity_session_change",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
     ]
@@ -6161,6 +6250,7 @@
       "policy:identity_sessionrecord.own_user",
       "policy:identity_userclinicrole.tenant_isolation",
       "trigger:identity_sessionrecord.identity_session_change",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -6560,8 +6650,10 @@
       "policy:intake_patient.tenant_isolation",
       "policy:intake_patientalias.tenant_isolation",
       "policy:intake_patientclinicenrollment.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -6686,8 +6778,10 @@
       "constraint:identity_userclinicrole.identity_workflow_bundle_version",
       "function:clinic_app.patient_booking_scope()",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -6727,6 +6821,7 @@
       "policy:identity_clinicconfiguration.configuration_insert",
       "policy:identity_clinicconfiguration.configuration_read",
       "policy:identity_clinicconfiguration.setup_tenant",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
       "trigger:identity_clinicconfiguration.configuration_plain_text"
     ]
@@ -6834,6 +6929,7 @@
       "policy:scheduling_availabilityblock.tenant_isolation",
       "policy:scheduling_availabilitytemplate.tenant_isolation",
       "policy:scheduling_holiday.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
       "trigger:scheduling_absence.scheduling_definition_guard",
@@ -6971,10 +7067,13 @@
       "constraint:identity_serviceprincipalgrant.identity_principal_grant_v1_scope",
       "constraint:identity_serviceprincipalgrant.identity_serviceprin_organization_id_fa613e9c_fk_identity_",
       "constraint:identity_serviceprincipalgrant.identity_serviceprin_principal_id_4f950f22_fk_identity_",
+      "constraint:identity_serviceprincipalgrant.identity_serviceprincipalgrant_grant_set_version_check",
       "function:clinic_app.principal_scope(uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_serviceprincipalgrant.principal_provision",
+      "trigger:identity_serviceprincipalgrant.agent_send_mutation",
+      "trigger:identity_serviceprincipalgrant.principal_grant_version",
       "trigger:identity_serviceprincipalgrant.principal_immutable"
     ]
   },
@@ -6990,6 +7089,7 @@
       "constraint:identity_serviceprincipalgrant.identity_principal_grant_v1_scope",
       "constraint:identity_serviceprincipalgrant.identity_serviceprin_organization_id_fa613e9c_fk_identity_",
       "constraint:identity_serviceprincipalgrant.identity_serviceprin_principal_id_4f950f22_fk_identity_",
+      "constraint:identity_serviceprincipalgrant.identity_serviceprincipalgrant_grant_set_version_check",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.pg_has_role(name, name, text)",
@@ -7000,7 +7100,10 @@
       "function:pg_catalog.pg_has_role(oid, text)",
       "policy:identity_serviceprincipal.principal_provision",
       "policy:identity_serviceprincipalgrant.principal_provision",
+      "trigger:identity_serviceprincipal.agent_send_mutation",
       "trigger:identity_serviceprincipal.principal_immutable",
+      "trigger:identity_serviceprincipalgrant.agent_send_mutation",
+      "trigger:identity_serviceprincipalgrant.principal_grant_version",
       "trigger:identity_serviceprincipalgrant.principal_immutable"
     ]
   },
@@ -7106,8 +7209,10 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -7257,8 +7362,10 @@
       "policy:scheduling_resource.tenant_isolation",
       "policy:scheduling_roomstatus.reception_scope",
       "policy:scheduling_roomstatus.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -7445,8 +7552,10 @@
       "policy:scheduling_holiday.tenant_isolation",
       "policy:scheduling_resource.tenant_isolation",
       "policy:scheduling_servicetype.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -7570,8 +7679,10 @@
       "policy:scheduling_availabilityblock.patient_booking_read",
       "policy:scheduling_availabilityblock.tenant_isolation",
       "policy:scheduling_resource.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -7866,6 +7977,7 @@
       "policy:identity_clinicconfiguration.configuration_insert",
       "policy:identity_clinicconfiguration.configuration_read",
       "policy:identity_clinicconfiguration.setup_tenant",
+      "trigger:identity_clinicconfiguration.agent_send_mutation",
       "trigger:identity_clinicconfiguration.configuration_immutable",
       "trigger:identity_clinicconfiguration.configuration_plain_text"
     ]
@@ -7967,8 +8079,10 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -7987,8 +8101,10 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -8077,8 +8193,10 @@
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_user.agent_send_mutation",
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -10015,6 +10133,7 @@
       "function:pg_catalog.texteq(text, text)",
       "function:pg_catalog.uuid_eq(uuid, uuid)",
       "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:identity_userclinicrole.agent_send_mutation",
       "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
       "trigger:identity_userclinicrole.identity_membership_session_rejection",
       "trigger:identity_userclinicrole.pending_membership_guard",
@@ -10971,6 +11090,12 @@
       "function:clinic_app.identity_scope_guard()"
     ]
   },
+  "trigger:identity_clinicconfiguration.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
+    ]
+  },
   "trigger:identity_clinicconfiguration.configuration_immutable": {
     "direct": {},
     "via": [
@@ -11019,6 +11144,12 @@
       "function:clinic_app.identity_scope_guard()"
     ]
   },
+  "trigger:identity_rolegrant.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
+    ]
+  },
   "trigger:identity_rolegrant.identity_rolegrant_session_rejection": {
     "direct": {},
     "via": [
@@ -11031,10 +11162,28 @@
       "function:clinic_app.identity_scope_guard()"
     ]
   },
+  "trigger:identity_serviceprincipal.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
+    ]
+  },
   "trigger:identity_serviceprincipal.principal_immutable": {
     "direct": {},
     "via": [
       "function:clinic_app.identity_principal_immutable()"
+    ]
+  },
+  "trigger:identity_serviceprincipalgrant.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
+    ]
+  },
+  "trigger:identity_serviceprincipalgrant.principal_grant_version": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.identity_agent_grant_version()"
     ]
   },
   "trigger:identity_serviceprincipalgrant.principal_immutable": {
@@ -11049,6 +11198,12 @@
       "function:clinic_app.identity_session_change_guard()"
     ]
   },
+  "trigger:identity_user.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
+    ]
+  },
   "trigger:identity_user.ehr_note_recipient_deactivated": {
     "direct": {},
     "via": [
@@ -11059,6 +11214,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.identity_revoke_changed_sessions()"
+    ]
+  },
+  "trigger:identity_userclinicrole.agent_send_mutation": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.agent_mutation_lock()"
     ]
   },
   "trigger:identity_userclinicrole.ehr_note_recipient_revoked": {

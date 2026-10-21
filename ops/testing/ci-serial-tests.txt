@@ -42,6 +42,10 @@ server-state tests/patients/test_survivor_confirmation_migration.py::test_surviv
 # (autouse there); elsewhere exactly the tests that request it.
 server-state tests/identity/test_permission_parity.py::test_every_authorization_candidate_is_accounted_for
 server-state tests/identity/test_service_principals.py
+server-state tests/ai/test_agent_execution.py
+server-state tests/ai/test_agent_guards.py
+server-state tests/ai/test_agent_authority.py
+server-state tests/ai/test_agent_isolation.py
 server-state tests/renewal/test_action_operations.py::test_service_principal_cannot_run_a_queued_action
 # The guard's own positive probe commits a value-identical ALTER ROLE.
 server-state tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write
