@@ -24,6 +24,7 @@ from apps.identity.current_context import require_permission
 from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
+from apps.orders import services as order_services
 from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.services import issue_prescription
 from apps.prescription.verification import release_document
@@ -514,3 +515,42 @@ def test_intake_service_boundaries_derive_context_and_keep_search_body_only() ->
         "patient_id",
         "enrollment_id",
     }.intersection(set(create_parameters) | set(search_parameters))
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            order_services.place_order,
+            [
+                "clinic_id",
+                "enrollment_id",
+                "exam_codes",
+                "command_id",
+                "lab_account_id",
+            ],
+        ),
+        (
+            order_services.progress_order,
+            ["clinic_id", "order_id", "expected_sequence", "state", "command_id"],
+        ),
+        (order_services.ingest_result, ["clinic_id", "submission"]),
+        (order_services.match_result, ["clinic_id", "version_id", "order_id"]),
+        (order_services.reject_result, ["clinic_id", "version_id", "evidence_code"]),
+        (
+            order_services.acknowledge_result,
+            ["clinic_id", "version_id", "disposition"],
+        ),
+        (
+            order_services.release_result,
+            ["clinic_id", "version_id", "audience", "delegate_grant_id"],
+        ),
+    ],
+)
+def test_order_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)
