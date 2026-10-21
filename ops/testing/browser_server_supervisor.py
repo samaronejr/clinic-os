@@ -30,6 +30,7 @@ RESPONSE_KEYS: Final = frozenset(
     {"kind", "pgid", "pid", "schema_version", "sequence", "worker_count"}
 )
 WORKER_COUNT: Final = 2
+REQUEST_TIMEOUT_SECONDS: Final = 30
 MAX_MESSAGE_BYTES: Final = 4096
 TERMINATION_GRACE_SECONDS: Final = 10
 PROTECTED_DATABASE_PORT: Final = 5432
@@ -137,6 +138,9 @@ def supervised_argv(interpreter: Path, port: int, access_log: Path) -> list[str]
         "--bind",
         f"127.0.0.1:{port}",
         f"--workers={WORKER_COUNT}",
+        "--worker-class=sync",
+        "--threads=1",
+        f"--timeout={REQUEST_TIMEOUT_SECONDS}",
         "--preload",
         "--access-logfile",
         str(access_log),

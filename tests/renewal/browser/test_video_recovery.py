@@ -118,7 +118,9 @@ def state_rows(case: _Case, session: str) -> dict[str, object]:
         )
         row = conn.execute(
             "SELECT s.state,s.revision,e.state,"
-            "r.recording_enabled,r.transcription_enabled "
+            "r.recording_enabled,r.transcription_enabled,"
+            "(SELECT count(*) FROM clinic_app.scribe_recordingsession capture "
+            " WHERE capture.encounter_id=e.id) "
             "FROM clinic_app.teleconsult_teleconsultsession s "
             "JOIN clinic_app.ehr_encounter e ON e.id=s.encounter_id "
             "JOIN clinic_app.teleconsult_teleconsultroom r ON r.session_id=s.id "
@@ -145,6 +147,7 @@ def state_rows(case: _Case, session: str) -> dict[str, object]:
         "encounter": row[2],
         "recording": row[3],
         "transcription": row[4],
+        "recording_sessions": row[5],
         "events": events,
         "live_credentials": live[0],
     }
@@ -301,6 +304,7 @@ def preserved(case: _Case, version: str, session: str) -> None:
     assert stored(case.staff, version) == (3, FIRST["subjective"])
     rows = state_rows(case, session)
     assert rows["encounter"] == "open"
+    assert rows["recording_sessions"] == 0
     assert rows["recording"] is False
     assert rows["transcription"] is False
 

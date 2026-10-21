@@ -148,6 +148,13 @@ ACTOR_PROTOCOL_ORACLES = {
     signature: tuple(f"identity.test_lifecycle_sql_readers.{name}" for name in names)
     for signature, names in _ACCOUNT_ORACLES.items()
 } | {
+    "clinic_app.scribe_assigned(uuid)": (
+        "scribe.test_actor_readers.test_native_capture_authority_refuses_inactive_actor",
+    ),
+    "clinic_app.scribe_guard()": (
+        "scribe.test_actor_readers.test_native_capture_authority_refuses_inactive_actor",
+        "scribe.test_refusals.test_role_loss_refuses_every_action_without_session_or_domain_mutation",
+    ),
     "clinic_app.agent_record_guard()": (
         "ai.test_agent_guards.test_agent_scope_and_approval_refusals_are_side_effect_free",
         "ai.test_agent_guards.test_fabricated_step_up_and_double_approval_cannot_add_votes",
@@ -191,6 +198,8 @@ SQL_PROTOCOL_ORACLES = (
             "clinic_app.identity_reset_guard()",
             # Sealed staff/domain oracles already classify these SQL guards;
             # actor protocols add independent inactive-caller proof.
+            "clinic_app.scribe_assigned(uuid)",
+            "clinic_app.scribe_guard()",
             "clinic_app.agent_record_guard()",
             "clinic_app.agent_snapshot(uuid,text)",
             "clinic_app.has_permission(text,uuid,uuid)",

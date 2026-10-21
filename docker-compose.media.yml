@@ -1,0 +1,22 @@
+# Explicit synthetic development only; this file never starts PostgreSQL.
+# Supply an operator-built/reviewed MinIO image and owner-only secret files.
+services:
+  minio:
+    image: ${CLINIC_MINIO_DEV_IMAGE:?set the reviewed local MinIO image}
+    command: [server, /data, --console-address, ":9001"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/media-access-key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/media-secret-key
+    ports:
+      - "127.0.0.1:${CLINIC_MINIO_DEV_PORT:-9000}:9000"
+      - "127.0.0.1:${CLINIC_MINIO_DEV_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - ${CLINIC_MINIO_DEV_DATA:?set an isolated synthetic media directory}:/data
+    secrets: [media-access-key, media-secret-key]
+    mem_limit: 1g
+
+secrets:
+  media-access-key:
+    file: ${CLINIC_LOCAL_SECRET_DIR:?set the owner-only synthetic secret directory}/media-access-key.secret
+  media-secret-key:
+    file: ${CLINIC_LOCAL_SECRET_DIR:?set the owner-only synthetic secret directory}/media-secret-key.secret

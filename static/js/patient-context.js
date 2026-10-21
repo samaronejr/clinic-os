@@ -28,10 +28,13 @@
     var event = new CustomEvent("clinic:context-switch", {
       bubbles: true,
       cancelable: true,
-      detail: { form: form }
+      detail: { form: form, handled: false }
     });
     var allowed = document.dispatchEvent(event);
-    return !allowed || Boolean(document.querySelector(UNSAVED));
+    return {
+      blocked: !allowed || Boolean(document.querySelector(UNSAVED)),
+      handled: event.detail.handled
+    };
   }
 
   function dialog() {
@@ -39,7 +42,13 @@
   }
 
   function request(form) {
-    if (!held(form)) {
+    var decision = held(form);
+    // A feature with richer choices owns this attempt. Its continuation calls
+    // request again after its bound work is resolved, preserving every guard.
+    if (decision.handled) {
+      return;
+    }
+    if (!decision.blocked) {
       form.submit();
       return;
     }

@@ -136,14 +136,12 @@ class TeleconsultRoom(TenantScopedModel):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        """Recording and transcription are disabled for every synthetic room."""
+        """Gate recording through scribe; ASR belongs to its separate slice."""
 
         constraints: ClassVar[list[models.BaseConstraint]] = [
             models.CheckConstraint(
-                condition=models.Q(
-                    recording_enabled=False, transcription_enabled=False
-                ),
-                name="teleconsult_room_capture_disabled",
+                condition=models.Q(transcription_enabled=False),
+                name="teleconsult_room_transcription_disabled",
             ),
             models.UniqueConstraint(
                 fields=("room_name",), name="teleconsult_room_name_uniq"

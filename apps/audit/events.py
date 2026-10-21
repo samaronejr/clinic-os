@@ -191,6 +191,34 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "ai.action_receipt",
             "recorded",
         ),
+        **{
+            f"scribe.session.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "scribe.recording_session", state
+            )
+            for state in (
+                "created",
+                "authorized",
+                "recording",
+                "paused",
+                "stopped",
+                "stopped_revoked",
+            )
+        },
+        **{
+            f"scribe.epoch.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "scribe.capture_epoch", state
+            )
+            for state in ("created", "closed")
+        },
+        **{
+            f"scribe.chunk.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker" if state == "accepted" else "clinic-os-web",
+                "scribe.audio_chunk",
+                state,
+            )
+            for state in ("received", "accepted", "quarantined", "rejected")
+        },
         "ai.model.drafted": Phase1AuditEventDefinition(
             "system", "clinic-os-ops", "ai.model_configuration", "drafted"
         ),

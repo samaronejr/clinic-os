@@ -1,0 +1,75 @@
+{% load i18n %}
+<section id="scribe-capture" class="scribe-capture" aria-labelledby="scribe-title"
+  data-scribe-capture data-state="default"
+  data-control-url="{% url 'scribe:control' clinic_id %}"
+  data-chunk-url="{% url 'scribe:chunk' clinic_id %}"
+  data-text-idle="{% trans "Microphone off. Start only when everyone is ready." %}"
+  data-text-recording="{% trans "Recording. Uploads are confirmed only after the server acknowledges them." %}"
+  data-text-paused="{% trans "Recording paused. Resume explicitly when you are ready." %}"
+  data-text-paused-gap="{% trans "Recording paused. Unconfirmed audio is marked as a gap. Resume explicitly or continue manually." %}"
+  data-text-offline="{% trans "Recording paused: uploads were not confirmed. Some audio may be missing. Continue the note manually." %}"
+  data-text-pending="{% trans "Uploads are unconfirmed. Audio stays only in memory for at most 60 seconds." %}"
+  data-text-stopped="{% trans "Microphone off. Received audio is retained; missing audio is marked as a gap." %}"
+  data-text-cancelled="{% trans "Capture discarded. The microphone is off; the stored decryption keys were destroyed." %}"
+  data-text-denied="{% trans "Microphone permission was declined. No audio was captured. Continue the note manually." %}"
+  data-text-denied-resume="{% trans "Microphone permission was declined. The microphone is off; previously received audio is retained. Continue manually." %}"
+  data-text-unsupported="{% trans "This browser cannot capture Opus audio. Continue the note manually." %}"
+  data-text-failed="{% trans "Capture interrupted. The microphone is off; unconfirmed audio may be missing. Recover explicitly or continue manually." %}"
+  data-text-recover="{% trans "A previous capture needs recovery. This browser is not recording. Recover, then resume explicitly." %}"
+  data-text-revoked="{% trans "Recording consent is no longer active. The microphone is off. Manual care remains available." %}"
+  data-text-loading="{% trans "Confirming capture authority. The microphone is still off." %}"
+  data-text-device="{% trans "Microphone __N__" %}">
+  <h2 id="scribe-title" tabindex="-1">{% trans "Consultation audio" %}</h2>
+  {% if capture.available %}
+  <p class="help-text">{% trans "Synthetic capture. Recording consent does not authorize transcription or AI processing. Unconfirmed audio stays only in memory for at most 60 seconds; it is never saved on this device." %}</p>
+  <p class="feedback" role="status" aria-live="polite" data-capture-status>{% if capture.recording %}{% trans "A previous capture needs recovery. This browser is not recording. Recover, then resume explicitly." %}{% else %}{% trans "Microphone off. Start only when everyone is ready." %}{% endif %}</p>
+  <form method="post" action="{% url 'scribe:control' clinic_id %}" data-capture-form novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="encounter_token" value="{{ capture.token }}">
+    <input type="hidden" name="command_id" value="{{ capture.command_id }}">
+    <input type="hidden" name="expected_epoch" value="{{ capture.epoch_token }}">
+    <input type="hidden" name="session_id" value="{% if capture.recording %}{{ capture.recording.pk }}{% endif %}">
+    <div class="field">
+      <label for="scribe-device">{% trans "Microphone" %}</label>
+      <select id="scribe-device" data-capture-device disabled><option value="">{% trans "Default microphone" %}</option></select>
+    </div>
+    <div class="scribe-meter">
+      <label for="scribe-level">{% trans "Microphone level" %}</label>
+      <meter id="scribe-level" min="0" max="100" value="0" data-capture-level>0</meter>
+      <p class="help-text">{% trans "The level meter is active only while recording." %}</p>
+      <p class="help-text" data-capture-meter-unavailable hidden role="status">{% trans "The input level meter is unavailable. Recording and upload status remain shown above." %}</p>
+    </div>
+    <div class="actions">
+      <button class="button" type="button" data-capture-action="start" disabled{% if capture.recording %} hidden{% endif %}>{% trans "Start recording" %}</button>
+      <button class="button button--secondary" type="button" data-capture-action="pause" hidden>{% trans "Pause recording" %}</button>
+      <button class="button" type="button" data-capture-action="resume" hidden>{% trans "Resume recording" %}</button>
+      <button class="button button--secondary" type="submit" name="action" value="stop" data-capture-action="stop"{% if not capture.recording %} hidden{% endif %}>{% trans "Stop and keep received audio" %}</button>
+      <button class="button button--danger" type="button" data-capture-action="cancel"{% if not capture.recording %} hidden{% endif %}>{% trans "Discard capture" %}</button>
+      <button class="button button--secondary" type="submit" name="action" value="recover" data-capture-action="recover"{% if not capture.recording %} hidden{% endif %}>{% trans "Recover capture" %}</button>
+    </div>
+    <noscript><p class="feedback">{% trans "Audio capture needs JavaScript and a supported browser. Manual notes and the stop/recovery controls remain available." %}</p></noscript>
+  </form>
+  <p class="scribe-persistent" data-capture-indicator hidden><a href="#scribe-capture">{% trans "Audio capture is active. Open recording controls." %}</a></p>
+  <dialog class="scribe-decision" aria-labelledby="scribe-decision-title" data-capture-dialog>
+    <h2 id="scribe-decision-title">{% trans "Leave this capture?" %}</h2>
+    <p>{% trans "This audio belongs to the current patient. Stop before leaving; it will never be attached to another patient." %}</p>
+    <div class="actions">
+      <button class="button button--secondary" type="button" data-capture-choice="keep">{% trans "Keep this patient" %}</button>
+      <button class="button button--secondary" type="button" data-capture-choice="stop">{% trans "Stop and keep received audio" %}</button>
+      <button class="button button--danger" type="button" data-capture-choice="cancel">{% trans "Stop and discard capture" %}</button>
+    </div>
+  </dialog>
+  {% else %}
+  <p class="feedback" data-capture-unavailable>{% trans "Audio capture is unavailable here. Continue the note manually and close the previous capture." %}</p>
+  {% if capture.recording %}
+  <form method="post" action="{% url 'scribe:control' clinic_id %}">
+    {% csrf_token %}
+    <input type="hidden" name="encounter_token" value="{{ capture.token }}">
+    <input type="hidden" name="command_id" value="{{ capture.command_id }}">
+    <input type="hidden" name="session_id" value="{{ capture.recording.pk }}">
+    <input type="hidden" name="expected_epoch" value="{{ capture.epoch_token }}">
+    <button class="button button--secondary" type="submit" name="action" value="stop">{% trans "Close the previous capture; keep received audio" %}</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</section>

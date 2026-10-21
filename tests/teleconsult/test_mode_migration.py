@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 __all__ = ("synthetic_provider",)
 pytestmark = pytest.mark.django_db(transaction=True)
 OLD = [("teleconsult", "0005_event_authority")]
-NEW = [("teleconsult", "0006_mode_audit")]
 
 
 def catalog_hash() -> str:
@@ -69,13 +68,14 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
         participants.set_patient_audio_only(session_id=w.session, enabled=True)
     original = history_hash(w.organization)
     new_catalog = catalog_hash()
+    targets = MigrationExecutor(connection).loader.graph.leaf_nodes()
     try:
         MigrationExecutor(connection).migrate(OLD)
         old_catalog = catalog_hash()
         assert history_hash(w.organization) == original
         with setup_context(w.organization):
             verify_chain(w.organization)
-        MigrationExecutor(connection).migrate(NEW)
+        MigrationExecutor(connection).migrate(targets)
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
         with connection.cursor() as cursor:
@@ -87,11 +87,11 @@ def test_populated_mode_migration_reverses_and_reapplies_exact_catalog(
         MigrationExecutor(connection).migrate(OLD)
         assert catalog_hash() == old_catalog
         assert history_hash(w.organization) == original
-        MigrationExecutor(connection).migrate(NEW)
+        MigrationExecutor(connection).migrate(targets)
         assert catalog_hash() == new_catalog
         assert history_hash(w.organization) == original
     finally:
-        MigrationExecutor(connection).migrate(NEW)
+        MigrationExecutor(connection).migrate(targets)
     with runtime_role(), patient_session_context(second):
         participants.set_patient_audio_only(session_id=w.session, enabled=False)
     events, audits = mode_history(w)

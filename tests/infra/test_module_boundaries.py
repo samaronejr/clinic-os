@@ -35,6 +35,7 @@ from apps.providers.services import current_version, is_live
 from apps.realtime import authorization, scopes, tickets, transport
 from apps.retention.services import apply_retention_policy, release_version
 from apps.scheduling import services as scheduling_services
+from apps.scribe import services as scribe_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
 from django.apps import apps as django_apps
@@ -56,6 +57,7 @@ FOUNDATION_APP_NAMES: Final = frozenset(
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     {
         "apps.ai.apps.AiConfig",
+        "apps.scribe.apps.ScribeConfig",
         "apps.audit.apps.AuditConfig",
         "apps.billing.apps.BillingConfig",
         "apps.comms.apps.CommsConfig",
@@ -115,6 +117,35 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
 @pytest.mark.parametrize(
     ("entrypoint", "names", "defaults"),
     [
+        (
+            scribe_services.issue_encounter_token,
+            ["clinic_id", "encounter_id", "browser_binding"],
+            {},
+        ),
+        (
+            scribe_services.create_recording,
+            ["clinic_id", "encounter_token", "command_id"],
+            {},
+        ),
+        (
+            scribe_services.control_recording,
+            [
+                "clinic_id",
+                "session_id",
+                "encounter_token",
+                "command_id",
+                "action",
+                "expected_epoch",
+                "last_seq",
+                "reason",
+            ],
+            {"last_seq": -1, "reason": "user"},
+        ),
+        (
+            scribe_services.ingest_chunk,
+            ["clinic_id", "encounter_token", "chunk"],
+            {},
+        ),
         (invoke, ["clinic_id", "purpose", "principal", "inputs_ref", "budget"], {}),
         (
             create_input,

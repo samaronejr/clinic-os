@@ -5296,6 +5296,98 @@
       ]
     },
     {
+      "symbol": "apps.scribe.authority.encounter_scope",
+      "signals": [
+        "permission",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.authority.encounter_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.authority.recording_scope",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.authority.recording_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.authority.token_scope",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.authority.token_scope#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.outbox.MediaActionAdapter.send",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.outbox.MediaActionAdapter.send#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.storage.open_audio",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.storage.open_audio#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.storage.seal_audio",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.storage.seal_audio#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.switches.bound_recordings",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.switches.bound_recordings#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.views.capture_chunk",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.views.capture_chunk#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.views.capture_control",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.views.capture_control#cut1"
+      ]
+    },
+    {
       "symbol": "apps.teleconsult.participants.authorize_room_topic",
       "signals": [
         "denial",
@@ -6362,6 +6454,15 @@
     "apps.scheduling.views.availability_list_view",
     "apps.scheduling.views.availability_retire_view",
     "apps.scheduling.waitlist_views.waitlist_view",
+    "apps.scribe.authority.encounter_scope#cut1",
+    "apps.scribe.authority.recording_scope#cut1",
+    "apps.scribe.authority.token_scope#cut1",
+    "apps.scribe.outbox.MediaActionAdapter.send#cut1",
+    "apps.scribe.storage.open_audio#cut1",
+    "apps.scribe.storage.seal_audio#cut1",
+    "apps.scribe.switches.bound_recordings#cut1",
+    "apps.scribe.views.capture_chunk#cut1",
+    "apps.scribe.views.capture_control#cut1",
     "apps.teleconsult.participants.authorize_room_topic",
     "apps.teleconsult.participants.clinician_session",
     "apps.teleconsult.participants.patient_session#observed",
@@ -8853,14 +8954,17 @@
           "clinic_app.prescription_signatureoperation:signature_read",
           "clinic_app.prescription_signatureoperation:signature_update",
           "clinic_app.retention_recordrelease:release_insert",
-          "clinic_app.retention_recordrelease:release_revoke"
+          "clinic_app.retention_recordrelease:release_revoke",
+          "clinic_app.scribe_recordingsession:capture_insert"
         ],
         "resolvers": [
           "clinic_app.ehr_attachment_guard",
           "clinic_app.ehr_history_guard",
           "clinic_app.ehr_note_author",
           "clinic_app.ehr_timeline_visible",
-          "clinic_app.retention_guard"
+          "clinic_app.retention_guard",
+          "clinic_app.scribe_assigned",
+          "clinic_app.scribe_guard"
         ],
         "signatures": [
           {
@@ -9565,6 +9669,8 @@
           "clinic_app.scheduling_generated_block_guard",
           "clinic_app.scheduling_lifecycle_guard",
           "clinic_app.scheduling_service_practitioners",
+          "clinic_app.scribe_assigned",
+          "clinic_app.scribe_guard",
           "clinic_app.teleconsult_clinician",
           "clinic_app.workflows_guard",
           "clinic_app.workflows_owned",
@@ -13200,6 +13306,210 @@
       ],
       "reason": "Scheduling RP protocol: executed all-role, exact-permission and own-scope domain oracles."
     },
+    "clinic_app.scribe_assigned": {
+      "kind": "domain_protocol",
+      "reason": "Current assigned physician and clinical-write authority for the immutable recording/encounter binding; raw-GUC active/inactive/reactivated proof plus real encrypted delivery.",
+      "probes": [
+        "test_native_capture_authority_refuses_inactive_actor",
+        "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_capture_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scribe_audiochunk:capture_insert",
+          "clinic_app.scribe_audiochunk:capture_read",
+          "clinic_app.scribe_audiochunk:capture_update",
+          "clinic_app.scribe_captureepoch:capture_insert",
+          "clinic_app.scribe_captureepoch:capture_read",
+          "clinic_app.scribe_captureepoch:capture_update",
+          "clinic_app.scribe_recordingcommand:capture_insert",
+          "clinic_app.scribe_recordingcommand:capture_read",
+          "clinic_app.scribe_recordingsession:capture_read",
+          "clinic_app.scribe_recordingsession:capture_update"
+        ],
+        "resolvers": [
+          "clinic_app.scribe_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_consent": {
+      "kind": "domain_protocol",
+      "reason": "Current explicit recording consent, exact enrollment/clinic and latest published version; direct SQL and HTTP revocation witnesses.",
+      "probes": [
+        "test_revoked_consent_stops_new_chunks_and_direct_sql"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scribe_guard",
+          "clinic_app.scribe_room_capture_allowed"
+        ],
+        "signatures": [
+          {
+            "arguments": "acceptance uuid, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_consent_fence": {
+      "kind": "domain_protocol",
+      "reason": "Serialize consent loss against capture mutations; executed by real consent withdrawal and native ingest refusal.",
+      "probes": [
+        "test_revoked_consent_stops_new_chunks_and_direct_sql"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_gaps": {
+      "kind": "domain_protocol",
+      "reason": "Bounded track/epoch sequence-gap computation; reordered chunks and replay/epoch-fence witnesses.",
+      "probes": [
+        "test_reordered_chunks_close_only_the_gap_they_fill",
+        "test_resume_fences_old_epoch_and_commands_replay"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scribe_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_epoch uuid, requested_track text, high integer",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_guard": {
+      "kind": "domain_protocol",
+      "reason": "Retained immutable recording/epoch/chunk terms and legal transitions; raw native actor refusal, epoch replay and exhaustive role-loss witnesses.",
+      "probes": [
+        "test_native_capture_authority_refuses_inactive_actor",
+        "test_resume_fences_old_epoch_and_commands_replay",
+        "test_role_loss_refuses_every_action_without_session_or_domain_mutation"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_room_capture_allowed": {
+      "kind": "domain_protocol",
+      "reason": "Only a live non-discarded recording, active epoch and current consent allow the existing room recording bit.",
+      "probes": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+        "test_revoked_consent_stops_new_chunks_and_direct_sql"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/teleconsult/migrations/_consented_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scribe_room_cleanup",
+          "clinic_app.scribe_room_guard",
+          "clinic_app.teleconsult_binding_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_session uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_room_cleanup": {
+      "kind": "domain_protocol",
+      "reason": "Consent/session/encounter termination clears only capture flags while preserving room identity and credentials.",
+      "probes": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+        "test_revoked_consent_stops_new_chunks_and_direct_sql"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/teleconsult/migrations/_consented_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_room_guard": {
+      "kind": "domain_protocol",
+      "reason": "Exact legacy/v2 room binding remains immutable; only consented recording flags may change and ASR remains closed.",
+      "probes": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/teleconsult/migrations/_consented_capture_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
     "clinic_app.switch_patient_delegate": {
       "discovery": {
         "migrations": [
@@ -13236,10 +13546,12 @@
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_read",
           "clinic_app.teleconsult_teleconsultcredential:teleconsult_credential_update",
           "clinic_app.teleconsult_teleconsultevent:teleconsult_event_insert",
+          "clinic_app.teleconsult_teleconsultroom:teleconsult_room_capture_update",
           "clinic_app.teleconsult_teleconsultroom:teleconsult_room_insert",
           "clinic_app.teleconsult_teleconsultsession:teleconsult_session_update"
         ],
         "resolvers": [
+          "clinic_app.scribe_room_guard",
           "clinic_app.teleconsult_fail"
         ],
         "signatures": [

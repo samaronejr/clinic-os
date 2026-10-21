@@ -16,6 +16,7 @@
 --cov=apps.interop
 --cov=apps.retention
 --cov=apps.scheduling
+--cov=apps.scribe
 --cov=apps.teleconsult
 --cov=apps.tenancy
 --cov=apps.workflows

@@ -81,6 +81,113 @@ msgstr "Informe um número finito."
 
 msgid "Questions are configuration, not medical advice. Branches use only a previous answer and a fixed comparison; no expressions or calculated answers. Assigned questionnaires retain their original version."
 msgstr "As perguntas são configurações, não orientação médica. As ramificações usam somente uma resposta anterior e uma comparação fixa, sem expressões nem respostas calculadas. Os questionários atribuídos mantêm a versão original."
+msgid "Consultation audio"
+msgstr "Áudio da consulta"
+
+msgid "Microphone off. Start only when everyone is ready."
+msgstr "Microfone desligado. Inicie apenas quando todos estiverem prontos."
+
+msgid "Recording. Uploads are confirmed only after the server acknowledges them."
+msgstr "Gravando. Os envios só são confirmados após o recebimento pelo servidor."
+
+msgid "Recording paused. Resume explicitly when you are ready."
+msgstr "Gravação pausada. Retome quando estiver pronto."
+
+msgid "Recording paused. Unconfirmed audio is marked as a gap. Resume explicitly or continue manually."
+msgstr "Gravação pausada. O áudio não confirmado está marcado como lacuna. Retome ou continue manualmente."
+
+msgid "Recording paused: uploads were not confirmed. Some audio may be missing. Continue the note manually."
+msgstr "Gravação pausada: os envios não foram confirmados. Parte do áudio pode estar ausente. Continue o registro manualmente."
+
+msgid "Uploads are unconfirmed. Audio stays only in memory for at most 60 seconds."
+msgstr "Envios não confirmados. O áudio fica apenas na memória por até 60 segundos."
+
+msgid "Microphone off. Received audio is retained; missing audio is marked as a gap."
+msgstr "Microfone desligado. O áudio recebido foi mantido; o áudio ausente está marcado como lacuna."
+
+msgid "Capture discarded. The microphone is off; the stored decryption keys were destroyed."
+msgstr "Captura descartada. Microfone desligado; as chaves de descriptografia armazenadas foram destruídas."
+
+msgid "Microphone permission was declined. No audio was captured. Continue the note manually."
+msgstr "O acesso ao microfone foi recusado. Nenhum áudio foi capturado. Continue o registro manualmente."
+
+msgid "Microphone permission was declined. The microphone is off; previously received audio is retained. Continue manually."
+msgstr "O acesso ao microfone foi recusado. Microfone desligado; o áudio recebido anteriormente foi mantido. Continue manualmente."
+
+msgid "This browser cannot capture Opus audio. Continue the note manually."
+msgstr "Este navegador não pode capturar áudio Opus. Continue o registro manualmente."
+
+msgid "Capture interrupted. The microphone is off; unconfirmed audio may be missing. Recover explicitly or continue manually."
+msgstr "Captura interrompida. Microfone desligado; o áudio não confirmado pode estar ausente. Recupere a captura ou continue manualmente."
+
+msgid "A previous capture needs recovery. This browser is not recording. Recover, then resume explicitly."
+msgstr "Uma captura anterior precisa de recuperação. Este navegador não está gravando. Recupere a captura e depois retome."
+
+msgid "Recording consent is no longer active. The microphone is off. Manual care remains available."
+msgstr "O consentimento para gravação não está mais ativo. Microfone desligado. O atendimento manual continua disponível."
+
+msgid "Confirming capture authority. The microphone is still off."
+msgstr "Confirmando autorização para gravar. O microfone ainda está desligado."
+
+msgid "Microphone __N__"
+msgstr "Microfone __N__"
+
+msgid "Synthetic capture. Recording consent does not authorize transcription or AI processing. Unconfirmed audio stays only in memory for at most 60 seconds; it is never saved on this device."
+msgstr "Captura sintética. O consentimento para gravação não autoriza transcrição nem processamento por IA. O áudio não confirmado fica apenas na memória por até 60 segundos; ele não é salvo neste dispositivo."
+
+msgid "Default microphone"
+msgstr "Microfone padrão"
+
+msgid "Microphone level"
+msgstr "Nível do microfone"
+
+msgid "The level meter is active only while recording."
+msgstr "O medidor de nível só fica ativo durante a gravação."
+
+msgid "The input level meter is unavailable. Recording and upload status remain shown above."
+msgstr "O medidor de nível está indisponível. O estado da gravação e dos envios continua exibido acima."
+
+msgid "Start recording"
+msgstr "Iniciar gravação"
+
+msgid "Pause recording"
+msgstr "Pausar gravação"
+
+msgid "Resume recording"
+msgstr "Retomar gravação"
+
+msgid "Stop and keep received audio"
+msgstr "Parar e manter o áudio recebido"
+
+msgid "Discard capture"
+msgstr "Descartar captura"
+
+msgid "Recover capture"
+msgstr "Recuperar captura"
+
+msgid "Audio capture needs JavaScript and a supported browser. Manual notes and the stop/recovery controls remain available."
+msgstr "A captura de áudio precisa de JavaScript e de um navegador compatível. O registro manual e os controles para parar ou recuperar a captura continuam disponíveis."
+
+msgid "Audio capture is active. Open recording controls."
+msgstr "Gravação de áudio ativa. Abrir os controles de gravação."
+
+msgid "Leave this capture?"
+msgstr "Sair desta captura?"
+
+msgid "This audio belongs to the current patient. Stop before leaving; it will never be attached to another patient."
+msgstr "Este áudio pertence ao paciente atual. Pare antes de sair; ele nunca será anexado a outro paciente."
+
+msgid "Stop and discard capture"
+msgstr "Parar e descartar captura"
+
+msgid "Audio capture is unavailable here. Continue the note manually and close the previous capture."
+msgstr "A captura de áudio está indisponível aqui. Continue o registro manualmente e encerre a captura anterior."
+
+msgid "Close the previous capture; keep received audio"
+msgstr "Encerrar a captura anterior e manter o áudio recebido"
+
+msgid "Audio capture belongs to this patient. Keep this patient, or stop and discard capture before switching."
+msgstr "A captura de áudio pertence a este paciente. Mantenha este paciente ou pare e descarte a captura antes de trocar."
 
 msgid "AI settings"
 msgstr "Configurações de IA"
