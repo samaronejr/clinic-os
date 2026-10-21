@@ -12,6 +12,7 @@ from typing import Final
 from ops.testing.restore_contract import (
     DOMAIN_RELATIONS,
     EXCLUDED_RELATIONS,
+    PLATFORM_READ_ONLY_RELATIONS,
     REQUIRED_EMPTY,
 )
 
@@ -22,7 +23,8 @@ RLS_RELATIONS: Final = tuple(
             *(
                 relation
                 for relation in DOMAIN_RELATIONS
-                if relation not in ("audit_event", "identity_user")
+                if relation
+                not in ("audit_event", "identity_user", *PLATFORM_READ_ONLY_RELATIONS)
             ),
             "tenancy_tenantprobe",
         )
@@ -96,6 +98,22 @@ WITH violations AS (
     WHERE n.nspname='clinic_app' AND c.relkind='r'
       AND c.relname IN ({",".join(f"'{name}'" for name in RLS_RELATIONS)})
       AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
+    UNION ALL
+    -- Exact global platform relations have no tenant column. Preserve their
+    -- SELECT-only runtime contract instead of pretending they are tenant rows.
+    SELECT 'acl-platform:' || c.relname || ':' || privilege.privilege_type
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    CROSS JOIN (VALUES
+      ('SELECT'),('INSERT'),('UPDATE'),('DELETE'),
+      ('TRUNCATE'),('REFERENCES'),('TRIGGER')
+    ) AS privilege(privilege_type)
+    WHERE n.nspname='clinic_app' AND c.relkind='r'
+      AND c.relname IN (
+        {",".join(f"'{name}'" for name in PLATFORM_READ_ONLY_RELATIONS)}
+      )
+      AND pg_catalog.has_table_privilege(
+        'clinic_app', c.oid, privilege.privilege_type)
+        <> (privilege.privilege_type = 'SELECT')
     UNION ALL
     -- Role-attribute drift: the bootstrap contract pins exactly these flags;
     -- a restored or drifted role with extra privilege fails closed here.

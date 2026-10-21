@@ -13,6 +13,7 @@ from django.core.validators import validate_email
 from django.db import connection, transaction
 from PIL import Image, UnidentifiedImageError
 
+from apps.ai.policy import organization_policy
 from apps.audit.services import record_phase1_event
 from apps.core.fairness import _organization_quotas, validate_queue_quotas
 from apps.ehr.attachment_scanner import AttachmentScanUnavailableError, default_scanner
@@ -187,6 +188,10 @@ def publish_configuration(
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            [f"ai-budget:{clinic.organization_id}"],
+        )
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
             [f"clinic-configuration:{clinic_id}"],
         )
         previous = latest_configuration(clinic_id)
@@ -225,6 +230,7 @@ def publish_configuration(
             organization_id=clinic.organization_id,
             version=expected_version + 1,
             queue_quotas=quotas,
+            ai_policy=organization_policy().as_json(),
             **fields,
             logo_png=(
                 logo_bytes

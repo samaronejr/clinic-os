@@ -7,7 +7,7 @@ from celery import shared_task
 from django.db import connection
 from ops.release.activation import require_live_runtime
 
-from apps.core.integration import ExecutionResult
+from apps.core.integration import ExecutionResult, _dispatch
 from apps.core.integration import execute_operation as _execute
 
 
@@ -36,7 +36,7 @@ def dispatch_due_reminders() -> int:
         cursor.execute("SELECT * FROM clinic_app.comms_due_reminders_v1()")
         operation_ids = [str(row[0]) for row in cursor.fetchall()]
     for operation_id in operation_ids:
-        execute_operation.apply_async(kwargs={"operation_id": operation_id})
+        _dispatch(UUID(operation_id))
     return len(operation_ids)
 
 
@@ -55,5 +55,5 @@ def recover_pending_operations() -> int:
         cursor.execute("SELECT * FROM clinic_app.comms_recover_pending_v1()")
         operation_ids = [str(row[0]) for row in cursor.fetchall()]
     for operation_id in operation_ids:
-        execute_operation.apply_async(kwargs={"operation_id": operation_id})
+        _dispatch(UUID(operation_id))
     return len(operation_ids)

@@ -19,6 +19,11 @@ from dataclasses import dataclass
 from typing import Final, Never
 
 DOMAIN_RELATIONS: Final = (
+    "ai_aiartifact",
+    "ai_aicircuit",
+    "ai_aiinvocation",
+    "ai_gatewayswitch",
+    "ai_modelconfiguration",
     "audit_event",
     "billing_invoice",
     "billing_invoicerevision",
@@ -155,6 +160,19 @@ DOMAIN_RELATIONS: Final = (
     "workflows_workflowstep",
 )
 TABLE_DATA: Final = tuple(f"clinic_app.{relation}" for relation in DOMAIN_RELATIONS)
+# Catalog-derived platform domain data has no tenant discriminator. Its archive
+# rows are still restored; runtime access must remain SELECT-only, not exempt
+# from the recovery ACL proof.
+PLATFORM_READ_ONLY_RELATIONS: Final = {
+    "ai_gatewayswitch": (
+        "owner-written global kill switch and region approvals; "
+        "runtime reads the same disabled-by-default controls for every tenant"
+    ),
+    "ai_modelconfiguration": (
+        "owner-written global model/price/terms registry; "
+        "runtime selects approved versions without obtaining write authority"
+    ),
+}
 SEQUENCE_TARGETS: Final = {
     "audit_event_seq_seq": ("audit_event", "seq"),
     "otp_static_staticdevice_id_seq": ("otp_static_staticdevice", "id"),

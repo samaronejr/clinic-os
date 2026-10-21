@@ -252,6 +252,14 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         views=frozenset({"identity:clinic-settings"}),
         entries=(
             Destination(
+                "ai-settings",
+                gettext_noop("AI settings"),
+                "ai:settings",
+                ("configuration.organization",),
+                route_roles=None,
+                views=frozenset({"ai:settings"}),
+            ),
+            Destination(
                 "scheduling-settings",
                 gettext_noop("Scheduling settings"),
                 "scheduling:resource-settings",

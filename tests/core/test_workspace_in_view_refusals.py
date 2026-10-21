@@ -16,6 +16,7 @@ from apps.core.api.errors import UI_API_PREFIX
 from apps.ehr.services import SOAP_FIELDS
 from apps.identity.account_views import request_session_key
 from apps.identity.models import UserClinicRole
+from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.db import connection
 from django.http import HttpRequest, HttpResponse
@@ -181,6 +182,19 @@ def _send(
         return client.post(url, data, headers=headers)
 
 
+def assert_session_read_only(
+    client: Client,
+    response: _MonkeyPatchedWSGIResponse,
+    snapshot: dict[str, object],
+) -> None:
+    """Match the collection oracle's session-only cookie boundary."""
+    assert response.wsgi_request.session.modified is False
+    unchanged = dict(client.session) == snapshot
+    session_cookie = settings.SESSION_COOKIE_NAME in response.cookies
+    assert unchanged
+    assert not session_cookie
+
+
 def _probe_route(
     route: WorkspaceRoute,
     client: Client,
@@ -207,20 +221,35 @@ def _probe_route(
     statuses = set()
     with monkeypatch.context() as patch:
         patch.setattr(route.pattern, "callback", entered)
+        requests = (
+            (
+                *_requests(graph, known_encounter),
+                *_autosave_requests(graph, route.name),
+            )
+            if attempts is None
+            else attempts
+        )
+        if route.name == "ai:settings":
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        "expected_version": "1",
+                        "enabled": "on",
+                        "purposes": "front_desk",
+                        "monthly_budget_micros": "100000",
+                        "limit_front_desk": "100000",
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
             else (graph.clinic_a,)
         )
         for clinic_id in clinics:
-            requests = (
-                (
-                    *_requests(graph, known_encounter),
-                    *_autosave_requests(graph, route.name),
-                )
-                if attempts is None
-                else attempts
-            )
             for method, data, htmx in requests:
                 _restore_session(client, snapshot)
                 before = len(entries)
@@ -229,8 +258,7 @@ def _probe_route(
                 statuses.add(response.status_code)
                 if response.status_code in {403, 404} and len(entries) > before:
                     refusals += 1
-                    assert response.wsgi_request.session.modified is False
-                    assert dict(client.session) == snapshot
+                    assert_session_read_only(client, response, snapshot)
                     assert not response.cookies
     return refusals, statuses
 
@@ -373,6 +401,16 @@ def test_authorised_in_view_refusals_are_session_read_only(
     )
     observed["identity:passkeys"] += refused
     statuses["identity:passkeys"].update(codes)
+    # This owner can read clinic A's controls but lacks organization authority
+    # in clinic B. A valid AI policy POST therefore reaches the real view's
+    # organization-wide refusal instead of stopping at a schema/auth boundary.
+    owner_client, _owner = _client_for(rbac_graph, "owner")
+    assert _get(owner_client, "/auth/protected/").status_code == 200
+    ai_route = next(route for route in routes if route.name == "ai:settings")
+    refused, codes = _probe_route(ai_route, owner_client, rbac_graph, monkeypatch)
+    assert refused > 0
+    observed[ai_route.name] += refused
+    statuses[ai_route.name].update(codes)
     # The authenticated routes cannot have an absent framework key. A thin
     # HTTP adapter covers the parser's denial using a real anonymous session,
     # without changing the resolver-derived oracle or pretending auth passed.

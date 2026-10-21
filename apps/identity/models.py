@@ -133,6 +133,7 @@ class ClinicConfiguration(models.Model):
     )
     reminder_hours = models.PositiveSmallIntegerField(default=24)
     queue_quotas = models.JSONField(default=dict, blank=True)
+    ai_policy = models.JSONField(default=dict, db_default={}, blank=True)
     # Scheduling lifecycle policy (todo 22): patient self-booking becomes a
     # non-occupying request only when staff approval is required; holds expire
     # after this many minutes of database time.

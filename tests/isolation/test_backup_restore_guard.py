@@ -35,7 +35,17 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     )
     # Derived from live tables minus exact exclusions; keep this pin aligned
     # with the full catalog set checked by tests/infra/test_recovery_manifest.py.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 129
+    assert len(restore_contract.DOMAIN_RELATIONS) == 134
+    assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(
+        restore_contract.DOMAIN_RELATIONS
+    )
+    assert {
+        "ai_aiartifact",
+        "ai_aicircuit",
+        "ai_aiinvocation",
+        "ai_gatewayswitch",
+        "ai_modelconfiguration",
+    } <= set(restore_contract.DOMAIN_RELATIONS)
     assert "clinic_app.identity_patientdelegategrant" in restore_contract.TABLE_DATA
     assert "clinic_app.identity_userpreference" in restore_contract.TABLE_DATA
     assert set(restore_contract.TARGET_SEEDED_RELATIONS) == {

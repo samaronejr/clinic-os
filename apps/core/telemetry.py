@@ -56,6 +56,8 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import Link, Status
 from sentry_sdk import consts as sentry_consts
 
+from apps.ai.contracts import PURPOSES
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
 
@@ -223,17 +225,8 @@ PROVIDER_CAPABILITY_KEYS: Final = (
     "video",
     "whatsapp",
 )
-# AI invocation purposes (todo 38 ModelConfiguration.purpose). Todo 38
-# replaces this tuple with its model registry purposes.
-AI_INVOCATION_PURPOSES: Final = (
-    "scribe_asr",
-    "scribe_draft",
-    "brief",
-    "extraction",
-    "front_desk",
-    "analyst",
-    "decision_support",
-)
+# The gateway owns the closed model/metering vocabulary.
+AI_INVOCATION_PURPOSES: Final = PURPOSES
 HTTP_METHODS: Final = frozenset(
     {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 )
