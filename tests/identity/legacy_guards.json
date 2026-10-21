@@ -13688,7 +13688,8 @@
         "test_native_result_lifecycle_downloads_only_the_exact_authorized_source",
         "test_nonclinical_actor_cannot_acknowledge_or_release",
         "test_lab_principal_cannot_select_sources_or_acknowledge",
-        "test_routing_upload_does_not_grant_structured_clinical_read"
+        "test_routing_upload_does_not_grant_structured_clinical_read",
+        "test_former_uploader_cannot_read_after_current_authority_loss"
       ],
       "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
     },

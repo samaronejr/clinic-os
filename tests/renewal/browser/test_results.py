@@ -138,6 +138,19 @@ def test_results_native_without_javascript(
         expect(page.locator("article[data-result-state]").first).to_have_attribute(
             "data-result-state", "matched"
         )
+        row = page.locator("article[data-result-state]").first
+        row.locator('[name="disposition"]').select_option("no_action")
+        submit(
+            page,
+            row.get_by_role("button", name=_("Acknowledge this version")),
+            "Clinical acknowledgment recorded for this version.",
+        )
+        submit(
+            page,
+            row.get_by_role("button", name=_("Release this version to patient")),
+            "This version was released to the selected audience.",
+        )
+        expect(row).to_have_attribute("data-result-state", "released")
         capture(page, renewal_artifact_root, "native-no-javascript", 375)
 
 
@@ -176,7 +189,7 @@ def test_results_errors_offline_keyboard_and_scope_refusal(
     form = page.locator('section[aria-labelledby="sources-heading"] form').first
     summary = form.locator("xpath=ancestor::details[1]").locator("summary")
     summary.focus()
-    summary.press("Enter")
+    summary.press("Space")
     expect(form.locator('[name="name"]')).to_be_visible()
     event = form.locator('[name="event_id"]').input_value()
     form.locator('[name="name"]').fill(data["source_name"])
