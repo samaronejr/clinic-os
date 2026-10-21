@@ -93,9 +93,9 @@ EXPECTED: Final = {
     ],
     "physician": ["agenda", "patients", "inbox", "operations"],
     "nurse": ["today", "inbox"],
-    "allied_professional": [],
-    "scheduler": ["settings"],
-    "clinic_manager": ["settings"],
+    "allied_professional": ["inbox"],
+    "scheduler": ["inbox", "settings"],
+    "clinic_manager": ["inbox", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }
@@ -207,8 +207,17 @@ def test_each_role_sees_its_exact_destination_set(
     assert _modules(response) == EXPECTED[role]
     html = response.content.decode()
     assert not UNDELIVERED.intersection(_modules(response))
-    # Queue-only clinic context does not expand command presentation.
-    has_palette = role in {"owner", "clinic_admin", "receptionist", "physician"}
+    # The results workspace gives demographic readers contextual commands.
+    has_palette = role in {
+        "owner",
+        "clinic_admin",
+        "receptionist",
+        "physician",
+        "nurse",
+        "allied_professional",
+        "scheduler",
+        "clinic_manager",
+    }
     assert ('data-command-open="command-palette"' in html) is has_palette
     assert ('id="command-palette"' in html) is has_palette
 

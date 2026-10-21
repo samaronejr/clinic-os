@@ -58,6 +58,7 @@ from apps.identity.clinic_settings_views import clinic_settings
 from apps.identity.stepup import STEP_UP_SESSION_KEY
 from apps.intake.duplicate_views import patient_timeline
 from apps.intake.views import patient_access_url, patient_contacts_url
+from apps.orders.source_views import download as result_source_download
 from apps.prescription.views import (
     draft_workspace,
     patient_documents_view,
@@ -136,6 +137,7 @@ OUTSIDE_EHR: dict[object, str] = {
     signing_status_view: "prescription signing, catches the EHR refusal types",
     patient_documents_view: "patient prescription downloads",
     patient_timeline: "care-authorized finalized timeline, no clinical writes",
+    result_source_download: "immutable result-source download, no EHR writes",
     retention_workspace: "retention holds and exports",
 }
 # Each form route's action table. The EHR workspaces dispatch from theirs, so

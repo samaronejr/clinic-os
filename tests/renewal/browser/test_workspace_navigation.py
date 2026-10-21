@@ -59,25 +59,42 @@ PRIVILEGED: Final = frozenset(
     {"physician", "clinic_admin", "owner", "clinic_manager", "org_admin"}
 )
 COMMAND_TRIGGER_ROLES: Final = frozenset(
-    {"owner", "clinic_admin", "receptionist", "physician"}
+    {
+        "owner",
+        "clinic_admin",
+        "receptionist",
+        "physician",
+        "nurse",
+        "allied_professional",
+        "scheduler",
+        "clinic_manager",
+    }
 )
 # Plan annex IA x RP bundles v1 x the route guards the destinations lead to.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
-    "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": [
-        "today",
+    "clinic_admin": [
         "agenda",
         "patients",
+        "inbox",
         "finance",
         "operations",
         "settings",
     ],
-    "physician": ["agenda", "patients", "operations"],
-    "nurse": ["today"],
-    "allied_professional": [],
-    "scheduler": ["settings"],
-    "clinic_manager": ["settings"],
+    "receptionist": [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ],
+    "physician": ["agenda", "patients", "inbox", "operations"],
+    "nurse": ["today", "inbox"],
+    "allied_professional": ["inbox"],
+    "scheduler": ["inbox", "settings"],
+    "clinic_manager": ["inbox", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }

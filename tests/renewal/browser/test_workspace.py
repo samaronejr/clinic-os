@@ -442,6 +442,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
         "today",
         "agenda",
         "patients",
+        "inbox",
         "finance",
         "operations",
         "settings",
@@ -464,6 +465,13 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
     )
     _register_and_find_patient(page, renewal_base_url, patients_a)
     _capture(page, root, "receptionist-patients-1280")
+
+    click_to_navigate(page.locator("a[data-module=inbox]"))
+    expect(page.locator("a[data-module=inbox]")).to_have_attribute(
+        "aria-current", "page"
+    )
+    expect(page.locator("h1")).to_have_text(gettext("Orders and results"))
+    _capture(page, root, "receptionist-results-1280")
 
     # Clinic switcher: native disclosure, keyboard reachable, changes context.
     _open_clinic_switcher(page)
@@ -488,6 +496,7 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
                 "today",
                 "agenda",
                 "patients",
+                "inbox",
                 "finance",
                 "operations",
                 "settings",
@@ -512,7 +521,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
     # sign out, then the Agenda section row (Agenda, Availability).
     goto_settled(page, f"{renewal_base_url}{agenda_a}")
     order: list[str] = []
-    for _ in range(13):
+    for _ in range(14):
         page.keyboard.press("Tab")
         order.append(
             page.evaluate(
@@ -528,6 +537,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         "today",
         "agenda",
         "patients",
+        "inbox",
         "finance",
         "operations",
         "settings",
@@ -744,16 +754,22 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     page.locator("#id_otp_token").fill(f"{token:06d}")
     _submit(page, "button[type=submit]")
     wait_for_signed_in(page)
-    assert _modules(page) == ["agenda", "patients", "operations"]
+    assert _modules(page) == ["agenda", "patients", "inbox", "operations"]
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator(".nav-switch")).to_have_count(0)
     _capture(page, renewal_artifact_root, "physician-landing-1280")
+
+    click_to_navigate(page.locator("a[data-module=inbox]"))
+    expect(page.locator("a[data-module=inbox]")).to_have_attribute(
+        "aria-current", "page"
+    )
+    expect(page.locator("h1")).to_have_text(gettext("Orders and results"))
 
     # Forbidden role: the registry is refused on GET and on POST, never offered.
     registry = goto_settled(page, f"{renewal_base_url}{patients_a}")
     assert registry is not None
     assert registry.status == NOT_FOUND
-    assert _modules(page) == ["agenda", "patients", "operations"]
+    assert _modules(page) == ["agenda", "patients", "inbox", "operations"]
     expect(page.locator("#id_q")).to_have_count(0)
     csrf = next(
         cookie["value"]

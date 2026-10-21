@@ -172,7 +172,6 @@ jobs:
           - "smoke@webkit,billing@webkit,clinic-settings@webkit,clinical-history@webkit,clinician-video@webkit,consent@webkit,end-to-end@webkit,patient-video@webkit,video-recovery@webkit,amendments@webkit,document-verification@webkit,prescribing@webkit,prescription-draft@webkit,reminders@webkit,teleconsult@webkit,waitlist@webkit"
           - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit,onboarding@webkit,patient-workspace@webkit"
           - "agenda@webkit,agenda-slice@webkit,agenda-grid@webkit,reception@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
-          # Todo 31: an independent append-only results shard.
           - "results,results@firefox,results@webkit"
     steps:
       - name: Check out repository
