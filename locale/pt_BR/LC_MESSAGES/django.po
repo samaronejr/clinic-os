@@ -109,6 +109,15 @@ msgstr "Use ponto decimal, sem separadores de milhares."
 msgid "Choose an option"
 msgstr "Escolha uma opção"
 
+msgid "kg or g"
+msgstr "kg ou g"
+
+msgid "cm or m"
+msgstr "cm ou m"
+
+msgid "mg/dL or umol/L"
+msgstr "mg/dL ou umol/L"
+
 msgid "General practice"
 msgstr "Clínica geral"
 

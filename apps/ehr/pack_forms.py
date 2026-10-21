@@ -23,7 +23,7 @@ def calculator_form(
         if spec.key.startswith("item_"):
             label = f"{label} {spec.key.removeprefix('item_')}"
         if spec.unit:
-            label = f"{label} ({spec.unit})"
+            label = f"{label} ({_(spec.unit)})"
         field: forms.Field
         if spec.choices:
             field = forms.ChoiceField(

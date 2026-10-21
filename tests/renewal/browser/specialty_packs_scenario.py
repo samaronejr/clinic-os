@@ -27,7 +27,9 @@ if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
 
 
-def submit_pack(page: Page, button: Locator, *, status: int = 200) -> None:
+def submit_pack(
+    page: Page, button: Locator, *, status: int = 200, keyboard: bool = False
+) -> None:
     """Subscribe to the exact response and swap before triggering the form."""
     token = uuid4().hex
     page.evaluate(
@@ -45,7 +47,10 @@ def submit_pack(page: Page, button: Locator, *, status: int = 200) -> None:
     with page.expect_response(
         lambda response: response.url == url and response.request.method == "POST"
     ) as pending:
-        button.click()
+        if keyboard:
+            button.press("Enter")
+        else:
+            button.click()
     assert pending.value.status == status
     expect(page.locator("html")).to_have_attribute("data-pack-settled", token)
 
@@ -88,7 +93,10 @@ def test_specialty_pack_growth_license_and_decimal_refusal(
     folder.mkdir(mode=0o700, exist_ok=True)
     full_page_screenshot(page, folder / "failure-license.png")
     check_page(page, renewal_base_url, renewal_artifact_root, "pack-license")
-    submit_pack(page, page.locator('[data-pack="general"] button[value="install"]'))
+    general = page.locator('[data-pack="general"]')
+    if general.locator('button[value="install"]').count():
+        submit_pack(page, general.locator('button[value="install"]'))
+    expect(general.locator('button[value="uninstall"]')).to_be_visible()
     page.locator('[data-calculator="bmi"] summary').click()
     page.locator('[name="bmi-weight"]').fill("1,234.5")
     page.locator('[name="bmi-weight_unit"]').select_option("kg")

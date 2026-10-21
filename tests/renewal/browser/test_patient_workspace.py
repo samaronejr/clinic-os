@@ -15,6 +15,10 @@ from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.patient_workspace_support import submit as _submit
 from renewal.browser.patient_workspace_support import tab as _tab
+from renewal.browser.specialty_accessibility import (
+    test_specialty_pack_keyboard_announces_refusal_and_result,
+    test_specialty_pack_zoom_and_reduced_motion,
+)
 from renewal.browser.specialty_packs_scenario import (
     filled_bmi,
     installed_pediatrics,
@@ -38,8 +42,10 @@ __all__ = (
     "installed_pediatrics",
     "test_specialty_immunization_uses_a_real_open_encounter",
     "test_specialty_pack_growth_license_and_decimal_refusal",
+    "test_specialty_pack_keyboard_announces_refusal_and_result",
     "test_specialty_pack_native_and_responsive_controls",
     "test_specialty_pack_offline_and_denial_states",
+    "test_specialty_pack_zoom_and_reduced_motion",
 )
 
 

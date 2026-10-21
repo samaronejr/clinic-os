@@ -3,6 +3,8 @@
 from types import MappingProxyType
 from typing import Final
 
+from django.utils.translation import gettext_noop
+
 from apps.ehr.calculators.bmi import SOURCE as BMI_SOURCE
 from apps.ehr.calculators.contracts import CalculatorDefinition, CalculatorInput
 from apps.ehr.calculators.corrected_age import SOURCE as CORRECTED_AGE_SOURCE
@@ -23,9 +25,9 @@ DEFINITIONS: Final = MappingProxyType(
             "published_formula",
             LICENSE_REF,
             (
-                CalculatorInput("weight", "Weight", "kg or g"),
+                CalculatorInput("weight", "Weight", gettext_noop("kg or g")),
                 CalculatorInput("weight_unit", "Weight unit", "", ("kg", "g")),
-                CalculatorInput("height", "Height", "cm or m"),
+                CalculatorInput("height", "Height", gettext_noop("cm or m")),
                 CalculatorInput("height_unit", "Height unit", "", ("cm", "m")),
             ),
             VECTORS["bmi"],
@@ -42,7 +44,9 @@ DEFINITIONS: Final = MappingProxyType(
                 CalculatorInput(
                     "sex", "Sex used by the published equation", "", ("female", "male")
                 ),
-                CalculatorInput("creatinine", "Serum creatinine", "mg/dL or umol/L"),
+                CalculatorInput(
+                    "creatinine", "Serum creatinine", gettext_noop("mg/dL or umol/L")
+                ),
                 CalculatorInput(
                     "creatinine_unit", "Creatinine unit", "", ("mg/dL", "umol/L")
                 ),
