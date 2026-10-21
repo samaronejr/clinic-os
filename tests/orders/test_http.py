@@ -77,6 +77,22 @@ def test_native_result_lifecycle_downloads_only_the_exact_authorized_source(
     with as_actor(graph, graph.physician):
         version = ResultVersion.objects.get(event_id=event)
     with runtime_role():
+        conflict = client.post(
+            url,
+            {
+                "action": "upload",
+                "order_id": str(world.order.pk),
+                "event_id": str(event),
+                "name": world.identity.name,
+                "birth_date": str(world.identity.birth_date),
+                "source": SimpleUploadedFile(
+                    "sintetico.pdf",
+                    SOURCE + b"\nchanged",
+                    content_type="application/pdf",
+                ),
+            },
+        )
+        assert conflict.status_code == 409
         response = client.post(url + "source/", {"version_id": str(version.pk)})
         assert response.status_code == 200
         assert response.content == SOURCE
@@ -95,6 +111,10 @@ def test_native_result_lifecycle_downloads_only_the_exact_authorized_source(
             )
             assert response.status_code == 200
         assert client.get(f"/clinics/{graph.clinic_c}/results/").status_code == 403
+        assert (
+            client.post(url + "source/", {"version_id": str(uuid4())}).status_code
+            == 403
+        )
 
 
 def test_lab_http_boundary_replays_without_borrowing_a_staff_session(
@@ -116,3 +136,79 @@ def test_lab_http_boundary_replays_without_borrowing_a_staff_session(
         assert response.status_code == 200
         responses.append(json.loads(response.content))
     assert responses[0] == responses[1]
+    assert (
+        callback_views.lab_callback(factory.get("/orders/lab/callback/")).status_code
+        == 405
+    )
+    forged = factory.post(
+        "/orders/lab/callback/",
+        data=body,
+        content_type="application/json",
+        headers={"X-Lab-Account": str(lab.account), "X-Lab-Signature": "0" * 64},
+    )
+    with runtime_role():
+        assert callback_views.lab_callback(forged).status_code == 403
+    changed = json.loads(body)
+    changed["critical"] = True
+    different = json.dumps(changed).encode()
+    replay = factory.post(
+        "/orders/lab/callback/",
+        data=different,
+        content_type="application/json",
+        headers=lab.headers(different),
+    )
+    with runtime_role():
+        assert callback_views.lab_callback(replay).status_code == 409
+
+
+@pytest.mark.parametrize(
+    ("case", "status"),
+    [
+        ("file", 400),
+        ("companion", 400),
+        ("exam", 400),
+        ("place", 400),
+        ("uuid", 400),
+        ("action", 403),
+        ("method", 405),
+    ],
+)
+def test_native_invalid_commands_never_create_a_result(
+    rbac_graph: RbacGraph,
+    settings: SettingsWrapper,
+    case: str,
+    status: int,
+) -> None:
+    graph = rbac_graph
+    settings.ALLOWED_HOSTS = ["testserver"]
+    world = ordered(graph)
+    client = logged_in_client(graph.physician)
+    seed_freshness(client, create_totp_device(graph.physician, confirmed=True))
+    session = client.session
+    session["active_org_id"] = str(graph.organization_a)
+    session.save()
+    url = f"/clinics/{graph.clinic_a}/results/"
+    payload: dict[str, object] = {
+        "action": "upload",
+        "order_id": str(world.order.pk),
+        "event_id": str(uuid4()),
+    }
+    if case in {"companion", "exam"}:
+        payload.update(
+            source=SimpleUploadedFile(
+                "sintetico.pdf", SOURCE, content_type="application/pdf"
+            ),
+            unit="source-unit",
+            value="7,10" if case == "exam" else "",
+        )
+    elif case == "place":
+        payload["action"] = "place"
+    elif case == "uuid":
+        payload.update(action="acknowledge", version_id="invalid")
+    elif case == "action":
+        payload.update(action="unknown", version_id=str(uuid4()))
+    with runtime_role():
+        response = client.delete(url) if case == "method" else client.post(url, payload)
+    assert response.status_code == status
+    with as_actor(graph, graph.physician):
+        assert not ResultVersion.objects.exists()
