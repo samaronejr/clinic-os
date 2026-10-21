@@ -284,3 +284,42 @@ def test_unsupported_fixture_value_refuses_only_sql_use(
     assert application_boundary(tmp_path) == (
         {} if query == '"SELECT 1"' else {"fixture.py": ["unresolved-runsql"]}
     )
+
+
+@pytest.mark.parametrize(
+    ("query", "findings"),
+    [
+        ('"SELECT 1"', {}),
+        (
+            '"PREPARE hidden AS SELECT now()"',
+            {
+                "migration.py": ["server-prepare"],
+                "queries.py": ["server-prepare"],
+            },
+        ),
+        ("unknown_query", {"migration.py": ["unresolved-runsql"]}),
+    ],
+)
+def test_runsql_follows_finite_rebindings_after_a_loop(
+    tmp_path: Path, query: str, findings: dict[str, list[str]]
+) -> None:
+    # Given a SQL module with the same finite mutation shape as specialty DDL.
+    (tmp_path / "queries.py").write_text(
+        "\n".join(
+            (
+                'SQL = "__QUERY__;"',
+                'for table in ("first", "second"):',
+                '    SQL += f" SELECT 1 FROM {table};"',
+                f'SQL = SQL.replace("__QUERY__", {query})',
+            )
+        )
+    )
+    (tmp_path / "migration.py").write_text(
+        "from django.db import migrations\n"
+        "from queries import SQL\n"
+        "operations = [migrations.RunSQL(SQL)]\n"
+    )
+    # When the import-free decoder follows the final binding, SQL stays censused.
+    observed = application_boundary(tmp_path)
+    # Then supported construction is resolved, while unsafe or unknown SQL fails.
+    assert observed == findings

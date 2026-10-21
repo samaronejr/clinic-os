@@ -463,6 +463,17 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
     BROWSER_SUITES / "test_clinical_history.py": {
         "zoom_journey": "Enter on a <summary> toggles <details>; no document",
     },
+    BROWSER_SUITES / "specialty_accessibility.py": {
+        "_toggle_calculator_disclosure": (
+            "Enter on the calculator summary toggles its native details; no document"
+        ),
+    },
+    BROWSER_SUITES / "specialty_packs_scenario.py": {
+        "submit_pack": (
+            "Enter submits the hx-post pack form; exact POST response and "
+            "main-content afterSettle are subscribed before submission; no document"
+        ),
+    },
     BROWSER_SUITES / "test_primitives.py": dict.fromkeys(
         (
             "test_calendar_days_and_combobox_hold_at_320",

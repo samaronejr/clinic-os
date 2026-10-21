@@ -548,6 +548,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published"
     ]
   },
@@ -576,6 +577,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published"
     ]
   },
@@ -757,6 +759,82 @@
     "via": [
       "trigger:identity_user.ehr_note_recipient_deactivated",
       "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_pack_catalog_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_pack_position_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)",
+      "function:pg_catalog.int4le(integer, integer)"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_clinic_id_3d06a19e_fk_identity_clinic_id": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_clinical_owner_id_3ddfd315_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_organization_id_8f6c6c86_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_position_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_questionnaire_id_cd84d775_fk_intake_qu": {
+    "direct": {},
+    "via": [
+      "constraint:intake_questionnairetemplate.intake_questionnaire_clinic_id_48d86cf8_fk_identity_",
+      "constraint:intake_questionnairetemplate.intake_questionnaire_organization_id_550e1f80_fk_identity_",
+      "constraint:intake_questionnairetemplate.intake_questionnaire_version_positive",
+      "constraint:intake_questionnairetemplate.intake_questionnairetemplate_version_check",
+      "policy:intake_questionnairetemplate.setup_tenant",
+      "policy:intake_questionnairetemplate.template_read",
+      "policy:intake_questionnairetemplate.template_write"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_template_id_c62f7b37_fk_ehr_speci": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_specialtytemplate.ehr_specialtytemplat_organization_id_05631b69_fk_identity_",
+      "constraint:ehr_specialtytemplate.ehr_specialtytemplate_clinic_id_cde42697_fk_identity_clinic_id",
+      "constraint:ehr_specialtytemplate.ehr_specialtytemplate_version_check",
+      "constraint:ehr_specialtytemplate.ehr_template_version_positive",
+      "policy:ehr_specialtytemplate.clinical_insert",
+      "policy:ehr_specialtytemplate.clinical_read",
+      "policy:ehr_specialtytemplate.setup_tenant",
+      "trigger:ehr_specialtytemplate.ehr_binding"
+    ]
+  },
+  "constraint:ehr_specialtypack.ehr_specialtypack_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
   "constraint:ehr_specialtytemplate.ehr_specialtytemplat_organization_id_05631b69_fk_identity_": {
@@ -2641,6 +2719,7 @@
       "policy:intake_questionnaireresponse.response_read",
       "policy:intake_questionnaireresponse.response_write",
       "policy:intake_questionnaireresponse.setup_tenant",
+      "trigger:intake_questionnaireresponse.pack_questionnaire_use",
       "trigger:intake_questionnaireresponse.questionnaire_binding",
       "trigger:intake_questionnaireresponse.questionnaire_receipt",
       "trigger:intake_questionnaireresponse.questionnaire_template_state"
@@ -5046,6 +5125,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published",
       "trigger:ehr_encounter.ehr_binding",
       "trigger:ehr_encounter.ehr_close",
@@ -5053,6 +5133,7 @@
       "trigger:ehr_encounter.prescription_encounter_close",
       "trigger:ehr_encounter.zz_intake_survivor_binding",
       "trigger:ehr_specialtytemplate.ehr_binding",
+      "trigger:intake_questionnaireresponse.pack_questionnaire_use",
       "trigger:intake_questionnaireresponse.questionnaire_binding",
       "trigger:intake_questionnaireresponse.questionnaire_receipt",
       "trigger:intake_questionnaireresponse.questionnaire_template_state",
@@ -5149,6 +5230,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published",
       "trigger:ehr_encounter.ehr_binding",
       "trigger:ehr_encounter.ehr_close",
@@ -5227,6 +5309,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published"
     ]
   },
@@ -5363,6 +5446,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published",
       "trigger:ehr_encounter.ehr_binding",
       "trigger:ehr_encounter.ehr_close",
@@ -5474,6 +5558,137 @@
       "trigger:ehr_noteaccessgrant.ehr_note_binding",
       "trigger:ehr_noteaccessgrant.ehr_note_revocation_audit",
       "trigger:ehr_restrictednote.ehr_note_binding"
+    ]
+  },
+  "function:clinic_app.ehr_pack_guard()": {
+    "direct": {
+      "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 4
+    },
+    "via": [
+      "constraint:ehr_clinicalattachment.ehr_attachment_digest_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_scanned_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_size_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_state_check",
+      "constraint:ehr_clinicalattachment.ehr_attachment_type_check",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachme_encounter_id_c1ff2209_fk_ehr_encou",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachme_organization_id_a1f78cad_fk_identity_",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_clinic_id_9c7fe8c7_fk_identity_clinic_id",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_patient_id_b75168ba_fk_intake_patient_id",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_scan_attempts_check",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_size_bytes_check",
+      "constraint:ehr_clinicalattachment.ehr_clinicalattachment_uploader_id_f4ad57ce_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "constraint:ehr_specialtypack.ehr_pack_catalog_check",
+      "constraint:ehr_specialtypack.ehr_pack_position_check",
+      "constraint:ehr_specialtypack.ehr_specialtypack_clinic_id_3d06a19e_fk_identity_clinic_id",
+      "constraint:ehr_specialtypack.ehr_specialtypack_clinical_owner_id_3ddfd315_fk_identity_",
+      "constraint:ehr_specialtypack.ehr_specialtypack_organization_id_8f6c6c86_fk_identity_",
+      "constraint:ehr_specialtypack.ehr_specialtypack_position_check",
+      "constraint:ehr_specialtypack.ehr_specialtypack_questionnaire_id_cd84d775_fk_intake_qu",
+      "constraint:ehr_specialtypack.ehr_specialtypack_template_id_c62f7b37_fk_ehr_speci",
+      "constraint:ehr_specialtypack.ehr_specialtypack_version_check",
+      "constraint:ehr_specialtytemplate.ehr_specialtytemplat_organization_id_05631b69_fk_identity_",
+      "constraint:ehr_specialtytemplate.ehr_specialtytemplate_clinic_id_cde42697_fk_identity_clinic_id",
+      "constraint:ehr_specialtytemplate.ehr_specialtytemplate_version_check",
+      "constraint:ehr_specialtytemplate.ehr_template_version_positive",
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:intake_questionnairetemplate.intake_questionnaire_clinic_id_48d86cf8_fk_identity_",
+      "constraint:intake_questionnairetemplate.intake_questionnaire_organization_id_550e1f80_fk_identity_",
+      "constraint:intake_questionnairetemplate.intake_questionnaire_version_positive",
+      "constraint:intake_questionnairetemplate.intake_questionnairetemplate_version_check",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.jsonb_array_elements_text(jsonb)",
+      "function:pg_catalog.jsonb_array_length(jsonb)",
+      "function:pg_catalog.jsonb_typeof(jsonb)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.pg_advisory_xact_lock_shared(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock_shared(integer, integer)",
+      "function:pg_catalog.position(bit, bit)",
+      "function:pg_catalog.position(bytea, bytea)",
+      "function:pg_catalog.position(text, text)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.to_jsonb(anyelement)",
+      "function:pg_catalog.version()",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_clinicalattachment.attachment_insert",
+      "policy:ehr_clinicalattachment.attachment_read",
+      "policy:ehr_clinicalattachment.attachment_scan",
+      "policy:ehr_clinicalattachment.setup_tenant",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "policy:ehr_specialtypack.pack_insert",
+      "policy:ehr_specialtypack.pack_read",
+      "policy:ehr_specialtypack.pack_retire",
+      "policy:ehr_specialtypack.setup_tenant",
+      "policy:ehr_specialtytemplate.clinical_insert",
+      "policy:ehr_specialtytemplate.clinical_read",
+      "policy:ehr_specialtytemplate.setup_tenant",
+      "policy:identity_clinic.tenant_isolation",
+      "policy:intake_questionnairetemplate.setup_tenant",
+      "policy:intake_questionnairetemplate.template_read",
+      "policy:intake_questionnairetemplate.template_write",
+      "trigger:ehr_clinicalattachment.ehr_attachment_binding",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.zz_intake_survivor_binding",
+      "trigger:ehr_specialtypack.specialty_binding",
+      "trigger:ehr_specialtytemplate.ehr_binding"
+    ]
+  },
+  "function:clinic_app.ehr_pack_use_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_restrictednote.ehr_restrictednote_clinic_id_ce87b924_fk_identity_clinic_id",
+      "constraint:ehr_restrictednote.ehr_restrictednote_document_id_bb8c18a6_fk_ehr_clini",
+      "constraint:ehr_restrictednote.ehr_restrictednote_organization_id_375b23b4_fk_identity_",
+      "constraint:ehr_restrictednote.ehr_restrictednote_restricted_by_id_82ac5f04_fk_identity_",
+      "constraint:ehr_specialtypack.ehr_pack_catalog_check",
+      "constraint:ehr_specialtypack.ehr_pack_position_check",
+      "constraint:ehr_specialtypack.ehr_specialtypack_clinic_id_3d06a19e_fk_identity_clinic_id",
+      "constraint:ehr_specialtypack.ehr_specialtypack_clinical_owner_id_3ddfd315_fk_identity_",
+      "constraint:ehr_specialtypack.ehr_specialtypack_organization_id_8f6c6c86_fk_identity_",
+      "constraint:ehr_specialtypack.ehr_specialtypack_position_check",
+      "constraint:ehr_specialtypack.ehr_specialtypack_questionnaire_id_cd84d775_fk_intake_qu",
+      "constraint:ehr_specialtypack.ehr_specialtypack_template_id_c62f7b37_fk_ehr_speci",
+      "constraint:ehr_specialtypack.ehr_specialtypack_version_check",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock_shared(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock_shared(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:ehr_restrictednote.note_restriction_insert",
+      "policy:ehr_restrictednote.note_restriction_read",
+      "policy:ehr_restrictednote.setup_tenant",
+      "policy:ehr_specialtypack.pack_insert",
+      "policy:ehr_specialtypack.pack_read",
+      "policy:ehr_specialtypack.pack_retire",
+      "policy:ehr_specialtypack.setup_tenant",
+      "trigger:ehr_restrictednote.ehr_note_binding",
+      "trigger:ehr_specialtypack.specialty_binding"
     ]
   },
   "function:clinic_app.ehr_patient_permission(text, uuid, uuid)": {
@@ -8456,6 +8671,12 @@
     },
     "via": []
   },
+  "function:pg_catalog.jsonb_array_elements_text(jsonb)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.jsonb_array_elements_text(jsonb)": 1
+    },
+    "via": []
+  },
   "function:pg_catalog.jsonb_array_length(jsonb)": {
     "direct": {
       "opaque:reviewed:pg_catalog.jsonb_array_length(jsonb)": 1
@@ -8765,6 +8986,18 @@
   "function:pg_catalog.pg_advisory_xact_lock(integer, integer)": {
     "direct": {
       "opaque:reviewed:pg_catalog.pg_advisory_xact_lock(integer, integer)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.pg_advisory_xact_lock_shared(bigint)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.pg_advisory_xact_lock_shared(bigint)": 1
+    },
+    "via": []
+  },
+  "function:pg_catalog.pg_advisory_xact_lock_shared(integer, integer)": {
+    "direct": {
+      "opaque:reviewed:pg_catalog.pg_advisory_xact_lock_shared(integer, integer)": 1
     },
     "via": []
   },
@@ -9481,6 +9714,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published"
     ]
   },
@@ -9513,6 +9747,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published"
     ]
   },
@@ -9546,6 +9781,7 @@
       "trigger:ehr_clinicaldocumentversion.ehr_binding",
       "trigger:ehr_clinicaldocumentversion.ehr_copy_finalize",
       "trigger:ehr_clinicaldocumentversion.ehr_timeline_changed",
+      "trigger:ehr_clinicaldocumentversion.pack_note_use",
       "trigger:ehr_clinicaldocumentversion.template_published"
     ]
   },
@@ -9686,6 +9922,45 @@
     ]
   },
   "policy:ehr_restrictednote.setup_tenant": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ehr_specialtypack.pack_insert": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.questionnaire_staff(uuid, text[])",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ehr_specialtypack.pack_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.questionnaire_staff(uuid, text[])",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ehr_specialtypack.pack_retire": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.questionnaire_staff(uuid, text[])",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:ehr_specialtypack.setup_tenant": {
     "direct": {},
     "via": [
       "function:pg_catalog.current_setting(text)",
@@ -10162,6 +10437,7 @@
       "policy:intake_questionnaireresponse.response_read",
       "policy:intake_questionnaireresponse.response_write",
       "policy:intake_questionnaireresponse.setup_tenant",
+      "trigger:intake_questionnaireresponse.pack_questionnaire_use",
       "trigger:intake_questionnaireresponse.questionnaire_binding",
       "trigger:intake_questionnaireresponse.questionnaire_receipt",
       "trigger:intake_questionnaireresponse.questionnaire_template_state"
@@ -10764,6 +11040,12 @@
       "function:clinic_app.ehr_timeline_enqueue()"
     ]
   },
+  "trigger:ehr_clinicaldocumentversion.pack_note_use": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_pack_use_guard()"
+    ]
+  },
   "trigger:ehr_clinicaldocumentversion.template_published": {
     "direct": {},
     "via": [
@@ -10822,6 +11104,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.ehr_note_guard()"
+    ]
+  },
+  "trigger:ehr_specialtypack.specialty_binding": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_pack_guard()"
     ]
   },
   "trigger:ehr_specialtytemplate.ehr_binding": {
@@ -11027,6 +11315,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.delegate_session_guard()"
+    ]
+  },
+  "trigger:intake_questionnaireresponse.pack_questionnaire_use": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_pack_use_guard()"
     ]
   },
   "trigger:intake_questionnaireresponse.questionnaire_binding": {

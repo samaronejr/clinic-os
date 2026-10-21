@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.django_db(transaction=True)
 
 EHR_ACTOR_PROTOCOL_ORACLES = {
+    "clinic_app.ehr_pack_guard()": (
+        "ehr.test_specialty_actor.test_pack_sql_rechecks_inactive_actor",
+        "ehr.test_specialty_actor.test_pack_guard_refuses_forged_installer",
+    ),
     "clinic_app.ehr_longitudinal_guard()": (
         "ehr.test_sql_protocols.test_longitudinal_sql_uses_current_role_and_actor",
     ),

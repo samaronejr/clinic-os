@@ -122,10 +122,10 @@ def _calculator_card(
 
 def _command(request: HttpRequest, clinic_id: UUID) -> str:
     """Make one serialized native administration decision."""
-    if request.POST.get("version") != "1":
-        raise ValidationError(_("Choose a published specialty pack version."))
     key = request.POST.get("pack_key", "")
     action = request.POST.get("action", "")
+    if action in POST_ACTIONS and request.POST.get("version") != "1":
+        raise ValidationError(_("Choose a published specialty pack version."))
     match action:
         case "install":
             install_pack(clinic_id=clinic_id, pack_key=key, version=1)
@@ -165,7 +165,7 @@ def _context(
         else ""
     )
     key = request.POST.get("pack_key", "")
-    if action and (action not in POST_ACTIONS or key not in PACKS):
+    if action and key not in PACKS:
         raise ClinicalAccessDeniedError
     outcome = _command(request, clinic_id) if action and action != "calculate" else ""
     rows = {row.key: row for row in SpecialtyPack.objects.filter(clinic_id=clinic_id)}

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apps.core import patient_context, workspace_access
-from apps.ehr import tasks, workspace_views
+from apps.ehr import pack_views, packs, tasks, workspace_views
 from apps.ehr.longitudinal_access import patient_scope
 from apps.identity.models import UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
@@ -62,6 +62,18 @@ BOUNDARIES = (
         ("physician", "nurse", "allied_professional"),
         lambda w, ok: workspace_views._workspace(w.request, w.clinic_for(ok)),
         http_allowed,
+    ),
+    Boundary(
+        "apps.ehr.pack_views._context",
+        "workspace_admission",
+        ("owner", "clinic_admin", "physician"),
+        lambda w, ok: pack_views._context(w.request, w.clinic_for(ok)),
+    ),
+    Boundary(
+        "apps.ehr.packs.installed_packs",
+        "workspace_admission",
+        ("owner", "clinic_admin", "physician"),
+        lambda w, ok: packs.installed_packs(clinic_id=w.clinic_for(ok)),
     ),
     Boundary(
         "apps.ehr.tasks.refresh_timeline",

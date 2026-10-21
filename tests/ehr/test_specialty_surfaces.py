@@ -140,6 +140,73 @@ def test_role_foreign_selector_and_csrf_refusals_leave_no_installation(
         assert SpecialtyPack.objects.filter(clinic_id=rbac_graph.clinic_a).count() == 0
 
 
+@pytest.mark.parametrize("htmx", [False, True])
+@pytest.mark.parametrize(
+    ("installed", "payload"),
+    [
+        pytest.param(
+            False,
+            {"action": "calculate", "calculator_key": "bmi"},
+            id="uninstalled-calculator",
+        ),
+        pytest.param(
+            True,
+            {"action": "calculate", "calculator_key": "bmi", "version": "2"},
+            id="stale-calculator-version",
+        ),
+        pytest.param(
+            True,
+            {"action": "calculate", "calculator_key": "unpublished"},
+            id="unbound-calculator",
+        ),
+        pytest.param(False, {"action": "move_up"}, id="uninstalled-reorder"),
+        pytest.param(True, {"action": "unknown"}, id="unknown-command"),
+        pytest.param(
+            True,
+            {"action": "unknown", "version": "2"},
+            id="unknown-command-stale-version",
+        ),
+        pytest.param(
+            True,
+            {"action": "install", "pack_key": "unpublished"},
+            id="unknown-pack",
+        ),
+    ],
+)
+def test_refused_pack_commands_leave_installations_unchanged(
+    rbac_graph: RbacGraph, installed: bool, payload: dict[str, str], htmx: bool
+) -> None:
+    seed(rbac_graph)
+    if installed:
+        with as_actor(rbac_graph, rbac_graph.clinic_admin):
+            install_pack(clinic_id=rbac_graph.clinic_a, pack_key="general", version=1)
+    with owner_context(rbac_graph.organization_a):
+        before = list(
+            SpecialtyPack.objects.filter(clinic_id=rbac_graph.clinic_a).values_list(
+                "pk", "position", "uninstalled_at"
+            )
+        )
+    url = reverse("ehr:specialty-packs", kwargs={"clinic_id": rbac_graph.clinic_a})
+    with signed_in(rbac_graph.clinic_admin) as client:
+        response = client.post(
+            url,
+            {"pack_key": "general", "version": "1", **payload},
+            headers={"HX-Request": "true"} if htmx else {},
+        )
+        assert response.status_code == 403
+        assert "no-store" in response["Cache-Control"]
+        assert b"data-calculation-result" not in response.content
+    with owner_context(rbac_graph.organization_a):
+        assert (
+            list(
+                SpecialtyPack.objects.filter(clinic_id=rbac_graph.clinic_a).values_list(
+                    "pk", "position", "uninstalled_at"
+                )
+            )
+            == before
+        )
+
+
 def test_native_reordering_retirement_and_stale_commands(rbac_graph: RbacGraph) -> None:
     seed(rbac_graph)
     url = reverse("ehr:specialty-packs", kwargs={"clinic_id": rbac_graph.clinic_a})

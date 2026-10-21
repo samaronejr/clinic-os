@@ -566,15 +566,6 @@
     "returns": "boolean",
     "volatility": "i"
   },
-  "pg_catalog.int84ge(bigint, integer)": {
-    "extension": "",
-    "implementation": "int84ge",
-    "language": "internal",
-    "library": "",
-    "reason": "The generated nonnegative Passkey.sign_count CHECK compares a supplied bigint counter with integer zero; retain this exact native comparison as opaque risk.",
-    "returns": "boolean",
-    "volatility": "i"
-  },
   "pg_catalog.int8eq(bigint, bigint)": {
     "extension": "",
     "implementation": "int8eq",
@@ -656,13 +647,13 @@
     "returns": "jsonb",
     "volatility": "i"
   },
-  "pg_catalog.jsonb_array_length(jsonb)": {
+  "pg_catalog.jsonb_array_elements_text(jsonb)": {
     "extension": "",
-    "implementation": "jsonb_array_length",
+    "implementation": "jsonb_array_elements_text",
     "language": "internal",
     "library": "",
-    "reason": "identity_passkey_guard bounds the supplied transport array to eight entries during registration; retain this exact native JSON array-length implementation as opaque risk.",
-    "returns": "integer",
+    "reason": "Specialty-entry image binding expands supplied JSON array elements to text. Retain this exact native implementation as opaque risk, not a claim of clock independence.",
+    "returns": "text",
     "volatility": "i"
   },
   "pg_catalog.jsonb_array_length(jsonb)": {
@@ -1130,6 +1121,24 @@
     "language": "internal",
     "library": "",
     "reason": "Required transaction-scoped scheduling lock acquisition. Blocking/time effects are admitted, not asserted absent.",
+    "returns": "void",
+    "volatility": "v"
+  },
+  "pg_catalog.pg_advisory_xact_lock_shared(bigint)": {
+    "extension": "",
+    "implementation": "pg_advisory_xact_lock_shared_int8",
+    "language": "internal",
+    "library": "",
+    "reason": "Required shared transaction lock for specialty-pack use and retirement. Blocking/time effects are admitted, not asserted absent; retain the exact native implementation.",
+    "returns": "void",
+    "volatility": "v"
+  },
+  "pg_catalog.pg_advisory_xact_lock_shared(integer, integer)": {
+    "extension": "",
+    "implementation": "pg_advisory_xact_lock_shared_int4",
+    "language": "internal",
+    "library": "",
+    "reason": "Required shared transaction lock for specialty-pack use and retirement. Blocking/time effects are admitted, not asserted absent; retain the exact native implementation.",
     "returns": "void",
     "volatility": "v"
   },

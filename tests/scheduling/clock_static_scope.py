@@ -88,6 +88,7 @@ class Scope:
 
     def bind(self, target: ast.AST, value: object) -> None:
         if isinstance(target, ast.Name):
+            self.unresolved.discard(target.id)
             self.values[target.id] = value
         elif (
             isinstance(target, (ast.Tuple, ast.List))

@@ -19,6 +19,13 @@ if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
 
 
+def _toggle_calculator_disclosure(calculator: Locator) -> None:
+    """Enter on the native summary changes its details state, not the document."""
+    summary = calculator.locator("summary")
+    summary.focus()
+    summary.press("Enter")
+
+
 def _keyboard_values(page: Page, calculator: Locator, weight: str) -> None:
     for field, value in (
         ("weight", weight),
@@ -72,11 +79,9 @@ def test_specialty_pack_keyboard_announces_refusal_and_result(
 ) -> None:
     page = renewal_page
     calculator = filled_bmi
-    summary = calculator.locator("summary")
-    summary.focus()
-    page.keyboard.press("Enter")
+    _toggle_calculator_disclosure(calculator)
     expect(calculator).not_to_have_attribute("open", "")
-    page.keyboard.press("Enter")
+    _toggle_calculator_disclosure(calculator)
     expect(calculator).to_have_attribute("open", "")
     for key, field in (("weight", "Weight"), ("height", "Height")):
         unit = "kg or g" if key == "weight" else "cm or m"
@@ -158,8 +163,7 @@ def test_specialty_pack_zoom_and_reduced_motion(
                 "theme => document.documentElement.dataset.theme = theme", theme
             )
             calculator = zoomed.locator('[data-calculator="bmi"]')
-            calculator.locator("summary").focus()
-            zoomed.keyboard.press("Enter")
+            _toggle_calculator_disclosure(calculator)
             expect(calculator).to_have_attribute("open", "")
             _keyboard_values(zoomed, calculator, "70")
             submit_pack(

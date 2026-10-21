@@ -1015,6 +1015,68 @@
       "reason": "Todo 28: reaches the named executable current-authority boundary; remaining denials enforce record identity, author, revision, reviewed input or tab restrictions. Real longitudinal, note-grant, copy-review, workspace and refusal-matrix tests exercise the compound restrictions; this label does not claim each compound predicate is a separate role grant."
     },
     {
+      "symbol": "apps.ehr.pack_views._calculator_card",
+      "signals": [
+        "denial"
+      ],
+      "kind": "presentation",
+      "reason": "Transient calculator form binding checks the installed flag and exact calculator version; it reads no staff authority and grants no record access. The native and HTMX specialty refusal tests exercise inactive, stale and unbound calculations."
+    },
+    {
+      "symbol": "apps.ehr.pack_views._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.require_current_actor_clinic_roles"
+      ],
+      "reason": "Install, retire and reorder services recheck the current clinic administrator through this reachable executable role boundary. Unknown command, unknown pack, inactive-order and stale-version HTTP cases leave installations unchanged."
+    },
+    {
+      "symbol": "apps.ehr.pack_views._context",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.pack_views._context"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.pack_views.specialty_packs",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.pack_views._context"
+      ],
+      "reason": "The decorated native and HTMX surface reaches the directly exercised current-clinic role admission before rendering or dispatching commands; specialty HTTP tests also assert role, foreign-clinic, CSRF and input refusals."
+    },
+    {
+      "symbol": "apps.ehr.packs.installed_packs",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.packs.installed_packs"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.packs.uninstall_pack",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.current_context.require_current_actor_clinic_roles"
+      ],
+      "reason": "The current clinic administrator is checked before catalog locking and again inside the serialized decision. The remaining denial is an absent installation, not a distinct staff grant; specialty service and HTTP tests exercise retirement and scope."
+    },
+    {
       "symbol": "apps.ehr.prior_notes._copy_scope",
       "signals": [
         "denial",
@@ -1198,6 +1260,39 @@
       "probes": [
         "apps.ehr.services.view_version"
       ]
+    },
+    {
+      "symbol": "apps.ehr.specialty_forms.specialty_forms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "presentation",
+      "reason": "Builds choices from an already authorized PatientScope and rejects a missing clinic timezone. Patient and assigned-physician filters constrain presentation; it does not read staff membership or grant authority. The defensive null-timezone workspace request executes the refusal."
+    },
+    {
+      "symbol": "apps.ehr.specialty_records._authority",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "apps.ehr.longitudinal_access.patient_scope"
+      ],
+      "reason": "Requires the actual encounter assignee and current patient clinical.write through the named executable boundaries. Remaining checks bind clinic, enrollment and open state; specialty service and workspace refusal tests exercise denied record writes."
+    },
+    {
+      "symbol": "apps.ehr.specialty_records.record_procedure",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.ehr.services._encounter_actor",
+        "apps.ehr.longitudinal_access.patient_scope"
+      ],
+      "reason": "The shared specialty authority reaches both executable encounter-assignee and current patient-write boundaries before validating consent and image attachments from that encounter. Attachment identity checks add restrictions rather than a staff-role grant."
     },
     {
       "symbol": "apps.ehr.tasks.refresh_timeline",
@@ -5711,6 +5806,8 @@
     "apps.ehr.history_views.history_workspace",
     "apps.ehr.longitudinal_access.patient_scope",
     "apps.ehr.management.commands.encrypt_attachment_objects.Command.handle#observed",
+    "apps.ehr.pack_views._context",
+    "apps.ehr.packs.installed_packs",
     "apps.ehr.services._appointment",
     "apps.ehr.services._assigned",
     "apps.ehr.services._denied",
@@ -6129,6 +6226,35 @@
       "function": "_workspace",
       "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
+        "physician"
+      ]
+    },
+    {
+      "path": "apps/ehr/pack_views.py",
+      "function": "_context",
+      "roles": "READ_ROLES",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin",
+        "physician"
+      ]
+    },
+    {
+      "path": "apps/ehr/pack_views.py",
+      "function": "_context",
+      "roles": "ADMIN_ROLES",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin"
+      ]
+    },
+    {
+      "path": "apps/ehr/packs.py",
+      "function": "installed_packs",
+      "roles": "READ_ROLES",
+      "legacy_allowed": [
+        "owner",
+        "clinic_admin",
         "physician"
       ]
     },
@@ -7949,6 +8075,8 @@
           "clinic_app.ehr_episodeencounter:episode_member_insert",
           "clinic_app.ehr_historyassessment:history_insert",
           "clinic_app.ehr_problem:history_insert",
+          "clinic_app.ehr_specialtyentry:specialty_insert",
+          "clinic_app.ehr_specialtyentry:specialty_read",
           "clinic_app.identity_physicianevidence:physician_evidence_assigned",
           "clinic_app.prescription_prescriptiondocument:document_insert",
           "clinic_app.prescription_prescriptiondocumentrelease:release_insert",
@@ -8059,6 +8187,7 @@
         "policies": [
           "clinic_app.ehr_clinicalattachment:attachment_read",
           "clinic_app.ehr_clinicaldocumentversion:clinical_read",
+          "clinic_app.ehr_specialtyentry:specialty_read",
           "clinic_app.prescription_prescriptiondocument:document_read",
           "clinic_app.prescription_prescriptiondocumentrelease:release_read",
           "clinic_app.prescription_prescriptiondocumentrevocation:revocation_read"
@@ -8340,6 +8469,47 @@
       ],
       "reason": "Additional restrictive overlay, not a stand-alone read grant: ordinary clinical SELECT remains mandatory. Restricted notes require current clinical.read and author or an unrevoked grant to a currently active, unrevoked physician. Role/actor/scope, hidden-count and terminal recipient-loss tests execute the composed policy; restored staff eligibility never resurrects an old grant."
     },
+    "clinic_app.ehr_pack_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/_pack_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Specialty bundle and entry provenance/retention binding. FORCE RLS is the staff authority; test_specialty_actor executes raw-GUC inactive-actor denial and forged-installer rejection, bound by EHR_ACTOR_PROTOCOL_ORACLES."
+    },
+    "clinic_app.ehr_pack_use_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/ehr/migrations/0016_later_pack_draft_guard.py",
+          "apps/ehr/migrations/_pack_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Specialty-pack retirement and psychiatry restriction binding. Real-role specialty later-draft, retirement, and restricted-note tests execute this installed trigger; it is not an independent staff-role gate."
+    },
     "clinic_app.ehr_patient_permission": {
       "discovery": {
         "signatures": [
@@ -8360,7 +8530,9 @@
           "clinic_app.ehr_observation:longitudinal_confirm",
           "clinic_app.ehr_observation:longitudinal_insert",
           "clinic_app.ehr_observation:longitudinal_read",
-          "clinic_app.ehr_observation:observation_nursing_insert"
+          "clinic_app.ehr_observation:observation_nursing_insert",
+          "clinic_app.ehr_specialtyentry:specialty_insert",
+          "clinic_app.ehr_specialtyentry:specialty_read"
         ],
         "resolvers": [
           "clinic_app.ehr_note_author",
@@ -11433,6 +11605,9 @@
           "clinic_app.billing_invoice:billing_staff",
           "clinic_app.ehr_encounter:clinical_insert",
           "clinic_app.ehr_encounter:clinical_read",
+          "clinic_app.ehr_specialtypack:pack_insert",
+          "clinic_app.ehr_specialtypack:pack_read",
+          "clinic_app.ehr_specialtypack:pack_retire",
           "clinic_app.ehr_specialtytemplate:clinical_insert",
           "clinic_app.ehr_specialtytemplate:clinical_read",
           "clinic_app.identity_careteammembership:scope_read",
