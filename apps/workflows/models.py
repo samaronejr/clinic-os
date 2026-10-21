@@ -20,7 +20,7 @@ class Task(TenantScopedModel):
     kind = models.CharField(max_length=16)
     subject_ref = models.JSONField()
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+"
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+"
     )
     owner_user = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.PROTECT, related_name="+"

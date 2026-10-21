@@ -173,6 +173,17 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         None,
         ("result.read", "order.observe"),
         owner_todo=32,
+        entries=(
+            Destination(
+                "results",
+                gettext_noop("Orders and results"),
+                "orders:results",
+                ("demographics.read",),
+                route_roles=None,
+                views=frozenset({"orders:results", "orders:source"}),
+                owner_todo=31,
+            ),
+        ),
     ),
     Destination(
         "messages",

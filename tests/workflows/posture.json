@@ -216,7 +216,7 @@
       "workflows_task",
       "created_by_id",
       "uuid",
-      true
+      false
     ],
     [
       "workflows_task",
@@ -1039,7 +1039,7 @@
       [
         "search_path=pg_catalog, clinic_app, pg_temp"
       ],
-      "2a43ce394514def32a9ed22bf0445cffa8bd40112809f1cb7c8d4b995ec66a8b",
+      "4e8e5a88ef7231516f0968f12e5cb65975505f25d71aa9f23fa5f6ae496821f4",
       [
         "clinic_resolver"
       ]
@@ -1434,6 +1434,11 @@
       "workflows_task",
       "clinic_owner",
       "UPDATE"
+    ],
+    [
+      "workflows_task",
+      "clinic_resolver",
+      "INSERT"
     ],
     [
       "workflows_task",

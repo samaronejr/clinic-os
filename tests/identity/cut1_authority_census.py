@@ -16,6 +16,7 @@ from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.legacy_parity_support import target_code
+from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
 from identity.permission_support import owner_context
 from rbac_fixtures import RbacGraph
@@ -260,6 +261,7 @@ def run_cut1_census(
                 partial(delegate_oracle, subject, secret_root.parent),
             )
     run_passkey_census(proofs, graph)
+    run_orders_census(proofs, graph)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
     secret.write_text(token_hex(32), encoding="ascii")

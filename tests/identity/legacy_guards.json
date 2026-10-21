@@ -5746,10 +5746,247 @@
       "probes": [
         "apps.workflows.views._staff_catalog#cut1"
       ]
+    },
+    {
+      "symbol": "apps.audit.services._record_lab_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services._record_lab_event#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.access.require_ingest",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.access.require_ingest#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.access.require_version",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.access.require_version#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.access.current_version",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.access.current_version#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.commands._upload",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.commands._upload#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.commands.submit_command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.commands.submit_command#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.ingestion._receipt",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.ingestion._receipt#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.ingestion.verify_match",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.ingestion.verify_match#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.ingestion.ingest_result",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.ingestion.ingest_result#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.lab.lab_context",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.lab.lab_context#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.lab.receive_lab_result",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.lab.receive_lab_result#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.ordering.place_order",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.ordering.place_order#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.ordering.progress_order",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.ordering.progress_order#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.queries.result_rows",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.queries.result_rows#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.queries.patient_sources",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.queries.patient_sources#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.review.match_result",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.review.match_result#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.review.reject_result",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.review.reject_result#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.review.acknowledge_result",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.review.acknowledge_result#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.review.release_result",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.review.release_result#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.source_views.download",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.source_views.download#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.views._patients",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.views._patients#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.views.results",
+      "signals": [
+        "decorator",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.views.results#cut1"
+      ]
     }
   ],
   "probes": [
     "apps.audit.services._record_delegate_event#cut1",
+    "apps.audit.services._record_lab_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
     "apps.billing.pix.prepare_pix_charge",
@@ -5968,6 +6205,27 @@
     "apps.intake.views.patient_create_view",
     "apps.intake.views.patient_demographics_view",
     "apps.intake.views.patient_list_view",
+    "apps.orders.access.current_version#cut1",
+    "apps.orders.access.require_ingest#cut1",
+    "apps.orders.access.require_version#cut1",
+    "apps.orders.commands._upload#cut1",
+    "apps.orders.commands.submit_command#cut1",
+    "apps.orders.ingestion._receipt#cut1",
+    "apps.orders.ingestion.ingest_result#cut1",
+    "apps.orders.ingestion.verify_match#cut1",
+    "apps.orders.lab.lab_context#cut1",
+    "apps.orders.lab.receive_lab_result#cut1",
+    "apps.orders.ordering.place_order#cut1",
+    "apps.orders.ordering.progress_order#cut1",
+    "apps.orders.queries.patient_sources#cut1",
+    "apps.orders.queries.result_rows#cut1",
+    "apps.orders.review.acknowledge_result#cut1",
+    "apps.orders.review.match_result#cut1",
+    "apps.orders.review.reject_result#cut1",
+    "apps.orders.review.release_result#cut1",
+    "apps.orders.source_views.download#cut1",
+    "apps.orders.views._patients#cut1",
+    "apps.orders.views.results#cut1",
     "apps.prescription.services._authorize_document_care",
     "apps.prescription.services._scope",
     "apps.prescription.services.authorize_encounter",
@@ -7649,6 +7907,8 @@
           "clinic_app.billing_patient_charges",
           "clinic_app.consent_session",
           "clinic_app.delegate_purpose_allowed",
+          "clinic_app.orders_delegate_allowed",
+          "clinic_app.orders_patient_sources",
           "clinic_app.patient_alias_overview",
           "clinic_app.patient_alias_set",
           "clinic_app.patient_booking_scope",
@@ -8010,6 +8270,11 @@
           "clinic_app.consent_audit",
           "clinic_app.delegate_audit",
           "clinic_app.identity_signup_register",
+          "clinic_app.orders_emit_task",
+          "clinic_app.orders_lab_account",
+          "clinic_app.orders_lab_audit",
+          "clinic_app.orders_resolve_lab",
+          "clinic_app.orders_system_task_valid",
           "clinic_app.prescription_document_viewed",
           "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_verify",
@@ -8749,6 +9014,8 @@
           "clinic_app.identity_invitation_finish",
           "clinic_app.identity_retire_authenticators",
           "clinic_app.identity_session_register",
+          "clinic_app.orders_emit_task",
+          "clinic_app.orders_verify_identity",
           "clinic_app.patient_booking_receipt",
           "clinic_app.questionnaire_receipt",
           "clinic_app.renew_delegate_grant",
@@ -8804,6 +9071,12 @@
           "clinic_app.identity_professionalregistration:scope_read",
           "clinic_app.identity_rolegrant:scope_read",
           "clinic_app.identity_staffinvitation:manager",
+          "clinic_app.orders_labaccount:orders_read",
+          "clinic_app.orders_order:orders_insert",
+          "clinic_app.orders_order:orders_read",
+          "clinic_app.orders_result:orders_insert",
+          "clinic_app.orders_resultobservation:orders_read",
+          "clinic_app.orders_resultrejection:orders_insert",
           "clinic_app.scheduling_cliniciandelay:reception_scope",
           "clinic_app.scheduling_displaydevice:reception_scope",
           "clinic_app.scheduling_queueentry:reception_scope",
@@ -8831,6 +9104,9 @@
           "clinic_app.identity_staff_directory",
           "clinic_app.intake_duplicate_detection_guard",
           "clinic_app.intake_merge_authorized",
+          "clinic_app.orders_can_read_version",
+          "clinic_app.orders_guard",
+          "clinic_app.orders_ingest_allowed",
           "clinic_app.reception_guard",
           "clinic_app.reception_practitioners",
           "clinic_app.reception_readiness",
@@ -12731,6 +13007,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.identity_signup_register",
+          "clinic_app.orders_verify_identity",
           "clinic_app.prescription_document_open",
           "clinic_app.protected_decrypt",
           "clinic_app.tenant_reencrypt"
@@ -13353,6 +13630,412 @@
         "clinic_app.workflows_task_scope"
       ],
       "reason": "Workflow SQL protocol: executed catalog-wide role, absent-member, inactive-account and typed-input oracles."
+    },
+    "clinic_app.orders_audit_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.orders_lab_audit"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_native_result_lifecycle_downloads_only_the_exact_authorized_source",
+        "test_signed_replay_creates_one_source_version_and_review_task"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_can_read_version": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "version uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [
+          "clinic_app.orders_result:orders_read",
+          "clinic_app.orders_resultacknowledgment:orders_insert",
+          "clinic_app.orders_resultacknowledgment:orders_read",
+          "clinic_app.orders_resultmatch:orders_read",
+          "clinic_app.orders_resultquarantine:orders_read",
+          "clinic_app.orders_resultrejection:orders_read",
+          "clinic_app.orders_resultrelease:orders_insert",
+          "clinic_app.orders_resultrelease:orders_read",
+          "clinic_app.orders_resultversion:orders_read",
+          "clinic_app.orders_resultworkitem:orders_read"
+        ],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_native_result_lifecycle_downloads_only_the_exact_authorized_source",
+        "test_nonclinical_actor_cannot_acknowledge_or_release",
+        "test_lab_principal_cannot_select_sources_or_acknowledge",
+        "test_routing_upload_does_not_grant_structured_clinical_read"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_correlated_order": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "account uuid, correlation uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_signed_replay_creates_one_source_version_and_review_task",
+        "test_revoked_principal_cannot_ingest_even_previously_signed_event"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_delegate_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "version uuid, grant_id uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.orders_guard",
+          "clinic_app.orders_patient_sources"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_delegate_requires_its_exact_release_and_revocation_hides_source"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_emit_task": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_task_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_source_critical_flag_creates_one_urgent_owned_task_before_release"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_event_receipt": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, event uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_signed_replay_creates_one_source_version_and_review_task",
+        "test_altered_event_replay_has_no_second_effect"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_source_rows_refuse_raw_updates_and_deletes",
+        "test_nonclinical_actor_cannot_acknowledge_or_release",
+        "test_correction_retains_old_bytes_but_resets_acknowledgment_and_release"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_ingest_allowed": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_order uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [
+          "clinic_app.orders_resultobservation:orders_insert",
+          "clinic_app.orders_resultversion:orders_insert"
+        ],
+        "resolvers": [
+          "clinic_app.orders_event_receipt",
+          "clinic_app.orders_guard",
+          "clinic_app.orders_ingest_scope",
+          "clinic_app.orders_verify_identity"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cross_tenant_ingest_has_identical_payload_free_denial",
+        "test_lab_principal_cannot_select_sources_or_acknowledge"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_ingest_scope": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested_order uuid, result uuid, predecessor uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_cross_tenant_ingest_has_identical_payload_free_denial",
+        "test_signed_replay_creates_one_source_version_and_review_task"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_is_current": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "version uuid",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.orders_guard",
+          "clinic_app.orders_ingest_scope",
+          "clinic_app.orders_verify_identity"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_correction_retains_old_bytes_but_resets_acknowledgment_and_release"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_lab_account": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "uuid",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [
+          "clinic_app.orders_result:orders_insert",
+          "clinic_app.orders_resultobservation:orders_insert"
+        ],
+        "resolvers": [
+          "clinic_app.orders_audit_scope",
+          "clinic_app.orders_correlated_order",
+          "clinic_app.orders_event_receipt",
+          "clinic_app.orders_guard",
+          "clinic_app.orders_ingest_allowed",
+          "clinic_app.orders_ingest_scope"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_signed_replay_creates_one_source_version_and_review_task",
+        "test_revoked_principal_cannot_ingest_even_previously_signed_event"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_lab_audit": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_signed_replay_creates_one_source_version_and_review_task"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_patient_sources": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "requested_version uuid",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_patient_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_patient_sources_require_current_acknowledgment_and_exact_patient_release",
+        "test_delegate_requires_its_exact_release_and_revocation_hides_source"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_resolve_lab": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "account uuid, proof text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_access_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_forged_hmac_refuses_before_any_scope_query",
+        "test_revoked_principal_cannot_ingest_even_previously_signed_event",
+        "test_signed_replay_creates_one_source_version_and_review_task"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_system_task_valid": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_task_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_a_null_creator_cannot_forge_the_private_source_task_bridge"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
+    },
+    "clinic_app.orders_verify_identity": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "clinic uuid, version uuid, requested_order uuid, kek text",
+            "returns": "record",
+            "set_returning": true,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/orders/migrations/_matching_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_dob_and_identifier_never_override_an_explicit_conflicting_factor"
+      ],
+      "reason": "Orders source protocol: real tenant roles, exact identity, current version, explicit audience and authenticated lab evidence."
     }
   },
   "sql_method": [

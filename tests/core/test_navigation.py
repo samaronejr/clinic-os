@@ -74,17 +74,25 @@ PRIVILEGED: Final = frozenset(
 # actors can still discover scheduling Settings without patient administration.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
-    "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": [
-        "today",
+    "clinic_admin": [
         "agenda",
         "patients",
+        "inbox",
         "finance",
         "operations",
         "settings",
     ],
-    "physician": ["agenda", "patients", "operations"],
-    "nurse": ["today"],
+    "receptionist": [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ],
+    "physician": ["agenda", "patients", "inbox", "operations"],
+    "nurse": ["today", "inbox"],
     "allied_professional": [],
     "scheduler": ["settings"],
     "clinic_manager": ["settings"],
@@ -92,7 +100,7 @@ EXPECTED: Final = {
     "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
-UNDELIVERED: Final = frozenset({"inbox", "messages", "automations", "reports"})
+UNDELIVERED: Final = frozenset({"messages", "automations", "reports"})
 
 
 def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
@@ -267,10 +275,12 @@ def test_workflow_candidate_opens_only_delivered_operations(
     response = _get(client, "/auth/protected/")
     assert response.status_code == OK
     assert _modules(response) == (
-        ["operations", "settings"]
+        ["inbox", "operations", "settings"]
         if role in {"scheduler", "clinic_manager"}
-        else ["today", "operations"]
+        else ["today", "inbox", "operations"]
         if role == "nurse"
+        else ["inbox", "operations"]
+        if role == "allied_professional"
         else ["operations"]
     )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
@@ -317,6 +327,7 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
         "today",
         "agenda",
         "patients",
+        "inbox",
         "operations",
         "settings",
     ]
@@ -359,6 +370,7 @@ def test_palette_search_filters_destinations_by_permission(
         "scheduling:agenda",
         "scheduling:availability-list",
         "consent:staff",
+        "orders:results",
         "retention:status",
         "identity:preferences",
     ]

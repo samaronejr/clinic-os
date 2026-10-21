@@ -521,6 +521,43 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
             ),
         )
         scan_attachment(clinic_id=CLINIC_ID, attachment_id=attachment.pk)
+        from apps.orders.services import (
+            IdentityEvidence,
+            ResultInput,
+            acknowledge_result,
+            ingest_result,
+            place_order,
+            release_result,
+        )
+
+        order = place_order(
+            clinic_id=CLINIC_ID,
+            enrollment_id=enrollment_id,
+            exam_codes=("cbc",),
+            command_id=uuid4(),
+        )
+        result = ingest_result(
+            clinic_id=CLINIC_ID,
+            submission=ResultInput(
+                order_id=order.pk,
+                identity=IdentityEvidence(
+                    birth_date=date(2000, 1, 2), name="Synthetic Recovery Persona"
+                ),
+                content_type="application/pdf",
+                data=PDF_BYTES,
+                event_id=uuid4(),
+            ),
+        )
+        acknowledge_result(
+            clinic_id=CLINIC_ID,
+            version_id=result.version_id,
+            disposition="no_action",
+        )
+        release_result(
+            clinic_id=CLINIC_ID,
+            version_id=result.version_id,
+            audience="patient",
+        )
         session = create_session(clinic_id=CLINIC_ID, encounter_id=encounter.pk)
 
     # The committed outbox row is executed through the real worker boundary;
@@ -698,6 +735,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         "patient_name": "Synthetic Recovery Persona",
         "patient_session_id": str(session_id),
         "physician_id": str(PHYSICIAN_ID),
+        "result_version_id": str(result.version_id),
         "version_id": str(finalized.pk),
     }
     descriptor = os.open(probe_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -731,6 +769,8 @@ def verify(probe_path: Path) -> None:
         patient_session_overview,
     )
     from apps.intake.patient_search import search_patients
+    from apps.orders.queries import patient_sources
+    from apps.orders.storage import source_bytes
     from apps.tenancy.db import tenant_context
 
     probe = _read_probe(probe_path)
@@ -773,6 +813,9 @@ def verify(probe_path: Path) -> None:
             "SYNTHETIC-NOT-PAYABLE|"
         ):
             _fail("restored payment instructions did not decrypt")
+        sources = patient_sources(version_id=UUID(probe["result_version_id"]))
+        if len(sources) != 1 or source_bytes(sources[0]) != PDF_BYTES:
+            _fail("restored released result source did not decrypt")
     with _runtime_role(), tenant_context(physician_id, organization_id):
         result = verify_chain_on_connection(connection, organization_id)
         if result.row_count < 1:
@@ -806,6 +849,7 @@ def _read_probe(path: Path) -> dict[str, str]:
         "patient_name",
         "patient_session_id",
         "physician_id",
+        "result_version_id",
         "version_id",
     }
     if not required <= set(fields):

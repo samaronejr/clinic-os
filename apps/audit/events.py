@@ -764,6 +764,40 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.pack.reordered": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.specialty_pack", "reordered"
         ),
+        # Task 31: keep this additive registry block together for lane rebases.
+        "orders.order.draft": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "draft"
+        ),
+        "orders.order.placed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "placed"
+        ),
+        "orders.order.collected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "collected"
+        ),
+        "orders.order.in_process": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.order", "in_process"
+        ),
+        "orders.result.ingested": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "ingested"
+        ),
+        "orders.result.matched": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "matched"
+        ),
+        "orders.result.quarantined": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "quarantined"
+        ),
+        "orders.result.rejected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "rejected"
+        ),
+        "orders.result.acknowledged": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "acknowledged"
+        ),
+        "orders.result.released": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "orders.result_version", "released"
+        ),
+        "orders.task.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "workflows.task", "created"
+        ),
     }
 )
 

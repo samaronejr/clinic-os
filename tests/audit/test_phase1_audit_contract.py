@@ -1055,6 +1055,53 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "ehr.specialty_pack",
         "reordered",
     ),
+    # Task 31: one appended block, kept separate from other active lanes.
+    "orders.order.draft": ("tenant", "clinic-os-web", "orders.order", "draft"),
+    "orders.order.placed": ("tenant", "clinic-os-web", "orders.order", "placed"),
+    "orders.order.collected": ("tenant", "clinic-os-web", "orders.order", "collected"),
+    "orders.order.in_process": (
+        "tenant",
+        "clinic-os-web",
+        "orders.order",
+        "in_process",
+    ),
+    "orders.result.ingested": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "ingested",
+    ),
+    "orders.result.matched": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "matched",
+    ),
+    "orders.result.quarantined": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "quarantined",
+    ),
+    "orders.result.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "rejected",
+    ),
+    "orders.result.acknowledged": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "acknowledged",
+    ),
+    "orders.result.released": (
+        "tenant",
+        "clinic-os-web",
+        "orders.result_version",
+        "released",
+    ),
+    "orders.task.created": ("tenant", "clinic-os-web", "workflows.task", "created"),
 }
 
 

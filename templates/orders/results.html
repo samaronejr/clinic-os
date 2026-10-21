@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load i18n static clinic_locale tz order_labels %}
+{% block title %}{% trans "Orders and results" %} · Clinic Ops{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-orders.css' %}">
+<script src="{% static 'js/orders-workspace.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<div id="results-workspace" class="orders-stack" data-results-render="{{ render_key }}" hx-target="#results-workspace" hx-select="#results-workspace" hx-swap="outerHTML">
+<header>
+  <h1>{% trans "Orders and results" %}</h1>
+  <p class="lede">{{ clinic.name }} · {% trans "Source identity, clinical review and patient release are separate decisions." %}</p>
+</header>
+{% if error %}
+<section class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error>
+  <h2>{% trans "Result action not completed" %}</h2><p>{{ error }}</p>
+</section>
+{% elif outcome %}
+<p class="feedback feedback--success" role="status" tabindex="-1" autofocus data-results-outcome>{{ outcome }}</p>
+{% endif %}
+<p role="status" hidden data-results-progress>{% trans "Saving the result action. Wait for confirmation." %}</p>
+<aside class="feedback feedback--error" role="alert" tabindex="-1" hidden data-results-denied>
+  {% trans "Your access changed. This result view is no longer available." %}
+</aside>
+<aside class="feedback" role="status" tabindex="-1" hidden data-results-network>
+  {% trans "Connection unavailable or outcome unconfirmed. Keep your source and verify the result before trying again." %}
+</aside>
+<section aria-labelledby="review-heading">
+  <h2 id="review-heading">{% trans "Matched results awaiting accountable review" %}</h2>
+  {% for row, correction_form in result_forms %}
+  <article class="panel" aria-labelledby="review-{{ row.match.id }}" data-result-state="{% if row.patient_released %}released{% elif row.acknowledged %}acknowledged{% else %}matched{% endif %}">
+    <h3 id="review-{{ row.match.id }}">{{ row.match.order.enrollment.patient.full_name }}</h3>
+    <p>{% trans "Date of birth" %}: {{ row.match.order.enrollment.patient.birth_date|date:"d/m/Y" }} · {% trans "Source version" %} {{ row.match.version.number }}</p>
+    {% if row.match.version.critical %}<p class="feedback" role="status">{% trans "Critical flag from source. An urgent task is assigned to the ordering clinician." %}</p>{% endif %}
+    <p>{% if row.patient_released %}{% trans "Released to patient" %}{% elif row.acknowledged %}{% trans "Acknowledged; not released to patient" %}{% else %}{% trans "Not yet acknowledged or released" %}{% endif %}</p>
+    <form method="post" action="{% url 'orders:source' clinic.id %}">
+      {% csrf_token %}<input type="hidden" name="version_id" value="{{ row.match.version.id }}">
+      <button class="button--secondary" type="submit">{% trans "Download original source" %}</button>
+    </form>
+    {% if not row.acknowledged %}
+    <form method="post" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
+      {% csrf_token %}<input type="hidden" name="action" value="acknowledge"><input type="hidden" name="version_id" value="{{ row.match.version.id }}">
+      <div class="field">
+        <label for="disposition-{{ row.match.version.id }}">{% trans "Clinical disposition" %}</label>
+        <select id="disposition-{{ row.match.version.id }}" name="disposition" required {% if not row.can_acknowledge %}disabled{% endif %}>
+          <option value="">{% trans "Choose after reviewing the source" %}</option>
+          <option value="no_action">{% trans "No further action" %}</option>
+          <option value="follow_up">{% trans "Follow-up required" %}</option>
+          <option value="urgent_review">{% trans "Urgent review required" %}</option>
+        </select>
+      </div>
+      <button type="submit" {% if not row.can_acknowledge %}disabled aria-describedby="permission-{{ row.match.id }}"{% endif %}>{% trans "Acknowledge this version" %}</button>
+    </form>
+    {% elif not row.patient_released %}
+    <form method="post" data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
+      {% csrf_token %}<input type="hidden" name="action" value="release"><input type="hidden" name="version_id" value="{{ row.match.version.id }}"><input type="hidden" name="audience" value="patient">
+      <button type="submit" {% if not row.can_release %}disabled aria-describedby="permission-{{ row.match.id }}"{% endif %}>{% trans "Release this version to patient" %}</button>
+    </form>
+    {% endif %}
+    {% if not row.can_acknowledge or not row.can_release %}<p id="permission-{{ row.match.id }}" class="hint">{% trans "Clinical acknowledgment and release require the corresponding clinician permission." %}</p>{% endif %}
+    {% if correction_form %}
+    <details>
+      <summary>{% trans "Upload a corrected source" %}</summary>
+      <p>{% trans "A correction requires the exact predecessor and new identity verification; previous acknowledgment and release do not carry forward." %}</p>
+      <form method="post" enctype="multipart/form-data" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}" hx-encoding="multipart/form-data">
+        {% csrf_token %}<input type="hidden" name="action" value="upload">
+        {% include "orders/partials/upload_fields.html" with form=correction_form only %}
+        <button type="submit">{% trans "Upload corrected source" %}</button>
+      </form>
+    </details>
+    {% endif %}
+  </article>
+  {% empty %}<p class="table-empty">{% trans "No current matched results are visible in your scope." %}</p>{% endfor %}
+</section>
+{% if trend_groups %}
+<section aria-labelledby="trends-heading">
+  <h2 id="trends-heading">{% trans "Result trends · exact source values" %}</h2>
+  {% for patient_name, observations in trend_groups %}
+  <div class="table-scroll" role="region" tabindex="0" aria-labelledby="trend-caption-{{ forloop.counter }}">
+    <table class="table"><caption id="trend-caption-{{ forloop.counter }}">{{ forloop.counter }}. {{ patient_name }} · {% trans "Result trends · exact source values" %}</caption>
+      <thead><tr><th scope="col">{% trans "Source version time" %}</th><th scope="col">{% trans "Examination" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Unit" %}</th><th scope="col">{% trans "Reference interval" %}</th><th scope="col">{% trans "Source flag" %}</th></tr></thead>
+      <tbody>{% for item in observations %}<tr><td>{{ item.recorded_at|timezone:clinic.timezone|date:"Y-m-d\TH:i"|clinic_minute }}</td><th scope="row">{{ item.code }}</th><td>{{ item.value }}</td><td>{{ item.unit|default:"—" }}</td><td>{{ item.reference_interval|default:"—" }}</td><td>{{ item.abnormal_flag|source_flag_label }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% if quarantines %}
+<section aria-labelledby="quarantine-heading">
+  <h2 id="quarantine-heading">{% trans "Identity exception queue" %}</h2>
+  <p>{% trans "Quarantined sources are not in any patient chart. Verify the original identity; never guess a patient." %}</p>
+  {% for item in quarantines %}
+  <article class="panel" data-quarantine-reason="{{ item.reason }}">
+    <h3>{% trans "Quarantined source" %}</h3>
+    <p>{% if item.reason == "identity_mismatch" %}{% trans "Identity mismatch" %}{% elif item.reason == "unknown_order" %}{% trans "Unknown order" %}{% else %}{% trans "Insufficient or ambiguous identity factors" %}{% endif %}</p>
+    <dl>
+      <dt>{% trans "Name on the result" %}</dt><dd>{{ item.version.identity.name|default:_("Not provided") }}</dd>
+      <dt>{% trans "Date of birth on the result" %}</dt><dd>{{ item.version.identity.birth_date|source_birth_date }}</dd>
+      {% if item.version.identity.identifier %}<dt>{% trans "Identifier on the result" %}</dt><dd>{{ item.version.identity.identifier }}</dd>{% endif %}
+    </dl>
+    <form method="post" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
+      {% csrf_token %}<input type="hidden" name="action" value="match"><input type="hidden" name="version_id" value="{{ item.version.id }}">
+      <div class="field"><label for="match-order-{{ item.id }}">{% trans "Verified order" %}</label><select id="match-order-{{ item.id }}" name="order_id" required><option value="">{% trans "Choose a verified order" %}</option>{% for order, form in uploads %}<option value="{{ order.id }}">{{ order.enrollment.patient.full_name }} · {{ order.enrollment.patient.birth_date|date:"d/m/Y" }}</option>{% endfor %}</select></div>
+      <button type="submit" {% if not uploads %}disabled{% endif %}>{% trans "Verify exact source identity" %}</button>
+    </form>
+    <form method="post" data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
+      {% csrf_token %}<input type="hidden" name="action" value="reject"><input type="hidden" name="version_id" value="{{ item.version.id }}"><input type="hidden" name="evidence_code" value="wrong_patient_confirmed">
+      <button class="button--danger" type="submit">{% trans "Reject confirmed wrong-patient source" %}</button>
+    </form>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+<section aria-labelledby="sources-heading">
+  <h2 id="sources-heading">{% trans "Original result sources" %}</h2>
+  <p>{% trans "Copy identity factors from the report. Uploading never marks a result reviewed." %}</p>
+  <p>{% if lab_enabled %}{% trans "Laboratory intake uses a deterministic simulation; no real laboratory is connected." %}{% else %}{% trans "Laboratory integration is unavailable. Original sources can be uploaded manually." %}{% endif %}</p>
+  {% for order, form in uploads %}
+  <details class="panel orders-source" {% if form.is_bound %}open{% endif %}>
+    <summary><strong>{{ order.enrollment.patient.full_name }}</strong> · {{ order.enrollment.patient.birth_date|date:"d/m/Y" }} · {% trans "Upload original result" %}</summary>
+    <p>{% for item in order.items.all %}{{ item.exam_code|examination_label }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+    <form method="post" enctype="multipart/form-data" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}" hx-encoding="multipart/form-data">
+      {% csrf_token %}<input type="hidden" name="action" value="upload">
+      {% include "orders/partials/upload_fields.html" with form=form only %}
+      <div class="actions"><button type="submit">{% trans "Upload original result" %}<span class="visually-hidden"> · {{ order.enrollment.patient.full_name }}</span></button></div>
+    </form>
+  </details>
+  {% empty %}<p class="table-empty">{% trans "No orders are available for source upload in your current scope." %}</p>{% endfor %}
+</section>
+{% if patients_available %}
+<section class="panel" aria-labelledby="place-heading">
+  <h2 id="place-heading">{% trans "Place an order" %}</h2>
+  <form method="post" novalidate data-auth-form hx-post="{% url 'orders:results' clinic.id %}">
+    {% csrf_token %}<input type="hidden" name="action" value="place">
+    {% for field in order_form.hidden_fields %}{{ field }}{% endfor %}
+    {% for field in order_form.visible_fields %}{% include "includes/field.html" with field=field only %}{% endfor %}
+    <div class="actions"><button type="submit">{% trans "Place order" %}</button></div>
+  </form>
+</section>
+{% endif %}
+</div>
+{% endblock %}

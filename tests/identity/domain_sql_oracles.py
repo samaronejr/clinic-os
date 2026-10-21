@@ -22,6 +22,8 @@ from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
 from identity.test_reception_sql_principal import test_reception_display_device_contract
+from orders.sql_oracles import CASES as ORDERS_CASES
+from orders.sql_oracles import SQL_PROTOCOL_ORACLES as ORDERS_PROTOCOLS
 from patients import test_delegates
 from patients.duplicate_authority_cases import (
     SQL_PROTOCOL_ORACLES as DUPLICATE_SQL_ORACLES,
@@ -199,6 +201,7 @@ PROTOCOL_ORACLES = {
         "test_second_valid_session_cannot_supply_or_rebind_a_receipt",
         "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority",
     ],
+    **ORDERS_PROTOCOLS,
 }
 
 
@@ -212,6 +215,10 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
     assert all(callable(case) for case in EHR_CASES.values())
+    assert all(callable(case) for case in ORDERS_CASES.values())
+    assert all(
+        name in ORDERS_CASES for cases in ORDERS_PROTOCOLS.values() for name in cases
+    )
     assert all(name in EHR_CASES for cases in EHR_PROTOCOLS.values() for name in cases)
     assert callable(test_database_trigger_decides_every_status_pair_by_actor)
     assert callable(test_guards_decide_by_the_exact_permission_not_a_sibling)

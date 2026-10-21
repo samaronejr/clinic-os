@@ -30,6 +30,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("rt/stream", ticket_view, name="realtime-ticket"),
     path("", include("apps.identity.urls")),
     path("", include("apps.workflows.urls")),
+    path("", include("apps.orders.urls")),
     path("", include("apps.intake.urls")),
     path("", include("apps.scheduling.urls")),
     path("", include("apps.ehr.urls")),
