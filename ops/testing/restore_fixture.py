@@ -15,7 +15,7 @@ import json
 import os
 import time
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never, Protocol
@@ -236,6 +236,12 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
     )
     from apps.identity.models import PhysicianProfile, User, UserClinicRole
     from apps.identity.preferences import save_ui_preferences
+    from apps.identity.scope_provisioning import (
+        CareTeamAssignment,
+        ProfessionalIdentity,
+        assign_care_team,
+        register_professional,
+    )
     from apps.intake.contacts import (
         save_contact_destination,
         set_purpose_channel,
@@ -299,6 +305,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
     from apps.tenancy.db import tenant_context
     from apps.tenancy.envelope import encrypt, issue_tenant_key
     from django.contrib.auth.hashers import make_password
+    from django.utils import timezone
 
     User.objects.create(
         id=PHYSICIAN_ID,
@@ -417,6 +424,32 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
             practitioner_id=PHYSICIAN_ID,
             start_local="2035-06-02T10:30",
             end_local="2035-06-02T11:00",
+        )
+
+    with _owner_tenant_scope(ORGANIZATION_ID, OWNER_ID):
+        now = timezone.now()
+        register_professional(
+            clinic_id=CLINIC_ID,
+            identity=ProfessionalIdentity(
+                user_id=PHYSICIAN_ID,
+                role="physician",
+                council="CRM",
+                number="SYNTHETIC-CRM-43",
+                jurisdiction="SP",
+                specialty="Synthetic",
+                status="regular",
+            ),
+            valid_from=now - timedelta(days=1),
+            valid_to=now + timedelta(days=1),
+        )
+        assign_care_team(
+            clinic_id=CLINIC_ID,
+            assignment=CareTeamAssignment(
+                user_id=PHYSICIAN_ID,
+                patient_enrollment_id=enrollment_id,
+                role="physician",
+            ),
+            valid_from=now - timedelta(days=1),
         )
 
     with _runtime_role(), tenant_context(PHYSICIAN_ID, ORGANIZATION_ID):
