@@ -8,6 +8,7 @@ import psycopg
 from django.utils.translation import gettext as _
 from playwright.sync_api import expect
 
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser._protected import decrypt
 from renewal.browser.engines import full_page_screenshot
 from renewal.browser.test_patient_workspace import _patient
@@ -45,11 +46,27 @@ def submit(page: Page, button: Locator, message: str) -> None:
     panel = page.locator("#results-workspace")
     before = panel.get_attribute("data-results-render")
     url = page.url
+    enhanced = page.evaluate(
+        """() => {
+          if (!window.htmx) return false;
+          window.__resultSubmissionSettled = new Promise(resolve => {
+            const done = event => {
+              if (event.target.id !== "results-workspace") return;
+              document.removeEventListener("htmx:afterSettle", done);
+              resolve(true);
+            };
+            document.addEventListener("htmx:afterSettle", done);
+          });
+          return true;
+        }"""
+    )
     with page.expect_response(
         lambda response: response.url == url and response.request.method == "POST"
     ) as posted:
         button.click()
     assert posted.value.status == 200
+    if enhanced:
+        evaluate_js(page, "() => window.__resultSubmissionSettled", timeout=5000)
     expect(panel).not_to_have_attribute("data-results-render", before or "")
     expect(page.get_by_role("status").filter(has_text=_(message))).to_be_visible()
 
