@@ -181,9 +181,11 @@ def test_results_errors_offline_keyboard_and_scope_refusal(
     availability_staff: dict[str, str],
 ) -> None:
     page, staff = renewal_page, availability_staff
-    data = seed_result_patient(staff, "2039-06-17")
+    data, url = (
+        seed_result_patient(staff, "2039-06-17"),
+        f"{renewal_base_url}/clinics/{staff['clinic_a']}/results/",
+    )
     _sign_in_physician(page, renewal_base_url, staff)
-    url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/results/"
     goto_settled(page, url)
     place(page, data)
     form = page.locator('section[aria-labelledby="sources-heading"] form').first
@@ -191,6 +193,7 @@ def test_results_errors_offline_keyboard_and_scope_refusal(
     summary.focus()
     summary.press("Space")
     expect(form.locator('[name="name"]')).to_be_visible()
+    expect(summary).to_be_focused()
     event = form.locator('[name="event_id"]').input_value()
     form.locator('[name="name"]').fill(data["source_name"])
     form.locator('[name="birth_date"]').fill(data["source_born"])
