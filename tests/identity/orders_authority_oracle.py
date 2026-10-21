@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from pytest_django.fixtures import SettingsWrapper
 
 from orders import (
+    test_current_uploader_authority,
     test_http,
     test_identity_matrix,
     test_order_states,
@@ -48,5 +49,21 @@ def run_orders_census(proofs: ExecutedProofs, graph: Callable[[], RbacGraph]) ->
                     role,
                 ),
             )
+        for loss in (
+            "role_revoked",
+            "moved_clinic",
+            "permission_narrowed",
+            "registration_revoked",
+        ):
+            for quarantined in (False, True):
+                proofs.run(
+                    f"orders current uploader authority:{loss}:{quarantined}",
+                    partial(
+                        test_current_uploader_authority.test_former_uploader_cannot_read_after_current_authority_loss,
+                        graph(),
+                        loss,
+                        quarantined=quarantined,
+                    ),
+                )
     finally:
         settings.finalize()

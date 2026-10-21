@@ -24,6 +24,25 @@ def render(sql: str) -> str:
     return sql.replace("__TENANT__", TENANT).replace("__ACTOR__", ACTOR)
 
 
+CURRENT_RESULT_READ_SQL = """
+CREATE OR REPLACE FUNCTION clinic_app.orders_can_read_version(version uuid)
+RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
+ SELECT EXISTS(SELECT 1 FROM clinic_app.orders_resultversion v
+ WHERE v.id=version AND v.organization_id=__TENANT__ AND (
+ clinic_app.has_permission('order.route',v.clinic_id,NULL)
+ OR (v.uploader_id=__ACTOR__ AND EXISTS(
+ SELECT 1 FROM clinic_app.orders_order o WHERE o.id=v.proposed_order_id
+ AND o.clinic_id=v.clinic_id AND o.organization_id=v.organization_id
+ AND clinic_app.has_permission('result.read',v.clinic_id,o.enrollment_id)))
+ OR EXISTS(SELECT 1 FROM clinic_app.orders_resultmatch m
+ JOIN clinic_app.orders_order o ON o.id=m.order_id
+ WHERE m.version_id=v.id AND clinic_app.has_permission(
+ 'result.read',v.clinic_id,o.enrollment_id))))
+$f$;
+"""
+
+
 FUNCTIONS = """
 SET LOCAL ROLE clinic_resolver;
 CREATE FUNCTION clinic_app.orders_lab_account(clinic uuid)
@@ -78,18 +97,9 @@ SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
  AND NOT EXISTS(SELECT 1 FROM clinic_app.orders_resultversion newer
  WHERE newer.result_id=v.result_id AND newer.number>v.number))
 $f$;
-CREATE FUNCTION clinic_app.orders_can_read_version(version uuid)
-RETURNS boolean LANGUAGE sql VOLATILE SECURITY DEFINER
-SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
- SELECT EXISTS(SELECT 1 FROM clinic_app.orders_resultversion v
- WHERE v.id=version AND v.organization_id=__TENANT__ AND (
- clinic_app.has_permission('order.route',v.clinic_id,NULL)
- OR v.uploader_id=__ACTOR__
- OR EXISTS(SELECT 1 FROM clinic_app.orders_resultmatch m
- JOIN clinic_app.orders_order o ON o.id=m.order_id
- WHERE m.version_id=v.id AND clinic_app.has_permission(
- 'result.read',v.clinic_id,o.enrollment_id))))
-$f$;
+"""
+FUNCTIONS += CURRENT_RESULT_READ_SQL
+FUNCTIONS += """
 CREATE FUNCTION clinic_app.orders_ingest_scope(
  clinic uuid, requested_order uuid, result uuid, predecessor uuid)
 RETURNS TABLE(organization_id uuid,lab_account_id uuid,number integer)

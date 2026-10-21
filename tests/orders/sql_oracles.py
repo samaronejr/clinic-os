@@ -4,6 +4,7 @@ from orders import (
     test_boundaries,
     test_callbacks,
     test_confidentiality,
+    test_current_uploader_authority,
     test_delegate_sources,
     test_http,
     test_identity_matrix,
@@ -31,6 +32,7 @@ CASES = {
         test_review.test_source_rows_refuse_raw_updates_and_deletes,
         test_posture.test_a_null_creator_cannot_forge_the_private_source_task_bridge,
         test_confidentiality.test_routing_upload_does_not_grant_structured_clinical_read,
+        test_current_uploader_authority.test_former_uploader_cannot_read_after_current_authority_loss,
     )
 }
 
@@ -44,6 +46,7 @@ SQL_PROTOCOL_ORACLES = {
         "test_nonclinical_actor_cannot_acknowledge_or_release",
         "test_lab_principal_cannot_select_sources_or_acknowledge",
         "test_routing_upload_does_not_grant_structured_clinical_read",
+        "test_former_uploader_cannot_read_after_current_authority_loss",
     ],
     "clinic_app.orders_correlated_order": [
         "test_signed_replay_creates_one_source_version_and_review_task",
