@@ -1,0 +1,55 @@
+{% load i18n tz ehr_ui %}
+<section id="patient-workspace" class="patient-workspace" data-workspace-render="{{ render_id }}" hx-boost="true" hx-target="#patient-workspace" hx-select="#patient-workspace" hx-swap="outerHTML" aria-labelledby="patient-workspace-title">
+  <header class="patient-workspace-header">
+    <div><h1 id="patient-workspace-title" tabindex="-1">{% trans "Patient workspace" %}</h1>
+    <p class="lede">{% trans "A longitudinal record with the origin and review of each item." %}</p></div>
+    <a class="button button--quiet" hx-boost="false" href="{% url 'intake:patient-list' clinic_id=clinic_id %}">{% trans "Back to patients" %}</a>
+  </header>
+  {% if enrollment %}
+  {% timezone clinic.timezone %}
+  <nav class="patient-workspace-tabs" aria-label="{% trans "Patient record sections" %}">
+    {% for item in tabs %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="action" value="tab">
+      <button class="button button--quiet" type="submit" name="tab" value="{{ item.key }}" data-workspace-key="{{ item.shortcut }}"{% if item.key == tab %} aria-current="page"{% endif %}{% if not item.available %} disabled aria-describedby="workspace-unavailable"{% endif %}>{{ item.label }} <span class="patient-workspace-key"><kbd>g</kbd> <kbd>{{ item.shortcut }}</kbd></span></button>
+    </form>{% endfor %}
+  </nav>
+  {% if can_narrative %}<p class="help-text" id="workspace-unavailable">{% trans "Disabled sections are unavailable in this release." %}</p>{% endif %}
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ error }}</div>{% endif %}
+  {% if outcome %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus data-workspace-outcome>{{ outcome }}</p>{% endif %}
+  {% if not can_narrative %}<p class="feedback feedback--info">{% trans "Your current access permits observation entry only." %}</p>{% elif not can_write %}<p class="feedback feedback--info">{% trans "Your current access allows reading this record, not editing it." %}</p>{% endif %}
+  {% if tab == "overview" %}
+    <section class="patient-workspace-section" aria-labelledby="record-overview">
+      <h2 id="record-overview">{% trans "Current record" %}</h2>
+      <p>{% trans "Reported, imported and AI-drafted information stays unconfirmed until a clinician explicitly reviews it." %}</p>
+      <p class="help-text">{% trans "The timeline refreshes after a change commits. Use the sections to review the saved source records." %}</p>
+    </section>
+    {% include "ehr/workspace/vitals.html" %}
+  {% elif tab == "vitals" %}
+    {% include "ehr/workspace/vitals.html" %}
+    {% if can_observe %}
+    <section class="patient-workspace-section" aria-labelledby="observation-form-title">
+      <h2 id="observation-form-title">{% trans "Record an observation" %}</h2>
+      <form method="post" novalidate data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+        <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="vitals">
+        {% if forms.observation.errors %}<div class="feedback feedback--error" role="alert" data-focus-error tabindex="-1" autofocus>{{ forms.observation.non_field_errors }}</div>{% endif %}
+        <div class="patient-workspace-fields">{% for field in forms.observation %}{% include "includes/field.html" with field=field %}{% endfor %}</div>
+        <div class="actions"><button class="button" name="action" value="observation" type="submit">{% trans "Save observation" %}</button><span class="htmx-indicator">{% trans "Saving…" %}</span></div>
+      </form>
+    </section>
+    {% endif %}
+  {% elif tab == "medications" %}
+    {% include "ehr/workspace/medications.html" %}
+  {% elif tab == "timeline" %}
+    {% include "ehr/workspace/timeline.html" %}
+  {% elif tab == "encounters" %}
+    {% include "ehr/workspace/notes.html" %}
+  {% elif tab == "documents" %}
+    {% include "ehr/workspace/documents.html" %}
+  {% elif tab == "forms" %}
+    {% include "ehr/workspace/forms.html" %}
+  {% endif %}
+  {% endtimezone %}
+  {% else %}
+    {% include "includes/components/state.html" with state="empty" title=_("Select a patient to open the record") message=_("Open the patient workspace from the patient registry or an encounter.") only %}
+  {% endif %}
+</section>

@@ -16,6 +16,7 @@ from django.urls import reverse
 from consent.test_purposes import register_physician
 from core.test_navigation import PATIENT, _client_for, _get, _post, _reauthenticate
 from core.test_workspace_boundaries import remove_permission
+from ehr.test_autosave import registration
 from identity.permission_support import owner_context
 from otp_test_support import runtime_role
 from patient_http_support import seed_patients
@@ -57,6 +58,13 @@ def _ehr_surface(
             if view == "ehr:encounter"
             else {"action": "open", "encounter_id": str(encounter.pk)}
         )
+        if view == "ehr:patient-workspace":
+            registration(graph, graph.physician, graph.clinic_a)
+            with owner_context(graph.organization_a):
+                enrollment = PatientClinicEnrollment.objects.get(
+                    clinic_id=graph.clinic_a, patient_id=encounter.patient_id
+                )
+            data = {"action": "open", "enrollment_id": str(enrollment.pk)}
     with physician_client(graph) as client:
         response = client.post(url, data, follow=True)
     return client, url, data, response

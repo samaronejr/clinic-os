@@ -3,7 +3,7 @@ from typing import Final
 import pytest
 from django.db import connection
 
-from infra import duplicate_catalog, identity_lifecycle_catalog
+from infra import duplicate_catalog, identity_lifecycle_catalog, longitudinal_catalog
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -15,6 +15,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("scheduling_queueentry", "SELECT"),
     ("scheduling_roomstatus", "SELECT"),
     ("identity_passkey", "SELECT"),
+    *longitudinal_catalog.TABLE_GRANTS,
     *identity_lifecycle_catalog.TABLE_GRANTS,
     ("identity_patientdelegategrant", "SELECT"),
     ("identity_patientdelegategrant", "INSERT"),
@@ -120,6 +121,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("identity_passkey", "last_used", "UPDATE"),
     ("identity_passkey", "removed_at", "UPDATE"),
     ("identity_passkey", "sign_count", "UPDATE"),
+    *longitudinal_catalog.COLUMN_GRANTS,
     *identity_lifecycle_catalog.COLUMN_GRANTS,
     ("identity_patientdelegategrant", "state", "UPDATE"),
     ("identity_patientdelegategrant", "revision", "UPDATE"),
@@ -161,6 +163,7 @@ POSTURE_OVERRIDES: Final = {
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_practitioners": ("s", True, ["clinic_app", "clinic_resolver"]),
+    **longitudinal_catalog.POSTURE,
     "delegate_now": ("s", False, ["clinic_resolver"]),
     "patient_identity": ("s", False, ["clinic_resolver"]),
     "delegate_staff": ("v", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
@@ -335,6 +338,7 @@ FUNCTION_SIGNATURES: Final = {
     ("reception_display", "token_digest text"),
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
     ("reception_practitioners", "requested_clinic uuid"),
+    *longitudinal_catalog.RESULTS,
     ("delegate_now", ""),
     ("patient_identity", "requested_session uuid"),
     ("delegate_staff", "requested_clinic uuid"),
@@ -563,6 +567,7 @@ FUNCTION_RESULTS: Final = {
         "TABLE(forms_pending bigint, consents_pending bigint, "
         "payment_pending boolean, identity_document_recorded boolean)"
     ),
+    **longitudinal_catalog.RESULTS,
     ("delegate_now", ""): "timestamp with time zone",
     (
         "patient_identity",

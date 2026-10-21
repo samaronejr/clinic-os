@@ -31,6 +31,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from auth.passkey_test_support import passkey_login, registered_passkey
+from ehr.test_sql_protocols import EHR_ACTOR_PROTOCOL_ORACLES
 from identity.lifecycle_test_support import session_key, verified_client
 from identity.permission_support import owner_context
 from identity.test_onboarding import _capture
@@ -233,6 +234,9 @@ SQL_PROTOCOL_ORACLES = (
         ),
     }
 )
+
+
+ACTOR_PROTOCOL_ORACLES.update(EHR_ACTOR_PROTOCOL_ORACLES)
 
 
 def assert_lifecycle_oracles(oracles: Iterable[Sequence[str]]) -> None:

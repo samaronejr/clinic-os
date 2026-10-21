@@ -135,6 +135,7 @@ def _context(
                 review = candidate
     context: dict[str, object] = {
         "clinic_id": clinic_id,
+        "enrollment_id": enrollment_id,
         "editor_session": uuid4(),
         "episodes": _episodes(clinic_id, encounter),
         "encounter": encounter,
@@ -175,6 +176,9 @@ def _conflict(
         "encounter_closed": "O atendimento está encerrado; novos documentos não "
         "podem ser criados.",
         "missing_required_content": "Preencha todos os campos SOAP antes de finalizar.",
+        "copied_blocks_unreviewed": _(
+            "Review every copied block at the current revision before finalizing."
+        ),
         "precondition_failed": "A versão não está no estado esperado para esta ação.",
     }
     context = _context(request, clinic_id, encounter)

@@ -566,6 +566,15 @@
     "returns": "boolean",
     "volatility": "i"
   },
+  "pg_catalog.int84ge(bigint, integer)": {
+    "extension": "",
+    "implementation": "int84ge",
+    "language": "internal",
+    "library": "",
+    "reason": "The generated nonnegative Passkey.sign_count CHECK compares a supplied bigint counter with integer zero; retain this exact native comparison as opaque risk.",
+    "returns": "boolean",
+    "volatility": "i"
+  },
   "pg_catalog.int8eq(bigint, bigint)": {
     "extension": "",
     "implementation": "int8eq",
@@ -645,6 +654,15 @@
     "library": "",
     "reason": "Template v2 field iteration reaches jsonfuncs.c elements_worker_jsonb, which validates an array and materializes supplied elements; retain this exact native implementation as opaque risk.",
     "returns": "jsonb",
+    "volatility": "i"
+  },
+  "pg_catalog.jsonb_array_length(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_array_length",
+    "language": "internal",
+    "library": "",
+    "reason": "identity_passkey_guard bounds the supplied transport array to eight entries during registration; retain this exact native JSON array-length implementation as opaque risk.",
+    "returns": "integer",
     "volatility": "i"
   },
   "pg_catalog.jsonb_array_length(jsonb)": {

@@ -22,8 +22,11 @@ requires a new bundle version and migration, not editing v1 SQL in place.
   consumers must filter the practitioner/slot. It is not `appointment.book`.
 - Read, billing-minimum read, route, request, propose and approve are distinct
   actions. Consumers must not treat one as another.
-- Restricted notes require author plus an explicit future note grant. No v1
-  staff bundle supplies `restricted.read`.
+- Restricted notes have a minimal EHR-scoped explicit grant (see
+  `apps/ehr/README.md`). Non-author readers need an active note grant in
+  addition to current clinical/care authority; grants never add draft access.
+  No v1 staff bundle supplies `restricted.read`. A general identity
+  positive-grant framework remains future work.
 - Patient/delegate, support and service-principal RP cells are **not staff
   bundles**. Their separate grant boundaries belong to todos 19, 65 and 7.
 - Break-glass permissions permit requesting a grant, never accessing a chart.

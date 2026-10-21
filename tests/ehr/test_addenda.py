@@ -828,4 +828,5 @@ def test_addendum_tables_have_exact_rls_grants_and_triggers() -> None:
                 (t, "ehr_addendum_immutable", "questionnaire_immutable")
                 for t in ADDENDUM_TABLES
             ),
+            ("ehr_encounteraddendum", "ehr_timeline_changed", "ehr_timeline_enqueue"),
         }

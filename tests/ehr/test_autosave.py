@@ -1419,4 +1419,5 @@ def test_new_tables_have_exact_rls_grants_and_triggers() -> None:
                 (table, "ehr_autosave_immutable", "questionnaire_immutable")
                 for table in NEW_TABLES
             ),
+            ("ehr_episodeencounter", "ehr_timeline_changed", "ehr_timeline_enqueue"),
         }

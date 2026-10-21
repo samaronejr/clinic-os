@@ -1,0 +1,32 @@
+{% load i18n ehr_ui %}
+<section class="patient-workspace-section" aria-labelledby="timeline-title">
+  <h2 id="timeline-title">{% trans "Timeline" %}</h2>
+  <p class="help-text">{% trans "Only records you may currently read appear here. Updates appear after the refresh completes." %}</p>
+  <form novalidate data-auth-form method="post" class="patient-workspace-filter">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="timeline">
+    <div class="field"><label for="timeline-kind">{% trans "Record type" %}</label><select id="timeline-kind" name="kind"><option value="">{% trans "All available types" %}</option>{% for kind in timeline_kinds %}<option value="{{ kind }}"{% if kind == filters.kind %} selected{% endif %}>{{ kind|record_kind }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="timeline-start">{% trans "From date" %}</label><input id="timeline-start" type="date" name="start" value="{{ filters.start|date:'Y-m-d' }}"></div>
+    <div class="field"><label for="timeline-end">{% trans "Through date" %}</label><input id="timeline-end" type="date" name="end" value="{{ filter_end }}"></div>
+    {% if episodes %}<div class="field"><label for="timeline-episode">{% trans "Episode" %}</label><select id="timeline-episode" name="episode_id"><option value="">{% trans "All episodes" %}</option>{% for episode in episodes %}<option value="{{ episode.pk }}"{% if episode.pk == filters.episode_id %} selected{% endif %}>{{ episode.title }}</option>{% endfor %}</select></div>{% endif %}
+    <button class="button button--secondary" type="submit" name="action" value="filter">{% trans "Filter timeline" %}</button>
+  </form>
+  <p role="status" data-timeline-count="{{ page.total }}">{% blocktrans with count=page.total %}Visible records: {{ count }}{% endblocktrans %}</p>
+  <ol class="patient-workspace-timeline">{% for entry in page.entries %}
+    <li><time>{{ entry.effective_at|date:"d/m/Y H:i" }}</time><h3>{{ entry.kind|record_kind }}</h3>{% include "includes/components/provenance.html" with kind=entry.provenance|provenance_style only %}
+      {% if entry.encounter_id %}<form hx-boost="false" novalidate data-auth-form method="post" action="{% url 'ehr:encounter' clinic_id %}">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}<input type="hidden" name="encounter_id" value="{{ entry.encounter_id }}"><button class="button button--quiet" type="submit" name="action" value="show">{% trans "Open encounter" %}</button></form>{% endif %}
+    </li>
+    {% empty %}<li class="table-empty">{% trans "No available records in this period." %}</li>{% endfor %}
+  </ol>
+  {% if filters.offset or page.has_more %}
+  <nav class="patient-workspace-filter" aria-label="{% trans "Timeline pages" %}">
+    {% if filters.offset %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="timeline"><input type="hidden" name="kind" value="{{ filters.kind }}"><input type="hidden" name="start" value="{{ filters.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ filter_end }}"><input type="hidden" name="episode_id" value="{{ filters.episode_id|default:'' }}"><input type="hidden" name="offset" value="{{ previous_offset }}">
+      <button class="button button--secondary" type="submit" name="action" value="filter">{% trans "Previous page" %}</button>
+    </form>{% endif %}
+    {% if page.has_more %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="timeline"><input type="hidden" name="kind" value="{{ filters.kind }}"><input type="hidden" name="start" value="{{ filters.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ filter_end }}"><input type="hidden" name="episode_id" value="{{ filters.episode_id|default:'' }}"><input type="hidden" name="offset" value="{{ next_offset }}">
+      <button class="button button--secondary" type="submit" name="action" value="filter">{% trans "Next page" %}</button>
+    </form>{% endif %}
+  </nav>
+  {% endif %}
+</section>

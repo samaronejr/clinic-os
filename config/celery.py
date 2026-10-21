@@ -68,6 +68,10 @@ app.conf.update(
     worker_log_format=_SAFE_WORKER_LOG_FORMAT,
     worker_task_log_format=_SAFE_WORKER_LOG_FORMAT,
     beat_schedule={
+        "ehr-timeline-projection": {
+            "task": "apps.ehr.tasks.refresh_timeline",
+            "schedule": 60.0,
+        },
         "workflow-due-scanner": {
             "task": "apps.workflows.tasks.scan_due",
             "schedule": 60.0,

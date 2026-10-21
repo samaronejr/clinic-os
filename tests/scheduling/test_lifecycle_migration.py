@@ -21,16 +21,24 @@ from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
 from psycopg import sql
 
+from database_urls import database_url_for_name
 from patient_service_support import runtime_role
+from patients.test_intake_migrations import _default_connection, _scratch_database
+from rbac_fixtures import rbac_graph as historical_graph
 from scheduling.appointment_service_support import (
     create_synthetic_appointment,
     seed_appointment_setup,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from django.db.backends.postgresql.base import DatabaseWrapper
+
     from rbac_fixtures import RbacGraph
 
 pytestmark = pytest.mark.django_db(transaction=True)
+__all__ = ("historical_graph",)
 
 V1 = ("scheduling", "0006_capacity_insert_authorization")
 V2 = ("scheduling", "0007_appointment_lifecycle_v2")
@@ -56,68 +64,98 @@ def _constraint(error: IntegrityError) -> str | None:
     return cause.diag.constraint_name
 
 
-def test_populated_upgrade_and_rollback_refusal(
-    rbac_graph: RbacGraph, superuser_database_url: str
-) -> None:
-    setup = seed_appointment_setup(rbac_graph)
-    with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
-        legacy = create_synthetic_appointment(setup)
-    with psycopg.connect(superuser_database_url, autocommit=True) as superuser:
+@pytest.fixture
+def historical_database(
+    superuser_database_url: str, request: pytest.FixtureRequest
+) -> Iterator[tuple[RbacGraph, DatabaseWrapper, str]]:
+    """Keep the default alias restored before the normal teardown hook begins."""
+    with _scratch_database(superuser_database_url) as wrapper:
+        with _default_connection(wrapper):
+            executor = MigrationExecutor(connection)
+            # Current seeding needs identity, duplicate and alias prerequisites.
+            # Later intake leaves depend on scheduling successors under test.
+            executor.migrate(
+                [
+                    V2,
+                    ("intake", "0017_patient_aliases"),
+                    *executor.loader.graph.leaf_nodes("identity"),
+                ]
+            )
+            graph = request.getfixturevalue("historical_graph")
+        yield (
+            graph,
+            wrapper,
+            database_url_for_name(
+                superuser_database_url, wrapper.settings_dict["NAME"]
+            ),
+        )
 
-        def snapshot() -> tuple[object, ...]:
-            row = superuser.execute(
-                "SELECT status, start_at, end_at, practitioner_id, patient_id "
-                "FROM clinic_app.scheduling_appointment WHERE id=%s",
+
+def test_populated_upgrade_and_rollback_refusal(
+    historical_database: tuple[RbacGraph, DatabaseWrapper, str],
+) -> None:
+    rbac_graph, wrapper, superuser_database_url = historical_database
+    with _default_connection(wrapper):
+        setup = seed_appointment_setup(rbac_graph)
+        with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
+            legacy = create_synthetic_appointment(setup)
+        with psycopg.connect(superuser_database_url, autocommit=True) as superuser:
+
+            def snapshot() -> tuple[object, ...]:
+                row = superuser.execute(
+                    "SELECT status, start_at, end_at, practitioner_id, patient_id "
+                    "FROM clinic_app.scheduling_appointment WHERE id=%s",
+                    [legacy.pk],
+                ).fetchone()
+                assert row is not None
+                return tuple(row)
+
+            before = snapshot()
+            # Empty-v2 reverse: only booked/cancelled rows exist, so 0007 unapplies.
+            MigrationExecutor(connection).migrate([V1])
+            assert _exclusion_predicates() == {"(((status)::text = 'scheduled'::text))"}
+            assert snapshot() == before
+            # Populated upgrade: the legacy booking survives with v2 defaults.
+            executor = MigrationExecutor(connection)
+            executor.migrate([V2])
+            historical_apps = executor.loader.project_state([V2]).apps
+            assert snapshot() == before
+            assert _exclusion_predicates() == {
+                f"(((status)::text = ANY ((ARRAY[{OCCUPYING}])::text[])))"
+            }
+            defaults = superuser.execute(
+                "SELECT revision, hold_expires_at, series_id, authorization_reference, "
+                "payer_membership_id FROM clinic_app.scheduling_appointment "
+                "WHERE id=%s",
                 [legacy.pk],
             ).fetchone()
-            assert row is not None
-            return tuple(row)
-
-        before = snapshot()
-        # Empty-v2 reverse: only booked/cancelled rows exist, so 0007 unapplies.
-        MigrationExecutor(connection).migrate([V1])
-        assert _exclusion_predicates() == {"(((status)::text = 'scheduled'::text))"}
-        assert snapshot() == before
-        # Populated upgrade: the legacy booking survives with v2 defaults.
-        executor = MigrationExecutor(connection)
-        executor.migrate([V2])
-        historical_apps = executor.loader.project_state([V2]).apps
-        assert snapshot() == before
-        assert _exclusion_predicates() == {
-            f"(((status)::text = ANY ((ARRAY[{OCCUPYING}])::text[])))"
-        }
-        defaults = superuser.execute(
-            "SELECT revision, hold_expires_at, series_id, authorization_reference, "
-            "payer_membership_id FROM clinic_app.scheduling_appointment WHERE id=%s",
-            [legacy.pk],
-        ).fetchone()
-        assert defaults == (1, None, None, "", None)
-        # Populate the historical table as the migration-test superuser. Runtime
-        # ACLs remain closed; the current service requires later reception tables.
-        appointment_model = historical_apps.get_model("scheduling", "Appointment")
-        superuser.execute(
-            "SELECT set_config('app.current_user_id', %s, false), "
-            "set_config('app.current_tenant', %s, false)",
-            [str(setup.actor_id), str(setup.organization_id)],
-        )
-        populated = superuser.execute(
-            sql.SQL(
-                "UPDATE clinic_app.{} SET status=%s, revision=%s "
-                "WHERE id=%s RETURNING status, revision"
-            ).format(sql.Identifier(appointment_model._meta.db_table)),
-            ["arrived", 2, legacy.pk],
-        ).fetchone()
-        assert populated == ("arrived", 2)
-    # Once a v2 state exists, the reverse refuses and nothing is rewritten.
-    with pytest.raises(IntegrityError) as refused:
-        MigrationExecutor(connection).migrate([V1])
-    assert _constraint(refused.value) == "scheduling_lifecycle_rollback"
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM django_migrations WHERE app='scheduling' "
-            "AND name='0007_appointment_lifecycle_v2'"
-        )
-        assert cursor.fetchone() == (1,)
+            assert defaults == (1, None, None, "", None)
+            # Populate the historical table as the migration-test superuser.
+            # The current service requires later reception tables; ACLs stay closed.
+            appointment_model = historical_apps.get_model("scheduling", "Appointment")
+            superuser.execute(
+                "SELECT set_config('app.current_user_id', %s, false), "
+                "set_config('app.current_tenant', %s, false)",
+                [str(setup.actor_id), str(setup.organization_id)],
+            )
+            populated = superuser.execute(
+                sql.SQL(
+                    "UPDATE clinic_app.{} SET status=%s, revision=%s "
+                    "WHERE id=%s RETURNING status, revision"
+                ).format(sql.Identifier(appointment_model._meta.db_table)),
+                ["arrived", 2, legacy.pk],
+            ).fetchone()
+            assert populated == ("arrived", 2)
+        # Once a v2 state exists, the reverse refuses and nothing is rewritten.
+        with pytest.raises(IntegrityError) as refused:
+            MigrationExecutor(connection).migrate([V1])
+        assert _constraint(refused.value) == "scheduling_lifecycle_rollback"
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM django_migrations WHERE app='scheduling' "
+                "AND name='0007_appointment_lifecycle_v2'"
+            )
+            assert cursor.fetchone() == (1,)
 
 
 def _hunks(source: str, derived: str) -> int:

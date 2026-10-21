@@ -5,9 +5,15 @@ from django.urls import path
 from apps.ehr.attachment_views import attachment_workspace
 from apps.ehr.history_views import history_workspace
 from apps.ehr.views import encounter_workspace
+from apps.ehr.workspace_views import patient_workspace
 
 app_name = "ehr"
 urlpatterns = [
+    path(
+        "ehr/clinics/<uuid:clinic_id>/patient-workspace/",
+        patient_workspace,
+        name="patient-workspace",
+    ),
     path(
         "ehr/clinics/<uuid:clinic_id>/attachments/",
         attachment_workspace,

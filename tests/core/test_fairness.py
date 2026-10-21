@@ -283,6 +283,10 @@ def test_beat_schedule_has_exact_durable_scanners() -> None:
             "task": "apps.scheduling.tasks.expire_holds",
             "schedule": 60.0,
         },
+        "ehr-timeline-projection": {
+            "task": "apps.ehr.tasks.refresh_timeline",
+            "schedule": 60.0,
+        },
     }
 
 

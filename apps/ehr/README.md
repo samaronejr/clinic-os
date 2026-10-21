@@ -154,3 +154,76 @@ Verification: `tests/renewal/test_encounters.py`, `tests/ehr/test_autosave.py`,
 `tests/ehr/test_refusal_matrix.py`,
 `tests/renewal/test_attachments.py` and renewal browser suites `encounter` and
 `attachments`. All fixtures and browser evidence are synthetic-only.
+
+## Longitudinal patient workspace (todo 28)
+
+The keyword-only public commands in `apps.ehr.longitudinal` take an explicit
+clinic and enrollment. Observation entry allows current clinical-write or RP
+observation scope; medication statements, reconciliation and confirmation
+require clinical-write scope. Nursing/allied observation scope never grants
+SOAP, medication reconciliation, manager or task-reassignment authority.
+
+Medication details and observation values/reference ranges are enveloped from
+creation. Local observation code-set version 1 binds each kind to one UCUM-like
+unit and either an exact decimal string or a closed coded answer. Commas and
+points are decimal separators, never mixed or inferred as thousands. BMI uses
+only weight and height entered together, owned Decimal precision and half-even
+rounding to 0.01. Encrypted fields are never SQL filters or sort keys.
+`ProvenanceTag` is shared; immutable `origin` survives explicit confirmation.
+Creation never confirms reported, observed, imported or AI-drafted information.
+Medication status remains active/stopped/unknown.
+
+### Projection and query-time authority
+
+Root authorized the EHR durable-queue fallback: the existing workflow worker
+re-enters its manager starter and requires reassignment, and no clinical
+machine principal exists. Workflow schemas and clinician bundles stay closed.
+Source triggers commit a scoped revision fence. A content-free on-commit wake
+and periodic Beat scan recover broker loss. The fixed resolver-owned refresh
+function locks a fence, upserts only source ids/kinds/timestamps/provenance,
+and acknowledges that revision atomically. It cannot choose another source
+scope or decrypt clinical text. Staff/patient/principal tenant contexts cannot
+become the worker.
+
+`timeline(*, clinic_id, enrollment_id, filters)` counts and pages only rows
+admitted by current source RLS, including professional, care and restricted
+scope. Filters are type, clinic-local date period and episode. Revocation never
+waits for refresh. Rollback leaves no intent; duplicate workers cannot lose a
+later revision.
+
+### Restricted notes and reviewed reuse
+
+`RestrictedNote` retains a document restriction across its versions.
+`NoteAccessGrant` is an audited, revocable extra read requirement for non-authors,
+not membership, professional eligibility, care scope or draft access. The
+current author controls grants while retaining ordinary clinical read and
+write scope. No role bundle supplies restricted read. Source version and
+projection RLS hide both content and counts. Revocation is terminal and retained.
+
+`reuse_prior_note` accepts `CopyNoteCommand` (section, reviewed revision, replay
+id). A currently readable finalized/superseded source must match the draft's
+patient and clinic. Copy uses the existing CAS/section-epoch writer, retains a
+source receipt and inserts the translated `Copiado de <data>` marker. A
+restricted source cannot enter an unrestricted draft. Every copied block needs
+explicit author review at the current draft revision before finalization,
+enforced in Python and SQL. Later edits invalidate review. Reuse never reviews
+itself or changes its source.
+
+### Surface, migration and verification
+
+The native-form/HTMX workspace follows IA, with vitals, source badges, a
+trend/table alternative, encounter/notes and contributions, and real existing
+attachment and questionnaire entrypoints. Navigation uses g then a section
+letter. Future results/care-plan/message captions are visibly disabled and
+their selectors are refused, not backed by fabricated data or no-op commands.
+Selectors remain POST-only; clinical values never enter browser storage.
+English msgids ship with compiled pt-BR. Rejected forms retain input, roll back
+read-audit effects and do not change patient selection.
+
+Migration 0014 is non-atomic and irreversible; rollback = restore. Its explicit
+bounded DDL transaction creates tables and installs their complete privilege/RLS
+contract before visibility. The seven relations are in the exact live
+posture/resolver/recovery census. Verification uses
+`tests/ehr/test_longitudinal.py`, its timeline/reuse/posture companions and the
+registered `patient-workspace` browser suite on all three engines. Root retains
+full canonical, push and landing authority.

@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW
 from auth.test_reset_delay import reset_db_clock
+from ehr.test_autosave import registration
 from identity import legacy_guard_inventory
 from identity import legacy_operational_boundaries as operational
 from identity import legacy_prescription_boundaries as prescriptions
@@ -194,6 +195,8 @@ def test_actual_legacy_boundaries(
     subject = world(rbac_graph, legacy_role)
     if family == "reception":
         subject = reception_world(subject)
+    if family == "workspace_admission":
+        registration(rbac_graph, rbac_graph.physician, rbac_graph.clinic_a)
     if family == "lifecycle":
         with override_settings(COMMS_SYNTHETIC_CHANNELS=("email",)):
             subject = lifecycle_world(

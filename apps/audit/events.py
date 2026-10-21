@@ -67,6 +67,36 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "scheduling.display.revoked": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.display", "revoked"
         ),
+        "ehr.observation.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.observation", "recorded"
+        ),
+        "ehr.observation.confirmed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.observation", "confirmed"
+        ),
+        "ehr.medication.recorded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.medication_statement", "recorded"
+        ),
+        "ehr.medication.reconciled": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.medication_statement", "reconciled"
+        ),
+        "ehr.note.restricted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.restricted_note", "restricted"
+        ),
+        "ehr.note.granted": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.note_access_grant", "granted"
+        ),
+        "ehr.note.revoked": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.note_access_grant", "revoked"
+        ),
+        "ehr.prior_note.copied": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.copied_note_block", "copied"
+        ),
+        "ehr.prior_note.reviewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.copied_note_block", "reviewed"
+        ),
+        "ehr.timeline.viewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ehr.timeline", "viewed"
+        ),
         "identity.delegate.requested": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.patient_delegate_grant", "requested"
         ),

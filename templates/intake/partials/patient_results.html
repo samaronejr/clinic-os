@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n ehr_ui %}
 <div id="patient-results" class="intake-results">
   {% if form.errors %}
     <div class="feedback feedback--error" id="intake-errors" role="alert" tabindex="-1" data-focus-error autofocus>
@@ -30,6 +30,13 @@
           <th scope="row" role="rowheader">{{ patient_name }}{% if item.unified_at %}<p class="hint">{% blocktrans with date=item.unified_at|date:"SHORT_DATE_FORMAT" %}Unified registration since {{ date }}{% endblocktrans %}</p>{% endif %}</th>
           <td role="cell" data-label="{% trans "Birth date" %}">{{ item.birth_date|date:"SHORT_DATE_FORMAT" }}</td>
           <td role="cell" class="intake-book">
+            {% patient_workspace_allowed clinic_id item.enrollment_id as clinical_workspace %}
+            {% if clinical_workspace %}
+            <form method="post" action="{% url 'ehr:patient-workspace' clinic_id %}">
+              {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ item.enrollment_id }}">
+              <button class="button button--secondary" type="submit" name="action" value="open">{% trans "Open clinical record" %}<span class="visually-hidden"> {% blocktrans with name=patient_name %}for {{ name }}{% endblocktrans %}</span></button>
+            </form>
+            {% endif %}
             <form method="post" action="{{ book_url }}">
               {% csrf_token %}
               <input type="hidden" name="mode" value="prepare">

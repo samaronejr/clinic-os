@@ -79,6 +79,7 @@ JUSTIFIED = {
     "clinic_app.audit_append_unchecked_v2(text,text,inet,text,text,"
     "timestamp with time zone,jsonb,bytea)": _ATTRIBUTION,
     "clinic_app.billing_revision_snapshot()": _ATTRIBUTION,
+    "clinic_app.ehr_note_revocation_audit()": _ATTRIBUTION,
     "clinic_app.questionnaire_receipt()": _ATTRIBUTION,
     # Consent and teleconsult now call this patient-only boundary instead of
     # reading the actor setting themselves.

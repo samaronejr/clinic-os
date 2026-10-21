@@ -4429,6 +4429,99 @@ msgstr "Fechar aviso"
 msgid "Agenda filters"
 msgstr "Filtros da agenda"
 
+msgid "Reported by patient"
+msgstr "Relatado pelo paciente"
+
+msgid "Clinician confirmed"
+msgstr "Confirmado pelo médico"
+
+msgid "Enter a decimal number without thousands separators."
+msgstr "Informe um número decimal sem separadores de milhar."
+
+msgid "Choose a valid unit for this observation."
+msgstr "Escolha uma unidade válida para esta observação."
+
+msgid "Enter a valid value for this observation."
+msgstr "Informe um valor válido para esta observação."
+
+msgid "Systolic blood pressure"
+msgstr "Pressão arterial sistólica"
+
+msgid "Diastolic blood pressure"
+msgstr "Pressão arterial diastólica"
+
+msgid "Heart rate"
+msgstr "Frequência cardíaca"
+
+msgid "Respiratory rate"
+msgstr "Frequência respiratória"
+
+msgid "Temperature"
+msgstr "Temperatura"
+
+msgid "Oxygen saturation"
+msgstr "Saturação de oxigênio"
+
+msgid "Weight"
+msgstr "Peso"
+
+msgid "Height"
+msgstr "Altura"
+
+msgid "Body mass index"
+msgstr "Índice de massa corporal"
+
+msgid "Pain reported"
+msgstr "Dor relatada"
+
+msgid "Stopped"
+msgstr "Interrompido"
+
+msgid "Unknown"
+msgstr "Desconhecido"
+
+msgid "Check the observation, origin and measurement time."
+msgstr "Revise a observação, a origem e o horário da medição."
+
+msgid "Record weight and height together to calculate BMI."
+msgstr "Registre peso e altura juntos para calcular o IMC."
+
+msgid "Check the medication, dose, route, frequency and origin."
+msgstr "Revise o medicamento, a dose, a via, a frequência e a origem."
+
+msgid "Copied from %(date)s"
+msgstr "Copiado de %(date)s"
+
+msgid "Review every copied block at the current revision before finalizing."
+msgstr "Revise todos os blocos copiados na revisão atual antes de finalizar."
+
+msgid "Choose a valid timeline period and type."
+msgstr "Escolha um período e um tipo válidos para a linha do tempo."
+
+msgid "Oral"
+msgstr "Oral"
+
+msgid "Inhaled"
+msgstr "Inalatória"
+
+msgid "Topical"
+msgstr "Tópica"
+
+msgid "Subcutaneous"
+msgstr "Subcutânea"
+
+msgid "Intramuscular"
+msgstr "Intramuscular"
+
+msgid "Intravenous"
+msgstr "Intravenosa"
+
+msgid "Observation"
+msgstr "Observação"
+
+msgid "Value"
+msgstr "Valor"
+
 msgid "Unit"
 msgstr "Unidade"
 
@@ -5048,3 +5141,314 @@ msgstr "Atualizando a recepção..."
 
 msgid "Connection unavailable. No update has been confirmed. Refresh when you reconnect."
 msgstr "Conexão indisponível. Nenhuma atualização foi confirmada. Atualize a página quando a conexão voltar."
+msgid "Origin"
+msgstr "Origem"
+
+msgid "Reference minimum"
+msgstr "Mínimo de referência"
+
+msgid "Reference maximum"
+msgstr "Máximo de referência"
+
+msgid "Systolic blood pressure (mmHg)"
+msgstr "Pressão arterial sistólica (mmHg)"
+
+msgid "Diastolic blood pressure (mmHg)"
+msgstr "Pressão arterial diastólica (mmHg)"
+
+msgid "Heart rate (/min)"
+msgstr "Frequência cardíaca (/min)"
+
+msgid "Respiratory rate (/min)"
+msgstr "Frequência respiratória (/min)"
+
+msgid "Temperature (Cel)"
+msgstr "Temperatura (°C)"
+
+msgid "Oxygen saturation (%)"
+msgstr "Saturação de oxigênio (%)"
+
+msgid "Weight (kg)"
+msgstr "Peso (kg)"
+
+msgid "Height (cm)"
+msgstr "Altura (cm)"
+
+msgid "Medication"
+msgstr "Medicamento"
+
+msgid "Dose"
+msgstr "Dose"
+
+msgid "Dose unit"
+msgstr "Unidade da dose"
+
+msgid "Route"
+msgstr "Via"
+
+msgid "Times per day"
+msgstr "Vezes ao dia"
+
+msgid "Confirm that you reviewed the selected medication."
+msgstr "Confirme que revisou o medicamento selecionado."
+
+msgid "Confirm that you reviewed this observation."
+msgstr "Confirme que revisou esta observação."
+
+msgid "Confirm that you reviewed the copied block."
+msgstr "Confirme que revisou o bloco copiado."
+
+msgid "Saved to the clinical record. The origin is preserved."
+msgstr "Salvo no prontuário. A origem foi preservada."
+
+msgid "Vitals and observations"
+msgstr "Sinais vitais e observações"
+
+msgid "Medications"
+msgstr "Medicamentos"
+
+msgid "Notes and documents"
+msgstr "Notas e documentos"
+
+msgid "Restrict the destination note before copying a restricted source."
+msgstr "Restrinja a nota de destino antes de copiar uma fonte restrita."
+
+msgid "The record changed. Reload and review before saving."
+msgstr "O registro mudou. Recarregue e revise antes de salvar."
+
+msgid "Clinical note"
+msgstr "Nota clínica"
+
+msgid "Addendum"
+msgstr "Complemento"
+
+msgid "Clinical record"
+msgstr "Prontuário"
+
+msgid "Yes"
+msgstr "Sim"
+
+msgid "No"
+msgstr "Não"
+
+msgid "Patient workspace · Clinic OS"
+msgstr "Prontuário do paciente · Clinic OS"
+
+msgid "Patient workspace"
+msgstr "Prontuário do paciente"
+
+msgid "A longitudinal record with the origin and review of each item."
+msgstr "Um prontuário longitudinal com a origem e a revisão de cada registro."
+
+msgid "Back to patients"
+msgstr "Voltar aos pacientes"
+
+msgid "Offline. Nothing is saved without a server confirmation. Keep this page open and try again when connected."
+msgstr "Sem conexão. Nada é salvo sem a confirmação do servidor. Mantenha esta página aberta e tente novamente quando a conexão voltar."
+
+msgid "Current record"
+msgstr "Registro atual"
+
+msgid "Reported, imported and AI-drafted information stays unconfirmed until a clinician explicitly reviews it."
+msgstr "Informações relatadas, importadas ou redigidas por IA permanecem sem confirmação até a revisão explícita do médico."
+
+msgid "The timeline refreshes after a change commits. Use the sections to review the saved source records."
+msgstr "A linha do tempo é atualizada depois que a alteração é salva. Use as seções para revisar os registros originais."
+
+msgid "Record an observation"
+msgstr "Registrar uma observação"
+
+msgid "Save observation"
+msgstr "Salvar observação"
+
+msgid "Select a patient to open the record"
+msgstr "Selecione um paciente para abrir o prontuário"
+
+msgid "Open the patient workspace from the patient registry or an encounter."
+msgstr "Abra o prontuário pelo cadastro de pacientes ou por um atendimento."
+
+msgid "Trend"
+msgstr "Evolução"
+
+msgid "Show trend"
+msgstr "Ver evolução"
+
+msgid "Recorded measurements in clinic time. The table contains the same values as the chart."
+msgstr "Medições registradas no horário da clínica. A tabela contém os mesmos valores do gráfico."
+
+msgid "Recorded observations"
+msgstr "Observações registradas"
+
+msgid "Measurement"
+msgstr "Medição"
+
+msgid "Origin and review"
+msgstr "Origem e revisão"
+
+msgid "Reference range"
+msgstr "Faixa de referência"
+
+msgid "I reviewed this observation"
+msgstr "Revisei esta observação"
+
+msgid "Confirm observation"
+msgstr "Confirmar observação"
+
+msgid "No observations recorded. Add measurements below; absence is not a normal finding."
+msgstr "Nenhuma observação registrada. Adicione medições abaixo; a ausência de registros não indica um resultado normal."
+
+msgid "Record vitals"
+msgstr "Registrar sinais vitais"
+
+msgid "Use a decimal comma or point. Enter only measured values. BMI is calculated from weight and height recorded together."
+msgstr "Use vírgula ou ponto decimal. Informe somente valores medidos. O IMC é calculado com peso e altura registrados juntos."
+
+msgid "Save vitals"
+msgstr "Salvar sinais vitais"
+
+msgid "Medication statements"
+msgstr "Medicamentos relatados"
+
+msgid "Reported use is not a prescription. Confirmation requires an explicit reconciliation."
+msgstr "O uso relatado não é uma prescrição. A confirmação exige conciliação explícita."
+
+msgid "times per day"
+msgstr "vezes ao dia"
+
+msgid "Reconciled"
+msgstr "Conciliado"
+
+msgid "Reviewed status"
+msgstr "Estado revisado"
+
+msgid "I reviewed this medication"
+msgstr "Revisei este medicamento"
+
+msgid "Reconcile medication"
+msgstr "Conciliar medicamento"
+
+msgid "No medication statements recorded. This does not mean the patient takes no medication."
+msgstr "Nenhum medicamento relatado registrado. Isso não significa que o paciente não use medicamentos."
+
+msgid "Record reported medication"
+msgstr "Registrar medicamento relatado"
+
+msgid "Save medication statement"
+msgstr "Salvar medicamento relatado"
+
+msgid "Only records you may currently read appear here. Updates appear after the refresh completes."
+msgstr "Aqui aparecem apenas os registros que você pode ler agora. As alterações aparecem após a atualização."
+
+msgid "Record type"
+msgstr "Tipo de registro"
+
+msgid "All available types"
+msgstr "Todos os tipos disponíveis"
+
+msgid "From date"
+msgstr "Data inicial"
+
+msgid "Through date"
+msgstr "Data final"
+
+msgid "All episodes"
+msgstr "Todos os episódios"
+
+msgid "Filter timeline"
+msgstr "Filtrar linha do tempo"
+
+msgid "Visible records: %(count)s"
+msgstr "Registros visíveis: %(count)s"
+
+msgid "Open encounter"
+msgstr "Abrir atendimento"
+
+msgid "No available records in this period."
+msgstr "Nenhum registro disponível neste período."
+
+msgid "More records are available. Narrow the period or type to find earlier items."
+msgstr "Há mais registros disponíveis. Refine o período ou o tipo para encontrar os anteriores."
+
+msgid "Restricted note"
+msgstr "Nota restrita"
+
+msgid "Restrict note access"
+msgstr "Restringir acesso à nota"
+
+msgid "Section to copy into the current draft"
+msgstr "Seção para copiar no rascunho atual"
+
+msgid "Copy marked block"
+msgstr "Copiar bloco identificado"
+
+msgid "I reviewed the copied block in the current draft"
+msgstr "Revisei o bloco copiado no rascunho atual"
+
+msgid "Mark block reviewed"
+msgstr "Marcar bloco como revisado"
+
+msgid "Reviewed at this revision"
+msgstr "Revisado nesta revisão"
+
+msgid "No notes available to your current access."
+msgstr "Nenhuma nota disponível para o seu acesso atual."
+
+msgid "Clinical contributions"
+msgstr "Contribuições clínicas"
+
+msgid "A contribution is a separate draft. It never changes another clinician's note."
+msgstr "Uma contribuição é um rascunho separado. Ela nunca altera a nota de outro médico."
+
+msgid "Open contribution"
+msgstr "Abrir contribuição"
+
+msgid "Your contribution draft"
+msgstr "Seu rascunho de contribuição"
+
+msgid "Save contribution draft"
+msgstr "Salvar rascunho de contribuição"
+
+msgid "Open clinical record"
+msgstr "Abrir prontuário"
+
+msgid "Open longitudinal record"
+msgstr "Abrir prontuário longitudinal"
+
+msgid "Your current access permits observation entry only."
+msgstr "Seu acesso atual permite apenas registrar observações."
+
+msgid "Your current access allows reading this record, not editing it."
+msgstr "Seu acesso atual permite ler este prontuário, mas não editá-lo."
+
+msgid "Plans"
+msgstr "Planos de cuidado"
+
+msgid "Forms"
+msgstr "Formulários"
+
+msgid "Disabled sections are unavailable in this release."
+msgstr "As seções desabilitadas não estão disponíveis nesta versão."
+
+msgid "Clinical notes"
+msgstr "Notas clínicas"
+
+msgid "Documents are grouped by encounter. Open an encounter to review its attachments."
+msgstr "Os documentos estão agrupados por atendimento. Abra um atendimento para revisar seus anexos."
+
+msgid "Review encounter documents"
+msgstr "Revisar documentos do atendimento"
+
+msgid "No encounters available for document review."
+msgstr "Nenhum atendimento disponível para revisar documentos."
+
+msgid "Review this patient's questionnaire status and submitted responses in the existing forms workspace."
+msgstr "Revise a situação dos questionários e as respostas enviadas deste paciente na área de formulários."
+
+msgid "Open patient questionnaires"
+msgstr "Abrir questionários do paciente"
+
+msgid "No encounters available to your current access."
+msgstr "Nenhum atendimento disponível para o seu acesso atual."
+
+msgid "Timeline pages"
+msgstr "Páginas da linha do tempo"

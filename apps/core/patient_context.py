@@ -50,6 +50,7 @@ DEMOGRAPHICS_READ: Final = "demographics.read"
 PATIENT_BOUND_VIEWS: Final = frozenset(
     {
         "ehr:encounter",
+        "ehr:patient-workspace",
         "ehr:history",
         "ehr:attachments",
         "intake:patient-contacts",

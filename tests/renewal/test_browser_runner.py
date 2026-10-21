@@ -68,6 +68,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "video-recovery",
         "locale",
         "patient-access",
+        "patient-workspace",
         "patient-video",
         "questionnaires",
         "retention",

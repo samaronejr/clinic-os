@@ -1,0 +1,32 @@
+{% load i18n ehr_ui %}
+<section class="patient-workspace-section" aria-labelledby="medications-title">
+  <h2 id="medications-title">{% trans "Medication statements" %}</h2>
+  <p class="help-text">{% trans "Reported use is not a prescription. Confirmation requires an explicit reconciliation." %}</p>
+  {% for item in medications %}
+  <article class="patient-workspace-row">
+    <h3>{{ item.details.text }}</h3>
+    <p>{{ item.details.dose.value|clinical_decimal }} {{ item.details.dose.unit }} · {{ item.details.route|route_label }} · {{ item.details.frequency.times_per_day|clinical_decimal }} {% trans "times per day" %}</p>
+    <p><span class="badge">{{ item.get_status_display }}</span> {% include "includes/components/provenance.html" with kind=item.provenance|provenance_style only %}</p>
+    <p class="help-text">{% trans "Origin" %}: {{ item.get_origin_display }} · {{ item.effective_at|date:"d/m/Y H:i" }}{% if item.reconciled_at %} · {% trans "Reconciled" %}: {{ item.reconciled_at|date:"d/m/Y H:i" }}{% endif %}</p>
+    {% if can_write %}
+    <form novalidate data-auth-form method="post" class="patient-workspace-filter">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="medications">
+      <input type="hidden" name="statement_id" value="{{ item.pk }}"><input type="hidden" name="revision" value="{{ item.revision }}">
+      <div class="field"><label for="medication-status-{{ forloop.counter }}">{% trans "Reviewed status" %}</label><select id="medication-status-{{ forloop.counter }}" name="status"><option value="active"{% if item.status == "active" %} selected{% endif %}>{% trans "Active" %}</option><option value="stopped"{% if item.status == "stopped" %} selected{% endif %}>{% trans "Stopped" %}</option><option value="unknown"{% if item.status == "unknown" %} selected{% endif %}>{% trans "Unknown" %}</option></select></div>
+      <label class="patient-workspace-check"><input type="checkbox" name="reviewed" value="yes" required>{% trans "I reviewed this medication" %}</label>
+      <button class="button button--secondary" type="submit" name="action" value="reconcile">{% trans "Reconcile medication" %}</button>
+    </form>{% endif %}
+  </article>
+  {% empty %}<p class="table-empty">{% trans "No medication statements recorded. This does not mean the patient takes no medication." %}</p>{% endfor %}
+</section>
+{% if can_write %}
+<section class="patient-workspace-section" aria-labelledby="medication-form-title">
+  <h2 id="medication-form-title">{% trans "Record reported medication" %}</h2>
+  <form method="post" novalidate data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="medications">
+    {% if forms.medication.errors %}<div class="feedback feedback--error" role="alert" data-focus-error tabindex="-1" autofocus>{{ forms.medication.non_field_errors }}</div>{% endif %}
+    <div class="patient-workspace-fields">{% for field in forms.medication %}{% include "includes/field.html" with field=field %}{% endfor %}</div>
+    <button class="button" type="submit" name="action" value="medication">{% trans "Save medication statement" %}</button>
+  </form>
+</section>
+{% endif %}

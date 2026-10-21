@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from apps.audit.services import record_phase1_event
 from apps.ehr.models import ClinicalDocumentVersion, Encounter
+from apps.ehr.prior_notes import require_copy_review
 from apps.ehr.services import (
     SOAP_FIELDS,
     ClinicalAccessDeniedError,
@@ -136,6 +137,7 @@ def finalize_version(
         if version.revision != expected_revision:
             msg = "stale_revision"
             raise ClinicalConflictError(msg)
+        require_copy_review(version)
         if any(not getattr(version, field).strip() for field in SOAP_FIELDS):
             msg = "missing_required_content"
             raise ClinicalConflictError(msg)

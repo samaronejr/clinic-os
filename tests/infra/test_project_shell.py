@@ -87,6 +87,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     # When: the delivered task modules are imported and tasks are inspected
     # Registration is deferred until each shared task module is imported.
     import apps.comms.tasks  # noqa: PLC0415
+    import apps.ehr.tasks  # noqa: PLC0415
     import apps.scheduling.tasks  # noqa: PLC0415
     import apps.workflows.tasks  # noqa: F401, PLC0415
 
@@ -94,9 +95,10 @@ def test_celery_app_registers_only_the_integration_task() -> None:
         name for name in celery_app.tasks if not name.startswith("celery.")
     ]
 
-    # Then: only the delivered comms, workflow and hold-expiry tasks exist
+    # Then: only the delivered comms, workflow, hold-expiry and EHR tasks exist
     # beyond built-ins (registration order is not part of the contract)
     assert sorted(project_tasks) == [
+        "apps.ehr.tasks.refresh_timeline",
         "apps.scheduling.tasks.expire_holds",
         "apps.workflows.tasks.escalate",
         "apps.workflows.tasks.execute_step",

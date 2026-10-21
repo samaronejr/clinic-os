@@ -5,12 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apps.core import patient_context, workspace_access
+from apps.ehr import tasks, workspace_views
+from apps.ehr.longitudinal_access import patient_scope
 from apps.identity.models import UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
+from apps.intake.models import PatientClinicEnrollment
 from apps.realtime import authorization, scopes
 from django.urls import resolve, reverse
 
-from identity.legacy_parity_support import Boundary
+from identity.legacy_parity_support import PHYSICIAN, Boundary, http_allowed
 
 if TYPE_CHECKING:
     from identity.legacy_parity_support import LegacyWorld
@@ -41,6 +44,32 @@ def _workspace(w: LegacyWorld, valid: bool) -> object:
 
 
 BOUNDARIES = (
+    Boundary(
+        "apps.ehr.longitudinal_access.patient_scope",
+        "workspace_admission",
+        PHYSICIAN,
+        lambda w, ok: patient_scope(
+            clinic_id=w.clinic_for(ok),
+            enrollment_id=PatientClinicEnrollment.objects.get(
+                clinic_id=w.clinic, patient_id=w.appointment.patient_id
+            ).pk,
+            action="read",
+        ),
+    ),
+    Boundary(
+        "apps.ehr.workspace_views._workspace",
+        "workspace_admission",
+        ("physician", "nurse", "allied_professional"),
+        lambda w, ok: workspace_views._workspace(w.request, w.clinic_for(ok)),
+        http_allowed,
+    ),
+    Boundary(
+        "apps.ehr.tasks.refresh_timeline",
+        "workspace_admission",
+        (),
+        lambda _w, _ok: tasks.refresh_timeline(),
+        bool,
+    ),
     Boundary(
         "apps.core.patient_context.patient_context_allowed",
         "workspace_admission",

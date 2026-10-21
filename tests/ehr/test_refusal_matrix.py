@@ -42,7 +42,7 @@ from apps.core.api.views import (
 )
 from apps.core.integration import register_send_adapter
 from apps.core.navigation import PATIENT_ACTIONS
-from apps.ehr import attachment_views, history_views, views
+from apps.ehr import attachment_views, history_views, views, workspace_views
 from apps.ehr.addenda import open_addendum
 from apps.ehr.finalization import finalize_version
 from apps.ehr.history import HistoryChange, save_history
@@ -53,6 +53,7 @@ from apps.ehr.models import (
     SpecialtyTemplate,
 )
 from apps.ehr.services import create_draft
+from apps.ehr.workspace_actions import POST_ACTIONS as WORKSPACE_ACTIONS
 from apps.identity.clinic_settings_views import clinic_settings
 from apps.identity.stepup import STEP_UP_SESSION_KEY
 from apps.intake.duplicate_views import patient_timeline
@@ -109,6 +110,7 @@ TELECONSULT_DENIAL = "teleconsult.access.denied"
 ENCOUNTER = "ehr:encounter"
 HISTORY = "ehr:history"
 ATTACHMENTS = "ehr:attachments"
+WORKSPACE = "ehr:patient-workspace"
 # The teleconsult notes panel saves EHR notes in htmx mode.
 TELECONSULT = "teleconsult:staff"
 AUTOSAVE = "ui_api:ehr-autosave"
@@ -119,6 +121,7 @@ ROUTE_VIEWS: dict[str, object] = {
     ENCOUNTER: views.encounter_workspace,
     HISTORY: history_views.history_workspace,
     ATTACHMENTS: attachment_views.attachment_workspace,
+    WORKSPACE: workspace_views.patient_workspace,
     TELECONSULT: staff_teleconsult,
     AUTOSAVE: DraftAutosaveView,
     ADDENDUM_OPEN: AddendumOpenView,
@@ -142,15 +145,17 @@ FORM_ACTIONS: dict[str, frozenset[str]] = {
     ENCOUNTER: views.POST_ACTIONS,
     HISTORY: history_views.POST_ACTIONS,
     ATTACHMENTS: attachment_views.POST_ACTIONS,
+    WORKSPACE: WORKSPACE_ACTIONS,
     TELECONSULT: NOTE_ACTIONS,
 }
-TABLED = (ENCOUNTER, HISTORY, ATTACHMENTS)
+TABLED = (ENCOUNTER, HISTORY, ATTACHMENTS, WORKSPACE)
 # The templates each form route renders; every response below is checked
 # against their include/extends closure, so an unlisted page fails.
 ROUTE_TEMPLATES: dict[str, tuple[str, ...]] = {
     ENCOUNTER: ("ehr/encounter.html",),
     HISTORY: ("ehr/history.html",),
     ATTACHMENTS: ("ehr/attachments.html",),
+    WORKSPACE: ("ehr/patient_workspace.html", "ehr/workspace/body.html"),
     TELECONSULT: (
         "teleconsult/staff.html",
         "teleconsult/clinician.html",
@@ -159,6 +164,21 @@ ROUTE_TEMPLATES: dict[str, tuple[str, ...]] = {
     ),
 }
 SHARED_TEMPLATES = ("403.html",)
+# BoundField rendering uses Django's separate form-renderer engine, not the
+# project's include graph. Keep its finite workspace vocabulary explicit too.
+WORKSPACE_FORM_TEMPLATES = frozenset(
+    {
+        "django/forms/attrs.html",
+        "django/forms/label.html",
+        "django/forms/widgets/attrs.html",
+        "django/forms/widgets/input.html",
+        "django/forms/widgets/select.html",
+        "django/forms/widgets/select_option.html",
+        "django/forms/widgets/text.html",
+        "django/forms/errors/list/default.html",
+        "django/forms/errors/list/ul.html",
+    }
+)
 # Context variables forms post to, resolved through the functions that build them.
 URL_VARIABLES: dict[str, Callable[[UUID], str]] = {
     "staff_url": staff_url,
@@ -213,6 +233,10 @@ PERMITTED = frozenset(
         ("reader", ENCOUNTER, "open_unscheduled"),
         ("reader", HISTORY, "open"),
         ("reader", ATTACHMENTS, "open"),
+        ("reader", WORKSPACE, "open"),
+        ("reader", WORKSPACE, "tab"),
+        ("reader", WORKSPACE, "filter"),
+        ("reader", WORKSPACE, "open_addendum"),
         ("reader", ADDENDUM_OPEN, ""),
         ("staff", ENCOUNTER, "current"),
     }
@@ -673,7 +697,13 @@ def send(
         )
     path = route_path(case.route, clinic)
     reason = "walk_in" if case.action == "open_unscheduled" else "Sintetico motivo"
-    body = {**built.form, "reason": reason, "action": case.action, **case.overrides}
+    form = dict(built.form)
+    if case.route == WORKSPACE:
+        # These generic history selectors are not workspace timeline filters.
+        # Explicit case overrides still reach the route unchanged.
+        form.pop("kind")
+        form.pop("episode_id")
+    body = {**form, "reason": reason, "action": case.action, **case.overrides}
     headers = {"HX-Request": "true"} if case.mode == "htmx" else {}
     return client.post(path, body, headers=headers)
 
@@ -731,6 +761,7 @@ def test_every_refused_ehr_write_leaves_no_committed_row(
     pages = {
         route: closure(ROUTE_TEMPLATES.get(route, ())) | shared for route in ROUTE_VIEWS
     }
+    pages[WORKSPACE] |= WORKSPACE_FORM_TEMPLATES
     failures: list[str] = []
     refused = 0
     for actor in ("reader", "staff", "assignee", STALE):

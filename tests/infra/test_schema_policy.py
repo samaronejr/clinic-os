@@ -102,6 +102,14 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ehr_draftsavereceipt",
         "ehr_encounteraddendum",
         "ehr_addendumsavereceipt",
+        # Longitudinal clinical/restricted/projection posture: tests/ehr.
+        "ehr_medicationstatement",
+        "ehr_observation",
+        "ehr_restrictednote",
+        "ehr_noteaccessgrant",
+        "ehr_copiednoteblock",
+        "ehr_timelinerefresh",
+        "ehr_timelineprojection",
         # Task-32 author-only drafts and snapshots: test_prescription_drafts.
         "prescription_prescriptiondraft",
         "prescription_prescriptionitem",

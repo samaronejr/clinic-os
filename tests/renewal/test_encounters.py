@@ -653,6 +653,7 @@ def test_exact_rls_acl_and_immutable_template(rbac_graph: RbacGraph) -> None:
         } | {
             ("ehr_encounter", "clinical_lock"),
             ("ehr_clinicaldocumentversion", "clinical_update"),
+            ("ehr_clinicaldocumentversion", "restricted_note_visibility"),
         }
         cursor.execute(
             "SELECT table_name,privilege_type "

@@ -1,5 +1,23 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
+from ehr.test_note_grant_lifecycle import (
+    test_grant_and_recipient_loss_hold_the_same_transaction_fence,
+    test_ineligible_recipient_cannot_receive_note_grant,
+    test_recipient_loss_rollback_preserves_the_existing_grant,
+    test_recipient_loss_terminally_revokes_existing_note_grant,
+)
+from ehr.test_prior_notes import test_copy_requires_review_at_the_current_revision
+from ehr.test_sql_protocols import (
+    test_longitudinal_functions_keep_exact_execute_privileges,
+    test_longitudinal_sql_uses_current_role_and_actor,
+    test_note_sql_rechecks_grants_scope_and_active_actor,
+    test_projection_worker_refuses_every_ambient_authority,
+)
+from ehr.test_timeline import (
+    test_concurrent_edits_and_duplicate_workers_preserve_every_source,
+    test_projection_is_after_commit_and_replay_safe,
+    test_restricted_note_does_not_leak_a_timeline_count,
+)
 from identity.test_permission_parity import (
     test_sql_guards_allow_and_deny_all_staff_roles,
 )
@@ -85,9 +103,78 @@ DELEGATE_PROTOCOLS = frozenset(
         "clinic_app.transition_delegate_grant",
     }
 )
+EHR_CASES = {
+    case.__name__: case
+    for case in (
+        test_grant_and_recipient_loss_hold_the_same_transaction_fence,
+        test_ineligible_recipient_cannot_receive_note_grant,
+        test_recipient_loss_rollback_preserves_the_existing_grant,
+        test_recipient_loss_terminally_revokes_existing_note_grant,
+        test_copy_requires_review_at_the_current_revision,
+        test_longitudinal_functions_keep_exact_execute_privileges,
+        test_longitudinal_sql_uses_current_role_and_actor,
+        test_note_sql_rechecks_grants_scope_and_active_actor,
+        test_projection_worker_refuses_every_ambient_authority,
+        test_concurrent_edits_and_duplicate_workers_preserve_every_source,
+        test_projection_is_after_commit_and_replay_safe,
+        test_restricted_note_does_not_leak_a_timeline_count,
+    )
+}
+EHR_PROTOCOLS = {
+    "clinic_app.ehr_patient_permission": [
+        "test_longitudinal_sql_uses_current_role_and_actor"
+    ],
+    "clinic_app.ehr_longitudinal_guard": [
+        "test_longitudinal_sql_uses_current_role_and_actor"
+    ],
+    "clinic_app.ehr_note_author": [
+        "test_note_sql_rechecks_grants_scope_and_active_actor"
+    ],
+    "clinic_app.ehr_note_grantee": [
+        "test_note_sql_rechecks_grants_scope_and_active_actor",
+        "test_ineligible_recipient_cannot_receive_note_grant",
+    ],
+    "clinic_app.ehr_note_visible": [
+        "test_note_sql_rechecks_grants_scope_and_active_actor",
+        "test_recipient_loss_terminally_revokes_existing_note_grant",
+        "test_restricted_note_does_not_leak_a_timeline_count",
+    ],
+    "clinic_app.ehr_note_guard": [
+        "test_note_sql_rechecks_grants_scope_and_active_actor",
+        "test_ineligible_recipient_cannot_receive_note_grant",
+        "test_recipient_loss_terminally_revokes_existing_note_grant",
+        "test_grant_and_recipient_loss_hold_the_same_transaction_fence",
+        "test_recipient_loss_rollback_preserves_the_existing_grant",
+        "test_copy_requires_review_at_the_current_revision",
+    ],
+    "clinic_app.ehr_copy_finalization_guard": [
+        "test_copy_requires_review_at_the_current_revision"
+    ],
+    "clinic_app.ehr_timeline_enqueue": [
+        "test_projection_is_after_commit_and_replay_safe",
+        "test_concurrent_edits_and_duplicate_workers_preserve_every_source",
+    ],
+    "clinic_app.ehr_timeline_visible": [
+        "test_note_sql_rechecks_grants_scope_and_active_actor",
+        "test_restricted_note_does_not_leak_a_timeline_count",
+    ],
+    "clinic_app.ehr_timeline_due": [
+        "test_projection_worker_refuses_every_ambient_authority",
+        "test_projection_is_after_commit_and_replay_safe",
+    ],
+    "clinic_app.ehr_timeline_refresh": [
+        "test_projection_worker_refuses_every_ambient_authority",
+        "test_concurrent_edits_and_duplicate_workers_preserve_every_source",
+    ],
+}
+EHR_PROTOCOLS = {
+    name: [*cases, "test_longitudinal_functions_keep_exact_execute_privileges"]
+    for name, cases in EHR_PROTOCOLS.items()
+}
 PROTOCOL_ORACLES = {
     **DUPLICATE_SQL_ORACLES,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
+    **EHR_PROTOCOLS,
     **SCHEDULING_CASES,
     "clinic_app.scheduling_capacity_guard": [
         *SCHEDULING_CASES["clinic_app.scheduling_capacity_guard"],
@@ -124,6 +211,8 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_effective_interval_is_actor_invariant)
     assert callable(test_bundle_issuance_requires_the_owner_login_for_every_role)
     assert all(callable(case) for case in DELEGATE_CASES.values())
+    assert all(callable(case) for case in EHR_CASES.values())
+    assert all(name in EHR_CASES for cases in EHR_PROTOCOLS.values() for name in cases)
     assert callable(test_database_trigger_decides_every_status_pair_by_actor)
     assert callable(test_guards_decide_by_the_exact_permission_not_a_sibling)
     assert callable(test_python_guard_decides_each_action_by_its_pinned_terms)

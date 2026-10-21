@@ -27,10 +27,24 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "ehr_draftsavereceipt",
         "ehr_encounteraddendum",
         "ehr_addendumsavereceipt",
+        "ehr_medicationstatement",
+        "ehr_observation",
+        "ehr_restrictednote",
+        "ehr_noteaccessgrant",
+        "ehr_copiednoteblock",
+        "ehr_timelinerefresh",
+        "ehr_timelineprojection",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
+    "ehr_medicationstatement": frozenset({"SELECT", "INSERT"}),
+    "ehr_observation": frozenset({"SELECT", "INSERT"}),
+    "ehr_restrictednote": frozenset({"SELECT", "INSERT"}),
+    "ehr_noteaccessgrant": frozenset({"SELECT", "INSERT"}),
+    "ehr_copiednoteblock": frozenset({"SELECT", "INSERT"}),
+    "ehr_timelinerefresh": frozenset(),
+    "ehr_timelineprojection": frozenset({"SELECT"}),
     "ehr_specialtytemplate": frozenset({"SELECT", "INSERT"}),
     "ehr_encounter": frozenset({"SELECT", "INSERT"}),
     "ehr_clinicaldocument": frozenset({"SELECT", "INSERT"}),
@@ -50,6 +64,19 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
+        ("ehr_medicationstatement", "status", "UPDATE"),
+        ("ehr_medicationstatement", "provenance", "UPDATE"),
+        ("ehr_medicationstatement", "revision", "UPDATE"),
+        ("ehr_medicationstatement", "reconciled_at", "UPDATE"),
+        ("ehr_medicationstatement", "reconciled_by_id", "UPDATE"),
+        ("ehr_observation", "provenance", "UPDATE"),
+        ("ehr_observation", "revision", "UPDATE"),
+        ("ehr_observation", "confirmed_at", "UPDATE"),
+        ("ehr_observation", "confirmed_by_id", "UPDATE"),
+        ("ehr_noteaccessgrant", "revoked_at", "UPDATE"),
+        ("ehr_copiednoteblock", "reviewed_at", "UPDATE"),
+        ("ehr_copiednoteblock", "reviewed_by_id", "UPDATE"),
+        ("ehr_copiednoteblock", "reviewed_revision", "UPDATE"),
         ("ehr_clinicalattachment", "scan_attempts", "UPDATE"),
         ("ehr_clinicalattachment", "scan_reason", "UPDATE"),
         ("ehr_clinicalattachment", "scanned_at", "UPDATE"),

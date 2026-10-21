@@ -11,10 +11,24 @@ from django.conf import settings
 from django.db import models
 
 from apps.ehr.history_models import Allergy, HistoryAssessment, Problem
+from apps.ehr.longitudinal_models import MedicationStatement, Observation
+from apps.ehr.note_models import CopiedNoteBlock, NoteAccessGrant, RestrictedNote
+from apps.ehr.timeline_models import TimelineProjection, TimelineRefresh
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
-__all__ = ("Allergy", "HistoryAssessment", "Problem")
+__all__ = (
+    "Allergy",
+    "CopiedNoteBlock",
+    "HistoryAssessment",
+    "MedicationStatement",
+    "NoteAccessGrant",
+    "Observation",
+    "Problem",
+    "RestrictedNote",
+    "TimelineProjection",
+    "TimelineRefresh",
+)
 
 SOAP_FIELD_NAMES: Final = ("subjective", "objective", "assessment", "plan")
 
