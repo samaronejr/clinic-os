@@ -8,7 +8,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.audit.services import record_phase1_event
 from apps.core.secrets import secret_store
@@ -28,12 +28,17 @@ if TYPE_CHECKING:
 
 
 def _receipt(*, clinic_id: UUID, event_id: UUID) -> tuple[IngestReceipt, str] | None:
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT * FROM clinic_app.orders_event_receipt(%s,%s)",
-            [clinic_id, event_id],
-        )
-        row = cursor.fetchone()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM clinic_app.orders_event_receipt(%s,%s)",
+                [clinic_id, event_id],
+            )
+            row = cursor.fetchone()
+    except DatabaseError as error:
+        if getattr(error.__cause__, "sqlstate", None) == "42501":
+            raise OrdersAccessDeniedError from error
+        raise
     if row is None:
         return None
     return IngestReceipt(row[0], row[1], row[2], row[3]), row[4]

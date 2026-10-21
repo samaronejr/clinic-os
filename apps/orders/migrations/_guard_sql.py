@@ -1,8 +1,7 @@
 """Independent tenant, source, lifecycle and professional write guards."""
 
-FUNCTIONS = """
-SET LOCAL ROLE clinic_resolver;
-CREATE FUNCTION clinic_app.orders_guard()
+CURRENT_GUARD_SQL = """
+CREATE OR REPLACE FUNCTION clinic_app.orders_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,clinic_app,pg_temp AS $f$
 DECLARE o clinic_app.orders_order; v clinic_app.orders_resultversion;
@@ -76,8 +75,11 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('orders-series:'||NEW.result_id,0));
   SELECT * INTO v FROM clinic_app.orders_resultversion r
    WHERE r.result_id=NEW.result_id ORDER BY r.number DESC LIMIT 1;
+  SELECT * INTO matched FROM clinic_app.orders_resultmatch m
+   WHERE m.version_id=v.id;
   IF NEW.number<>coalesce(v.number,0)+1 OR NEW.predecessor_id IS DISTINCT FROM v.id
-  OR (v.id IS NOT NULL AND (NEW.proposed_order_id IS DISTINCT FROM v.proposed_order_id
+  OR (v.id IS NOT NULL AND (NEW.proposed_order_id IS DISTINCT FROM
+   coalesce(matched.order_id,v.proposed_order_id)
    OR NEW.lab_account_id IS DISTINCT FROM v.lab_account_id))
   OR NEW.storage_key!~'^[0-9a-f]{64}$' OR NEW.sha256!~'^[0-9a-f]{64}$'
   OR NEW.fingerprint!~'^[0-9a-f]{64}$' OR octet_length(NEW.identity)<68
@@ -140,6 +142,10 @@ BEGIN
  END CASE;
  RETURN NEW;
 END $f$;
+"""
+FUNCTIONS = "SET LOCAL ROLE clinic_resolver;"
+FUNCTIONS += CURRENT_GUARD_SQL
+FUNCTIONS += """
 REVOKE ALL ON FUNCTION clinic_app.orders_guard() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION clinic_app.orders_guard() TO clinic_owner;
 RESET ROLE;
