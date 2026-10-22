@@ -1658,6 +1658,12 @@
     ],
     [
       "workflows_workflowdefinitionversion",
+      "agent_send_mutation",
+      "O",
+      "CREATE TRIGGER agent_send_mutation BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_workflowdefinitionversion FOR EACH ROW EXECUTE FUNCTION agent_mutation_lock()"
+    ],
+    [
+      "workflows_workflowdefinitionversion",
       "workflow_guard",
       "O",
       "CREATE TRIGGER workflow_guard BEFORE INSERT OR DELETE OR UPDATE ON clinic_app.workflows_workflowdefinitionversion FOR EACH ROW EXECUTE FUNCTION workflows_guard()"

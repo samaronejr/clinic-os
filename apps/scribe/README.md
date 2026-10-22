@@ -13,9 +13,14 @@ scope. The current database principal supplies authority, never a caller's
 patient, organization, or actor claim.
 
 Only the encounter's currently assigned, authorized clinician can capture.
-Recording requires current `consultation_recording` consent and the selected
-`object_storage_media` capability version. The recording retains the exact
-consent reference and immutable provider-version snapshot.
+Recording requires current `consultation_recording` consent, an informed and
+unrefused `AIUseDisclosure` for this exact encounter, and the selected
+`object_storage_media` capability version. A missing disclosure or one from a
+different encounter cannot authorize capture. These checks apply to admission,
+control, ingest, and teleconsult recording flags, including direct SQL writes.
+They do not authorize ASR or drafting. Manual care remains available after AI
+refusal. The recording retains the exact consent reference and immutable
+provider-version snapshot.
 
 `RecordingSession` follows `created -> authorized -> recording <-> paused ->
 stopped`, with `stopped_revoked` for cleanup after consent loss. A fresh page

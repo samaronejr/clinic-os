@@ -8,7 +8,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 from playwright.sync_api import expect
@@ -63,7 +63,7 @@ def open_capture(
     staff: dict[str, str],
     day: str,
     *,
-    accepted: bool = True,
+    admission: Literal["allowed", "recording_refused", "ai_refused"] = "allowed",
 ) -> dict[str, str]:
     data = seed(staff, day)
     assert (
@@ -71,7 +71,9 @@ def open_capture(
             staff,
             {
                 "SCRIBE_FIXTURE_ENROLLMENT": data["enrollment"],
-                "SCRIBE_FIXTURE_ACCEPTED": "1" if accepted else "0",
+                "SCRIBE_FIXTURE_ACCEPTED": (
+                    "0" if admission == "recording_refused" else "1"
+                ),
             },
         )
         == b"SCRIBE_FIXTURE_READY"
@@ -84,6 +86,18 @@ def open_capture(
     page.locator("#template-id").select_option(data["specialty"])
     click_to_navigate(page.locator('button[value="template"]'))
     expect(page.locator("#soap-form")).to_be_visible()
+    assert (
+        fixture_command(
+            staff,
+            {
+                "SCRIBE_FIXTURE_ACTION": "disclosure",
+                "SCRIBE_FIXTURE_APPOINTMENT": data["appointment"],
+                "SCRIBE_FIXTURE_AI_REFUSED": "1" if admission == "ai_refused" else "0",
+            },
+        )
+        == b"SCRIBE_FIXTURE_DISCLOSED"
+    )
+    reload_settled(page)
     return data
 
 
@@ -489,8 +503,34 @@ def test_recording_refusal_hides_capture_without_blocking_care(
     page = capture_page
     fake_microphone(page)
     open_capture(
-        page, renewal_base_url, availability_staff, "2036-04-24", accepted=False
+        page,
+        renewal_base_url,
+        availability_staff,
+        "2036-04-24",
+        admission="recording_refused",
     )
+    expect(page.locator("[data-scribe-capture]")).to_have_count(0)
+    assert page.evaluate("() => window.__scribeOpens") == 0
+    save_manual_note(page)
+
+
+def test_ai_refusal_hides_capture_without_blocking_manual_care(
+    capture_page: Page,
+    renewal_base_url: str,
+    availability_staff: dict[str, str],
+) -> None:
+    # Given: recording was accepted, but this encounter records AI-use refusal.
+    page = capture_page
+    fake_microphone(page)
+    # When: the clinician opens the disclosed encounter.
+    open_capture(
+        page,
+        renewal_base_url,
+        availability_staff,
+        "2036-05-10",
+        admission="ai_refused",
+    )
+    # Then: capture never opens the microphone, while manual care still saves.
     expect(page.locator("[data-scribe-capture]")).to_have_count(0)
     assert page.evaluate("() => window.__scribeOpens") == 0
     save_manual_note(page)

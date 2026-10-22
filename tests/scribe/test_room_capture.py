@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from apps.consent.services import prepare_acceptance, publish_text, record_consent
+from apps.consent.services import (
+    prepare_acceptance,
+    publish_text,
+    record_ai_disclosure,
+    record_consent,
+)
 from apps.intake.patient_access import patient_session_context
 from apps.scribe.services import (
     control_recording,
@@ -64,6 +69,12 @@ def test_room_bits_require_explicit_live_capture_and_asr_stays_closed(
         _text, offer = prepare_acceptance(text_id=text.pk)
         record_consent(offer=offer, purpose="consultation_recording", accepted=True)
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        record_ai_disclosure(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            informed=True,
+            refused=False,
+        )
         token = issue_encounter_token(
             clinic_id=graph.clinic_a,
             encounter_id=encounter.pk,

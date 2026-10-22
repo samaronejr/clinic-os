@@ -16,7 +16,9 @@ argument schemas, daily action and simulated micro-BRL budgets, timeout,
 administrative escalation queue and compensation strategy. Every version,
 including a disabled version, supersedes queued work. A0 permits no write tools.
 A1 is human-request drafting. A2 requires an explicit bounded policy. A3 requires
-one or two distinct authorized approvals of the exact effect.
+one or two distinct authorized approvals of the exact effect. A version naming
+anything but an active V2 principal of its own clinic is refused with one
+access denial, whether that principal is unknown, inactive or another clinic's.
 
 V1 service principals retain availability-read-only grants. V2 principals and
 their matching V2 `agent.execute` grants are separately owner-provisioned.

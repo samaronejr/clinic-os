@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from django.core import signing
 from django.db import connection
 
-from apps.consent.services import consent_for_future_use
+from apps.consent.services import ai_disclosure_status, consent_for_future_use
 from apps.ehr.models import Encounter
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.intake.models import PatientClinicEnrollment
@@ -72,7 +72,7 @@ def lock_recording_consent(*, clinic_id: UUID) -> None:
 def active_consent(
     scope: EncounterScope, *, lock: bool = True, acceptance_id: UUID | None = None
 ) -> ConsentAcceptance:
-    """Check recording consent; never infer ASR or later AI authority."""
+    """Require recording consent and this encounter's unrefused AI disclosure."""
     if lock:
         lock_recording_consent(clinic_id=scope.encounter.clinic_id)
     try:
@@ -81,9 +81,19 @@ def active_consent(
             enrollment_id=scope.enrollment.pk,
             purpose="consultation_recording",
         )
+        disclosure = ai_disclosure_status(
+            clinic_id=scope.encounter.clinic_id,
+            encounter_id=scope.encounter.pk,
+        )
     except CurrentActorError as error:
         raise ScribeError from error
-    if consent is None or (acceptance_id is not None and consent.pk != acceptance_id):
+    if (
+        consent is None
+        or disclosure is None
+        or not disclosure.informed
+        or disclosure.refused
+        or (acceptance_id is not None and consent.pk != acceptance_id)
+    ):
         raise ScribeError(Reason.CONSENT_REVOKED)
     return consent
 

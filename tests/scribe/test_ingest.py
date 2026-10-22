@@ -14,6 +14,7 @@ import pytest
 from apps.consent.services import (
     prepare_acceptance,
     publish_text,
+    record_ai_disclosure,
     record_consent,
     revoke_consent,
 )
@@ -111,6 +112,12 @@ def world(graph: RbacGraph) -> World:
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         encounter = open_encounter(
             clinic_id=graph.clinic_a, appointment_id=appointment.pk
+        )
+        record_ai_disclosure(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter.pk,
+            informed=True,
+            refused=False,
         )
         token = issue_encounter_token(
             clinic_id=graph.clinic_a,

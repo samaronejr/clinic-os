@@ -877,6 +877,25 @@ def test_unclassified_actor_surface_fails_the_inventory(surface: str, ddl: str) 
     assert set(discover_sql_sites()) == set(CASES), surface
 
 
+def test_foreign_actor_trigger_cannot_hide_behind_serialization_guards() -> None:
+    """An unowned trigger remains refused when its closure reads the actor."""
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "CREATE FUNCTION clinic_app.foreign_task_authority() "
+                "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                "PERFORM current_setting('app.current_user_id', true); "
+                "RETURN NEW; END $$; "
+                "CREATE TRIGGER foreign_actor BEFORE INSERT "
+                "ON clinic_app.workflows_task FOR EACH ROW "
+                "EXECUTE FUNCTION clinic_app.foreign_task_authority()"
+            )
+        with pytest.raises(AssertionError, match="foreign trigger function"):
+            discover_sql_sites()
+        transaction.set_rollback(True)
+    assert set(discover_sql_sites()) == set(CASES)
+
+
 def test_every_nonmanager_role_sees_and_comments_only_on_work_it_owns(
     world: World,
 ) -> None:

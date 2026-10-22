@@ -116,6 +116,16 @@
       ]
     },
     {
+      "symbol": "apps.ai.agent_policies.publish_agent_policy",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.agent_policies.publish_agent_policy#cut1"
+      ]
+    },
+    {
       "symbol": "apps.ai.agent_views.agent_queue",
       "signals": [
         "decorator",
@@ -6114,6 +6124,7 @@
     "apps.ai.action_validation.source_snapshot#cut1",
     "apps.ai.action_validation.validate_current#cut1",
     "apps.ai.agent_policies.policy_administrator#cut1",
+    "apps.ai.agent_policies.publish_agent_policy#cut1",
     "apps.ai.agent_views.agent_queue#cut1",
     "apps.ai.agent_views.agent_settings#cut1",
     "apps.ai.approvals.approve_action#cut1",
@@ -13350,16 +13361,24 @@
       ],
       "discovery": {
         "migrations": [
+          "apps/scribe/migrations/_ai_disclosure_sql.py",
           "apps/scribe/migrations/_capture_sql.py"
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.scribe_consent",
           "clinic_app.scribe_guard",
           "clinic_app.scribe_room_capture_allowed"
         ],
         "signatures": [
           {
             "arguments": "acceptance uuid, clinic uuid, enrollment uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          },
+          {
+            "arguments": "acceptance uuid, clinic uuid, enrollment uuid, requested_encounter uuid",
             "returns": "bool",
             "security_definer": true,
             "set_returning": false
@@ -13424,6 +13443,7 @@
       ],
       "discovery": {
         "migrations": [
+          "apps/scribe/migrations/_ai_disclosure_sql.py",
           "apps/scribe/migrations/_capture_sql.py"
         ],
         "policies": [],
@@ -13447,6 +13467,7 @@
       ],
       "discovery": {
         "migrations": [
+          "apps/scribe/migrations/_ai_disclosure_sql.py",
           "apps/teleconsult/migrations/_consented_capture_sql.py"
         ],
         "policies": [],

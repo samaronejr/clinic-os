@@ -163,6 +163,11 @@ def _refusal(error: ScribeError) -> JsonResponse:
 def capture_control(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase:
     """Native controls retain a complete manual path; JS alone opens a mic."""
     try:
+        try:
+            selected = UUID(str(request.session.get(f"ehr.encounter.{clinic_id}")))
+        except ValueError as invalid_selection:
+            raise ScribeError from invalid_selection
+        browser_binding(request, clinic_id=clinic_id, encounter_id=selected)
         parsed = ControlInput(data=_input(request))
         if not parsed.is_valid():
             return _refusal(ScribeError(Reason.INVALID_COMMAND))

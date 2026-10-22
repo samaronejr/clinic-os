@@ -67,7 +67,32 @@ def stored_action(
     clinic: UUID,
     physician: UUID,
 ) -> int:
-    """Inspect non-identifying capture terms or withdraw its real patient grant."""
+    """Exercise real disclosure, revocation, or non-identifying capture checks."""
+    if action == "disclosure":
+        from apps.consent.services import record_ai_disclosure  # noqa: PLC0415
+        from apps.ehr.models import Encounter  # noqa: PLC0415
+        from apps.tenancy.db import tenant_context  # noqa: PLC0415
+
+        with connection.cursor() as cursor:
+            cursor.execute("SET ROLE clinic_app")
+        try:
+            with tenant_context(physician, organization):
+                encounter = Encounter.objects.get(
+                    clinic_id=clinic,
+                    physician_id=physician,
+                    appointment_id=UUID(os.environ["SCRIBE_FIXTURE_APPOINTMENT"]),
+                )
+                record_ai_disclosure(
+                    clinic_id=clinic,
+                    encounter_id=encounter.pk,
+                    informed=True,
+                    refused=os.environ.get("SCRIBE_FIXTURE_AI_REFUSED") == "1",
+                )
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("RESET ROLE")
+        sys.stdout.write("SCRIBE_FIXTURE_DISCLOSED\n")
+        return 0
     if action == "sinks":
         return inspect_sinks(organization=organization, clinic=clinic)
     from apps.consent.services import revoke_consent  # noqa: PLC0415
@@ -168,7 +193,7 @@ def main() -> int:
     clinic = UUID(os.environ["SCRIBE_FIXTURE_CLINIC"])
     physician = UUID(os.environ["SCRIBE_FIXTURE_PHYSICIAN"])
     action = os.environ.get("SCRIBE_FIXTURE_ACTION", "consent")
-    if action in {"inspect", "revoke", "sinks"}:
+    if action in {"disclosure", "inspect", "revoke", "sinks"}:
         return stored_action(
             action=action,
             organization=organization,

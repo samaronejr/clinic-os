@@ -15,6 +15,51 @@ from scheduling.clock_residual_probes import EVENTS
 from scheduling.clock_source import _contexts, source_fragments
 
 APPS = Path(__file__).resolve().parents[2] / "apps"
+
+
+@pytest.mark.parametrize(
+    ("other", "violations"),
+    [
+        ('"SELECT 2"', []),
+        ('"PREPARE hidden AS SELECT now()"', ["server-prepare"]),
+        ("unknown_query", ["unresolved-statement"]),
+    ],
+)
+def test_conditional_query_checks_every_possible_branch(
+    tmp_path: Path, other: str, violations: list[str]
+) -> None:
+    (tmp_path / "query.py").write_text(
+        f'cursor.execute("SELECT 1" if selected else {other})'
+    )
+    assert application_boundary(tmp_path) == (
+        {"query.py": violations} if violations else {}
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "violations"),
+    [
+        (
+            'flagged = any(fragment in folded for fragment in ("execute shell",))',
+            [],
+        ),
+        ('cursor.execute("EXECUTE shell")', ["dynamic-or-prepared-execute"]),
+        (
+            'flagged = any(fragment in folded for fragment in ("EXECUTE shell",) '
+            "if cursor.execute(fragment))",
+            ["dynamic-or-prepared-execute", "unresolved-statement"],
+        ),
+    ],
+)
+def test_membership_data_does_not_hide_executable_sql(
+    tmp_path: Path, source: str, violations: list[str]
+) -> None:
+    (tmp_path / "query.py").write_text(source)
+    assert application_boundary(tmp_path) == (
+        {"query.py": violations} if violations else {}
+    )
+
+
 PROBES = {
     "event-trigger-exact": (
         "SQL = " + repr(EVENTS["event-exact"]),

@@ -264,6 +264,64 @@
       "function:pg_catalog.texteq(text, text)"
     ]
   },
+  "constraint:consent_aiusedisclosure.consent_aiusedisclos_clinic_id_ab9abfc9_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:consent_aiusedisclosure.consent_aiusedisclos_encounter_id_3a09d149_fk_ehr_encou": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.scribe_capture_encounter_ended",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:consent_aiusedisclosure.consent_aiusedisclos_organization_id_863ae503_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:consent_aiusedisclosure.consent_aiusedisclos_patient_id_fa150eeb_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patient.intake_patient_organization_id_cb286636_fk_identity_",
+      "policy:intake_patient.tenant_isolation",
+      "trigger:intake_patient.intake_patient_mirror_guard"
+    ]
+  },
+  "constraint:consent_aiusedisclosure.consent_aiusedisclos_recorded_by_id_674b1c58_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.agent_send_mutation",
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
   "constraint:consent_consentacceptance.consent_authority_check": {
     "direct": {},
     "via": [
@@ -9079,6 +9137,50 @@
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
   },
+  "function:clinic_app.scribe_consent(uuid, uuid, uuid, uuid)": {
+    "direct": {},
+    "via": [
+      "constraint:consent_aiusedisclosure.consent_aiusedisclos_clinic_id_ab9abfc9_fk_identity_",
+      "constraint:consent_aiusedisclosure.consent_aiusedisclos_encounter_id_3a09d149_fk_ehr_encou",
+      "constraint:consent_aiusedisclosure.consent_aiusedisclos_organization_id_863ae503_fk_identity_",
+      "constraint:consent_aiusedisclosure.consent_aiusedisclos_patient_id_fa150eeb_fk_intake_pa",
+      "constraint:consent_aiusedisclosure.consent_aiusedisclos_recorded_by_id_674b1c58_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "function:clinic_app.scribe_consent(uuid, uuid, uuid)",
+      "function:clinic_app.scribe_consent(uuid, uuid, uuid, uuid)",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:consent_aiusedisclosure.consent_ai_disclosure_insert",
+      "policy:consent_aiusedisclosure.consent_ai_disclosure_read",
+      "policy:consent_aiusedisclosure.consent_alias_read",
+      "policy:consent_aiusedisclosure.delegate_confidentiality",
+      "policy:consent_aiusedisclosure.setup_tenant",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "trigger:consent_aiusedisclosure.consent_binding",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.scribe_capture_encounter_ended",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
   "function:clinic_app.scribe_consent_fence()": {
     "direct": {},
     "via": [
@@ -9252,6 +9354,7 @@
       "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:clinic_app.scribe_assigned(uuid)",
       "function:clinic_app.scribe_consent(uuid, uuid, uuid)",
+      "function:clinic_app.scribe_consent(uuid, uuid, uuid, uuid)",
       "function:clinic_app.scribe_gaps(uuid, text, integer)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
@@ -9362,6 +9465,7 @@
       "constraint:teleconsult_teleconsultsession.teleconsult_telecons_physician_id_ddb1d7ef_fk_identity_",
       "constraint:teleconsult_teleconsultsession.teleconsult_teleconsultsession_revision_check",
       "function:clinic_app.scribe_consent(uuid, uuid, uuid)",
+      "function:clinic_app.scribe_consent(uuid, uuid, uuid, uuid)",
       "index:ehr_encounter_one_open_unscheduled",
       "index:scribe_one_live_recording",
       "policy:ehr_encounter.clinical_insert",
@@ -11359,6 +11463,70 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:consent_aiusedisclosure.consent_ai_disclosure_insert": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.scribe_capture_encounter_ended",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "policy:consent_aiusedisclosure.consent_ai_disclosure_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.consent_session()",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:consent_aiusedisclosure.consent_alias_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.consent_session()",
+      "function:clinic_app.patient_alias_set(uuid)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:consent_aiusedisclosure.delegate_confidentiality": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.patient_is_delegate()"
+    ]
+  },
+  "policy:consent_aiusedisclosure.setup_tenant": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:consent_consentacceptance.consent_acceptance_insert": {
     "direct": {},
     "via": [
@@ -13179,6 +13347,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.identity_reset_notification_clock()"
+    ]
+  },
+  "trigger:consent_aiusedisclosure.consent_binding": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.consent_guard()"
     ]
   },
   "trigger:consent_consentacceptance.consent_binding": {

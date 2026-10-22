@@ -17,6 +17,7 @@ from psycopg import sql
 from ai import (
     test_agent_execution,
     test_agent_guards,
+    test_agent_view_refusals,
     test_cancellation,
     test_controls,
     test_gateway,
@@ -112,6 +113,7 @@ def exercise_ai_authority(
         test_agent_guards.test_fabricated_step_up_and_double_approval_cannot_add_votes,
         test_agent_execution.test_revoked_approver_blocks_after_approval,
         test_agent_execution.test_superseded_source_publication_blocks_execution,
+        test_agent_view_refusals.test_policy_principal_outside_the_clinic_is_one_denial,
     ):
         with (
             patch.context() as local,

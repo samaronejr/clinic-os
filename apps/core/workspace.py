@@ -53,6 +53,7 @@ _SHELL_ROLES: Final = (
     UserClinicRole.Role.SCHEDULER,
     UserClinicRole.Role.CLINIC_MANAGER,
     UserClinicRole.Role.FINANCE,
+    UserClinicRole.Role.ORG_ADMIN,
 )
 
 
@@ -137,13 +138,8 @@ def _visible_clinics(
 ) -> tuple[WorkspaceClinic, ...]:
     grouped: dict[UUID, tuple[str, str, set[str]]] = {}
     command_clinics: set[UUID] = set()
-    roles = (
-        (*_SHELL_ROLES, UserClinicRole.Role.ORG_ADMIN)
-        if settings_scope
-        else _SHELL_ROLES
-    )
     assignments = (
-        UserClinicRole.objects.filter(user_id=user_id, role__in=roles)
+        UserClinicRole.objects.filter(user_id=user_id, role__in=_SHELL_ROLES)
         .select_related("clinic")
         .order_by("clinic__name", "clinic_id")
     )
@@ -151,7 +147,15 @@ def _visible_clinics(
         clinic = assignment.clinic
         if assignment.role not in _STAFF_ROLES:
             granted = granted_permissions(clinic.pk)
-            command_context = "tasks.view" in granted or (
+            command_context = bool(
+                {
+                    "tasks.view",
+                    "tasks.assign",
+                    "automation.admin",
+                    "automation.organization",
+                }
+                & granted
+            ) or (
                 settings_scope
                 and bool({"appointment.book", "configuration.organization"} & granted)
             )

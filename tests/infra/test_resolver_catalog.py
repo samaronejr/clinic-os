@@ -135,6 +135,12 @@ RESOLVER_TABLE_GRANTS: Final = {
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     *duplicate_catalog.COLUMN_GRANTS,
+    ("consent_aiusedisclosure", "encounter_id", "SELECT"),
+    ("consent_aiusedisclosure", "clinic_id", "SELECT"),
+    ("consent_aiusedisclosure", "organization_id", "SELECT"),
+    ("consent_aiusedisclosure", "patient_id", "SELECT"),
+    ("consent_aiusedisclosure", "informed", "SELECT"),
+    ("consent_aiusedisclosure", "refused", "SELECT"),
     ("identity_organization", "passkey_step_up_enabled", "UPDATE"),
     ("identity_passkey", "last_used", "UPDATE"),
     ("identity_passkey", "removed_at", "UPDATE"),
@@ -417,6 +423,10 @@ FUNCTION_SIGNATURES: Final = {
     ("scribe_room_cleanup", ""),
     ("scribe_assigned", "requested_session uuid"),
     ("scribe_consent", "acceptance uuid, clinic uuid, enrollment uuid"),
+    (
+        "scribe_consent",
+        "acceptance uuid, clinic uuid, enrollment uuid, requested_encounter uuid",
+    ),
     ("scribe_gaps", "requested_epoch uuid, requested_track text, high integer"),
     ("scribe_guard", ""),
     ("scribe_consent_fence", ""),
@@ -681,6 +691,10 @@ FUNCTION_RESULTS: Final = {
     ("scribe_room_cleanup", ""): "trigger",
     ("scribe_assigned", "requested_session uuid"): "boolean",
     ("scribe_consent", "acceptance uuid, clinic uuid, enrollment uuid"): "boolean",
+    (
+        "scribe_consent",
+        "acceptance uuid, clinic uuid, enrollment uuid, requested_encounter uuid",
+    ): "boolean",
     (
         "scribe_gaps",
         "requested_epoch uuid, requested_track text, high integer",

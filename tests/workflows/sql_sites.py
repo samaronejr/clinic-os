@@ -388,7 +388,18 @@ def discover_sql_sites() -> dict[str, SqlSite]:
             [tables],
         )
         policies = cursor.fetchall()
-    assert triggers <= {row[0] for row in functions}, "foreign trigger function"
+    unowned = triggers - {row[0] for row in functions}
+    if unowned:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT n.nspname||'.'||p.proname||'()' FROM pg_proc p "
+                "JOIN pg_namespace n ON n.oid=p.pronamespace WHERE p.oid=ANY(%s)",
+                [sorted(unowned)],
+            )
+            for (signature,) in cursor.fetchall():
+                reads = catalog.statement("SELECT " + signature)
+                assert not reads.settings, ("foreign trigger function", signature)
+                assert not reads.opaque, ("foreign trigger function", signature)
     sites: dict[str, SqlSite] = {}
     for oid, signature, boolean, language, source in functions:
         if oid in triggers:

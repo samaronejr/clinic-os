@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from django.db import connection, transaction
+import psycopg
+from django.db import DatabaseError, connection, transaction
 
 from apps.ai.action_contracts import (
     AUTONOMY,
+    ActionAccessDeniedError,
     ActionInputError,
     ActionRefusedError,
     Refusal,
@@ -115,22 +117,33 @@ def publish_agent_policy(
     if expected_version != (previous.version if previous else 0):
         raise ActionRefusedError(Refusal.POLICY)
     clinic = Clinic.objects.get(pk=clinic_id)
-    policy = AgentPolicyVersion.objects.create(
-        organization_id=clinic.organization_id,
-        clinic_id=clinic_id,
-        created_by_id=user,
-        capability=terms.capability,
-        version=expected_version + 1,
-        autonomy_ceiling=terms.autonomy_ceiling,
-        tool_allowlist={tool: TOOL_SCHEMAS[tool] for tool in sorted(terms.tools)},
-        budget_actions=terms.budget_actions,
-        budget_micros=terms.budget_micros,
-        timeout_seconds=terms.timeout_seconds,
-        escalation_queue=terms.escalation_queue,
-        compensation_policy={"mode": terms.compensation, "version": 1},
-        enabled=terms.enabled,
-        principal_id=terms.principal_id,
-    )
+    try:
+        with transaction.atomic():
+            policy = AgentPolicyVersion.objects.create(
+                organization_id=clinic.organization_id,
+                clinic_id=clinic_id,
+                created_by_id=user,
+                capability=terms.capability,
+                version=expected_version + 1,
+                autonomy_ceiling=terms.autonomy_ceiling,
+                tool_allowlist={
+                    tool: TOOL_SCHEMAS[tool] for tool in sorted(terms.tools)
+                },
+                budget_actions=terms.budget_actions,
+                budget_micros=terms.budget_micros,
+                timeout_seconds=terms.timeout_seconds,
+                escalation_queue=terms.escalation_queue,
+                compensation_policy={"mode": terms.compensation, "version": 1},
+                enabled=terms.enabled,
+                principal_id=terms.principal_id,
+            )
+    except DatabaseError as error:
+        cause = error.__cause__
+        if isinstance(cause, psycopg.Error) and cause.sqlstate == "42501":
+            # The record guard refuses an unknown, foreign or inactive principal
+            # alike; callers render one denial and never learn which.
+            raise ActionAccessDeniedError from error
+        raise
     record_phase1_event(
         "ai.agent_policy.published",
         clinic_id=clinic_id,
