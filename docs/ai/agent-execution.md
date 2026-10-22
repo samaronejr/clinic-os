@@ -19,6 +19,8 @@ A1 is human-request drafting. A2 requires an explicit bounded policy. A3 require
 one or two distinct authorized approvals of the exact effect. A version naming
 anything but an active V2 principal of its own clinic is refused with one
 access denial, whether that principal is unknown, inactive or another clinic's.
+Only that record-guard refusal becomes the denial; any other database error,
+including another 42501, propagates unchanged.
 
 V1 service principals retain availability-read-only grants. V2 principals and
 their matching V2 `agent.execute` grants are separately owner-provisioned.

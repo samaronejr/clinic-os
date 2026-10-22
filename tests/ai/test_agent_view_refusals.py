@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import psycopg
 import pytest
 from apps.ai.action_payload import parse_payload
+from apps.ai.agent_policies import PolicyTerms, publish_agent_policy
 from apps.ai.models import ActionProposal, AgentPolicyVersion, Approval
 from apps.ai.proposals import AgentContext, propose_action
 from apps.audit.models import AuditEvent
@@ -23,6 +26,7 @@ from apps.identity.models import ServicePrincipal, UserClinicRole
 from apps.tenancy.db import tenant_context
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import ProgrammingError, connection
 from django.urls import reverse
 
 from ai.agent_support import AgentWorld, propose
@@ -32,6 +36,8 @@ from identity.permission_support import owner_context
 from otp_test_support import fixed_otp_time, runtime_role
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
 
@@ -43,6 +49,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # Per-render values: masked CSRF tokens and CSP nonces.
 VOLATILE = re.compile(rb'(csrfmiddlewaretoken" value="|nonce=")[^"]*"')
 FEEDBACK = re.compile(rb'<div class="feedback feedback--error".*?</div>', re.DOTALL)
+UNRELATED_REFUSAL = "synthetic unrelated policy insert refusal"
 
 
 def _post(
@@ -119,6 +126,32 @@ def _second_proposal(world: AgentWorld) -> ActionProposal:
             payload=parse_payload(json.dumps(data)),
             context=AgentContext(),
         )
+
+
+@contextmanager
+def _unrelated_insert_refusal(graph: RbacGraph) -> Iterator[None]:
+    """Fail the same policy insert with another trigger's 42501 first."""
+    with owner_context(graph.organization_a), connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE FUNCTION clinic_app.t40_unrelated_refusal() RETURNS trigger "
+            "LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION "
+            "'synthetic unrelated policy insert refusal' USING ERRCODE='42501'; "
+            "END $f$"
+        )
+        cursor.execute(
+            "CREATE TRIGGER aa_t40_unrelated_refusal BEFORE INSERT "
+            "ON clinic_app.ai_agentpolicyversion FOR EACH ROW "
+            "EXECUTE FUNCTION clinic_app.t40_unrelated_refusal()"
+        )
+    try:
+        yield
+    finally:
+        with owner_context(graph.organization_a), connection.cursor() as cursor:
+            cursor.execute(
+                "DROP TRIGGER aa_t40_unrelated_refusal "
+                "ON clinic_app.ai_agentpolicyversion"
+            )
+            cursor.execute("DROP FUNCTION clinic_app.t40_unrelated_refusal()")
 
 
 def test_queue_decision_denies_unknown_and_foreign_proposals_alike(
@@ -278,3 +311,41 @@ def test_policy_form_errors_and_conflicts_rerender_without_effects(
     # Then each re-renders its form, and both conflicts give one feedback block.
     assert FEEDBACK.search(invalid) is not None
     assert len(conflicts) == 1
+
+
+def test_unrelated_policy_insert_refusal_propagates_unchanged(
+    world: AgentWorld,
+) -> None:
+    # Given another trigger's 42501 on the same insert as the record guard.
+    graph = world.gateway.graph
+    client, _user = _client_for(graph, "clinic_admin")
+    url = reverse("ai:agent-settings", args=(graph.clinic_a,))
+    tools = ("comms.synthetic_reminder",)
+    form = _policy_form(
+        expected_version=world.policy.version,
+        autonomy="A3",
+        tools=tools,
+        principal=world.principal.pk,
+    )
+    before = _effects(graph)
+    # When the real view and the service publish the clinic's own principal.
+    with _unrelated_insert_refusal(graph):
+        response = _post(client, url, form)
+        with (
+            runtime_role(),
+            tenant_context(world.gateway.administrator, graph.organization_a),
+            pytest.raises(ProgrammingError) as raised,
+        ):
+            publish_agent_policy(
+                clinic_id=graph.clinic_a,
+                expected_version=world.policy.version,
+                terms=PolicyTerms(
+                    "front_desk", "A3", tools, principal_id=world.principal.pk
+                ),
+            )
+    # Then it is never the 403 denial: the original 42501 propagates unchanged.
+    assert response.status_code == 500
+    cause = raised.value.__cause__
+    assert isinstance(cause, psycopg.Error)
+    assert (cause.sqlstate, cause.diag.message_primary) == ("42501", UNRELATED_REFUSAL)
+    assert _effects(graph)[2] == before[2]

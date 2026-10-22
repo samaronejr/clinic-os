@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 MAX_DAILY_ACTIONS: Final = 1000
 MAX_TIMEOUT_SECONDS: Final = 60
+# agent_record_guard's principal and authority refusal (_agent_guard_sql.py).
+RECORD_GUARD_REFUSAL: Final = ("42501", "agent policy authority refused")
 
 TOOL_SCHEMAS: Final[dict[str, JSON]] = {
     "comms.synthetic_reminder": {
@@ -139,9 +141,13 @@ def publish_agent_policy(
             )
     except DatabaseError as error:
         cause = error.__cause__
-        if isinstance(cause, psycopg.Error) and cause.sqlstate == "42501":
+        if (
+            isinstance(cause, psycopg.Error)
+            and (cause.sqlstate, cause.diag.message_primary) == RECORD_GUARD_REFUSAL
+        ):
             # The record guard refuses an unknown, foreign or inactive principal
-            # alike; callers render one denial and never learn which.
+            # alike; callers render one denial and never learn which. Any other
+            # error, including another 42501, propagates unchanged.
             raise ActionAccessDeniedError from error
         raise
     record_phase1_event(
