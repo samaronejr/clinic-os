@@ -91,7 +91,7 @@ EXPECTED: Final = {
         "operations",
         "settings",
     ],
-    "physician": ["agenda", "patients", "inbox", "operations"],
+    "physician": ["today", "agenda", "patients", "inbox", "operations"],
     "nurse": ["today", "inbox"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "settings"],
@@ -345,7 +345,6 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
 def test_registry_never_renders_an_undelivered_destination() -> None:
     undelivered = {d.key for d in DESTINATIONS if d.url_name is None}
     assert undelivered == {
-        "inbox",
         "messages",
         "operations",
         "automations",
@@ -376,9 +375,11 @@ def test_palette_search_filters_destinations_by_permission(
     receptionist_rows = _api(receptionist, body).json()
 
     assert [row["action_url_name"] for row in physician_rows] == [
+        "workflows:today",
         "scheduling:agenda",
         "scheduling:availability-list",
         "consent:staff",
+        "workflows:inbox",
         "orders:results",
         "retention:status",
         "identity:preferences",

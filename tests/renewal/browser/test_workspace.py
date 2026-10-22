@@ -754,7 +754,7 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     page.locator("#id_otp_token").fill(f"{token:06d}")
     _submit(page, "button[type=submit]")
     wait_for_signed_in(page)
-    assert _modules(page) == ["agenda", "patients", "inbox", "operations"]
+    assert _modules(page) == ["today", "agenda", "patients", "inbox", "operations"]
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator(".nav-switch")).to_have_count(0)
     _capture(page, renewal_artifact_root, "physician-landing-1280")
@@ -763,13 +763,13 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     expect(page.locator("a[data-module=inbox]")).to_have_attribute(
         "aria-current", "page"
     )
-    expect(page.locator("h1")).to_have_text(gettext("Orders and results"))
+    expect(page.locator("h1")).to_have_text(gettext("Clinical Inbox"))
 
     # Forbidden role: the registry is refused on GET and on POST, never offered.
     registry = goto_settled(page, f"{renewal_base_url}{patients_a}")
     assert registry is not None
     assert registry.status == NOT_FOUND
-    assert _modules(page) == ["agenda", "patients", "inbox", "operations"]
+    assert _modules(page) == ["today", "agenda", "patients", "inbox", "operations"]
     expect(page.locator("#id_q")).to_have_count(0)
     csrf = next(
         cookie["value"]

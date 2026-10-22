@@ -50,6 +50,8 @@ from apps.core.api.serializers import (
     DraftAutosaveRequestSerializer,
     DraftAutosaveSavedSerializer,
     ErrorSerializer,
+    InboxPageSerializer,
+    InboxQueryRequestSerializer,
 )
 from apps.core.command_search import CommandResult, CommandSearch, search_commands
 from apps.core.command_views import tokenized
@@ -70,6 +72,13 @@ from apps.scheduling.services import (
     AvailabilityAccessDeniedError,
     view_agenda,
 )
+from apps.workflows.inbox import (
+    InboxInputError,
+    empty_inbox,
+    query_inbox,
+    validated_filters,
+    validated_keys,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -78,6 +87,8 @@ if TYPE_CHECKING:
     from rest_framework.request import Request
 
     type ExceptionHandler = Callable[[Exception, Mapping[str, object]], Response | None]
+
+    from apps.workflows.inbox import InboxFilters, InboxPage
 
 ERROR_RESPONSES: dict[int, type[ErrorSerializer]] = {
     400: ErrorSerializer,
@@ -249,6 +260,50 @@ class CommandSearchView(UiApiView):
             )
             previous_group = result.group
         return Response(CommandResultSerializer(rows, many=True).data)
+
+
+class InboxQueryView(UiApiView):
+    """Return the actor's Clinical Inbox page from the registered feeds."""
+
+    @extend_schema(
+        operation_id="inbox_query",
+        description=(
+            "Adapt ``workflows.query_inbox``. An actor without inbox "
+            "permission, and an unknown or foreign clinic, receive the same "
+            "empty page as a clinician with nothing to do."
+        ),
+        tags=["inbox"],
+        request=InboxQueryRequestSerializer,
+        responses={200: InboxPageSerializer, **ERROR_RESPONSES},
+    )
+    def post(self, request: Request) -> Response:
+        """Adapt ``workflows.query_inbox``; denials are the empty page."""
+        body = InboxQueryRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            filters = validated_filters(
+                kinds=data["kinds"], owner=data["owner"], due=data["due"]
+            )
+            known = validated_keys(data["known"])
+        except InboxInputError as error:
+            raise UiApiError(INVALID_INPUT) from error
+        clinic_id = data.get("clinic_id") or _remembered_clinic(request)
+        return Response(
+            InboxPageSerializer(_inbox_page(clinic_id, filters, known)).data
+        )
+
+
+def _inbox_page(
+    clinic_id: UUID | None, filters: InboxFilters, known: tuple[str, ...]
+) -> InboxPage:
+    """Answer every refusal with the page of a clinician with nothing to do."""
+    if clinic_id is None:
+        return empty_inbox(known)
+    try:
+        return query_inbox(clinic_id=clinic_id, filters=filters, known=known)
+    except CurrentActorError:
+        return empty_inbox(known)
 
 
 def _remembered_clinic(request: Request) -> UUID | None:

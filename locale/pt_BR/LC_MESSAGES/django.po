@@ -5993,3 +5993,219 @@ msgstr "Registrando a ação sobre o resultado. Aguarde a confirmação."
 
 msgid "Your access changed. This result view is no longer available."
 msgstr "Seu acesso mudou. Esta visualização de resultados não está mais disponível."
+
+msgid "Results, notes and tasks that need you, most urgent first."
+msgstr "Resultados, evoluções e tarefas que dependem de você, os mais urgentes primeiro."
+
+msgid "The inbox changed. Finish what you are doing, then refresh."
+msgstr "A caixa clínica mudou. Conclua o que está fazendo e depois atualize."
+
+msgid "Updating the inbox…"
+msgstr "Atualizando a caixa clínica…"
+
+msgid "Connection unavailable. Nothing was confirmed. Refresh when you reconnect."
+msgstr "Conexão indisponível. Nada foi confirmado. Atualize quando a conexão voltar."
+
+msgid "Keyboard: J and K move between items, Enter runs the item's action, X selects a normal result."
+msgstr "Teclado: J e K movem entre os itens, Enter executa a ação do item e X seleciona um resultado normal."
+
+msgid "Your day changed. Finish what you are doing, then refresh."
+msgstr "Seu dia mudou. Conclua o que está fazendo e depois atualize."
+
+msgid "Keyboard: J and K move between appointments, Enter starts the selected encounter."
+msgstr "Teclado: J e K movem entre as consultas e Enter inicia o atendimento selecionado."
+
+msgid "Overdue"
+msgstr "Em atraso"
+
+msgid "Show"
+msgstr "Mostrar"
+
+msgid "Any owner"
+msgstr "Qualquer responsável"
+
+msgid "Assigned to me"
+msgstr "Atribuídos a mim"
+
+msgid "Any due date"
+msgstr "Qualquer prazo"
+
+msgid "Due by today"
+msgstr "Prazo até hoje"
+
+msgid "Review before acknowledging"
+msgstr "Revise antes de confirmar"
+
+msgid "Preview selected normal results"
+msgstr "Pré-visualizar resultados normais selecionados"
+
+msgid "Only non-critical results with every value flagged normal can be acknowledged together. Results are never released in bulk."
+msgstr "Somente resultados não críticos com todos os valores sinalizados como normais podem ter a revisão confirmada em conjunto. Resultados nunca são liberados em lote."
+
+msgid "Only the most urgent items are shown. Narrow the filters to see the rest."
+msgstr "Somente os itens mais urgentes são exibidos. Refine os filtros para ver os demais."
+
+msgid "All values normal"
+msgstr "Todos os valores normais"
+
+msgid "No due date"
+msgstr "Sem prazo"
+
+msgid "Acknowledge"
+msgstr "Confirmar revisão"
+
+msgid "Select for bulk acknowledgment"
+msgstr "Selecionar para confirmação em lote"
+
+msgid "Open note"
+msgstr "Abrir evolução"
+
+msgid "Open in Tasks"
+msgstr "Abrir em Tarefas"
+
+msgid "Nothing is waiting for you"
+msgstr "Nada aguardando você"
+
+msgid "New results, notes to finalize and tasks you own appear here."
+msgstr "Novos resultados, evoluções a finalizar e tarefas sob sua responsabilidade aparecem aqui."
+
+msgid "Inbox summary"
+msgstr "Resumo da caixa clínica"
+
+msgid "This normal result will be acknowledged with no further action. Release to the patient stays a separate decision."
+msgid_plural "These %(count)s normal results will be acknowledged with no further action. Release to the patient stays a separate decision."
+msgstr[0] "Este resultado normal terá a revisão confirmada sem ação adicional. A liberação ao paciente continua sendo uma decisão separada."
+msgstr[1] "Estes %(count)s resultados normais terão a revisão confirmada sem ação adicional. A liberação ao paciente continua sendo uma decisão separada."
+
+msgid "Acknowledge this result"
+msgid_plural "Acknowledge these %(count)s results"
+msgstr[0] "Confirmar revisão deste resultado"
+msgstr[1] "Confirmar revisão destes %(count)s resultados"
+
+msgid "%(count)s item"
+msgid_plural "%(count)s items"
+msgstr[0] "%(count)s item"
+msgstr[1] "%(count)s itens"
+
+msgid "Source value (%(count)s)"
+msgid_plural "Source values (%(count)s)"
+msgstr[0] "Valor da fonte (%(count)s)"
+msgstr[1] "Valores da fonte (%(count)s)"
+
+msgid "Next patient"
+msgstr "Próximo paciente"
+
+msgid "Continue encounter"
+msgstr "Continuar atendimento"
+
+msgid "Available after reception registers the arrival."
+msgstr "Disponível depois que a recepção registrar a chegada."
+
+msgid "No more patients today"
+msgstr "Nenhum outro paciente hoje"
+
+msgid "Appointments booked for you today appear here."
+msgstr "As consultas agendadas para você hoje aparecem aqui."
+
+msgid "Pre-visit brief"
+msgstr "Resumo pré-consulta"
+
+msgid "Brief unavailable"
+msgstr "Resumo indisponível"
+
+msgid "AI assistance is off for this clinic. Review the record before the visit."
+msgstr "A assistência de IA está desligada nesta clínica. Revise o prontuário antes da consulta."
+
+msgid "This day exceeds the list limit. Use the agenda to review every appointment."
+msgstr "Este dia excede o limite da lista. Use a agenda para revisar todas as consultas."
+
+msgid "No appointments today"
+msgstr "Nenhuma consulta hoje"
+
+msgid "Your agenda for today is empty."
+msgstr "Sua agenda de hoje está vazia."
+
+msgid "Open Clinical Inbox"
+msgstr "Abrir caixa clínica"
+
+msgid "No patient has arrived yet."
+msgstr "Nenhum paciente chegou ainda."
+
+msgid "Today summary"
+msgstr "Resumo de hoje"
+
+msgid "%(count)s appointment today"
+msgid_plural "%(count)s appointments today"
+msgstr[0] "%(count)s consulta hoje"
+msgstr[1] "%(count)s consultas hoje"
+
+msgid "%(count)s patient waiting"
+msgid_plural "%(count)s patients waiting"
+msgstr[0] "%(count)s paciente aguardando"
+msgstr[1] "%(count)s pacientes aguardando"
+
+msgid "%(count)s more appointment later today."
+msgid_plural "%(count)s more appointments later today."
+msgstr[0] "%(count)s consulta restante hoje."
+msgstr[1] "%(count)s consultas restantes hoje."
+
+msgid "Exact source values"
+msgstr "Valores exatos da fonte"
+
+msgid "You"
+msgstr "Você"
+
+msgid "Your role"
+msgstr "Seu papel"
+
+msgid "Care team"
+msgstr "Equipe assistencial"
+
+msgid "Task: %(kind)s"
+msgstr "Tarefa: %(kind)s"
+
+msgid "Acknowledgment recorded for this result version."
+msgstr "Revisão clínica registrada para esta versão do resultado."
+
+msgid "Review the inbox filters and try again."
+msgstr "Revise os filtros da caixa clínica e tente novamente."
+
+msgid "Choose the results and a clinical disposition, then try again."
+msgstr "Escolha os resultados e uma conduta clínica e tente novamente."
+
+msgid "One item was removed or is no longer available to you."
+msgid_plural "%(count)d items were removed or are no longer available to you."
+msgstr[0] "Um item foi removido ou não está mais disponível para você."
+msgstr[1] "%(count)d itens foram removidos ou não estão mais disponíveis para você."
+
+msgid "One normal result was acknowledged with no further action."
+msgid_plural "%(count)d normal results were acknowledged with no further action."
+msgstr[0] "Um resultado normal teve a revisão confirmada sem ação adicional."
+msgstr[1] "%(count)d resultados normais tiveram a revisão confirmada sem ação adicional."
+
+msgid "A selected result changed or is no longer eligible. Nothing was acknowledged. Review the current inbox and try again."
+msgstr "Um resultado selecionado mudou ou não é mais elegível. Nenhuma revisão foi confirmada. Revise a caixa clínica atual e tente novamente."
+
+msgid "Result to review: %(exams)s"
+msgstr "Resultado para revisar: %(exams)s"
+
+msgid "Results to review"
+msgstr "Resultados para revisar"
+
+msgid "Amendment awaiting finalization"
+msgstr "Retificação aguardando finalização"
+
+msgid "Note awaiting finalization"
+msgstr "Evolução aguardando finalização"
+
+msgid "Notes to finalize"
+msgstr "Evoluções a finalizar"
+
+msgid "My day"
+msgstr "Meu dia"
+
+msgid "Inbox counts are not available for your current access."
+msgstr "As contagens da caixa clínica não estão disponíveis para o seu acesso atual."
+
+msgid "No more appointments later today."
+msgstr "Nenhuma outra consulta mais tarde hoje."

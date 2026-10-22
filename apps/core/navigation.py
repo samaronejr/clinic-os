@@ -31,6 +31,7 @@ from django.utils.translation import gettext, gettext_noop
 
 from apps.identity.models import UserClinicRole
 from apps.scheduling.agenda_presenter import clinic_local_today
+from apps.workflows.inbox import INBOX_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -54,6 +55,9 @@ TASK_ROUTE: Final = STAFF_ROUTE | {
 }
 MANAGER_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST})
 ADMIN_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN})
+# Result/order observation is patient-scoped, so the inbox route admits the
+# clinical roles whose bundle carries it; every item is rechecked per patient.
+INBOX_ROUTE: Final = frozenset(INBOX_ROLES)
 
 _AGENDA_READ: Final = ("appointment.read", "appointment.read_own")
 _CONFIGURATION: Final = ("configuration.clinic", "configuration.organization")
@@ -109,6 +113,17 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         route_roles=frozenset({_ROLE.RECEPTIONIST, _ROLE.NURSE}),
         views=frozenset({"scheduling:reception"}),
         owner_todo=25,
+        entries=(
+            Destination(
+                "clinician-today",
+                gettext_noop("My day"),
+                "workflows:today",
+                ("appointment.read_own",),
+                route_roles=frozenset({_ROLE.PHYSICIAN}),
+                views=frozenset({"workflows:today"}),
+                owner_todo=32,
+            ),
+        ),
     ),
     Destination(
         "agenda",
@@ -170,8 +185,10 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "inbox",
         gettext_noop("Clinical Inbox"),
-        None,
-        ("result.read", "order.observe"),
+        "workflows:inbox",
+        ("demographics.read",),
+        route_roles=INBOX_ROUTE,
+        views=frozenset({"workflows:inbox"}),
         owner_todo=32,
         entries=(
             Destination(

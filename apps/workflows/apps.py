@@ -10,7 +10,9 @@ class WorkflowsConfig(AppConfig):
     name = "apps.workflows"
 
     def ready(self) -> None:
-        """Register the reviewed external action after models are available."""
+        """Register the reviewed external action and the inbox task feed."""
+        from apps.workflows import task_feed  # noqa: PLC0415
         from apps.workflows.external import register_adapters  # noqa: PLC0415
 
         register_adapters()
+        task_feed.register()

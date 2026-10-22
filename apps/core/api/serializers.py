@@ -11,6 +11,12 @@ from apps.core.api.errors import ERROR_CODES
 from apps.core.command_search import MAX_COMMAND_QUERY
 from apps.scheduling.agenda_board import BOARD_VIEWS, AgendaBoard
 from apps.scheduling.agenda_queries import AGENDA_STATUSES, AgendaPage
+from apps.workflows.inbox import (
+    DUE_FILTERS,
+    MAX_KNOWN_KEYS,
+    OWNER_FILTERS,
+    InboxPage,
+)
 
 
 class ErrorSerializer(serializers.Serializer[None]):
@@ -358,3 +364,71 @@ class AddendumSavedSerializer(serializers.Serializer[Any]):
     saved_at = serializers.CharField(
         read_only=True, help_text="ISO 8601 in the clinic's UTC offset."
     )
+
+
+class InboxQueryRequestSerializer(serializers.Serializer[None]):
+    """POST body of ``inbox/query``; selectors and filters stay in the body.
+
+    ``known`` lists the item keys the caller is showing; keys that are no
+    longer visible come back in ``removed`` so the client can say so.
+    """
+
+    clinic_id = serializers.UUIDField(required=False)
+    kinds = serializers.ListField(
+        child=serializers.CharField(max_length=24), max_length=16, default=list
+    )
+    owner = serializers.ChoiceField(
+        choices=[(value, value) for value in OWNER_FILTERS], default="all"
+    )
+    due = serializers.ChoiceField(
+        choices=[(value, value) for value in DUE_FILTERS], default="all"
+    )
+    known = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        max_length=MAX_KNOWN_KEYS,
+        default=list,
+    )
+
+
+class InboxObservationSerializer(serializers.Serializer[Any]):
+    """Adapt ``workflows.InboxObservation``: exact source strings only."""
+
+    code = serializers.CharField(read_only=True)
+    examination = serializers.CharField(source="label", read_only=True)
+    value = serializers.CharField(read_only=True)
+    unit = serializers.CharField(read_only=True)
+    reference_interval = serializers.CharField(read_only=True)
+    flag = serializers.CharField(read_only=True)
+
+
+class InboxItemSerializer(serializers.Serializer[Any]):
+    """Adapt ``workflows.InboxItem``: one typed, owned and due inbox row."""
+
+    key = serializers.CharField(read_only=True)
+    kind = serializers.CharField(read_only=True)
+    record_id = serializers.UUIDField(read_only=True)
+    target_id = serializers.UUIDField(read_only=True, allow_null=True)
+    revision = serializers.IntegerField(read_only=True)
+    title = serializers.CharField(read_only=True)
+    patient_label = serializers.CharField(read_only=True)
+    owner = serializers.CharField(read_only=True)
+    owner_label = serializers.CharField(read_only=True)
+    due_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    overdue = serializers.BooleanField(read_only=True)
+    priority = serializers.CharField(read_only=True)
+    critical = serializers.BooleanField(read_only=True)
+    action = serializers.CharField(read_only=True)
+    bulk_eligible = serializers.BooleanField(read_only=True)
+    preview = InboxObservationSerializer(many=True, read_only=True)
+
+
+class InboxPageSerializer(serializers.Serializer[InboxPage]):
+    """Adapt ``workflows.InboxPage``; unauthorized callers get it empty."""
+
+    items = InboxItemSerializer(many=True, read_only=True)
+    counts = serializers.DictField(child=serializers.IntegerField(), read_only=True)
+    total = serializers.IntegerField(read_only=True)
+    overdue = serializers.IntegerField(read_only=True)
+    critical = serializers.IntegerField(read_only=True)
+    removed = serializers.ListField(child=serializers.CharField(), read_only=True)
+    truncated = serializers.BooleanField(read_only=True)

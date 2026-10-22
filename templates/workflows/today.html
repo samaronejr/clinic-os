@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Today" %} · Clinic Ops{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-inbox.css' %}">
+<script src="{% static 'js/realtime.js' %}" defer></script>
+<script src="{% static 'js/clinical-worklist.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<section class="worklist today" aria-labelledby="today-title" data-worklist="today"
+  data-realtime-topic="clinic:{{ clinic_id }}:inbox"
+  data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}"
+  data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <header class="worklist-header">
+    <div>
+      <h1 id="today-title">{% trans "Today" %}</h1>
+      <p class="lede"><time datetime="{{ screen.day|date:'Y-m-d' }}">{{ screen.day|date:"l, d/m/Y" }}</time> · {{ screen.clinic.name }}</p>
+    </div>
+    <a class="button button--secondary" href="{{ action_url }}">{% trans "Refresh" %}</a>
+  </header>
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  <p class="feedback feedback--warning" data-worklist-stale role="status" hidden>{% trans "Your day changed. Finish what you are doing, then refresh." %}</p>
+  <p class="feedback feedback--warning" data-worklist-offline role="status" hidden>{% trans "Connection unavailable. Nothing was confirmed. Refresh when you reconnect." %}</p>
+  <p class="hint worklist-keys" id="today-keys">{% trans "Keyboard: J and K move between appointments, Enter starts the selected encounter." %}</p>
+  {% include "workflows/partials/today_board.html" %}
+</section>
+{% endblock %}
