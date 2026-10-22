@@ -724,6 +724,23 @@ def test_inbox_page_bulk_flow_previews_each_item_then_acknowledges(
             )
         with owner_context(rbac_graph.organization_a):
             assert not ResultAcknowledgment.objects.exists()
+        # When: the clinician cancels the preview, then resumes with a new one.
+        cancelled = client.post(
+            url, {"action": "refresh"}, headers={"HX-Request": "true"}
+        )
+        assert cancelled.status_code == 200
+        assert b"data-bulk-preview" not in cancelled.content
+        assert b"data-inbox-outcome" not in cancelled.content
+        with owner_context(rbac_graph.organization_a):
+            assert not ResultAcknowledgment.objects.exists()
+        preview = client.post(
+            url,
+            {
+                "action": "bulk_preview",
+                "version_id": [str(first.version_id), str(second.version_id)],
+            },
+        )
+        assert b'data-bulk-preview="2"' in preview.content
         token = preview.content.split(b'name="preview_token" value="')[1].split(b'"')[0]
         confirmed = client.post(
             url, {"action": "bulk_confirm", "preview_token": token.decode()}
