@@ -1,0 +1,14 @@
+{% load i18n %}{% comment %}
+Refetchable region of the agenda board (todo 24 on the todo 23 variant A
+grid). Realtime hints and the polling fallback refetch #agenda-grid-results
+with the server-side filters; swaps settle at 0 ms so the new region's trigger
+is installed before the next hint. The outcome of the user's own action lives
+in #agenda-grid-announce, outside the refetched region, so the realtime echo
+of that action cannot erase it. data-signature is an opaque digest of what is
+shown, which agenda-grid.js compares to announce a remote change.
+{% endcomment %}<div class="agenda-grid-announce" id="agenda-grid-announce" aria-live="polite">{% if notice %}{% if notice_tone == "success" %}{% include "includes/components/state.html" with state="success" message=notice id="agenda-grid-notice" only %}{% else %}{% include "includes/components/state.html" with state="conflict" title=refused_title message=notice id="agenda-grid-notice" only %}{% endif %}{% endif %}</div>
+<div id="agenda-grid-results" class="agenda-grid-results" hx-get="{{ grid_url }}" hx-trigger="rt:agenda from:body, rt:poll from:body" hx-select="#agenda-grid-results" hx-swap="outerHTML settle:0ms" hx-sync="this:replace" data-agenda-grid data-day="{{ board.anchor|date:'Y-m-d' }}" data-view="{{ board.view }}" data-signature="{{ signature }}">
+  <p class="agenda-status" id="agenda-grid-status" role="status">{% if board.view == "day" %}{% blocktrans count total=board.appointments|length %}{{ total }} appointment on this day.{% plural %}{{ total }} appointments on this day.{% endblocktrans %}{% elif board.view == "month" %}{% blocktrans count total=month_total %}{{ total }} appointment in this month.{% plural %}{{ total }} appointments in this month.{% endblocktrans %}{% else %}{% blocktrans count total=board.appointments|length %}{{ total }} appointment in this week.{% plural %}{{ total }} appointments in this week.{% endblocktrans %}{% endif %}{% if board.truncated %} {% trans "Only the first 400 appointments are shown. Narrow the filters to see the rest." %}{% endif %}</p>
+  {% if holds %}{% include "scheduling/partials/agenda_holds.html" %}{% endif %}
+  {% if board.view == "day" or board.view == "week" %}{% include "scheduling/partials/agenda_board_grid.html" %}{% elif board.view == "month" %}{% include "scheduling/partials/agenda_board_month.html" %}{% else %}{% include "scheduling/partials/agenda_board_list.html" %}{% endif %}
+</div>

@@ -12,7 +12,7 @@
     var stopped = false;
     var pending = null;
     var notice = root.querySelector("[data-realtime-unavailable]");
-    var kinds = ["agenda", "inbox", "queue", "messages", "ai_job"];
+    var kinds = ["agenda", "inbox", "queue", "messages", "ai_job", "teleconsult"];
 
     function dispatch(kind) {
       document.body.dispatchEvent(new CustomEvent("rt:" + kind));

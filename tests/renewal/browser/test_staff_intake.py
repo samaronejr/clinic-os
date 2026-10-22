@@ -169,8 +169,8 @@ def intake_staff(renewal_base_url: str) -> dict[str, str]:
         )
         connection.execute(
             "INSERT INTO clinic_app.identity_userclinicrole "
-            "(id, user_id, organization_id, clinic_id, role) "
-            "VALUES (%s, %s, %s, %s, 'receptionist')",
+            "(id, user_id, organization_id, clinic_id, role, "
+            "workflow_bundle_version) VALUES (%s, %s, %s, %s, 'receptionist', 1)",
             [
                 str(uuid4()),
                 values["receptionist_id"],

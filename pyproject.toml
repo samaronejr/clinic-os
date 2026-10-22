@@ -11,6 +11,7 @@ dependencies = [
   "djangorestframework==3.17.*",
   "drf-spectacular==0.30.0",
   "gunicorn",
+  "jsonschema>=4.26.0",
   "opentelemetry-sdk>=1.44.0",
   "psycopg[binary]>=3.2",
   "qrcode[pil]",
@@ -20,6 +21,7 @@ dependencies = [
   "sqlparse>=0.6.0,<0.7",
   "uvicorn>=0.35,<1",
   "tzdata==2026.3",
+  "webauthn==3.0.1",
   "whitenoise==6.12.0",
 ]
 
@@ -41,7 +43,6 @@ dev = [
   "pytest-xdist>=3.8.0",
   "ruff",
   "basedpyright==1.39.9",
-  "jsonschema>=4.26.0",
 ]
 
 [tool.uv]
@@ -51,6 +52,7 @@ package = false
 target-version = "py312"
 line-length = 88
 src = ["tests"]
+namespace-packages = ["tests"]
 
 [tool.ruff.lint]
 select = ["ALL"]

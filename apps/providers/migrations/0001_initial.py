@@ -16,6 +16,7 @@ from apps.providers.migrations._lifecycle_sql import (
     TRANSITION_SQL,
 )
 from apps.providers.migrations._seed_v2 import seed_v2_capabilities
+from apps.tenancy.migration_operations import AddConstraint
 from apps.tenancy.migrations_support import revoke_default_dml
 
 RUNTIME_ACL_SQL: str = "".join(
@@ -246,7 +247,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="providercapability",
             constraint=models.UniqueConstraint(
                 fields=("key", "clinic_id"),
@@ -254,14 +255,14 @@ class Migration(migrations.Migration):
                 nulls_distinct=False,
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="providercapability",
             constraint=models.CheckConstraint(
                 condition=models.Q(("key__regex", "^[a-z][a-z0-9_]{0,63}$")),
                 name="providers_capability_key_format",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="capabilityversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -282,7 +283,7 @@ class Migration(migrations.Migration):
                 name="providers_capabilityversion_state_vocab",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="capabilityversion",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -309,7 +310,7 @@ class Migration(migrations.Migration):
                 name="providers_capabilityversion_approval_pairing",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="capabilityversion",
             constraint=models.UniqueConstraint(
                 fields=(

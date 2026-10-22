@@ -12,9 +12,12 @@ from django_otp.oath import TOTP
 from playwright.sync_api import expect
 
 from renewal.browser._fixture_secrets import new_totp_key
-from renewal.browser._navigation import click_to_navigate, goto_settled
+from renewal.browser._navigation import click_to_navigate, expect_document, goto_settled
 from renewal.browser._page_wait import evaluate_js
-from renewal.browser._protected import decrypt
+from renewal.browser._protected import decrypt, encrypt
+from renewal.browser.duplicate_accessibility import (
+    test_duplicate_review_merge_reversal_accessibility,
+)
 from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.test_availability import (
     _no_overflow,
@@ -30,7 +33,7 @@ if TYPE_CHECKING:
 
     from playwright.sync_api import Page
 
-__all__ = ("availability_staff",)
+__all__ = ("availability_staff", "test_duplicate_review_merge_reversal_accessibility")
 
 FIELDS = ("subjective", "objective", "assessment", "plan")
 FIRST = {
@@ -46,6 +49,36 @@ SECOND = {
     "plan": "Plano sintético retificado",
 }
 MIN_TARGET_PX = 44
+
+
+def seed_registered(staff: dict[str, str], day: str) -> dict[str, str]:
+    """Seed an amendment encounter with current synthetic clinical eligibility."""
+    data = seed(staff, day)
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            [staff["organization"]],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.identity_professionalregistration "
+            "(id,organization_id,clinic_id,user_id,role,council,number,jurisdiction,"
+            "synthetic,status,valid_from,valid_to) "
+            "SELECT %s,c.organization_id,c.id,%s,'physician','CRM',%s,c.crm_uf,"
+            "true,'regular',now()-interval '1 day',now()+interval '1 day' "
+            "FROM clinic_app.identity_clinic c WHERE c.id=%s "
+            "AND NOT EXISTS (SELECT 1 "
+            "FROM clinic_app.identity_professionalregistration r "
+            "WHERE r.organization_id=c.organization_id AND r.clinic_id=c.id "
+            "AND r.user_id=%s AND r.role='physician')",
+            [
+                str(uuid4()),
+                staff["physician_a_id"],
+                encrypt(conn, "identity.registration.number", b"SYNTHETIC-T18-CRM"),
+                staff["clinic_a"],
+                staff["physician_a_id"],
+            ],
+        )
+    return data
 
 
 def capture(page: Page, root: Path, state: str, width: int) -> None:
@@ -125,7 +158,13 @@ def swap_totp_device(staff: dict[str, str]) -> str:
             [staff["physician_a_id"]],
         )
         conn.execute(
-            "DELETE FROM clinic_app.otp_totp_totpdevice WHERE user_id = %s",
+            "INSERT INTO clinic_app.identity_authenticatorretirement "
+            "(id, user_id, device_id, retired_at) "
+            "SELECT gen_random_uuid(), device.user_id, device.id, now() "
+            "FROM clinic_app.otp_totp_totpdevice device "
+            "WHERE device.user_id = %s AND NOT EXISTS ("
+            "SELECT 1 FROM clinic_app.identity_authenticatorretirement retired "
+            "WHERE retired.device_id = device.id)",
             [staff["physician_a_id"]],
         )
         conn.execute(
@@ -200,6 +239,41 @@ def review_superseded(page: Page, root: Path, width: int, digest: str) -> None:
     assert FIRST["subjective"] in page.content()
     capture(page, root, "review-superseded", width)
     press_in_view(page, "current")
+
+
+def timeline_reflow(
+    page: Page, root: Path, url: str, enrollment: str, digest: str
+) -> None:
+    """Read retained finalized digests through the real timeline POST at 390px."""
+    timeline = page.context.new_page()
+    try:
+        goto_settled(timeline, page.url)
+        with expect_document(timeline):
+            timeline.evaluate(
+                """([url, enrollment]) => {
+                  const form = document.createElement('form');
+                  form.method = 'POST'; form.action = url;
+                  form.append(document.querySelector(
+                    '[name=csrfmiddlewaretoken]').cloneNode());
+                  const selected = document.createElement('input');
+                  selected.name = 'enrollment_id'; selected.value = enrollment;
+                  form.append(selected); document.body.append(form); form.submit();
+                }""",
+                [url, enrollment],
+            )
+        expect(timeline.locator("ol > li")).to_have_count(2)
+        expect(timeline.locator(".patient-details code").first).to_have_text(digest)
+        timeline.set_viewport_size({"width": 390, "height": 900})
+        for theme in ("light", "dark"):
+            timeline.evaluate(
+                "(theme) => document.documentElement.dataset.theme = theme", theme
+            )
+            assert evaluate_js(
+                timeline, "document.documentElement.scrollWidth <= innerWidth"
+            )
+            capture(timeline, root, f"retained-timeline-{theme}", 390)
+    finally:
+        timeline.close()
 
 
 def close_and_verify(page: Page, url: str, staff: dict[str, str]) -> str:
@@ -318,7 +392,7 @@ def test_amendment_journey(
     width: int,
 ) -> None:
     staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
-    data = seed(staff, DAYS[width])
+    data = seed_registered(staff, DAYS[width])
     browser = renewal_page.context.browser
     assert browser is not None
     context = browser.new_context(
@@ -350,8 +424,7 @@ def test_amendment_journey(
             url,
             {"action": "finalize", "version_id": version, "revision": "2"},
         )
-        assert status == 302
-        assert len(stored_versions(staff, encounter)) == 1
+        assert (status, len(stored_versions(staff, encounter))) == (302, 1)
 
         # A stale amendment base is a conflict; the lineage stays untouched.
         amend_current(page, "Correção sintética")
@@ -373,13 +446,21 @@ def test_amendment_journey(
         finalize_current(page)
         rows = stored_versions(staff, encounter)
         assert lineage(staff, encounter) == [[1, "superseded"], [2, "finalized"]]
-        assert rows[0][3] == FIRST["subjective"]
-        assert rows[0][2] == digest  # The original digest is preserved.
+        assert (rows[0][3], rows[0][2]) == (FIRST["subjective"], digest)
         assert rows[1][2] != digest
         capture(page, root, "amended", width)
 
         # The review panel renders the preserved superseded original.
         review_superseded(page, root, width, digest)
+
+        if width == 375:
+            timeline_reflow(
+                page,
+                root,
+                f"{base}/intake/clinics/{staff['clinic_a']}/patients/timeline/",
+                data["enrollment"],
+                digest,
+            )
 
         # Closing is idempotent and keeps amendments possible afterwards.
         close_and_verify(page, url, staff)
@@ -479,7 +560,7 @@ def test_amendment_accessibility_matrix(
     staff, base, root = availability_staff, renewal_base_url, renewal_artifact_root
     # Each scene gets its own day, appointment and patient.
     ctx: dict[str, dict[str, Any]] = {
-        key: {**seed(staff, day), "staff": staff, "base": base, "day": day}
+        key: {**seed_registered(staff, day), "staff": staff, "base": base, "day": day}
         for key, day in (
             ("reflow", "2035-06-06"),
             ("colors", "2035-06-07"),

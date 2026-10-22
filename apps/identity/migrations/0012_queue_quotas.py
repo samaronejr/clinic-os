@@ -13,6 +13,8 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 RESOLVER_SQL = """
 SET LOCAL ROLE clinic_resolver;
 
@@ -63,7 +65,7 @@ class Migration(migrations.Migration):
             name="queue_quotas",
             field=models.JSONField(blank=True, default=dict),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="clinicconfiguration",
             constraint=models.CheckConstraint(
                 condition=models.expressions.RawSQL(

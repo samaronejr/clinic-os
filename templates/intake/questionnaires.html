@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% load static i18n %}
 {% block title %}Questionários · Clinic OS{% endblock %}
+{% block extra_head %}<script src="{% static 'js/questionnaire-branching.js' %}" defer></script>{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="questionnaire-title">
-  <p class="eyebrow">Portal do paciente</p>
   <h1 id="questionnaire-title">Questionários antes da consulta</h1>
   <p class="lede">Salve um rascunho e continue depois. O envio acontece somente ao escolher “Enviar respostas”. Este formulário não oferece orientação médica.</p>
   {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
+  {% if failure %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error data-carry-refused>{{ failure }}</p>{% endif %}
   {% if response %}
   <section class="panel" aria-labelledby="form-title" data-state="{{ response.state }}" data-template-version="{{ response.template.version }}">
     <h2 id="form-title">{{ response.template.title }}</h2>
@@ -14,20 +16,41 @@
       <p>Suas respostas foram enviadas. Somente a equipe médica pode reabrir este formulário. A versão enviada será preservada.</p>
     {% else %}
       {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error><h3>Revise as respostas</h3>{{ form.non_field_errors }}<p>Corrija os campos indicados. As alterações ainda não foram salvas.</p></div>{% endif %}
-      <form method="post" novalidate>
+      <form method="post" novalidate data-branching-form>
         {% csrf_token %}{{ form.response_id }}{{ form.revision }}
-        {% for field in form.visible_fields %}
-        <div class="field{% if field.errors %} field--error{% endif %}">
+        <input type="hidden" data-branch-definition value="{{ form.branch_definition }}">
+        {% for row in form.question_rows %}
+        {% with field=row.field %}
+        <div class="field{% if field.errors %} field--error{% endif %}" data-question-id="{{ row.id }}"{% if not row.visible %} hidden{% endif %}>
           {{ field.label_tag }}{{ field }}
           {% if field.help_text %}<p class="hint" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
           {{ field.errors }}
+          {% if row.confirmation %}
+          <p class="feedback" role="note">{% trans "Carried-forward answer: unverified." %}</p>
+          {{ row.confirmation }}{{ row.confirmation.label_tag }}{{ row.confirmation.errors }}
+          {% endif %}
         </div>
+        {% endwith %}
         {% endfor %}
         <div class="actions">
           <button class="button button--secondary" name="action" value="save" type="submit">Salvar rascunho</button>
           <button class="button" name="action" value="submit" type="submit">Enviar respostas</button>
         </div>
       </form>
+      {% if carry_sources %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="response_id" value="{{ response.pk }}">
+        <input type="hidden" name="revision" value="{{ response.revision }}">
+        <div class="field">
+          <label for="carry-source">{% trans "Previous submission" %}</label>
+          <select id="carry-source" name="source_response_id">
+            {% for source in carry_sources %}<option value="{{ source.pk }}">{{ source.submitted_at|date:"d/m/Y H:i" }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="button button--secondary" name="action" value="carry" type="submit">{% trans "Carry forward for review" %}</button>
+      </form>
+      {% endif %}
     {% endif %}
   </section>
   {% endif %}

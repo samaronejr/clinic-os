@@ -1,0 +1,262 @@
+"""Episodes: a clinician-named grouping of one patient's encounters (plan item 27).
+
+Authority follows the RP matrix's clinical narrative row through
+``has_permission``: ``clinical.write`` (reads: ``clinical.read``) for the
+episode's clinic and the patient's enrollment, which requires a current
+professional registration and care-team or open-encounter scope. Linking an
+encounter also requires its assigned physician (``_encounter_actor``), the same
+patient and clinic, and an open episode. The database re-decides every input:
+RLS through ``has_permission`` and ``ehr_assigned``, the binding trigger for
+clinic, patient and state. Unknown, foreign-clinic and other-patient records
+share one denial.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Final
+
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from django.utils.translation import gettext_lazy
+
+from apps.audit.services import record_phase1_event
+from apps.ehr.models import Encounter, Episode, EpisodeEncounter
+from apps.ehr.services import (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    _encounter_actor,
+    decided,
+)
+from apps.identity.current_context import CurrentActorError, require_permission
+from apps.identity.overlay_content import validate_overlay_text
+from apps.intake.models import PatientClinicEnrollment
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+MAX_EPISODE_TITLE: Final = 160
+INVALID_TITLE: Final = gettext_lazy("Enter an episode title in plain text.")
+
+
+@dataclass(frozen=True, slots=True)
+class EncounterEpisodes:
+    """The encounter's episode link and the patient's open episodes."""
+
+    linked: Episode | None
+    open_episodes: tuple[Episode, ...]
+
+
+def _enrollment_id(clinic_id: UUID, patient_id: UUID) -> UUID | None:
+    enrollment = PatientClinicEnrollment.objects.filter(
+        clinic_id=clinic_id, patient_id=patient_id
+    ).first()
+    return enrollment.pk if enrollment is not None else None
+
+
+def _require(permission: str, clinic_id: UUID, enrollment_id: UUID | None) -> UUID:
+    if enrollment_id is None:
+        raise ClinicalAccessDeniedError
+    try:
+        return require_permission(
+            permission, clinic_id=clinic_id, patient_enrollment_id=enrollment_id
+        )
+    except CurrentActorError as error:
+        raise ClinicalAccessDeniedError from error
+
+
+def open_episode(*, clinic_id: UUID, enrollment_id: UUID, title: str) -> Episode:
+    """Open a titled episode for one enrolled patient."""
+    actor = _require("clinical.write", clinic_id, enrollment_id)
+    title = title.strip() if isinstance(title, str) else ""
+    if not title or len(title) > MAX_EPISODE_TITLE:
+        raise ValidationError(INVALID_TITLE)
+    validate_overlay_text(title)
+    enrollment = PatientClinicEnrollment.objects.get(pk=enrollment_id)
+    with decided(lambda: _require("clinical.write", clinic_id, enrollment_id)):
+        episode = Episode.objects.create(
+            organization_id=enrollment.organization_id,
+            clinic_id=clinic_id,
+            patient_id=enrollment.patient_id,
+            title=title,
+            opened_by_id=actor,
+        )
+        record_phase1_event(
+            "ehr.episode.opened", clinic_id=clinic_id, affected_record_id=episode.pk
+        )
+        return episode
+
+
+def close_episode(*, clinic_id: UUID, episode_id: UUID) -> Episode:
+    """Close an episode; a retry returns the closed row unchanged."""
+
+    def authority() -> tuple[Episode, UUID]:
+        # Reads only: a visible episode and clinical.write for its enrollment.
+        episode = Episode.objects.filter(pk=episode_id, clinic_id=clinic_id).first()
+        if episode is None:
+            raise ClinicalAccessDeniedError
+        actor = _require(
+            "clinical.write", clinic_id, _enrollment_id(clinic_id, episode.patient_id)
+        )
+        return episode, actor
+
+    episode, actor = authority()
+    with decided(authority):
+        # The update policy admits only open episodes under clinical.write.
+        locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
+        if locked is None:
+            # A closed episode and clinical.write committed away both hide the
+            # row lock; only a closed episode is a retry. Its terminal read stays
+            # inside the decision: authority lost before it hides the row too,
+            # and that is the early refusal, never a server error.
+            return Episode.objects.get(pk=episode.pk)
+        locked.state = Episode.State.CLOSED
+        locked.closed_at = timezone.now()
+        locked.closed_by_id = actor
+        locked.save(update_fields=("state", "closed_at", "closed_by"))
+        record_phase1_event(
+            "ehr.episode.closed", clinic_id=clinic_id, affected_record_id=locked.pk
+        )
+        return locked
+
+
+def link_encounter(
+    *, clinic_id: UUID, encounter_id: UUID, episode_id: UUID
+) -> EpisodeEncounter:
+    """Group an encounter under an open episode of the same patient and clinic."""
+
+    def authority() -> tuple[Encounter, Episode, UUID]:
+        # Reads only: the assignee, the same patient and clinic, clinical.write.
+        encounter = Encounter.objects.filter(
+            pk=encounter_id, clinic_id=clinic_id
+        ).first()
+        if encounter is None:
+            raise ClinicalAccessDeniedError
+        actor = _encounter_actor(clinic_id, encounter)
+        episode = Episode.objects.filter(pk=episode_id, clinic_id=clinic_id).first()
+        if episode is None or episode.patient_id != encounter.patient_id:
+            raise ClinicalAccessDeniedError
+        _require(
+            "clinical.write", clinic_id, _enrollment_id(clinic_id, encounter.patient_id)
+        )
+        return encounter, episode, actor
+
+    encounter, episode, actor = authority()
+    with decided(authority):
+        # The update policy admits only open episodes under clinical.write.
+        locked = Episode.objects.select_for_update().filter(pk=episode.pk).first()
+        if locked is not None:
+            existing = EpisodeEncounter.objects.filter(encounter=encounter).first()
+            if existing is not None:
+                if existing.episode_id == episode.pk:
+                    return existing
+                msg = "already_linked"
+                raise ClinicalConflictError(msg)
+            link = EpisodeEncounter.objects.create(
+                organization_id=encounter.organization_id,
+                episode=episode,
+                encounter=encounter,
+                linked_by_id=actor,
+            )
+            record_phase1_event(
+                "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
+            )
+            return link
+    # A closed episode and clinical.write committed away since the check both
+    # hide the row lock. Deciding authority again, outside the locked decision,
+    # gives lost authority the early refusal; only a closed episode conflicts.
+    authority()
+    msg = "episode_closed"
+    raise ClinicalConflictError(msg)
+
+
+def open_episode_for_encounter(
+    *, clinic_id: UUID, encounter_id: UUID, title: str
+) -> EpisodeEncounter:
+    """Open a titled episode and group this encounter under it, atomically.
+
+    Every decision the result depends on (assignee, ``clinical.write``, title,
+    an unlinked open encounter) is made before the first write, and both rows
+    commit together or not at all. Opening first and linking second would
+    leave an orphan episode committed behind a later refusal (todo 23 B1).
+    """
+
+    def authority() -> tuple[Encounter, UUID]:
+        # Reads only: the assignee and clinical.write for the patient.
+        found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+        if found is None:
+            raise ClinicalAccessDeniedError
+        assignee = _encounter_actor(clinic_id, found)
+        _require(
+            "clinical.write", clinic_id, _enrollment_id(clinic_id, found.patient_id)
+        )
+        return found, assignee
+
+    encounter, actor = authority()
+    title = title.strip() if isinstance(title, str) else ""
+    if not title or len(title) > MAX_EPISODE_TITLE:
+        raise ValidationError(INVALID_TITLE)
+    validate_overlay_text(title)
+    with decided(authority):
+        # A conflict found after authority could be lost is decided again.
+        if EpisodeEncounter.objects.filter(encounter=encounter).exists():
+            msg = "already_linked"
+            raise ClinicalConflictError(msg)
+        try:
+            with transaction.atomic():
+                episode = Episode.objects.create(
+                    organization_id=encounter.organization_id,
+                    clinic_id=clinic_id,
+                    patient_id=encounter.patient_id,
+                    title=title,
+                    opened_by_id=actor,
+                )
+                link = EpisodeEncounter.objects.create(
+                    organization_id=encounter.organization_id,
+                    episode=episode,
+                    encounter=encounter,
+                    linked_by_id=actor,
+                )
+        except IntegrityError:
+            # A parallel link won the one-episode-per-encounter unique and both
+            # of this request's rows rolled back. The winner is read inside the
+            # decision, so authority lost before that read is the early refusal;
+            # any other integrity failure stands unchanged.
+            if not EpisodeEncounter.objects.filter(encounter=encounter).exists():
+                raise
+            msg = "already_linked"
+            raise ClinicalConflictError(msg) from None
+        record_phase1_event(
+            "ehr.episode.opened", clinic_id=clinic_id, affected_record_id=episode.pk
+        )
+        record_phase1_event(
+            "ehr.episode.linked", clinic_id=clinic_id, affected_record_id=link.pk
+        )
+        return link
+
+
+def encounter_episodes(*, clinic_id: UUID, encounter_id: UUID) -> EncounterEpisodes:
+    """Read the encounter's link and the patient's open episodes for its author."""
+    encounter = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
+    if encounter is None:
+        raise ClinicalAccessDeniedError
+    _encounter_actor(clinic_id, encounter)
+    _require(
+        "clinical.read", clinic_id, _enrollment_id(clinic_id, encounter.patient_id)
+    )
+    link = (
+        EpisodeEncounter.objects.filter(encounter=encounter)
+        .select_related("episode")
+        .first()
+    )
+    return EncounterEpisodes(
+        linked=link.episode if link is not None else None,
+        open_episodes=tuple(
+            Episode.objects.filter(
+                clinic_id=clinic_id,
+                patient_id=encounter.patient_id,
+                state=Episode.State.OPEN,
+            ).order_by("opened_at", "pk")
+        ),
+    )

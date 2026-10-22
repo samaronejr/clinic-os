@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Introduce the task-22 problem and allergy schema."""
@@ -181,28 +183,28 @@ class Migration(migrations.Migration):
                 "abstract": False,
             },
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="historyassessment",
             constraint=models.UniqueConstraint(
                 fields=("clinic", "patient", "kind", "revision"),
                 name="ehr_history_revision_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="historyassessment",
             constraint=models.CheckConstraint(
                 condition=models.Q(("revision__gte", 1)),
                 name="ehr_history_revision_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="historyassessment",
             constraint=models.CheckConstraint(
                 condition=models.Q(("kind__in", ["problem", "allergy"])),
                 name="ehr_history_kind_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="historyassessment",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -211,26 +213,26 @@ class Migration(migrations.Migration):
                 name="ehr_history_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="allergy",
             constraint=models.UniqueConstraint(
                 fields=("entry_id", "version"), name="allergy_entry_version_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="allergy",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)), name="allergy_version_positive"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="allergy",
             constraint=models.CheckConstraint(
                 condition=models.Q(("description", ""), _negated=True),
                 name="allergy_description_required",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="allergy",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -239,26 +241,26 @@ class Migration(migrations.Migration):
                 name="allergy_status_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="problem",
             constraint=models.UniqueConstraint(
                 fields=("entry_id", "version"), name="problem_entry_version_uniq"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="problem",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)), name="problem_version_positive"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="problem",
             constraint=models.CheckConstraint(
                 condition=models.Q(("description", ""), _negated=True),
                 name="problem_description_required",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="problem",
             constraint=models.CheckConstraint(
                 condition=models.Q(

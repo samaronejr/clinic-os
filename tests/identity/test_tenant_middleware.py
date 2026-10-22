@@ -70,6 +70,8 @@ def _assert_gucs_empty() -> None:
 
 def _seed_session(client: Client, graph: TenantGraph, org_id: UUID) -> None:
     user = User.objects.get(pk=graph.user_a)
+    with _runtime_role():
+        client.force_login(user, backend="apps.identity.backends.ClinicBackend")
     session = client.session
     session[SESSION_KEY] = str(graph.user_a)
     session[BACKEND_SESSION_KEY] = BACKEND_PATH
@@ -221,7 +223,8 @@ def test_middleware_fails_closed_for_missing_or_malformed_session_context(
         session["active_org_id"] = org_value
     session.save()
 
-    response = client.get("/tenant/")
+    with _runtime_role():
+        response = client.get("/tenant/")
 
     assert response.status_code == 403
     assert response.content == render_to_string("403.html").encode()

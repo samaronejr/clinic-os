@@ -142,5 +142,10 @@ def test_patient_create_and_timezone_change_serialize_on_clinic_date(
 
     assert clinic.timezone == expected_timezone
     assert len(patient_dates) == expected_patient_count
-    assert all(patient_date <= date(2030, 1, 2) for patient_date in patient_dates)
+    # intake_patient.birth_date is nullable by model (models.py null=True);
+    # the fixtures seed a date on every row, so a None would be a defect.
+    assert all(
+        patient_date is not None and patient_date <= date(2030, 1, 2)
+        for patient_date in patient_dates
+    )
     assert audit_count == (expected_patient_count,)

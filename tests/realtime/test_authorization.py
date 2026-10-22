@@ -7,8 +7,10 @@ from uuid import uuid4
 
 import pytest
 from apps.identity.models import RoleGrant, User, UserClinicRole
+from apps.identity.session_inventory import own_sessions, revoke_session
 from apps.realtime.authorization import TopicDeniedError, authorize_topics_sync
-from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+from apps.tenancy.db import tenant_context
+from django.contrib.auth import HASH_SESSION_KEY
 from django.contrib.sessions.backends.db import SessionStore
 from django.db import connection, transaction
 from django.test import Client
@@ -30,15 +32,32 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def session_key(graph: RbacGraph) -> str:
     client = Client()
-    session = client.session
     user = User.objects.get(pk=graph.shared_user)
-    session[SESSION_KEY] = str(user.pk)
-    session[BACKEND_SESSION_KEY] = "apps.identity.auth_backends.ClinicBackend"
-    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    with runtime_role():
+        client.force_login(user)
+    session = client.session
     session["active_org_id"] = str(graph.organization_a)
     session.save()
     assert session.session_key is not None
     return session.session_key
+
+
+def test_inventory_revocation_denies_a_still_valid_django_session(
+    rbac_graph: RbacGraph,
+) -> None:
+    key = session_key(rbac_graph)
+    topics = (f"clinic:{rbac_graph.clinic_a}:agenda",)
+    with runtime_role():
+        assert authorize_topics_sync(session_key=key, topics=topics).topics == topics
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        records = own_sessions()
+        assert len(records) == 1
+        revoke_session(session_record_id=records[0].pk)
+    with runtime_role(), pytest.raises(TopicDeniedError):
+        authorize_topics_sync(session_key=key, topics=topics)
 
 
 def test_topics_recheck_permission_and_close_database(rbac_graph: RbacGraph) -> None:
@@ -99,10 +118,10 @@ def test_privileged_subscription_keeps_exact_totp_policy(
     rbac_graph: RbacGraph, state: str
 ) -> None:
     user = User.objects.get(pk=rbac_graph.clinic_admin)
-    session = SessionStore()
-    session[SESSION_KEY] = str(user.pk)
-    session[BACKEND_SESSION_KEY] = "apps.identity.auth_backends.ClinicBackend"
-    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    client = Client()
+    with runtime_role():
+        client.force_login(user)
+    session = client.session
     session["active_org_id"] = str(rbac_graph.organization_a)
     if state == "static":
         with runtime_role(), current_user_guc(user.pk):

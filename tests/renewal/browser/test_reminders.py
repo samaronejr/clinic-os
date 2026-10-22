@@ -34,17 +34,10 @@ CHANNELS = {1280: "email", 768: "sms", 375: "whatsapp"}
 def _seed_contact(
     staff: dict[str, str], day: str, channel: str, name: str
 ) -> dict[str, str]:
-    data = _seed(staff, day)
+    data = _seed(staff, day, name=name)
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
-        )
-        conn.execute(
-            "UPDATE clinic_app.intake_patient SET full_name=%s WHERE id=%s",
-            [
-                encrypt(conn, "intake.patient.full_name", name.encode()),
-                data["patient"],
-            ],
         )
         conn.execute(
             "INSERT INTO clinic_app.intake_patientcontact "

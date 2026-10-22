@@ -9,6 +9,7 @@ from apps.identity.models import UserClinicRole
 from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
@@ -45,7 +46,7 @@ def test_transition_view_uses_uuid_fallback_for_revoked_historical_physician(
             clinic_id=setup.clinic_id,
             user_id=setup.practitioner_id,
             role=UserClinicRole.Role.PHYSICIAN,
-        ).delete()
+        ).update(revoked_at=Now())
     with runtime_role(), tenant_context(setup.actor_id, setup.organization_id):
         result = view_appointment(appointment_id=appointment.pk)
 

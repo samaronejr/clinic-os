@@ -39,12 +39,18 @@ from apps.intake.access import (
 from apps.intake.access import (
     authorized_enrollment as _authorized_enrollment,
 )
+from apps.intake.duplicate_detection import refresh_duplicate_candidates
 from apps.intake.models import (
     CONTACT_CHANNEL_VALUES,
     CONTACT_PURPOSE_VALUES,
     PatientChannelPreference,
     PatientContact,
     PatientContactEvent,
+)
+from apps.scheduling.locks import (
+    acquire_advisory_locks,
+    clinic_lock_key,
+    patient_lock_key,
 )
 
 if TYPE_CHECKING:
@@ -378,6 +384,10 @@ def save_contact_destination(
     with transaction.atomic():
         actor_id, clinic, enrollment = _authorized_enrollment(clinic_id, enrollment_id)
         actor_label = _actor_label()
+        acquire_advisory_locks((clinic_lock_key(clinic_id),))
+        acquire_advisory_locks(
+            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
+        )
         contact = (
             PatientContact.objects.select_for_update()
             .filter(
@@ -478,6 +488,9 @@ def save_contact_destination(
                     clinic_id=clinic_id,
                     affected_record_id=contact.pk,
                 )
+        refresh_duplicate_candidates(
+            clinic_id=clinic_id, patient_id=enrollment.patient_id
+        )
         return contact
 
 
@@ -503,6 +516,10 @@ def verify_contact(
     with transaction.atomic():
         actor_id, clinic, enrollment = _authorized_enrollment(clinic_id, enrollment_id)
         actor_label = _actor_label()
+        acquire_advisory_locks((clinic_lock_key(clinic_id),))
+        acquire_advisory_locks(
+            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
+        )
         contact = (
             PatientContact.objects.select_for_update()
             .filter(
@@ -632,6 +649,10 @@ def set_purpose_channel(
     with transaction.atomic():
         actor_id, clinic, enrollment = _authorized_enrollment(clinic_id, enrollment_id)
         actor_label = _actor_label()
+        acquire_advisory_locks((clinic_lock_key(clinic_id),))
+        acquire_advisory_locks(
+            (patient_lock_key(clinic.organization_id, enrollment.patient_id),)
+        )
         changed: list[PatientChannelPreference] = []
         for candidate in CONTACT_CHANNEL_VALUES:
             preference = _set_preference(

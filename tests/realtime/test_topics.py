@@ -21,11 +21,9 @@ from apps.realtime.transport import publish_on_commit, redis_client, topic_hash
 from apps.realtime.views import stream_view, ticket_view
 from apps.tenancy.db import tenant_context
 from asgiref.sync import async_to_sync, sync_to_async
-from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
-from django.contrib.sessions.backends.db import SessionStore
 from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
-from django.test import RequestFactory
+from django.test import Client, RequestFactory
 from django.utils import timezone
 from django_otp import DEVICE_ID_SESSION_KEY
 
@@ -55,10 +53,10 @@ pytestmark = [
 def actor_session(graph: RbacGraph, actor: UUID) -> str:
     user = User.objects.get(pk=actor)
     device = create_totp_device(actor, confirmed=True)
-    session = SessionStore()
-    session[SESSION_KEY] = str(actor)
-    session[BACKEND_SESSION_KEY] = "apps.identity.auth_backends.ClinicBackend"
-    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    client = Client()
+    with runtime_role():
+        client.force_login(user)
+    session = client.session
     session["active_org_id"] = str(graph.organization_a)
     session[DEVICE_ID_SESSION_KEY] = device.persistent_id
     session.save()

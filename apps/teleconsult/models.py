@@ -3,8 +3,10 @@
 One session binds one encounter, its assigned physician, its patient and the
 exact consent version that authorized it. Provider rooms are created only
 through the committed outbox; room authority derives from the stored session
-and operation rows, never from external tenant identifiers. Recording and
-transcription stay disabled at the database layer.
+and operation rows, never from external tenant identifiers. Each room names
+the provider capability version that serves it, and its operation must use
+exactly that version's provider. Recording and transcription stay disabled at the
+database layer.
 """
 
 from __future__ import annotations
@@ -26,7 +28,21 @@ EVENT_KIND_VALUES = (
     "started",
     "ended",
     "failed",
+    "reconnected",
+    "audio_only",
+    "video_restored",
+    "removed",
 )
+DEVICE_RESULT_VALUES = (
+    "ok",
+    "denied",
+    "missing",
+    "busy",
+    "unsupported",
+    "error",
+    "not_checked",
+)
+NETWORK_RESULT_VALUES = ("good", "degraded", "offline", "not_checked")
 
 
 class TeleconsultSession(TenantScopedModel):
@@ -109,6 +125,12 @@ class TeleconsultRoom(TenantScopedModel):
         TeleconsultSession, on_delete=models.PROTECT, related_name="room"
     )
     room_name = models.CharField(max_length=128)
+    # The room's ``video`` capability version, by its natural identity: the
+    # registry is re-seeded under fresh surrogate keys on restore, so a UUID
+    # reference would dangle. Empty only on rooms stored before versions were
+    # bound; the insert trigger requires both for every new room.
+    provider = models.CharField(max_length=255, blank=True, default="")
+    provider_environment = models.CharField(max_length=32, blank=True, default="")
     recording_enabled = models.BooleanField(default=False)
     transcription_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -122,6 +144,9 @@ class TeleconsultRoom(TenantScopedModel):
                     recording_enabled=False, transcription_enabled=False
                 ),
                 name="teleconsult_room_capture_disabled",
+            ),
+            models.UniqueConstraint(
+                fields=("room_name",), name="teleconsult_room_name_uniq"
             ),
         ]
 
@@ -184,6 +209,7 @@ class TeleconsultEvent(TenantScopedModel):
     actor_role = models.CharField(max_length=16, blank=True, default="")
     reason_code = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    mode_audit_seq = models.BigIntegerField(null=True, unique=True, editable=False)
 
     class Meta:
         """Keep the event vocabulary closed."""
@@ -196,5 +222,56 @@ class TeleconsultEvent(TenantScopedModel):
             models.CheckConstraint(
                 condition=models.Q(actor_role__in=("", *CREDENTIAL_ROLE_VALUES)),
                 name="teleconsult_event_actor_check",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind__in=("audio_only", "video_restored"))
+                    & models.Q(mode_audit_seq__isnull=False)
+                )
+                | (
+                    ~models.Q(kind__in=("audio_only", "video_restored"))
+                    & models.Q(mode_audit_seq__isnull=True)
+                ),
+                name="teleconsult_mode_audit_binding",
+            ),
+        ]
+
+
+class TeleconsultDeviceCheck(TenantScopedModel):
+    """One participant's device-check outcome; closed codes, never media.
+
+    The row records whether camera, microphone, speaker and network worked,
+    as fixed result codes. No device names, identifiers, images, sound,
+    addresses or free text are stored.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(
+        TeleconsultSession, on_delete=models.PROTECT, related_name="device_checks"
+    )
+    role = models.CharField(max_length=16, choices=TeleconsultCredential.Role)
+    participant_id = models.UUIDField()
+    camera = models.CharField(max_length=16)
+    microphone = models.CharField(max_length=16)
+    speaker = models.CharField(max_length=16)
+    network = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Keep every result inside its closed vocabulary."""
+
+        constraints: ClassVar[list[models.BaseConstraint]] = [
+            models.CheckConstraint(
+                condition=models.Q(role__in=CREDENTIAL_ROLE_VALUES),
+                name="teleconsult_device_role_check",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    camera__in=DEVICE_RESULT_VALUES,
+                    microphone__in=DEVICE_RESULT_VALUES,
+                    speaker__in=DEVICE_RESULT_VALUES,
+                    network__in=NETWORK_RESULT_VALUES,
+                ),
+                name="teleconsult_device_result_check",
             ),
         ]

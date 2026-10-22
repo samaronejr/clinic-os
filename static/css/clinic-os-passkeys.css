@@ -1,0 +1,23 @@
+[data-passkey] [hidden] {
+  display: none;
+}
+
+.passkey-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.passkey-list > li {
+  border-block-end: var(--line-1) solid var(--color-line);
+  padding-block: var(--density-stack);
+}
+
+.passkey-list > li:last-child {
+  border-block-end: 0;
+}
+
+.passkey-list h3 {
+  margin-block-start: 0;
+  overflow-wrap: anywhere;
+}

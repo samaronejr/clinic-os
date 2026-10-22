@@ -1,0 +1,117 @@
+.patient-workspace {
+  display: grid;
+  gap: var(--density-stack);
+  min-inline-size: 0;
+}
+
+.patient-workspace-header,
+.patient-workspace-filter,
+.patient-workspace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.patient-workspace-header {
+  align-items: start;
+  justify-content: space-between;
+}
+
+.patient-workspace-tabs {
+  border-block-end: var(--line-1) solid var(--color-line);
+  gap: var(--space-2);
+}
+
+.patient-workspace-tabs form {
+  margin: 0;
+}
+
+.patient-workspace-key {
+  font-size: var(--text-small);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.patient-workspace-tabs [aria-current="page"] {
+  background: var(--color-selection);
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: var(--space-1);
+}
+
+.patient-workspace-section {
+  min-inline-size: 0;
+  padding-block: var(--space-4);
+  border-block-start: var(--line-1) solid var(--color-line);
+}
+
+.patient-workspace-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: var(--density-stack);
+}
+
+.patient-workspace-fields .field {
+  margin: 0;
+}
+
+.patient-workspace .actions {
+  margin-block-start: var(--space-4);
+}
+
+.patient-workspace-filter .field {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.patient-workspace-row,
+.patient-workspace-timeline li {
+  padding-block: var(--space-5);
+  border-block-end: var(--line-1) solid var(--color-line);
+  overflow-wrap: anywhere;
+}
+
+.patient-workspace-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: var(--control-height);
+}
+
+.patient-workspace-check input {
+  inline-size: var(--space-5);
+  min-inline-size: var(--space-5);
+  block-size: var(--space-5);
+  min-block-size: var(--space-5);
+}
+
+.patient-workspace-timeline {
+  list-style: none;
+  padding: 0;
+}
+
+.patient-workspace-timeline time {
+  color: var(--color-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.patient-workspace-copy {
+  padding-block: var(--space-4);
+}
+
+.patient-workspace [hidden] {
+  display: none;
+}
+
+@media (max-width: 47.99rem) {
+  .patient-workspace-filter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .patient-workspace-filter .field {
+    flex-basis: auto;
+  }
+}

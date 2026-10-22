@@ -84,8 +84,8 @@
   },
   {
     "id": "SD-8b",
-    "source_path": "static/js/ehr-draft.js",
-    "source_lines": "3",
+    "source_path": "static/js/ehr-autosave.js",
+    "source_lines": "4-6",
     "class": 3,
     "disposition": "PRESERVED: no browser storage of clinical text or audio",
     "replaced_by_todo": [

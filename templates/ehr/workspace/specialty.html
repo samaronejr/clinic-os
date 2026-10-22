@@ -1,0 +1,51 @@
+{% load i18n tz ehr_ui %}
+<section class="patient-workspace-section" aria-labelledby="specialty-records-title">
+  <h2 id="specialty-records-title">{% trans "Specialty records" %}</h2>
+  <p>{% trans "Growth measurements remain in vitals. Entries below retain their source and never infer a vaccine schedule, consent or normal finding." %}</p>
+  <a class="button button--secondary" hx-boost="false" href="{% url 'ehr:specialty-packs' clinic_id=clinic_id %}">{% trans "Specialty packs and calculators" %}</a>
+  {% if can_write %}
+  {% for pack in specialty_packs %}
+  {% if pack.key == "pediatrics" %}
+  <h3>{% trans "Record immunization history" %}</h3>
+  <form method="post" novalidate data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="specialty">
+    {% if forms.immunization.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ forms.immunization.non_field_errors }}</div>{% endif %}
+    <div class="patient-workspace-fields">{% for field in forms.immunization %}{% include "includes/field.html" with field=field hint=field.help_text %}{% endfor %}</div>
+    <div class="actions"><button class="button" name="action" value="immunization" type="submit">{% trans "Save immunization record" %}</button><span class="htmx-indicator">{% trans "Saving…" %}</span></div>
+  </form>
+  {% elif pack.key == "procedures" %}
+  <h3>{% trans "Record a procedure plan" %}</h3>
+  <p class="help-text">{% trans "Attach and scan the consent document and images in the encounter attachment workspace first." %}</p>
+  <form method="post" novalidate data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="specialty">
+    {% if forms.procedure.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus>{{ forms.procedure.non_field_errors }}</div>{% endif %}
+    <div class="patient-workspace-fields">{% for field in forms.procedure %}{% include "includes/field.html" with field=field %}{% endfor %}</div>
+    <div class="actions"><button class="button" name="action" value="procedure" type="submit">{% trans "Save procedure plan" %}</button><span class="htmx-indicator">{% trans "Saving…" %}</span></div>
+  </form>
+  {% endif %}
+  {% empty %}<p>{% trans "No specialty pack is installed. Existing records below remain available." %}</p>{% endfor %}
+  {% endif %}
+  <h3>{% trans "Recorded history" %}</h3>
+  {% for entry in specialty_entries %}
+  <article class="patient-workspace-row">
+    <h4>{% if entry.kind == "immunization" %}{% trans "Immunization history" %}{% else %}{% trans "Procedure plan" %}{% endif %}</h4>
+    <p><time datetime="{{ entry.created_at|date:'c' }}">{{ entry.created_at|date:"d/m/Y H:i" }}</time></p>
+    {% if entry.kind == "immunization" %}
+    <p>{{ entry.details.vaccine }} · <time datetime="{{ entry.details.administered_on }}">{{ entry.details.administered_on|slice:"8:10" }}/{{ entry.details.administered_on|slice:"5:7" }}/{{ entry.details.administered_on|slice:":4" }}</time> · {{ entry.details.dose }}</p>
+    <p>{% trans "Origin" %}: {% include "includes/components/provenance.html" with kind=entry.details.origin|provenance_style only %}</p>
+    {% else %}
+    <p>{{ entry.details.plan }}</p>
+    <form method="post" action="{% url 'ehr:attachments' clinic_id=clinic_id %}" hx-boost="false" data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="encounter_id" value="{{ entry.encounter_id }}"><input type="hidden" name="attachment_id" value="{{ entry.consent_document_id }}">
+      <button class="button button--secondary" name="action" value="download" type="submit">{% trans "Open linked consent document" %}</button>
+    </form>
+    {% for image_id in entry.images %}
+    <form method="post" action="{% url 'ehr:attachments' clinic_id=clinic_id %}" hx-boost="false" data-auth-form>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="encounter_id" value="{{ entry.encounter_id }}"><input type="hidden" name="attachment_id" value="{{ image_id }}">
+      <button class="button button--secondary" name="action" value="download" type="submit">{% trans "Open linked image" %} {{ forloop.counter }}</button>
+    </form>
+    {% empty %}<p>{% trans "No images linked." %}</p>{% endfor %}
+    {% endif %}
+  </article>
+  {% empty %}<p>{% trans "No specialty records have been recorded." %}</p>{% endfor %}
+</section>

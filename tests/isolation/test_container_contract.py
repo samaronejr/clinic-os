@@ -134,6 +134,9 @@ def test_application_context_is_assembled_from_clean_git_objects(
     files = {
         "Dockerfile": "FROM scratch\n",
         "apps/example.py": "VALUE = 1\n",
+        "docs/clinical/questionnaire-branching-schema.json": "{}\n",
+        "docs/clinical/questionnaires.md": "excluded\n",
+        "docs/clinical/template-schema-v2.json": "{}\n",
         "manage.py": "print('fixture')\n",
         "ops/testing/application-image.dockerignore": "**\n",
         "pyproject.toml": "[project]\nname='fixture'\nversion='1'\n",
@@ -177,6 +180,8 @@ def test_application_context_is_assembled_from_clean_git_objects(
         "Dockerfile",
         "application-source-manifest.json",
         "apps/example.py",
+        "docs/clinical/questionnaire-branching-schema.json",
+        "docs/clinical/template-schema-v2.json",
         "manage.py",
         "pyproject.toml",
         "uv.lock",

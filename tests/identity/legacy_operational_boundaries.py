@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
@@ -17,7 +18,7 @@ from apps.identity.clinic_configuration import (
     publish_configuration,
 )
 from apps.identity.management.context import LifecycleContext, assume_runtime_owner
-from apps.identity.models import ClinicConfiguration
+from apps.identity.models import ClinicConfiguration, ProfessionalRegistration
 from apps.intake import patient_access, questionnaires
 from apps.intake import views as intake_views
 from apps.intake.models import (
@@ -35,6 +36,7 @@ from apps.scheduling import appointment_values, availability_retirement, booking
 from apps.scheduling.services import create_availability
 from apps.tenancy.db import tenant_context
 from django.db import connection
+from django.utils import timezone
 from PIL import Image
 
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
@@ -83,6 +85,21 @@ def seed_operational(w: LegacyWorld) -> OperationalSubjects:
         enrollment = PatientClinicEnrollment.objects.get(
             patient_id=w.appointment.patient_id, clinic_id=w.clinic
         ).pk
+        ProfessionalRegistration.objects.get_or_create(
+            organization_id=w.graph.organization_a,
+            clinic_id=w.clinic,
+            user_id=w.graph.physician,
+            role="physician",
+            defaults={
+                "council": "CRM",
+                "number": "SINTETICO-020",
+                "jurisdiction": "SP",
+                "specialty": "Sintetico",
+                "status": "regular",
+                "valid_from": timezone.now() - timedelta(days=1),
+                "valid_to": timezone.now() + timedelta(days=1),
+            },
+        )
     with runtime_role(), tenant_context(w.graph.clinic_admin, w.graph.organization_a):
         template = questionnaires.publish_template(
             clinic_id=w.clinic,
@@ -284,6 +301,33 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
             has_rows,
         ),
         Boundary(
+            "apps.consent.services.record_ai_disclosure",
+            "operational",
+            PHYSICIAN,
+            lambda w, ok: (
+                consent.record_ai_disclosure(
+                    clinic_id=w.clinic_for(ok),
+                    encounter_id=w.encounter,
+                    informed=True,
+                    refused=False,
+                )
+                is not None
+            ),
+        ),
+        Boundary(
+            "apps.consent.services.acknowledge_participant",
+            "operational",
+            PHYSICIAN,
+            lambda w, ok: (
+                consent.acknowledge_participant(
+                    clinic_id=w.clinic_for(ok),
+                    session_id=w.encounter,
+                    participant_kind="caregiver",
+                )
+                is not None
+            ),
+        ),
+        Boundary(
             "apps.identity.clinic_configuration.publish_configuration",
             "operational",
             ADMINS,
@@ -302,7 +346,7 @@ def boundaries(subject: OperationalSubjects) -> tuple[Boundary, ...]:
         Boundary(
             "apps.intake.questionnaires.publish_template",
             "operational",
-            ADMINS,
+            (*ADMINS, *PHYSICIAN),
             lambda w, ok: questionnaires.publish_template(
                 clinic_id=w.clinic_for(ok),
                 key="parity-second",

@@ -9,6 +9,8 @@ import django.db.models.deletion
 import django.utils.timezone
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 if TYPE_CHECKING:
     from django.db.backends.base.schema import BaseDatabaseSchemaEditor
     from django.db.migrations.state import StateApps
@@ -128,7 +130,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="pixoperation",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("previous__isnull", True)),
@@ -136,7 +138,7 @@ class Migration(migrations.Migration):
                 name="billing_pix_one_root",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="pixoperation",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -148,7 +150,7 @@ class Migration(migrations.Migration):
                 name="billing_pix_terms",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="pixcharge",
             constraint=models.CheckConstraint(
                 condition=models.Q(("synthetic", True)), name="billing_pix_synthetic"

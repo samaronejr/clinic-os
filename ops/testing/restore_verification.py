@@ -250,10 +250,10 @@ def seed_foreign_probe_tenant(client: _SqlClient) -> None:
     visibility, never content.
     """
     client.sql(
-        "INSERT INTO clinic_app.identity_organization (id, name, cnpj) "
+        "INSERT INTO clinic_app.identity_organization (id, name, cnpj, status) "
         "VALUES ('"
         + FOREIGN_PROBE_ORGANIZATION
-        + "', 'Foreign Probe Organization', '99999999999999') "
+        + "', 'Foreign Probe Organization', '99999999999999', 'active') "
         "ON CONFLICT (id) DO NOTHING"
     )
     client.sql(
@@ -407,7 +407,7 @@ def verify_object_store(client: _SqlClient, root: Path, kek: str) -> int:
         fields = line.strip().split("|")
         if (
             len(fields) != MANIFEST_FIELD_COUNT
-            or KEY_PATTERN.fullmatch(fields[0]) is None
+            or KEY_PATTERN.fullmatch(fields[0].removeprefix("orders/")) is None
             or not re.fullmatch(
                 r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}"
                 r"-[0-9a-f]{12}",
@@ -418,14 +418,7 @@ def verify_object_store(client: _SqlClient, root: Path, kek: str) -> int:
         ):
             _fail("attachment manifest row is invalid")
         manifest[fields[0]] = (fields[1], fields[2], int(fields[3]))
-    on_disk = {
-        entry.name
-        for entry in root.iterdir()
-        if entry.is_file() and not entry.is_symlink()
-    }
-    unexpected = {entry.name for entry in root.iterdir()} - set(manifest)
-    if unexpected or on_disk != set(manifest):
-        _fail("restored object store does not equal the attachment manifest")
+    _require_object_paths(root, set(manifest))
     for key, (organization_id, digest, size) in manifest.items():
         path = root / key
         data = path.read_bytes()
@@ -436,14 +429,45 @@ def verify_object_store(client: _SqlClient, root: Path, kek: str) -> int:
         statement = (
             f"SET app.current_tenant = '{organization_id}';"
             "SELECT encode(clinic_app.digest(clinic_app.tenant_decrypt("
-            f"'{kek}', 'ehr.clinicalattachment.bytes', "
-            f"decode('{data.hex()}', 'hex')"
+            f"'{kek}', "
+            + (
+                "'orders.result.bytes', "
+                if key.startswith("orders/")
+                else "'ehr.clinicalattachment.bytes', "
+            )
+            + f"decode('{data.hex()}', 'hex')"
             "), 'sha256'), 'hex')"
         )
         observed = client.sql(statement).strip().splitlines()
         if not observed or observed[-1].strip() != digest:
             _fail("restored object plaintext does not match the stored digest")
     return len(manifest)
+
+
+def _require_object_paths(root: Path, manifest: set[str]) -> None:
+    """Keep nested result bytes and their ownership metadata exactly bounded."""
+    entries = {entry.relative_to(root).as_posix(): entry for entry in root.rglob("*")}
+    metadata: set[str] = set()
+    if any(key.startswith("orders/") for key in manifest):
+        marker = root / "orders.clinic-owner"
+        if marker.is_symlink() or not marker.is_file():
+            _fail("restored result storage ownership is absent")
+        owner = json.loads(marker.read_bytes())
+        if (
+            not isinstance(owner, dict)
+            or set(owner) != {"owner", "root", "claimed_at"}
+            or owner["owner"] != "synthetic"
+            or not isinstance(owner["root"], str)
+            or not owner["root"].endswith("/orders")
+            or not isinstance(owner["claimed_at"], str)
+            or (root / "orders").is_symlink()
+        ):
+            _fail("restored result storage ownership is invalid")
+        metadata = {"orders", "orders.clinic-owner"}
+    if set(entries) != manifest | metadata or any(
+        not entries[key].is_file() or entries[key].is_symlink() for key in manifest
+    ):
+        _fail("restored object store does not equal the attachment manifest")
 
 
 def require_sequence_headroom(client: _SqlClient) -> tuple[tuple[str, int, int], ...]:

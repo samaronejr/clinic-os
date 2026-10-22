@@ -5,6 +5,8 @@ from typing import ClassVar
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 from ._action_sql import REVERSE_SQL, SQL
 
 
@@ -49,7 +51,7 @@ class Migration(migrations.Migration):
                 max_length=32,
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="integrationoperation",
             constraint=models.CheckConstraint(
                 condition=models.Q(

@@ -12,6 +12,7 @@ from apps.identity.current_context import (
     CurrentActorError,
     current_actor_id,
     require_current_actor_clinic_roles,
+    require_permission,
 )
 from apps.identity.models import Clinic, UserClinicRole
 
@@ -79,3 +80,20 @@ def authorized_view_scope(clinic_id: UUID) -> AvailabilityViewScope:
     if UserClinicRole.Role.PHYSICIAN in roles:
         return AvailabilityViewScope(clinic=clinic, practitioner_id=actor_id)
     raise AvailabilityAccessDeniedError
+
+
+def authorized_agenda_scope(clinic_id: UUID) -> AvailabilityViewScope:
+    """Add RP booking staff to the agenda, not legacy availability management."""
+    try:
+        return authorized_view_scope(clinic_id)
+    except AvailabilityAccessDeniedError as error:
+        # Only a legacy role refusal may gain RP authority. Malformed GUCs or
+        # an invisible clinic are terminal, including an aborted DB transaction.
+        if error.__cause__ is not None:
+            raise
+        try:
+            require_permission("appointment.book", clinic_id=clinic_id)
+            clinic = Clinic.objects.get(pk=clinic_id)
+        except (CurrentActorError, Clinic.DoesNotExist, DataError) as error:
+            raise AvailabilityAccessDeniedError from error
+        return AvailabilityViewScope(clinic=clinic, practitioner_id=None)

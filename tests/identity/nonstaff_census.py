@@ -8,22 +8,27 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from apps.identity import stepup
-from apps.intake.models import Patient, PatientClinicEnrollment, PatientSession
+from apps.intake.models import Patient, PatientClinicEnrollment
 from apps.scheduling import waitlist
 from django.test import override_settings
 from django.utils import timezone
 
 from auth.stepup_test_support import STEP_UP_NOW
 from identity.delegation_probes import delegation_probes
+from identity.lifecycle_differential_probes import lifecycle_probes
+from identity.nonstaff_agenda_board_probes import agenda_board_probes
+from identity.nonstaff_agenda_grid_probes import agenda_grid_probes
 from identity.nonstaff_differential import (
     DifferentialProbe,
     DifferentialReport,
     assert_behavioral_classifications,
 )
+from identity.nonstaff_ehr_probes import ehr_probes
 from identity.nonstaff_infrastructure_probes import (
     infrastructure_probes,
     metrics_probes,
 )
+from identity.nonstaff_lifecycle_probes import appointment_lifecycle_probes
 from identity.nonstaff_patient_probes import patient_probes
 from identity.nonstaff_principal_probes import principal_probes
 from identity.nonstaff_realtime_probes import realtime_probes
@@ -64,12 +69,6 @@ def run_nonstaff_census(
         patch.setattr(waitlist, "OFFER_LIFETIME", timedelta(days=30))
         data = seed_nonstaff(graph, patch)
         with owner_context(graph.organization_a):
-            # Fixed, long-lived synthetic protocol inputs: machine speed must
-            # not turn later subsets into expired-session negative controls.
-            PatientSession.objects.filter(pk=data.op.patient_session).update(
-                expires_at=stamp + timedelta(days=30),
-                idle_expires_at=stamp + timedelta(days=30),
-            )
             patient = Patient.objects.create(
                 organization_id=graph.organization_a,
                 full_name="Sintetico scope",
@@ -89,7 +88,12 @@ def run_nonstaff_census(
             *metrics_probes(data, patch),
             *realtime_probes(data),
             *principal_probes(graph),
+            *appointment_lifecycle_probes(data, graph),
+            *agenda_grid_probes(data, graph),
+            *ehr_probes(data, graph),
+            *agenda_board_probes(data, graph),
             *delegation_probes(graph, data.actor.pk),
+            *lifecycle_probes(graph),
         ]:
             probes.setdefault(probe.symbol, []).append(probe)
         return assert_behavioral_classifications(

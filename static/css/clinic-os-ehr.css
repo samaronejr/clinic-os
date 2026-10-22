@@ -1,0 +1,30 @@
+/* Encounter draft autosave (plan item 27). The shared button and notice
+   primitives set display, which would defeat [hidden]: the draft's own hidden
+   parts (lock and conflict panels, take-back buttons) always stay hidden. */
+.ehr-autosave [hidden] {
+  display: none;
+}
+
+/* The compare sits inside the draft panel, so it is a ruled section rather
+   than a nested panel (DESIGN.md: no nested panels). */
+.ehr-conflict {
+  display: grid;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  padding-block-start: var(--space-4);
+  border-block-start: var(--line-2) solid var(--color-warning);
+}
+
+.ehr-conflict h2 {
+  margin: 0;
+}
+
+.ehr-conflict-sections {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.ehr-conflict-section {
+  display: grid;
+  gap: var(--space-2);
+}

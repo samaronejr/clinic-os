@@ -228,7 +228,8 @@ def test_post_lock_reauthorization_rejects_an_owner_revoked_after_totp() -> None
                 [str(organization_id)],
             )
             revoker.execute(
-                "DELETE FROM clinic_app.identity_userclinicrole WHERE id = %s",
+                "UPDATE clinic_app.identity_userclinicrole "
+                "SET revoked_at = statement_timestamp() WHERE id = %s",
                 [operator_role.pk],
             )
         lock_connection.commit()

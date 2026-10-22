@@ -13,13 +13,33 @@ from apps.identity.models import UserClinicRole
 from apps.tenancy.db import tenant_context
 from apps.tenancy.envelope import _kek
 from django.db import connection
+from django.utils import timezone
 
 from identity.legacy_operational_boundaries import seed_operational
 from identity.legacy_owner_boundaries import _owner_call
 from identity.legacy_parity_support import ADMINS, LEGACY, MANAGERS, PHYSICIAN, world
+from identity.legacy_reception_boundaries import READINESS_ROLES
 from identity.legacy_teleconsult_boundaries import seed_teleconsult
 from identity.permission_support import owner_context
-from identity.sql_denial_contracts import SqlArgument, SqlVerdict, probe
+from identity.reception_subjects import ReceptionSubjects, seed_reception
+from identity.sql_denial_contracts import DmlMember, SqlArgument, SqlVerdict, probe
+from identity.sql_reception_probes import (
+    DELAY_MEMBER,
+    DISPLAY_MEMBER,
+    QUEUE_MEMBER,
+    ROOM_MEMBER,
+    insert_delay,
+    insert_display,
+    insert_queue,
+    insert_room,
+)
+from identity.sql_teleconsult_probes import (
+    DEVICE_MEMBER,
+    MODE_MEMBER,
+    insert_device_check,
+    insert_mode_event,
+    mode_transition_scope,
+)
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
@@ -34,6 +54,7 @@ if TYPE_CHECKING:
     from rbac_fixtures import RbacGraph
 
 ALL_ROLES = tuple(UserClinicRole.Role.values)
+STAFF_MANAGERS = ("owner", "clinic_admin", "org_admin", "clinic_manager")
 
 
 @dataclass(frozen=True)
@@ -43,6 +64,7 @@ class SqlWorld:
     teleconsult: TeleconsultSubjects
     manager_payment: UUID
     actor_payment: UUID
+    reception: ReceptionSubjects
 
 
 def seed_sql_world(
@@ -79,7 +101,9 @@ def seed_sql_world(
         )
     if added:
         with owner_context(graph.organization_a):
-            membership.delete()
+            UserClinicRole.objects.filter(pk=membership.pk).update(
+                revoked_at=timezone.now()
+            )
     with runtime_role(), tenant_context(graph.clinic_admin, graph.organization_a):
         # Give teleconsult_fail a real, stored failure condition, not just a
         # caller-supplied reason; each invocation is subsequently rolled back.
@@ -88,7 +112,14 @@ def seed_sql_world(
             purpose="teleconsultation",
             text="Sintetico superseded",
         )
-    return SqlWorld(actor, op, tc, manager_payment.pk, actor_payment.pk)
+    return SqlWorld(
+        actor,
+        op,
+        tc,
+        manager_payment.pk,
+        actor_payment.pk,
+        seed_reception(graph, actor.appointment),
+    )
 
 
 @dataclass(frozen=True)
@@ -96,6 +127,8 @@ class SqlProbe:
     name: str
     roles: tuple[str, ...]
     arguments: Callable[[SqlWorld, bool], list[SqlArgument]]
+    member: DmlMember | None = None
+    execute: Callable[[SqlWorld, bool], SqlVerdict] | None = None
 
     @property
     def function(self) -> str:
@@ -121,7 +154,7 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
                 user_id=w.actor.graph.physician,
                 clinic_id=w.actor.clinic,
                 role=UserClinicRole.Role.PHYSICIAN,
-            ).delete()
+            ).update(revoked_at=timezone.now())
         )
     with connection.cursor() as cursor:
         cursor.execute(
@@ -134,10 +167,65 @@ def _booking(w: SqlWorld, valid: bool, *, slots: bool) -> list[SqlArgument]:
 
 
 def call(sql_probe: SqlProbe, w: SqlWorld, valid: bool) -> SqlVerdict:
+    if sql_probe.execute is not None:
+        return sql_probe.execute(w, valid)
     return probe(sql_probe.function, sql_probe.arguments(w, valid))
 
 
 PROBES = {
+    "reception_readiness": SqlProbe(
+        "reception_readiness",
+        READINESS_ROLES,
+        lambda w, ok: [w.actor.clinic_for(ok), w.actor.appointment.pk],
+    ),
+    "reception_practitioners": SqlProbe(
+        "reception_practitioners",
+        ("receptionist", "nurse"),
+        lambda w, ok: [w.actor.clinic_for(ok)],
+    ),
+    "reception_guard#queue": SqlProbe(
+        "reception_guard",
+        tuple(dict.fromkeys((*READINESS_ROLES, "nurse"))),
+        lambda w, ok: [],
+        member=QUEUE_MEMBER,
+        execute=insert_queue,
+    ),
+    "reception_guard#room": SqlProbe(
+        "reception_guard",
+        ("receptionist", "nurse"),
+        lambda w, ok: [],
+        member=ROOM_MEMBER,
+        execute=insert_room,
+    ),
+    "reception_guard#delay": SqlProbe(
+        "reception_guard",
+        ("receptionist",),
+        lambda w, ok: [],
+        member=DELAY_MEMBER,
+        execute=insert_delay,
+    ),
+    "reception_guard#display": SqlProbe(
+        "reception_guard",
+        ("receptionist",),
+        lambda w, ok: [],
+        member=DISPLAY_MEMBER,
+        execute=insert_display,
+    ),
+    "identity_invitation_account": SqlProbe(
+        "identity_invitation_account",
+        STAFF_MANAGERS,
+        lambda w, ok: [w.actor.clinic_for(ok), uuid4()],
+    ),
+    "identity_reset_target": SqlProbe(
+        "identity_reset_target",
+        STAFF_MANAGERS,
+        lambda w, ok: [w.actor.clinic_for(ok), w.actor.graph.physician],
+    ),
+    "identity_staff_directory": SqlProbe(
+        "identity_staff_directory",
+        STAFF_MANAGERS,
+        lambda w, ok: [w.actor.clinic_for(ok)],
+    ),
     "patient_booking_practitioner": SqlProbe(
         "patient_booking_practitioner",
         ALL_ROLES,
@@ -254,6 +342,31 @@ PROBES = {
         "teleconsult_assigned",
         PHYSICIAN,
         lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
+    ),
+    "teleconsult_clinician": SqlProbe(
+        "teleconsult_clinician",
+        PHYSICIAN,
+        lambda w, ok: [w.teleconsult.session.pk if ok else uuid4()],
+    ),
+    "teleconsult_binding_guard#device": SqlProbe(
+        "teleconsult_binding_guard",
+        PHYSICIAN,
+        lambda w, ok: [],
+        member=DEVICE_MEMBER,
+        execute=insert_device_check,
+    ),
+    "teleconsult_mode_transition_scope": SqlProbe(
+        "teleconsult_mode_transition_scope",
+        PHYSICIAN,
+        lambda w, ok: [],
+        execute=mode_transition_scope,
+    ),
+    "teleconsult_binding_guard#mode": SqlProbe(
+        "teleconsult_binding_guard",
+        PHYSICIAN,
+        lambda w, ok: [],
+        member=MODE_MEMBER,
+        execute=insert_mode_event,
     ),
     "teleconsult_fail": SqlProbe(
         "teleconsult_fail",

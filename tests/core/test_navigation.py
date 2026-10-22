@@ -24,6 +24,7 @@ from apps.core.patient_context import (
 )
 from apps.identity.models import RoleGrant, User, UserClinicRole
 from django.conf import settings
+from django.contrib.auth import SESSION_KEY
 from django.test import Client
 from django.utils import timezone
 from django.utils.translation import gettext, ngettext
@@ -33,7 +34,6 @@ from identity.permission_support import owner_context
 from otp_test_support import (
     create_totp_device,
     fixed_otp_time,
-    get_totp_device,
     login,
     runtime_role,
     token_for,
@@ -65,38 +65,74 @@ OTHER: Final = "Sintetico Navegacao Souza"
 NAV_LINK: Final = re.compile(
     r'<a class="nav-link" href="([^"]+)" data-module="([a-z]+)"'
 )
-PRIVILEGED: Final = frozenset({"physician", "clinic_admin", "owner"})
+PRIVILEGED: Final = frozenset(
+    {"physician", "clinic_admin", "owner", "clinic_manager", "org_admin"}
+)
 # The exact top-level set per role (plan annex IA, RP bundles v1, and the
 # route guards the destinations lead to today). Roles whose routes are not
-# migrated to permissions yet have no workspace clinic and no destinations.
+# migrated to permissions yet keep their narrower workspace. RP configuration
+# actors can still discover scheduling Settings without patient administration.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "settings"],
-    "clinic_admin": ["agenda", "patients", "finance", "operations", "settings"],
-    "receptionist": ["agenda", "patients", "finance", "operations"],
-    "physician": ["agenda", "patients", "operations"],
-    "nurse": [],
-    "allied_professional": [],
-    "scheduler": [],
-    "clinic_manager": [],
+    "clinic_admin": [
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ],
+    "receptionist": [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ],
+    "physician": ["agenda", "patients", "inbox", "operations"],
+    "nurse": ["today", "inbox"],
+    "allied_professional": ["inbox"],
+    "scheduler": ["inbox", "settings"],
+    "clinic_manager": ["inbox", "settings"],
     "finance": [],
-    "org_admin": [],
+    "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
-UNDELIVERED: Final = frozenset({"today", "inbox", "messages", "automations", "reports"})
+UNDELIVERED: Final = frozenset({"messages", "automations", "reports"})
 
 
 def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
     user = create_role_actor(graph, UserClinicRole.Role(role))
     client = Client(enforce_csrf_checks=True, raise_request_exception=False)
     client.cookies[settings.CSRF_COOKIE_NAME] = secrets.token_hex(16)
+    _reauthenticate(client, user.pk, role)
+    return client, user
+
+
+def _reauthenticate(client: Client, user_id: UUID, role: str) -> dict[str, object]:
+    """Use fresh real authority after setup revokes the previous cookie."""
+    previous = (
+        dict(client.session) if settings.SESSION_COOKIE_NAME in client.cookies else {}
+    )
+    if SESSION_KEY in previous:
+        stale = Client(raise_request_exception=False)
+        stale.cookies[settings.SESSION_COOKIE_NAME] = client.cookies[
+            settings.SESSION_COOKIE_NAME
+        ].value
+        rejected = _get(stale, "/auth/protected/")
+        assert rejected.status_code == FOUND
+        assert rejected["Location"].startswith("/auth/login/")
+    user = User.objects.get(pk=user_id)
     with runtime_role():
         login_client = Client()
-        login(login_client, user.username, password=RBAC_RAW_CREDENTIAL)
+        authenticated = login(login_client, user.username, password=RBAC_RAW_CREDENTIAL)
+        assert authenticated.status_code == FOUND
         if role in PRIVILEGED:
-            create_totp_device(user.pk, confirmed=True)
+            device = create_totp_device(user.pk, confirmed=True)
             with fixed_otp_time():
-                device = get_totp_device(user.pk, confirmed=True)
-                login_client.post(
+                verified = login_client.post(
                     "/auth/verify/",
                     {
                         "otp_device": device.persistent_id,
@@ -104,10 +140,21 @@ def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
                         "next": "/auth/protected/",
                     },
                 )
+            assert verified.status_code == FOUND
+    fresh = dict(login_client.session)
     client.cookies[settings.SESSION_COOKIE_NAME] = login_client.cookies[
         settings.SESSION_COOKIE_NAME
     ].value
-    return client, user
+    presentation = {
+        key: value
+        for key, value in previous.items()
+        if key == "active_clinic_id" or key.startswith(("workspace.", "ehr."))
+    }
+    if presentation:
+        session = client.session
+        session.update(presentation)
+        session.save()
+    return fresh
 
 
 def _csrf(client: Client) -> dict[str, str]:
@@ -160,9 +207,39 @@ def test_each_role_sees_its_exact_destination_set(
     assert _modules(response) == EXPECTED[role]
     html = response.content.decode()
     assert not UNDELIVERED.intersection(_modules(response))
-    # The palette exists exactly when a workspace clinic does.
-    assert ('data-command-open="command-palette"' in html) is bool(EXPECTED[role])
-    assert ('id="command-palette"' in html) is bool(EXPECTED[role])
+    # The results workspace gives demographic readers contextual commands.
+    has_palette = role in {
+        "owner",
+        "clinic_admin",
+        "receptionist",
+        "physician",
+        "nurse",
+        "allied_professional",
+        "scheduler",
+        "clinic_manager",
+    }
+    assert ('data-command-open="command-palette"' in html) is has_palette
+    assert ('id="command-palette"' in html) is has_palette
+
+
+@pytest.mark.parametrize("role", ["scheduler", "clinic_manager", "receptionist"])
+def test_booking_staff_discover_actual_settings_without_administrative_forms(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, _user = _client_for(rbac_graph, role)
+    clinic = rbac_graph.clinic_a
+    home = _get(client, "/auth/protected/")
+    links = {module: href for href, module in NAV_LINK.findall(home.content.decode())}
+    assert links["settings"] == f"/scheduling/clinics/{clinic}/settings/"
+    settings_page = _get(client, links["settings"])
+    assert settings_page.status_code == OK
+    assert 'data-resource-form="resource"' in settings_page.content.decode()
+    assert 'data-resource-form="service"' in settings_page.content.decode()
+    assert 'data-resource-form="template"' in settings_page.content.decode()
+    assert 'data-resource-form="closure"' in settings_page.content.decode()
+    assert "data-settings-form" not in settings_page.content.decode()
+    if role in {"scheduler", "clinic_manager"}:
+        assert _get(client, f"/clinics/{clinic}/settings/").status_code == FORBIDDEN
 
 
 def test_destination_links_lead_to_the_first_open_place(
@@ -192,6 +269,32 @@ def test_destination_links_lead_to_the_first_open_place(
     assert receptionist_links["finance"] == f"/billing/clinics/{clinic}/charges/"
 
 
+@pytest.mark.parametrize(
+    "role", ["nurse", "allied_professional", "scheduler", "clinic_manager", "finance"]
+)
+def test_workflow_candidate_opens_only_delivered_operations(
+    rbac_graph: RbacGraph, role: str
+) -> None:
+    client, user = _client_for(rbac_graph, role)
+    with owner_context(rbac_graph.organization_a):
+        UserClinicRole.objects.filter(
+            user=user, clinic_id=rbac_graph.clinic_a, role=role
+        ).update(workflow_bundle_version=2)
+    _reauthenticate(client, user.pk, role)
+    response = _get(client, "/auth/protected/")
+    assert response.status_code == OK
+    assert _modules(response) == (
+        ["inbox", "operations", "settings"]
+        if role in {"scheduler", "clinic_manager"}
+        else ["today", "inbox", "operations"]
+        if role == "nurse"
+        else ["inbox", "operations"]
+        if role == "allied_professional"
+        else ["operations"]
+    )
+    assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
+
+
 def test_section_row_lists_open_places_and_marks_the_current_one(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -216,7 +319,7 @@ def test_section_row_lists_open_places_and_marks_the_current_one(
 def test_a_clinic_narrowed_permission_hides_its_destination(
     rbac_graph: RbacGraph,
 ) -> None:
-    client, _ = _client_for(rbac_graph, "receptionist")
+    client, user = _client_for(rbac_graph, "receptionist")
     assert "finance" in _modules(_get(client, "/auth/protected/"))
 
     with owner_context(rbac_graph.organization_a):
@@ -228,17 +331,20 @@ def test_a_clinic_narrowed_permission_hides_its_destination(
             valid_from=timezone.now() - timedelta(minutes=1),
         )
 
+    _reauthenticate(client, user.pk, "receptionist")
     assert _modules(_get(client, "/auth/protected/")) == [
+        "today",
         "agenda",
         "patients",
+        "inbox",
         "operations",
+        "settings",
     ]
 
 
 def test_registry_never_renders_an_undelivered_destination() -> None:
     undelivered = {d.key for d in DESTINATIONS if d.url_name is None}
     assert undelivered == {
-        "today",
         "inbox",
         "messages",
         "operations",
@@ -273,6 +379,7 @@ def test_palette_search_filters_destinations_by_permission(
         "scheduling:agenda",
         "scheduling:availability-list",
         "consent:staff",
+        "orders:results",
         "retention:status",
         "identity:preferences",
     ]
@@ -617,6 +724,7 @@ def test_tokens_are_bound_to_the_clinic_they_were_issued_in(
             clinic_id=rbac_graph.clinic_b,
             role="receptionist",
         )
+    _reauthenticate(client, user.pk, "receptionist")
     seed_patients(rbac_graph, user.pk, rbac_graph.clinic_a, (PATIENT,))
     _get(client, f"/scheduling/clinics/{rbac_graph.clinic_a}/agenda/")
     token = _patient_token(client, rbac_graph)

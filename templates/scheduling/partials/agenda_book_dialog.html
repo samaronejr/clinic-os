@@ -1,0 +1,46 @@
+{% load i18n %}{% comment %}
+Booking dialog of the agenda board: opened by static/js/agenda-grid.js from a
+free cell (click or Enter) and filled with that lane, day and time. It books
+for the patient in context (pinned through Search, kept server-side), first as
+an expiring hold; the holds panel then confirms it. The idempotency key and
+every selector travel in the POST body; the script renews the key per open.
+Without JavaScript the patient registry's "Book appointment" remains the path.
+{% endcomment %}<dialog class="dialog agenda-book-dialog" id="agenda-book-dialog" aria-labelledby="agenda-book-title" aria-describedby="agenda-book-patient" data-dialog data-book-dialog data-text-offline="{% trans "Nothing was sent. Reconnect, then try again." %}">
+  <form class="dialog-form" method="post" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="#agenda-grid-results" hx-select="#agenda-grid-results" hx-select-oob="#agenda-grid-announce" hx-swap="outerHTML settle:0ms" data-book-form>
+    {% csrf_token %}
+    <input type="hidden" name="intent" value="hold">
+    <input type="hidden" name="view" value="{{ board.view }}">
+    <input type="hidden" name="day" value="{{ board.anchor|date:'Y-m-d' }}">
+    <input type="hidden" name="idempotency_key" value="{{ booking_key }}">
+    <h2 class="dialog-title" id="agenda-book-title">{% trans "Book appointment" %}</h2>
+    {% if workspace.patient %}<p class="dialog-body" id="agenda-book-patient">{% blocktrans with name=workspace.patient.name %}Patient in context: {{ name }}{% endblocktrans %}</p>{% else %}<p class="dialog-body agenda-book-missing" id="agenda-book-patient">{% trans "No patient is in context. Search for the patient with Search (Ctrl K), then choose this time again." %}</p>{% endif %}
+    <p class="hint" data-book-summary></p>
+    <div class="field">
+      <label for="agenda-book-professional">{% trans "Professional" %}</label>
+      <select id="agenda-book-professional" name="practitioner" data-book-professional>{% for lane in board.professionals %}{% if not board.own_practitioner or lane.lane_id == board.own_practitioner %}<option value="{{ lane.lane_id }}">{{ lane.label }}</option>{% endif %}{% endfor %}</select>
+    </div>
+    <div class="field">
+      <label for="agenda-book-start">{% trans "Start time" %}</label>
+      <select id="agenda-book-start" name="start" data-book-start>{% for slot in board.slots %}<option value="{{ slot }}">{{ slot }}</option>{% endfor %}</select>
+    </div>
+    <div class="field">
+      <label for="agenda-book-duration">{% trans "Duration" %}</label>
+      <select id="agenda-book-duration" name="duration" aria-describedby="agenda-book-duration-hint">{% for minutes in durations %}<option value="{{ minutes }}"{% if minutes == default_duration %} selected{% endif %}>{% blocktrans %}{{ minutes }} minutes{% endblocktrans %}</option>{% endfor %}</select>
+      <p class="hint" id="agenda-book-duration-hint">{% trans "A service type books its own duration." %}</p>
+    </div>
+    {% if board.services %}<div class="field">
+      <label for="agenda-book-service">{% trans "Service type" %}</label>
+      <select id="agenda-book-service" name="service"><option value="">{% trans "No service type" %}</option>{% for option in board.services %}<option value="{{ option.service_type_id }}">{{ option.label }}</option>{% endfor %}</select>
+    </div>{% endif %}
+    {% if board.resources %}<fieldset class="field agenda-book-resources" aria-describedby="agenda-book-resources-hint">
+      <legend>{% trans "Rooms and equipment" %}</legend>
+      {% for lane in board.resources %}<label class="agenda-check"><input type="checkbox" name="resources" value="{{ lane.lane_id }}" data-book-resource> {{ lane.label }}</label>{% endfor %}
+      <p class="hint" id="agenda-book-resources-hint">{% trans "Rooms and equipment are reserved only together with a service type." %}</p>
+    </fieldset>{% endif %}
+    <p class="field-progress" data-book-progress role="status" hidden>{% trans "Reserving…" %}</p>
+    <div class="dialog-actions">
+      <button type="button" class="button--quiet" data-dialog-close>{% trans "Cancel" %}</button>
+      <button type="submit" data-book-confirm{% if not workspace.patient %} disabled{% endif %}>{% trans "Reserve time" %}</button>
+    </div>
+  </form>
+</dialog>

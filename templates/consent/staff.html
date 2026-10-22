@@ -1,31 +1,68 @@
-{% extends "base.html" %}
-{% load static %}
+{% extends "base.html" %}{% load static i18n %}
+{% block title %}{% translate "Consent choices and notices" %}{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-consent.css' %}">{% endblock %}
-{% block title %}Consentimentos da clínica · Clinic OS{% endblock %}
 {% block content %}
-<section class="shell-narrow intake-create" aria-labelledby="staff-consent-title">
-  <p class="eyebrow">Clínica · Consentimentos</p>
-  <h1 id="staff-consent-title">Textos e comprovantes</h1>
-  <p class="lede">Somente o paciente pode consentir. A equipe consulta comprovantes, sem aceitar ou revogar em seu nome.</p>
+<section class="shell-narrow intake-create" aria-labelledby="consent-title">
+  <header>
+    <h1 id="consent-title">{% translate "Consent choices and notices" %}</h1>
+    <p class="lede">{% translate "Publish versioned texts without changing patient decisions. Previous texts and receipts remain available." %}</p>
+  </header>
   {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
-  {% if error %}<p class="feedback feedback--error" role="alert">{{ error }}</p>{% endif %}
+  {% if error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</p>{% endif %}
   <section class="panel" aria-labelledby="publish-title">
-    <h2 id="publish-title">Publicar nova versão</h2>
-    <p>Disponível para administração e titular da clínica. O texto completo substitui a versão oferecida para novas aceitações, nunca o histórico. Apenas dados sintéticos; publicação não equivale a aprovação jurídica.</p>
+    <h2 id="publish-title">{% translate "Publish consent text" %}</h2>
+    <form method="post" class="consent-publish" novalidate>
+      {% csrf_token %}{{ form.non_field_errors }}{% include "includes/field.html" with field=form.purpose %}{% include "includes/field.html" with field=form.text %}
+      <button class="button button--primary" type="submit" name="action" value="publish">{% translate "Publish a new version" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="publish-notice-title">
+    <h2 id="publish-notice-title">{% translate "Publish an information notice" %}</h2>
+    <p>{% translate "A notice explains care or AI use. It is not an optional consent choice." %}</p>
     <form method="post" novalidate>
-      {% csrf_token %}{{ form.non_field_errors }}
-      {% for field in form %}<div class="field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
-      <button class="button" name="action" value="publish" type="submit">Publicar nova versão</button>
+      {% csrf_token %}{{ notice_form.non_field_errors }}{% include "includes/field.html" with field=notice_form.topic %}{% include "includes/field.html" with field=notice_form.text %}
+      <button class="button button--primary" type="submit" name="action" value="publish_notice">{% translate "Publish notice" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="disclose-ai-title">
+    <h2 id="disclose-ai-title">{% translate "Record an AI-use disclosure" %}</h2>
+    <p>{% translate "Only an authorized clinician can record this encounter-specific disclosure. It never substitutes for the patient's consent." %}</p>
+    <form method="post" novalidate>
+      {% csrf_token %}{{ disclosure_form.non_field_errors }}{% include "includes/field.html" with field=disclosure_form.encounter_id %}
+      <div class="consent-choice">{{ disclosure_form.informed }}{{ disclosure_form.informed.label_tag }}</div>
+      <div class="consent-choice">{{ disclosure_form.refused }}{{ disclosure_form.refused.label_tag }}</div>
+      <button class="button button--primary" type="submit" name="action" value="disclosure">{% translate "Record disclosure" %}</button>
+    </form>
+  </section>
+  <section class="panel" aria-labelledby="participant-title">
+    <h2 id="participant-title">{% translate "Record a participant acknowledgment" %}</h2>
+    <p>{% translate "Notify caregivers, companions, and interpreters without creating a patient or recording their name. This does not authorize recording or AI assistance." %}</p>
+    <form method="post" novalidate>
+      {% csrf_token %}{{ participant_form.non_field_errors }}{% include "includes/field.html" with field=participant_form.session_id %}{% include "includes/field.html" with field=participant_form.participant_kind %}
+      <button class="button button--primary" type="submit" name="action" value="acknowledge">{% translate "Record acknowledgment" %}</button>
     </form>
   </section>
   <section class="panel" aria-labelledby="lookup-title">
-    <h2 id="lookup-title">Consultar comprovantes</h2>
+    <h2 id="lookup-title">{% translate "Look up receipts" %}</h2>
     <form method="post">
       {% csrf_token %}
-      <div class="field"><label for="enrollment-id">Identificador do vínculo com a clínica</label><input id="enrollment-id" name="enrollment_id" required></div>
-      <button class="button button--secondary" name="action" value="receipts" type="submit">Consultar comprovantes</button>
+      <div class="field"><label for="enrollment-id">{% translate "Clinic enrollment identifier" %}</label><input id="enrollment-id" name="enrollment_id" required></div>
+      <button class="button button--secondary" name="action" value="receipts" type="submit">{% translate "Look up receipts" %}</button>
     </form>
   </section>
   {% include "consent/receipts.html" %}
+  {% if refusals %}
+  <section class="panel" aria-labelledby="refusals-title">
+    <h2 id="refusals-title">{% translate "Refusals" %}</h2>
+    {% for refusal in refusals %}
+    <article>
+      <h3>{{ refusal.text.get_purpose_display }} · {% translate "Version" %} {{ refusal.text.version }}</h3>
+      <p>{% translate "Refused" %} {{ refusal.refused_at|date:"d/m/Y H:i:s" }} · {{ refusal.text.language }}</p>
+      <details class="consent-provenance"><summary>{% translate "Read the refused text" %}</summary><div class="consent-text">{{ refusal.text.text }}</div></details>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+  <a class="button button--secondary" href="{% url 'workspace-home' %}">{% translate "Back to the workspace" %}</a>
 </section>
 {% endblock %}

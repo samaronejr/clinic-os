@@ -9,6 +9,8 @@ from django.conf import settings
 from django.db import migrations, models
 from django.db.migrations.operations.base import Operation
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Store session bindings, outbox room references and join credentials."""
@@ -215,7 +217,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultsession",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -224,14 +226,14 @@ class Migration(migrations.Migration):
                 name="teleconsult_session_state_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultsession",
             constraint=models.CheckConstraint(
                 condition=models.Q(("revision__gte", 1)),
                 name="teleconsult_session_revision_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultsession",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -262,7 +264,7 @@ class Migration(migrations.Migration):
                 name="teleconsult_session_lifecycle_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultroom",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -271,7 +273,7 @@ class Migration(migrations.Migration):
                 name="teleconsult_room_capture_disabled",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultevent",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -290,14 +292,14 @@ class Migration(migrations.Migration):
                 name="teleconsult_event_kind_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultevent",
             constraint=models.CheckConstraint(
                 condition=models.Q(("actor_role__in", ("", "physician", "patient"))),
                 name="teleconsult_event_actor_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultcredential",
             constraint=models.UniqueConstraint(
                 condition=models.Q(("revoked_at__isnull", True)),
@@ -305,21 +307,21 @@ class Migration(migrations.Migration):
                 name="teleconsult_credential_live_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultcredential",
             constraint=models.CheckConstraint(
                 condition=models.Q(("role__in", ("physician", "patient"))),
                 name="teleconsult_credential_role_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultcredential",
             constraint=models.CheckConstraint(
                 condition=models.Q(("token_digest__regex", "^[0-9a-f]{64}$")),
                 name="teleconsult_credential_digest_check",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="teleconsultcredential",
             constraint=models.CheckConstraint(
                 condition=models.Q(("expires_at__gt", models.F("created_at"))),

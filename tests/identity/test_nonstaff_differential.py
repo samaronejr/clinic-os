@@ -161,6 +161,33 @@ def test_computed_method_is_detected_even_when_static_analysis_misses_it(
         )
 
 
+def test_observed_boundary_retains_its_declared_differential_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rbac_graph: RbacGraph,
+) -> None:
+    guard = load_reproducer("direct", tmp_path, monkeypatch)
+    actor = User.objects.create(username="synthetic-observed-replay-" + uuid4().hex)
+    probe = DifferentialProbe(
+        SYMBOL, lambda: guard(clinic_id=rbac_graph.clinic_a), expected=False
+    )
+    row: Candidate = {
+        "symbol": SYMBOL,
+        "kind": "direct",
+        "signals": [],
+        "observe": True,
+        "differential": True,
+        "probes": [SYMBOL + "#observed"],
+    }
+    with pytest.raises(StaffDependentError):
+        assert_behavioral_classifications(
+            [row],
+            {SYMBOL: [probe]},
+            actor=actor,
+            scope=ReplayScope(rbac_graph.clinic_a, rbac_graph.organization_a),
+        )
+
+
 def test_static_backstop_follows_transitive_reexports(tmp_path: Path) -> None:
     folder = tmp_path / "apps/example"
     folder.mkdir(parents=True)

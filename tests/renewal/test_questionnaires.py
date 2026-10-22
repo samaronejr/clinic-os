@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date
+from os import environ
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -44,6 +45,7 @@ from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, transaction
 from django.test import Client
 
+from database_urls import database_url_for_name
 from otp_test_support import (
     create_totp_device,
     fixed_otp_time,
@@ -54,9 +56,12 @@ from otp_test_support import (
 )
 from patient_service_support import runtime_role
 from rbac_fixtures import RBAC_RAW_CREDENTIAL
+from renewal.browser._fixture_secrets import FixtureSecret
+from renewal.browser.test_questionnaires import _seed as seed_browser_questionnaire
 from renewal.test_encounters import seed as encounter_seed
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from uuid import UUID
 
     from conftest import RbacGraph
@@ -135,6 +140,34 @@ def seed(graph: RbacGraph) -> tuple[QuestionnaireResponse, UUID]:
         session = redeem_invitation(graph.clinic_a, invitation.secret)
     assert session is not None
     return response, session
+
+
+def test_browser_fixture_keeps_questionnaire_answers_restricted_from_delegates(
+    rbac_graph: RbacGraph,
+    synthetic_secret_backend: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLINIC_SECRET_DIR", str(synthetic_secret_backend))
+    owner_dsn = FixtureSecret(
+        database_url_for_name(
+            environ["MIGRATION_DATABASE_URL"], str(connection.settings_dict["NAME"])
+        )
+    )
+    seeded = seed_browser_questionnaire(
+        {
+            "dsn": owner_dsn,
+            "organization": str(rbac_graph.organization_a),
+            "clinic_a": str(rbac_graph.clinic_a),
+            "receptionist_id": str(rbac_graph.shared_user),
+        }
+    )
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.organization_a)],
+        )
+        response = QuestionnaireResponse.objects.get(pk=seeded["response"])
+        assert response.restricted_from_delegates is True
 
 
 def test_draft_resume_version_change_submit_and_clinical_reopen(
@@ -515,6 +548,7 @@ def test_questionnaire_database_policy_and_resolver_catalog() -> None:
             (tables[1], "response_read", ("clinic_app",), "SELECT"),
             (tables[1], "response_assign", ("clinic_app",), "INSERT"),
             (tables[1], "response_write", ("clinic_app",), "UPDATE"),
+            (tables[1], "delegate_confidentiality", ("clinic_app",), "ALL"),
             (tables[2], "event_read", ("clinic_app",), "SELECT"),
         }
         cursor.execute(
@@ -561,6 +595,7 @@ def test_questionnaire_database_policy_and_resolver_catalog() -> None:
             "questionnaire_immutable",
             "questionnaire_response_guard",
             "questionnaire_receipt",
+            "questionnaire_template_state_guard",
         }
         for name, owner, definer, config, executable, public in functions:
             assert owner == "clinic_resolver"

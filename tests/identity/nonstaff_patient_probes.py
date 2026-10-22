@@ -18,6 +18,7 @@ from apps.scheduling import (
     waitlist,
     waitlist_views,
 )
+from apps.teleconsult import participants as teleconsult_participants
 from apps.teleconsult import services as teleconsult
 from apps.teleconsult import views as teleconsult_views
 from apps.tenancy.middleware import TenantMiddleware
@@ -70,9 +71,10 @@ def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
             ),
         ),
         DifferentialProbe(
-            "apps.consent.services.record_consent",
-            lambda: consent.record_consent(
-                offer=d.consent_offer, purpose="teleconsultation", accepted=True
+            "apps.consent.services._resolve_offer",
+            lambda: (
+                consent._resolve_offer(d.consent_offer, "teleconsultation", d.authority)
+                is not None
             ),
         ),
         DifferentialProbe(
@@ -219,6 +221,12 @@ def patient_probes(d: NonstaffSubjects) -> list[DifferentialProbe]:
         DifferentialProbe(
             "apps.teleconsult.services._enter_as_patient",
             lambda: teleconsult._enter_as_patient(d.credential),
+        ),
+        DifferentialProbe(
+            "apps.teleconsult.participants.patient_session",
+            lambda: teleconsult_participants.patient_session(
+                session_id=d.tc.session.pk
+            ),
         ),
         DifferentialProbe(
             "apps.teleconsult.services.patient_session_events",

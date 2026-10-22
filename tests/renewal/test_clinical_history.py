@@ -22,6 +22,7 @@ from apps.scheduling.services import create_availability
 from apps.tenancy.db import tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
+from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client, seed, setup_context
@@ -294,9 +295,9 @@ def test_care_reader_cannot_amend_other_encounter_and_revoked_role(
             user_id=graph.physician,
             role="receptionist",
         )
-        UserClinicRole.objects.filter(
-            user_id=graph.physician, role="physician"
-        ).delete()
+        UserClinicRole.objects.filter(user_id=graph.physician, role="physician").update(
+            revoked_at=Now()
+        )
     with runtime_role(), tenant_context(graph.physician, graph.organization_a):
         assert not Problem.objects.exists()
 

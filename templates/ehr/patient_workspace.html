@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load i18n static tz ehr_ui %}
+{% block title %}{% trans "Patient workspace · Clinic OS" %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-patient-workspace.css' %}">
+<script defer src="{% static 'js/patient-workspace.js' %}"></script>
+{% endblock %}
+{% block content %}
+{% include "ehr/workspace/body.html" %}
+{% endblock %}

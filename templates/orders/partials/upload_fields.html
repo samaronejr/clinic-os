@@ -1,0 +1,10 @@
+{% for field in form.hidden_fields %}{{ field }}{% endfor %}
+{% for field in form.visible_fields %}
+  {% if field.name == "critical" %}
+  <div class="orders-check">
+    {{ field }}<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+  </div>
+  {% else %}
+    {% include "includes/field.html" with field=field only %}
+  {% endif %}
+{% endfor %}

@@ -12,15 +12,15 @@ from django.db import transaction
 from apps.audit.services import record_phase1_event
 from apps.identity.current_context import (
     CurrentActorError,
-    list_active_clinic_physicians,
     practitioner_display_label,
 )
 from apps.scheduling.access import (
     AvailabilityAccessDeniedError,
     AvailabilityViewScope,
-    authorized_view_scope,
+    authorized_agenda_scope,
 )
 from apps.scheduling.models import Appointment
+from apps.scheduling.resource_booking import service_practitioners
 from apps.scheduling.timezones import (
     civil_day_bounds,
     civil_week_bounds,
@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 
 type AgendaView = Literal["day", "week"]
 AGENDA_PAGE_SIZE: Final = 25
+# Every lifecycle state a person acts on or reviews; lapsed holds are hidden.
+AGENDA_STATUSES: Final = tuple(
+    status for status in Appointment.Status.values if status != "expired"
+)
 
 
 class AgendaInputError(ValueError):
@@ -53,6 +57,8 @@ class AgendaItem:
     start_local: str
     end_local: str
     status: str
+    service_type_id: UUID | None = None
+    revision: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,9 +107,7 @@ def _labels(
                     scope.clinic.pk,
                 )
             }
-        active: dict[UUID, str] = {}
-        for physician in list_active_clinic_physicians(scope.clinic.pk):
-            active[physician.user_id] = physician.display_label
+        active = dict(service_practitioners(scope.clinic.pk))
     except CurrentActorError as error:
         raise AvailabilityAccessDeniedError from error
     return {
@@ -123,7 +127,7 @@ def view_agenda(
     if type(clinic_id) is not UUID:
         raise AvailabilityAccessDeniedError
     with transaction.atomic():
-        scope = authorized_view_scope(clinic_id)
+        scope = authorized_agenda_scope(clinic_id)
         timezone_key = scope.clinic.timezone
         if not isinstance(timezone_key, str):
             raise AvailabilityAccessDeniedError
@@ -139,7 +143,7 @@ def view_agenda(
             clinic_id=clinic_id,
             start_at__gte=start_at,
             start_at__lt=end_at,
-            status__in=(Appointment.Status.SCHEDULED, Appointment.Status.CANCELLED),
+            status__in=AGENDA_STATUSES,
         )
         if scope.practitioner_id is not None:
             rows = rows.filter(practitioner_id=scope.practitioner_id)
@@ -162,6 +166,8 @@ def view_agenda(
                 start_local=format_local_minute(row.start_at, timezone_key),
                 end_local=format_local_minute(row.end_at, timezone_key),
                 status=row.status,
+                service_type_id=row.service_type_id,
+                revision=row.revision,
             )
             for row in selected_rows
         )

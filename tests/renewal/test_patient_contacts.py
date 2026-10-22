@@ -1082,41 +1082,21 @@ def test_new_preference_during_invalidation_never_reaches_the_adapter(
     recorded_dispatch: list[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A preference created mid-invalidation cannot overtake the send cut.
-
-    The deterministic schedule runs the real worker on its own
-    connection while the destination mutation is paused between its
-    lock acquisition and commit: the worker's preference create,
-    enqueue and final recheck all observe the pre-commit state, then
-    the invalidation commits. The send boundary's stable
-    patient-channel lock must still cancel the operation before the
-    adapter call.
-    """
+    """A preference started during invalidation cannot enqueue after its commit."""
     del recorded_dispatch
     contacts = _seed_patients(rbac_graph)
     _save(rbac_graph, contacts.enrollment_id)
     _verify(rbac_graph, contacts.enrollment_id)
-    final_recheck = Event()
+    worker_started = Event()
     mutation_committed = Event()
     original_save = PatientContact.save
-    original_decision = integration._presend_decision
     futures: list[Future[str]] = []
-    observation: dict[str, object] = {}
-
-    def decision(scope: OperationScope) -> str:
-        result = original_decision(scope)
-        observation["presend_decision"] = result
-        final_recheck.set()
-        assert mutation_committed.wait(10), "mutation did not commit"
-        with _as_manager(rbac_graph):
-            observation["eligible_after_commit"] = preference_send_eligible(scope)
-        return result
-
-    monkeypatch.setattr(integration, "_presend_decision", decision)
 
     def worker() -> str:
         try:
+            worker_started.set()
             _choose(rbac_graph, contacts.enrollment_id)
+            assert mutation_committed.wait(10), "mutation did not commit"
             operation_id = _enqueue(rbac_graph, contacts.enrollment_id)
             with service_runtime_role():
                 return str(integration.execute_operation(operation_id))
@@ -1134,11 +1114,11 @@ def test_new_preference_during_invalidation_never_reaches_the_adapter(
             update_fields: Iterable[str] | None = None,
         ) -> None:
             if self.patient_id == contacts.patient_id and self.destination_version == 2:
-                # All existing preference locks have already been
-                # enumerated; there were no preferences when that query
-                # executed.
+                # The new clinic gate can block preference creation until
+                # this transaction commits. Do not wait for a later send cut
+                # while holding the gate the worker needs to reach it.
                 futures.append(executor.submit(worker))
-                assert final_recheck.wait(10), "sender did not reach final recheck"
+                assert worker_started.wait(10), "preference worker did not start"
             original_save(
                 self,
                 force_insert=force_insert,
@@ -1155,11 +1135,10 @@ def test_new_preference_during_invalidation_never_reaches_the_adapter(
                 destination="+5511966667777",
                 expected_version=1,
             )
-            observation["committed_version"] = changed.destination_version
-            observation["verified"] = changed.is_verified
+            assert changed.destination_version == 2
+            assert not changed.is_verified
         finally:
             mutation_committed.set()
-        observation["task_result"] = futures[0].result(timeout=10)
-    observation["send_count"] = len(adapter.sent)
-    assert observation["task_result"] == "cancelled"
+        with pytest.raises(AutomatedMessageError):
+            futures[0].result(timeout=10)
     assert adapter.sent == [], "committed invalidation overtaken by new-preference send"

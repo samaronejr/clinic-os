@@ -93,20 +93,51 @@ def observe_process_member(pid: int, proc_root: Path = Path("/proc")) -> JsonObj
     """Read one PID twice and return its stable executable/start identity."""
     root = proc_root / str(pid)
     try:
-        stat_before = _read_proc(root / "stat")
-        link_before = (root / "exe").lstat()
+        stat_before = _stat_identity(_read_proc(root / "stat"), pid)
         executable = (root / "exe").resolve(strict=True)
+        target_before = (root / "exe").stat()
+        uid, gid = _status_identity(_read_proc(root / "status"))
         command = _read_proc(root / "cmdline")
-        status = _read_proc(root / "status")
-        stat_after = _read_proc(root / "stat")
-        link_after = (root / "exe").lstat()
+        credentials_after = _status_identity(_read_proc(root / "status"))
+        executable_after = (root / "exe").resolve(strict=True)
+        target_after = (root / "exe").stat()
+        stat_after = _stat_identity(_read_proc(root / "stat"), pid)
     except FileNotFoundError as error:
         message = "process identity disappeared during activation"
         raise IsolationError(message) from error
-    if stat_before != stat_after or link_before != link_after:
-        _fail("process identity changed during activation")
-    ppid, pgid, sid, start_ticks = _stat_identity(stat_before, pid)
-    uid, gid = _status_identity(status)
+    # Procfs accounting/state and exe-link metadata are not process identity.
+    for field, before, after in zip(
+        (
+            "ppid",
+            "pgid",
+            "sid",
+            "start_ticks",
+            "uid",
+            "gid",
+            "executable_realpath",
+            "executable_device",
+            "executable_inode",
+        ),
+        (
+            *stat_before,
+            uid,
+            gid,
+            executable,
+            target_before.st_dev,
+            target_before.st_ino,
+        ),
+        (
+            *stat_after,
+            *credentials_after,
+            executable_after,
+            target_after.st_dev,
+            target_after.st_ino,
+        ),
+        strict=True,
+    ):
+        if before != after:
+            _fail(f"process identity changed during activation: {field}")
+    ppid, pgid, sid, start_ticks = stat_before
     return {
         "argv_sha256": hashlib.sha256(command).hexdigest(),
         "executable_realpath": str(executable),
@@ -191,7 +222,7 @@ def _read_proc(path: Path) -> bytes:
 def _stat_identity(raw: bytes, pid: int) -> tuple[int, int, int, int]:
     marker = raw.rfind(b")")
     if not raw.startswith(f"{pid} (".encode()) or marker < 0:
-        _fail("process stat identity is malformed")
+        _fail("process stat pid identity is malformed")
     fields = raw[marker + 1 :].split()
     try:
         return int(fields[1]), int(fields[2]), int(fields[3]), int(fields[19])

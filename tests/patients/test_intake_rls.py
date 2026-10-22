@@ -1,7 +1,6 @@
 import os
 from datetime import date
 from importlib import import_module
-from importlib.util import find_spec
 from uuid import UUID
 
 import psycopg
@@ -11,6 +10,7 @@ from apps.intake.models import Patient, PatientClinicEnrollment
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from psycopg.errors import (
+    CheckViolation,
     InsufficientPrivilege,
     InvalidTextRepresentation,
 )
@@ -125,9 +125,7 @@ def _seed_rows() -> None:
 def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
     superuser_database_url: str,
 ) -> None:
-    module = import_module("apps.intake.rls") if find_spec("apps.intake.rls") else None
-
-    assert module is not None
+    module = import_module("apps.intake.rls")
     expected_targets = {
         ("intake_patient", "organization_id"),
         ("intake_patientaccessgrant", "organization_id"),
@@ -136,6 +134,18 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
         ("intake_patientcontact", "organization_id"),
         ("intake_patientcontactevent", "organization_id"),
         ("intake_patientsession", "organization_id"),
+        ("intake_patientdemographics", "organization_id"),
+        ("intake_demographicscorrection", "organization_id"),
+        ("intake_patientidentifier", "organization_id"),
+        ("intake_patientaddress", "organization_id"),
+        ("intake_emergencycontact", "organization_id"),
+        ("intake_insurancemembership", "organization_id"),
+        ("intake_clinicintakepolicy", "organization_id"),
+        ("intake_duplicatecandidate", "organization_id"),
+        ("intake_patientduplicateindex", "organization_id"),
+        ("intake_mergedecision", "organization_id"),
+        ("intake_patientalias", "organization_id"),
+        ("intake_patientmergetransfer", "organization_id"),
     }
     assert frozenset(expected_targets) == module.INTAKE_RLS_TARGETS
     # The protected-field migration is irreversible, so the unapply/reapply
@@ -175,12 +185,24 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 [[table for table, _ in sorted(expected_targets)]],
             )
             assert cursor.fetchall() == [
+                ("intake_clinicintakepolicy", True, True, "clinic_owner"),
+                ("intake_demographicscorrection", True, True, "clinic_owner"),
+                ("intake_duplicatecandidate", True, True, "clinic_owner"),
+                ("intake_emergencycontact", True, True, "clinic_owner"),
+                ("intake_insurancemembership", True, True, "clinic_owner"),
+                ("intake_mergedecision", True, True, "clinic_owner"),
                 ("intake_patient", True, True, "clinic_owner"),
                 ("intake_patientaccessgrant", True, True, "clinic_owner"),
+                ("intake_patientaddress", True, True, "clinic_owner"),
+                ("intake_patientalias", True, True, "clinic_owner"),
                 ("intake_patientchannelpreference", True, True, "clinic_owner"),
                 ("intake_patientclinicenrollment", True, True, "clinic_owner"),
                 ("intake_patientcontact", True, True, "clinic_owner"),
                 ("intake_patientcontactevent", True, True, "clinic_owner"),
+                ("intake_patientdemographics", True, True, "clinic_owner"),
+                ("intake_patientduplicateindex", True, True, "clinic_owner"),
+                ("intake_patientidentifier", True, True, "clinic_owner"),
+                ("intake_patientmergetransfer", True, True, "clinic_owner"),
                 ("intake_patientsession", True, True, "clinic_owner"),
             ]
             cursor.execute(
@@ -193,18 +215,20 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 """,
                 [[table for table, _ in sorted(expected_targets)]],
             )
-            policy_rows = cursor.fetchall()
-            assert len(policy_rows) == 7
-            for table, policy, permissive, roles, command, using, check in policy_rows:
-                assert policy == "tenant_isolation"
-                assert permissive == "PERMISSIVE"
-                assert roles == ["public"]
-                assert command == "ALL"
-                expected = (
+            assert cursor.fetchall() == [
+                (
+                    table,
+                    "tenant_isolation",
+                    "PERMISSIVE",
+                    ["public"],
+                    "ALL",
                     "(organization_id = (NULLIF(current_setting("
-                    "'app.current_tenant'::text, true), ''::text))::uuid)"
+                    "'app.current_tenant'::text, true), ''::text))::uuid)",
+                    "(organization_id = (NULLIF(current_setting("
+                    "'app.current_tenant'::text, true), ''::text))::uuid)",
                 )
-                assert using == check == expected, table
+                for table, _ in sorted(expected_targets)
+            ]
             cursor.execute(
                 """
                 SELECT table_name, privilege_type
@@ -216,10 +240,26 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 [[table for table, _ in sorted(expected_targets)]],
             )
             assert cursor.fetchall() == [
+                ("intake_clinicintakepolicy", "INSERT"),
+                ("intake_clinicintakepolicy", "SELECT"),
+                ("intake_demographicscorrection", "INSERT"),
+                ("intake_demographicscorrection", "SELECT"),
+                ("intake_duplicatecandidate", "INSERT"),
+                ("intake_duplicatecandidate", "SELECT"),
+                ("intake_emergencycontact", "INSERT"),
+                ("intake_emergencycontact", "SELECT"),
+                ("intake_insurancemembership", "INSERT"),
+                ("intake_insurancemembership", "SELECT"),
+                ("intake_mergedecision", "INSERT"),
+                ("intake_mergedecision", "SELECT"),
                 ("intake_patient", "INSERT"),
                 ("intake_patient", "SELECT"),
                 ("intake_patientaccessgrant", "INSERT"),
                 ("intake_patientaccessgrant", "SELECT"),
+                ("intake_patientaddress", "INSERT"),
+                ("intake_patientaddress", "SELECT"),
+                ("intake_patientalias", "INSERT"),
+                ("intake_patientalias", "SELECT"),
                 ("intake_patientchannelpreference", "INSERT"),
                 ("intake_patientchannelpreference", "SELECT"),
                 ("intake_patientclinicenrollment", "INSERT"),
@@ -228,7 +268,29 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
                 ("intake_patientcontact", "SELECT"),
                 ("intake_patientcontactevent", "INSERT"),
                 ("intake_patientcontactevent", "SELECT"),
+                ("intake_patientdemographics", "INSERT"),
+                ("intake_patientdemographics", "SELECT"),
+                ("intake_patientduplicateindex", "INSERT"),
+                ("intake_patientduplicateindex", "SELECT"),
+                ("intake_patientidentifier", "INSERT"),
+                ("intake_patientidentifier", "SELECT"),
+                ("intake_patientmergetransfer", "INSERT"),
+                ("intake_patientmergetransfer", "SELECT"),
                 ("intake_patientsession", "SELECT"),
+            ]
+            cursor.execute(
+                """
+                SELECT attname FROM pg_catalog.pg_attribute
+                WHERE attrelid = 'clinic_app.intake_patient'::regclass
+                  AND attnum > 0 AND NOT attisdropped
+                  AND has_column_privilege('clinic_app', attrelid, attname, 'UPDATE')
+                ORDER BY attname
+                """
+            )
+            assert cursor.fetchall() == [
+                ("birth_date",),
+                ("full_name",),
+                ("full_name_index",),
             ]
 
         _seed_rows()
@@ -267,10 +329,18 @@ def test_intake_tables_are_fail_closed_with_exact_runtime_acls(
             )
             app_connection.rollback()
             _set_local(app_connection, str(ORG_A))
-            with pytest.raises(InsufficientPrivilege):
+            with pytest.raises(CheckViolation) as mirror:
                 app_connection.execute(
                     "UPDATE clinic_app.intake_patient SET full_name = full_name"
                 )
+            assert mirror.value.sqlstate == "23514"
+            assert mirror.value.diag.message_primary == (
+                "patient registry identity changes only with a demographics version"
+            )
+            app_connection.rollback()
+            _set_local(app_connection, str(ORG_A))
+            with pytest.raises(InsufficientPrivilege):
+                app_connection.execute("UPDATE clinic_app.intake_patient SET id = id")
             app_connection.rollback()
             _set_local(app_connection, str(ORG_A))
             with pytest.raises(InsufficientPrivilege):

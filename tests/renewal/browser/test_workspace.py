@@ -112,8 +112,8 @@ def workspace_staff(renewal_base_url: str) -> dict[str, str]:
         ):
             connection.execute(
                 "INSERT INTO clinic_app.identity_userclinicrole "
-                "(id, user_id, organization_id, clinic_id, role) "
-                "VALUES (%s, %s, %s, %s, %s)",
+                "(id, user_id, organization_id, clinic_id, role, "
+                "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
                 [str(uuid4()), user_id, values["organization"], clinic_id, role],
             )
         connection.execute("SET ROLE clinic_app")
@@ -438,7 +438,15 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
 
     _sign_in_receptionist(page, renewal_base_url, workspace_staff)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
-    assert _modules(page) == ["agenda", "patients", "finance", "operations"]
+    assert _modules(page) == [
+        "today",
+        "agenda",
+        "patients",
+        "inbox",
+        "finance",
+        "operations",
+        "settings",
+    ]
     _capture(page, root, "receptionist-landing-1280")
 
     # Brand link and Agenda entry both land on today's agenda of this clinic.
@@ -457,6 +465,13 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
     )
     _register_and_find_patient(page, renewal_base_url, patients_a)
     _capture(page, root, "receptionist-patients-1280")
+
+    click_to_navigate(page.locator("a[data-module=inbox]"))
+    expect(page.locator("a[data-module=inbox]")).to_have_attribute(
+        "aria-current", "page"
+    )
+    expect(page.locator("h1")).to_have_text(gettext("Orders and results"))
+    _capture(page, root, "receptionist-results-1280")
 
     # Clinic switcher: native disclosure, keyboard reachable, changes context.
     _open_clinic_switcher(page)
@@ -477,7 +492,15 @@ def test_receptionist_reaches_every_module_and_switches_clinic(
         {
             "surface": "workspace",
             "assertion": "receptionist modules, agenda entry, clinic switcher",
-            "modules": ["agenda", "patients", "finance", "operations"],
+            "modules": [
+                "today",
+                "agenda",
+                "patients",
+                "inbox",
+                "finance",
+                "operations",
+                "settings",
+            ],
             "console_errors": errors,
         }
     )
@@ -498,7 +521,7 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
     # sign out, then the Agenda section row (Agenda, Availability).
     goto_settled(page, f"{renewal_base_url}{agenda_a}")
     order: list[str] = []
-    for _ in range(11):
+    for _ in range(14):
         page.keyboard.press("Tab")
         order.append(
             page.evaluate(
@@ -511,10 +534,13 @@ def test_keyboard_order_and_reflow_hold_at_every_width(
         "nav-brand",
         "nav-switch-summary",
         "nav-command",
+        "today",
         "agenda",
         "patients",
+        "inbox",
         "finance",
         "operations",
+        "settings",
         "nav-link",
         "tab",
         "tab",
@@ -728,16 +754,22 @@ def test_physician_sees_only_clinical_modules_and_registry_stays_denied(
     page.locator("#id_otp_token").fill(f"{token:06d}")
     _submit(page, "button[type=submit]")
     wait_for_signed_in(page)
-    assert _modules(page) == ["agenda", "patients", "operations"]
+    assert _modules(page) == ["agenda", "patients", "inbox", "operations"]
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     expect(page.locator(".nav-switch")).to_have_count(0)
     _capture(page, renewal_artifact_root, "physician-landing-1280")
+
+    click_to_navigate(page.locator("a[data-module=inbox]"))
+    expect(page.locator("a[data-module=inbox]")).to_have_attribute(
+        "aria-current", "page"
+    )
+    expect(page.locator("h1")).to_have_text(gettext("Orders and results"))
 
     # Forbidden role: the registry is refused on GET and on POST, never offered.
     registry = goto_settled(page, f"{renewal_base_url}{patients_a}")
     assert registry is not None
     assert registry.status == NOT_FOUND
-    assert _modules(page) == ["agenda", "patients", "operations"]
+    assert _modules(page) == ["agenda", "patients", "inbox", "operations"]
     expect(page.locator("#id_q")).to_have_count(0)
     csrf = next(
         cookie["value"]
@@ -792,12 +824,21 @@ def test_stale_clinic_context_is_dropped_after_revocation(
             [workspace_staff["organization"]],
         )
         connection.execute(
-            "DELETE FROM clinic_app.identity_userclinicrole "
+            "UPDATE clinic_app.identity_userclinicrole SET revoked_at=now() "
             "WHERE user_id = %s AND clinic_id = %s",
             [workspace_staff["receptionist_id"], workspace_staff["clinic_b"]],
         )
 
     goto_settled(page, f"{renewal_base_url}/auth/protected/")
+    expect(page.locator("#id_username")).to_be_visible()
+    _capture(page, renewal_artifact_root, "revoked-session-login-1280")
+    _sign_in(
+        page,
+        renewal_base_url,
+        workspace_staff["receptionist"],
+        workspace_staff["password"],
+    )
+    wait_for_signed_in(page)
     expect(page.locator(".nav-clinic")).to_contain_text(CLINIC_A)
     assert CLINIC_B not in page.content()
     expect(page.locator(".nav-switch")).to_have_count(0)

@@ -1,0 +1,59 @@
+{% load i18n %}
+<section class="patient-workspace-section" aria-labelledby="encounters-title">
+  <h2 id="encounters-title">{% trans "Encounters" %}</h2>
+  {% for encounter in patient_encounters %}<form novalidate data-auth-form hx-boost="false" method="post" action="{% url 'ehr:encounter' clinic_id %}" class="patient-workspace-row">
+    {% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+    <p><time>{{ encounter.created_at|date:"d/m/Y H:i" }}</time></p>
+    <button class="button button--secondary" type="submit" name="action" value="show">{% trans "Open encounter" %}</button>
+  </form>{% empty %}<p class="table-empty">{% trans "No encounters available to your current access." %}</p>{% endfor %}
+</section>
+<section class="patient-workspace-section" aria-labelledby="notes-title">
+  <h2 id="notes-title">{% trans "Clinical notes" %}</h2>
+  {% for note in notes %}{% with version=note.version %}
+  <article class="patient-workspace-row">
+    <h3>{{ version.template.title }} · {{ version.get_state_display }}</h3>
+    <p>{{ version.created_at|date:"d/m/Y H:i" }} · {% trans "Version" %} {{ version.version }} · {% trans "Revision" %} {{ version.revision }}</p>
+    {% if note.restricted %}<p class="badge">{% trans "Restricted note" %}</p>{% endif %}
+    <form hx-boost="false" novalidate data-auth-form method="post" action="{% url 'ehr:encounter' clinic_id %}">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}<input type="hidden" name="encounter_id" value="{{ version.document.encounter_id }}"><button class="button button--secondary" type="submit" name="action" value="show">{% trans "Open encounter" %}</button></form>
+    {% if can_write and note.owned and not note.restricted %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+      <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="encounters"><input type="hidden" name="version_id" value="{{ version.pk }}"><button class="button button--quiet" type="submit" name="action" value="restrict">{% trans "Restrict note access" %}</button>
+    </form>{% endif %}
+    {% if can_write and version.state == "finalized" or can_write and version.state == "superseded" %}
+      {% for target in drafts %}
+      <form novalidate data-auth-form method="post" class="patient-workspace-filter">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+        <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="encounters">
+        <input type="hidden" name="source_version_id" value="{{ version.pk }}"><input type="hidden" name="target_version_id" value="{{ target.pk }}">
+        <input type="hidden" name="revision" value="{{ target.revision }}"><input type="hidden" name="command_id" value="{{ command_id }}">
+        <div class="field"><label for="copy-section-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">{% trans "Section to copy into the current draft" %} ({{ target.created_at|date:"d/m/Y H:i" }})</label><select id="copy-section-{{ forloop.parentloop.counter }}-{{ forloop.counter }}" name="section"><option value="subjective">{% trans "Subjective" %}</option><option value="objective">{% trans "Objective" %}</option><option value="assessment">{% trans "Assessment" %}</option><option value="plan">{% trans "Plan" %}</option></select></div>
+        <button class="button button--secondary" type="submit" name="action" value="copy">{% trans "Copy marked block" %}</button>
+      </form>
+      {% endfor %}
+    {% endif %}
+    {% if note.owned and version.state == "draft" %}
+      {% for copy in note.copies %}<form novalidate data-auth-form method="post" class="patient-workspace-copy">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+        <p>{% blocktrans with date=copy.source.finalized_at|date:"d/m/Y" %}Copied from {{ date }}{% endblocktrans %}</p>
+        <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="encounters">
+        <input type="hidden" name="block_id" value="{{ copy.pk }}"><input type="hidden" name="revision" value="{{ version.revision }}">
+        {% if copy.reviewed_revision == version.revision %}<p class="feedback feedback--success">{% trans "Reviewed at this revision" %}</p>{% else %}
+        <label class="patient-workspace-check"><input type="checkbox" name="reviewed" value="yes" required>{% trans "I reviewed the copied block in the current draft" %}</label>
+        <button class="button button--secondary" type="submit" name="action" value="review_copy">{% trans "Mark block reviewed" %}</button>{% endif %}
+      </form>{% endfor %}
+    {% endif %}
+  </article>
+  {% endwith %}{% empty %}<p class="table-empty">{% trans "No notes available to your current access." %}</p>{% endfor %}
+</section>
+{% if can_write %}
+<section class="patient-workspace-section" aria-labelledby="addenda-title">
+  <h2 id="addenda-title">{% trans "Clinical contributions" %}</h2>
+  <p class="help-text">{% trans "A contribution is a separate draft. It never changes another clinician's note." %}</p>
+  {% for encounter in encounters %}<form novalidate data-auth-form method="post">{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="encounters"><input type="hidden" name="encounter_id" value="{{ encounter.pk }}">
+    <button class="button button--secondary" type="submit" name="action" value="open_addendum">{% trans "Open contribution" %} · {{ encounter.created_at|date:"d/m/Y H:i" }}</button>
+  </form>{% endfor %}
+  {% for addendum in addenda %}<form data-auth-form method="post" class="patient-workspace-row" novalidate>{% csrf_token %}{% include "ehr/workspace/network_notice.html" %}
+    <input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}"><input type="hidden" name="tab" value="encounters"><input type="hidden" name="addendum_id" value="{{ addendum.pk }}"><input type="hidden" name="revision" value="{{ addendum.revision }}"><input type="hidden" name="command_id" value="{{ command_id }}">
+    <div class="field"><label for="addendum-{{ forloop.counter }}">{% trans "Your contribution draft" %} · {{ addendum.created_at|date:"d/m/Y H:i" }}</label><textarea id="addendum-{{ forloop.counter }}" name="text" rows="6" maxlength="20000">{{ addendum.text }}</textarea></div>
+    <button class="button button--secondary" type="submit" name="action" value="save_addendum">{% trans "Save contribution draft" %}</button>
+  </form>{% endfor %}
+</section>
+{% endif %}

@@ -119,6 +119,7 @@ def test_spoofed_forwarded_proto_is_ignored_and_redirected(tmp_path: Path) -> No
         }
     )
     environment = os.environ.copy()
+    environment.pop("AGENT_DATABASE_URL", None)
     environment.update(
         {
             "ALLOWED_HOSTS": VALID_HOSTS,

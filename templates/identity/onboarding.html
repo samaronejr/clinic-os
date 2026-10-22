@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "First steps · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="onboarding-title">
+  <h1 id="onboarding-title">{% trans "First steps" %}</h1>
+  <p class="lede">{% trans "Prepare your clinic, protect your account and open your first agenda. Your progress stays on the server." %}</p>
+  {% if refreshed %}<p class="feedback feedback--success" role="status">{% trans "Progress refreshed." %}</p>{% endif %}
+  <ol>
+    {% for step in steps %}
+    <li data-onboarding-step="{{ step.key }}" data-completed="{{ step.completed|yesno:'true,false' }}">
+      <h2>{{ step.label }}</h2>
+      <p><span class="badge">{% if step.completed %}{% trans "Complete" %}{% else %}{% trans "To do" %}{% endif %}</span></p>
+      {% if step.href %}<p><a class="button button--secondary" href="{{ step.href }}">{{ step.label }}</a></p>{% endif %}
+      {% if step.key == "provider_connections" %}
+        <p>{% trans "Review only. This screen does not activate a provider or authorize live use." %}</p>
+        <ul>{% for provider in providers %}<li>{{ provider.key }}: {{ provider.label }} · {% if provider.live_eligible %}{% trans "Live eligible" %}{% else %}{% trans "Not live eligible" %}{% endif %}</li>{% empty %}<li>{% trans "No provider connection is configured." %}</li>{% endfor %}</ul>
+        <form method="post" action="{% url 'identity:provider-review' clinic_id=clinic_id %}">{% csrf_token %}<button class="button button--secondary" type="submit">{% trans "Confirm status review" %}</button></form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  <form method="post">{% csrf_token %}<button class="button" type="submit">{% trans "Refresh progress" %}</button></form>
+  <p><a class="button button--secondary" href="{% url 'identity:clinic-settings' clinic_id=clinic_id %}">{% trans "Back to clinic settings" %}</a></p>
+</section>
+{% endblock %}

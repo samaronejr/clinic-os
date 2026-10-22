@@ -8,7 +8,7 @@ ARG CLINIC_SOURCE_MANIFEST_SHA256
 ARG CLINIC_SOURCE_ENTRY_COUNT
 ARG CLINIC_AVAILABLE_SUITE_IDS
 RUN test "$TARGETARCH" = "amd64" && test "$(dpkg --print-architecture)" = "amd64"
-RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools=2:3.98-1ubuntu0.2 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libnss3-tools=2:3.98-1ubuntu0.3 && rm -rf /var/lib/apt/lists/*
 COPY --from=uv /uv /uvx /bin/
 WORKDIR /runner
 ENV HOME=/tmp PATH="/runner/.venv/bin:$PATH" PLAYWRIGHT_VERSION=1.61.0 PYTHONDONTWRITEBYTECODE=1 PYTHONTZPATH="" UV_PROJECT_ENVIRONMENT=/runner/.venv UV_LINK_MODE=copy

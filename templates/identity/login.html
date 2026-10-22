@@ -1,10 +1,13 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-passkeys.css' %}">
+<script src="{% static 'js/passkey.js' %}" defer></script>
+{% endblock %}
 {% block title %}{% trans "Sign in · Clinic OS" %}{% endblock %}
 {% block meta_description %}{% trans "Sign in securely to the Clinic OS clinical workspace." %}{% endblock %}
 {% block content %}
 <section class="auth-shell" aria-labelledby="auth-title">
-  <p class="eyebrow">{% trans "Secure workspace" %}</p>
   <h1 id="auth-title">{% trans "Sign in to Clinic OS" %}</h1>
   <p class="lede" id="login-help">{% trans "Use your clinic credentials. Privileged roles will verify an authenticator code next." %}</p>
   <div class="auth-card" id="auth-panel" aria-live="polite">
@@ -39,6 +42,9 @@
         <span class="htmx-indicator" id="auth-progress" role="status">{% trans "Signing in…" %}</span>
       </div>
     </form>
+    {% trans "Sign in with a passkey" as passkey_label %}
+    {% include "includes/passkey.html" with id="passkey-login" kind="login" label=passkey_label next=next csrf_token=csrf_token only %}
+    <p><a class="button button--secondary" href="{% url 'identity:signup' %}">{% trans "Register an organization" %}</a></p>
   </div>
 </section>
 {% endblock %}

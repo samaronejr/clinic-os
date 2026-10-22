@@ -28,6 +28,7 @@ def _release_environment(tmp_path: Path, role: str = "clinic_owner") -> dict[str
         }
     )
     environment = os.environ.copy()
+    environment.pop("AGENT_DATABASE_URL", None)
     environment.update(
         {
             "ALLOWED_HOSTS": VALID_HOSTS,

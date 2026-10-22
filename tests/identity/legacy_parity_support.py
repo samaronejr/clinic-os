@@ -33,6 +33,7 @@ from apps.scheduling.access import (
     AppointmentAccessDeniedError,
     AvailabilityAccessDeniedError,
 )
+from apps.scheduling.reception import ReceptionAccessDeniedError
 from apps.teleconsult.services import TeleconsultAccessDeniedError
 from apps.tenancy.db import tenant_context
 from django.contrib.messages.middleware import MessageMiddleware
@@ -49,10 +50,12 @@ from renewal.test_encounters import draft, seed
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from apps.comms.models import IntegrationOperation
     from apps.ehr.models import ClinicalDocumentVersion, SpecialtyTemplate
     from apps.scheduling.models import Appointment
     from django.http import HttpRequest
 
+    from identity.reception_subjects import ReceptionSubjects
     from rbac_fixtures import RbacGraph
 
 LEGACY = ("owner", "physician", "receptionist", "clinic_admin")
@@ -60,6 +63,7 @@ MANAGERS = ("owner", "receptionist", "clinic_admin")
 ADMINS = ("owner", "clinic_admin")
 PHYSICIAN = ("physician",)
 DENIALS = (
+    ReceptionAccessDeniedError,
     CurrentActorError,
     ClinicalAccessDeniedError,
     PatientAccessDeniedError,
@@ -86,6 +90,11 @@ class LegacyWorld:
     template: SpecialtyTemplate
     version: ClinicalDocumentVersion
     request: HttpRequest
+    lifecycle_target: UUID | None = None
+    lifecycle_reset: UUID | None = None
+    lifecycle_invitation: UUID | None = None
+    lifecycle_operation: IntegrationOperation | None = None
+    reception: ReceptionSubjects | None = None
 
     @property
     def clinic(self) -> UUID:

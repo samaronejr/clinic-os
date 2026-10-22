@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.contrib import messages
@@ -28,7 +28,7 @@ from apps.ehr.attachments import (
     scan_attachment,
     upload_attachment,
 )
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, decided
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
@@ -43,6 +43,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 OK = 200
+WRITE_ACTIONS: Final = ("upload", "scan")
+# Every POST action the workspace routes; the refusal matrix derives from it.
+POST_ACTIONS: Final = frozenset({"open", "download", *WRITE_ACTIONS})
 
 
 def continuation(clinic_id: UUID) -> str:
@@ -139,12 +142,22 @@ def _workspace(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
             return redirect(continuation(clinic_id))
         if action == "download":
             return _download(request, clinic_id)
-        if action not in ("upload", "scan"):
+        if action not in WRITE_ACTIONS:
             raise ClinicalAccessDeniedError
         authorize_attachment_encounter(clinic_id, encounter.pk, write=True)
-        if action == "scan":
-            return _scan(request, clinic_id, key, encounter)
-        form, status, error = _upload(request, clinic_id, encounter)
+        # A refusal inside a scan or an upload after the checks above is late;
+        # deciding them again leaves exactly an early refusal's record.
+        with decided(
+            lambda: (
+                require_current_actor_clinic_roles(
+                    clinic_id, (UserClinicRole.Role.PHYSICIAN,)
+                ),
+                authorize_attachment_encounter(clinic_id, encounter.pk, write=True),
+            )
+        ):
+            if action == "scan":
+                return _scan(request, clinic_id, key, encounter)
+            form, status, error = _upload(request, clinic_id, encounter)
         if status == OK:
             request.session[key] = str(encounter.pk)
             messages.success(

@@ -330,8 +330,9 @@ def _assert_session_stats(mode: str, stats: dict[str, int], lines: list[str]) ->
 
 
 @pytest.mark.parametrize("mode", ["normal", "success-only", "worker-control-lost"])
+@pytest.mark.parametrize("sharded", [False, True])
 def test_distributed_sessions_check_the_merged_worker_receipts(
-    tmp_path: Path, mode: str
+    tmp_path: Path, mode: str, sharded: bool
 ) -> None:
     # xdist drops a worker's session exit status (the hosted job's parallel
     # phase); the controller must merge every worker's receipt and apply the
@@ -349,6 +350,22 @@ def test_distributed_sessions_check_the_merged_worker_receipts(
             "PYTHONPATH",
             os.pathsep.join((str(directory), str(Path.cwd() / "tests"))),
         )
+        shard_options: tuple[str, ...] = ()
+        if sharded:
+            reference = {
+                "items": [
+                    "tests/core/test_workspace_guard_integrity.py::test_guard_canary"
+                ],
+                "manifest": {},
+            }
+            (directory / "collected.json").write_text(json.dumps(reference))
+            shard_options = (
+                "-p",
+                "ops.testing.ci_pytest_plugin",
+                "--ci-pytest-phase=parallel",
+                "--ci-pytest-shard=1",
+                f"--ci-pytest-record={directory}",
+            )
         completed = run_process(
             (
                 sys.executable,
@@ -359,11 +376,21 @@ def test_distributed_sessions_check_the_merged_worker_receipts(
                 "-p",
                 "observer_plant",
                 "--numprocesses=1",
+                *shard_options,
                 "--basetemp=" + str(directory / "b"),
                 "tests/core/test_workspace_guard_integrity.py::test_guard_canary",
             ),
             timeout_seconds=120,
         )
+        if sharded:
+            receipt = json.loads((directory / "parallel-refusal.json").read_text())
+            # The controller's own control passes; a lost worker control remains
+            # a latched error and a failing process, not a missing census row.
+            assert receipt["control"] is True
+            assert bool(receipt["errors"]) is (mode == "worker-control-lost")
+            assert receipt["stats"]["client_requests"] in {1, 2}
+            assert receipt["exits"]
+            assert all(site.startswith("apps/") for site in receipt["exits"])
     lines = completed.stdout.splitlines()
     stats = json.loads(
         next(
@@ -389,3 +416,48 @@ def test_distributed_sessions_check_the_merged_worker_receipts(
         assert "refusal guard failed" in lines[-1], lines[-1]
     else:
         assert not failures
+
+
+@pytest.mark.parametrize("late_option", [False, True])
+def test_local_exit_census_cannot_be_deferred_by_a_late_option_change(
+    tmp_path: Path, late_option: bool
+) -> None:
+    # Given: a local controller whose corpus intentionally omits every refusal.
+    with (
+        runtime_directory(tmp_path, purpose="late-shard") as directory,
+        pytest.MonkeyPatch.context() as environment,
+    ):
+        plant = "import pytest\n"
+        if late_option:
+            plant += (
+                "@pytest.hookimpl(tryfirst=True)\n"
+                "def pytest_sessionfinish(session):\n"
+                "    if not hasattr(session.config, 'workerinput'):\n"
+                "        session.config.option.ci_pytest_shard = 1\n"
+            )
+        (directory / "late_option.py").write_text(plant)
+        environment.setenv("DJANGO_SETTINGS_MODULE", "config.settings.test")
+        environment.setenv(
+            "PYTHONPATH",
+            os.pathsep.join((str(directory), str(Path.cwd() / "tests"))),
+        )
+        # When: a plugin changes the public option just before controller merge.
+        completed = run_process(
+            (
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "ops.testing.ci_pytest_plugin",
+                "-p",
+                "late_option",
+                "--numprocesses=1",
+                "--basetemp=" + str(directory / "b"),
+                "tests/core/test_workspace_refusal_exits.py",
+            ),
+            timeout_seconds=120,
+        )
+    # Then: startup intent still requires the full census and rejects this run.
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "REFUSAL_GUARD_FAILURE Unreached refusal exits:" in completed.stdout

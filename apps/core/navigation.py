@@ -45,6 +45,13 @@ _ROLE = UserClinicRole.Role
 STAFF_ROUTE: Final = frozenset(
     {_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST, _ROLE.PHYSICIAN}
 )
+TASK_ROUTE: Final = STAFF_ROUTE | {
+    _ROLE.NURSE,
+    _ROLE.ALLIED_PROFESSIONAL,
+    _ROLE.SCHEDULER,
+    _ROLE.CLINIC_MANAGER,
+    _ROLE.FINANCE,
+}
 MANAGER_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN, _ROLE.RECEPTIONIST})
 ADMIN_ROUTE: Final = frozenset({_ROLE.OWNER, _ROLE.CLINIC_ADMIN})
 
@@ -97,9 +104,11 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
     Destination(
         "today",
         gettext_noop("Today"),
-        None,
-        _AGENDA_READ,
-        owner_todo=32,
+        "scheduling:reception",
+        ("reception.queue",),
+        route_roles=frozenset({_ROLE.RECEPTIONIST, _ROLE.NURSE}),
+        views=frozenset({"scheduling:reception"}),
+        owner_todo=25,
     ),
     Destination(
         "agenda",
@@ -111,6 +120,10 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
             {
                 "scheduling:agenda",
                 "scheduling:agenda-at",
+                "scheduling:agenda-grid",
+                "scheduling:agenda-board",
+                "scheduling:agenda-grid-move",
+                "scheduling:agenda-grid-action",
                 "scheduling:appointment-create",
                 "scheduling:appointment-reschedule",
                 "scheduling:appointment-cancel",
@@ -160,6 +173,17 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         None,
         ("result.read", "order.observe"),
         owner_todo=32,
+        entries=(
+            Destination(
+                "results",
+                gettext_noop("Orders and results"),
+                "orders:results",
+                ("demographics.read",),
+                route_roles=None,
+                views=frozenset({"orders:results", "orders:source"}),
+                owner_todo=31,
+            ),
+        ),
     ),
     Destination(
         "messages",
@@ -190,6 +214,30 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
                 ("demographics.read", *_CONFIGURATION),
                 views=frozenset({"retention:status"}),
             ),
+            Destination(
+                "tasks",
+                gettext_noop("Tasks"),
+                "workflows:tasks",
+                ("tasks.view",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:tasks", "workflows:exceptions"}),
+            ),
+            Destination(
+                "workflow-runs",
+                gettext_noop("Workflow runs"),
+                "workflows:runs",
+                ("tasks.view",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:runs", "workflows:run-exceptions"}),
+            ),
+            Destination(
+                "workflow-designer",
+                gettext_noop("Workflow designer"),
+                "workflows:designer",
+                ("tasks.reassign",),
+                route_roles=TASK_ROUTE,
+                views=frozenset({"workflows:designer"}),
+            ),
         ),
     ),
     Destination(
@@ -213,6 +261,16 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         _CONFIGURATION,
         route_roles=ADMIN_ROUTE,
         views=frozenset({"identity:clinic-settings"}),
+        entries=(
+            Destination(
+                "scheduling-settings",
+                gettext_noop("Scheduling settings"),
+                "scheduling:resource-settings",
+                ("appointment.book", "configuration.organization"),
+                route_roles=None,
+                views=frozenset({"scheduling:resource-settings"}),
+            ),
+        ),
     ),
 )
 

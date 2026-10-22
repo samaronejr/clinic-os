@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from apps.identity.current_context import CurrentActorError, require_permission
-from apps.identity.permissions import BUNDLES_V1, PERMISSIONS
+from apps.identity.permissions import BUNDLES_V1, BUNDLES_V2, PERMISSIONS
 
 from identity.permission_support import permission_actor, permission_context
 
@@ -104,7 +104,28 @@ def test_registry_is_exact_and_bundles_cannot_be_mutated() -> None:
         for actions in row.values()
         for permission in actions.split()
     ) | {"restricted.read"}
-    assert expected == PERMISSIONS
+    assert (
+        expected
+        | {
+            "tasks.view",
+            "tasks.assign",
+            "tasks.complete",
+            "tasks.reassign",
+            "encounter.open_unscheduled",
+            "reception.queue",
+        }
+        == PERMISSIONS
+    )
+    assert set(BUNDLES_V2) == set(BUNDLES_V1)
+    for role, bundle in BUNDLES_V2.items():
+        added = {"tasks.view", "tasks.assign", "tasks.complete"}
+        if role in {"owner", "org_admin", "clinic_admin", "clinic_manager"}:
+            added.add("tasks.reassign")
+        if role == "physician":
+            added.add("encounter.open_unscheduled")
+        if role in {"receptionist", "nurse"}:
+            added.add("reception.queue")
+        assert bundle == BUNDLES_V1[role] | added, role
     assert len(RP) * len(COLUMNS) == 117
     for role in COLUMNS[:6]:
         assert BUNDLES_V1[role] == frozenset(

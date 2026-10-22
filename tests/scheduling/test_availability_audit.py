@@ -13,6 +13,7 @@ from apps.scheduling import services
 from apps.scheduling.models import Appointment, AvailabilityBlock
 from apps.tenancy.db import tenant_context
 from django.db import connection, transaction
+from django.db.models.functions import Now
 from django.utils import timezone
 
 from patient_service_support import runtime_role
@@ -57,7 +58,7 @@ def test_equal_create_replay_survives_retirement_and_target_role_removal(
             clinic_id=rbac_graph.clinic_a,
             user_id=rbac_graph.physician,
             role=UserClinicRole.Role.PHYSICIAN,
-        ).delete()
+        ).update(revoked_at=Now())
 
     with (
         runtime_role(),

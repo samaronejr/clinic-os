@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% load i18n %}
 {% block title %}Questionários clínicos · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="questionnaire-title">
-  <p class="eyebrow">Pré-consulta</p><h1 id="questionnaire-title">Questionários clínicos</h1>
+  <h1 id="questionnaire-title">Questionários clínicos</h1>
   <p class="lede">A recepção acompanha somente o preenchimento. Respostas são restritas aos médicos desta clínica.</p>
   {% if notice %}<p class="feedback feedback--success" role="status">{{ notice }}</p>{% endif %}
   {% if error %}<p class="feedback feedback--error" role="alert">{{ error }}</p>{% endif %}
@@ -24,7 +25,7 @@
   {% endif %}
   {% if response %}
   <section class="panel" data-state="{{ response.state }}" data-template-version="{{ response.template.version }}"><h2>{{ response.template.title }}</h2><p>Versão {{ response.template.version }} · Revisão {{ response.revision }}</p>
-    <dl>{% for label, value in answers %}<dt>{{ label }}</dt><dd>{% if value == True %}Sim{% elif value == False %}Não{% else %}{{ value|default_if_none:"—" }}{% endif %}</dd>{% endfor %}</dl>
+    <dl>{% for answer in answers %}<dt>{{ answer.label }}</dt><dd data-unverified="{{ answer.unverified|yesno:'true,false' }}">{% if answer.type == 'boolean' and answer.value == True %}Sim{% elif answer.type == 'boolean' and answer.value == False %}Não{% else %}{{ answer.value|default_if_none:"—" }}{% endif %}{% if answer.unverified %}<p class="feedback" role="note">{% trans "Carried-forward answer: unverified." %}</p>{% endif %}</dd>{% endfor %}</dl>
     {% if response.state == 'submitted' %}
     <form method="post">{% csrf_token %}<input type="hidden" name="response_id" value="{{ response.pk }}"><input type="hidden" name="revision" value="{{ response.revision }}">
       <div class="field"><label for="reopen-reason">Motivo da reabertura</label><textarea id="reopen-reason" name="reason" maxlength="255" rows="3" required></textarea></div>

@@ -583,10 +583,16 @@ class RefusalObserver:
             "control": not self.control_errors(),
             "stats": asdict(self.stats),
             "seen": sorted(site.location for site in self.trace.seen),
+            "exits": sorted(site.location for site in self.trace.exits),
             "gate": gate_selected,
         }
 
-    def merge(self, receipts: list[object]) -> list[str]:
+    def merge(
+        self,
+        receipts: list[object],
+        *,
+        require_exits: bool = True,
+    ) -> list[str]:
         """xdist controller: fold every worker's receipt into this session.
 
         Fails closed on a worker without a receipt. When the exit gate was
@@ -612,7 +618,10 @@ class RefusalObserver:
                 setattr(self.stats, field, getattr(self.stats, field) + value)
             seen.update(receipt["seen"])
             gate = gate or bool(receipt["gate"])
-        if gate:
+        self.trace.seen.update(
+            site for site in self.trace.exits if site.location in seen
+        )
+        if gate and require_exits:
             missing = sorted(
                 site.location for site in self.trace.exits if site.location not in seen
             )

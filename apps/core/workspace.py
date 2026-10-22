@@ -39,9 +39,21 @@ AUTH_FLOW_VIEWS: Final = frozenset(
         "identity:enroll",
         "identity:verify",
         "identity:step-up",
+        "identity:passkey-register-begin",
+        "identity:passkey-register-finish",
+        "identity:passkey-assert-begin",
+        "identity:passkey-assert-finish",
     }
 )
 _STAFF_ROLES: Final = (*MANAGER_ROLES, UserClinicRole.Role.PHYSICIAN)
+_SHELL_ROLES: Final = (
+    *_STAFF_ROLES,
+    UserClinicRole.Role.NURSE,
+    UserClinicRole.Role.ALLIED_PROFESSIONAL,
+    UserClinicRole.Role.SCHEDULER,
+    UserClinicRole.Role.CLINIC_MANAGER,
+    UserClinicRole.Role.FINANCE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,10 +64,25 @@ class WorkspaceClinic:
     name: str
     timezone: str
     roles: frozenset[str]
+    command_context: bool = False
+
+    @property
+    def has_command_palette(self) -> bool:
+        """Expose commands for the clinic's delivered, authorized workspaces."""
+        return bool(self.roles.intersection(_STAFF_ROLES) or self.command_context)
 
     @property
     def agenda_url(self) -> str:
-        """Return today's agenda for this clinic."""
+        """Return the first delivered workspace this clinic's roles can open."""
+        if not self.roles.intersection(_STAFF_ROLES):
+            granted = granted_permissions(self.id)
+            if "reception.queue" in granted:
+                return reverse("scheduling:reception", args=(self.id,))
+            if "tasks.view" in granted:
+                return reverse("workflows:tasks", args=(self.id,))
+            if "demographics.read" in granted and "appointment.book" not in granted:
+                return reverse("orders:results", args=(self.id,))
+            return reverse("scheduling:resource-settings", args=(self.id,))
         return reverse("scheduling:agenda", args=(self.id,))
 
 
@@ -107,21 +134,45 @@ def _parse_uuid(raw_value: object) -> UUID | None:
         return None
 
 
-def _visible_clinics(user_id: UUID) -> tuple[WorkspaceClinic, ...]:
+def _visible_clinics(
+    user_id: UUID, *, settings_scope: bool = False
+) -> tuple[WorkspaceClinic, ...]:
     grouped: dict[UUID, tuple[str, str, set[str]]] = {}
+    command_clinics: set[UUID] = set()
+    roles = (
+        (*_SHELL_ROLES, UserClinicRole.Role.ORG_ADMIN)
+        if settings_scope
+        else _SHELL_ROLES
+    )
     assignments = (
-        UserClinicRole.objects.filter(user_id=user_id, role__in=_STAFF_ROLES)
+        UserClinicRole.objects.filter(user_id=user_id, role__in=roles)
         .select_related("clinic")
         .order_by("clinic__name", "clinic_id")
     )
     for assignment in assignments:
         clinic = assignment.clinic
+        if assignment.role not in _STAFF_ROLES:
+            granted = granted_permissions(clinic.pk)
+            command_context = bool({"tasks.view", "demographics.read"} & granted) or (
+                settings_scope
+                and bool({"appointment.book", "configuration.organization"} & granted)
+            )
+            if not command_context and "reception.queue" not in granted:
+                continue
+            if command_context:
+                command_clinics.add(clinic.pk)
         # The database rejects blank zones; str() only narrows the field type.
         zone = str(clinic.timezone)
         entry = grouped.setdefault(clinic.pk, (clinic.name, zone, set()))
         entry[2].add(assignment.role)
     return tuple(
-        WorkspaceClinic(id=clinic_id, name=name, timezone=zone, roles=frozenset(roles))
+        WorkspaceClinic(
+            id=clinic_id,
+            name=name,
+            timezone=zone,
+            roles=frozenset(roles),
+            command_context=clinic_id in command_clinics,
+        )
         for clinic_id, (name, zone, roles) in grouped.items()
     )
 
@@ -202,7 +253,13 @@ def resolve_workspace(request: HttpRequest) -> Workspace | None:
     user = request.user
     if not user.is_authenticated or not isinstance(user, User):
         return None
-    clinics = _visible_clinics(user.pk)
+    clinics = _visible_clinics(
+        user.pk,
+        settings_scope=(
+            request.resolver_match.view_name == "scheduling:resource-settings"
+            or _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
+        ),
+    )
     clinic = _select_clinic(request, clinics)
     others = tuple(entry for entry in clinics if entry is not clinic)
     if clinic is None:
@@ -256,7 +313,15 @@ def current_clinic(request: HttpRequest) -> WorkspaceClinic | None:
         or not isinstance(user, User)
     ):
         return None
-    return _select_clinic(request, _visible_clinics(user.pk))
+    return _select_clinic(
+        request,
+        _visible_clinics(
+            user.pk,
+            settings_scope=(
+                _parse_uuid(request.session.get(ACTIVE_CLINIC_SESSION_KEY)) is not None
+            ),
+        ),
+    )
 
 
 def clinic_of_actor(user_id: UUID, clinic_id: UUID) -> WorkspaceClinic | None:
@@ -265,6 +330,10 @@ def clinic_of_actor(user_id: UUID, clinic_id: UUID) -> WorkspaceClinic | None:
     Unknown, foreign-organization and unassigned clinics are indistinguishable.
     """
     return next(
-        (clinic for clinic in _visible_clinics(user_id) if clinic.id == clinic_id),
+        (
+            clinic
+            for clinic in _visible_clinics(user_id, settings_scope=True)
+            if clinic.id == clinic_id
+        ),
         None,
     )

@@ -3,49 +3,71 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-from uuid import UUID
+from functools import partial
+from typing import TYPE_CHECKING, Final
+from uuid import UUID, uuid4
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
 
 from apps.core.patient_context import bind_patient_context, enrollment_for_patient
+from apps.ehr.autosave import section_diff
+from apps.ehr.episodes import (
+    EncounterEpisodes,
+    close_episode,
+    encounter_episodes,
+    link_encounter,
+    open_episode_for_encounter,
+)
 from apps.ehr.finalization import (
     amend_document,
     close_encounter,
     discard_draft,
     finalize_version,
 )
-from apps.ehr.forms import AmendmentForm, DraftForm
+from apps.ehr.forms import SECTION_LABELS, AmendmentForm, DraftForm
 from apps.ehr.models import (
     ClinicalDocumentVersion,
     Encounter,
     EncounterIntakeReference,
     SpecialtyTemplate,
 )
+from apps.ehr.pack_models import SpecialtyPack
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
+    assignee_scope,
+    author_scope,
     create_draft,
+    decided,
     open_encounter,
+    open_unscheduled_encounter,
+    pinned_read,
     record_clinical_note,
+    resume_encounter,
     view_version,
 )
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
+    require_permission,
 )
 from apps.identity.models import UserClinicRole
 from apps.identity.otp import flow_redirect, privileged_totp_required, safe_next_url
 from apps.identity.stepup import StepUpRequired
+from apps.intake.models import PatientClinicEnrollment
+from apps.tenancy.middleware import HANDLED_REJECTION_ATTR
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from django.http import HttpRequest, HttpResponse, HttpResponseBase
 
 logger = logging.getLogger(__name__)
@@ -55,6 +77,30 @@ OK = 200
 def continuation(clinic_id: UUID) -> str:
     """Continue authentication without record identifiers or note text in the URL."""
     return reverse("ehr:encounter", kwargs={"clinic_id": clinic_id})
+
+
+MAX_UNSCHEDULED_PATIENTS = 100
+
+
+def _episodes(clinic_id: UUID, encounter: Encounter) -> EncounterEpisodes | None:
+    """Episodes need ``clinical.read`` scope; without it the panel stays hidden."""
+    try:
+        return encounter_episodes(clinic_id=clinic_id, encounter_id=encounter.pk)
+    except ClinicalAccessDeniedError:
+        return None
+
+
+def _unscheduled_options(clinic_id: UUID) -> list[PatientClinicEnrollment] | None:
+    """Offer the unscheduled start only to actors holding its permission."""
+    try:
+        require_permission("encounter.open_unscheduled", clinic_id=clinic_id)
+    except CurrentActorError:
+        return None
+    return list(
+        PatientClinicEnrollment.objects.filter(clinic_id=clinic_id)
+        .select_related("patient")
+        .order_by("-created_at", "pk")[:MAX_UNSCHEDULED_PATIENTS]
+    )
 
 
 def _context(
@@ -90,6 +136,9 @@ def _context(
                 review = candidate
     context: dict[str, object] = {
         "clinic_id": clinic_id,
+        "enrollment_id": enrollment_id,
+        "editor_session": uuid4(),
+        "episodes": _episodes(clinic_id, encounter),
         "encounter": encounter,
         "versions": versions,
         "draft": draft,
@@ -106,9 +155,15 @@ def _context(
         context["version"] = current
         context["amend_form"] = AmendmentForm(initial={"version_id": current.pk})
     else:
-        context["templates"] = SpecialtyTemplate.objects.filter(
-            clinic_id=clinic_id
-        ).order_by("title", "-version")
+        context["templates"] = (
+            SpecialtyTemplate.objects.filter(clinic_id=clinic_id)
+            .exclude(
+                pk__in=SpecialtyPack.objects.filter(
+                    clinic_id=clinic_id, uninstalled_at__isnull=False
+                ).values("template_id")
+            )
+            .order_by("title", "-version")
+        )
     return context
 
 
@@ -122,10 +177,15 @@ def _conflict(
     messages_by_reason = {
         "stale_revision": "A versão salva mudou. Reabra a versão atual antes de "
         "alterar ou retificar.",
+        "episode_closed": _("The episode is closed and accepts no encounters."),
+        "already_linked": _("This encounter already belongs to another episode."),
         "draft_in_progress": "Já existe um rascunho em andamento neste documento.",
         "encounter_closed": "O atendimento está encerrado; novos documentos não "
         "podem ser criados.",
         "missing_required_content": "Preencha todos os campos SOAP antes de finalizar.",
+        "copied_blocks_unreviewed": _(
+            "Review every copied block at the current revision before finalizing."
+        ),
         "precondition_failed": "A versão não está no estado esperado para esta ação.",
     }
     context = _context(request, clinic_id, encounter)
@@ -138,10 +198,23 @@ def _conflict(
 def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     # The body version id prevents another tab changing the session selection
     # from silently redirecting this write to a different note.
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
+    version_id = UUID(request.POST.get("version_id", ""))
+    # Authorship is decided with reads only before the audited read below: a
+    # care reader passes view_version but may not write (round-2 B1).
+    decide = partial(author_scope, clinic_id=clinic_id, version_id=version_id)
+    decide()
+    # pinned_read decides authorship again right after the read's audit, so a
+    # revocation committed just before it is refused with no viewed audit left.
+    version = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id), decide
     )
-    form = DraftForm(version, request.POST)
+    data = request.POST.copy()
+    if data.get("action") == "merge":
+        # Explicit merge after a compare: the author saves the combined text
+        # over the revision they compared against; a newer save conflicts again.
+        data["revision"] = data.get("merge_revision", "")
+    form = DraftForm(version, data)
+    conflict: dict[str, object] | None = None
     status = 400
     if form.is_valid():
         try:
@@ -154,9 +227,28 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
         except ClinicalConflictError:
             form.add_error(
                 None,
-                "A versão salva mudou. Suas alterações não foram salvas. "
-                "Copie o que deseja manter e reabra a versão salva.",
+                _(
+                    "The saved version changed. Your changes were not saved. "
+                    "Compare below and save the combined version."
+                ),
             )
+            current = view_version(clinic_id=clinic_id, version_id=version.pk)
+            if current.state == "draft":
+                conflict = {
+                    "current_revision": current.revision,
+                    "sections": [
+                        {
+                            "key": section.section,
+                            "label": SECTION_LABELS[section.section],
+                            "lines": [
+                                {"kind": line.kind, "text": line.text}
+                                for line in section.lines
+                            ],
+                            "theirs": section.theirs,
+                        }
+                        for section in section_diff(current.soap, form.content())
+                    ],
+                }
             status = 409
         except DatabaseError:
             # Database exception text may contain SOAP; never include exc_info.
@@ -172,26 +264,31 @@ def _save(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
             messages.success(request, "Rascunho salvo.", extra_tags="ehr.saved")
             return redirect(continuation(clinic_id))
     context = _context(request, clinic_id, version.document.encounter)
-    context.update(version=version, form=form, unsaved=True)
+    context.update(version=version, form=form, unsaved=True, conflict=conflict)
     return render(request, "ehr/encounter.html", context, status=status)
 
 
 def _finalize(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponseBase:
-    """Freeze the draft; the service enforces recent step-up and audits denials."""
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
+    """Freeze the draft; the service enforces recent step-up and audits denials.
+
+    The service decides authorship and step-up before anything is written, so
+    no read audit precedes a refusal; only the conflict page reads the record.
+    """
+    version_id = UUID(request.POST.get("version_id", ""))
     try:
         finalized = finalize_version(
             clinic_id=clinic_id,
-            version_id=version.pk,
+            version_id=version_id,
             expected_revision=int(request.POST.get("revision", "")),
             request=request,
         )
     except StepUpRequired:
         target = safe_next_url(request, continuation(clinic_id))
-        return flow_redirect(request, "identity:step-up", target)
+        response = flow_redirect(request, "identity:step-up", target)
+        setattr(response, HANDLED_REJECTION_ATTR, True)
+        return response
     except ClinicalConflictError as error:
+        version = view_version(clinic_id=clinic_id, version_id=version_id)
         return _conflict(request, clinic_id, version.document.encounter, error)
     request.session[key] = str(finalized.document.encounter_id)
     messages.success(
@@ -204,8 +301,12 @@ def _finalize(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponseBa
 
 def _amend(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """Open the linked amendment draft; the base version is never overwritten."""
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
+    version_id = UUID(request.POST.get("version_id", ""))
+    # Only the encounter's assignee amends; decided before the audited read.
+    decide = partial(assignee_scope, clinic_id=clinic_id, version_id=version_id)
+    decide()
+    version = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id), decide
     )
     form = AmendmentForm(request.POST)
     if not form.is_valid():
@@ -231,8 +332,11 @@ def _amend(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
 
 def _discard(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """Retire the draft; discarded versions keep metadata and never serve content."""
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
+    version_id = UUID(request.POST.get("version_id", ""))
+    decide = partial(author_scope, clinic_id=clinic_id, version_id=version_id)
+    decide()
+    version = pinned_read(
+        partial(view_version, clinic_id=clinic_id, version_id=version_id), decide
     )
     try:
         discard_draft(clinic_id=clinic_id, version_id=version.pk)
@@ -266,11 +370,23 @@ def _review(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     ).first()
     if encounter is None:
         raise ClinicalAccessDeniedError
-    version = view_version(
-        clinic_id=clinic_id, version_id=UUID(request.POST.get("version_id", ""))
-    )
-    if version.document.encounter_id != encounter.pk:
+    version_id = UUID(request.POST.get("version_id", ""))
+    # The binding is decided before the audited read: a version of another
+    # encounter is refused without a ehr.record.viewed row.
+    if not ClinicalDocumentVersion.objects.filter(
+        pk=version_id, document__encounter=encounter
+    ).exists():
         raise ClinicalAccessDeniedError
+    # The authorized read must agree with that binding before the session
+    # selects it; a disagreeing version is the same refusal as an unknown one.
+    # Only that refusal rolls back to before the read, taking the read's audit
+    # with it; the read's own refusals keep their fixed denial record.
+    before_read = transaction.savepoint()
+    version = view_version(clinic_id=clinic_id, version_id=version_id)
+    if version.document.encounter_id != encounter.pk:
+        transaction.savepoint_rollback(before_read)
+        raise ClinicalAccessDeniedError
+    transaction.savepoint_commit(before_read)
     request.session[key] = str(encounter.pk)
     request.session[f"ehr.review.{clinic_id}"] = str(version.pk)
     return redirect(continuation(clinic_id))
@@ -278,11 +394,62 @@ def _review(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
 
 def _selected(clinic_id: UUID, encounter_id: UUID) -> Encounter:
     """Resolve one clinic encounter and recheck the actor's current assignment."""
-    found = Encounter.objects.filter(pk=encounter_id, clinic_id=clinic_id).first()
-    if found is None:
-        raise ClinicalAccessDeniedError
     # Recheck current assignment, including when the appointment was cancelled.
-    return open_encounter(clinic_id=clinic_id, appointment_id=found.appointment_id)
+    return resume_encounter(clinic_id=clinic_id, encounter_id=encounter_id)
+
+
+def _open_unscheduled(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
+    """Start a walk-in, phone follow-up or documentation-only encounter."""
+    encounter = open_unscheduled_encounter(
+        clinic_id=clinic_id,
+        enrollment_id=UUID(request.POST.get("enrollment_id", "")),
+        reason=request.POST.get("reason", ""),
+    )
+    request.session[key] = str(encounter.pk)
+    return redirect(continuation(clinic_id))
+
+
+def _episode(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
+    """Open, link or close an episode for the posted encounter's patient."""
+    encounter = _selected(clinic_id, UUID(request.POST.get("encounter_id", "")))
+    action = request.POST.get("action")
+    try:
+        # A service refusal rolls back with this savepoint, so a late one leaves
+        # only the record of the decision taken again below.
+        with transaction.atomic():
+            if action == "episode_open":
+                # One service decides everything before its first write (B1).
+                open_episode_for_encounter(
+                    clinic_id=clinic_id,
+                    encounter_id=encounter.pk,
+                    title=request.POST.get("title", ""),
+                )
+            elif action == "episode_link":
+                link_encounter(
+                    clinic_id=clinic_id,
+                    encounter_id=encounter.pk,
+                    episode_id=UUID(request.POST.get("episode_id", "")),
+                )
+            else:
+                close_episode(
+                    clinic_id=clinic_id,
+                    episode_id=UUID(request.POST.get("episode_id", "")),
+                )
+    except ClinicalAccessDeniedError:
+        # Refused after _selected passed. Authority committed away since then
+        # is decided again here, so a late refusal gets exactly the early
+        # refusal's response and denial record; a refusal of the posted episode
+        # alone stands as the service decided it.
+        _selected(clinic_id, encounter.pk)
+        raise
+    except ValidationError as error:
+        context = _context(request, clinic_id, encounter)
+        context["episode_error"] = " ".join(error.messages)
+        return render(request, "ehr/encounter.html", context, status=400)
+    except ClinicalConflictError as error:
+        return _conflict(request, clinic_id, encounter, error)
+    request.session[key] = str(encounter.pk)
+    return redirect(continuation(clinic_id))
 
 
 def _show(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
@@ -301,7 +468,6 @@ def _show(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     """
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
     encounter = _selected(clinic_id, UUID(request.POST.get("encounter_id", "")))
-    request.session[key] = str(encounter.pk)
     context = _context(request, clinic_id, encounter)
     displayed = context.get("version")
     if isinstance(displayed, ClinicalDocumentVersion):
@@ -309,6 +475,8 @@ def _show(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
         context["version"] = version
         if version.state == "draft":
             context["form"] = DraftForm(version)
+    # The selection moves only once every read of this response is decided.
+    request.session[key] = str(encounter.pk)
     return render(request, "ehr/encounter.html", context)
 
 
@@ -318,16 +486,37 @@ def _resume(request: HttpRequest, clinic_id: UUID, key: str) -> HttpResponse:
     if not selected:
         if request.method == "POST":
             raise ClinicalAccessDeniedError
-        return render(request, "ehr/encounter.html", {"clinic_id": clinic_id})
+        return render(
+            request,
+            "ehr/encounter.html",
+            {
+                "clinic_id": clinic_id,
+                "unscheduled_patients": _unscheduled_options(clinic_id),
+                "unscheduled_reasons": [
+                    {"value": value, "label": _(label)}
+                    for value, label in Encounter.UnscheduledReason.choices
+                ],
+            },
+        )
     encounter = _selected(clinic_id, UUID(selected))
     if request.method == "POST":
-        if request.POST.get("action") != "template":
+        if request.POST.get("action") not in RESUME_ACTIONS:
             raise ClinicalAccessDeniedError
-        create_draft(
-            clinic_id=clinic_id,
-            encounter_id=encounter.pk,
-            template_id=UUID(request.POST.get("template_id", "")),
-        )
+        # A refusal inside create_draft after this view's own checks is late;
+        # deciding them again leaves exactly an early refusal's record.
+        with decided(
+            lambda: (
+                require_current_actor_clinic_roles(
+                    clinic_id, (UserClinicRole.Role.PHYSICIAN,)
+                ),
+                _selected(clinic_id, encounter.pk),
+            )
+        ):
+            create_draft(
+                clinic_id=clinic_id,
+                encounter_id=encounter.pk,
+                template_id=UUID(request.POST.get("template_id", "")),
+            )
         return redirect(continuation(clinic_id))
     return render(
         request, "ehr/encounter.html", _context(request, clinic_id, encounter)
@@ -349,17 +538,30 @@ def _dispatch_post(
     if action == "current":
         request.session.pop(f"ehr.review.{clinic_id}", None)
         return redirect(continuation(clinic_id))
-    handlers = {
-        "save": _save,
-        "finalize": _finalize,
-        "amend": _amend,
-        "discard": _discard,
-        "close": _close,
-        "review": _review,
-        "show": _show,
-    }
-    handler = handlers.get(str(action))
+    handler = POST_HANDLERS.get(str(action))
     return handler(request, clinic_id, key) if handler else None
+
+
+POST_HANDLERS: dict[str, Callable[[HttpRequest, UUID, str], HttpResponseBase]] = {
+    "save": _save,
+    "merge": _save,
+    "open_unscheduled": _open_unscheduled,
+    "episode_open": _episode,
+    "episode_link": _episode,
+    "episode_close": _episode,
+    "finalize": _finalize,
+    "amend": _amend,
+    "discard": _discard,
+    "close": _close,
+    "review": _review,
+    "show": _show,
+}
+# The session-selected encounter's own action, handled by ``_resume``.
+RESUME_ACTIONS: Final = frozenset({"template"})
+# Every POST action the workspace routes; the refusal matrix derives from it.
+POST_ACTIONS: Final = frozenset(
+    {"open", "current", *POST_HANDLERS.keys(), *RESUME_ACTIONS}
+)
 
 
 @never_cache

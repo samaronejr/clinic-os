@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Create task-31 professional identity and normalized evidence storage."""
@@ -119,21 +121,21 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="physicianprofile",
             constraint=models.UniqueConstraint(
                 fields=("organization", "user", "jurisdiction"),
                 name="identity_physician_jurisdiction_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="physicianprofile",
             constraint=models.UniqueConstraint(
                 fields=("organization", "jurisdiction", "registration_number"),
                 name="identity_physician_registration_uniq",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="physicianprofile",
             constraint=models.CheckConstraint(
                 condition=models.Q(

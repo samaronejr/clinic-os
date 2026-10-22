@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load i18n tz clinic_locale %}
+{% block title %}{% trans "Your sessions · Clinic OS" %}{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="sessions-title">
+  <h1 id="sessions-title">{% trans "Your sessions" %}</h1>
+  <p class="lede">{% trans "Revoke a session you no longer use. Its next request will require a new login." %}</p>
+  {% if revoked %}<p class="feedback feedback--success" role="status" data-session-revoked>{% trans "Session revoked." %}</p>{% endif %}
+  {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ form.errors }}</div>{% endif %}
+  <ul>
+  {% for session in sessions %}
+    <li data-session-record="{{ session.pk }}">
+      <h2>{{ session.get_user_agent_family_display }}</h2>
+      <p>{{ session.ip_network }} · {% if workspace.clinic %}{% timezone workspace.clinic.timezone %}{{ session.last_seen|date:"Y-m-d\TH:i"|clinic_minute }}{% endtimezone %}{% else %}{% timezone "UTC" %}{{ session.last_seen|date:"Y-m-d\TH:i"|clinic_minute }} UTC{% endtimezone %}{% endif %}</p>
+      {% if session.revoked_at %}<span class="badge">{% trans "Revoked" %}</span>
+      {% else %}<form method="post">{% csrf_token %}<input type="hidden" name="session_id" value="{{ session.pk }}"><button class="button button--danger" type="submit">{% trans "Revoke session" %}</button></form>{% endif %}
+    </li>
+  {% empty %}<li>{% trans "No sessions are available." %}</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

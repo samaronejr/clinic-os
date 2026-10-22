@@ -12,15 +12,26 @@ from apps.core.integration import (
     enqueue_operation,
 )
 from apps.ehr.services import record_clinical_note
-from apps.identity import scope_provisioning, service_principals
+from apps.identity import (
+    delegates,
+    passkey_authentication,
+    passkey_controls,
+    passkeys,
+    scope_provisioning,
+    service_principals,
+)
 from apps.identity.current_context import require_permission
+from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
+from apps.orders import services as order_services
 from apps.prescription.services import create_draft as create_prescription_draft
 from apps.prescription.services import issue_prescription
+from apps.prescription.verification import release_document
 from apps.providers.services import current_version, is_live
 from apps.realtime import authorization, scopes, tickets, transport
-from apps.retention.services import apply_retention_policy
+from apps.retention.services import apply_retention_policy, release_version
+from apps.scheduling import services as scheduling_services
 from apps.teleconsult.services import create_session
 from apps.tenancy.db import service_principal_context
 from django.apps import apps as django_apps
@@ -57,6 +68,8 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
         "apps.scheduling.apps.SchedulingConfig",
         "apps.teleconsult.apps.TeleconsultConfig",
         "apps.tenancy.apps.TenancyConfig",
+        "apps.workflows.apps.WorkflowsConfig",
+        "apps.orders.apps.OrdersConfig",
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
@@ -64,6 +77,36 @@ DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            passkeys.register_passkey,
+            ["clinic_id", "credential", "challenge", "nickname", "session_key"],
+        ),
+        (passkey_authentication.lookup_credential, ["credential_id"]),
+        (
+            passkey_authentication.verify_assertion,
+            ["credential", "challenge", "clinic_id"],
+        ),
+        (
+            passkey_controls.remove_passkey,
+            ["clinic_id", "passkey_id", "session_key"],
+        ),
+        (
+            passkey_controls.set_passkey_policy,
+            ["clinic_id", "enabled", "session_key"],
+        ),
+    ],
+)
+def test_passkey_boundaries_are_exact_and_derive_current_authority(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 @pytest.mark.parametrize(
@@ -128,6 +171,57 @@ def test_machine_context_never_accepts_a_user_or_tenant_claim() -> None:
 
 
 @pytest.mark.parametrize(
+    ("entrypoint", "names", "defaults"),
+    [
+        (delegates.request_delegate_grant, ["clinic_id", "grant"], {}),
+        (
+            delegates.verify_delegate_grant,
+            ["clinic_id", "grant_id", "expected_revision", "verified"],
+            {},
+        ),
+        (delegates.activate, ["clinic_id", "grant_id", "expected_revision"], {}),
+        (delegates.revoke, ["clinic_id", "grant_id", "expected_revision"], {}),
+        (delegates.switch_delegate, ["clinic_id", "grant_id"], {}),
+        (delegates.request_renewal, ["clinic_id", "idempotency_key", "expires_at"], {}),
+        (
+            release_document,
+            ["clinic_id", "document_id", "restricted_from_delegates"],
+            {"restricted_from_delegates": True},
+        ),
+        (
+            release_version,
+            ["clinic_id", "version_id", "restricted_from_delegates"],
+            {"restricted_from_delegates": True},
+        ),
+        (
+            assign_questionnaire,
+            [
+                "clinic_id",
+                "enrollment_id",
+                "template_id",
+                "appointment_id",
+                "restricted_from_delegates",
+            ],
+            {"appointment_id": None, "restricted_from_delegates": True},
+        ),
+    ],
+)
+def test_delegate_services_derive_actor_and_keep_confidentiality_explicit(
+    entrypoint: Callable[..., object],
+    names: list[str],
+    defaults: dict[str, object],
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert {
+        name: p.default
+        for name, p in parameters.items()
+        if p.default is not Parameter.empty
+    } == defaults
+
+
+@pytest.mark.parametrize(
     ("name", "expected"),
     [
         ("register_principal", ["clinic_id", "name", "db_identity", "purpose"]),
@@ -143,6 +237,95 @@ def test_machine_provisioning_derives_operator(name: str, expected: list[str]) -
     parameters = signature(getattr(service_principals, name)).parameters
     assert list(parameters) == expected
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+LIFECYCLE_TRANSITIONS = (
+    "hold",
+    "book",
+    "arrive",
+    "start",
+    "complete",
+    "cancel",
+    "expire",
+    "mark_no_show",
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (name, ["clinic_id", "appointment_id", "expected_revision", "command_id"])
+        for name in LIFECYCLE_TRANSITIONS
+    ]
+    + [
+        (
+            "create_hold",
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "local_range",
+                "idempotency_key",
+            ],
+        ),
+        (
+            "create_series",
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "booking",
+                "idempotency_key",
+            ],
+        ),
+        (
+            "create_service_hold",
+            [
+                "clinic_id",
+                "enrollment_id",
+                "practitioner_id",
+                "booking",
+                "idempotency_key",
+            ],
+        ),
+        ("edit_series", ["clinic_id", "series_id", "edit", "command_id"]),
+        (
+            "mark_arrived",
+            [
+                "clinic_id",
+                "appointment_id",
+                "location_id",
+                "expected_revision",
+                "command_id",
+            ],
+        ),
+        (
+            "call_to_room",
+            [
+                "clinic_id",
+                "queue_entry_id",
+                "room_id",
+                "room_unit",
+                "expected_revision",
+            ],
+        ),
+        (
+            "update_room_status",
+            ["clinic_id", "room_id", "unit", "state", "expected_revision"],
+        ),
+        (
+            "broadcast_clinician_delay",
+            ["clinic_id", "practitioner_id", "minutes", "expected_revision"],
+        ),
+        ("issue_display_device", ["clinic_id"]),
+        ("revoke_display_device", ["clinic_id", "device_id"]),
+    ],
+)
+def test_lifecycle_services_are_keyword_scoped(name: str, expected: list[str]) -> None:
+    # Plan item 22 contract: keyword-only, explicit clinic scope, never an actor.
+    parameters = signature(getattr(scheduling_services, name)).parameters
+    assert list(parameters) == expected
+    assert all(value.kind is Parameter.KEYWORD_ONLY for value in parameters.values())
 
 
 def test_permission_boundary_derives_actor_and_requires_clinic_scope() -> None:
@@ -332,3 +515,42 @@ def test_intake_service_boundaries_derive_context_and_keep_search_body_only() ->
         "patient_id",
         "enrollment_id",
     }.intersection(set(create_parameters) | set(search_parameters))
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            order_services.place_order,
+            [
+                "clinic_id",
+                "enrollment_id",
+                "exam_codes",
+                "command_id",
+                "lab_account_id",
+            ],
+        ),
+        (
+            order_services.progress_order,
+            ["clinic_id", "order_id", "expected_sequence", "state", "command_id"],
+        ),
+        (order_services.ingest_result, ["clinic_id", "submission"]),
+        (order_services.match_result, ["clinic_id", "version_id", "order_id"]),
+        (order_services.reject_result, ["clinic_id", "version_id", "evidence_code"]),
+        (
+            order_services.acknowledge_result,
+            ["clinic_id", "version_id", "disposition"],
+        ),
+        (
+            order_services.release_result,
+            ["clinic_id", "version_id", "audience", "delegate_grant_id"],
+        ),
+    ],
+)
+def test_order_services_keep_exact_scoped_keyword_only_boundaries(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert not {"actor", "request", "organization_id"}.intersection(parameters)

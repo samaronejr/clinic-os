@@ -1,0 +1,7 @@
+{% load i18n %}
+{% if state == "pending" %}{% trans "Pending" %}
+{% elif state == "running" %}{% trans "Running" %}
+{% elif state == "waiting" %}{% trans "Waiting" %}
+{% elif state == "completed" %}{% trans "Completed" %}
+{% elif state == "failed" %}{% trans "Failed" %}
+{% elif state == "cancelled" %}{% trans "Cancelled" %}{% endif %}

@@ -1,0 +1,9 @@
+{% load i18n %}
+<section class="patient-workspace-section" aria-labelledby="forms-title">
+  <h2 id="forms-title">{% trans "Forms" %}</h2>
+  <p>{% trans "Review this patient's questionnaire status and submitted responses in the existing forms workspace." %}</p>
+  <form novalidate data-auth-form hx-boost="false" method="post" action="{% url 'intake:questionnaire-staff' clinic_id %}">
+    {% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment.pk }}">
+    <button class="button button--secondary" type="submit" name="action" value="status">{% trans "Open patient questionnaires" %}</button>
+  </form>
+</section>

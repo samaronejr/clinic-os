@@ -1,0 +1,35 @@
+.orders-stack {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.orders-stack [hidden] {
+  display: none;
+}
+
+.orders-stack .panel {
+  margin: 0;
+}
+
+.orders-stack > section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.orders-source > summary {
+  min-block-size: var(--control-height);
+  padding-block: var(--space-2);
+}
+
+.orders-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+
+.orders-check input[type="checkbox"] {
+  flex: 0 0 var(--control-height);
+  inline-size: var(--control-height);
+  block-size: var(--control-height);
+}

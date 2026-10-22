@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,17 +13,21 @@ from apps.identity.current_context import (
 from apps.identity.models import User, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
 from apps.tenancy.db import TenantAccessDeniedError
-from django.db import connection
 
-from identity.delegation_probes import CASES, Case
+from identity.delegation_probe_support import Case
+from identity.delegation_probe_support import (
+    checked_permissions as _checked_permissions,
+)
+from identity.delegation_probes import CASES
 from identity.nonstaff_differential import root_delegation
+from identity.nonstaff_ehr_probes import SYMBOLS as EHR_SYMBOLS
+from identity.nonstaff_lifecycle_probes import SYMBOLS as LIFECYCLE_SYMBOLS
 from identity.permission_support import permission_actor, permission_context
 from identity.test_permission_parity import INVENTORY
 from identity.test_scope_provisioning import provisioning_context
 from patient_service_support import runtime_role
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
     from contextlib import AbstractContextManager
     from uuid import UUID
 
@@ -55,26 +58,6 @@ def _actor(graph: RbacGraph, state: str) -> UUID:
     return actor
 
 
-@contextmanager
-def _checked_permissions() -> Iterator[list[str]]:
-    """Record every permission the application asks has_permission about."""
-    asked: list[str] = []
-
-    def spy(
-        execute: Callable[..., object],
-        sql: str,
-        params: Sequence[object] | None,
-        many: bool,
-        context: dict[str, object],
-    ) -> object:
-        if "clinic_app.has_permission(" in sql and params:
-            asked.append(str(params[0]))
-        return execute(sql, params, many, context)
-
-    with connection.execute_wrapper(spy):
-        yield asked
-
-
 def _permission_refusal(error: BaseException) -> bool:
     """Some exception in the chain was raised inside require_permission."""
     seen: BaseException | None = error
@@ -102,9 +85,9 @@ def _context(
 
 def test_cases_cover_every_root_delegation() -> None:
     rows = [row["symbol"] for row in INVENTORY["candidates"] if root_delegation(row)]
-    assert sorted(CASES) == sorted(rows)
+    assert sorted(set(CASES) | LIFECYCLE_SYMBOLS | EHR_SYMBOLS) == sorted(rows)
     for case in CASES.values():
-        assert case.permission in BUNDLES_V1[PERMITTED_ROLE]
+        assert case.permission in BUNDLES_V1[case.permission_role]
         assert refused_roles(case.permission)
 
 
@@ -113,6 +96,9 @@ def test_root_delegation_decides_by_the_permission(
     rbac_graph: RbacGraph, symbol: str
 ) -> None:
     case = CASES[symbol]
+    if case.exercise is not None:
+        case.exercise(rbac_graph, symbol)
+        return
     # Every catalog role lacking the permission is refused by exactly that
     # permission check; a wrong permission name fails even where bundles overlap.
     for role in refused_roles(case.permission):
@@ -142,7 +128,7 @@ def test_root_delegation_decides_by_the_permission(
             seeded.call()
         assert set(asked) <= {case.permission}, (symbol, state, asked)
         assert seeded.state() == before, (symbol, state)
-    permitted = _actor(rbac_graph, PERMITTED_ROLE)
+    permitted = _actor(rbac_graph, case.permission_role)
     seeded = case.seed(rbac_graph, permitted)
     before = seeded.state()
     with _checked_permissions() as asked, _context(case, rbac_graph, permitted):

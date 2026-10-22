@@ -11,6 +11,7 @@ from apps.identity.phase1a_identity_acl_migration import (
     install_runtime_identity_acl,
     remove_runtime_identity_acl,
 )
+from apps.tenancy.migration_operations import AddConstraint
 
 if TYPE_CHECKING:
     from django.db.migrations.operations.base import Operation
@@ -32,7 +33,7 @@ class Migration(migrations.Migration):
     operations: ClassVar[list[Operation]] = [
         migrations.RunPython(canonicalize_identities, migrations.RunPython.noop),
         migrations.RunPython(collapse_duplicate_roles, migrations.RunPython.noop),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="userclinicrole",
             constraint=models.UniqueConstraint(
                 fields=("organization", "clinic", "user", "role"),

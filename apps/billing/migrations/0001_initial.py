@@ -7,6 +7,8 @@ import django.db.models.deletion
 import django.utils.timezone
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Create billing records before installing their mandatory policies."""
@@ -228,7 +230,7 @@ class Migration(migrations.Migration):
                 "abstract": False,
             },
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="invoice",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -237,7 +239,7 @@ class Migration(migrations.Migration):
                 name="billing_invoice_terms",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="invoice",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -251,7 +253,7 @@ class Migration(migrations.Migration):
                 name="billing_invoice_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="invoice",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -262,13 +264,13 @@ class Migration(migrations.Migration):
                 name="billing_invoice_release",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="invoicerevision",
             constraint=models.UniqueConstraint(
                 fields=("invoice", "revision"), name="billing_revision_unique"
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="settlement",
             constraint=models.UniqueConstraint(
                 fields=("organization", "confirmation_reference"),

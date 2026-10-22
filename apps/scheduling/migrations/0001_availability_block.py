@@ -20,6 +20,7 @@ from apps.scheduling.rls import (
     apply_scheduling_rls,
     remove_scheduling_rls,
 )
+from apps.tenancy.migration_operations import SeparateDatabaseAndState
 
 INTEGRITY_SQL = """
 ALTER TABLE clinic_app.scheduling_availabilityblock
@@ -183,7 +184,7 @@ class Migration(migrations.Migration):
             for table, tenant_column in sorted(SCHEDULING_RLS_TARGETS)
         ),
         migrations.RunSQL(sql=RUNTIME_ACL_SQL, reverse_sql=REVERSE_RUNTIME_ACL_SQL),
-        migrations.SeparateDatabaseAndState(
+        SeparateDatabaseAndState(
             database_operations=[
                 migrations.RunSQL(sql=INDEX_SQL, reverse_sql=REVERSE_INDEX_SQL),
             ],

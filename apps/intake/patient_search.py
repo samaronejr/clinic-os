@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Final
 
 from django.db import connection, transaction
@@ -12,7 +12,8 @@ from apps.audit.services import record_phase1_event
 from apps.core.idempotency import PatientNameValueError, normalize_patient_name
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.intake.access import PatientAccessDeniedError, authorized_manager_clinic
-from apps.intake.models import PatientClinicEnrollment
+from apps.intake.alias_access import patient_alias_set
+from apps.intake.models import PatientClinicEnrollment, PatientDemographics
 from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.envelope import _kek
 
@@ -38,7 +39,9 @@ class PatientSearchItem:
 
     enrollment_id: UUID
     full_name: str
-    birth_date: date
+    birth_date: date | None
+    display_name: str = ""
+    unified_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,33 @@ class PatientSearchPage:
     page: int
     total: int
     page_count: int
+
+
+def project_search_item(
+    *, clinic_id: UUID, item: PatientSearchItem
+) -> PatientSearchItem:
+    """Keep historical search matches but select their current survivor."""
+    enrollment = PatientClinicEnrollment.objects.get(
+        pk=item.enrollment_id, clinic_id=clinic_id
+    )
+    aliases = patient_alias_set(clinic_id=clinic_id, patient_id=enrollment.patient_id)
+    survivor = PatientClinicEnrollment.objects.select_related("patient").get(
+        clinic_id=clinic_id, patient_id=aliases.survivor_patient_id
+    )
+    current = (
+        PatientDemographics.objects.filter(patient_id=survivor.patient_id)
+        .order_by("-version")
+        .first()
+    )
+    return PatientSearchItem(
+        enrollment_id=survivor.pk,
+        full_name=survivor.patient.full_name,
+        birth_date=survivor.patient.birth_date,
+        display_name=current.social_name or current.legal_name
+        if current
+        else survivor.patient.full_name,
+        unified_at=aliases.unified_at,
+    )
 
 
 def _normalized_query(query: str) -> str:
@@ -75,13 +105,28 @@ def search_patients_exact(
         clinic_id=clinic_id, patient__full_name_index__in=name_indexes(query)
     ).order_by("id")
     total = matches.count()
-    items = (
-        tuple(
-            PatientSearchItem(row.pk, row.patient.full_name, row.patient.birth_date)
-            for row in matches.select_related("patient")[:limit]
-        )
-        if total <= limit
-        else ()
+    items_list: list[PatientSearchItem] = []
+    if total <= limit:
+        for row in matches.select_related("patient")[:limit]:
+            current = (
+                PatientDemographics.objects.filter(patient_id=row.patient.pk)
+                .order_by("-version")
+                .first()
+            )
+            items_list.append(
+                PatientSearchItem(
+                    row.pk,
+                    row.patient.full_name,
+                    row.patient.birth_date,
+                    (
+                        current.social_name or current.legal_name
+                        if current
+                        else row.patient.full_name
+                    ),
+                )
+            )
+    items = tuple(
+        project_search_item(clinic_id=clinic_id, item=item) for item in items_list
     )
     record_phase1_event(
         "intake.patient.searched", clinic_id=clinic_id, affected_record_id=clinic_id
@@ -122,18 +167,22 @@ def search_patients(
             count_row = cursor.fetchone()
             total = 0 if count_row is None else int(count_row[0])
             cursor.execute(
-                "SELECT enrollment_id, full_name, birth_date "
+                "SELECT enrollment_id, full_name, birth_date, social_name "
                 "FROM clinic_app.patient_registry_page(%s, %s, %s, %s, %s, %s)",
                 [kek, str(clinic_id), normalized_query, birth_date, offset, PAGE_SIZE],
             )
             rows = cursor.fetchall()
         items = tuple(
-            PatientSearchItem(
-                enrollment_id=enrollment_id,
-                full_name=full_name,
-                birth_date=stored_birth,
+            project_search_item(
+                clinic_id=clinic_id,
+                item=PatientSearchItem(
+                    enrollment_id=enrollment_id,
+                    full_name=full_name,
+                    birth_date=stored_birth,
+                    display_name=social_name or full_name,
+                ),
             )
-            for enrollment_id, full_name, stored_birth in rows
+            for enrollment_id, full_name, stored_birth, social_name in rows
         )
         record_phase1_event(
             "intake.patient.searched",

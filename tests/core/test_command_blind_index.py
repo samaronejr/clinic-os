@@ -6,11 +6,16 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 import pytest
-from apps.intake.models import Patient
+from apps.intake.models import (
+    DemographicsCorrection,
+    Patient,
+    PatientClinicEnrollment,
+    PatientDemographics,
+)
 from apps.intake.patient_name_index import name_indexes
 from apps.tenancy.envelope import issue_tenant_key
 from django.apps import apps
-from django.db import connection
+from django.db import connection, models
 
 from core.test_navigation import (
     OTHER,
@@ -40,11 +45,43 @@ def test_exact_search_does_not_decrypt_nonmatches(
     with owner_context(graph.organization_a), connection.cursor() as cursor:
         digest = name_indexes(PATIENT)[-1]
         assert Patient.objects.filter(full_name_index=digest).count() == 1
+        cursor.execute(
+            "SELECT id, full_name_index, birth_date "
+            "FROM clinic_app.intake_patient WHERE full_name_index <> %s",
+            [digest],
+        )
+        other_id, other_index, other_birth = cursor.fetchone()
+        enrollment = PatientClinicEnrollment.objects.get(patient_id=other_id)
+        latest = PatientDemographics.objects.filter(patient_id=other_id).aggregate(
+            latest=models.Max("version")
+        )["latest"]
+        corrupt = b"invalid-envelope"
+        version = PatientDemographics.objects.create(
+            organization_id=graph.organization_a,
+            patient_id=other_id,
+            clinic_id=enrollment.clinic_id,
+            enrollment_id=enrollment.pk,
+            version=(latest or 0) + 1,
+            registry_full_name=corrupt,
+            registry_full_name_index=bytes(other_index)
+            if other_index is not None
+            else None,
+            registry_birth_date=bytes(other_birth) if other_birth is not None else None,
+        )
+        DemographicsCorrection.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=enrollment.clinic_id,
+            patient_id=other_id,
+            demographics=version,
+            actor_id=user.pk,
+            actor_label="corrupt-fixture",
+            changed_fields=[],
+        )
         # A decrypt-and-filter scan cannot succeed: the other envelope is corrupt.
         cursor.execute(
             "UPDATE clinic_app.intake_patient SET full_name = %s "
             "WHERE full_name_index <> %s",
-            [b"invalid-envelope", digest],
+            [corrupt, digest],
         )
     for query, match in [(PATIENT.lower(), True), ("Sintetico Navegacao", False)]:
         if endpoint == "api":
@@ -100,10 +137,71 @@ def test_existing_encrypted_patients_are_backfilled(rbac_graph: RbacGraph) -> No
     graph = rbac_graph
     client, user = _client_for(graph, "receptionist")
     seed_patients(graph, user.pk, graph.clinic_a, (PATIENT,))
-    with owner_context(graph.organization_a):
-        Patient.objects.update(full_name_index=None)
     migration = import_module("apps.intake.migrations.0012_patient_name_index")
+    with owner_context(graph.organization_a):
+        patient = Patient.objects.get()
+        enrollment = PatientClinicEnrollment.objects.get(patient_id=patient.pk)
     with connection.schema_editor() as editor:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT set_config('app.current_tenant', %s, true)",
+                [str(graph.organization_a)],
+            )
+            cursor.execute(
+                "SELECT id, full_name, birth_date "
+                "FROM clinic_app.intake_patient WHERE id = %s",
+                [str(patient.pk)],
+            )
+            patient_id, name_bytes, birth_bytes = cursor.fetchone()
+            latest = PatientDemographics.objects.filter(
+                patient_id=patient_id
+            ).aggregate(latest=models.Max("version"))["latest"]
+            version = PatientDemographics.objects.create(
+                organization_id=graph.organization_a,
+                patient_id=patient_id,
+                clinic_id=enrollment.clinic_id,
+                enrollment_id=enrollment.pk,
+                version=(latest or 0) + 1,
+                registry_full_name=bytes(name_bytes),
+                registry_full_name_index=None,
+                registry_birth_date=bytes(birth_bytes)
+                if birth_bytes is not None
+                else None,
+            )
+            DemographicsCorrection.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=enrollment.clinic_id,
+                patient_id=patient_id,
+                demographics=version,
+                actor_id=user.pk,
+                actor_label="backfill-fixture",
+                changed_fields=[],
+            )
+            Patient.objects.filter(pk=patient_id).update(full_name_index=None)
+            # The backfill UPDATE re-fires the mirror guard: record the digest
+            # version it restores, in the same transaction.
+            restored = PatientDemographics.objects.create(
+                organization_id=graph.organization_a,
+                patient_id=patient_id,
+                clinic_id=enrollment.clinic_id,
+                enrollment_id=enrollment.pk,
+                version=(latest or 0) + 2,
+                registry_full_name=bytes(name_bytes),
+                registry_full_name_index=name_indexes(PATIENT)[-1],
+                registry_birth_date=bytes(birth_bytes)
+                if birth_bytes is not None
+                else None,
+            )
+            DemographicsCorrection.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=enrollment.clinic_id,
+                patient_id=patient_id,
+                demographics=restored,
+                previous=version,
+                actor_id=user.pk,
+                actor_label="backfill-fixture",
+                changed_fields=[],
+            )
         migration.backfill(apps, editor)
     response = _api(client, {"q": PATIENT, "clinic_id": str(graph.clinic_a)})
     assert response.status_code == 200

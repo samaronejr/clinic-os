@@ -1,0 +1,25 @@
+{% load i18n %}
+{# id, kind register/login/step_up, label, next, clinic_id, registration_form #}
+<form id="{{ id }}" data-passkey="{{ kind }}"
+      data-begin="{% if kind == 'register' %}{% url 'identity:passkey-register-begin' %}{% else %}{% url 'identity:passkey-assert-begin' %}{% endif %}"
+      data-finish="{% if kind == 'register' %}{% url 'identity:passkey-register-finish' %}{% else %}{% url 'identity:passkey-assert-finish' %}{% endif %}"
+      data-text-loading="{% trans 'Waiting for your device verification…' %}"
+      data-text-error="{% trans 'We could not verify the passkey. Try again or use your authenticator code.' %}"
+      data-text-cancelled="{% trans 'Passkey verification cancelled. Try again or use your authenticator code.' %}"
+      data-text-offline="{% trans 'You are offline. Reconnect before verifying your identity.' %}"
+      data-text-stale="{% trans 'Start passkey verification again. The previous request is no longer current.' %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}">
+  {% if clinic_id %}<input type="hidden" name="clinic_id" value="{{ clinic_id }}">{% endif %}
+  {% if kind == 'register' %}
+    <div class="field">{{ registration_form.nickname.label_tag }}{{ registration_form.nickname }}
+      <p class="hint">{% trans "Choose a short name so you can recognize this device later." %}</p>
+    </div>
+  {% endif %}
+  <div class="actions">
+    <button type="button" data-passkey-start hidden>{{ label }}</button>
+    <button type="button" class="button button--quiet" data-passkey-cancel hidden>{% trans "Cancel verification" %}</button>
+  </div>
+  <p class="hint" data-passkey-unavailable>{% trans "Without a compatible device or JavaScript, use your password and authenticator code." %}</p>
+  <p class="feedback" data-passkey-status role="status" aria-live="polite" tabindex="-1" hidden></p>
+</form>

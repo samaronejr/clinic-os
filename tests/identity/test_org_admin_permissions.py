@@ -14,6 +14,7 @@ from apps.identity.current_context import (
     require_permission,
 )
 from apps.identity.models import Clinic, RoleGrant, User, UserClinicRole
+from django.utils import timezone
 
 from identity.permission_support import (
     owner_context,
@@ -99,7 +100,9 @@ def test_org_admin_rechecks_membership_and_active_actor(rbac_graph: RbacGraph) -
             == actor
         )
     with owner_context(graph.organization_a):
-        UserClinicRole.objects.filter(user_id=actor, clinic_id=graph.clinic_b).delete()
+        UserClinicRole.objects.filter(user_id=actor, clinic_id=graph.clinic_b).update(
+            revoked_at=timezone.now()
+        )
     with permission_context(graph, actor), pytest.raises(CurrentActorError):
         require_current_actor_org_admin(graph.organization_a, CONFIGURATION_ROLES)
     with owner_context(graph.organization_a):

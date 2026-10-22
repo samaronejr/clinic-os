@@ -7,16 +7,22 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from django.core.exceptions import ValidationError
-from django.db import connection, transaction
+from django.db import connection
 
 from apps.audit.services import record_phase1_event
 from apps.ehr.models import Allergy, Encounter, HistoryAssessment, Problem
-from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError, _denied
+from apps.ehr.services import (
+    ClinicalAccessDeniedError,
+    ClinicalConflictError,
+    _denied,
+    decided,
+)
 from apps.identity.current_context import (
     CurrentActorError,
     require_current_actor_clinic_roles,
 )
 from apps.identity.models import UserClinicRole
+from apps.intake.alias_access import patient_alias_set
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -87,15 +93,20 @@ def _model(kind: str) -> type[Problem | Allergy]:
 
 def _context(encounter: Encounter, kind: str) -> HistoryContext:
     model = _model(kind)
+    aliases = patient_alias_set(
+        clinic_id=encounter.clinic_id, patient_id=encounter.patient_id
+    )
     assessments = list(
         HistoryAssessment.objects.filter(
-            clinic_id=encounter.clinic_id, patient_id=encounter.patient_id, kind=kind
+            clinic_id=encounter.clinic_id,
+            patient_id__in=aliases.patient_ids,
+            kind=kind,
         ).order_by("-revision")
     )
     versions: list[Problem | Allergy] = list(
         model.objects.filter(
             assessment__clinic_id=encounter.clinic_id,
-            assessment__patient_id=encounter.patient_id,
+            assessment__patient_id__in=aliases.patient_ids,
         )
         .select_related("assessment")
         .order_by("-assessment__revision")
@@ -103,7 +114,11 @@ def _context(encounter: Encounter, kind: str) -> HistoryContext:
     current: dict[UUID, Problem | Allergy] = {}
     for version in versions:
         current.setdefault(version.entry_id, version)
-    latest = assessments[0] if assessments else None
+    # Writes keep the current patient's own revision stream, not another
+    # historical identity's counter. Its retained versions still render below.
+    latest = next(
+        (row for row in assessments if row.patient_id == encounter.patient_id), None
+    )
     state = latest.state if latest else "not_assessed"
     with connection.cursor() as cursor:
         cursor.execute("SELECT clinic_app.ehr_assigned(%s)", [encounter.pk])
@@ -119,6 +134,17 @@ def _context(encounter: Encounter, kind: str) -> HistoryContext:
         assessments,
         can_write,
     )
+
+
+def entry_encounter(encounter: Encounter, kind: str, entry_id: UUID) -> UUID | None:
+    """Return the encounter of an entry's current version, reads only.
+
+    Callers decide write authority for that encounter before the audited
+    ``read_history``, so an edit refusal never follows a history-view row.
+    """
+    context = _context(encounter, kind)
+    entry = next((e for e in context.entries if e.entry_id == entry_id), None)
+    return None if entry is None else entry.assessment.encounter_id
 
 
 def read_history(*, clinic_id: UUID, encounter_id: UUID, kind: str) -> HistoryContext:
@@ -159,7 +185,10 @@ def save_history(
     actor = require_current_actor_clinic_roles(
         clinic_id, (UserClinicRole.Role.PHYSICIAN,)
     )
-    with transaction.atomic(), connection.cursor() as cursor:
+    with (
+        decided(lambda: authorize_history(clinic_id, encounter_id, write=True)),
+        connection.cursor() as cursor,
+    ):
         cursor.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             [f"ehr-history:{clinic_id}:{encounter.patient_id}:{kind}"],

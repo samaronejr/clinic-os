@@ -73,8 +73,11 @@ def authorize_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:
     )
     if encounter is None:
         raise ClinicalAccessDeniedError
+    # Unscheduled encounters (plan item 27) have no appointment; prescribing
+    # from them stays refused until the prescription contract admits them.
     if (
         encounter.physician_id != actor
+        or encounter.appointment is None
         or encounter.appointment.practitioner_id != actor
     ):
         record_denial(clinic_id, encounter.pk, "not_assigned")

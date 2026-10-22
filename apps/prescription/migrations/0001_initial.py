@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Keep prescription identity separate from SOAP-specific document fields."""
@@ -115,21 +117,21 @@ class Migration(migrations.Migration):
                 "ordering": ["position"],
             },
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondraft",
             constraint=models.CheckConstraint(
                 condition=models.Q(("version__gte", 1)),
                 name="prescription_version_positive",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondraft",
             constraint=models.CheckConstraint(
                 condition=models.Q(("state__in", ["draft", "discarded"])),
                 name="prescription_draft_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptiondraft",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -139,14 +141,14 @@ class Migration(migrations.Migration):
                 name="prescription_synthetic_contract",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptionitem",
             constraint=models.UniqueConstraint(
                 fields=("draft", "version", "position"),
                 name="prescription_item_version_position",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="prescriptionitem",
             constraint=models.CheckConstraint(
                 condition=models.Q(

@@ -66,8 +66,15 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     assert tenant_models == set(EXPECTED_TENANT_COLUMNS) | {
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
+        # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.
+        "identity_patientdelegategrant",
         # Exact user-bound saved-view policy/ACLs: tests/core/test_saved_views.py.
         "identity_savedview",
+        # Protected pending captures: tests/identity/test_onboarding.py.
+        "identity_signupregistration",
+        "identity_onboardingprogress",
+        "identity_staffinvitation",
+        "identity_authenticatorreset",
         # Exact v1 scope policies: tests/identity/test_permission_scope.py.
         "identity_rolegrant",
         # Task 7 owner-only machine authority: test_agent_posture.
@@ -87,6 +94,22 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ehr_encounterintakereference",
         # Exact quarantine policies and ACLs are checked in test_attachments.
         "ehr_clinicalattachment",
+        # Plan item 27 episodes and autosave state: exact policies, grants and
+        # triggers are checked in tests/ehr/test_autosave.py.
+        "ehr_episode",
+        "ehr_episodeencounter",
+        "ehr_drafteditstate",
+        "ehr_draftsavereceipt",
+        "ehr_encounteraddendum",
+        "ehr_addendumsavereceipt",
+        # Longitudinal clinical/restricted/projection posture: tests/ehr.
+        "ehr_medicationstatement",
+        "ehr_observation",
+        "ehr_restrictednote",
+        "ehr_noteaccessgrant",
+        "ehr_copiednoteblock",
+        "ehr_timelinerefresh",
+        "ehr_timelineprojection",
         # Task-32 author-only drafts and snapshots: test_prescription_drafts.
         "prescription_prescriptiondraft",
         "prescription_prescriptionitem",
@@ -106,7 +129,18 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "consent_consenttext",
         "consent_consentacceptance",
         "consent_consentrevocation",
+        "consent_aiusedisclosure",
+        "consent_noticeversion",
+        "consent_participantacknowledgment",
+        "consent_refusalrecord",
         "scheduling_patientbookingevent",
+        # Exact definition/reservation policies: scheduling resource tests.
+        "scheduling_absence",
+        "scheduling_appointmentresource",
+        "scheduling_availabilitytemplate",
+        "scheduling_holiday",
+        "scheduling_resource",
+        "scheduling_servicetype",
         # Task-18 manager/patient policies are checked exactly in test_waitlist.
         "scheduling_waitlistentry",
         "scheduling_waitlistoffer",
@@ -120,6 +154,7 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "teleconsult_teleconsultroom",
         "teleconsult_teleconsultcredential",
         "teleconsult_teleconsultevent",
+        "teleconsult_teleconsultdevicecheck",
         # Exact clinic billing policies and ACLs are checked in test_invoices.
         "billing_invoice",
         "billing_invoicerevision",
@@ -130,6 +165,29 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "billing_pixcharge",
         # Append-only authenticated payment events: test_payment_reconciliation.
         "billing_paymentevent",
+        # Exact owner/task/run policies and ACLs: tests/workflows/test_posture.py.
+        "workflows_task",
+        "workflows_taskcomment",
+        "workflows_workflowdefinitionversion",
+        "workflows_workflowrun",
+        "workflows_workflowstep",
+        # Plan item 30: exact specialty policies are checked in tests/ehr.
+        "ehr_specialtypack",
+        "ehr_specialtyentry",
+        # Task 31: exact custom policies/ACLs are checked in tests/orders.
+        "orders_labaccount",
+        "orders_order",
+        "orders_orderitem",
+        "orders_orderevent",
+        "orders_result",
+        "orders_resultversion",
+        "orders_resultobservation",
+        "orders_resultmatch",
+        "orders_resultquarantine",
+        "orders_resultrejection",
+        "orders_resultacknowledgment",
+        "orders_resultrelease",
+        "orders_resultworkitem",
     }
     assert table_posture == {
         (table, True, True, "clinic_owner") for table in EXPECTED_TENANT_COLUMNS
@@ -137,11 +195,19 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
     assert policies == {
         (table, "tenant_isolation") for table in EXPECTED_TENANT_COLUMNS
     } | {
+        ("identity_passkey", "passkey_owner_only"),
+        ("identity_organization", "active_organization_runtime"),
         ("scheduling_availabilityblock", "patient_booking_read"),
         ("scheduling_availabilityblock", "agent_grant"),
         ("scheduling_appointment", "patient_booking_read"),
         ("scheduling_appointment", "patient_booking_insert"),
         ("scheduling_appointment", "patient_booking_update"),
+        # Lifecycle v2: patients read their own appointments' receipts (replay).
+        ("scheduling_appointmenttransition", "patient_booking_read"),
+        ("scheduling_queueentry", "reception_scope"),
+        ("scheduling_roomstatus", "reception_scope"),
+        ("scheduling_cliniciandelay", "reception_scope"),
+        ("scheduling_displaydevice", "reception_scope"),
     }
 
 
@@ -261,6 +327,20 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
     }
     assert user_grants == []
     assert tenant_column_updates == {
+        ("scheduling_queueentry", "state"),
+        ("scheduling_queueentry", "room_id"),
+        ("scheduling_queueentry", "room_unit"),
+        ("scheduling_roomstatus", "state"),
+        ("scheduling_cliniciandelay", "minutes"),
+        ("scheduling_displaydevice", "active"),
+        ("scheduling_appointment", "last_command_id"),
+        ("intake_duplicatecandidate", "state"),
+        ("intake_patientalias", "active"),
+        ("intake_patientalias", "deactivated_at"),
+        ("intake_patientalias", "deactivated_by_id"),
+        ("intake_patientalias", "deactivation_session_id"),
+        ("intake_patientalias", "deactivation_reason"),
+        ("identity_passkey", "removed_at"),
         ("comms_integrationoperation", "attempt_count"),
         ("comms_integrationoperation", "last_callback_event_id"),
         ("comms_integrationoperation", "last_error"),
@@ -278,6 +358,10 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         ("intake_patientcontact", "verified_at"),
         ("intake_patientcontact", "verified_version"),
         ("intake_patientsession", "revoked_at"),
+        ("scheduling_absence", "active"),
+        ("intake_patient", "birth_date"),
+        ("intake_patient", "full_name"),
+        ("intake_patient", "full_name_index"),
         ("scheduling_appointment", "cancellation_reason"),
         ("scheduling_appointment", "cancelled_at"),
         ("scheduling_appointment", "end_at"),
@@ -286,6 +370,10 @@ def test_runtime_role_and_tenant_table_privileges_are_exact(
         ("scheduling_appointment", "updated_at"),
         ("scheduling_availabilityblock", "retired_at"),
         ("scheduling_availabilityblock", "updated_at"),
+        ("scheduling_availabilitytemplate", "active"),
+        ("scheduling_holiday", "active"),
+        ("scheduling_resource", "active"),
+        ("scheduling_servicetype", "active"),
         ("tenancy_tenantprobe", "id"),
         ("tenancy_tenantprobe", "label"),
         ("tenancy_tenantprobe", "organization_id"),

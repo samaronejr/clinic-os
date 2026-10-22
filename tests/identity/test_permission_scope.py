@@ -123,7 +123,9 @@ def test_committed_revocation_is_seen_mid_request(
             ready.wait()
             with owner_context(rbac_graph.organization_a):
                 if change == "role":
-                    UserClinicRole.objects.filter(user_id=actor).delete()
+                    UserClinicRole.objects.filter(user_id=actor).update(
+                        revoked_at=timezone.now()
+                    )
                 elif change == "care":
                     CareTeamMembership.objects.filter(user_id=actor).update(
                         revoked_at=timezone.now()

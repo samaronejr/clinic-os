@@ -1,4 +1,4 @@
-"""Exact consent receipts with explicit patient authority and retained revocation."""
+"""Exact consent receipts with explicit patient authority and retained refusal."""
 
 from __future__ import annotations
 
@@ -11,21 +11,40 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.utils import timezone
+from django.utils.translation import gettext
 
 from apps.audit.events import build_phase1_audit_event
 from apps.audit.services import AuditTrustedContext, _content_hash, record_phase1_event
-from apps.consent.models import ConsentAcceptance, ConsentRevocation, ConsentText
-from apps.identity.current_context import require_current_actor_clinic_roles
-from apps.identity.models import Clinic, UserClinicRole
+from apps.consent.models import (
+    AIUseDisclosure,
+    ConsentAcceptance,
+    ConsentPurpose,
+    ConsentRevocation,
+    ConsentText,
+    NoticeTopic,
+    NoticeVersion,
+    ParticipantAcknowledgment,
+    ParticipantKind,
+    RefusalRecord,
+)
+from apps.ehr.models import Encounter
+from apps.identity.current_context import CurrentActorError, require_permission
+from apps.identity.models import Clinic
 from apps.identity.overlay_content import validate_overlay_text
 from apps.intake.access import PatientAccessDeniedError
+from apps.intake.models import PatientClinicEnrollment
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
 MAX_TEXT = 20000
 OFFER_MAX_AGE = 1800
-STAFF_ROLES = tuple(UserClinicRole.Role)
+# Staff authority is todo 6's BUNDLES_V1 through clinic_app.has_permission;
+# PostgreSQL policies and the consent_guard trigger check the same names.
+# Texts and notices are clinic templates (RP Config/templates); receipts and
+# refusals are read by demographics holders and by organization-wide consent
+# governance; a per-encounter attestation is patient-scoped clinical writing
+# (professional registration plus the assigned encounter or care team).
 
 
 @dataclass(frozen=True)
@@ -61,16 +80,17 @@ def publish_text(
     *, clinic_id: UUID, purpose: str, text: str, language: str = "pt-BR"
 ) -> ConsentText:
     """Publish an authorized clinic overlay as a new immutable version."""
-    actor = require_current_actor_clinic_roles(
-        clinic_id, (UserClinicRole.Role.OWNER, UserClinicRole.Role.CLINIC_ADMIN)
-    )
+    try:
+        actor = require_permission("configuration.clinic", clinic_id=clinic_id)
+    except CurrentActorError:
+        actor = require_permission("configuration.organization", clinic_id=clinic_id)
     if (
-        purpose not in ConsentText.Purpose.values
+        purpose not in ConsentPurpose.values
         or language != "pt-BR"
         or not text.strip()
         or len(text) > MAX_TEXT
     ):
-        msg = "Texto, finalidade ou idioma inválido."
+        msg = gettext("Invalid text, purpose or language.")
         raise ValidationError(msg)
     validate_overlay_text(text)
     with transaction.atomic():
@@ -99,6 +119,51 @@ def publish_text(
         return result
 
 
+def publish_notice(
+    *, clinic_id: UUID, topic: str, text: str, language: str = "pt-BR"
+) -> NoticeVersion:
+    """Publish an information-only notice version; it never authorizes use."""
+    try:
+        actor = require_permission("configuration.clinic", clinic_id=clinic_id)
+    except CurrentActorError:
+        actor = require_permission("configuration.organization", clinic_id=clinic_id)
+    if (
+        topic not in NoticeTopic.values
+        or language != "pt-BR"
+        or not text.strip()
+        or len(text) > MAX_TEXT
+    ):
+        msg = gettext("Invalid text, topic or language.")
+        raise ValidationError(msg)
+    validate_overlay_text(text)
+    with transaction.atomic():
+        _lock(clinic_id, f"notice:{topic}")
+        organization_id = Clinic.objects.values_list("organization_id", flat=True).get(
+            pk=clinic_id
+        )
+        previous = (
+            NoticeVersion.objects.filter(clinic_id=clinic_id, topic=topic)
+            .order_by("-version")
+            .first()
+        )
+        result = NoticeVersion.objects.create(
+            organization_id=organization_id,
+            clinic_id=clinic_id,
+            topic=topic,
+            version=previous.version + 1 if previous else 1,
+            text=text,
+            language=language,
+            digest=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            published_by_id=actor,
+        )
+        record_phase1_event(
+            "consent.notice.published",
+            clinic_id=clinic_id,
+            affected_record_id=result.pk,
+        )
+        return result
+
+
 def available_texts() -> list[ConsentText]:
     """Return the latest available purpose-specific text for this patient clinic."""
     authority = patient_authority()
@@ -106,6 +171,16 @@ def available_texts() -> list[ConsentText]:
         ConsentText.objects.filter(clinic_id=authority.clinic_id)
         .order_by("purpose", "-version")
         .distinct("purpose")
+    )
+
+
+def available_notices() -> list[NoticeVersion]:
+    """Return the latest information-only notices for this patient clinic."""
+    authority = patient_authority()
+    return list(
+        NoticeVersion.objects.filter(clinic_id=authority.clinic_id)
+        .order_by("topic", "-version")
+        .distinct("topic")
     )
 
 
@@ -147,12 +222,10 @@ def _patient_audit(
         )
 
 
-def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAcceptance:
-    """Accept only the text actually offered to this patient session and purpose."""
-    authority = patient_authority()
-    if accepted is not True:
-        msg = "Marque a opção somente se desejar consentir."
-        raise ValidationError(msg)
+def _resolve_offer(
+    offer: str, purpose: str, authority: ConsentAuthority
+) -> ConsentText:
+    """Resolve an offer token to the current text or deny the action."""
     try:
         data = signing.loads(
             offer, salt=f"consent.offer:{authority.session_id}", max_age=OFFER_MAX_AGE
@@ -162,20 +235,26 @@ def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAccept
         text_id = UUID(data["text"])
     except (signing.BadSignature, ValueError, KeyError, TypeError) as error:
         raise PatientAccessDeniedError from error
+    _lock(authority.clinic_id, purpose)
+    current = (
+        ConsentText.objects.filter(clinic_id=authority.clinic_id, purpose=purpose)
+        .order_by("-version")
+        .first()
+    )
+    if current is None or current.pk != text_id or current.digest != data.get("digest"):
+        msg = gettext("The text changed. Read the current version before consenting.")
+        raise ValidationError(msg)
+    return current
+
+
+def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAcceptance:
+    """Accept only the text actually offered to this patient session and purpose."""
+    authority = patient_authority()
+    if accepted is not True:
+        msg = gettext("Check the box only if you wish to consent.")
+        raise ValidationError(msg)
     with transaction.atomic():
-        _lock(authority.clinic_id, purpose)
-        current = (
-            ConsentText.objects.filter(clinic_id=authority.clinic_id, purpose=purpose)
-            .order_by("-version")
-            .first()
-        )
-        if (
-            current is None
-            or current.pk != text_id
-            or current.digest != data.get("digest")
-        ):
-            msg = "O texto mudou. Leia a versão atual antes de consentir."
-            raise ValidationError(msg)
+        current = _resolve_offer(offer, purpose, authority)
         result, created = ConsentAcceptance.objects.get_or_create(
             enrollment_id=authority.enrollment_id,
             text=current,
@@ -188,7 +267,7 @@ def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAccept
             },
         )
         if ConsentRevocation.objects.filter(acceptance=result).exists():
-            msg = "Este consentimento foi revogado. O comprovante permanece disponível."
+            msg = gettext("This consent was revoked. The receipt remains available.")
             raise ValidationError(msg)
         if created:
             _patient_audit("consent.accepted", result.pk, authority)
@@ -196,10 +275,77 @@ def record_consent(*, offer: str, purpose: str, accepted: bool) -> ConsentAccept
         return result
 
 
+def record_refusal(*, offer: str, purpose: str) -> RefusalRecord:
+    """Retain a deliberate refusal bound to the exact displayed version."""
+    authority = patient_authority()
+    with transaction.atomic():
+        current = _resolve_offer(offer, purpose, authority)
+        if ConsentAcceptance.objects.filter(
+            enrollment_id=authority.enrollment_id,
+            text=current,
+            revocation__isnull=True,
+        ).exists():
+            msg = gettext(
+                "This consent is already accepted. Revoke it instead of "
+                "recording a refusal."
+            )
+            raise ValidationError(msg)
+        result, created = RefusalRecord.objects.get_or_create(
+            enrollment_id=authority.enrollment_id,
+            text=current,
+            defaults={
+                "organization_id": authority.organization_id,
+                "clinic_id": authority.clinic_id,
+                "patient_id": authority.patient_id,
+                "patient_session_id": authority.session_id,
+                "refused_at": timezone.now(),
+            },
+        )
+        if created:
+            _patient_audit("consent.refused", result.pk, authority)
+        result.refresh_from_db()
+        return result
+
+
 def patient_receipts() -> list[ConsentAcceptance]:
     """Read all retained receipts, including superseded and revoked decisions."""
     authority = patient_authority()
-    return list(_receipts().filter(enrollment_id=authority.enrollment_id))
+    return list(
+        _receipts().filter(
+            clinic_id=authority.clinic_id, patient_id__in=_patient_lineage(authority)
+        )
+    )
+
+
+def patient_refusals() -> list[RefusalRecord]:
+    """Read all retained refusal records for this patient enrollment."""
+    authority = patient_authority()
+    return list(
+        RefusalRecord.objects.select_related("text")
+        .filter(
+            clinic_id=authority.clinic_id, patient_id__in=_patient_lineage(authority)
+        )
+        .order_by("-refused_at", "pk")
+    )
+
+
+def patient_disclosures() -> list[AIUseDisclosure]:
+    """Read only this session's patient AI-use attestations, not clinical notes."""
+    authority = patient_authority()
+    return list(
+        AIUseDisclosure.objects.filter(
+            clinic_id=authority.clinic_id, patient_id__in=_patient_lineage(authority)
+        ).order_by("-recorded_at", "pk")
+    )
+
+
+def _patient_lineage(authority: ConsentAuthority) -> tuple[UUID, ...]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT patient_id FROM clinic_app.patient_alias_set(%s)",
+            [authority.patient_id],
+        )
+        return tuple(row[0] for row in cursor.fetchall())
 
 
 def _receipts() -> QuerySet[ConsentAcceptance]:
@@ -237,12 +383,28 @@ def revoke_consent(*, acceptance_id: UUID) -> ConsentRevocation:
 
 def staff_receipts(*, clinic_id: UUID, enrollment_id: UUID) -> list[ConsentAcceptance]:
     """Staff may inspect consent provenance, never act on the patient's behalf."""
-    require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
     results = list(_receipts().filter(clinic_id=clinic_id, enrollment_id=enrollment_id))
     record_phase1_event(
         "consent.receipts.viewed", clinic_id=clinic_id, affected_record_id=enrollment_id
     )
     return results
+
+
+def staff_refusals(*, clinic_id: UUID, enrollment_id: UUID) -> list[RefusalRecord]:
+    """Staff may inspect retained refusals for one enrollment."""
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
+    return list(
+        RefusalRecord.objects.select_related("text")
+        .filter(clinic_id=clinic_id, enrollment_id=enrollment_id)
+        .order_by("-refused_at", "pk")
+    )
 
 
 def consent_for_future_use(
@@ -253,7 +415,13 @@ def consent_for_future_use(
     Consumers must recheck at the point of use, not cache this decision. This
     gate never governs care records, releases or message preferences.
     """
-    require_current_actor_clinic_roles(clinic_id, STAFF_ROLES)
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
+    if purpose not in ConsentPurpose.values:
+        msg = gettext("Purpose outside the consent taxonomy.")
+        raise ValidationError(msg)
     current = (
         ConsentText.objects.filter(clinic_id=clinic_id, purpose=purpose)
         .order_by("-version")
@@ -267,3 +435,121 @@ def consent_for_future_use(
         text=current,
         revocation__isnull=True,
     ).first()
+
+
+def _encounter_enrollment(encounter: Encounter | None) -> UUID | None:
+    """Return the subject patient's enrollment in the encounter's clinic."""
+    if encounter is None:
+        return None
+    return (
+        PatientClinicEnrollment.objects.filter(
+            organization_id=encounter.organization_id,
+            clinic_id=encounter.clinic_id,
+            patient_id=encounter.patient_id,
+        )
+        .values_list("pk", flat=True)
+        .first()
+    )
+
+
+def record_ai_disclosure(
+    *, clinic_id: UUID, encounter_id: UUID, informed: bool, refused: bool
+) -> AIUseDisclosure:
+    """Record the clinician's per-encounter AI-use attestation.
+
+    A refusal is preserved alongside the attestation and never blocks care.
+    """
+    encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=encounter_id).first()
+    actor = require_permission(
+        "clinical.write",
+        clinic_id=clinic_id,
+        patient_enrollment_id=_encounter_enrollment(encounter),
+    )
+    if encounter is None:
+        # has_permission already refuses the missing enrollment; stay closed.
+        raise PatientAccessDeniedError
+    if (
+        type(informed) is not bool
+        or type(refused) is not bool
+        or (refused and not informed)
+    ):
+        msg = gettext("Invalid AI-use disclosure.")
+        raise ValidationError(msg)
+    with transaction.atomic():
+        result, created = AIUseDisclosure.objects.get_or_create(
+            encounter=encounter,
+            defaults={
+                "organization_id": encounter.organization_id,
+                "clinic_id": clinic_id,
+                "patient_id": encounter.patient_id,
+                "informed": informed,
+                "refused": refused,
+                "recorded_by_id": actor,
+                "recorded_at": timezone.now(),
+            },
+        )
+        if not created and (result.informed != informed or result.refused != refused):
+            msg = gettext("A disclosure is already recorded for this encounter.")
+            raise ValidationError(msg)
+        if created:
+            record_phase1_event(
+                "consent.ai_disclosure.recorded",
+                clinic_id=clinic_id,
+                affected_record_id=result.pk,
+            )
+        result.refresh_from_db()
+        return result
+
+
+def ai_disclosure_status(
+    *, clinic_id: UUID, encounter_id: UUID
+) -> AIUseDisclosure | None:
+    """Return the recorded disclosure for one encounter, or ``None``.
+
+    Consumers (todos 40/44/46) must treat ``None``, ``informed=False`` and
+    ``refused=True`` as a refusal of AI assistance for that encounter.
+    """
+    try:
+        require_permission("demographics.read", clinic_id=clinic_id)
+    except CurrentActorError:
+        require_permission("configuration.organization", clinic_id=clinic_id)
+    return AIUseDisclosure.objects.filter(
+        clinic_id=clinic_id, encounter_id=encounter_id
+    ).first()
+
+
+def acknowledge_participant(
+    *, clinic_id: UUID, session_id: UUID, participant_kind: str
+) -> ParticipantAcknowledgment:
+    """Record that the recording notice reached one non-patient voice."""
+    encounter = Encounter.objects.filter(clinic_id=clinic_id, pk=session_id).first()
+    actor = require_permission(
+        "clinical.write",
+        clinic_id=clinic_id,
+        patient_enrollment_id=_encounter_enrollment(encounter),
+    )
+    if encounter is None:
+        # has_permission already refuses the missing enrollment; stay closed.
+        raise PatientAccessDeniedError
+    if participant_kind not in ParticipantKind.values:
+        msg = gettext("Invalid participant kind.")
+        raise ValidationError(msg)
+    with transaction.atomic():
+        result, created = ParticipantAcknowledgment.objects.get_or_create(
+            session=encounter,
+            participant_kind=participant_kind,
+            defaults={
+                "organization_id": encounter.organization_id,
+                "clinic_id": clinic_id,
+                "acknowledged_by_clinician_id": actor,
+                "acknowledged_at": timezone.now(),
+            },
+        )
+        if created:
+            record_phase1_event(
+                "consent.participant.acknowledged",
+                clinic_id=clinic_id,
+                affected_record_id=result.pk,
+            )
+        result.refresh_from_db()
+        return result

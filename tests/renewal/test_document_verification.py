@@ -18,8 +18,10 @@ from apps.comms.tasks import execute_operation as execute_operation_task
 from apps.core.integration import execute_operation
 from apps.core.secrets import secret_store
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.delegates import switch_delegate
 from apps.identity.models import PhysicianProfile
-from apps.intake.models import PatientContact
+from apps.intake import services as intake_services
+from apps.intake.models import PatientClinicEnrollment, PatientContact
 from apps.intake.patient_access import (
     PATIENT_SESSION_KEY,
     issue_invitation,
@@ -61,12 +63,16 @@ from django.test import Client, override_settings
 from django.utils import timezone
 
 from auth.stepup_test_support import verified_request
+from identity.lifecycle_test_support import session_key, verified_client
 from patient_service_support import runtime_role
+from patients.delegate_support import NotesFixture, active_grant, delegate_world
+from patients.duplicate_history_support import retained_histories
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client, setup_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from django.http import HttpRequest
     from pytest_django.fixtures import SettingsWrapper
@@ -577,6 +583,198 @@ def test_release_gates_patient_download_and_revocation_restores_denial(
             ).status_code
             == 403
         )
+
+
+def test_delegate_cannot_list_or_export_a_restricted_signed_document(
+    signed: SignedSetup,
+    tmp_path: Path,
+) -> None:
+    signed.issue()
+    graph = signed.graph
+    with setup_context(graph.organization_a):
+        enrollment = PatientClinicEnrollment.objects.get(
+            patient_id=signed.scope["patient_id"], clinic_id=graph.clinic_a
+        )
+    world = delegate_world(
+        graph,
+        tmp_path,
+        notes=NotesFixture(
+            enrollment.pk,
+            signed.scope["patient_id"],
+            signed.scope["encounter_id"],
+            uuid4(),
+        ),
+    )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        release_document(clinic_id=graph.clinic_a, document_id=signed.document.pk)
+    grant = active_grant(graph, world)
+    with runtime_role(), patient_session_context(world.session_id):
+        switch_delegate(clinic_id=graph.clinic_a, grant_id=grant.grant_id)
+    with runtime_role(), patient_session_context(world.session_id):
+        assert patient_documents() == []
+        for document_id in (signed.document.pk, uuid4()):
+            with pytest.raises(ClinicalAccessDeniedError):
+                patient_document_download(document_id=document_id)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM clinic_app.prescription_patient_documents()")
+            assert cursor.fetchall() == []
+    patient = Client()
+    session = patient.session
+    session[PATIENT_SESSION_KEY] = str(world.session_id)
+    session.save()
+    with runtime_role():
+        restricted = patient.post(
+            "/patient/documents/",
+            {"action": "download", "document_id": str(signed.document.pk)},
+        )
+        unknown = patient.post(
+            "/patient/documents/",
+            {"action": "download", "document_id": str(uuid4())},
+        )
+    assert restricted.status_code == unknown.status_code == 403
+    assert restricted.content == unknown.content
+    newer = signed.amend_and_issue()
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        release_document(
+            clinic_id=graph.clinic_a,
+            document_id=newer.pk,
+            restricted_from_delegates=False,
+        )
+    with runtime_role(), patient_session_context(world.session_id):
+        assert [row.document_id for row in patient_documents()] == [newer.pk]
+        assert patient_document_download(document_id=newer.pk).data
+
+
+def test_patient_download_rechecks_session_after_decrypting_signed_bytes(
+    signed: SignedSetup,
+) -> None:
+    # Given: a released signed artifact and a real redeemed records session.
+    operation = signed.issue()
+    graph = signed.graph
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        release_document(clinic_id=graph.clinic_a, document_id=signed.document.pk)
+    patient = _patient_session(graph, signed.scope["patient_id"])
+
+    # When: the patient downloads, including the resolver's audit recheck.
+    with runtime_role():
+        fetched = patient.post(
+            "/patient/documents/",
+            {"action": "download", "document_id": str(signed.document.pk)},
+        )
+
+    # Then: audit authorization still sees the patient session, not a staff tenant.
+    assert fetched.status_code == 200
+    assert fetched.content == bytes(operation.signed_bytes)
+    assert "no-store" in fetched.headers["Cache-Control"]
+    with owner_scope(graph.organization_a), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT actor_user_id FROM clinic_app.audit_event "
+            "WHERE event_type='prescription.document.downloaded' "
+            "AND affected_record_id=%s",
+            [str(signed.document.pk)],
+        )
+        assert cursor.fetchall() == [(UUID(str(patient.session[PATIENT_SESSION_KEY])),)]
+
+
+def test_patient_document_projection_restores_the_callers_tenant_scope(
+    signed: SignedSetup,
+) -> None:
+    # Given: a live records session and a released encrypted document.
+    signed.issue()
+    graph = signed.graph
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        release_document(clinic_id=graph.clinic_a, document_id=signed.document.pk)
+    patient = _patient_session(graph, signed.scope["patient_id"])
+    session_id = UUID(str(patient.session[PATIENT_SESSION_KEY]))
+    with runtime_role(), patient_session_context(session_id):
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_setting('app.current_tenant', true)")
+            before = cursor.fetchone()
+        # When: the resolver decrypts the frozen document projection.
+        documents = patient_documents()
+        # Then: decryption has not introduced staff-tenant authority.
+        assert [document.document_id for document in documents] == [signed.document.pk]
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_setting('app.current_tenant', true)")
+            assert cursor.fetchone() == before
+
+
+@override_settings(
+    PHYSICIAN_SYNTHETIC_REGISTRY=True, PRESCRIPTION_SYNTHETIC_SIGNING=True
+)
+def test_survivor_downloads_signed_alias_history_without_repointing_artifacts(
+    rbac_graph: RbacGraph,
+) -> None:
+    # Given: the merged identity's signed document, released before adjudication.
+    world = retained_histories(rbac_graph, intake_services)
+    scope: Scope = {
+        "clinic_id": rbac_graph.clinic_a,
+        "encounter_id": world.encounter_ids[1],
+        "patient_id": world.second.patient.pk,
+        "issuer_id": rbac_graph.physician,
+    }
+    with owner_scope(rbac_graph.organization_a):
+        document = PrescriptionDocument.objects.get(pk=world.artifact_id)
+        PhysicianProfile.objects.create(
+            organization_id=rbac_graph.organization_a,
+            user_id=rbac_graph.physician,
+            jurisdiction="SP",
+            registration_number="SYNTHETIC-CRM-35",
+            signing_subject=f"synthetic:physician:{rbac_graph.physician}",
+        )
+    signed = SignedSetup(
+        rbac_graph,
+        scope,
+        document,
+        verified_request(rbac_graph.physician),
+        SyntheticSignatureProvider(),
+    )
+    operation = signed.issue()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        release = release_document(
+            clinic_id=rbac_graph.clinic_a, document_id=document.pk
+        )
+    patient = _patient_session(rbac_graph, world.first.patient.pk)
+    key = session_key(verified_client(rbac_graph))
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.clinic_admin, rbac_graph.organization_a),
+        intake_services.duplicate_review_session(
+            clinic_id=rbac_graph.clinic_a, session_key=key
+        ),
+    ):
+        intake_services.adjudicate_duplicate(
+            clinic_id=rbac_graph.clinic_a,
+            candidate_id=world.candidate.pk,
+            decision="merge",
+            survivor_patient_id=world.first.patient.pk,
+            field_choices={},
+            reason="Synthetic released document lineage reviewed",
+        )
+
+    # When: the survivor lists and downloads the retained alias document.
+    with runtime_role():
+        listed = patient.get("/patient/documents/")
+        fetched = patient.post(
+            "/patient/documents/",
+            {"action": "download", "document_id": str(document.pk)},
+        )
+
+    # Then: signed content is readable, but all historical bindings stay intact.
+    assert listed.status_code == 200
+    assert f'data-document="{document.pk}"' in listed.content.decode()
+    assert fetched.status_code == 200
+    assert fetched.content == bytes(operation.signed_bytes)
+    with owner_scope(rbac_graph.organization_a):
+        document.refresh_from_db()
+        operation.refresh_from_db()
+        release.refresh_from_db()
+        assert document.patient_id == world.second.patient.pk
+        assert release.patient_id == world.second.patient.pk
+        assert operation.patient_id == world.second.patient.pk
 
 
 def test_release_requires_completed_signature_and_issuer(

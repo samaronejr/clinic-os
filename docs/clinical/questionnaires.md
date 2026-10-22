@@ -7,7 +7,7 @@ cryptography or authorize real patient data.
 
 ## Configuration and assignment
 
-`publish_template` accepts an exact clinic owner/admin context and creates a
+`publish_template` accepts an exact clinic owner/admin/physician context and creates a
 new immutable row for each `(organization, clinic, key, version)`. Version
 allocation is serialized by a transaction advisory lock and a unique constraint.
 Existing templates cannot be updated or deleted by the runtime role; database
@@ -16,10 +16,10 @@ already assigned to an earlier version.
 
 The schema is closed: 1-40 questions; distinct `q_` identifiers with 1-32 lowercase
 letters/digits/underscores; labels 1-200 characters; types `text`, `selection`,
-`boolean`; a real boolean `required` flag; `max_length` 1-4000; and `options`.
-Text/boolean use an empty options list. Selection uses 1-30 distinct nonblank
+`boolean`, `number`; a real boolean `required` flag; `max_length` 1-4000; and `options`.
+Text/boolean/number use an empty options list. Selection uses 1-30 distinct nonblank
 strings, each no longer than 200 or its declared limit. Title limit: 160;
-configuration key: 64. Unknown keys, expressions, scripts, conditions, calculated
+configuration key: 64. Unknown keys, expressions, scripts, calculated
 questions and executable content are rejected. All labels and answers are
 HTML-escaped. Boolean values are typed booleans, not strings or integers;
 `false` counts as a supplied answer. Length limits apply to textual values.
@@ -37,6 +37,82 @@ generator. Physicians assign the newest version of a configuration from their
 own agenda row ("Questionários"): the enrollment is resolved server-side from
 the appointment, and a repeated assignment of the same version to the same
 appointment returns the first response instead of creating another.
+
+## Declarative branching (todo 29)
+
+Legacy list definitions remain valid. V2 definitions are closed envelopes:
+`{schema_version: 2, state: draft|published|retired, questions: [...], rules: [...]}`.
+Publication validates the shipped
+`docs/clinical/questionnaire-branching-schema.json`, then checks distinct IDs,
+literal types, choice membership and references. Every target must occur after
+its source: backward edges, self-references and cycles are refused. Publication
+always appends an immutable version; draft and retired versions cannot be
+assigned, in services or in the database. Existing assignments stay pinned.
+
+A rule is exactly
+`{when: {question: "q_id", op: "eq"|"in"|"gt"|"lt", value: literal}, show: ["q_id"]}`.
+`in` takes a nonempty list of scalar literals; every other operator takes one
+scalar. Nested values, expression syntax, unknown keys and executable operators
+are refused. Boolean, string and number comparisons never coerce. Numbers are
+finite binary64 values bounded by 9007199254740991 in magnitude; comparisons
+use the same representation in Python and JavaScript. Numeric operators require
+a number question. An absent, null or empty-string answer never matches, including
+against an empty-string literal. False and zero remain answered values.
+
+Questions not targeted by a rule are visible. Multiple rules targeting one
+question are alternatives (OR). Evaluation follows question order, and a hidden
+source cannot reveal descendants, even if a submitted body forges its answer.
+The server validates supplied types, removes hidden values, then requires only
+visible required answers on submission. The plain script enhances the same
+native POST form; with JavaScript off, saving the current answers renders the
+next visible questions. No answer is filled automatically. Shared vectors in
+`tests/fixtures/questionnaire-branching-vectors.json` run in Python and through
+Playwright's evaluate against the shipped script on all three engines.
+
+The settings rows expose earlier-question selection, a fixed comparison and
+literal values (one per line for `in`). They do not accept expressions or a
+free-form schema. A row without a condition remains visible.
+
+Carry-forward is an explicit patient action from a submitted response to an
+empty draft of the exact same retained template and enrollment. It copies no
+other patient's or clinic's answers. V2 answer envelopes are
+`{values: {...}, unverified: ["q_id", ...]}` inside the existing encrypted
+column; append-only receipts preserve the flags with the answer bytes. Each
+copied answer is labelled unverified. Submission is refused until the patient
+explicitly reviews it or changes it; an unchanged form repost is not review.
+The existing v1 answer shape is unchanged.
+
+## Specialty template v2
+
+`docs/clinical/template-schema-v2.json` is the server validation authority for
+`ehr.services.publish_template`. V1 still requires exactly the four SOAP keys.
+V2 retains those four top-level prompts and adds `schema_version: 2`, `state`,
+`fields`, `phrases` and `optional_sections`. Template states are immutable
+version snapshots, not in-place row mutations. A new note cannot bind a draft
+or retired snapshot. Prior documents retain their exact version.
+
+Fields have distinct IDs, a SOAP section, label, required flag and one of text,
+number with unit and bounded range, choice, multichoice, date, boolean or a
+versioned scale reference. No schema accepts a default answer or executable
+content. Scale references are identifiers, not a calculator implementation.
+Reusable phrases are explicitly clinic-scoped or bound to the publishing
+clinician; another clinician's identity cannot be claimed. Definitions are
+configuration only: publication does not copy a phrase, a range or an optional
+section into a patient's note and never invents normal findings.
+
+The template-specific trigger replaces only the specialty-template binding
+and plain-text triggers; the encounter binding function is unchanged. The
+existing `jsonschema` dependency is promoted from dev to runtime so deployed
+publication validates the same shipped schema as tests. Neither migration
+adds a tenant table or a plaintext answer column. Reversing after a v2
+definition exists refuses: rollback is a restore, not deletion of history.
+
+Each staff-created draft, published or retired snapshot appends its registered
+metadata audit event in the same transaction. The catalog distinguishes
+`ehr.template` and `intake.questionnaire_template` lifecycle events and keeps
+only the clinic and object verb in their payloads. Patient response writes
+retain their existing encrypted `QuestionnaireEvent` receipt path; they never
+set a staff tenant GUC or gain generic audit authority.
 
 ## Draft, submit, reopen
 

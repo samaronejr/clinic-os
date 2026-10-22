@@ -1,0 +1,156 @@
+"""Complete test-only SQL clock control, retaining an explicit ambient fallback."""
+
+from __future__ import annotations
+
+import re
+from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import datetime
+from typing import TYPE_CHECKING, Final
+
+import psycopg
+from django.db import connection
+from psycopg import sql
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+# This vocabulary is only a cross-check, not the live reader detector:
+# clock_catalog derives readers and expression surfaces from PostgreSQL and
+# follows helper calls, including independent patient authority clocks.
+SQL_TIME: Final = re.compile(
+    r"\b(?:pg_catalog\.)?(?:"
+    r"(?:statement_timestamp|transaction_timestamp|clock_timestamp|now)\s*\(\s*\)|"
+    r"current_date\b|(?:current_timestamp|localtimestamp)\b(?:\s*\(\s*\d+\s*\))?)",
+    re.IGNORECASE,
+)
+SQL_CLOCKS: Final = {
+    "scheduling_appointment_guard_v1()": {"current_timestamp": 1},
+    "patient_booking_slots(date,uuid)": {"statement_timestamp()": 1},
+    "patient_booking_receipt()": {"statement_timestamp()": 1},
+    "scheduling_definition_guard()": {"statement_timestamp()": 3},
+    "scheduling_generated_block_guard()": {"statement_timestamp()": 1},
+    # Lifecycle v2 (D-9): the single clock reader (hold TTL, expiry, no-show).
+    "scheduling_clock()": {"statement_timestamp()": 1},
+}
+SOURCE_CLOCKS: Final = {
+    "_reception_sql.py": {"statement_timestamp()": 4},
+    "_appointment_sql.py": {"current_timestamp": 1},
+    "_patient_booking_sql.py": {"statement_timestamp()": 4},
+    "_resource_slots_sql.py": {"statement_timestamp()": 1},
+    "_resources_sql.py": {"statement_timestamp()": 4},
+    "_lifecycle_sql.py": {"statement_timestamp()": 1},
+    # Ledger time of the machine expiry audit event, not a scheduling decision.
+    "_expiry_audit_sql.py": {"clock_timestamp()": 1},
+}
+# The merged FK closure reaches these intake guards. Their transaction clock
+# binds a registry mirror to its new immutable demographics version; it must
+# retain the independent authority-time axis, not the scheduling calendar.
+DEPENDENCY_CLOCKS: Final = {
+    "intake_patientdemographics_version_guard_v1()": {"transaction_timestamp()": 1},
+    "intake_correction_guard_v1()": {"transaction_timestamp()": 1},
+    "intake_patient_mirror_guard_v1()": {"transaction_timestamp()": 1},
+    "patient_identity(uuid)": {"statement_timestamp()": 2},
+    "delegate_now()": {"statement_timestamp()": 1},
+    "delegate_guard()": {"statement_timestamp()": 4},
+}
+CONTROLLED_CLOCKS: Final = SQL_CLOCKS | DEPENDENCY_CLOCKS
+AUTHORITY_CLOCKS: Final = frozenset(DEPENDENCY_CLOCKS)
+SQL_CLOCKS_CONTROLLED: ContextVar[bool] = ContextVar(
+    "scheduling_sql_clocks_controlled", default=False
+)
+SQL_CLOCK_DEFINITIONS: ContextVar[dict[str, dict[str, str]] | None] = ContextVar(
+    "scheduling_sql_clock_definitions", default=None
+)
+
+
+def clock_counts(source: str) -> Counter[str]:
+    return Counter(
+        re.sub(r"\s+", "", match.group()).lower().removeprefix("pg_catalog.")
+        for match in SQL_TIME.finditer(source)
+    )
+
+
+@contextmanager
+def frozen_sql_clocks(
+    database_url: str, reference: datetime, ambient: datetime | None = None
+) -> Iterator[datetime]:
+    """Control every audited read; auth expiry uses a separate DB-time snapshot.
+
+    COALESCE keeps the ambient expression observable for adversarial probes: even
+    advancing that fallback past a booking cannot escape the explicit override.
+    No production function or predicate is changed outside this fixture scope.
+    """
+    originals: list[tuple[str, str]] = []
+    definitions: dict[str, dict[str, str]] = {}
+    with connection.cursor() as cursor:
+        cursor.execute("SHOW search_path")
+        path = cursor.fetchone()
+    assert path is not None
+    with psycopg.connect(database_url, autocommit=True) as owner:
+        owner.execute("SELECT set_config('search_path', %s, false)", [path[0]])
+        row = owner.execute("SELECT statement_timestamp()").fetchone()
+        assert row is not None
+        authority_now = row[0]
+        assert isinstance(authority_now, datetime)
+        try:
+            for signature, expected in CONTROLLED_CLOCKS.items():
+                row = owner.execute(
+                    "SELECT pg_get_functiondef(%s::regprocedure)",
+                    [f"clinic_app.{signature}"],
+                ).fetchone()
+                assert row is not None
+                original = str(row[0])
+                assert clock_counts(original) == expected, signature
+                controlled = sql.Literal(
+                    authority_now if signature in AUTHORITY_CLOCKS else reference
+                ).as_string(owner)
+
+                def replacement(
+                    match: re.Match[str], controlled: str = controlled
+                ) -> str:
+                    fallback = match.group()
+                    if ambient is not None:
+                        advanced = sql.Literal(ambient).as_string(owner)
+                        fallback = f"COALESCE({advanced}, {fallback})"
+                    return f"COALESCE({controlled}, {fallback})"
+
+                definition = SQL_TIME.sub(replacement, original)
+                owner.execute(definition.encode())
+                originals.append((signature, original))
+                # Only these exact fixture-generated bytes may share a closure.
+                # Any planted extra literal/callee changes the live definition and
+                # therefore bypasses this cache normalization.
+                shape = SQL_TIME.sub(
+                    lambda match: (
+                        "COALESCE(__fixture_controlled__, "
+                        + (
+                            "COALESCE(__fixture_ambient__, "
+                            if ambient is not None
+                            else ""
+                        )
+                        + match.group()
+                        + (")" if ambient is not None else "")
+                        + ")"
+                    ),
+                    original,
+                )
+                definitions["clinic_app." + signature] = {
+                    "expected": definition,
+                    "shape": shape,
+                }
+            token = SQL_CLOCKS_CONTROLLED.set(True)
+            definitions_token = SQL_CLOCK_DEFINITIONS.set(definitions)
+            try:
+                yield authority_now
+            finally:
+                SQL_CLOCK_DEFINITIONS.reset(definitions_token)
+                SQL_CLOCKS_CONTROLLED.reset(token)
+        finally:
+            for signature, original in reversed(originals):
+                owner.execute(original.encode())
+                assert owner.execute(
+                    "SELECT pg_get_functiondef(%s::regprocedure)",
+                    [f"clinic_app.{signature}"],
+                ).fetchone() == (original,)

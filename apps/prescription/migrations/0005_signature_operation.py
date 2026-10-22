@@ -7,6 +7,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.tenancy.migration_operations import AddConstraint
+
 
 class Migration(migrations.Migration):
     """Keep signing state separate from the immutable rendered artifact."""
@@ -142,7 +144,7 @@ class Migration(migrations.Migration):
                 ),
             ],
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.UniqueConstraint(
                 fields=("document",),
@@ -150,7 +152,7 @@ class Migration(migrations.Migration):
                 name="prescription_signature_live_unique",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.UniqueConstraint(
                 fields=("provider", "operation_id"),
@@ -158,7 +160,7 @@ class Migration(migrations.Migration):
                 name="prescription_signature_operation_id_unique",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.CheckConstraint(
                 condition=models.Q(
@@ -174,14 +176,14 @@ class Migration(migrations.Migration):
                 name="prescription_signature_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.CheckConstraint(
                 condition=models.Q(content_digest__regex="^[0-9a-f]{64}$"),
                 name="prescription_signature_content_digest",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.CheckConstraint(
                 condition=models.Q(signed_digest__regex="^[0-9a-f]{64}$")
@@ -189,7 +191,7 @@ class Migration(migrations.Migration):
                 name="prescription_signature_signed_digest",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.CheckConstraint(
                 condition=(
@@ -204,7 +206,7 @@ class Migration(migrations.Migration):
                 name="prescription_signature_issued_fields",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.CheckConstraint(
                 condition=(
@@ -214,7 +216,7 @@ class Migration(migrations.Migration):
                 name="prescription_signature_failed_fields",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signatureoperation",
             constraint=models.CheckConstraint(
                 condition=(
@@ -225,14 +227,14 @@ class Migration(migrations.Migration):
                 name="prescription_signature_operation_id_state",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signaturecallback",
             constraint=models.UniqueConstraint(
                 fields=("operation", "event_id"),
                 name="prescription_signature_callback_event_unique",
             ),
         ),
-        migrations.AddConstraint(
+        AddConstraint(
             model_name="signaturecallback",
             constraint=models.CheckConstraint(
                 condition=~models.Q(event_id=""),

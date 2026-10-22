@@ -421,6 +421,7 @@ def _read_probe(path: Path) -> KeyProbe:
         "patient_name",
         "patient_session_id",
         "physician_id",
+        "result_version_id",
         "version_id",
     }
     if (

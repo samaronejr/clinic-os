@@ -1,0 +1,2223 @@
+"""Todo 17: demographics versions, blind-indexed identifiers and history.
+
+Covers the plan's acceptance rows: strict CPF check-digit rejection,
+blind-index exact search with org isolation, append-only version history
+with ``demographics_stale`` conflicts enforced in the database for every
+identity table, permission-scoped access (finance gets only the billing
+read), registration without invented values, deliberate 'unknown/declined'
+answers, the clinic-required-field policy as clinic configuration, the
+staff edit surface and patient-reported carry-forward.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import importlib
+import os
+from datetime import date
+from typing import TYPE_CHECKING, Any
+from uuid import UUID, uuid4
+
+import psycopg
+import pytest
+from apps.identity.models import User, UserClinicRole
+from apps.intake.demographics import DemographicsProfile
+from apps.intake.models import (
+    DemographicsCorrection,
+    EmergencyContact,
+    Patient,
+    PatientAddress,
+    PatientClinicEnrollment,
+    PatientDemographics,
+    PatientIdentifier,
+)
+from apps.intake.patient_access import patient_session_context, redeem_invitation
+from apps.intake.patient_creation import PatientRegistration
+from apps.intake.patient_name_index import name_indexes
+from apps.tenancy.db import tenant_context
+from apps.tenancy.envelope import (
+    VersionedBlindIndex,
+    _kek,
+    blind_indexes_with_versions,
+    protect,
+)
+from django.contrib.auth.hashers import make_password
+from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.db.migrations import RunPython
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.translation import gettext
+from psycopg import sql
+from psycopg.errors import CheckViolation, InsufficientPrivilege
+
+from accessible_document import Document
+from database_urls import database_url_for_name
+from identity.permission_support import owner_context, permission_context
+from patient_http_support import receptionist_client, verified_physician_client
+from patient_service_support import runtime_role
+from tenant_probe_support import assert_no_cross_tenant_rows
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
+    from typing import LiteralString
+
+    from django.test import Client
+
+    from conftest import RbacGraph
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+_SEED_ERROR = "seed must be nine digits"
+
+
+def _cpf_for(seed: str) -> str:
+    """Return a mod-11-valid CPF for nine arbitrary digits."""
+    if len(seed) != 9 or not seed.isdigit():
+        raise AssertionError(_SEED_ERROR)
+    first = sum(int(seed[i]) * (10 - i) for i in range(9)) % 11
+    d1 = 0 if first < 2 else 11 - first
+    second = (sum(int(seed[i]) * (11 - i) for i in range(9)) + d1 * 2) % 11
+    d2 = 0 if second < 2 else 11 - second
+    return f"{seed}{d1}{d2}"
+
+
+_CPF_A = _cpf_for("529982247")
+_CPF_B = _cpf_for("390533447")
+
+
+def _services() -> ModuleType:
+    return importlib.import_module("apps.intake.services")
+
+
+def _register(
+    services: ModuleType, graph: RbacGraph, **overrides: object
+) -> PatientRegistration:
+    """Create one patient in clinic A with deterministic defaults."""
+    kwargs: dict[str, object] = {
+        "clinic_id": graph.clinic_a,
+        "full_name": "Paciente Sintetico",
+        "birth_date": date(1990, 5, 17),
+        "idempotency_key": uuid4(),
+    }
+    kwargs.update(overrides)
+    result = services.create_patient(**kwargs)
+    assert isinstance(result, PatientRegistration)
+    return result
+
+
+def _digests_for(organization_id: UUID) -> tuple[VersionedBlindIndex, ...]:
+    """Return blind indexes for ``_CPF_A`` under one tenant's DEK."""
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(organization_id)],
+        )
+        return blind_indexes_with_versions(
+            purpose="intake.patientidentifier.value",
+            plaintext=f"cpf:{_CPF_A}".encode(),
+        )
+
+
+def _set_local(connection_: psycopg.Connection, value: str) -> None:
+    connection_.execute(
+        "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+        (value,),
+    )
+
+
+def _org_b_patient(graph: RbacGraph) -> Patient:
+    """Seed one org-B patient directly (org A has no org-B manager role)."""
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(graph.organization_b)],
+        )
+        patient = Patient.objects.create(
+            organization_id=graph.organization_b,
+            full_name="Org B Paciente",
+            birth_date=date(1985, 3, 3),
+        )
+        PatientClinicEnrollment.objects.create(
+            organization_id=graph.organization_b,
+            clinic_id=graph.clinic_c,
+            patient_id=patient.pk,
+            idempotency_key=uuid4(),
+            create_fingerprint=b"\x00" * 32,
+        )
+        return patient
+
+
+APPEND_ONLY = "patient identity history is append-only"
+
+
+def _role_user(graph: RbacGraph, role: UserClinicRole.Role) -> UUID:
+    """Create one user holding ``role`` on clinic A (seeded as owner)."""
+    user = User.objects.create(
+        username=f"todo17-{role}-{uuid4().hex}",
+        password=make_password("todo17-role-credential"),
+    )
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(graph.organization_a)],
+        )
+        UserClinicRole.objects.create(
+            organization_id=graph.organization_a,
+            clinic_id=graph.clinic_a,
+            user_id=user.pk,
+            role=role,
+        )
+    return user.pk
+
+
+@contextlib.contextmanager
+def _database(url_variable: str, organization_id: UUID) -> Iterator[psycopg.Cursor]:
+    """Open one raw autocommit connection bound to the organization.
+
+    Session scope (is_local=false) survives each autocommit statement.
+    """
+    url = database_url_for_name(
+        os.environ[url_variable], str(connection.settings_dict["NAME"])
+    )
+    with psycopg.connect(url, autocommit=True) as raw, raw.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, false)",
+            [str(organization_id)],
+        )
+        yield cursor
+
+
+def test_cpf_check_digits_enforced_and_identifier_masked(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        with pytest.raises(services.DemographicsInputError):
+            services.add_identifier(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                kind="cpf",
+                value="111.111.111-11",
+            )
+        with pytest.raises(services.DemographicsInputError):
+            services.add_identifier(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                kind="cpf",
+                value="123.456.789-00",
+            )
+        outcome = services.add_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="cpf",
+            value="529.982.247-25",
+        )
+        assert outcome.matching_enrollment_id is None
+        profile = services.demographics_profile(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+        )
+        assert len(profile.identifiers) == 1
+        assert profile.identifiers[0].kind == "cpf"
+        assert profile.identifiers[0].masked_value.endswith("4725")
+        assert _CPF_A not in profile.identifiers[0].masked_value
+        stored = PatientIdentifier.objects.get(pk=outcome.identifier_id)
+        assert stored.value == _CPF_A
+        assert len(stored.blind_index) == 32
+
+
+def test_identifier_blind_index_exact_search_and_cross_tenant_isolation(
+    tenant_probe_pair: RbacGraph,
+) -> None:
+    services = _services()
+    graph = tenant_probe_pair
+    org_b_patient = _org_b_patient(graph)
+    with (
+        runtime_role(),
+        tenant_context(graph.shared_user, graph.organization_a),
+    ):
+        registration = _register(services, graph)
+        services.add_identifier(
+            clinic_id=graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="cpf",
+            value=_CPF_A,
+        )
+        page = services.search_patient_identifiers(
+            clinic_id=graph.clinic_a, kind="cpf", value=_CPF_A
+        )
+        assert [item.enrollment_id for item in page.items] == [
+            registration.enrollment.pk
+        ]
+        assert page.items[0].display_name == registration.patient.full_name
+        # Formatted vs bare digits normalize to the same digest.
+        formatted = services.search_patient_identifiers(
+            clinic_id=graph.clinic_a,
+            kind="cpf",
+            value="529.982.247-25",
+        )
+        assert [item.enrollment_id for item in formatted.items] == [
+            registration.enrollment.pk
+        ]
+        no_match = services.search_patient_identifiers(
+            clinic_id=graph.clinic_a, kind="cpf", value=_CPF_B
+        )
+        assert no_match.items == ()
+
+    # Seed an org-B identifier row for the same CPF through the same
+    # wrapper: the org-B DEK must produce a different digest, so the same
+    # document in another organization can never collide on the index.
+    digests_a = _digests_for(graph.organization_a)
+    digests_b = _digests_for(graph.organization_b)
+    assert digests_a
+    assert digests_b
+    assert digests_a[-1].blind_index != digests_b[-1].blind_index
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(graph.organization_b)],
+        )
+        PatientIdentifier.objects.create(
+            organization_id=graph.organization_b,
+            patient_id=org_b_patient.pk,
+            clinic_id=graph.clinic_c,
+            kind="cpf",
+            value=_CPF_A,
+            blind_index=digests_b[-1].blind_index,
+            index_key_version=digests_b[-1].key_version,
+        )
+    with (
+        runtime_role(),
+        tenant_context(graph.shared_user, graph.organization_b),
+    ):
+        org_b_page = services.search_patient_identifiers(
+            clinic_id=graph.clinic_c, kind="cpf", value=_CPF_A
+        )
+        assert [item.enrollment_id for item in org_b_page.items] != []
+        assert all(
+            item.enrollment_id != registration.enrollment.pk
+            for item in org_b_page.items
+        )
+    assert_no_cross_tenant_rows(graph, PatientIdentifier)
+
+
+def test_demographics_versions_conflict_receipts_and_immutability(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        first = services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={"legal_name": "Paciente Sintetico", "social_name": "Cina"},
+            reason="registration intake",
+        )
+        assert first.version == 1
+        registration.patient.refresh_from_db()
+        assert registration.patient.full_name == "Paciente Sintetico"
+        with pytest.raises(services.DemographicsStaleError) as conflict:
+            services.update_demographics(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                expected_version=0,
+                changes={"social_name": "Outra"},
+                reason="stale write",
+            )
+        assert str(conflict.value) == "demographics_stale"
+        second = services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=1,
+            changes={"social_name": "Cina B"},
+            reason="patient asked to correct",
+        )
+        assert second.version == 2
+        receipts = list(
+            DemographicsCorrection.objects.filter(
+                organization_id=rbac_graph.organization_a,
+                patient_id=registration.patient.pk,
+            ).order_by("demographics__version")
+        )
+        assert [receipt.demographics.version for receipt in receipts] == [1, 2]
+        assert receipts[0].previous is None
+        assert receipts[1].previous is not None
+        assert receipts[1].previous.pk == first.pk
+        assert receipts[1].changed_fields == ["social_name"]
+        assert receipts[1].reason == "patient asked to correct"
+        # clinic_app holds no UPDATE/DELETE grant on the append-only
+        # tables; prove it on a raw runtime-role connection.
+        app_url = database_url_for_name(
+            os.environ["APP_DATABASE_URL"],
+            str(connection.settings_dict["NAME"]),
+        )
+        with psycopg.connect(app_url) as app_connection:
+            _set_local(app_connection, str(rbac_graph.organization_a))
+            with pytest.raises(InsufficientPrivilege):
+                app_connection.execute(
+                    "UPDATE clinic_app.intake_patientdemographics "
+                    "SET version = 99 WHERE id = %s",
+                    (str(first.pk),),
+                )
+            app_connection.rollback()
+            _set_local(app_connection, str(rbac_graph.organization_a))
+            with pytest.raises(InsufficientPrivilege):
+                app_connection.execute(
+                    "DELETE FROM clinic_app.intake_demographicscorrection "
+                    "WHERE id = %s",
+                    (str(receipts[0].pk),),
+                )
+            app_connection.rollback()
+
+    # The owner role still hits the immutability trigger, so even a
+    # migration-time grant creep cannot rewrite history silently. Session
+    # scope (is_local=false) survives autocommit statements.
+    owner_url = database_url_for_name(
+        os.environ["MIGRATION_DATABASE_URL"],
+        str(connection.settings_dict["NAME"]),
+    )
+    with (
+        psycopg.connect(owner_url, autocommit=True) as owner,
+        owner.cursor() as cursor,
+    ):
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, false)",
+            [str(rbac_graph.organization_a)],
+        )
+        cursor.execute(
+            "SELECT count(*) FROM clinic_app.intake_patientdemographics WHERE id = %s",
+            [str(first.pk)],
+        )
+        assert cursor.fetchone() == (1,), "row not visible to owner"
+        with pytest.raises(psycopg.errors.CheckViolation) as owner_error:
+            cursor.execute(
+                "UPDATE clinic_app.intake_patientdemographics "
+                "SET version = 99 WHERE id = %s",
+                [str(first.pk)],
+            )
+        assert owner_error.value.diag.message_primary == APPEND_ONLY
+        with pytest.raises(psycopg.errors.CheckViolation) as delete_error:
+            cursor.execute(
+                "DELETE FROM clinic_app.intake_demographicscorrection WHERE id = %s",
+                [str(receipts[0].pk)],
+            )
+        assert delete_error.value.diag.message_primary == APPEND_ONLY
+
+
+def test_duplicate_identifier_warns_but_never_blocks(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        first_registration = _register(
+            services, rbac_graph, full_name="Primeira Pessoa"
+        )
+        second_registration = _register(
+            services, rbac_graph, full_name="Segunda Pessoa"
+        )
+        services.add_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=first_registration.enrollment.pk,
+            kind="cpf",
+            value=_CPF_A,
+        )
+        outcome = services.add_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=second_registration.enrollment.pk,
+            kind="cpf",
+            value=_CPF_A,
+        )
+        assert outcome.matching_enrollment_id == first_registration.enrollment.pk
+        both = services.search_patient_identifiers(
+            clinic_id=rbac_graph.clinic_a, kind="cpf", value=_CPF_A
+        )
+        assert {item.enrollment_id for item in both.items} == {
+            first_registration.enrollment.pk,
+            second_registration.enrollment.pk,
+        }
+        # Same patient + same kind is still a conflict, never a second row.
+        with pytest.raises(services.IdentifierConflictError):
+            services.add_identifier(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=second_registration.enrollment.pk,
+                kind="cpf",
+                value=_CPF_B,
+            )
+
+
+def test_identifier_retire_releases_the_slot_and_search(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        outcome = services.add_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="rg",
+            value="MG-12.345.678",
+        )
+        identifier = PatientIdentifier.objects.get(pk=outcome.identifier_id)
+        with pytest.raises(services.DemographicsStaleError):
+            services.retire_identifier(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                kind="rg",
+                expected_version=identifier.version + 9,
+            )
+        retired = services.retire_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="rg",
+            expected_version=identifier.version,
+        )
+        assert retired.retired_at is not None
+        assert retired.version == identifier.version + 1
+        # The retired value stays on record: retirement appends a version.
+        assert PatientIdentifier.objects.get(pk=identifier.pk).retired_at is None
+        gone = services.search_patient_identifiers(
+            clinic_id=rbac_graph.clinic_a, kind="rg", value="MG-12.345.678"
+        )
+        assert gone.items == ()
+        re_added = services.add_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="rg",
+            value="SP-987654",
+        )
+        re_added_row = PatientIdentifier.objects.get(pk=re_added.identifier_id)
+        assert re_added_row.retired_at is None
+        assert re_added_row.version == retired.version + 1
+        assert [
+            row.value
+            for row in PatientIdentifier.objects.filter(
+                patient_id=registration.patient.pk, kind="rg"
+            ).order_by("version")
+        ] == ["mg12345678", "mg12345678", "sp987654"]
+
+
+def test_finance_billing_read_is_minimal_and_write_denied(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    finance = User.objects.create(
+        username=f"todo17-finance-{uuid4().hex}",
+        password=make_password("todo17-finance-credential"),
+    )
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.organization_a)],
+        )
+        UserClinicRole.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_a,
+            user_id=finance.pk,
+            role=UserClinicRole.Role.FINANCE,
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={"legal_name": "Paciente Sintetico", "language": "pt-BR"},
+            reason="registration intake",
+        )
+        services.save_insurance_membership(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            sequence=1,
+            expected_version=0,
+            membership={
+                "payer_name": "Plano Sintetico",
+                "membership_number": "9988",
+                "valid_until": date(2030, 12, 31),
+            },
+        )
+    with (
+        runtime_role(),
+        tenant_context(finance.pk, rbac_graph.organization_a),
+    ):
+        billing = services.billing_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+        )
+        assert billing.patient_id == registration.patient.pk
+        assert billing.birth_date == date(1990, 5, 17)
+        assert billing.memberships[0].payer_name == "Plano Sintetico"
+        assert billing.memberships[0].valid_until == date(2030, 12, 31)
+        with pytest.raises(services.PatientAccessDeniedError):
+            services.update_demographics(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                expected_version=1,
+                changes={"occupation": "analista"},
+                reason="finance should not write",
+            )
+        with pytest.raises(services.PatientAccessDeniedError):
+            services.demographics_profile(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+            )
+        with pytest.raises(services.PatientAccessDeniedError):
+            services.search_patient_identifiers(
+                clinic_id=rbac_graph.clinic_a, kind="cpf", value=_CPF_A
+            )
+
+
+def test_clinic_policy_requires_fields_and_sentinels_satisfy(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        # shared_user is receptionist: clinic configuration is not theirs.
+        with pytest.raises(services.PatientAccessDeniedError):
+            services.set_intake_policy(
+                clinic_id=rbac_graph.clinic_a, required_fields=["social_name"]
+            )
+    org_admin = User.objects.create(
+        username=f"todo17-admin-{uuid4().hex}",
+        password=make_password("todo17-admin-credential"),
+    )
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.organization_a)],
+        )
+        UserClinicRole.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_a,
+            user_id=org_admin.pk,
+            role=UserClinicRole.Role.CLINIC_ADMIN,
+        )
+    with (
+        runtime_role(),
+        tenant_context(org_admin.pk, rbac_graph.organization_a),
+    ):
+        policy = services.set_intake_policy(
+            clinic_id=rbac_graph.clinic_a, required_fields=["social_name"]
+        )
+        assert policy.version == 1
+        assert policy.required_fields == ["social_name"]
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        with pytest.raises(services.DemographicsRequiredError):
+            services.update_demographics(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                expected_version=0,
+                changes={"occupation": "dev"},
+                reason="missing required",
+            )
+        # A deliberate non-answer satisfies the requirement; nothing is
+        # invented and the stored value stays empty.
+        saved = services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={"occupation": "dev"},
+            unknown={"social_name": "declined"},
+            reason="patient declined to give a social name",
+        )
+        stored = PatientDemographics.objects.get(pk=saved.pk)
+        assert stored.social_name == ""
+        assert stored.unknown_fields == {"social_name": "declined"}
+        # Recording the value later clears the non-answer.
+        later = services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=1,
+            changes={"social_name": "Nome Social"},
+            reason="patient informed it",
+        )
+        stored = PatientDemographics.objects.get(pk=later.pk)
+        assert stored.social_name == "Nome Social"
+        assert stored.unknown_fields is None
+        # A value and a reason for the same field are contradictory.
+        with pytest.raises(services.DemographicsInputError):
+            services.update_demographics(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                expected_version=2,
+                changes={"pronouns": "ela/dela"},
+                unknown={"pronouns": "not_informed"},
+                reason="",
+            )
+
+
+def test_carry_forward_marks_patient_reported_unverified(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        invitation = services.issue_invitation(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+        )
+    # Templates publish under a clinic admin role, matching the real flow.
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(rbac_graph.organization_a)],
+        )
+        UserClinicRole.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_a,
+            user_id=rbac_graph.clinic_admin,
+            role=UserClinicRole.Role.CLINIC_ADMIN,
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.clinic_admin, rbac_graph.organization_a),
+    ):
+        template = services.publish_template(
+            clinic_id=rbac_graph.clinic_a,
+            key="intake",
+            title="Intake",
+            questions=[
+                {
+                    "id": "q_social_name",
+                    "label": "Nome social",
+                    "type": "text",
+                    "required": True,
+                    "max_length": 160,
+                    "options": [],
+                },
+                {
+                    "id": "q_notes",
+                    "label": "Observacoes",
+                    "type": "text",
+                    "required": False,
+                    "max_length": 160,
+                    "options": [],
+                },
+            ],
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        response = services.assign_questionnaire(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            template_id=template.pk,
+        )
+    with runtime_role():
+        session = redeem_invitation(rbac_graph.clinic_a, invitation.secret)
+    assert session is not None
+    with runtime_role(), patient_session_context(session):
+        submitted = services.submit_intake(
+            response_id=response.pk,
+            answers={
+                "q_social_name": "Nome Social",
+                "q_notes": "not a demographic field",
+            },
+            expected_revision=1,
+        )
+        assert submitted.state == "submitted"
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        # Reception can write demographics but cannot read the patient
+        # questionnaire itself; nothing carries for them.
+        assert (
+            services.carry_forward_demographics(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                reason="carried from submitted questionnaire",
+            ).version
+            is None
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        carried = services.carry_forward_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            reason="carried from submitted questionnaire",
+        ).version
+        assert carried is not None
+        assert carried.source == "patient_reported"
+        assert carried.social_name == "Nome Social"
+        profile = services.demographics_profile(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+        )
+        assert profile.source == "patient_reported"
+        assert profile.corrections[0].source == "patient_reported"
+
+
+def test_name_search_folds_diacritics_and_prefers_social_name(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=_register(
+                services, rbac_graph, full_name="Joao da Silva"
+            ).enrollment.pk,
+            expected_version=0,
+            changes={"legal_name": "Joao da Silva"},
+            reason="registration intake",
+        )
+        registration = _register(services, rbac_graph, full_name="João Gonçalves")
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={
+                "legal_name": "João Gonçalves",
+                "social_name": "Joana Gonçalves",
+            },
+            reason="registration intake",
+        )
+        folded = services.search_patients(
+            clinic_id=rbac_graph.clinic_a, query="joao goncalves", page=1
+        )
+        assert [item.enrollment_id for item in folded.items] == [
+            registration.enrollment.pk
+        ]
+        assert folded.items[0].display_name == "Joana Gonçalves"
+        # The social name is searchable too, with the same fold.
+        by_social = services.search_patients(
+            clinic_id=rbac_graph.clinic_a, query="joana goncalves", page=1
+        )
+        assert [item.enrollment_id for item in by_social.items] == [
+            registration.enrollment.pk
+        ]
+        accented = services.search_patients(
+            clinic_id=rbac_graph.clinic_a, query="João Gonçalves", page=1
+        )
+        assert [item.enrollment_id for item in accented.items] == [
+            registration.enrollment.pk
+        ]
+
+
+@pytest.mark.parametrize("function", ["count", "page"])
+def test_registry_sql_denies_a_retained_revoked_manager(
+    rbac_graph: RbacGraph, function: str
+) -> None:
+    graph = rbac_graph
+    services = _services()
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        registration = _register(services, graph, full_name="João Gonçalves")
+        services.update_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={
+                "legal_name": "João Gonçalves",
+                "social_name": "Joana Gonçalves",
+            },
+            reason="registration intake",
+        )
+        kek = _kek()
+    parameters: list[str | UUID | int | None] = [
+        kek,
+        graph.clinic_a,
+        "joana goncalves",
+        None,
+    ]
+    if function == "page":
+        parameters.extend([0, 25])
+    statement = sql.SQL("SELECT * FROM clinic_app.{}({})").format(
+        sql.Identifier(f"patient_registry_{function}"),
+        sql.SQL(", ").join(sql.Placeholder() for _ in parameters),
+    )
+    with permission_context(graph, graph.shared_user), connection.cursor() as cursor:
+        cursor.execute(statement, parameters)
+        rows = cursor.fetchall()
+        if function == "count":
+            assert rows == [(1,)]
+        else:
+            assert rows == [
+                (
+                    registration.enrollment.pk,
+                    "João Gonçalves",
+                    date(1990, 5, 17),
+                    "Joana Gonçalves",
+                )
+            ]
+    with owner_context(graph.organization_a):
+        membership = UserClinicRole.objects.get(
+            clinic_id=graph.clinic_a, user_id=graph.shared_user
+        )
+        assert (
+            UserClinicRole.objects.filter(pk=membership.pk).update(
+                revoked_at=timezone.now()
+            )
+            == 1
+        )
+        assert UserClinicRole.all_objects.get(pk=membership.pk).revoked_at is not None
+    # Bind stale GUCs directly: neither Python authorization nor tenant entry
+    # can hide a missing current-membership check in the registry function.
+    with permission_context(graph, graph.shared_user), connection.cursor() as cursor:
+        with pytest.raises(
+            DatabaseError, match="clinic manager authority is required"
+        ) as raised:
+            cursor.execute(statement, parameters)
+        assert isinstance(raised.value.__cause__, InsufficientPrivilege)
+        assert raised.value.__cause__.sqlstate == "42501"
+
+
+def test_addresses_contacts_memberships_version_and_retire(
+    rbac_graph: RbacGraph,
+) -> None:
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        address = services.save_patient_address(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="home",
+            expected_version=0,
+            address={
+                "postal_code": "01310-100",
+                "street": "Av. Paulista",
+                "street_number": "1000",
+                "district": "Bela Vista",
+                "city": "São Paulo",
+                "state_code": "SP",
+            },
+        )
+        assert address.version == 1
+        with pytest.raises(services.DemographicsInputError):
+            services.save_patient_address(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                kind="work",
+                expected_version=0,
+                address={"postal_code": "123", "state_code": "SP"},
+            )
+        contact = services.save_emergency_contact(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            sequence=1,
+            expected_version=0,
+            contact={
+                "name": "Contato Emergencia",
+                "relationship": "irma",
+                "phone": "+55 (11) 98888-7777",
+            },
+        )
+        assert contact.phone == "+5511988887777"
+        with pytest.raises(services.DemographicsStaleError):
+            services.save_emergency_contact(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                sequence=1,
+                expected_version=0,
+                contact={"name": "Outro", "phone": "+5511999990000"},
+            )
+        profile = services.demographics_profile(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+        )
+        assert profile.addresses[0].postal_code == "01310100"
+        assert profile.emergency_contacts[0].phone == "+5511988887777"
+        retired = services.save_patient_address(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="home",
+            expected_version=1,
+            address=None,
+        )
+        assert retired.retired_at is not None
+        assert retired.version == 2
+        profile = services.demographics_profile(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+        )
+        assert profile.addresses == ()
+        assert "home" in profile.free_address_kinds
+        # Replaced values stay on record as earlier versions.
+        history = list(
+            PatientAddress.objects.filter(
+                patient_id=registration.patient.pk, kind="home"
+            ).order_by("version")
+        )
+        assert [
+            (row.version, row.street, row.retired_at is None) for row in history
+        ] == [
+            (1, "Av. Paulista", True),
+            (2, "", False),
+        ]
+        # Editing a current row appends the next version; 0 re-creates.
+        replaced = services.save_emergency_contact(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            sequence=1,
+            expected_version=1,
+            contact={"name": "Contato Novo", "phone": "11977776666"},
+        )
+        assert replaced.version == 2
+        assert [
+            row.name
+            for row in EmergencyContact.objects.filter(
+                patient_id=registration.patient.pk
+            ).order_by("version")
+        ] == ["Contato Emergencia", "Contato Novo"]
+        re_created = services.save_patient_address(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            kind="home",
+            expected_version=0,
+            address={"city": "Campinas", "state_code": "sp"},
+        )
+        assert (re_created.version, re_created.state_code) == (3, "SP")
+
+
+def test_new_tables_isolate_tenants(tenant_probe_pair: RbacGraph) -> None:
+    services = _services()
+    graph = tenant_probe_pair
+    org_b_patient = _org_b_patient(graph)
+    with transaction.atomic(), connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+            [str(graph.organization_b)],
+        )
+        org_b_version = PatientDemographics.objects.create(
+            organization_id=graph.organization_b,
+            patient_id=org_b_patient.pk,
+            clinic_id=graph.clinic_c,
+            enrollment_id=PatientClinicEnrollment.objects.get(
+                organization_id=graph.organization_b,
+                patient_id=org_b_patient.pk,
+            ).pk,
+            version=1,
+            legal_name="Org B Paciente",
+        )
+        DemographicsCorrection.objects.create(
+            organization_id=graph.organization_b,
+            clinic_id=graph.clinic_c,
+            patient_id=org_b_patient.pk,
+            demographics=org_b_version,
+            actor_id=graph.shared_user,
+            actor_label="org-b-seed",
+            changed_fields=["legal_name"],
+        )
+    with (
+        runtime_role(),
+        tenant_context(graph.shared_user, graph.organization_a),
+    ):
+        registration = _register(services, graph)
+        services.update_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=0,
+            changes={"legal_name": "Org A Paciente"},
+            reason="registration intake",
+        )
+    assert_no_cross_tenant_rows(graph, PatientDemographics)
+    assert_no_cross_tenant_rows(graph, DemographicsCorrection)
+
+
+# One harmless SET clause per identity table (receipts carry no version).
+_TAMPER_SET: dict[str, LiteralString] = {
+    "intake_patientdemographics": "version = 99",
+    "intake_demographicscorrection": "reason = NULL",
+    "intake_patientidentifier": "version = 99",
+    "intake_patientaddress": "version = 99",
+    "intake_emergencycontact": "version = 99",
+    "intake_insurancemembership": "version = 99",
+    "intake_clinicintakepolicy": "version = 99",
+}
+
+
+def test_identity_tables_refuse_raw_tampering(rbac_graph: RbacGraph) -> None:
+    """SC-2/SC-5: history transitions are enforced by the database itself.
+
+    The runtime role cannot rewrite or delete any identity row; the owner
+    role hits the append-only trigger; versions must be dense; retirements
+    need an active version; every demographics version needs a receipt that
+    names the version it superseded; the registry row changes only with a
+    new demographics version in the same transaction.
+    """
+    services = _services()
+    organization = rbac_graph.organization_a
+    clinic = rbac_graph.clinic_a
+    with runtime_role(), tenant_context(rbac_graph.shared_user, organization):
+        registration = _register(services, rbac_graph)
+        enrollment = registration.enrollment.pk
+        first = services.update_demographics(
+            clinic_id=clinic,
+            enrollment_id=enrollment,
+            expected_version=0,
+            changes={"social_name": "Social Um"},
+            reason="",
+        )
+        rows = {
+            "intake_patientdemographics": first.pk,
+            "intake_patientidentifier": services.add_identifier(
+                clinic_id=clinic, enrollment_id=enrollment, kind="cpf", value=_CPF_A
+            ).identifier_id,
+            "intake_patientaddress": services.save_patient_address(
+                clinic_id=clinic,
+                enrollment_id=enrollment,
+                kind="home",
+                expected_version=0,
+                address={"city": "Recife", "state_code": "PE"},
+            ).pk,
+            "intake_emergencycontact": services.save_emergency_contact(
+                clinic_id=clinic,
+                enrollment_id=enrollment,
+                sequence=1,
+                expected_version=0,
+                contact={"name": "Contato", "phone": "81988887777"},
+            ).pk,
+            "intake_insurancemembership": services.save_insurance_membership(
+                clinic_id=clinic,
+                enrollment_id=enrollment,
+                sequence=1,
+                expected_version=0,
+                membership={"payer_name": "Operadora"},
+            ).pk,
+            "intake_demographicscorrection": DemographicsCorrection.objects.get(
+                demographics_id=first.pk
+            ).pk,
+        }
+    manager = _role_user(rbac_graph, UserClinicRole.Role.CLINIC_MANAGER)
+    with runtime_role(), tenant_context(manager, organization):
+        rows["intake_clinicintakepolicy"] = services.set_intake_policy(
+            clinic_id=clinic, required_fields=[]
+        ).pk
+    assert set(rows) == set(_TAMPER_SET)
+    with _database("APP_DATABASE_URL", organization) as app:
+        for table, row_id in rows.items():
+            for statement in (
+                sql.SQL("UPDATE clinic_app.{} SET {} WHERE id = %s").format(
+                    sql.Identifier(table), sql.SQL(_TAMPER_SET[table])
+                ),
+                sql.SQL("DELETE FROM clinic_app.{} WHERE id = %s").format(
+                    sql.Identifier(table)
+                ),
+            ):
+                with pytest.raises(InsufficientPrivilege):
+                    app.execute(statement, [str(row_id)])
+        # The runtime role holds UPDATE on the registry name, but the guard
+        # admits it only together with a new demographics version.
+        with pytest.raises(CheckViolation) as mirror:
+            app.execute(
+                "UPDATE clinic_app.intake_patient SET full_name = full_name "
+                "WHERE id = %s",
+                [str(registration.patient.pk)],
+            )
+        assert mirror.value.diag.message_primary == (
+            "patient registry identity changes only with a demographics version"
+        )
+    with _database("MIGRATION_DATABASE_URL", organization) as owner:
+        for table, row_id in rows.items():
+            for statement in (
+                sql.SQL("UPDATE clinic_app.{} SET {} WHERE id = %s").format(
+                    sql.Identifier(table), sql.SQL(_TAMPER_SET[table])
+                ),
+                sql.SQL("DELETE FROM clinic_app.{} WHERE id = %s").format(
+                    sql.Identifier(table)
+                ),
+            ):
+                with pytest.raises(CheckViolation) as refused:
+                    owner.execute(statement, [str(row_id)])
+                assert refused.value.diag.message_primary == APPEND_ONLY
+        with pytest.raises(CheckViolation) as skipped:
+            owner.execute(
+                "INSERT INTO clinic_app.intake_patientaddress "
+                "(id, organization_id, patient_id, kind, version, created_at) "
+                "VALUES (gen_random_uuid(), %s, %s, 'home', 9, now())",
+                [str(organization), str(registration.patient.pk)],
+            )
+        assert skipped.value.diag.message_primary == (
+            "identity versions must follow the latest version"
+        )
+        with pytest.raises(CheckViolation) as orphan:
+            owner.execute(
+                "INSERT INTO clinic_app.intake_patientaddress "
+                "(id, organization_id, patient_id, kind, version, retired_at,"
+                " created_at) "
+                "VALUES (gen_random_uuid(), %s, %s, 'work', 1, now(), now())",
+                [str(organization), str(registration.patient.pk)],
+            )
+        assert orphan.value.diag.message_primary == (
+            "only an active identity version can be retired"
+        )
+
+    # Receipt binding: both planted versions are refused at the real commit.
+    def append_version(*, with_receipt: bool) -> None:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_catalog.set_config('app.current_tenant', %s, true)",
+                [str(organization)],
+            )
+            second = PatientDemographics.objects.create(
+                organization_id=organization,
+                patient_id=registration.patient.pk,
+                clinic_id=clinic,
+                enrollment_id=enrollment,
+                version=2,
+                social_name="Social Dois",
+            )
+            if with_receipt:
+                DemographicsCorrection.objects.create(
+                    organization_id=organization,
+                    clinic_id=clinic,
+                    patient_id=registration.patient.pk,
+                    demographics=second,
+                    previous=None,
+                    actor_id=rbac_graph.shared_user,
+                    actor_label="tamper",
+                    changed_fields=[],
+                )
+
+    with pytest.raises(IntegrityError) as missing_receipt:
+        append_version(with_receipt=False)
+    assert "needs its correction receipt" in str(missing_receipt.value)
+    with pytest.raises(IntegrityError) as wrong_previous:
+        append_version(with_receipt=True)
+    assert "must name the superseded version" in str(wrong_previous.value)
+
+
+def test_identifier_search_shows_the_current_name_after_corrections(
+    rbac_graph: RbacGraph,
+) -> None:
+    """B4: an exact document hit shows the latest version, never an old one."""
+    services = _services()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        enrollment = registration.enrollment.pk
+        services.add_identifier(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            kind="passport",
+            value="BR123456",
+        )
+        for version, social in enumerate(
+            ("Sintetico Antigo", "Sintetico Meio", "Sintetico Atual")
+        ):
+            services.update_demographics(
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=enrollment,
+                expected_version=version,
+                changes={"social_name": social},
+                reason="",
+            )
+        profile = services.demographics_profile(
+            clinic_id=rbac_graph.clinic_a, enrollment_id=enrollment
+        )
+        page = services.search_patient_identifiers(
+            clinic_id=rbac_graph.clinic_a, kind="passport", value="br 123456"
+        )
+        assert profile.version == 3
+        assert [item.display_name for item in page.items] == ["Sintetico Atual"]
+        assert page.items[0].display_name == profile.display_name
+        by_name = services.search_patients(
+            clinic_id=rbac_graph.clinic_a, query="Sintetico Atual", page=1
+        )
+        assert [item.display_name for item in by_name.items] == ["Sintetico Atual"]
+
+
+def test_registration_needs_only_a_name_and_records_non_answers(
+    rbac_graph: RbacGraph,
+) -> None:
+    """B2: no invented name or date; declined/unknown are real answers."""
+    services = _services()
+    organization = rbac_graph.organization_a
+    clinic = rbac_graph.clinic_a
+    with runtime_role(), tenant_context(rbac_graph.shared_user, organization):
+        outcome = services.register_patient(
+            clinic_id=clinic,
+            idempotency_key=uuid4(),
+            legal_name="",
+            social_name="Ariel Sintetica",
+            birth_date=None,
+            unknown={"legal_name": "declined", "birth_date": "not_informed"},
+        )
+        patient = Patient.objects.get(pk=outcome.registration.patient.pk)
+        assert patient.full_name == "Ariel Sintetica"
+        assert patient.birth_date is None
+        enrollment = outcome.registration.enrollment.pk
+        profile = services.demographics_profile(
+            clinic_id=clinic, enrollment_id=enrollment
+        )
+        assert profile.values["legal_name"] == ""
+        assert profile.birth_date is None
+        assert profile.unknown == {
+            "legal_name": "declined",
+            "birth_date": "not_informed",
+        }
+        declined = services.update_demographics(
+            clinic_id=clinic,
+            enrollment_id=enrollment,
+            expected_version=1,
+            changes={"sex_at_birth": "declined", "gender_identity": "declined"},
+            reason="patient preferred not to answer",
+        )
+        stored = PatientDemographics.objects.get(pk=declined.pk)
+        assert (stored.sex_at_birth, stored.gender_identity) == ("declined", "declined")
+        # A cleared legal name stays cleared: the registry follows the
+        # social name instead of silently keeping the old legal name.
+        services.update_demographics(
+            clinic_id=clinic,
+            enrollment_id=enrollment,
+            expected_version=2,
+            changes={"legal_name": "Ariel Civil", "birth_date": date(2001, 2, 3)},
+            reason="documents presented",
+        )
+        corrected = Patient.objects.get(pk=patient.pk)
+        assert (corrected.full_name, corrected.birth_date) == (
+            "Ariel Civil",
+            date(2001, 2, 3),
+        )
+        services.update_demographics(
+            clinic_id=clinic,
+            enrollment_id=enrollment,
+            expected_version=3,
+            changes={"legal_name": ""},
+            reason="legal name entered by mistake",
+        )
+        patient.refresh_from_db()
+        assert patient.full_name == "Ariel Sintetica"
+        with pytest.raises(services.DemographicsNameRequiredError):
+            services.update_demographics(
+                clinic_id=clinic,
+                enrollment_id=enrollment,
+                expected_version=4,
+                changes={"social_name": ""},
+                reason="",
+            )
+        with pytest.raises(services.DemographicsNameRequiredError):
+            services.register_patient(
+                clinic_id=clinic,
+                idempotency_key=uuid4(),
+                legal_name="",
+                social_name="",
+                birth_date=None,
+            )
+    admin = _role_user(rbac_graph, UserClinicRole.Role.CLINIC_ADMIN)
+    with runtime_role(), tenant_context(admin, organization):
+        services.set_intake_policy(
+            clinic_id=clinic, required_fields=["birth_date", "language"]
+        )
+        # Registration keeps its legacy authority: a clinic admin may
+        # register, and the policy applies to registration too.
+        with pytest.raises(services.DemographicsRequiredError):
+            services.register_patient(
+                clinic_id=clinic,
+                idempotency_key=uuid4(),
+                legal_name="Beatriz Sintetica",
+                social_name="",
+                birth_date=None,
+            )
+        registered = services.register_patient(
+            clinic_id=clinic,
+            idempotency_key=uuid4(),
+            legal_name="Beatriz Sintetica",
+            social_name="",
+            birth_date=None,
+            changes={"language": "Libras"},
+            unknown={"birth_date": "declined"},
+            identifier_kind="cpf",
+            identifier_value=_CPF_B,
+        )
+        assert registered.registration.patient.birth_date is None
+        assert registered.matching_enrollment_id is None
+
+
+@pytest.mark.parametrize(
+    ("role", "allowed"),
+    [
+        (UserClinicRole.Role.OWNER, True),
+        (UserClinicRole.Role.ORG_ADMIN, True),
+        (UserClinicRole.Role.CLINIC_ADMIN, True),
+        (UserClinicRole.Role.CLINIC_MANAGER, True),
+        (UserClinicRole.Role.FINANCE, True),
+        (UserClinicRole.Role.RECEPTIONIST, False),
+        (UserClinicRole.Role.SCHEDULER, False),
+        (UserClinicRole.Role.PHYSICIAN, False),
+        (UserClinicRole.Role.NURSE, False),
+        (UserClinicRole.Role.ALLIED_PROFESSIONAL, False),
+    ],
+)
+def test_intake_policy_is_clinic_configuration(
+    rbac_graph: RbacGraph, role: UserClinicRole.Role, allowed: bool
+) -> None:
+    """B8: RP Config/templates - manager/finance clinic, org admin org-wide."""
+    services = _services()
+    actor = _role_user(rbac_graph, role)
+    with runtime_role(), tenant_context(actor, rbac_graph.organization_a):
+        if allowed:
+            policy = services.set_intake_policy(
+                clinic_id=rbac_graph.clinic_a, required_fields=["language"]
+            )
+            assert policy.required_fields == ["language"]
+        else:
+            with pytest.raises(services.PatientAccessDeniedError):
+                services.set_intake_policy(
+                    clinic_id=rbac_graph.clinic_a, required_fields=["language"]
+                )
+
+
+def _page(client: Client, url: str, data: dict[str, str]) -> tuple[str, Document]:
+    with runtime_role():
+        response = client.post(url, data)
+    assert response.status_code == 200, response.status_code
+    return response.content.decode(), Document(response.content)
+
+
+def test_registry_uses_social_name_and_opens_profile_by_post(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The searched patient's primary identity and scoped correction action."""
+    client, receptionist = receptionist_client(rbac_graph)
+    with runtime_role(), tenant_context(receptionist.pk, rbac_graph.organization_a):
+        outcome = _services().register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            legal_name="Nome Civil Sintetico",
+            social_name="Nome Social Sintetico",
+            birth_date=None,
+            idempotency_key=uuid4(),
+        )
+    url = f"/intake/clinics/{rbac_graph.clinic_a}/patients/"
+    html, document = _page(client, url, {"q": "Nome Social Sintetico"})
+    row_name = html.partition('<th scope="row" role="rowheader">')[2].partition(
+        "</th>"
+    )[0]
+    assert row_name.strip().startswith("Nome Social Sintetico")
+    manage_url = reverse("intake:patient-demographics", args=(rbac_graph.clinic_a,))
+    profile_forms = [
+        attributes
+        for attributes in document.tagged("form")
+        if attributes.get("action") == manage_url
+    ]
+    assert len(profile_forms) == 1
+    assert profile_forms[0]["method"] == "post"
+    document.assert_every_form_is_post_with_csrf()
+    profile_html, profile_document = _page(
+        client,
+        manage_url,
+        {"action": "manage", "enrollment_id": str(outcome.registration.enrollment.pk)},
+    )
+    assert "Nome Social Sintetico" in profile_html
+    assert profile_document.attributes_for("id_legal_name")["value"] == (
+        "Nome Civil Sintetico"
+    )
+
+
+def test_registry_searches_exact_documents_from_the_post_body(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Exact identifier lookup uses the real registry form, never its URL."""
+    client, receptionist = receptionist_client(rbac_graph)
+    with runtime_role(), tenant_context(receptionist.pk, rbac_graph.organization_a):
+        outcome = _services().register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            legal_name="Registro Civil Sintetico",
+            social_name="Registro Social Sintetico",
+            birth_date=None,
+            idempotency_key=uuid4(),
+            identifier_kind="cpf",
+            identifier_value=_CPF_A,
+        )
+    url = f"/intake/clinics/{rbac_graph.clinic_a}/patients/"
+    with runtime_role():
+        result = client.post(
+            url, {"identifier_kind": "cpf", "identifier_value": _CPF_A}
+        )
+        blank = client.get(f"{url}?identifier_kind=cpf&identifier_value={_CPF_A}")
+    assert result.status_code == 200
+    assert [item.enrollment_id for item in result.context["results"].items] == [
+        outcome.registration.enrollment.pk
+    ]
+    assert result.wsgi_request.get_full_path() == url
+    assert blank.context["results"] is None
+    document = Document(result.content)
+    assert document.attributes_for("id_identifier_kind")["name"] == "identifier_kind"
+    assert document.attributes_for("id_identifier_value")["name"] == "identifier_value"
+    document.assert_descriptions_resolve()
+    document.assert_every_control_is_labelled()
+    document.assert_every_form_is_post_with_csrf()
+
+
+@pytest.mark.parametrize(
+    ("data", "field"),
+    [
+        ({"identifier_kind": "cpf"}, "identifier_value"),
+        ({"identifier_value": _CPF_A}, "identifier_kind"),
+        (
+            {"identifier_kind": "cpf", "identifier_value": "11111111111"},
+            "identifier_value",
+        ),
+        (
+            {"q": "Paciente", "identifier_kind": "cpf", "identifier_value": _CPF_A},
+            "__all__",
+        ),
+    ],
+)
+def test_registry_rejects_incomplete_invalid_or_ambiguous_document_search(
+    rbac_graph: RbacGraph, data: dict[str, str], field: str
+) -> None:
+    client, _ = receptionist_client(rbac_graph)
+    with runtime_role():
+        response = client.post(f"/intake/clinics/{rbac_graph.clinic_a}/patients/", data)
+    assert response.status_code == 200
+    assert response.context["results"] is None
+    assert field in response.context["form"].errors
+
+
+def test_exact_document_registry_search_preserves_manager_scope(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Adding exact search cannot broaden the existing registry authority."""
+    receptionist, _ = receptionist_client(rbac_graph)
+    physician = verified_physician_client(rbac_graph)
+    data = {"identifier_kind": "cpf", "identifier_value": _CPF_A}
+    with runtime_role():
+        denied = [
+            physician.post(f"/intake/clinics/{rbac_graph.clinic_a}/patients/", data),
+            receptionist.post(f"/intake/clinics/{rbac_graph.clinic_c}/patients/", data),
+            receptionist.post(f"/intake/clinics/{uuid4()}/patients/", data),
+        ]
+    assert {response.status_code for response in denied} == {404}
+
+
+def test_duplicate_registration_persists_patient_and_visible_warning(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The real redirect shows the warning without blocking registration."""
+    client, receptionist = receptionist_client(rbac_graph)
+    with runtime_role(), tenant_context(receptionist.pk, rbac_graph.organization_a):
+        _services().register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            legal_name="Primeiro Registro Sintetico",
+            social_name="",
+            birth_date=None,
+            idempotency_key=uuid4(),
+            identifier_kind="cpf",
+            identifier_value=_CPF_A,
+        )
+        before = PatientClinicEnrollment.objects.filter(
+            clinic_id=rbac_graph.clinic_a
+        ).count()
+    with runtime_role():
+        created = client.post(
+            f"/intake/clinics/{rbac_graph.clinic_a}/patients/new/",
+            {
+                "full_name": "Segundo Registro Sintetico",
+                "social_name": "Segundo Nome Social",
+                "birth_date": "",
+                "identifier_kind": "cpf",
+                "identifier_value": _CPF_A,
+                "idempotency_key": str(uuid4()),
+            },
+        )
+    assert created.status_code == 303
+    with runtime_role(), tenant_context(receptionist.pk, rbac_graph.organization_a):
+        assert (
+            PatientClinicEnrollment.objects.filter(
+                clinic_id=rbac_graph.clinic_a
+            ).count()
+            == before + 1
+        )
+    with runtime_role():
+        landed = client.get(created.headers["Location"])
+        refreshed = client.get(created.headers["Location"])
+    assert landed.status_code == 200
+    assert Document(landed.content).attributes_for("intake-duplicate")["role"] == (
+        "status"
+    )
+    assert "intake-duplicate" not in Document(refreshed.content).identifiers()
+
+
+def test_finance_surface_renders_only_the_permitted_identity(
+    rbac_graph: RbacGraph,
+) -> None:
+    client, receptionist = receptionist_client(rbac_graph)
+    with runtime_role(), tenant_context(receptionist.pk, rbac_graph.organization_a):
+        outcome = _services().register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            legal_name="Nome Civil Financeiro Sintetico",
+            social_name="Nome Social Financeiro Sintetico",
+            birth_date=None,
+            idempotency_key=uuid4(),
+        )
+    finance = _role_user(rbac_graph, UserClinicRole.Role.FINANCE)
+    finance_user = User.objects.get(pk=finance)
+    credential = str(uuid4())
+    finance_user.set_password(credential)
+    finance_user.save(update_fields=["password"])
+    url = reverse("intake:patient-demographics", args=(rbac_graph.clinic_a,))
+    data = {
+        "action": "manage",
+        "enrollment_id": str(outcome.registration.enrollment.pk),
+    }
+    with runtime_role():
+        assert client.login(username=finance_user.username, password=credential)
+        response = client.post(url, data)
+        refused = client.post(url, data | {"action": "save", "expected_version": "1"})
+    assert response.status_code == 200
+    assert "Nome Social Financeiro Sintetico" in response.content.decode()
+    document = Document(response.content)
+    assert "id_legal_name" not in document.identifiers()
+    assert document.tagged("form") == []
+    assert refused.status_code == 404
+
+
+def test_staff_surface_edits_every_section_in_pt_br(rbac_graph: RbacGraph) -> None:
+    """B3/B6/B7: legal name, birth date, addresses, contacts and plans are
+    editable through the real views; every label and choice is translated;
+    both scrollable tables are named, keyboard-focusable regions."""
+    client, receptionist = receptionist_client(rbac_graph)
+    clinic = rbac_graph.clinic_a
+    with runtime_role():
+        created = client.post(
+            f"/intake/clinics/{clinic}/patients/new/",
+            {
+                "full_name": "",
+                "full_name_status": "declined",
+                "social_name": "Dara Sintetica",
+                "birth_date": "",
+                "birth_date_status": "not_informed",
+                "idempotency_key": str(uuid4()),
+            },
+        )
+    assert created.status_code == 303
+    with runtime_role(), tenant_context(receptionist.pk, rbac_graph.organization_a):
+        enrollment = PatientClinicEnrollment.objects.filter(clinic_id=clinic).latest(
+            "created_at"
+        )
+    url = reverse("intake:patient-demographics", args=(clinic,))
+    base = {"enrollment_id": str(enrollment.pk)}
+    html, document = _page(client, url, {**base, "action": "manage"})
+    for element_id in (
+        "id_legal_name",
+        "id_birth_date",
+        "id_legal_name_status",
+        "address-new-postal_code",
+        "contact-new-phone",
+        "membership-new-payer_name",
+    ):
+        assert document.attributes_for(element_id), element_id
+    assert gettext("Declined to answer") in html
+    assert ">declined<" not in html
+    assert ">not_informed<" not in html
+
+    html, _ = _page(
+        client,
+        url,
+        {
+            **base,
+            "action": "save",
+            "expected_version": "1",
+            "legal_name": "Dara Civil",
+            "social_name": "Dara Sintetica",
+            "birth_date": "1999-09-09",
+            "sex_at_birth": "declined",
+            "reason": "documentos apresentados",
+        },
+    )
+    assert gettext("Demographics saved.") in html
+    for action, fields in (
+        (
+            "save_address",
+            {"kind": "home", "postal_code": "50000-000", "city": "Recife"},
+        ),
+        (
+            "save_contact",
+            {"sequence": "1", "name": "Contato Um", "phone": "81999990000"},
+        ),
+        (
+            "save_membership",
+            {"sequence": "1", "payer_name": "Operadora Sintetica", "valid_until": ""},
+        ),
+    ):
+        html, _ = _page(
+            client,
+            url,
+            {
+                **base,
+                "action": action,
+                "slot": "new",
+                "expected_version": "0",
+                **fields,
+            },
+        )
+        assert gettext("Record saved.") in html, action
+    html, document = _page(client, url, {**base, "action": "manage"})
+    assert document.attributes_for("address-home-city")["value"] == "Recife"
+    assert document.attributes_for("contact-1-name")["value"] == "Contato Um"
+    assert document.attributes_for("membership-1-payer_name")["value"] == (
+        "Operadora Sintetica"
+    )
+    html, document = _page(
+        client,
+        url,
+        {
+            **base,
+            "action": "save_address",
+            "kind": "home",
+            "expected_version": "1",
+            "postal_code": "50000000",
+            "city": "Olinda",
+        },
+    )
+    assert document.attributes_for("address-home-city")["value"] == "Olinda"
+    html, document = _page(
+        client,
+        url,
+        {**base, "action": "retire_contact", "sequence": "1", "expected_version": "1"},
+    )
+    assert gettext("Record removed. Earlier versions stay in history.") in html
+    assert "contact-1-name" not in document.identifiers()
+
+    corrections = html[html.index('id="patient-correction-history"') :]
+    assert gettext("Legal name") in corrections
+    assert "legal_name" not in corrections
+    assert "social_name" not in corrections
+    regions = [
+        attributes
+        for attributes in document.tagged("div")
+        if attributes.get("role") == "region"
+    ]
+    assert [region.get("aria-labelledby") for region in regions] == [
+        "corrections-caption"
+    ]
+    assert all(region.get("tabindex") == "0" for region in regions)
+    tables = document.tagged("table")
+    assert tables
+    assert all("table" in (table.get("class") or "").split() for table in tables)
+    document.assert_unique_identifiers()
+    document.assert_descriptions_resolve()
+    document.assert_every_control_is_labelled()
+    document.assert_every_form_is_post_with_csrf()
+
+
+def test_protected_migration_is_non_atomic_and_irreversible() -> None:
+    """B1/SC-5/SC-17: rollback = restore; unapply refuses before any SQL."""
+    migration = importlib.import_module(
+        "apps.intake.migrations.0013_patient_demographics"
+    ).Migration
+    steps = [
+        operation
+        for operation in migration.operations
+        if isinstance(operation, RunPython)
+    ]
+    assert migration.atomic is False
+    assert steps
+    assert all(step.atomic is True and not step.reversible for step in steps)
+
+
+# Every field carry-forward can touch, with the value staff recorded first
+# and the value an explicit patient answer carries.
+_STAFF_RECORDED: dict[str, object] = {
+    "legal_name": "Ana Registro Civil",
+    "social_name": "Ana Social",
+    "preferred_name": "Aninha",
+    "birth_date": date(1990, 5, 17),
+    "sex_at_birth": "female",
+    "gender_identity": "woman",
+    "pronouns": "ela/dela",
+    "language": "Português",
+    "accessibility_needs": "Leitura ampliada",
+    "occupation": "Professora",
+}
+_PATIENT_ANSWER: dict[str, str] = {
+    "legal_name": "Ana Paciente Civil",
+    "social_name": "Ana Paciente",
+    "preferred_name": "Nina",
+    "birth_date": "1991-06-18",
+    "sex_at_birth": "intersex",
+    "gender_identity": "non_binary",
+    "pronouns": "elu/delu",
+    "language": "Libras",
+    "accessibility_needs": "Intérprete de Libras",
+    "occupation": "Engenheira",
+}
+
+
+def _carry(
+    graph: RbacGraph, answers: dict[str, str], *, staff_values: bool = True
+) -> tuple[Any, UUID, Any]:
+    """Record staff values, submit ``answers`` as the patient, carry forward.
+
+    Returns (carry-forward outcome, enrollment id, services module).
+    """
+    services = _services()
+    admin = _role_user(graph, UserClinicRole.Role.CLINIC_ADMIN)
+    with runtime_role(), tenant_context(admin, graph.organization_a):
+        template = services.publish_template(
+            clinic_id=graph.clinic_a,
+            key=f"intake-{uuid4().hex[:8]}",
+            title="Intake",
+            questions=[
+                {
+                    "id": f"q_{field}",
+                    "label": field,
+                    "type": "text",
+                    "required": False,
+                    "max_length": 160,
+                    "options": [],
+                }
+                for field in _STAFF_RECORDED
+            ],
+        )
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        registration = _register(services, graph)
+        enrollment = registration.enrollment.pk
+        if staff_values:
+            services.update_demographics(
+                clinic_id=graph.clinic_a,
+                enrollment_id=enrollment,
+                expected_version=0,
+                changes=_STAFF_RECORDED,
+                reason="documentos conferidos",
+            )
+        invitation = services.issue_invitation(
+            clinic_id=graph.clinic_a, enrollment_id=enrollment
+        )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        response = services.assign_questionnaire(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            template_id=template.pk,
+        )
+    with runtime_role():
+        session = redeem_invitation(graph.clinic_a, invitation.secret)
+    assert session is not None
+    with runtime_role(), patient_session_context(session):
+        services.submit_intake(
+            response_id=response.pk, answers=answers, expected_revision=1
+        )
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        carried = services.carry_forward_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            reason="questionário do paciente",
+        )
+    return carried, enrollment, services
+
+
+def _record(
+    graph: RbacGraph, services: ModuleType, enrollment: UUID
+) -> DemographicsProfile:
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        result = services.demographics_profile(
+            clinic_id=graph.clinic_a, enrollment_id=enrollment
+        )
+        assert isinstance(result, DemographicsProfile)
+        return result
+
+
+def _registry(graph: RbacGraph, enrollment: UUID) -> tuple[str, date | None]:
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        patient = (
+            PatientClinicEnrollment.objects.select_related("patient")
+            .get(pk=enrollment)
+            .patient
+        )
+        return patient.full_name, patient.birth_date
+
+
+def _as_form_value(value: object) -> str:
+    return value.isoformat() if isinstance(value, date) else str(value)
+
+
+@pytest.mark.parametrize(
+    ("case", "answer"),
+    [
+        ("blank", ""),
+        ("missing", None),
+        ("whitespace", "   \t "),
+        ("declined", "declined"),
+        ("not_informed", "not_informed"),
+    ],
+)
+def test_carry_forward_never_erases_staff_recorded_values(
+    rbac_graph: RbacGraph, case: str, answer: str | None
+) -> None:
+    """NEW-1: a blank, missing or non-answer never clears a recorded value."""
+    answers = (
+        {} if answer is None else {f"q_{field}": answer for field in _STAFF_RECORDED}
+    )
+    outcome, enrollment, services = _carry(rbac_graph, answers)
+    assert outcome.version is None, case
+    assert outcome.not_carried == (), case
+    record = _record(rbac_graph, services, enrollment)
+    assert record.version == 1, case
+    assert record.source == "staff_recorded", case
+    assert record.unknown == {}, case
+    for field, staff_value in _STAFF_RECORDED.items():
+        assert record.values[field] == _as_form_value(staff_value), (case, field)
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Registro Civil",
+        date(1990, 5, 17),
+    ), case
+
+
+def test_carry_forward_carries_every_explicit_answer_as_patient_reported(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Every carried field takes the explicit answer, marked unverified."""
+    outcome, enrollment, services = _carry(
+        rbac_graph, {f"q_{field}": value for field, value in _PATIENT_ANSWER.items()}
+    )
+    assert outcome.version is not None
+    record = _record(rbac_graph, services, enrollment)
+    assert (record.version, record.source) == (2, "patient_reported")
+    for field, value in _PATIENT_ANSWER.items():
+        assert record.values[field] == value, field
+    assert record.corrections[0].changed_fields == tuple(_STAFF_RECORDED)
+    assert record.corrections[0].source == "patient_reported"
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Paciente Civil",
+        date(1991, 6, 18),
+    )
+
+
+def test_carry_forward_mixed_answers_touch_only_answered_fields(
+    rbac_graph: RbacGraph,
+) -> None:
+    """The reviewer's repro: blank optional answers leave the record intact."""
+    outcome, enrollment, services = _carry(
+        rbac_graph,
+        {"q_social_name": "Nome Social", "q_birth_date": "", "q_occupation": ""},
+    )
+    assert outcome.version is not None
+    record = _record(rbac_graph, services, enrollment)
+    assert record.corrections[0].changed_fields == ("social_name",)
+    assert record.values["social_name"] == "Nome Social"
+    assert record.values["birth_date"] == "1990-05-17"
+    assert record.values["occupation"] == "Professora"
+    assert record.unknown == {}
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Registro Civil",
+        date(1990, 5, 17),
+    )
+
+
+def test_carry_forward_non_answer_fills_only_unrecorded_fields(
+    rbac_graph: RbacGraph,
+) -> None:
+    """An explicit non-answer is recorded where nothing was on record."""
+    outcome, enrollment, services = _carry(
+        rbac_graph,
+        {
+            "q_occupation": "declined",
+            "q_gender_identity": "not_informed",
+            "q_pronouns": "",
+        },
+        staff_values=False,
+    )
+    assert outcome.version is not None
+    record = _record(rbac_graph, services, enrollment)
+    assert record.source == "patient_reported"
+    assert record.unknown == {"occupation": "declined"}
+    assert record.values["gender_identity"] == "not_informed"
+    assert record.values["pronouns"] == ""
+    assert record.corrections[0].changed_fields == (
+        "gender_identity",
+        "occupation",
+    )
+    # The registry keeps the registration values (legal name, birth date).
+    assert _registry(rbac_graph, enrollment) == (
+        "Paciente Sintetico",
+        date(1990, 5, 17),
+    )
+
+
+def test_registry_mirror_must_equal_the_same_transaction_version(
+    rbac_graph: RbacGraph,
+) -> None:
+    """N1: a same-transaction version is not enough; the registry row must
+    carry exactly the envelopes that version recorded."""
+    services = _services()
+    organization = rbac_graph.organization_a
+    with runtime_role(), tenant_context(rbac_graph.shared_user, organization):
+        registration = _register(services, rbac_graph)
+        patient_id = registration.patient.pk
+        recorded = protect(
+            purpose="intake.patient.full_name", plaintext=b"Nome Registrado"
+        )
+        forged = protect(purpose="intake.patient.full_name", plaintext=b"Nome Forjado")
+        recorded_index = name_indexes("Nome Registrado")[-1]
+        with transaction.atomic():
+            version = PatientDemographics.objects.create(
+                organization_id=organization,
+                patient_id=patient_id,
+                clinic_id=rbac_graph.clinic_a,
+                enrollment_id=registration.enrollment.pk,
+                version=1,
+                legal_name="Nome Registrado",
+                registry_full_name=recorded,
+                registry_full_name_index=recorded_index,
+                registry_birth_date=None,
+            )
+            DemographicsCorrection.objects.create(
+                organization_id=organization,
+                clinic_id=rbac_graph.clinic_a,
+                patient_id=patient_id,
+                demographics=version,
+                previous=None,
+                actor_id=rbac_graph.shared_user,
+                actor_label="raw",
+                changed_fields=["legal_name"],
+            )
+            with (
+                pytest.raises(IntegrityError, match="must equal the latest"),
+                transaction.atomic(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s, "
+                    "full_name_index = %s, birth_date = NULL WHERE id = %s",
+                    [forged, recorded_index, patient_id],
+                )
+            with (
+                pytest.raises(IntegrityError, match="must equal the latest"),
+                transaction.atomic(),
+                connection.cursor() as cursor,
+            ):
+                # Right name, but a birth date the version does not hold.
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s, "
+                    "full_name_index = %s WHERE id = %s",
+                    [recorded, recorded_index, patient_id],
+                )
+            with (
+                pytest.raises(IntegrityError, match="must equal the latest"),
+                transaction.atomic(),
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s, "
+                    "full_name_index = %s, birth_date = NULL WHERE id = %s",
+                    [recorded, name_indexes("Nome Forjado")[-1], patient_id],
+                )
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE clinic_app.intake_patient SET full_name = %s, "
+                    "full_name_index = %s, birth_date = NULL WHERE id = %s",
+                    [recorded, recorded_index, patient_id],
+                )
+        mirrored = Patient.objects.get(pk=patient_id)
+        assert (mirrored.full_name, mirrored.birth_date) == ("Nome Registrado", None)
+        # The service path always mirrors identical bytes.
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=registration.enrollment.pk,
+            expected_version=1,
+            changes={"legal_name": "Nome Corrigido", "birth_date": date(1980, 1, 2)},
+            reason="",
+        )
+        corrected = Patient.objects.get(pk=patient_id)
+        assert (corrected.full_name, corrected.birth_date) == (
+            "Nome Corrigido",
+            date(1980, 1, 2),
+        )
+
+
+def test_registration_replay_distinguishes_swapped_names(
+    rbac_graph: RbacGraph,
+) -> None:
+    """Replaying a key with legal and social names swapped is a conflict."""
+    services = _services()
+    key = uuid4()
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        first = services.register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            idempotency_key=key,
+            legal_name="",
+            social_name="Ana Sintetica",
+            birth_date=None,
+        )
+        replay = services.register_patient(
+            clinic_id=rbac_graph.clinic_a,
+            idempotency_key=key,
+            legal_name="",
+            social_name="Ana Sintetica",
+            birth_date=None,
+        )
+        assert replay.registration.enrollment.pk == first.registration.enrollment.pk
+        with pytest.raises(services.PatientIdempotencyConflictError):
+            services.register_patient(
+                clinic_id=rbac_graph.clinic_a,
+                idempotency_key=key,
+                legal_name="Ana Sintetica",
+                social_name="",
+                birth_date=None,
+            )
+
+
+def _staff_non_answers(
+    graph: RbacGraph, services: ModuleType, enrollment: UUID
+) -> None:
+    """Record staff non-answers: declined (coded + text) and not_informed."""
+    with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
+        services.update_demographics(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            expected_version=1,
+            changes={"sex_at_birth": "declined", "language": "", "occupation": ""},
+            unknown={"language": "declined", "occupation": "not_informed"},
+            reason="paciente preferiu não informar",
+        )
+
+
+def test_carry_forward_never_downgrades_a_recorded_decline(
+    rbac_graph: RbacGraph,
+) -> None:
+    """R3-N1: a patient "not informed" (or blank) never replaces a decline;
+    a patient decline still says more than a recorded "not informed"."""
+    services = _services()
+    admin = _role_user(rbac_graph, UserClinicRole.Role.CLINIC_ADMIN)
+    with runtime_role(), tenant_context(admin, rbac_graph.organization_a):
+        template = services.publish_template(
+            clinic_id=rbac_graph.clinic_a,
+            key=f"intake-{uuid4().hex[:8]}",
+            title="Intake",
+            questions=[
+                {
+                    "id": f"q_{field}",
+                    "label": field,
+                    "type": "text",
+                    "required": False,
+                    "max_length": 160,
+                    "options": [],
+                }
+                for field in ("sex_at_birth", "language", "occupation")
+            ],
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.shared_user, rbac_graph.organization_a),
+    ):
+        registration = _register(services, rbac_graph)
+        enrollment = registration.enrollment.pk
+        services.update_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            expected_version=0,
+            changes={"social_name": "Social"},
+            reason="",
+        )
+        invitation = services.issue_invitation(
+            clinic_id=rbac_graph.clinic_a, enrollment_id=enrollment
+        )
+    _staff_non_answers(rbac_graph, services, enrollment)
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        response = services.assign_questionnaire(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            template_id=template.pk,
+        )
+    with runtime_role():
+        session = redeem_invitation(rbac_graph.clinic_a, invitation.secret)
+    assert session is not None
+    with runtime_role(), patient_session_context(session):
+        services.submit_intake(
+            response_id=response.pk,
+            answers={
+                "q_sex_at_birth": "not_informed",
+                "q_language": "not_informed",
+                "q_occupation": "declined",
+            },
+            expected_revision=1,
+        )
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        outcome = services.carry_forward_demographics(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=enrollment,
+            reason="questionário",
+        )
+    record = _record(rbac_graph, services, enrollment)
+    assert outcome.version is not None
+    # The declines stay; only occupation moves up from not_informed.
+    assert record.values["sex_at_birth"] == "declined"
+    assert record.unknown == {"language": "declined", "occupation": "declined"}
+    assert record.corrections[0].changed_fields == ("occupation",)
+
+
+def test_carry_forward_carries_each_answer_independently(
+    rbac_graph: RbacGraph,
+) -> None:
+    """R3-N2: a pt-BR date carries; a malformed answer is skipped on its own
+    and reported, while every other valid answer still carries."""
+    outcome, enrollment, services = _carry(
+        rbac_graph,
+        {
+            "q_birth_date": "17/05/1991",
+            "q_occupation": "Engenheira",
+            "q_sex_at_birth": "not-a-code",
+            "q_language": "Libras\x07",  # control character: malformed
+        },
+    )
+    assert outcome.version is not None
+    assert {(item.field, item.reason) for item in outcome.not_carried} == {
+        ("sex_at_birth", "invalid_value"),
+        ("language", "invalid_value"),
+    }
+    record = _record(rbac_graph, services, enrollment)
+    assert record.values["birth_date"] == "1991-05-17"
+    assert record.values["occupation"] == "Engenheira"
+    assert record.values["sex_at_birth"] == "female"
+    assert record.values["language"] == "Português"
+    assert record.corrections[0].changed_fields == ("birth_date", "occupation")
+    assert _registry(rbac_graph, enrollment) == (
+        "Ana Registro Civil",
+        date(1991, 5, 17),
+    )
+    # A response whose only answer is malformed carries nothing, loudly.
+    lone, lone_enrollment, _ = _carry(rbac_graph, {"q_birth_date": "31/02/1990"})
+    assert lone.version is None
+    assert [(item.field, item.reason) for item in lone.not_carried] == [
+        ("birth_date", "invalid_value")
+    ]
+    assert _registry(rbac_graph, lone_enrollment)[1] == date(1990, 5, 17)

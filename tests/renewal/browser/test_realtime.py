@@ -8,11 +8,16 @@ from urllib.parse import urlparse
 
 import psycopg
 from django.utils.translation import gettext
-from playwright.sync_api import expect
+from playwright.sync_api import expect, sync_playwright
 
 from renewal.browser._navigation import expect_document, goto_settled
 from renewal.browser._page_wait import wait_for_js
-from renewal.browser.engines import full_page_screenshot
+from renewal.browser._teleconsult import register_physician
+from renewal.browser.engines import (
+    full_page_screenshot,
+    launch_selected,
+    watch_page_errors,
+)
 from renewal.browser.test_agenda import (
     BOOKING_SUBMIT,
     DAYS,
@@ -25,16 +30,41 @@ from renewal.browser.test_agenda import (
     _sign_in_receptionist,
     agenda_staff,
 )
+from renewal.browser.test_availability import _sign_in_physician
+from renewal.browser.test_clinician_video import (
+    _Case,
+    _context,
+    _enter,
+    _htmx,
+    _seed_patient,
+)
+from renewal.browser.test_patient_access import _redeem
 from renewal.browser.test_primitives import AXE_RUN_JS
+from renewal.browser.test_retention import seed_manager, sign_in_manager
+from renewal.browser.test_teleconsult import (
+    _accept_consent,
+    _create_session,
+    _publish_consent,
+    _room_operation,
+    _worker,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from playwright.sync_api import Page, Request, Response
+    from playwright.sync_api import (
+        Browser,
+        ConsoleMessage,
+        Page,
+        Request,
+        Response,
+        Route,
+    )
 
 __all__ = ("agenda_staff",)
 WIDTHS = (1280, 375, 320)
+TELECONSULT_DAY = "2035-08-12"
 # Ticket POST and EventSource GET share this one same-origin path.
 REALTIME_PATH: Final = "/rt/stream"
 
@@ -43,7 +73,7 @@ class _RealtimeTap:
     """Every /rt/stream request and response of one page, against a revocation.
 
     Boundary rule, causal and clock-free: ``mark_boundary`` runs BEFORE the
-    owner transaction that deletes the role commits, and freezes the list of
+    owner transaction that revokes the role commits, and freezes the list of
     realtime responses the tap has received so far. Only those responses are
     pre-revocation; every later one is post-revocation. The server sends a
     response only after deciding it, the tap receives it only after it is
@@ -174,8 +204,9 @@ def _ticket_replay(page: Page) -> None:
     assert status == [200, 403]
 
 
-def _degraded(page: Page, base_url: str, clinic_id: str, root: Path) -> None:
-    goto_settled(page, base_url + f"/scheduling/clinics/{clinic_id}/agenda/")
+def _degraded(page: Page, base_url: str, staff: dict[str, str], root: Path) -> None:
+    _sign_in_receptionist(page, base_url, staff)
+    goto_settled(page, base_url + f"/scheduling/clinics/{staff['clinic_b']}/agenda/")
     _connected(page)
     page.clock.install()
     assert page.request.post(base_url + "/_realtime-test/stop").status == 204
@@ -198,38 +229,59 @@ def _denied_after_revocation(
     agenda_staff: dict[str, str],
     tap: _RealtimeTap,
 ) -> list[tuple[str, int]]:
-    # Owner SQL fixture revokes the clinic assignment. Logout is the real
-    # immediate control event; unit tests independently prove role-delete
-    # signals and periodic reauth when an event is lost.
+    # Owner SQL revocation invalidates every session for this account.
+    # The next staff request flushes the revoked session and publishes its
+    # immediate control event; unit tests also prove periodic reauthorization.
     # The refusal wait is armed before the revocation: b's stream can also
     # close for other reasons (a transport drop and its backoff retry, the
     # periodic reauthorization), and a refused request that lands before a
     # late wait exists is lost (hosted run 36475967514; fix-a16). It matches
     # only a post-revocation 403, so a late or absent refusal times out.
-    with b.expect_response(tap.is_refusal):
-        # The mark precedes the commit, so every server decision after the
-        # commit is post-revocation (gate-review r2 B1: no clock boundary).
-        tap.mark_boundary(b)
-        with psycopg.connect(agenda_staff["dsn"]) as owner:
-            owner.execute(
-                "SELECT set_config('app.current_tenant', %s, true)",
-                [agenda_staff["organization"]],
-            )
-            owner.execute(
-                "DELETE FROM clinic_app.identity_userclinicrole "
-                "WHERE clinic_id = %s AND user_id = %s",
-                [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
-            )
-        # Leaving the connection context committed the delete.
-        goto_settled(a, base_url + "/auth/logout/")
-        with expect_document(a):
-            a.locator("form button[type=submit]").click()
-    # The client closes its EventSource before every new ticket request, and
-    # its denied state follows the refused response: once denied is visible,
-    # every earlier realtime event has been dispatched to the tap.
-    expect(b.locator("#agenda-shell")).to_have_attribute(
-        "data-realtime-state", "denied"
-    )
+    # Stream closure starts both a ticket POST and a clinical refetch.
+    # The refetch can reach login first, whose pagehide aborts that POST.
+    # Hold only the real HTMX refetch until the real ticket refusal is seen;
+    # then forward it unchanged and observe the terminal login navigation.
+    refetch_url = b.url
+    refetches: list[Route] = []
+
+    def defer_refetch(route: Route) -> None:
+        if route.request.headers.get("hx-request") == "true":
+            refetches.append(route)
+        else:
+            route.continue_()
+
+    with expect_document(b, url=base_url + "/auth/login/"):
+        b.route(refetch_url, defer_refetch)
+        try:
+            with b.expect_response(tap.is_refusal):
+                # The mark precedes the commit, so every later server decision
+                # is post-revocation (gate-review r2 B1: no clock boundary).
+                tap.mark_boundary(b)
+                with psycopg.connect(agenda_staff["dsn"]) as owner:
+                    owner.execute(
+                        "SELECT set_config('app.current_tenant', %s, true)",
+                        [agenda_staff["organization"]],
+                    )
+                    owner.execute(
+                        "UPDATE clinic_app.identity_userclinicrole "
+                        "SET revoked_at=now() WHERE clinic_id = %s AND user_id = %s",
+                        [agenda_staff["clinic_a"], agenda_staff["receptionist_id"]],
+                    )
+                # Leaving the connection context committed the revocation.
+                goto_settled(a, base_url + "/auth/logout/")
+                expect(a.locator("#id_username")).to_be_visible()
+        finally:
+            for refetch in refetches:
+                refetch.continue_()
+            b.unroute(refetch_url, defer_refetch)
+    # Role revocation ends every old session, including the remaining clinic
+    # membership's session. The final document must contain no clinical UI.
+    expect(b).to_have_url(base_url + "/auth/login/")
+    expect(b.locator("#id_username")).to_be_visible()
+    expect(
+        b.locator("#agenda-shell, .agenda-row, [data-realtime-topic]")
+    ).to_have_count(0)
+    expect(b.locator("body")).not_to_contain_text("Sintetico Realtime")
     post_revocation = tap.post_revocation()
     # A single grant followed by a refusal is still a grant (gate-review B1).
     assert [status for _method, status in post_revocation[:1]] == [403], post_revocation
@@ -237,6 +289,184 @@ def _denied_after_revocation(
     assert tap.streams, "the tap saw no realtime stream open"
     assert tap.open_streams == [], "b's realtime stream never closed"
     return post_revocation
+
+
+RT_TELECONSULT_JS = (
+    "document.addEventListener('rt:teleconsult', () => {"
+    " window.__rtTeleconsult = (window.__rtTeleconsult || 0) + 1;"
+    " window.__rtTeleconsultAt = Date.now(); }, true);"
+)
+HINT_BUDGET_MS = 2000
+
+
+def _hinted(page: Page, started: float, before: int) -> float:
+    """Return the hint latency once a new rt:teleconsult arrived on ``page``."""
+    wait_for_js(page, f"() => (window.__rtTeleconsult || 0) > {before}")
+    latency = float(page.evaluate("() => window.__rtTeleconsultAt")) - started
+    assert latency <= HINT_BUDGET_MS, latency
+    return latency
+
+
+def _watch(page: Page, errors: list[str], ticket_refusals: list[str]) -> None:
+    """Fail on any page or console error except the agenda's ticket refusal.
+
+    The physician's agenda (appointment.read_own only) is refused a
+    clinic-wide ticket by todo 8's design; that exact refusal is recorded.
+    """
+    page.set_default_timeout(20_000)
+    watch_page_errors(page, errors)
+    page.add_init_script(RT_TELECONSULT_JS)
+
+    def console(message: ConsoleMessage) -> None:
+        if message.type != "error":
+            return
+        if message.location.get("url", "").endswith("/rt/stream") and (
+            "/agenda/" in page.url
+        ):
+            ticket_refusals.append(page.url)
+        else:
+            errors.append(message.text)
+
+    page.on("console", console)
+
+
+def _provision_settled(physician: Page, case: _Case, data: dict[str, str]) -> str:
+    """Open the encounter from the agenda only after its realtime denial settles.
+
+    A physician holds appointment.read_own, so the agenda's clinic ticket is
+    refused and realtime.js reconciles with one htmx refetch; clicking before
+    that refetch settles would abort it (WebKit logs htmx:sendError).
+    """
+    register_physician(case.staff)
+    goto_settled(
+        physician,
+        f"{case.base}/scheduling/clinics/{case.staff['clinic_a']}/agenda/day/"
+        f"{case.day}/1/",
+    )
+    expect(physician.locator("#agenda-shell")).to_have_attribute(
+        "data-realtime-state", "denied"
+    )
+    wait_for_js(physician, SETTLED_JS)
+    with expect_document(physician):
+        physician.locator(
+            f'form:has(input[name="appointment_id"][value="{data["appointment"]}"]) '
+            'button[value="open"]'
+        ).click()
+    goto_settled(physician, case.staff_url)
+    session_id = _create_session(physician, case.staff_url)
+    _worker(_room_operation(case.staff, session_id), "sent", case.root)
+    return session_id
+
+
+def _count(page: Page) -> int:
+    return int(page.evaluate("() => window.__rtTeleconsult || 0"))
+
+
+def _now(page: Page) -> float:
+    return float(page.evaluate("() => Date.now()"))
+
+
+def test_teleconsult_hints_refetch_both_participants(
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    agenda_staff: dict[str, str],
+) -> None:
+    """Todo 37: room state reaches both participants from hints, not timers.
+
+    Runs before the agenda scene, which ends by stopping the realtime process.
+    """
+    base = renewal_base_url
+    case = _Case(
+        base=base,
+        staff=agenda_staff,
+        day=TELECONSULT_DAY,
+        root=renewal_artifact_root / "realtime-teleconsult",
+        width=1280,
+        staff_url=f"{base}/teleconsult/clinics/{agenda_staff['clinic_a']}/",
+        patient_url=f"{base}/patient/teleconsult/",
+    )
+    case.root.mkdir(mode=0o700)
+    errors: list[str] = []
+    ticket_refusals: list[str] = []
+    data = _seed_patient(case, 9, "Paciente Sintético Tempo Real")
+    with sync_playwright() as driver:
+        browser = launch_selected(driver, media=True)
+        try:
+            _hint_journey(browser, case, data, errors, ticket_refusals)
+        finally:
+            browser.close()
+
+
+def _hint_journey(
+    browser: Browser,
+    case: _Case,
+    data: dict[str, str],
+    errors: list[str],
+    ticket_refusals: list[str],
+) -> None:
+    base = case.base
+    agenda_staff = case.staff
+    contexts = [_context(browser, case, media=True) for _ in range(2)]
+    contexts.append(_context(browser, case, media=False))
+    try:
+        physician, patient, admin = [context.new_page() for context in contexts]
+        for page in (physician, patient, admin):
+            _watch(page, errors, ticket_refusals)
+        _sign_in_physician(physician, base, agenda_staff)
+        sign_in_manager(admin, base, agenda_staff, seed_manager(agenda_staff))
+        _publish_consent(admin, f"{base}/clinics/{agenda_staff['clinic_a']}/consent/")
+        _redeem(patient, base, agenda_staff["clinic_a"], data["code"])
+        _accept_consent(patient, base)
+        session_id = _provision_settled(physician, case, data)
+        _enter(physician, case, session_id, data["name"])
+        workspace = physician.locator("[data-teleconsult='clinician']")
+        expect(workspace).to_have_attribute("data-realtime-state", "connected")
+        goto_settled(patient, case.patient_url)
+        # The patient joins; the physician sees it with no click and no timer.
+        before = _count(physician)
+        started = _now(patient)
+        with expect_document(patient):
+            patient.locator('button[value="join"]').click()
+        room = patient.locator("[data-teleconsult='room']")
+        expect(room).to_have_attribute("data-realtime-state", "connected")
+        joined = _hinted(physician, started, before)
+        expect(physician.locator("[data-patient-presence]")).to_have_text("Na sala")
+        # The patient's audio-only choice reaches the physician the same way.
+        before = _count(physician)
+        started = _now(patient)
+        patient.locator("[data-audio-only]").click()
+        audio = _hinted(physician, started, before)
+        expect(physician.locator("[data-patient-media]")).to_have_text("Somente áudio")
+        # Removal reaches the patient's room through the patient topic.
+        before = _count(patient)
+        started = _now(physician)
+        _htmx(physician, 'button[value="remove"]')
+        removed = _hinted(patient, started, before)
+        expect(patient.locator("#room-panel")).to_have_attribute(
+            "data-connection", "removed"
+        )
+        full_page_screenshot(physician, case.root / "physician-hinted.png")
+        full_page_screenshot(patient, case.root / "patient-removed-hinted.png")
+        assert not errors, errors
+        (case.root / "hints.json").write_text(
+            json.dumps(
+                {
+                    "latency_ms": {
+                        "patient_joined": joined,
+                        "patient_audio_only": audio,
+                        "patient_removed": removed,
+                    },
+                    "budget_ms": HINT_BUDGET_MS,
+                    "agenda_ticket_refusals": len(ticket_refusals),
+                    "event_keys": ["kind", "topic_hash", "version"],
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+    finally:
+        for context in contexts:
+            context.close()
 
 
 def test_two_sessions_refetch_and_fail_closed_without_realtime(
@@ -251,8 +481,12 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
     assert browser is not None
     durations = []
     with (
-        browser.new_context(locale="pt-BR", record_video_dir=root) as first,
-        browser.new_context(locale="pt-BR", record_video_dir=root) as second,
+        browser.new_context(
+            locale="pt-BR", record_video_dir=root, service_workers="block"
+        ) as first,
+        browser.new_context(
+            locale="pt-BR", record_video_dir=root, service_workers="block"
+        ) as second,
     ):
         a, b = first.new_page(), second.new_page()
         a.set_default_timeout(15000)
@@ -324,15 +558,17 @@ def test_two_sessions_refetch_and_fail_closed_without_realtime(
         assert api_status == 403
         assert tap.grants() == [], tap.post_revocation()
         (root / "revoke.txt").write_text(
+            "revoked session redirected to login; no agenda or clinical rows; "
             "stream closed; first post-revocation response 403; no "
             f"post-revocation 2xx {post_revocation}; authorized refetch API "
             "403; ticket replay 403\n"
         )
 
-        # Clinic B membership remains: ordinary work continues during an actual
-        # stopped uvicorn process. Advance the browser clock, not wall time.
-        _degraded(b, renewal_base_url, agenda_staff["clinic_b"], root)
-        video = b.video
+        # Clinic B membership remains, but the old sessions are both revoked.
+        # A fresh login restores only the remaining scope before process loss.
+        # Advance the browser clock, not wall time.
+        _degraded(a, renewal_base_url, agenda_staff, root)
+        video = a.video
         assert video is not None
     video.save_as(root / "realtime-2ctx.webm")
     (root / "latency.json").write_text(
