@@ -17,6 +17,7 @@ from orders import (
     test_rematched_authority,
     test_review,
 )
+from workflows import test_inbox_read_model as inbox
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -45,6 +46,11 @@ def run_orders_census(proofs: ExecutedProofs, graph: Callable[[], RbacGraph]) ->
             test_rematched_authority.test_matched_patient_clinician_can_correct_without_inheriting_review,
             test_rematched_authority.test_stale_proposed_scope_cannot_replay_a_rematched_source,
             test_rematched_authority.test_raw_correction_guard_rejects_the_historical_proposed_patient,
+            # Clinical Inbox (todo 32) acknowledgment, bulk preview and refusals.
+            inbox.test_bulk_acknowledgment_needs_previewed_normal_noncritical_results,
+            inbox.test_stale_or_foreign_bulk_confirmation_acknowledges_nothing,
+            inbox.test_inbox_page_acknowledges_one_result_and_never_bulk_releases,
+            inbox.test_inbox_page_bulk_flow_previews_each_item_then_acknowledges,
         ):
             proofs.run(simple_oracle.__name__, partial(simple_oracle, graph()))
         for role in ("receptionist", "nurse", "clinic_admin", "finance"):
