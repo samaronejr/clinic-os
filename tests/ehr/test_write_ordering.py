@@ -450,8 +450,12 @@ def test_history_edit_refused_after_late_role_revocation_keeps_no_view_audit(
             late = client.post(world.url, {**form, "entry_id": str(world.entry)})
         assert dict(client.session) == session
     trail = audit_since(graph, before)
-    assert unknown.status_code == late.status_code == 403
-    assert NONCE.sub(b"", late.content) == NONCE.sub(b"", unknown.content)
+    with signed_in(world.physician) as client:
+        # The unknown entry again once the revocation has committed, so both
+        # refusals render the shell of the authority the actor now holds.
+        unknown_after = client.post(world.url, {**form, "entry_id": str(uuid4())})
+    assert unknown.status_code == late.status_code == unknown_after.status_code == 403
+    assert NONCE.sub(b"", late.content) == NONCE.sub(b"", unknown_after.content)
     # The viewed audit rolled back with its savepoint: the late refusal leaves
     # what the early one leaves, beside the revocation's own event.
     assert [e for e in trail if e.startswith("ehr.")] == baseline

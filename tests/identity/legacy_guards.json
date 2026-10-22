@@ -1467,6 +1467,17 @@
       "reason": "Todo 28: reaches the named executable current-authority boundary; remaining denials enforce record identity, author, revision, reviewed input or tab restrictions. Real longitudinal, note-grant, copy-review, workspace and refusal-matrix tests exercise the compound restrictions; this label does not claim each compound predicate is a separate role grant."
     },
     {
+      "symbol": "apps.ehr.inbox._assigned",
+      "signals": [
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.inbox._assigned#cut1"
+      ]
+    },
+    {
       "symbol": "apps.identity.account_views.recovery_view",
       "signals": [
         "actor",
@@ -5748,6 +5759,91 @@
       ]
     },
     {
+      "symbol": "apps.workflows.inbox.require_inbox",
+      "signals": [
+        "permission",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox.require_inbox#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._authorized_inbox",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._authorized_inbox#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._authorized_today",
+      "signals": [
+        "decorator",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._authorized_today#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._selected_versions",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._selected_versions#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views._terms",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views._terms#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.inbox_views.today",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox_views.today#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.task_feed.task_items",
+      "signals": [
+        "permission",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.task_feed.task_items#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.workflows.today.view_today",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.today.view_today#cut1"
+      ]
+    },
+    {
       "symbol": "apps.audit.services._record_lab_event",
       "signals": [
         "resolver"
@@ -5983,6 +6079,46 @@
       "probes": [
         "apps.orders.views.results#cut1"
       ]
+    },
+    {
+      "symbol": "apps.orders.inbox._may_acknowledge",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.inbox._may_acknowledge#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.inbox._pending",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.inbox._pending#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.inbox.apply_bulk_acknowledgment",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.inbox.apply_bulk_acknowledgment#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.orders.inbox.preview_bulk_acknowledgment",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.orders.inbox.preview_bulk_acknowledgment#cut1"
+      ]
     }
   ],
   "probes": [
@@ -6042,6 +6178,7 @@
     "apps.ehr.history.save_history",
     "apps.ehr.history_views._workspace",
     "apps.ehr.history_views.history_workspace",
+    "apps.ehr.inbox._assigned#cut1",
     "apps.ehr.longitudinal_access.patient_scope",
     "apps.ehr.management.commands.encrypt_attachment_objects.Command.handle#observed",
     "apps.ehr.pack_views._context",
@@ -6211,6 +6348,10 @@
     "apps.orders.access.require_version#cut1",
     "apps.orders.commands._upload#cut1",
     "apps.orders.commands.submit_command#cut1",
+    "apps.orders.inbox._may_acknowledge#cut1",
+    "apps.orders.inbox._pending#cut1",
+    "apps.orders.inbox.apply_bulk_acknowledgment#cut1",
+    "apps.orders.inbox.preview_bulk_acknowledgment#cut1",
     "apps.orders.ingestion._receipt#cut1",
     "apps.orders.ingestion.ingest_result#cut1",
     "apps.orders.ingestion.verify_match#cut1",
@@ -6374,6 +6515,12 @@
     "apps.workflows.engine.execute_step#cut1",
     "apps.workflows.engine.utc_now#cut1",
     "apps.workflows.external.step_send_eligible#cut1",
+    "apps.workflows.inbox.require_inbox#cut1",
+    "apps.workflows.inbox_views._authorized_inbox#cut1",
+    "apps.workflows.inbox_views._authorized_today#cut1",
+    "apps.workflows.inbox_views._selected_versions#cut1",
+    "apps.workflows.inbox_views._terms#cut1",
+    "apps.workflows.inbox_views.today#cut1",
     "apps.workflows.run_control.retry_run#cut1",
     "apps.workflows.run_services.cancel_run#cut1",
     "apps.workflows.run_services.start_run#cut1",
@@ -6382,10 +6529,12 @@
     "apps.workflows.task_commands._action#cut1",
     "apps.workflows.task_commands._bulk_action#cut1",
     "apps.workflows.task_commands._submit#cut1",
+    "apps.workflows.task_feed.task_items#cut1",
     "apps.workflows.task_services._command#cut1",
     "apps.workflows.task_services._dependency#cut1",
     "apps.workflows.tasks.escalate#cut1",
     "apps.workflows.tasks.scan_due#cut1",
+    "apps.workflows.today.view_today#cut1",
     "apps.workflows.views._authorized_tasks#cut1",
     "apps.workflows.views._staff_catalog#cut1",
     "clinic_app.auth_lookup",
@@ -6951,6 +7100,14 @@
       "path": "apps/teleconsult/services.py",
       "function": "open_encounters",
       "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+      "legacy_allowed": [
+        "physician"
+      ]
+    },
+    {
+      "path": "apps/workflows/inbox.py",
+      "function": "require_inbox",
+      "roles": "INBOX_ROLES",
       "legacy_allowed": [
         "physician"
       ]
