@@ -49,7 +49,7 @@ PNG_SIGNATURE: Final = b"\x89PNG\r\n\x1a\n"
 # A physician sees every IA destination their bundle and routes open (plan
 # annex IA, todo 13): Patients leads to consent, never to the registry, and
 # the clinic billing ledger stays hidden.
-PHYSICIAN_MODULES: Final = {"agenda", "patients", "inbox", "operations"}
+PHYSICIAN_MODULES: Final = {"today", "agenda", "patients", "inbox", "operations"}
 
 
 def _modules(content: bytes) -> dict[str, tuple[str, bool]]:

@@ -51,6 +51,10 @@ NO_IN_VIEW_REFUSAL = {
         "For a valid staff User, unknown/foreign clinics return 200 []; "
         "invalid JSON/schema returns 400, not a clinic refusal."
     ),
+    "ui_api:inbox-query": (
+        "For a valid staff User, refused, unknown and foreign clinics return the "
+        "200 empty inbox page; invalid JSON/schema returns 400, not a refusal."
+    ),
 }
 
 

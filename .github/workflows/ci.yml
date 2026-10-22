@@ -173,6 +173,7 @@ jobs:
           - "primitives@webkit,workspace@webkit,self-booking@webkit,locale@webkit,onboarding@webkit,patient-workspace@webkit"
           - "agenda@webkit,agenda-slice@webkit,agenda-grid@webkit,reception@webkit,attachments@webkit,availability@webkit,contacts@webkit,encounter@webkit,patient-access@webkit,questionnaires@webkit,retention@webkit,staff-intake@webkit,realtime@webkit"
           - "results,results@firefox,results@webkit"
+          - "clinical-inbox,clinical-inbox@firefox,clinical-inbox@webkit"
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

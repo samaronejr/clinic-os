@@ -111,6 +111,8 @@ SUITES: Final = {
     ),
     # Task 31: keep this registration block separate from active lanes.
     "results": ("tests/renewal/browser/test_results.py",),
+    # Task 32: Clinical Inbox and clinician Today.
+    "clinical-inbox": ("tests/renewal/browser/test_clinical_inbox.py",),
 }
 # Suites whose fixtures seed synthetic staff through the owner DSN.
 FIXTURE_SUITES: Final = frozenset(
@@ -149,6 +151,7 @@ FIXTURE_SUITES: Final = frozenset(
         "staff-intake",
         "workspace",
         "results",
+        "clinical-inbox",
     }
 )
 # Suites served through the task-owned Redis, SSE process and same-origin proxy.

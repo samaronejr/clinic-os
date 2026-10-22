@@ -84,6 +84,7 @@ def test_suite_registry_is_closed_and_registered_files_exist() -> None:
         "staff-intake",
         "workspace",
         "results",
+        "clinical-inbox",
     }
     assert "prescription-draft" in runner.FIXTURE_SUITES
     assert {

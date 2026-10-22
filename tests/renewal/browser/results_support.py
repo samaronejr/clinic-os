@@ -79,7 +79,9 @@ def place(page: Page, data: dict[str, str]) -> None:
     submit(page, form.get_by_role("button"), "Order placed.")
 
 
-def upload(page: Page, data: dict[str, str], *, wrong: bool = False) -> None:
+def upload(
+    page: Page, data: dict[str, str], *, wrong: bool = False, flag: str = "high"
+) -> None:
     """Transcribe source identity rather than borrowing it from a chart default."""
     form = page.locator(
         'section[aria-labelledby="sources-heading"] '
@@ -103,7 +105,7 @@ def upload(page: Page, data: dict[str, str], *, wrong: bool = False) -> None:
     form.locator('[name="observation_code"]').select_option("cbc")
     form.locator('[name="unit"]').fill("unidade-da-fonte")
     form.locator('[name="reference_interval"]').fill("intervalo-da-fonte")
-    form.locator('[name="abnormal_flag"]').select_option("high")
+    form.locator('[name="abnormal_flag"]').select_option(flag)
     submit(
         page,
         form.locator('button[type="submit"]'),

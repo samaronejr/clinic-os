@@ -53,7 +53,8 @@ def test_task_changes_refresh_reception_only_after_commit(
         assert view_reception_day(clinic_id=rbac_graph.clinic_a).pending_tasks == 1
         assert events == []
     expected = (f"clinic:{rbac_graph.clinic_a}:queue", "queue", 1)
-    assert events == [expected, expected]
+    inbox = (f"clinic:{rbac_graph.clinic_a}:inbox", "inbox", 1)
+    assert events == [expected, inbox, expected, inbox]
 
     events.clear()
     with runtime_role(), tenant_context(actor, rbac_graph.organization_a):

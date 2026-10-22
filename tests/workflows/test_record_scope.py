@@ -12,7 +12,8 @@ import ast
 import copy
 import inspect
 from dataclasses import dataclass, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlencode
@@ -24,6 +25,8 @@ from apps.core import integration
 from apps.core.integration import ActionOperationRequest, enqueue_operation
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import User, UserClinicRole
+from apps.scheduling.availability_creation import create_availability
+from apps.scheduling.models import Appointment
 from apps.tenancy.db import tenant_context
 from apps.workflows import (
     access,
@@ -35,8 +38,11 @@ from apps.workflows import (
     receipts,
     run_control,
     run_views,
+    task_feed,
+    today,
     views,
 )
+from apps.workflows.inbox import InboxScope
 from apps.workflows.models import (
     Task,
     WorkflowDefinitionVersion,
@@ -70,6 +76,7 @@ from identity.permission_support import (
 )
 from patient_service_support import runtime_role
 from scheduling.appointment_service_support import (
+    AppointmentSetup,
     create_synthetic_appointment,
     seed_cross_clinic_appointment_setups,
 )
@@ -81,7 +88,6 @@ from workflows.test_authority import _pending_writes
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import datetime
 
     from apps.workflows.handlers import HandlerResult
     from django.http import HttpRequest
@@ -480,6 +486,67 @@ def queue_scope(s: Scoped) -> None:
     assert UUID(s.ref(s.b, "task")["id"]) not in ids
 
 
+def inbox_task_scope(s: Scoped) -> None:
+    """The inbox task feed lists the actor's own work of the queried clinic only."""
+
+    def keys(clinic: UUID) -> set[str]:
+        scope = InboxScope(
+            clinic_id=clinic,
+            actor_id=s.staff,
+            timezone="America/Sao_Paulo",
+            now=timezone.now(),
+        )
+        listed = outcome(s, s.staff, lambda: task_feed.task_items(scope))[0]
+        assert isinstance(listed, tuple)
+        return {item.key for item in listed}
+
+    own, foreign = s.ref(s.a, "task")["id"], s.ref(s.b, "task")["id"]
+    assert f"task:{own}" in keys(s.a)
+    assert f"task:{foreign}" not in keys(s.a)
+    assert f"task:{foreign}" in keys(s.b)
+
+
+def today_scope(s: Scoped, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A physician of two clinics sees only the queried clinic's own day."""
+    physician = s.graph.physician
+    with owner_context(s.graph.organization_a):
+        UserClinicRole.objects.create(
+            organization_id=s.graph.organization_a,
+            clinic_id=s.b,
+            user_id=physician,
+            role=UserClinicRole.Role.PHYSICIAN,
+            workflow_bundle_version=2,
+        )
+        mine = Appointment.objects.get(pk=s.ref(s.a, "appointment")["id"])
+    with runtime_role(), tenant_context(s.staff, s.graph.organization_a):
+        create_availability(
+            clinic_id=s.b,
+            practitioner_id=physician,
+            start_local="2035-06-02T13:00",
+            end_local="2035-06-02T15:00",
+            idempotency_key=uuid4(),
+        )
+        elsewhere = create_synthetic_appointment(
+            AppointmentSetup(
+                organization_id=s.graph.organization_a,
+                clinic_id=s.b,
+                actor_id=s.staff,
+                practitioner_id=physician,
+                enrollment_id=UUID(s.ref(s.b, "enrollment")["id"]),
+                patient_id=mine.patient_id,
+            ),
+            start_local="2035-06-02T13:00",
+            end_local="2035-06-02T14:00",
+        )
+    monkeypatch.setattr(
+        today, "utc_now", lambda: datetime(2035, 6, 2, 11, 30, tzinfo=UTC)
+    )
+    for clinic, expected in ((s.a, mine.pk), (s.b, elsewhere.pk)):
+        screen = outcome(s, physician, partial(today.view_today, clinic_id=clinic))[0]
+        assert isinstance(screen, today.TodayView), screen
+        assert [row.appointment_id for row in screen.appointments] == [expected]
+
+
 def exceptions_scope(s: Scoped, monkeypatch: pytest.MonkeyPatch) -> None:
     with runtime_role(), tenant_context(s.manager, s.graph.organization_a):
         for clinic in (s.a, s.b):
@@ -793,6 +860,8 @@ PY_CASES: dict[str, Callable[..., None]] = {
     PYTHON + "task_services.create_task:scope:clinic_id=clinic_id": task_key_scope,
     PYTHON + "queue_services.list_tasks:scope:clinic_id=clinic_id": queue_scope,
     PYTHON + "views._authorized_tasks:scope:clinic_id=clinic_id": exceptions_scope,
+    PYTHON + "task_feed.task_items:scope:clinic_id=scope.clinic_id": inbox_task_scope,
+    PYTHON + "today.view_today:scope:clinic_id=clinic_id": today_scope,
 }
 
 

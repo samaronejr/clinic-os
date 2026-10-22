@@ -50,6 +50,20 @@ the source rather than inferring conversions or normal ranges. Patient source
 descriptors additionally require a current session, matching release audience
 and current acknowledgment; storage locators never enter a public URL.
 
+## Clinical Inbox feed
+
+`apps.orders.inbox` registers the inbox `result` feed: current matched
+versions without an acknowledgment, shown only where the actor holds
+`result.acknowledge` for that patient (result row policy also admits
+identity-routing staff, so the feed rechecks). Items carry the exact source
+observation strings as a preview. `preview_bulk_acknowledgment` and
+`apply_bulk_acknowledgment` add no authority: they accept only non-critical
+versions whose every observation is explicitly flagged `normal`, bind a signed
+preview to actor, clinic and version numbers, recheck each version under the
+series fence and call `acknowledge_result` with `no_action` for all or none.
+There is no bulk release. A new source version or acknowledgment publishes an
+inbox refetch hint after commit.
+
 ## Synthetic callback
 
 `POST /orders/lab/callback/` is outside the staff tenant middleware. It

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load i18n static %}
+{% block title %}{% trans "Clinical Inbox" %} · Clinic Ops{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}">
+<link rel="stylesheet" href="{% static 'css/clinic-os-inbox.css' %}">
+<script src="{% static 'js/realtime.js' %}" defer></script>
+<script src="{% static 'js/clinical-worklist.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<section class="worklist" aria-labelledby="inbox-title" data-worklist="inbox"
+  data-realtime-topic="clinic:{{ clinic_id }}:inbox"
+  data-realtime-enabled="{{ realtime_enabled|yesno:'true,false' }}"
+  data-realtime-polling="{{ realtime_polling|yesno:'true,false' }}">
+  {% csrf_token %}
+  <header class="worklist-header">
+    <div>
+      <h1 id="inbox-title">{% trans "Clinical Inbox" %}</h1>
+      <p class="lede">{% trans "Results, notes and tasks that need you, most urgent first." %}</p>
+    </div>
+  </header>
+  <p class="feedback feedback--warning" data-realtime-unavailable role="status" hidden>{% trans "Realtime updates unavailable" %}</p>
+  <p class="feedback feedback--warning" data-worklist-stale role="status" hidden>{% trans "The inbox changed. Finish what you are doing, then refresh." %}</p>
+  <p class="feedback" data-worklist-saving role="status" hidden>{% trans "Updating the inbox…" %}</p>
+  <p class="feedback feedback--warning" data-worklist-offline role="status" hidden>{% trans "Connection unavailable. Nothing was confirmed. Refresh when you reconnect." %}</p>
+  <p class="hint worklist-keys" id="inbox-keys">{% trans "Keyboard: J and K move between items, Enter runs the item's action, X selects a normal result." %}</p>
+  {% include "workflows/partials/inbox_board.html" %}
+</section>
+{% endblock %}

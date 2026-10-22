@@ -1,0 +1,7 @@
+{% load i18n order_labels %}<div class="table-scroll" role="region" tabindex="0" aria-labelledby="{{ caption_id }}">
+  <table class="table worklist-values-table">
+    <caption id="{{ caption_id }}">{{ caption_index }}. {% trans "Exact source values" %} · {{ caption_title }}</caption>
+    <thead><tr><th scope="col">{% trans "Examination" %}</th><th scope="col">{% trans "Value" %}</th><th scope="col">{% trans "Unit" %}</th><th scope="col">{% trans "Reference interval" %}</th><th scope="col">{% trans "Source flag" %}</th></tr></thead>
+    <tbody>{% for row in observations %}<tr><th scope="row">{{ row.label }}</th><td>{{ row.value }}</td><td>{{ row.unit|default:"—" }}</td><td>{{ row.reference_interval|default:"—" }}</td><td>{{ row.flag|source_flag_label }}</td></tr>{% endfor %}</tbody>
+  </table>
+</div>

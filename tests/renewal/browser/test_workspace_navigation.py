@@ -90,7 +90,7 @@ EXPECTED: Final = {
         "operations",
         "settings",
     ],
-    "physician": ["agenda", "patients", "inbox", "operations"],
+    "physician": ["today", "agenda", "patients", "inbox", "operations"],
     "nurse": ["today", "inbox"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "settings"],

@@ -1,0 +1,69 @@
+{% load i18n clinic_locale inbox_labels %}
+<div id="today-board" class="today-layout" data-today-day="{{ screen.day|date:'Y-m-d' }}">
+  <div class="today-main">
+    <section class="panel today-next" aria-labelledby="today-next-title" data-today-next="{% if screen.next_patient %}{{ screen.next_patient.status }}{% else %}none{% endif %}">
+      <h2 id="today-next-title" class="panel-title">{% trans "Next patient" %}</h2>
+      {% with next=screen.next_patient %}
+      {% if next %}
+      <p class="today-next-name">{{ next.patient_label }}</p>
+      <p class="today-next-meta"><time>{{ next.start_local }}–{{ next.end_local }}</time> <span class="badge{% if next.status == 'arrived' or next.status == 'in_progress' %} badge--info{% endif %}">{{ next.status|appointment_label }}</span></p>
+      <form method="post" action="{% url 'ehr:encounter' clinic_id %}" hx-boost="false">
+        {% csrf_token %}<input type="hidden" name="action" value="open"><input type="hidden" name="appointment_id" value="{{ next.appointment_id }}">
+        <button type="submit"{% if not next.can_start %} disabled aria-describedby="today-next-hint"{% endif %}>{% if next.encounter_open %}{% trans "Continue encounter" %}{% else %}{% trans "Start encounter" %}{% endif %}</button>
+        {% if not next.can_start %}<p class="hint" id="today-next-hint">{% trans "Available after reception registers the arrival." %}</p>{% endif %}
+      </form>
+      {% else %}
+      {% trans "No more patients today" as next_empty_title %}{% trans "Appointments booked for you today appear here." as next_empty_message %}{% include "includes/components/state.html" with state="empty" title=next_empty_title message=next_empty_message only %}
+      {% endif %}
+      {% endwith %}
+    </section>
+    <section class="today-brief" aria-labelledby="today-brief-title" data-today-brief="{{ screen.brief }}">
+      <h2 id="today-brief-title">{% trans "Pre-visit brief" %}</h2>
+      {% trans "Brief unavailable" as brief_title %}{% trans "AI assistance is off for this clinic. Review the record before the visit." as brief_message %}{% include "includes/components/state.html" with state="disabled" title=brief_title message=brief_message only %}
+    </section>
+    <section class="worklist-section" aria-labelledby="today-day-title">
+      <h2 id="today-day-title">{% blocktrans count count=screen.appointments|length %}{{ count }} appointment today{% plural %}{{ count }} appointments today{% endblocktrans %}</h2>
+      {% if screen.limited %}<p class="feedback feedback--warning" role="status">{% trans "This day exceeds the list limit. Use the agenda to review every appointment." %}</p>{% endif %}
+      <ol class="worklist-items" aria-labelledby="today-day-title" aria-describedby="today-keys">
+        {% for row in screen.appointments %}
+        <li class="worklist-item today-appointment today-appointment--{{ row.status }}" data-worklist-item data-today-status="{{ row.status }}" tabindex="-1" aria-labelledby="today-row-{{ forloop.counter }}">
+          <div class="worklist-item-head">
+            <h3 id="today-row-{{ forloop.counter }}"><time>{{ row.start_local }}–{{ row.end_local }}</time><span class="worklist-patient"> · {{ row.patient_label }}</span></h3>
+            <p class="worklist-badges"><span class="badge{% if row.status == 'arrived' or row.status == 'in_progress' %} badge--info{% elif row.status == 'completed' %} badge--success{% elif row.status == 'no_show' %} badge--muted{% endif %}">{{ row.status|appointment_label }}</span></p>
+          </div>
+          {% if row.can_start %}
+          <div class="worklist-item-actions">
+            <form method="post" action="{% url 'ehr:encounter' clinic_id %}" hx-boost="false">
+              {% csrf_token %}<input type="hidden" name="action" value="open"><input type="hidden" name="appointment_id" value="{{ row.appointment_id }}">
+              <button type="submit" class="button--secondary" data-worklist-primary>{% if row.encounter_open %}{% trans "Continue encounter" %}{% else %}{% trans "Start encounter" %}{% endif %}<span class="visually-hidden"> · {{ row.patient_label }}</span></button>
+            </form>
+          </div>
+          {% endif %}
+        </li>
+        {% empty %}
+        <li class="worklist-empty">{% trans "No appointments today" as day_empty_title %}{% trans "Your agenda for today is empty." as day_empty_message %}{% include "includes/components/state.html" with state="empty" title=day_empty_title message=day_empty_message only %}</li>
+        {% endfor %}
+      </ol>
+    </section>
+  </div>
+  <aside class="today-side" aria-label="{% trans 'Today summary' %}">
+    <section class="panel today-counts" aria-labelledby="today-inbox-title">
+      <h2 id="today-inbox-title" class="panel-title">{% trans "Clinical Inbox" %}</h2>
+      {% if screen.inbox %}
+      <dl class="worklist-counts">
+        {% for kind, count in screen.inbox.counts.items %}<div data-inbox-count="{{ kind }}"><dt>{{ kind|inbox_kind }}</dt><dd>{{ count }}{% if kind in screen.inbox.overflowed %}+{% endif %}</dd></div>{% endfor %}
+        <div data-inbox-count="overdue"><dt>{% trans "Overdue" %}</dt><dd>{{ screen.inbox.overdue }}</dd></div>
+        <div data-inbox-count="critical"><dt>{% trans "Critical" %}</dt><dd>{{ screen.inbox.critical }}</dd></div>
+      </dl>
+      <a class="button button--secondary" href="{{ inbox_url }}">{% trans "Open Clinical Inbox" %}</a>
+      {% else %}<p class="hint" data-inbox-count="unavailable">{% trans "Inbox counts are not available for your current access." %}</p>{% endif %}
+    </section>
+    <section class="panel today-arrivals" aria-labelledby="today-arrivals-title">
+      <h2 id="today-arrivals-title" class="panel-title">{% blocktrans count count=screen.arrivals|length %}{{ count }} patient waiting{% plural %}{{ count }} patients waiting{% endblocktrans %}</h2>
+      {% if screen.arrivals %}
+      <ul class="today-arrival-list">{% for row in screen.arrivals %}<li data-today-arrival><time>{{ row.start_local }}</time> · {{ row.patient_label }}</li>{% endfor %}</ul>
+      {% else %}<p class="hint">{% trans "No patient has arrived yet." %}</p>{% endif %}
+      <p class="hint">{% if screen.upcoming %}{% blocktrans count count=screen.upcoming %}{{ count }} more appointment later today.{% plural %}{{ count }} more appointments later today.{% endblocktrans %}{% else %}{% trans "No more appointments later today." %}{% endif %}</p>
+    </section>
+  </aside>
+</div>

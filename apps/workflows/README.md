@@ -103,6 +103,55 @@ are pending/running/waiting/completed/failed/cancelled. Failed steps and escalat
 tasks remain in the exception queue. Revoked/inactive actors cannot execute queued
 steps, even when the message was published while authorized.
 
+## Clinical Inbox and clinician Today (todo 32)
+
+The Clinical Inbox is a read model, not a store: `query_inbox(*, clinic_id,
+filters, known)` assembles one typed queue on every request from feeds that
+owning domains register with `register_inbox_feed(kind, query, *, label,
+position)`. This app registers `task` (active tasks the actor owns, decided by
+`workflows_owned`, the task row predicate); orders registers `result` (current,
+unacknowledged versions the actor may acknowledge for that patient); EHR
+registers `draft` (SOAP drafts the actor authors on encounters still assigned
+to them). Tasks bound to an orders work item are represented by their result
+and never listed twice. Prescriptions (34), routed patient questions (51) and
+care actions (52) register their own feeds when they land. There is no table,
+so there is nothing to migrate or restore: the queue rebuilds from the domains'
+committed, policy-bounded records.
+
+`require_inbox` admits clinic `demographics.read` held through a clinical role
+whose bundle carries `result.read` or `order.observe` (physician, nurse, allied
+professional). Those permissions are patient-scoped, so each feed rechecks its
+own authority per patient; a feed whose permission was narrowed is left out.
+Unknown, foreign and refused callers get the shared refusal; the typed API
+`POST /api/ui/v1/inbox/query/` instead answers them with the empty page a
+clinician with nothing to do receives (same keys, zero counts, the caller's
+`known` keys echoed as `removed`), so no answer reveals a clinic or record.
+
+Items carry an opaque `kind:uuid` key, owner, due time, priority and triage
+order (critical, priority, overdue, due). A page holds at most `MAX_ITEMS`
+items. Each feed decides its own authority before bounding, so rows the actor
+may not act on never take a slot, and returns its most urgent items first
+(critical results, then urgent tasks). A feed with more than a page of work
+keeps only those, marks the page `truncated` and its count as a lower bound
+(shown as `N+`), so a later critical result is never cut behind older normal
+ones and the page never claims to be complete. A refresh posts the keys it
+shows; keys no longer visible come back as `removed` and the page says so.
+Results are due on receipt, like their review task. Acknowledgment calls the
+orders service unchanged. Bulk acknowledgment is limited to current,
+unacknowledged, non-critical results whose every source observation is flagged
+exactly `normal`; each selected item is previewed, the confirmation is signed
+for the actor, clinic and exact version numbers, and confirmation rechecks every
+item under the series fence, acknowledging all as `no_action` or none. Release
+is never bulk: it remains a per-version decision in the orders workspace.
+
+Clinician Today reads only the actor's own clinic-local appointments under
+`appointment.read_own`, the next patient (in care, arrived, then the next
+booked), arrivals, and the inbox counts when the inbox itself would open. The
+pre-visit brief slot is reported unavailable until todo 44 supplies it.
+Commits that change inbox inputs publish a `clinic:<id>:inbox` refetch hint
+after commit; subscribers still need the operator-issued topic lease from
+todo 8, and without it the page refreshes through the polling fallback.
+
 ## Schema, recovery and rollback
 
 All five domain models inherit `TenantScopedModel`. Initial DDL installs FORCE

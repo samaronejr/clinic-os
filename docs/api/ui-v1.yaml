@@ -444,6 +444,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/ui/v1/inbox/query/:
+    post:
+      operationId: inbox_query
+      description: Adapt ``workflows.query_inbox``. An actor without inbox permission,
+        and an unknown or foreign clinic, receive the same empty page as a clinician
+        with nothing to do.
+      tags:
+      - inbox
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboxQueryRequest'
+      security:
+      - sessionCookie: []
+        csrfHeader: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InboxPage'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '405':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '406':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '415':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
     AddendumAutosaveRequest:
@@ -1073,6 +1138,16 @@ components:
       - lines
       - section
       - theirs
+    DueEnum:
+      enum:
+      - all
+      - overdue
+      - today
+      type: string
+      description: |-
+        * `all` - all
+        * `overdue` - overdue
+        * `today` - today
     Error:
       type: object
       description: The ``{code, message_key}`` refusal body shared by every endpoint.
@@ -1084,6 +1159,182 @@ components:
       required:
       - code
       - message_key
+    InboxItem:
+      type: object
+      description: 'Adapt ``workflows.InboxItem``: one typed, owned and due inbox
+        row.'
+      properties:
+        key:
+          type: string
+          readOnly: true
+        kind:
+          type: string
+          readOnly: true
+        record_id:
+          type: string
+          format: uuid
+          readOnly: true
+        target_id:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        revision:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        patient_label:
+          type: string
+          readOnly: true
+        owner:
+          type: string
+          readOnly: true
+        owner_label:
+          type: string
+          readOnly: true
+        due_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        overdue:
+          type: boolean
+          readOnly: true
+        priority:
+          type: string
+          readOnly: true
+        critical:
+          type: boolean
+          readOnly: true
+        action:
+          type: string
+          readOnly: true
+        bulk_eligible:
+          type: boolean
+          readOnly: true
+        preview:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxObservation'
+          readOnly: true
+      required:
+      - action
+      - bulk_eligible
+      - critical
+      - due_at
+      - key
+      - kind
+      - overdue
+      - owner
+      - owner_label
+      - patient_label
+      - preview
+      - priority
+      - record_id
+      - revision
+      - target_id
+      - title
+    InboxObservation:
+      type: object
+      description: 'Adapt ``workflows.InboxObservation``: exact source strings only.'
+      properties:
+        code:
+          type: string
+          readOnly: true
+        examination:
+          type: string
+          readOnly: true
+        value:
+          type: string
+          readOnly: true
+        unit:
+          type: string
+          readOnly: true
+        reference_interval:
+          type: string
+          readOnly: true
+        flag:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - examination
+      - flag
+      - reference_interval
+      - unit
+      - value
+    InboxPage:
+      type: object
+      description: Adapt ``workflows.InboxPage``; unauthorized callers get it empty.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxItem'
+          readOnly: true
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+          readOnly: true
+        total:
+          type: integer
+          readOnly: true
+        overdue:
+          type: integer
+          readOnly: true
+        critical:
+          type: integer
+          readOnly: true
+        removed:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        truncated:
+          type: boolean
+          readOnly: true
+      required:
+      - counts
+      - critical
+      - items
+      - overdue
+      - removed
+      - total
+      - truncated
+    InboxQueryRequest:
+      type: object
+      description: |-
+        POST body of ``inbox/query``; selectors and filters stay in the body.
+
+        ``known`` lists the item keys the caller is showing; keys that are no
+        longer visible come back in ``removed`` so the client can say so.
+      properties:
+        clinic_id:
+          type: string
+          format: uuid
+        kinds:
+          type: array
+          items:
+            type: string
+            maxLength: 24
+          maxItems: 16
+        owner:
+          allOf:
+          - $ref: '#/components/schemas/OwnerEnum'
+          default: all
+        due:
+          allOf:
+          - $ref: '#/components/schemas/DueEnum'
+          default: all
+        known:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          maxItems: 400
     LockEnum:
       enum:
       - held
@@ -1114,6 +1365,14 @@ components:
       - lane_id
       - other_unit
       - start_local
+    OwnerEnum:
+      enum:
+      - all
+      - mine
+      type: string
+      description: |-
+        * `all` - all
+        * `mine` - mine
     SoapSections:
       type: object
       description: Exactly the four SOAP sections as plain text; never trimmed.

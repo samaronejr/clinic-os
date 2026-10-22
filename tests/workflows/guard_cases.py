@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from threading import Event
 from typing import TYPE_CHECKING, Any, TypedDict
+from unittest.mock import patch
 from uuid import UUID, uuid4
 from weakref import WeakKeyDictionary
 
@@ -26,17 +27,22 @@ from apps.workflows import (
     engine,
     external,
     handlers,
+    inbox,
+    inbox_views,
     queue_services,
     reassignment,
     run_control,
     run_services,
     run_views,
     task_commands,
+    task_feed,
     task_services,
     tasks,
+    today,
     views,
 )
 from apps.workflows.access import WorkflowAccessDeniedError
+from apps.workflows.inbox import InboxPage, InboxScope
 from apps.workflows.models import (
     Task,
     WorkflowDefinitionVersion,
@@ -1845,11 +1851,181 @@ def _lifecycle_cases() -> tuple[GuardCase, ...]:
     )
 
 
+def _owned_keys(world: GuardWorld) -> set[str]:
+    return {
+        f"task:{task.pk}"
+        for task in (world.assigned, world.progress, world.review, world.dependent)
+    }
+
+
+def _inbox_owned(value: object, world: object) -> bool:
+    """The actor's own active work is listed; finished work never is."""
+    assert isinstance(world, GuardWorld)
+    if isinstance(value, HttpResponse):
+        content = value.content.decode()
+        return all(f'data-inbox-key="{key}"' in content for key in _owned_keys(world))
+    assert isinstance(value, InboxPage)
+    keys = {item.key for item in value.items}
+    return _owned_keys(world) <= keys and f"task:{world.parent.pk}" not in keys
+
+
+def _inbox_without_tasks(value: object, _prepared: object) -> bool:
+    if isinstance(value, HttpResponse):
+        return 'data-inbox-kind="task"' not in value.content.decode()
+    return isinstance(value, InboxPage) and all(
+        item.kind != "task" for item in value.items
+    )
+
+
+def _feed_owned(value: object, world: object) -> bool:
+    assert isinstance(world, GuardWorld)
+    assert isinstance(value, tuple)
+    return _owned_keys(world) <= {item.key for item in value}
+
+
+def _today_without_counts(value: object, _prepared: object) -> bool:
+    if isinstance(value, HttpResponse):
+        return b'data-inbox-count="unavailable"' in value.content
+    return getattr(value, "inbox", object()) is None
+
+
+def _today_counts(value: object, _prepared: object) -> bool:
+    if isinstance(value, HttpResponse):
+        return b'data-inbox-count="task"' in value.content
+    page = getattr(value, "inbox", None)
+    return isinstance(page, InboxPage) and page.counts["task"] > 0
+
+
+def _overflowed(value: object, _prepared: object) -> bool:
+    if isinstance(value, HttpResponse):
+        return b"+</dd>" in value.content
+    page = value if isinstance(value, InboxPage) else getattr(value, "inbox", None)
+    return isinstance(page, InboxPage) and page.truncated and "task" in page.overflowed
+
+
+def _overflow_cell(invoke: Callable[[GuardWorld], object]) -> Cell:
+    """Shrink the page below the world's owned tasks so the feed overflows."""
+
+    def overflowing(world: GuardWorld, _prepared: object) -> object:
+        with patch.object(inbox, "MAX_ITEMS", 1):
+            return invoke(world)
+
+    return Cell("feed-overflows-the-page", overflowing, ALLOWED, check=_overflowed)
+
+
+# Entrypoints that assemble the queue decide whether a feed overflowed the page.
+QUEUE_ASSEMBLERS = frozenset(
+    {
+        "apps.workflows.inbox.query_inbox",
+        "apps.workflows.inbox_views._authorized_inbox",
+        "apps.workflows.inbox_views.inbox",
+        "apps.workflows.today.view_today",
+        "apps.workflows.inbox_views._authorized_today",
+        "apps.workflows.inbox_views.today",
+    }
+)
+
+
+def _scope(world: GuardWorld) -> InboxScope:
+    return InboxScope(
+        clinic_id=world.clinic,
+        actor_id=world.actor,
+        timezone="America/Sao_Paulo",
+        now=timezone.now(),
+    )
+
+
+# A narrowed task bundle hides only the task feed; the inbox gate is clinic
+# demographics held through a clinical role, so the queue itself still opens.
+INBOX_NARROWED = {"tasks.view": (ALLOWED, _inbox_without_tasks)}
+TODAY_NARROWED = {
+    "demographics.read": (ALLOWED, _today_without_counts),
+    "tasks.view": (ALLOWED, None),
+}
+
+
+def _inbox_cases() -> tuple[GuardCase, ...]:
+    return tuple(
+        replace(case, cells=(_overflow_cell(case.invoke),))
+        if case.symbol in QUEUE_ASSEMBLERS
+        else case
+        for case in _inbox_entrypoints()
+    )
+
+
+def _inbox_entrypoints() -> tuple[GuardCase, ...]:
+    return (
+        GuardCase(
+            "apps.workflows.inbox.require_inbox",
+            "demographics.read",
+            lambda w: inbox.require_inbox(clinic_id=w.clinic),
+        ),
+        GuardCase(
+            "apps.workflows.inbox.query_inbox",
+            "demographics.read",
+            lambda w: inbox.query_inbox(clinic_id=w.clinic),
+            check=_inbox_owned,
+            narrowed=INBOX_NARROWED,
+        ),
+        GuardCase(
+            "apps.workflows.task_feed.task_items",
+            "tasks.view",
+            lambda w: task_feed.task_items(_scope(w)),
+            check=_feed_owned,
+        ),
+        GuardCase(
+            "apps.workflows.inbox_views._authorized_inbox",
+            "demographics.read",
+            lambda w: inspect.unwrap(inbox_views._authorized_inbox)(
+                w.request, w.clinic
+            ),
+            check=_inbox_owned,
+            narrowed=INBOX_NARROWED,
+        ),
+        GuardCase(
+            "apps.workflows.inbox_views.inbox",
+            "demographics.read",
+            lambda w: _remember(
+                w.request, lambda request: inbox_views.inbox(request, w.clinic)
+            ),
+            transport=True,
+            check=_inbox_owned,
+            narrowed=INBOX_NARROWED,
+        ),
+        GuardCase(
+            "apps.workflows.today.view_today",
+            "appointment.read_own",
+            lambda w: today.view_today(clinic_id=w.clinic),
+            check=_today_counts,
+            narrowed=TODAY_NARROWED,
+        ),
+        GuardCase(
+            "apps.workflows.inbox_views._authorized_today",
+            "appointment.read_own",
+            lambda w: inspect.unwrap(inbox_views._authorized_today)(
+                w.request, w.clinic
+            ),
+            check=_today_counts,
+            narrowed=TODAY_NARROWED,
+        ),
+        GuardCase(
+            "apps.workflows.inbox_views.today",
+            "appointment.read_own",
+            lambda w: _remember(
+                w.request, lambda request: inbox_views.today(request, w.clinic)
+            ),
+            transport=True,
+            check=_today_counts,
+            narrowed=TODAY_NARROWED,
+        ),
+    )
+
+
 def guard_cases() -> tuple[GuardCase, ...]:
     extras = _extras()
     cases = tuple(
         replace(case, **extras.get(case.symbol, {}))
-        for case in (*_base_cases(), *_lifecycle_cases())
+        for case in (*_base_cases(), *_lifecycle_cases(), *_inbox_cases())
     )
     assert set(extras) <= {case.symbol for case in cases}, set(extras)
     return cases
