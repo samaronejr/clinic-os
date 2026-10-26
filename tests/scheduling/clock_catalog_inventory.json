@@ -2915,6 +2915,12 @@
       "trigger:identity_user.identity_password_session_rejection"
     ]
   },
+  "constraint:prescription_prescriptiondraft.prescription_document_kind": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "constraint:prescription_prescriptiondraft.prescription_draft_state": {
     "direct": {},
     "via": [
@@ -7075,6 +7081,7 @@
   "function:clinic_app.prescription_close_guard()": {
     "direct": {},
     "via": [
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
       "constraint:prescription_prescriptiondraft.prescription_draft_state",
       "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
       "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
@@ -7105,6 +7112,15 @@
       "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
       "function:pg_catalog.version()",
       "index:ehr_encounter_one_open_unscheduled",
       "policy:ehr_encounter.clinical_insert",
@@ -10493,21 +10509,37 @@
   "policy:prescription_prescriptiondraft.draft_insert": {
     "direct": {},
     "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
       "function:clinic_app.ehr_assigned(uuid)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.texteq(text, text)",
-      "function:pg_catalog.uuid_eq(uuid, uuid)"
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
     ]
   },
   "policy:prescription_prescriptiondraft.draft_read": {
     "direct": {},
     "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
       "function:clinic_app.ehr_assigned(uuid)",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.texteq(text, text)",
-      "function:pg_catalog.uuid_eq(uuid, uuid)"
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:intake_patientclinicenrollment.tenant_isolation"
     ]
   },
   "policy:prescription_prescriptiondraft.draft_update": {

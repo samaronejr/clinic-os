@@ -38,6 +38,9 @@ from patients.duplicate_signal_cases import (
     test_forward_waitlist_keeps_integer_source_and_replacement_links,
 )
 from patients.test_duplicates import test_new_charge_for_an_aliased_identity_is_rejected
+from prescription.test_document_kinds import (
+    test_current_document_sql_guard_rechecks_authority_and_version,
+)
 from scheduling.test_appointment_states import (
     test_database_trigger_decides_every_status_pair_by_actor,
     test_guards_decide_by_the_exact_permission_not_a_sibling,
@@ -202,6 +205,9 @@ PROTOCOL_ORACLES = {
         "test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority",
     ],
     **ORDERS_PROTOCOLS,
+    "clinic_app.prescription_current_document_guard": [
+        "test_current_document_sql_guard_rechecks_authority_and_version"
+    ],
 }
 
 
@@ -239,6 +245,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         for name in names
     )
     assert callable(test_sql_guards_allow_and_deny_all_staff_roles)
+    assert callable(test_current_document_sql_guard_rechecks_authority_and_version)
     assert callable(
         test_two_patient_sessions_and_physician_keep_independent_mode_receipts
     )

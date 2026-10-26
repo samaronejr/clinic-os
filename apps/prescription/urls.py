@@ -2,6 +2,7 @@
 
 from django.urls import path
 
+from apps.prescription.document_views import clinical_documents_view
 from apps.prescription.views import (
     draft_workspace,
     patient_documents_view,
@@ -13,6 +14,11 @@ from apps.prescription.views import (
 
 app_name = "prescription"
 urlpatterns = [
+    path(
+        "prescription/clinics/<uuid:clinic_id>/clinical-documents/",
+        clinical_documents_view,
+        name="clinical-documents",
+    ),
     path("prescription/clinics/<uuid:clinic_id>/draft/", draft_workspace, name="draft"),
     path(
         "prescription/clinics/<uuid:clinic_id>/encounters/<uuid:encounter_id>/draft/",

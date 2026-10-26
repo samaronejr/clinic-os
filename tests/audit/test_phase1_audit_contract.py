@@ -11,6 +11,24 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "prescription.clinical_draft.created": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.clinical_draft",
+        "created",
+    ),
+    "prescription.clinical_draft.saved": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.clinical_draft",
+        "saved",
+    ),
+    "prescription.clinical_draft.discarded": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.clinical_draft",
+        "discarded",
+    ),
     "scheduling.queue.arrived": (
         "tenant",
         "clinic-os-web",

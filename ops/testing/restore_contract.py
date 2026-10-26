@@ -113,6 +113,7 @@ DOMAIN_RELATIONS: Final = (
     "otp_static_staticdevice",
     "otp_totp_totpdevice",
     "prescription_prescriptiondocument",
+    "prescription_documentdraftcontent",
     "prescription_prescriptiondocumentrelease",
     "prescription_prescriptiondocumentrevocation",
     "prescription_prescriptiondraft",

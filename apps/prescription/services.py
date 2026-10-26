@@ -8,11 +8,12 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any, NoReturn, TypedDict, Unpack
 
 import rfc8785
+from django.core.exceptions import ValidationError
 from django.db import connection, transaction
-from django.utils import timezone
+from django.utils import timezone, translation
 
 from apps.audit.canonical import AuditEventInput
-from apps.audit.services import record_event
+from apps.audit.services import record_event, record_phase1_event
 from apps.ehr.models import Encounter
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
@@ -20,6 +21,7 @@ from apps.ehr.services import (
     _denied,
     record_denial,
 )
+from apps.identity.clinic_configuration import latest_configuration
 from apps.identity.current_context import (
     CurrentActorError,
     current_actor_username,
@@ -27,6 +29,7 @@ from apps.identity.current_context import (
 )
 from apps.identity.models import Clinic, UserClinicRole
 from apps.intake.models import Patient
+from apps.orders.values import CATALOG
 from apps.prescription.document_rendering import (
     DOCUMENT_INPUT_VERSION,
     RENDER_PROFILE,
@@ -36,12 +39,27 @@ from apps.prescription.document_rendering import (
     default_renderer,
     validate_pdf_structure,
 )
+from apps.prescription.document_templates import TEMPLATE_VERSION
+from apps.prescription.documents import (
+    DocumentContentInput,
+    _enrollment,
+    document_content,
+    exam_order_command,
+)
 from apps.prescription.models import (
+    DocumentDraftContent,
+    DocumentKind,
     PrescriptionDocument,
     PrescriptionDraft,
     PrescriptionItem,
 )
-from apps.prescription.policy import ITEM_LIMITS, validate_category, validate_items
+from apps.prescription.policy import (
+    ITEM_LIMITS,
+    SYNTHETIC_CATEGORY,
+    SYNTHETIC_CONTRACT,
+    validate_category,
+    validate_items,
+)
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -119,7 +137,9 @@ def create_draft(
     contract = validate_category(category)
     with transaction.atomic():
         encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
-        existing = PrescriptionDraft.objects.filter(encounter=encounter).first()
+        existing = PrescriptionDraft.objects.filter(
+            encounter=encounter, kind=DocumentKind.PRESCRIPTION
+        ).first()
         if existing is not None:
             if existing.state != "draft":
                 reason = "precondition_failed"
@@ -178,6 +198,8 @@ def save_draft(
 ) -> PrescriptionDraft:
     """Lock, compare and append a complete snapshot; failed writes change nothing."""
     authorized = view_draft(clinic_id=clinic_id, draft_id=draft_id, **scope)
+    if authorized.kind != DocumentKind.PRESCRIPTION:
+        raise ClinicalAccessDeniedError
     validate_category(category)
     validate_items(items)
     with transaction.atomic():
@@ -210,6 +232,95 @@ def _locked_draft(draft_id: UUID, expected_version: int) -> PrescriptionDraft:
 
 VERIFICATION_BASE_URL = "https://verify.clinic-os.invalid/v/"
 QR_HANDLE_BYTES = 32
+
+
+def create_document_draft(
+    *, clinic_id: UUID, encounter_id: UUID, kind: str
+) -> PrescriptionDraft:
+    """Create/resume one kind without changing the pinned prescription service."""
+    encounter = authorize_encounter(clinic_id=clinic_id, encounter_id=encounter_id)
+    _enrollment(encounter)
+    if not isinstance(kind, str) or kind not in DocumentKind.values:
+        raise ValidationError(
+            translation.gettext("Choose a document kind."), code="invalid_kind"
+        )
+    with transaction.atomic():
+        encounter = Encounter.objects.select_for_update().get(pk=encounter.pk)
+        existing = PrescriptionDraft.objects.filter(
+            encounter=encounter, kind=kind
+        ).first()
+        if existing is not None:
+            if existing.state != "draft":
+                reason = "precondition_failed"
+                raise ClinicalConflictError(reason)
+            return existing
+        if encounter.state != "open":
+            reason = "encounter_closed"
+            raise ClinicalConflictError(reason)
+        draft = PrescriptionDraft.objects.create(
+            organization_id=encounter.organization_id,
+            clinic_id=clinic_id,
+            encounter=encounter,
+            patient_id=encounter.patient_id,
+            issuer_id=encounter.physician_id,
+            kind=kind,
+            category=SYNTHETIC_CATEGORY,
+            contract_version=SYNTHETIC_CONTRACT,
+        )
+        record_phase1_event(
+            "prescription.clinical_draft.created",
+            clinic_id=clinic_id,
+            affected_record_id=draft.pk,
+        )
+        return draft
+
+
+def authorize_document_draft(
+    *, clinic_id: UUID, draft_id: UUID, permission: str = "prescription.prepare"
+) -> PrescriptionDraft:
+    """Recheck assigned physician, current professional scope and patient care."""
+    draft = PrescriptionDraft.objects.filter(pk=draft_id, clinic_id=clinic_id).first()
+    if draft is None:
+        raise ClinicalAccessDeniedError
+    encounter = authorize_encounter(
+        clinic_id=clinic_id, encounter_id=draft.encounter_id
+    )
+    _enrollment(encounter, permission=permission)
+    return draft
+
+
+def save_document_draft(
+    *,
+    clinic_id: UUID,
+    draft_id: UUID,
+    expected_version: int,
+    content: DocumentContentInput,
+) -> PrescriptionDraft:
+    """Append exact text and advance the version; no old review remains current."""
+    authorized = authorize_document_draft(clinic_id=clinic_id, draft_id=draft_id)
+    if authorized.kind == DocumentKind.PRESCRIPTION:
+        raise ClinicalAccessDeniedError
+    if type(expected_version) is not int or expected_version < 1:
+        raise ValidationError(
+            translation.gettext("Check the clinical document fields.")
+        )
+    payload = content.payload(authorized.kind)
+    with transaction.atomic():
+        draft = _locked_draft(draft_id, expected_version)
+        draft.version += 1
+        draft.save(update_fields=("version", "updated_at"))
+        DocumentDraftContent.objects.create(
+            organization_id=draft.organization_id,
+            draft=draft,
+            version=draft.version,
+            content=payload,
+        )
+        record_phase1_event(
+            "prescription.clinical_draft.saved",
+            clinic_id=clinic_id,
+            affected_record_id=draft.pk,
+        )
+        return draft
 
 
 class DocumentStorageError(Exception):
@@ -260,7 +371,8 @@ def _frozen_input(
     clinic = Clinic.objects.filter(pk=draft.clinic_id).first()
     if patient is None or clinic is None:
         raise ClinicalAccessDeniedError
-    return {
+    configuration = latest_configuration(draft.clinic_id)
+    frozen = {
         "v": DOCUMENT_INPUT_VERSION,
         "draft_id": str(draft.pk),
         "document_version": draft.version,
@@ -268,11 +380,31 @@ def _frozen_input(
         "category": draft.category,
         "issuer_label": current_actor_username(),
         "patient_label": patient.full_name,
-        "clinic_label": clinic.name,
+        "clinic_label": configuration.display_name if configuration else clinic.name,
+        "kind": draft.kind,
+        "template_version": TEMPLATE_VERSION,
+        "branding": {
+            "version": configuration.version if configuration else 0,
+            "contact_email": configuration.contact_email if configuration else "",
+            "contact_phone": configuration.contact_phone if configuration else "",
+            "brand_token": configuration.brand_token if configuration else "navy",
+        },
         "issued_at": issued_at,
         "verification_url": verification_url,
         "items": draft_items(draft),
     }
+    if draft.kind != DocumentKind.PRESCRIPTION:
+        content = document_content(draft)
+        with translation.override("pt-br"):
+            frozen["content"] = {
+                **content,
+                "exam_labels": [
+                    f"{CATALOG[code]!s} ({code})" for code in content["exam_codes"]
+                ],
+            }
+        if draft.kind == DocumentKind.EXAM_REQUEST:
+            frozen["order_command_id"] = str(exam_order_command(draft))
+    return frozen
 
 
 def _input_digest(frozen: dict[str, Any]) -> str:
@@ -331,6 +463,8 @@ def render_document(
         ).exists():
             reason = "already_rendered"
             raise ClinicalConflictError(reason)
+        if draft.kind != DocumentKind.PRESCRIPTION:
+            authorize_document_draft(clinic_id=clinic_id, draft_id=draft.pk)
         handle = secrets.token_urlsafe(QR_HANDLE_BYTES)
         verification_url = f"{VERIFICATION_BASE_URL}{handle}"
         issued_at = timezone.now().isoformat()
@@ -394,11 +528,15 @@ def download_document(*, clinic_id: UUID, document_id: UUID) -> DocumentDownload
     data = bytes(document.pdf_bytes)
     if sha256(data).hexdigest() != document.pdf_digest:
         raise DocumentStorageError
+    kind = document.frozen_input.get("kind", DocumentKind.PRESCRIPTION)
+    if not isinstance(kind, str) or kind not in DocumentKind.values:
+        raise DocumentStorageError
+    prefix = "prescricao" if kind == DocumentKind.PRESCRIPTION else kind
     _document_event(document, "downloaded")
     return DocumentDownload(
         data=data,
         content_type="application/pdf",
-        file_name=f"prescricao-{document.pk}.pdf",
+        file_name=f"{prefix}-{document.pk}.pdf",
     )
 
 
@@ -428,6 +566,29 @@ def verify_document_integrity(document: PrescriptionDocument) -> DocumentIntegri
     )
 
 
+def require_current_document(document: PrescriptionDocument) -> None:
+    """Fence approval/signing against edits and independently recheck bytes."""
+    if (
+        document.frozen_input.get("kind", DocumentKind.PRESCRIPTION)
+        != DocumentKind.PRESCRIPTION
+    ):
+        authorize_document_draft(
+            clinic_id=document.clinic_id,
+            draft_id=document.draft_id,
+            permission="prescription.sign",
+        )
+    draft = (
+        PrescriptionDraft.objects.select_for_update()
+        .filter(pk=document.draft_id, state="draft")
+        .first()
+    )
+    if draft is None or draft.version != document.document_version:
+        reason = "stale_document_approval"
+        raise ClinicalConflictError(reason)
+    if not verify_document_integrity(document).ok:
+        raise DocumentStorageError
+
+
 def draft_items(draft: PrescriptionDraft) -> list[dict[str, str]]:
     """Return the current author-visible snapshot, never discarded content."""
     return list(
@@ -451,4 +612,11 @@ def discard_draft(
         draft.state = "discarded"
         draft.version += 1
         draft.save(update_fields=("state", "version", "updated_at"))
-        _event(draft, "discarded")
+        if draft.kind == DocumentKind.PRESCRIPTION:
+            _event(draft, "discarded")
+        else:
+            record_phase1_event(
+                "prescription.clinical_draft.discarded",
+                clinic_id=clinic_id,
+                affected_record_id=draft.pk,
+            )

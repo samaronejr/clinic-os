@@ -23,6 +23,7 @@ from identity.nonstaff_differential import (
     DifferentialReport,
     assert_behavioral_classifications,
 )
+from identity.nonstaff_document_probes import document_probes
 from identity.nonstaff_ehr_probes import ehr_probes
 from identity.nonstaff_infrastructure_probes import (
     infrastructure_probes,
@@ -91,6 +92,7 @@ def run_nonstaff_census(
             *appointment_lifecycle_probes(data, graph),
             *agenda_grid_probes(data, graph),
             *ehr_probes(data, graph),
+            *document_probes(data, graph),
             *agenda_board_probes(data, graph),
             *delegation_probes(graph, data.actor.pk),
             *lifecycle_probes(graph),

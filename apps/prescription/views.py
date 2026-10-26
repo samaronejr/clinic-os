@@ -22,6 +22,7 @@ from django.db import DatabaseError, connection
 from django.http import HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
@@ -29,6 +30,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.core.patient_context import bind_encounter_context
 from apps.ehr.services import ClinicalAccessDeniedError, ClinicalConflictError
+from apps.identity.clinic_configuration import latest_configuration
 from apps.identity.current_context import (
     CurrentActorError,
     current_actor_username,
@@ -53,6 +55,7 @@ from apps.prescription.forms import (
 )
 from apps.prescription.models import (
     COMPLETED_SIGNATURE_STATES,
+    DocumentKind,
     PrescriptionDocument,
     PrescriptionDocumentRelease,
     PrescriptionDocumentRevocation,
@@ -62,6 +65,7 @@ from apps.prescription.models import (
 from apps.prescription.policy import SYNTHETIC_CATEGORY
 from apps.prescription.services import (
     DocumentStorageError,
+    authorize_document_draft,
     authorize_encounter,
     create_draft,
     discard_draft,
@@ -127,6 +131,17 @@ _ITEM_FIELDS: Final = (
 # each with the recovery it allows. Unknown reasons fall back to a generic
 # line rather than to silence.
 _FAILURE_TEXT: Final[dict[str, tuple[str, str]]] = {
+    "stale_document_approval": (
+        _("The draft changed after review"),
+        _(
+            "This review cannot authorize signing. "
+            "Render and review the saved version again."
+        ),
+    ),
+    "authorization_revoked": (
+        _("Your professional authority changed. No document was issued."),
+        _("Confirm your current clinical scope before trying again."),
+    ),
     "provider_rejected": (
         "O provedor recusou a operação.",
         "O documento não foi alterado. Você pode tentar novamente.",
@@ -642,7 +657,14 @@ def _sign_document(
     except ClinicalConflictError as conflict:
         return ActionOutcome(
             CONFLICT,
-            "Este documento já foi assinado ou está em assinatura.",
+            (
+                _(
+                    "The draft changed after review. "
+                    "Render and review the saved version again."
+                )
+                if conflict.reason_code == "stale_document_approval"
+                else "Este documento já foi assinado ou está em assinatura."
+            ),
             conflict.reason_code,
         )
     return redirect(signing_continuation(clinic_id, operation.pk))
@@ -829,7 +851,9 @@ def _workspace(
         request.session[key] = str(encounter.pk)
         return redirect(continuation(clinic_id, encounter.pk))
     subject = _subject(encounter)
-    draft = PrescriptionDraft.objects.filter(encounter=encounter).first()
+    draft = PrescriptionDraft.objects.filter(
+        encounter=encounter, kind=DocumentKind.PRESCRIPTION
+    ).first()
     outcome: ActionOutcome | None = None
     if request.method == "POST":
         result = _document_action(request, clinic_id, encounter, draft, subject)
@@ -971,12 +995,22 @@ def _review(
     live = next((view for view in attempts if view["live"]), None)
     complete = next((view for view in attempts if view["complete"]), None)
     revoked = PrescriptionDocumentRevocation.objects.filter(document=document).exists()
+    if (
+        document.frozen_input.get("kind", DocumentKind.PRESCRIPTION)
+        != DocumentKind.PRESCRIPTION
+    ):
+        authorize_document_draft(clinic_id=clinic_id, draft_id=document.draft_id)
     draft = document.draft
+    configuration = latest_configuration(clinic_id)
     drift = [
         label
         for label, frozen_value, current in (
             ("paciente", frozen.get("patient_label"), subject.patient_name),
-            ("clínica", frozen.get("clinic_label"), subject.clinic_name),
+            (
+                "clínica",
+                frozen.get("clinic_label"),
+                configuration.display_name if configuration else subject.clinic_name,
+            ),
             ("médico", frozen.get("issuer_label"), subject.issuer_name),
         )
         if frozen_value != current
@@ -992,6 +1026,7 @@ def _review(
             "document": document,
             "draft": draft,
             "frozen": frozen,
+            "is_prescription": draft.kind == DocumentKind.PRESCRIPTION,
             "items": _review_items(document),
             "attempts": attempts,
             "live": live,
@@ -1164,6 +1199,11 @@ def _signing_page(
     )
     bind_encounter_context(request, encounter)
     document = operation.document
+    if (
+        document.frozen_input.get("kind", DocumentKind.PRESCRIPTION)
+        != DocumentKind.PRESCRIPTION
+    ):
+        authorize_document_draft(clinic_id=clinic_id, draft_id=document.draft_id)
     view = _operation_view(operation)
     siblings = list(
         SignatureOperation.objects.filter(document=document).order_by("created_at")
@@ -1191,6 +1231,10 @@ def _signing_page(
             "evidence": _evidence_facts(operation),
             "revoked": revoked,
             "release": release,
+            "stale": (
+                document.draft.state != "draft"
+                or document.draft.version != document.document_version
+            ),
             "verify_path": reverse(
                 "prescription:verify-document", kwargs={"handle": document.qr_handle}
             ),

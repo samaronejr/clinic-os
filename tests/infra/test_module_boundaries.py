@@ -25,8 +25,8 @@ from apps.intake.questionnaires import assign_questionnaire
 from apps.intake.services import create_patient, search_patients, submit_intake
 from apps.interop.services import exchange_clinical_record
 from apps.orders import services as order_services
+from apps.prescription.services import create_document_draft, issue_prescription
 from apps.prescription.services import create_draft as create_prescription_draft
-from apps.prescription.services import issue_prescription
 from apps.prescription.verification import release_document
 from apps.providers.services import current_version, is_live
 from apps.realtime import authorization, scopes, tickets, transport
@@ -424,6 +424,12 @@ def test_prescription_draft_requires_explicit_encounter_patient_issuer_category(
         "issuer_id",
         "category",
     ]
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+
+
+def test_clinical_document_draft_requires_explicit_scope_and_kind() -> None:
+    parameters = signature(create_document_draft).parameters
+    assert list(parameters) == ["clinic_id", "encounter_id", "kind"]
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 

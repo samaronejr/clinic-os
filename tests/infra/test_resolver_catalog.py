@@ -251,6 +251,8 @@ POSTURE_OVERRIDES: Final = {
     ),
     "patient_booking_receipt": ("v", False, ["clinic_resolver"]),
     "prescription_close_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_content_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_current_document_guard": ("v", False, ["clinic_resolver"]),
     "prescription_document_guard": ("v", False, ["clinic_resolver"]),
     "prescription_document_open": ("s", False, ["clinic_resolver"]),
     "prescription_draft_guard": ("v", False, ["clinic_resolver"]),
@@ -488,6 +490,8 @@ FUNCTION_SIGNATURES: Final = {
         "kek text, organization_id uuid, purpose text, envelope bytea",
     ),
     ("prescription_draft_guard", ""),
+    ("prescription_content_guard", ""),
+    ("prescription_current_document_guard", ""),
     ("prescription_item_guard", ""),
     ("prescription_patient_document_bytes", "kek text, requested_document uuid"),
     ("prescription_patient_documents", ""),
@@ -799,6 +803,8 @@ FUNCTION_RESULTS: Final = {
         "kek text, organization_id uuid, purpose text, envelope bytea",
     ): "bytea",
     ("prescription_draft_guard", ""): "trigger",
+    ("prescription_content_guard", ""): "trigger",
+    ("prescription_current_document_guard", ""): "trigger",
     ("prescription_item_guard", ""): "trigger",
     ("prescription_patient_document_bytes", "kek text, requested_document uuid"): (
         "bytea"

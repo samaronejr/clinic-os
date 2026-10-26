@@ -24,6 +24,7 @@ def test_result_source_probe_preserves_the_closed_recovery_binding(
         "envelope_hex": "01",
         "expected_sha256": "0" * 64,
         "result_version_id": str(uuid4()),
+        "clinical_document_id": str(uuid4()),
     }
     path = tmp_path / "probe.json"
     path.write_text(json.dumps(payload))

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% load static tz %}
-{% block title %}Prescrição · {% if step == "result" %}resultado{% else %}assinatura{% endif %} · Clinic OS{% endblock %}
+{% load static tz i18n %}
+{% block title %}{% trans "Clinical documents" %} · {% if step == "result" %}resultado{% else %}assinatura{% endif %} · Clinic OS{% endblock %}
 {% block meta_description %}Estado explícito de uma operação de assinatura e as evidências do documento resultante.{% endblock %}
 {% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-prescription.css' %}"><script src="{% static 'js/prescription-workflow.js' %}" defer></script>{% endblock %}
 {% block content %}
@@ -37,7 +37,7 @@
       </div>
       <form method="post" class="actions">{% csrf_token %}
         <button class="button" name="action" value="download_signed" type="submit">{% if view.synthetic %}Baixar o artefato do ensaio{% else %}Baixar documento assinado{% endif %}</button>
-        <a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho e ao histórico</a>
+        {% if document.draft.kind == "prescription" %}<a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho e ao histórico</a>{% else %}<a class="button button--secondary" href="{{ review_url }}">{% trans "Review frozen content" %}</a>{% endif %}
       </form>
     {% elif view.failed %}
       <div class="feedback feedback--error" role="alert" data-failure-reason="{{ operation.failure_reason }}">
@@ -54,7 +54,7 @@
         <a class="button" href="{% url 'prescription:signing' clinic_id newer_attempt.operation.pk %}">Ver a tentativa atual</a>
         <a class="button button--secondary" href="{{ review_url }}">Voltar à revisão</a>
       </div>
-      {% elif operation.failure_reason != "content_digest_mismatch" and not revoked %}
+      {% elif operation.failure_reason != "content_digest_mismatch" and not revoked and not stale %}
       <form method="post" data-once>{% csrf_token %}
         <div class="actions">
           <button class="button" name="action" value="restart_signature" type="submit">Tentar novamente com o mesmo documento</button>
@@ -64,7 +64,7 @@
         <p class="hint">Uma nova tentativa exige identidade confirmada e evidência de registro atual. O conteúdo do documento não muda.</p>
       </form>
       {% else %}
-      <div class="actions"><a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho</a></div>
+      <div class="actions">{% if document.draft.kind == "prescription" %}<a class="button button--secondary" href="{% url 'prescription:draft-encounter' clinic_id document.encounter_id %}">Voltar ao rascunho</a>{% else %}<a class="button button--secondary" href="{{ review_url }}">{% trans "Review frozen content" %}</a>{% endif %}</div>
       {% endif %}
     {% else %}
       <p class="feedback" role="status">{% if operation.state == "signing" %}A operação está com o provedor. O resultado chega pelo retorno autenticado; até lá nada foi emitido.{% elif operation.state == "prepared" %}Identidade e registro verificados; o envio ao provedor ainda não foi confirmado.{% else %}A operação foi interrompida antes da confirmação de identidade. Volte à revisão para confirmar e assinar.{% endif %}</p>

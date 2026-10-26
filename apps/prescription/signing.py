@@ -42,6 +42,7 @@ from apps.ehr.services import (
     ClinicalConflictError,
     _denied,
 )
+from apps.identity.current_context import CurrentActorError
 from apps.identity.models import PhysicianEvidence, PhysicianProfile
 from apps.identity.physician_registry import SigningIdentity
 from apps.identity.physician_verification import (
@@ -53,6 +54,7 @@ from apps.identity.stepup import (
     STEP_UP_SESSION_KEY,
     StepUpRequired,
 )
+from apps.prescription.documents import document_order
 from apps.prescription.models import (
     LIVE_SIGNATURE_STATES,
     PrescriptionDocument,
@@ -63,6 +65,7 @@ from apps.prescription.services import (
     DocumentStorageError,
     _authorize_document_care,
     authorize_encounter,
+    require_current_document,
 )
 from apps.prescription.signature_provider import (
     MAX_REFERENCE_LENGTH,
@@ -208,6 +211,7 @@ def initiate_signature(
     if completed is not None:
         reason = "already_completed"
         raise ClinicalConflictError(reason)
+    require_current_document(document)
     try:
         operation = SignatureOperation.objects.create(
             organization_id=document.organization_id,
@@ -309,6 +313,7 @@ def _prepare_signature(
     if operation.state != SignatureOperation.State.DRAFT:
         reason = "invalid_state"
         raise ClinicalConflictError(reason)
+    require_current_document(operation.document)
     signer = SigningIdentity(
         issuer_id=operation.issuer_id,
         subject=operation.signer_subject,
@@ -497,6 +502,7 @@ def _dispatch_request(scope: _SignatureScope) -> SignatureRequest | None:
         if operation is None or operation.state != SignatureOperation.State.PREPARED:
             return None
         document = operation.document
+        require_current_document(document)
         content = bytes(document.pdf_bytes)
         if sha256(content).hexdigest() != operation.content_digest:
             raise DocumentStorageError
@@ -585,6 +591,17 @@ def _dispatch_claimed(scope: _SignatureScope) -> DispatchResult:
         request = _dispatch_request(scope)
     except DocumentStorageError:
         return _fail_and_report(scope, "content_digest_mismatch")
+    except (
+        ClinicalConflictError,
+        ClinicalAccessDeniedError,
+        CurrentActorError,
+    ) as error:
+        return _fail_and_report(
+            scope,
+            "stale_document_approval"
+            if isinstance(error, ClinicalConflictError)
+            else "authorization_revoked",
+        )
     if request is None:
         return _persisted_dispatch(scope)
     try:
@@ -706,6 +723,27 @@ def _apply_signed(
             reason_code="authorization_expired",
         )
         return
+    failure = ""
+    try:
+        require_current_document(operation.document)
+    except ClinicalConflictError:
+        failure = "stale_document_approval"
+    except (ClinicalAccessDeniedError, CurrentActorError):
+        failure = "authorization_revoked"
+    except DocumentStorageError:
+        failure = "content_digest_mismatch"
+    if failure:
+        operation.state = SignatureOperation.State.FAILED
+        operation.failure_reason = failure
+        operation.completed_at = verified_at
+        operation.save(update_fields=("state", "failure_reason", "completed_at"))
+        _signature_event(
+            operation.pk,
+            operation.clinic_id,
+            "failed",
+            reason_code=failure,
+        )
+        return
     try:
         verified = authenticator.verify_signature(
             signed_bytes=facts.signed_bytes,
@@ -726,6 +764,9 @@ def _apply_signed(
             reason_code="signature_invalid",
         )
         return
+    # Order placement shares this callback transaction with completion and its
+    # audit receipt. A failure rolls back the order, callback and signed state.
+    document_order(operation.document)
     if authenticator.provider == SYNTHETIC_PROVIDER:
         operation.state = SignatureOperation.State.REHEARSAL_COMPLETE
         event = "rehearsal_completed"

@@ -3126,6 +3126,111 @@
       ]
     },
     {
+      "symbol": "apps.prescription.document_views._apply_action",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.document_views._selected_draft",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.document_views._workspace",
+      "signals": [
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.document_views._workspace"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.document_views.clinical_documents_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.document_views.clinical_documents_view"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.documents._enrollment",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services.authorize_document_draft",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services.require_current_document",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services.save_document_draft",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter",
+        "clinic_app.has_permission"
+      ]
+    },
+    {
+      "symbol": "apps.prescription.services.save_draft",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Source-resolved encounter or patient-permission enforcement is exercised by the named existing authority oracles; document-specific refusal and exact-version tests cover the additional binding fence.",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter",
+        "apps.prescription.services._scope"
+      ]
+    },
+    {
       "symbol": "apps.prescription.services._authorize_document_care",
       "signals": [
         "denial",
@@ -6368,6 +6473,8 @@
     "apps.orders.source_views.download#cut1",
     "apps.orders.views._patients#cut1",
     "apps.orders.views.results#cut1",
+    "apps.prescription.document_views._workspace",
+    "apps.prescription.document_views.clinical_documents_view",
     "apps.prescription.services._authorize_document_care",
     "apps.prescription.services._scope",
     "apps.prescription.services.authorize_encounter",
@@ -6933,6 +7040,14 @@
     {
       "path": "apps/intake/questionnaires.py",
       "function": "clinical_response",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+      "legacy_allowed": [
+        "physician"
+      ]
+    },
+    {
+      "path": "apps/prescription/document_views.py",
+      "function": "_workspace",
       "roles": "(UserClinicRole.Role.PHYSICIAN,)",
       "legacy_allowed": [
         "physician"
@@ -9235,6 +9350,8 @@
           "clinic_app.orders_result:orders_insert",
           "clinic_app.orders_resultobservation:orders_read",
           "clinic_app.orders_resultrejection:orders_insert",
+          "clinic_app.prescription_prescriptiondraft:draft_insert",
+          "clinic_app.prescription_prescriptiondraft:draft_read",
           "clinic_app.scheduling_cliniciandelay:reception_scope",
           "clinic_app.scheduling_displaydevice:reception_scope",
           "clinic_app.scheduling_queueentry:reception_scope",
@@ -9265,6 +9382,7 @@
           "clinic_app.orders_can_read_version",
           "clinic_app.orders_guard",
           "clinic_app.orders_ingest_allowed",
+          "clinic_app.prescription_current_document_guard",
           "clinic_app.reception_guard",
           "clinic_app.reception_practitioners",
           "clinic_app.reception_readiness",
@@ -11353,6 +11471,48 @@
       "probes": [],
       "reason": "Patient-session/capability authority, not staff membership. Staff role aliases cannot supply the separate patient principal; patient-access, consent, booking, record-delivery and teleconsult tests cover this principal."
     },
+    "clinic_app.prescription_content_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_clinical_documents_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "row_integrity",
+      "probes": [],
+      "reason": "Immutable encrypted content snapshots bind tenant, non-prescription kind, draft version and size; this trigger validates row integrity and grants no staff authority."
+    },
+    "clinic_app.prescription_current_document_guard": {
+      "discovery": {
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "set_returning": false,
+            "security_definer": true
+          }
+        ],
+        "migrations": [
+          "apps/prescription/migrations/_clinical_documents_sql.py"
+        ],
+        "policies": [],
+        "resolvers": []
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_current_document_sql_guard_rechecks_authority_and_version"
+      ],
+      "reason": "Clinical-document signature protocol rechecks the exact current draft version and patient-scoped prepare/sign permissions; direct clinic_app INSERT allow/deny oracles retain live RLS and triggers."
+    },
     "clinic_app.prescription_draft_guard": {
       "discovery": {
         "signatures": [
@@ -11364,6 +11524,7 @@
           }
         ],
         "migrations": [
+          "apps/prescription/migrations/_clinical_documents_sql.py",
           "apps/prescription/migrations/_draft_sql.py"
         ],
         "policies": [],

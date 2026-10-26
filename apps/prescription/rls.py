@@ -12,6 +12,7 @@ RLS_TARGETS: Final[frozenset[tuple[str, str]]] = frozenset()
 CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
     {
         "prescription_prescriptiondraft",
+        "prescription_documentdraftcontent",
         "prescription_prescriptionitem",
         "prescription_prescriptiondocument",
         "prescription_signatureoperation",
@@ -24,6 +25,7 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "prescription_prescriptiondraft": frozenset({"SELECT", "INSERT"}),
+    "prescription_documentdraftcontent": frozenset({"SELECT", "INSERT"}),
     "prescription_prescriptionitem": frozenset({"SELECT", "INSERT"}),
     "prescription_prescriptiondocument": frozenset({"SELECT", "INSERT"}),
     "prescription_signatureoperation": frozenset({"SELECT", "INSERT"}),

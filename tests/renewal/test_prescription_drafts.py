@@ -371,6 +371,9 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "draft_update",
                 )
             } | {
+                ("prescription_documentdraftcontent", policy)
+                for policy in ("setup_tenant", "content_read", "content_insert")
+            } | {
                 ("prescription_prescriptionitem", policy)
                 for policy in ("setup_tenant", "item_read", "item_insert")
             } | {
@@ -417,6 +420,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
             assert set(cursor.fetchall()) == {
                 (table, privilege)
                 for table in (
+                    "prescription_documentdraftcontent",
                     "prescription_prescriptiondraft",
                     "prescription_prescriptionitem",
                     "prescription_prescriptiondocument",

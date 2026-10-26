@@ -59,6 +59,7 @@ from apps.identity.stepup import STEP_UP_SESSION_KEY
 from apps.intake.duplicate_views import patient_timeline
 from apps.intake.views import patient_access_url, patient_contacts_url
 from apps.orders.source_views import download as result_source_download
+from apps.prescription.document_views import clinical_documents_view
 from apps.prescription.views import (
     draft_workspace,
     patient_documents_view,
@@ -133,6 +134,7 @@ ROUTE_VIEWS: dict[str, object] = {
 OUTSIDE_EHR: dict[object, str] = {
     clinic_settings: "clinic-admin template configuration, no clinical record",
     draft_workspace: "prescription drafts, catches the EHR refusal types",
+    clinical_documents_view: "clinical document selectors; test_document_refusals.py",
     review_view: "prescription review, catches the EHR refusal types",
     signing_status_view: "prescription signing, catches the EHR refusal types",
     patient_documents_view: "patient prescription downloads",

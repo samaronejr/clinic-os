@@ -416,6 +416,7 @@ def _read_probe(path: Path) -> KeyProbe:
     allowed = required | {
         "attachment_id",
         "clinic_id",
+        "clinical_document_id",
         "invoice_id",
         "owner_id",
         "patient_name",

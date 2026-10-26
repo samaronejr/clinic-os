@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load static i18n %}
+{% block title %}{% trans "Clinical documents" %} · Clinic OS{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-prescription.css' %}"><script src="{% static 'js/prescription-workflow.js' %}" defer></script>{% endblock %}
+{% block content %}
+<section class="rx-shell" aria-labelledby="document-title">
+  <div class="rx-title-row"><h1 id="document-title">{% if draft %}{{ draft.get_kind_display }}{% else %}{% trans "Clinical documents" %}{% endif %}</h1><span class="badge badge--muted">{% trans "Synthetic rehearsal - no clinical validity" %}</span></div>
+  <p class="lede">{% trans "Write, save and review the exact PDF before signing. Release to the patient is a separate action." %}</p>
+  {% if error %}<div class="feedback feedback--error" role="alert" tabindex="-1" autofocus data-focus-error data-outcome="{{ error_code }}"><p>{{ error }}</p></div>{% endif %}
+  {% if draft %}
+    {% include "prescription/partials/context.html" %}
+    {% if draft.state == "draft" %}
+    <p class="feedback{% if unsaved %} feedback--error{% endif %}" role="status" data-save-state="{% if unsaved %}unsaved{% else %}saved{% endif %}">{% if unsaved %}{% trans "Changes were not saved. Your text remains below." %}{% else %}{% blocktrans with version=draft.version %}Saved version {{ version }} loaded.{% endblocktrans %}{% endif %}</p>
+    {% for message in messages %}{% if 'clinical-document-saved' in message.tags %}<p class="feedback feedback--success" role="status" tabindex="-1" autofocus>{{ message }}</p>{% endif %}{% endfor %}
+    <form method="post" class="panel" novalidate data-document-kind="{{ draft.kind }}" data-version="{{ draft.version }}">{% csrf_token %}
+      <input type="hidden" name="draft_id" value="{{ draft.pk }}">{% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+      {% if form.errors %}<div class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error autofocus><p>{% trans "Check the clinical document fields." %}</p>{{ form.non_field_errors }}{% for hidden in form.hidden_fields %}{{ hidden.errors }}{% endfor %}</div>{% endif %}
+      <div class="field"><label for="{{ form.body.id_for_label }}">{{ form.body.label }}</label>{{ form.body }}{{ form.body.errors }}</div>
+      <div class="field"><label for="{{ form.recipient.id_for_label }}">{{ form.recipient.label }}</label>{{ form.recipient }}{{ form.recipient.errors }}</div>
+      {% if is_exam_request %}<fieldset><legend>{{ form.exam_codes.label }}</legend>{{ form.exam_codes }}{{ form.exam_codes.errors }}<p class="hint">{% trans "Verified signing creates an order from local catalog version 1. It does not acknowledge or release results." %}</p></fieldset>{% endif %}
+      <details><summary>{% trans "Optional diagnosis coding" %}</summary><p class="hint">{% trans "Unavailable: no versioned terminology source has passed EG-13." %}</p><div class="field"><label for="{{ form.cid10_code.id_for_label }}">{{ form.cid10_code.label }}</label>{{ form.cid10_code }}{{ form.cid10_code.errors }}</div><div class="field"><label for="{{ form.cid10_source_version.id_for_label }}">{{ form.cid10_source_version.label }}</label>{{ form.cid10_source_version }}{{ form.cid10_source_version.errors }}</div></details>
+      <div class="actions"><button class="button" type="submit" name="action" value="save">{% trans "Save document draft" %}</button><a class="button button--secondary" href="{% url 'prescription:clinical-documents' clinic_id %}">{% trans "Reopen saved version" %}</a></div>
+      <p class="hint">{% trans "Only the server saves this text. Offline or interrupted submissions are not confirmed saves." %}</p>
+    </form>
+    <form method="post" class="actions" data-once>{% csrf_token %}<input type="hidden" name="draft_id" value="{{ draft.pk }}"><input type="hidden" name="expected_version" value="{{ draft.version }}"><button class="button" type="submit" name="action" value="render"{% if draft.version == 1 %} disabled{% endif %}>{% trans "Render saved version for review" %}</button><button class="button button--danger" type="submit" name="action" value="discard">{% trans "Discard document draft" %}</button><span class="rx-once-status" data-once-status role="status" hidden>{% trans "Waiting for the server..." %}</span></form>
+    {% else %}<p class="feedback feedback--muted" role="status">{% trans "This draft was discarded. Retained artifacts remain in the history." %}</p>{% endif %}
+    <section aria-labelledby="document-history"><h2 id="document-history">{% trans "Document history" %}</h2>
+      {% for row in documents %}
+      <div class="panel" data-document="{{ row.document.pk }}" data-version="{{ row.document.document_version }}">
+        <h3>{% blocktrans with version=row.document.document_version %}Version {{ version }}{% endblocktrans %}</h3><p><span class="badge badge--{{ row.badge_tone }}">{{ row.badge_label }}</span></p>
+        <div class="actions"><a class="button button--secondary" href="{{ row.review_url }}">{% trans "Review frozen content" %}</a>{% if row.signing_url %}<a class="button button--secondary" href="{{ row.signing_url }}">{% trans "Signature status" %}</a>{% endif %}</div>
+        {% if row.complete and not row.revoked %}
+          <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="draft_id" value="{{ draft.pk }}"><input type="hidden" name="document_id" value="{{ row.document.pk }}">{% if row.release %}<button class="button button--secondary" name="action" value="revoke_release">{% trans "Revoke patient release" %}</button><button class="button" name="action" value="deliver_document">{% trans "Send verification link" %}</button>{% else %}<button class="button" name="action" value="release_document">{% trans "Release to patient" %}</button>{% endif %}</form>
+          <form method="post" class="actions">{% csrf_token %}<input type="hidden" name="draft_id" value="{{ draft.pk }}"><input type="hidden" name="document_id" value="{{ row.document.pk }}"><input type="hidden" name="reason" value="clinical_correction"><button class="button button--danger" name="action" value="revoke_document">{% trans "Revoke document" %}</button></form>
+        {% endif %}
+      </div>
+      {% empty %}<p class="feedback feedback--muted" role="status">{% trans "No rendered document yet. Save your text before rendering." %}</p>{% endfor %}
+    </section>
+  {% else %}<p class="feedback feedback--muted" role="status">{% trans "Open clinical documents from an assigned encounter." %}</p>{% endif %}
+</section>
+{% endblock %}

@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from django.conf import settings
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 from apps.tenancy.fields import (
     EncryptedBytesField,
@@ -16,11 +17,25 @@ from apps.tenancy.fields import (
 from apps.tenancy.models import TenantScopedModel
 
 
+class DocumentKind(models.TextChoices):
+    """Document purpose, independent of any prescription class or live gate."""
+
+    PRESCRIPTION = "prescription", _("Prescription")
+    CERTIFICATE = "certificate", _("Medical certificate")
+    ATTESTATION = "attestation", _("Attendance attestation")
+    REFERRAL = "referral", _("Referral")
+    EXAM_REQUEST = "exam_request", _("Exam request")
+    INSTRUCTION = "instruction", _("Patient instructions")
+
+
 class PrescriptionDraft(TenantScopedModel):
-    """One resumable synthetic prescription draft per encounter; never an issuance."""
+    """One retained synthetic draft of each kind per encounter; never issuance."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    encounter = models.OneToOneField("ehr.Encounter", on_delete=models.PROTECT)
+    encounter = models.ForeignKey("ehr.Encounter", on_delete=models.PROTECT)
+    kind = models.CharField(
+        max_length=16, choices=DocumentKind, default=DocumentKind.PRESCRIPTION
+    )
     clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
     patient = models.ForeignKey("intake.Patient", on_delete=models.PROTECT)
     issuer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
@@ -35,6 +50,13 @@ class PrescriptionDraft(TenantScopedModel):
         """Keep the synthetic-only contract explicit in persisted data."""
 
         constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("encounter", "kind"), name="prescription_encounter_kind"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=DocumentKind.values),
+                name="prescription_document_kind",
+            ),
             models.CheckConstraint(
                 condition=models.Q(version__gte=1), name="prescription_version_positive"
             ),
@@ -48,6 +70,28 @@ class PrescriptionDraft(TenantScopedModel):
                     contract_version="synthetic-draft-v1",
                 ),
                 name="prescription_synthetic_contract",
+            ),
+        ]
+
+
+class DocumentDraftContent(TenantScopedModel):
+    """Immutable encrypted non-medication content for one saved draft version."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    draft = models.ForeignKey(PrescriptionDraft, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField()
+    content = EncryptedJSONField(purpose="prescription.documentdraftcontent.content")
+
+    class Meta:
+        """A save appends exactly one snapshot without replacing earlier text."""
+
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("draft", "version"), name="prescription_content_version"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(version__gte=2),
+                name="prescription_content_version_positive",
             ),
         ]
 

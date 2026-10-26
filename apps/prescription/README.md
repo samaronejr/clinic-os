@@ -1,5 +1,15 @@
 # Prescription drafts
 
+Todo 33 adds clinical documents alongside the original prescription path:
+`DocumentKind` supports prescriptions, medical certificates, attendance
+attestations, referrals, exam requests and patient instructions. The binding
+extension contract is
+[`docs/clinical/clinical-documents.md`](../../docs/clinical/clinical-documents.md).
+It defines encrypted per-kind version snapshots, textual clinic branding,
+stale-approval rejection, verified-issuance exam orders and the closed EG-13
+diagnosis-source gate. Completed signed history keeps its existing release
+behavior after later draft edits or discard.
+
 Task 32 provides an assigned-physician-only, synthetic draft workspace reached
 from the encounter. Encounter, patient, clinic, organization and issuer bindings
 are immutable and checked by services and FORCE RLS. Current role/assignment is

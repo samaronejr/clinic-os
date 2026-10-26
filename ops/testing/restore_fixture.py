@@ -32,6 +32,7 @@ MIN_PRIVATE_FD: Final = 3
 MAX_PASSWORD_BYTES: Final = 1024
 PROBE_PLAINTEXT: Final = b"synthetic restore rehearsal probe payload"
 PROBE_PURPOSE: Final = "restore-probe"
+CLINICAL_DOCUMENT_BODY: Final = "Synthetic recovery certificate content."
 PDF_BYTES: Final = b"%PDF-1.4\n%synthetic clinical attachment\n%%EOF\n"
 # Non-default on purpose: a restore that dropped the row reads the defaults.
 RESTORED_PREFERENCES: Final = ("dark", "compact")
@@ -258,15 +259,18 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
         publish_template,
         submit_intake,
     )
-    from apps.prescription.models import PrescriptionDocumentRevocation
+    from apps.prescription.documents import DocumentContentInput
+    from apps.prescription.models import DocumentKind, PrescriptionDocumentRevocation
     from apps.prescription.policy import SYNTHETIC_CATEGORY
+    from apps.prescription.services import (
+        create_document_draft,
+        render_document,
+        save_document_draft,
+        save_draft,
+    )
     from apps.prescription.services import create_draft as create_rx_draft
     from apps.prescription.services import (
         discard_draft as discard_rx_draft,
-    )
-    from apps.prescription.services import (
-        render_document,
-        save_draft,
     )
     from apps.prescription.signature_provider import (
         SYNTHETIC_PROVIDER,
@@ -638,6 +642,33 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
                 }
             ],
         )
+        clinical_draft = create_document_draft(
+            clinic_id=CLINIC_ID,
+            encounter_id=encounter.pk,
+            kind=DocumentKind.CERTIFICATE,
+        )
+        clinical_draft = save_document_draft(
+            clinic_id=CLINIC_ID,
+            draft_id=clinical_draft.pk,
+            expected_version=clinical_draft.version,
+            content=DocumentContentInput(body=CLINICAL_DOCUMENT_BODY),
+        )
+        clinical_document = render_document(
+            clinic_id=CLINIC_ID,
+            draft_id=clinical_draft.pk,
+            encounter_id=encounter.pk,
+            patient_id=patient_id,
+            issuer_id=PHYSICIAN_ID,
+            expected_version=clinical_draft.version,
+        )
+        discard_rx_draft(
+            clinic_id=CLINIC_ID,
+            draft_id=clinical_draft.pk,
+            encounter_id=encounter.pk,
+            patient_id=patient_id,
+            issuer_id=PHYSICIAN_ID,
+            expected_version=clinical_draft.version,
+        )
         document = render_document(
             clinic_id=CLINIC_ID,
             draft_id=rx_draft.pk,
@@ -759,6 +790,7 @@ def seed(probe_path: Path) -> None:  # noqa: PLR0915 - one ordered rehearsal pat
     probe = {
         "attachment_id": str(attachment.pk),
         "clinic_id": str(CLINIC_ID),
+        "clinical_document_id": str(clinical_document.pk),
         "envelope_hex": envelope.hex(),
         "expected_sha256": hashlib.sha256(PROBE_PLAINTEXT).hexdigest(),
         "invoice_id": str(invoice.pk),
@@ -834,6 +866,7 @@ def verify(probe_path: Path) -> None:
         preferences = load_ui_preferences()
         if (preferences.theme, preferences.density) != RESTORED_PREFERENCES:
             _fail("restored display preferences did not load")
+        _verify_clinical_document(clinic_id, UUID(probe["clinical_document_id"]))
     session_id = UUID(probe["patient_session_id"])
     with _runtime_role(), patient_session_context(session_id):
         overview = patient_session_overview()
@@ -855,6 +888,25 @@ def verify(probe_path: Path) -> None:
             _fail("restored audit chain is empty")
 
 
+def _verify_clinical_document(clinic_id: UUID, document_id: UUID) -> None:
+    """Read the recovered artifact under the caller's runtime tenant context."""
+    from apps.prescription.models import DocumentKind, PrescriptionDocument
+    from apps.prescription.services import download_document, verify_document_integrity
+
+    document = PrescriptionDocument.objects.get(pk=document_id, clinic_id=clinic_id)
+    frozen = document.frozen_input
+    content = frozen.get("content")
+    if (
+        frozen.get("kind") != DocumentKind.CERTIFICATE
+        or not isinstance(content, dict)
+        or content.get("body") != CLINICAL_DOCUMENT_BODY
+        or not verify_document_integrity(document).ok
+        or download_document(clinic_id=clinic_id, document_id=document.pk).data
+        != bytes(document.pdf_bytes)
+    ):
+        _fail("restored clinical document did not decrypt intact")
+
+
 def _read_probe(path: Path) -> dict[str, str]:
     """Read the seed-published probe binding for the verify step."""
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
@@ -873,6 +925,7 @@ def _read_probe(path: Path) -> dict[str, str]:
     required = {
         "attachment_id",
         "clinic_id",
+        "clinical_document_id",
         "envelope_hex",
         "expected_sha256",
         "invoice_id",

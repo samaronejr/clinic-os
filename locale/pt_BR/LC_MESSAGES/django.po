@@ -6209,3 +6209,168 @@ msgstr "As contagens da caixa clínica não estão disponíveis para o seu acess
 
 msgid "No more appointments later today."
 msgstr "Nenhuma outra consulta mais tarde hoje."
+
+msgid "Prescription"
+msgstr "Prescrição"
+
+msgid "Medical certificate"
+msgstr "Atestado médico"
+
+msgid "Attendance attestation"
+msgstr "Declaração de comparecimento"
+
+msgid "Referral"
+msgstr "Encaminhamento"
+
+msgid "Exam request"
+msgstr "Solicitação de exames"
+
+msgid "Patient instructions"
+msgstr "Orientações ao paciente"
+
+msgid "Clinical documents"
+msgstr "Documentos clínicos"
+
+msgid "Clinical document kind"
+msgstr "Tipo de documento clínico"
+
+msgid "Open clinical document"
+msgstr "Abrir documento clínico"
+
+msgid "Document text"
+msgstr "Texto do documento"
+
+msgid "Recipient (optional)"
+msgstr "Destinatário (opcional)"
+
+msgid "CID-10 (optional)"
+msgstr "CID-10 (opcional)"
+
+msgid "CID-10 source version"
+msgstr "Versão da fonte de CID-10"
+
+msgid "Unavailable: no versioned terminology source has passed EG-13."
+msgstr "Indisponível: nenhuma fonte versionada de terminologia passou pelo EG-13."
+
+msgid "CID-10 is unavailable until a versioned source passes EG-13."
+msgstr "CID-10 indisponível até que uma fonte versionada passe pelo EG-13."
+
+msgid "Check the clinical document fields."
+msgstr "Revise os campos do documento clínico."
+
+msgid "Choose examinations from the current catalog."
+msgstr "Escolha exames do catálogo atual."
+
+msgid "Only exam requests may contain examinations."
+msgstr "Somente solicitações de exames podem conter exames."
+
+msgid "Choose a document kind."
+msgstr "Escolha um tipo de documento."
+
+msgid "Document draft saved."
+msgstr "Rascunho do documento salvo."
+
+msgid "The saved version changed. Reopen it before continuing."
+msgstr "A versão salva mudou. Reabra-a antes de continuar."
+
+msgid "Rendering is unavailable. No document or order was created."
+msgstr "A renderização está indisponível. Nenhum documento ou pedido de exame foi criado."
+
+msgid "The document could not be opened. Check the encounter and kind."
+msgstr "Não foi possível abrir o documento. Confira o atendimento e o tipo."
+
+msgid "Synthetic rehearsal - no clinical validity"
+msgstr "Ensaio sintético - sem validade clínica"
+
+msgid "Write, save and review the exact PDF before signing. Release to the patient is a separate action."
+msgstr "Escreva, salve e revise o PDF exato antes de assinar. A liberação ao paciente é uma ação separada."
+
+msgid "Changes were not saved. Your text remains below."
+msgstr "As alterações não foram salvas. Seu texto permanece abaixo."
+
+msgid "Saved version %(version)s loaded."
+msgstr "Versão salva %(version)s carregada."
+
+msgid "Verified signing creates an order from local catalog version 1. It does not acknowledge or release results."
+msgstr "A assinatura verificada cria um pedido de exame a partir da versão 1 do catálogo local. Ela não revisa nem libera resultados."
+
+msgid "Optional diagnosis coding"
+msgstr "Codificação opcional de diagnóstico"
+
+msgid "Save document draft"
+msgstr "Salvar rascunho do documento"
+
+msgid "Reopen saved version"
+msgstr "Reabrir versão salva"
+
+msgid "Only the server saves this text. Offline or interrupted submissions are not confirmed saves."
+msgstr "Somente o servidor salva este texto. Envios sem conexão ou interrompidos não são gravações confirmadas."
+
+msgid "Render saved version for review"
+msgstr "Renderizar versão salva para revisão"
+
+msgid "Discard document draft"
+msgstr "Descartar rascunho do documento"
+
+msgid "Waiting for the server..."
+msgstr "Aguardando o servidor..."
+
+msgid "This draft was discarded. Retained artifacts remain in the history."
+msgstr "Este rascunho foi descartado. Os artefatos preservados permanecem no histórico."
+
+msgid "Document history"
+msgstr "Histórico do documento"
+
+msgid "Version %(version)s"
+msgstr "Versão %(version)s"
+
+msgid "Review frozen content"
+msgstr "Revisar conteúdo congelado"
+
+msgid "Signature status"
+msgstr "Estado da assinatura"
+
+msgid "Revoke patient release"
+msgstr "Revogar liberação ao paciente"
+
+msgid "Send verification link"
+msgstr "Enviar link de verificação"
+
+msgid "Release to patient"
+msgstr "Liberar ao paciente"
+
+msgid "Revoke document"
+msgstr "Revogar documento"
+
+msgid "No rendered document yet. Save your text before rendering."
+msgstr "Nenhum documento renderizado. Salve seu texto antes de renderizar."
+
+msgid "Open clinical documents from an assigned encounter."
+msgstr "Abra os documentos clínicos a partir de um atendimento sob sua responsabilidade."
+
+msgid "Clinical document review"
+msgstr "Revisão do documento clínico"
+
+msgid "Return to document draft"
+msgstr "Voltar ao rascunho do documento"
+
+msgid "The draft changed after review"
+msgstr "O rascunho mudou após a revisão"
+
+msgid "This review cannot authorize signing. Render and review the saved version again."
+msgstr "Esta revisão não pode autorizar uma assinatura. Renderize e revise novamente a versão salva."
+
+msgid "Document kind"
+msgstr "Tipo de documento"
+
+msgid "Verified signing places exactly one order for these frozen examinations."
+msgstr "A assinatura verificada cria exatamente um pedido para estes exames congelados."
+
+msgid "The draft changed after review. Render and review the saved version again."
+msgstr "O rascunho mudou após a revisão. Renderize e revise novamente a versão salva."
+
+msgid "Your professional authority changed. No document was issued."
+msgstr "Sua autorização profissional mudou. Nenhum documento foi emitido."
+
+msgid "Confirm your current clinical scope before trying again."
+msgstr "Confirme seu escopo clínico atual antes de tentar novamente."
