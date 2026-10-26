@@ -73,11 +73,13 @@ def test_image_contract_gate_never_rebuilds_or_retags() -> None:
         assert forbidden not in source
 
 
-def test_ci_three_suite_contract_stays_distinct_from_final_four_suites() -> None:
+def test_ci_suite_contract_stays_distinct_from_final_image_suites() -> None:
     ci_contract = PROJECT_ROOT / "ops/testing/ci-required-browser-suites.txt"
     final_contract = PROJECT_ROOT / "ops/testing/final-required-browser-suites.txt"
 
-    assert ci_contract.read_bytes() == b"availability\npatient\nscheduling\n"
+    assert ci_contract.read_bytes() == (
+        b"availability\nclinical-inbox\npatient\nscheduling\n"
+    )
     assert REQUIRED_SUITES == (
         "availability",
         "patient",

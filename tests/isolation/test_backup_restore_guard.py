@@ -33,8 +33,8 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # Derived from live tables minus exact exclusions; keep this pin aligned
-    # with the full catalog set checked by tests/infra/test_recovery_manifest.py.
+    # Candidate manifest count; the integrated gate must confirm it against
+    # the live catalog in tests/infra/test_recovery_manifest.py.
     assert len(restore_contract.DOMAIN_RELATIONS) == 145
     assert "clinic_app.identity_patientdelegategrant" in restore_contract.TABLE_DATA
     assert "clinic_app.identity_userpreference" in restore_contract.TABLE_DATA

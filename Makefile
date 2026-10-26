@@ -205,15 +205,20 @@ restore-rehearsal:
 
 ci-browser-contract:
 	@actual="$$(sha256sum ops/testing/ci-required-browser-suites.txt | cut -d' ' -f1)"; \
-		test "$${actual}" = 4c6e14cdf93690d1c38bba4b5a7c36cf657bf795bc3a003a17ad5bc3e67067c5
-	@set --; previous=''; \
+		test "$${actual}" = 2fdb5c4f5abc7f05db7819fe6e88278db19694c5499486e5b066ea949e7e4db0
+	@set --; previous=''; renewal=''; \
 		while IFS= read -r suite; do \
-			case "$${suite}" in availability|patient|scheduling) ;; *) exit 2 ;; esac; \
+			case "$${suite}" in \
+				availability|patient|scheduling) set -- "$${@}" --require-suite "$${suite}" ;; \
+				clinical-inbox) renewal="$${suite}" ;; \
+				*) exit 2 ;; \
+			esac; \
 			test -z "$${previous}" || test "$${previous}" \< "$${suite}" || exit 2; \
-			set -- "$${@}" --require-suite "$${suite}"; previous="$${suite}"; \
+			previous="$${suite}"; \
 		done < ops/testing/ci-required-browser-suites.txt; \
-		test "$${#}" -eq 6; \
-		ops/testing/browser_runner.sh probe "$${@}"
+		test "$${#}" -eq 6 && test "$${renewal}" = clinical-inbox || exit 2; \
+		ops/testing/browser_runner.sh probe "$${@}" && \
+		$(UV) run --frozen --no-sync --no-env-file python -m ops.testing.renewal_runner browser --suite "$${renewal}"
 
 ci-image-contracts:
 	$(UV) run --frozen --no-sync --no-env-file pytest -q tests/isolation/test_container_contract.py
