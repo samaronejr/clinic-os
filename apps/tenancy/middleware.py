@@ -93,6 +93,16 @@ def _parse_uuid(raw_value: str | None) -> UUID | None:
         return None
 
 
+def _clear_inactive_session(request: HttpRequest, key: str) -> None:
+    """Discard a removed payload without a late cookie write or logout signal."""
+    if not request.session.exists(key):
+        # Rotation removed the row after this request loaded its payload.
+        # An empty, unmodified store also prevents stale save-every-request.
+        request.session = type(request.session)()
+    elif not request.path_info.startswith(UI_API_PREFIX):
+        logout(request)
+
+
 class TenantMiddleware:
     """Keep lazy authentication and downstream ORM work inside tenant context."""
 
@@ -119,9 +129,9 @@ class TenantMiddleware:
                 if signed_user_id is not None:
                     clear_connection_tenant_gucs()
                     if not session_is_active(user_id=signed_user_id, session_key=key):
+                        _clear_inactive_session(request, key)
                         if request.path_info.startswith(UI_API_PREFIX):
                             return ui_api_denial_response()
-                        logout(request)
                         if request.path_info not in BYPASS_PATHS:
                             return auth_redirect(request, "/auth/login/")
             elif incoming_key is not None and incoming_key.isascii():
