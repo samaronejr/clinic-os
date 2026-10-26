@@ -40,6 +40,7 @@ from apps.workflows.inbox import (
     InboxInputError,
     InboxItem,
     InboxObservation,
+    due_before,
     publish_inbox_hint,
     register_inbox_feed,
 )
@@ -91,9 +92,14 @@ def _pending(scope: InboxScope) -> Iterable[ResultMatch]:
         for enrollment in sorted(enrollments)
         if _may_acknowledge(scope.clinic_id, enrollment)
     ]
+    matches = pending.filter(order__enrollment_id__in=permitted)
+    if scope.owner == "mine":
+        matches = matches.filter(order__ordered_by_id=scope.actor_id)
+    cutoff = due_before(scope)
+    if cutoff is not None:
+        matches = matches.filter(version__created_at__lt=cutoff)
     return (
-        pending.filter(order__enrollment_id__in=permitted)
-        .select_related("version", "order__enrollment__patient")
+        matches.select_related("version", "order__enrollment__patient")
         .prefetch_related("order__items", "version__observations")
         .order_by("-version__critical", "version__created_at", "pk")[: scope.limit]
     )

@@ -1013,6 +1013,16 @@ def _run_browser_suite(  # noqa: PLR0913 - one suite run needs its full context
                         or suite == "document-verification"
                         else {}
                     ),
+                    # Realtime workers store leases on the served stream's broker.
+                    **(
+                        {
+                            "CLINIC_RENEWAL_REALTIME_REDIS_URL": server_environment[
+                                "REALTIME_REDIS_URL"
+                            ]
+                        }
+                        if suite in REALTIME_SUITES
+                        else {}
+                    ),
                 }
                 if suite in FIXTURE_SUITES and provisioned is not None
                 else {}

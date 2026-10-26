@@ -153,7 +153,7 @@ def _authorized_inbox(request: HttpRequest, clinic_id: UUID) -> HttpResponseBase
                 selected = _selected_versions(request)
                 preview = preview_bulk_acknowledgment(
                     clinic_id=clinic_id,
-                    items=query_inbox(clinic_id=clinic_id).items,
+                    items=query_inbox(clinic_id=clinic_id, filters=filters).items,
                     version_ids=selected,
                 )
             elif action == "bulk_confirm":

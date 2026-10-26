@@ -1296,8 +1296,12 @@ components:
         truncated:
           type: boolean
           readOnly: true
+        counts_complete:
+          type: boolean
+          readOnly: true
       required:
       - counts
+      - counts_complete
       - critical
       - items
       - overdue

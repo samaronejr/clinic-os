@@ -1528,6 +1528,24 @@ def test_browser_children_preserve_owned_runtime_paths_and_broker(
         assert "CLINIC_UNRELATED_SECRET" not in environment
 
 
+def test_realtime_suites_lend_workers_the_served_broker_only() -> None:
+    key = "CLINIC_RENEWAL_REALTIME_REDIS_URL"
+    tree = ast.parse(textwrap.dedent(inspect.getsource(runner._run_browser_suite)))
+    lent = [
+        (node, value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.IfExp) and isinstance(node.body, ast.Dict)
+        for name, value in zip(node.body.keys, node.body.values, strict=True)
+        if isinstance(name, ast.Constant) and name.value == key
+    ]
+    assert len(lent) == 1
+    guard, value = lent[0]
+    # The URL realtime_broker gave the served stream, for realtime suites only.
+    assert ast.unparse(value) == "server_environment['REALTIME_REDIS_URL']"
+    assert ast.unparse(guard.test) == "suite in REALTIME_SUITES"
+    assert key not in fixture_secrets.SECRET_ENVIRONMENT
+
+
 def test_browser_failure_tracebacks_never_include_fixture_arguments() -> None:
     tree = ast.parse(
         (REPOSITORY / "ops/testing/renewal_runner.py").read_text(encoding="utf-8")

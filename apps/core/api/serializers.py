@@ -432,3 +432,4 @@ class InboxPageSerializer(serializers.Serializer[InboxPage]):
     critical = serializers.IntegerField(read_only=True)
     removed = serializers.ListField(child=serializers.CharField(), read_only=True)
     truncated = serializers.BooleanField(read_only=True)
+    counts_complete = serializers.BooleanField(read_only=True)

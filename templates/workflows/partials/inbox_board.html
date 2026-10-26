@@ -6,8 +6,8 @@
   <div class="worklist-toolbar">
     <dl class="worklist-counts" aria-label="{% trans 'Inbox summary' %}">
       {% for kind, label in kinds %}<div data-inbox-count="{{ kind }}"><dt>{{ label }}</dt><dd>{{ page.counts|count_of:kind }}{% if kind in page.overflowed %}+{% endif %}</dd></div>{% endfor %}
-      <div data-inbox-count="overdue"><dt>{% trans "Overdue" %}</dt><dd>{{ page.overdue }}</dd></div>
-      <div data-inbox-count="critical"><dt>{% trans "Critical" %}</dt><dd>{{ page.critical }}</dd></div>
+      <div data-inbox-count="overdue"><dt>{% trans "Overdue" %}</dt><dd>{{ page.overdue }}{% if not page.counts_complete %}+{% endif %}</dd></div>
+      <div data-inbox-count="critical"><dt>{% trans "Critical" %}</dt><dd>{{ page.critical }}{% if not page.counts_complete %}+{% endif %}</dd></div>
     </dl>
     <form method="post" action="{% url 'workflows:inbox' clinic_id %}" hx-post="{% url 'workflows:inbox' clinic_id %}" hx-target="#inbox-board" hx-select="#inbox-board" hx-swap="outerHTML" data-worklist-refresh>
       {% csrf_token %}<input type="hidden" name="action" value="refresh">

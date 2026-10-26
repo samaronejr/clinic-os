@@ -9,10 +9,9 @@ DOM events the realtime client raises; no timer drives any assertion.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import secrets
 from typing import TYPE_CHECKING
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -32,6 +31,7 @@ from renewal.browser.test_availability import (
     _sign_in_receptionist,
     availability_staff,
 )
+from renewal.browser.test_realtime import _today_scene
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,7 +41,16 @@ if TYPE_CHECKING:
 __all__ = ("availability_staff",)
 DAYS = {1280: "2039-07-12", 768: "2039-07-13", 375: "2039-07-14"}
 SUITE = "clinical-inbox"
-EMPTY_KEYS = {"items", "counts", "total", "overdue", "critical", "removed", "truncated"}
+EMPTY_KEYS = {
+    "items",
+    "counts",
+    "total",
+    "overdue",
+    "critical",
+    "removed",
+    "truncated",
+    "counts_complete",
+}
 
 
 def _directory(root: Path) -> Path:
@@ -351,24 +360,80 @@ def test_inbox_native_without_javascript(
     assert decisions(staff, data) == (["urgent_review"], 0)
 
 
+def _arrived_today(staff: dict[str, str], patient: str) -> str:
+    """Seed an arrived visit at the next database minute; return its id.
+
+    The scheduled insert meets the real future-start guard, and
+    ``_today_scene`` keeps that minute hours before clinic-local midnight.
+    The booked physician records the arrival, as the shared seed does.
+    """
+    appointment = str(uuid4())
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        window = conn.execute(
+            "SELECT date_trunc('minute', now()) + interval '1 minute', "
+            "date_trunc('minute', now()) + interval '16 minutes'"
+        ).fetchone()
+        assert window is not None
+        scope = [staff["organization"], staff["clinic_a"], staff["physician_a_id"]]
+        conn.execute(
+            "INSERT INTO clinic_app.scheduling_availabilityblock "
+            "(id,organization_id,clinic_id,practitioner_id,start_at,end_at,"
+            "idempotency_key,create_fingerprint,created_at,updated_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,now(),now())",
+            [str(uuid4()), *scope, *window, str(uuid4()), secrets.token_bytes(32)],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.scheduling_appointment "
+            "(id,organization_id,clinic_id,patient_id,practitioner_id,start_at,end_at,"
+            "idempotency_key,create_fingerprint,status,created_at,updated_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'scheduled',now(),now())",
+            [
+                appointment,
+                staff["organization"],
+                staff["clinic_a"],
+                patient,
+                staff["physician_a_id"],
+                *window,
+                str(uuid4()),
+                secrets.token_bytes(32),
+            ],
+        )
+        conn.execute(
+            "SELECT set_config('app.current_user_id', %s, true)",
+            [staff["physician_a_id"]],
+        )
+        conn.execute(
+            "UPDATE clinic_app.scheduling_appointment SET status='arrived' WHERE id=%s",
+            [appointment],
+        )
+    return appointment
+
+
 def test_today_shows_next_patient_brief_and_inbox_counts(
     renewal_page: Page,
     renewal_base_url: str,
     renewal_artifact_root: Path,
     availability_staff: dict[str, str],
 ) -> None:
-    staff, root = availability_staff, renewal_artifact_root
+    # An isolated clinic whose local day has at least 12 hours left.
+    staff, root = _today_scene(availability_staff), renewal_artifact_root
     with psycopg.connect(staff["dsn"]) as conn:
         conn.execute(
             "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
         )
-        zone = conn.execute(
-            "SELECT timezone FROM clinic_app.identity_clinic WHERE id=%s",
+        tomorrow = conn.execute(
+            "SELECT ((now() AT TIME ZONE timezone)::date + 1)::text "
+            "FROM clinic_app.identity_clinic WHERE id=%s",
             [staff["clinic_a"]],
         ).fetchone()
-    assert zone is not None
-    day = datetime.now(ZoneInfo(str(zone[0]))).date().isoformat()
-    data = seed_result_patient(staff, day)
+    assert tomorrow is not None
+    # The shared seed's own visit is tomorrow, a valid future start; today's
+    # arrived visit for the same patient starts at the next database minute.
+    data = seed_result_patient(staff, str(tomorrow[0]))
+    data["appointment"] = _arrived_today(staff, data["patient"])
     _sign_in_physician(renewal_page, renewal_base_url, staff)
     page = renewal_page
     upload_results(page, renewal_base_url, staff, data, "normal")
@@ -452,6 +517,7 @@ def test_receptionist_gets_the_empty_inbox_shape_and_refused_pages(
             "critical": 0,
             "removed": known,
             "truncated": False,
+            "counts_complete": True,
         }
         for path in ("inbox", "today"):
             refused = goto_settled(

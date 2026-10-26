@@ -16,6 +16,7 @@ from apps.workflows.forms import KIND_CHOICES
 from apps.workflows.inbox import (
     PRIORITY_RANK,
     InboxItem,
+    due_before,
     publish_inbox_hint,
     register_inbox_feed,
 )
@@ -33,10 +34,11 @@ def task_items(scope: InboxScope) -> tuple[InboxItem, ...]:
     Ownership is decided by ``workflows_owned``, the predicate the task row
     policy uses, so a manager's wider row visibility never becomes an inbox.
     Tasks bound to an orders work item are represented by the result feed and
-    are excluded here so one result never appears twice.
+    are excluded here so one result never appears twice. The selected owner
+    and due filters narrow the owned rows before the bound.
     """
     require_permission("tasks.view", clinic_id=scope.clinic_id)
-    rows = (
+    owned = (
         Task.objects.filter(clinic_id=scope.clinic_id, state__in=ACTIVE_STATES)
         .annotate(
             owned=RawSQL(
@@ -51,19 +53,24 @@ def task_items(scope: InboxScope) -> tuple[InboxItem, ...]:
             | Q(owner_user__isnull=True, owner_role="", created_by_id=scope.actor_id)
         )
         .exclude(resultworkitem__isnull=False)
-        .order_by(
-            Case(
-                *(
-                    When(priority=name, then=Value(rank))
-                    for name, rank in PRIORITY_RANK.items()
-                ),
-                default=Value(len(PRIORITY_RANK)),
-                output_field=IntegerField(),
-            ),
-            "due_at",
-            "id",
-        )[: scope.limit]
     )
+    if scope.owner == "mine":
+        owned = owned.filter(owner_user_id=scope.actor_id)
+    cutoff = due_before(scope)
+    if cutoff is not None:
+        owned = owned.filter(due_at__lt=cutoff)
+    rows = owned.order_by(
+        Case(
+            *(
+                When(priority=name, then=Value(rank))
+                for name, rank in PRIORITY_RANK.items()
+            ),
+            default=Value(len(PRIORITY_RANK)),
+            output_field=IntegerField(),
+        ),
+        "due_at",
+        "id",
+    )[: scope.limit]
     kinds = dict(KIND_CHOICES)
     role_labels = dict(UserClinicRole.Role.choices)
     return tuple(

@@ -52,8 +52,8 @@
       {% if screen.inbox %}
       <dl class="worklist-counts">
         {% for kind, count in screen.inbox.counts.items %}<div data-inbox-count="{{ kind }}"><dt>{{ kind|inbox_kind }}</dt><dd>{{ count }}{% if kind in screen.inbox.overflowed %}+{% endif %}</dd></div>{% endfor %}
-        <div data-inbox-count="overdue"><dt>{% trans "Overdue" %}</dt><dd>{{ screen.inbox.overdue }}</dd></div>
-        <div data-inbox-count="critical"><dt>{% trans "Critical" %}</dt><dd>{{ screen.inbox.critical }}</dd></div>
+        <div data-inbox-count="overdue"><dt>{% trans "Overdue" %}</dt><dd>{{ screen.inbox.overdue }}{% if not screen.inbox.counts_complete %}+{% endif %}</dd></div>
+        <div data-inbox-count="critical"><dt>{% trans "Critical" %}</dt><dd>{{ screen.inbox.critical }}{% if not screen.inbox.counts_complete %}+{% endif %}</dd></div>
       </dl>
       <a class="button button--secondary" href="{{ inbox_url }}">{% trans "Open Clinical Inbox" %}</a>
       {% else %}<p class="hint" data-inbox-count="unavailable">{% trans "Inbox counts are not available for your current access." %}</p>{% endif %}

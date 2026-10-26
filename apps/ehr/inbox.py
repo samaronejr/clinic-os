@@ -12,6 +12,7 @@ from django.utils.translation import gettext_noop
 from apps.ehr.models import ClinicalDocumentVersion, Encounter
 from apps.workflows.inbox import (
     InboxItem,
+    due_before,
     publish_inbox_hint,
     register_inbox_feed,
 )
@@ -36,7 +37,13 @@ def _assigned(encounters: set[UUID]) -> set[UUID]:
 
 
 def draft_items(scope: InboxScope) -> tuple[InboxItem, ...]:
-    """Return drafts the actor authors on encounters still assigned to them."""
+    """Return drafts the actor authors on encounters still assigned to them.
+
+    Every draft is the actor's own and has no due time, so the owner filter
+    keeps all of them and a due filter matches none.
+    """
+    if due_before(scope) is not None:
+        return ()
     own = ClinicalDocumentVersion.objects.filter(
         state=ClinicalDocumentVersion.State.DRAFT,
         author_id=scope.actor_id,

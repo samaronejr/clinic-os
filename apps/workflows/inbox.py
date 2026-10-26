@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
@@ -74,6 +74,8 @@ class InboxScope:
 
     ``limit`` is the most items a feed returns, most urgent first; it is one
     more than a page holds so the read model can tell when a feed overflowed.
+    ``owner`` and ``due`` are the page's selected filters; a feed applies them
+    before its bound so narrowing reaches work beyond an unfiltered page.
     """
 
     clinic_id: UUID
@@ -81,6 +83,8 @@ class InboxScope:
     timezone: str
     now: datetime
     limit: int = MAX_ITEMS + 1
+    owner: str = "all"
+    due: str = "all"
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,11 +138,14 @@ class InboxFilters:
 class InboxPage:
     """One authorized, triage-ordered page plus counts and removal notices.
 
-    ``counts`` covers every visible item before filtering so Today and the
-    navigation can report work outside the current filter; ``removed`` lists
-    the caller-supplied keys that are no longer visible to this actor. A kind
-    in ``overflowed`` had more items than a page holds: only its most urgent
-    items are kept, its count is a lower bound and ``truncated`` is set.
+    ``counts``, ``total``, ``overdue`` and ``critical`` cover every item the
+    page knows before filtering, including filtered items found past an
+    unfiltered bound, so Today and the navigation can report work outside the
+    current filter and never contradict a listed item. ``removed`` lists the
+    caller-supplied keys that are no longer visible to this actor. A kind in
+    ``overflowed`` had more unfiltered items than a page holds; then every
+    summary is a lower bound and ``counts_complete`` is false. ``truncated``
+    says the listed items are not every item matching the selected filters.
     """
 
     items: tuple[InboxItem, ...]
@@ -150,6 +157,7 @@ class InboxPage:
     truncated: bool
     generated_at: datetime
     overflowed: frozenset[str] = frozenset()
+    counts_complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +247,38 @@ def _sort_key(item: InboxItem) -> tuple[object, ...]:
     )
 
 
+def due_before(scope: InboxScope) -> datetime | None:
+    """Return the exclusive due cutoff of the selected due filter, if any.
+
+    ``overdue`` is due before now; ``today`` is due on or before the clinic's
+    local date. Feeds bound their rows with it; ``_matches`` agrees exactly.
+    """
+    if scope.due == "overdue":
+        return scope.now
+    if scope.due == "today":
+        zone = ZoneInfo(scope.timezone)
+        tomorrow = scope.now.astimezone(zone).date() + timedelta(days=1)
+        return datetime.combine(tomorrow, time.min, tzinfo=zone)
+    return None
+
+
+def _bounded(
+    kind: str, feed: _Feed, scope: InboxScope, now: datetime
+) -> tuple[tuple[InboxItem, ...], bool]:
+    """Return a feed's most urgent page of items and whether it overflowed."""
+    produced = tuple(feed.query(scope))
+    overflow = len(produced) > MAX_ITEMS
+    items = []
+    for item in produced[:MAX_ITEMS]:
+        if item.kind != kind:
+            msg = f"inbox feed {kind} produced another kind"
+            raise ValueError(msg)
+        items.append(
+            replace(item, overdue=item.due_at is not None and item.due_at < now)
+        )
+    return tuple(items), overflow
+
+
 def _matches(
     item: InboxItem, filters: InboxFilters, zone: ZoneInfo, now: datetime
 ) -> bool:
@@ -279,7 +319,9 @@ def query_inbox(
 
     The inbox gate refuses like any other permission boundary. A feed whose own
     permission the actor lacks (for example a narrowed ``tasks.view``) is left
-    out instead of failing the whole queue.
+    out instead of failing the whole queue. Counts come from each feed's
+    unfiltered page; the listed items come from a second, filtered page when
+    an owner or due filter is selected, so the bound never hides matching work.
     """
     actor = require_inbox(clinic_id=clinic_id)
     selected = filters or InboxFilters()
@@ -292,40 +334,51 @@ def query_inbox(
         now=now,
         limit=MAX_ITEMS + 1,
     )
+    narrowed = replace(scope, owner=selected.owner, due=selected.due)
+    filtering = selected.owner != "all" or selected.due != "all"
     visible: list[InboxItem] = []
+    candidates: list[InboxItem] = []
     overflowed: set[str] = set()
+    incomplete = False
     for kind, feed in _FEEDS.items():
+        wanted = not selected.kinds or kind in selected.kinds
         try:
-            produced = tuple(feed.query(scope))
+            produced, overflow = _bounded(kind, feed, scope, now)
+            chosen, partial = (
+                _bounded(kind, feed, narrowed, now)
+                if wanted and filtering
+                else (produced, overflow)
+            )
         except CurrentActorError:
             continue
-        if len(produced) > MAX_ITEMS:
+        if overflow:
             overflowed.add(kind)
-            produced = produced[:MAX_ITEMS]
-        for item in produced:
-            if item.kind != kind:
-                msg = f"inbox feed {kind} produced another kind"
-                raise ValueError(msg)
-            visible.append(
-                replace(item, overdue=item.due_at is not None and item.due_at < now)
-            )
+        visible.extend(produced)
+        if wanted:
+            incomplete = incomplete or partial
+            candidates.extend(chosen)
     visible.sort(key=_sort_key)
-    keys = {item.key for item in visible}
     zone = ZoneInfo(str(clinic.timezone))
-    matching = [item for item in visible if _matches(item, selected, zone, now)]
+    matching = sorted(
+        (item for item in candidates if _matches(item, selected, zone, now)),
+        key=_sort_key,
+    )
+    known_items = {item.key: item for item in (*visible, *candidates)}
     counts = dict.fromkeys(_FEEDS, 0)
-    for item in visible:
+    for item in known_items.values():
         counts[item.kind] += 1
+    keys = set(known_items)
     return InboxPage(
         items=tuple(matching[:MAX_ITEMS]),
         counts=counts,
-        total=len(visible),
-        overdue=sum(item.overdue for item in visible),
-        critical=sum(item.critical for item in visible),
+        total=len(known_items),
+        overdue=sum(item.overdue for item in known_items.values()),
+        critical=sum(item.critical for item in known_items.values()),
         removed=tuple(key for key in known if key not in keys),
-        truncated=bool(overflowed) or bool(matching[MAX_ITEMS:]),
+        truncated=incomplete or bool(matching[MAX_ITEMS:]),
         generated_at=now,
         overflowed=frozenset(overflowed),
+        counts_complete=not overflowed,
     )
 
 

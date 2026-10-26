@@ -5,7 +5,9 @@ Only appointments the physician is the practitioner of are read, under the
 own-appointment scope. Encounters are looked up only for those same-clinic
 appointments. Inbox counts appear only when the inbox itself would open. The
 pre-visit brief slot is reserved for todo 44 and is reported as unavailable
-while no AI capability exists.
+while no AI capability exists. Committed appointment writes publish the clinic
+inbox hint Today subscribes to, so a connected board refetches its own day
+without a clinic-wide agenda grant.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 from zoneinfo import ZoneInfo
 
+from django.db.models.signals import post_save
 from django.utils import timezone
 
 from apps.ehr.models import Encounter
@@ -21,7 +24,7 @@ from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import Clinic
 from apps.scheduling.models import Appointment
 from apps.scheduling.timezones import civil_day_bounds
-from apps.workflows.inbox import InboxPage, query_inbox
+from apps.workflows.inbox import InboxPage, publish_inbox_hint, query_inbox
 
 if TYPE_CHECKING:
     from datetime import date, datetime
@@ -133,4 +136,21 @@ def view_today(*, clinic_id: UUID) -> TodayView:
         ),
         inbox=inbox,
         limited=len(found) > PAGE_LIMIT,
+    )
+
+
+def appointment_changed(
+    sender: type[Appointment], instance: Appointment, **kwargs: object
+) -> None:
+    """Hint connected Today boards after a booking, move or status change commits."""
+    del sender, kwargs
+    publish_inbox_hint(instance.clinic_id)
+
+
+def register() -> None:
+    """Connect the commit-bound Today refetch hint to appointment writes."""
+    post_save.connect(
+        appointment_changed,
+        sender=Appointment,
+        dispatch_uid="workflows.today.Appointment",
     )

@@ -8,15 +8,16 @@ the only replaced seam is the Redis send behind the commit-bound hint.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
 from apps.ehr.models import ClinicalDocumentVersion, Encounter
 from apps.identity.current_context import CurrentActorError
-from apps.identity.models import UserClinicRole
+from apps.identity.models import CareTeamMembership, UserClinicRole
 from apps.orders.inbox import apply_bulk_acknowledgment, preview_bulk_acknowledgment
 from apps.orders.models import (
     ResultAcknowledgment,
@@ -87,6 +88,7 @@ EMPTY_KEYS = {
     "critical",
     "removed",
     "truncated",
+    "counts_complete",
 }
 
 
@@ -438,6 +440,68 @@ def test_bound_applies_after_acknowledgment_authority(
     assert view.overflowed == frozenset()
 
 
+def test_owner_and_due_filters_reach_work_beyond_an_overflowing_feed(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ordered(rbac_graph)
+    promote(rbac_graph)
+    for days in (2, 3, 4):
+        own_task(
+            rbac_graph,
+            rbac_graph.clinic_admin,
+            owner=TaskOwner(role="physician"),
+            priority="urgent",
+            due_in=timedelta(days=days),
+        )
+    overdue = own_task(
+        rbac_graph,
+        rbac_graph.physician,
+        owner=TaskOwner(user_id=rbac_graph.physician),
+        priority="normal",
+        due_in=timedelta(hours=-2),
+    )
+
+    # Given: urgent role-owned tasks fill the bound before the actor's own
+    # overdue task, so the unfiltered page cannot show it.
+    monkeypatch.setattr(inbox_module, "MAX_ITEMS", 2)
+    tasks = page(
+        rbac_graph, rbac_graph.physician, filters=validated_filters(kinds=["task"])
+    )
+    assert f"task:{overdue}" not in keys(tasks, "task")
+    assert tasks.truncated
+    assert not tasks.counts_complete
+
+    # When/Then: narrowing by owner or due reaches it and the narrowed list is
+    # complete. Every summary counts the recovered task, so none contradicts a
+    # listed item, and all are flagged as lower bounds of the overflowing queue.
+    for filters in (validated_filters(owner="mine"), validated_filters(due="overdue")):
+        view = page(rbac_graph, rbac_graph.physician, filters=filters)
+        assert keys(view, "task") == {f"task:{overdue}"}
+        assert not view.truncated
+        assert view.overflowed == {"task"}
+        assert not view.counts_complete
+        assert view.counts["task"] == 3
+        assert view.overdue == 1
+
+    with physician_client(rbac_graph) as clinician:
+        body = _query(clinician, clinic_id=str(rbac_graph.clinic_a), due="overdue")
+        board = clinician.post(
+            _inbox_url(rbac_graph), {"action": "refresh", "due": "overdue"}
+        )
+        today = clinician.get(f"/clinics/{rbac_graph.clinic_a}/today/")
+    assert body["overdue"] == 1
+    assert body["counts_complete"] is False
+    assert body["truncated"] is False
+    assert [item["key"] for item in cast("list[dict[str, str]]", body["items"])] == [
+        f"task:{overdue}"
+    ]
+    for response in (board, today):
+        assert response.status_code == 200
+        assert _summary(response, "overdue").endswith("+")
+        assert _summary(response, "critical").endswith("+")
+    assert _summary(board, "overdue") == "1+"
+
+
 def test_bulk_acknowledgment_needs_previewed_normal_noncritical_results(
     rbac_graph: RbacGraph,
 ) -> None:
@@ -590,6 +654,7 @@ def test_receptionist_api_query_is_the_same_empty_shape(rbac_graph: RbacGraph) -
         "critical": 0,
         "removed": [key],
         "truncated": False,
+        "counts_complete": True,
     }
     assert answers == [empty, empty, empty]
     assert nothing_to_do == empty
@@ -622,6 +687,15 @@ def test_api_query_bounds_its_body(rbac_graph: RbacGraph) -> None:
 
 def _inbox_url(graph: RbacGraph) -> str:
     return f"/clinics/{graph.clinic_a}/inbox/"
+
+
+def _summary(response: _MonkeyPatchedWSGIResponse, kind: str) -> str:
+    match = re.search(
+        rf'data-inbox-count="{kind}"><dt>[^<]*</dt><dd>([^<]*)</dd>',
+        response.content.decode(),
+    )
+    assert match is not None, kind
+    return match[1]
 
 
 def test_inbox_page_acknowledges_one_result_and_never_bulk_releases(
@@ -752,6 +826,74 @@ def test_inbox_page_bulk_flow_previews_each_item_then_acknowledges(
         assert replay.status_code == 409
     with owner_context(rbac_graph.organization_a):
         assert ResultAcknowledgment.objects.count() == 2
+
+
+def test_bulk_preview_uses_the_filtered_selection_beyond_an_overflowing_feed(
+    rbac_graph: RbacGraph, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world = ordered(rbac_graph)
+    colleague, _enrollment = permission_actor(rbac_graph, "physician")
+    with owner_context(rbac_graph.organization_a):
+        CareTeamMembership.objects.create(
+            organization_id=rbac_graph.organization_a,
+            clinic_id=rbac_graph.clinic_a,
+            patient_enrollment_id=world.enrollment,
+            user_id=colleague,
+            role="physician",
+            valid_from=timezone.now() - timedelta(days=1),
+            valid_to=timezone.now() + timedelta(days=1),
+        )
+    with as_actor(rbac_graph, colleague):
+        order = place_order(
+            clinic_id=rbac_graph.clinic_a,
+            enrollment_id=world.enrollment,
+            exam_codes=("cbc",),
+            command_id=uuid4(),
+        )
+    theirs = World(order, world.identity, world.enrollment)
+    for _ in range(2):
+        result(rbac_graph, theirs, uploader=colleague)
+    mine = result(rbac_graph, world)
+    key = f"result:{mine.version_id}"
+    url = _inbox_url(rbac_graph)
+
+    # Given: the colleague's older results, which the physician may acknowledge
+    # through care-team scope, fill the bound ahead of the physician's own.
+    monkeypatch.setattr(inbox_module, "MAX_ITEMS", 2)
+    with physician_client(rbac_graph) as client:
+        everything = client.post(url, {"action": "refresh"})
+        assert f'data-inbox-key="{key}"'.encode() not in everything.content
+
+        # When: the owner filter recovers it with its bulk selector, and the
+        # clinician previews and confirms from that same filtered selection.
+        board = client.post(url, {"action": "refresh", "owner": "mine"})
+        assert f'data-inbox-key="{key}"'.encode() in board.content
+        assert f'value="{mine.version_id}" form="inbox-bulk"'.encode() in board.content
+        preview = client.post(
+            url,
+            {
+                "action": "bulk_preview",
+                "owner": "mine",
+                "version_id": [str(mine.version_id)],
+            },
+        )
+        assert preview.status_code == 200
+        assert b'data-bulk-preview="1"' in preview.content
+        assert f'data-preview-key="{key}"'.encode() in preview.content
+        token = preview.content.split(b'name="preview_token" value="')[1].split(b'"')[0]
+        confirm = {
+            "action": "bulk_confirm",
+            "owner": "mine",
+            "preview_token": token.decode(),
+        }
+        assert client.post(url, confirm).status_code == 200
+        # Then: a replay of the same confirmation is stale and writes nothing.
+        assert client.post(url, confirm).status_code == 409
+    with owner_context(rbac_graph.organization_a):
+        assert list(
+            ResultAcknowledgment.objects.values_list("version_id", "disposition")
+        ) == [(mine.version_id, "no_action")]
+        assert not ResultRelease.objects.exists()
 
 
 def test_refresh_reports_removed_items_in_the_page(rbac_graph: RbacGraph) -> None:

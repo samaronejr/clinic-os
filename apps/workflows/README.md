@@ -131,11 +131,17 @@ Items carry an opaque `kind:uuid` key, owner, due time, priority and triage
 order (critical, priority, overdue, due). A page holds at most `MAX_ITEMS`
 items. Each feed decides its own authority before bounding, so rows the actor
 may not act on never take a slot, and returns its most urgent items first
-(critical results, then urgent tasks). A feed with more than a page of work
-keeps only those, marks the page `truncated` and its count as a lower bound
-(shown as `N+`), so a later critical result is never cut behind older normal
-ones and the page never claims to be complete. A refresh posts the keys it
-shows; keys no longer visible come back as `removed` and the page says so.
+(critical results, then urgent tasks), so a later critical result is never
+cut behind older normal ones. The selected owner and due filters reach each
+feed before its bound, so narrowing finds matching work beyond an unfiltered
+page; `truncated` says the listed items are not every matching item. Counts,
+`total`, `overdue` and `critical` cover every item the page knows (each feed's
+unfiltered page plus filtered items found beyond it), so no summary contradicts
+a listed item. Whenever a feed has more work than a page they are all lower
+bounds: `N+` on Inbox and Today, `counts_complete: false` in the API. Bulk
+preview uses the same filtered selection the board lists. A refresh posts the
+keys it shows; keys no longer visible come back as `removed` and the page says
+so.
 Results are due on receipt, like their review task. Acknowledgment calls the
 orders service unchanged. Bulk acknowledgment is limited to current,
 unacknowledged, non-critical results whose every source observation is flagged
@@ -148,9 +154,11 @@ Clinician Today reads only the actor's own clinic-local appointments under
 `appointment.read_own`, the next patient (in care, arrived, then the next
 booked), arrivals, and the inbox counts when the inbox itself would open. The
 pre-visit brief slot is reported unavailable until todo 44 supplies it.
-Commits that change inbox inputs publish a `clinic:<id>:inbox` refetch hint
-after commit; subscribers still need the operator-issued topic lease from
-todo 8, and without it the page refreshes through the polling fallback.
+Commits that change inbox inputs, and appointment bookings, moves and status
+changes, publish a `clinic:<id>:inbox` refetch hint after commit, so a
+connected Today board refetches its own day without a clinic-wide agenda
+grant; subscribers still need the operator-issued topic lease from todo 8, and
+without it the page refreshes through the polling fallback.
 
 ## Schema, recovery and rollback
 

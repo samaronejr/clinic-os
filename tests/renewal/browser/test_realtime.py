@@ -3,14 +3,26 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import subprocess
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import psycopg
+from django.contrib.auth.hashers import make_password
 from django.utils.translation import gettext
 from playwright.sync_api import expect, sync_playwright
 
-from renewal.browser._navigation import expect_document, goto_settled
+from renewal.browser._fixture_secrets import new_totp_key, worker_dsn
+from renewal.browser._navigation import (
+    click_to_navigate,
+    expect_document,
+    goto_settled,
+)
 from renewal.browser._page_wait import wait_for_js
 from renewal.browser._teleconsult import register_physician
 from renewal.browser.engines import (
@@ -21,6 +33,7 @@ from renewal.browser.engines import (
 from renewal.browser.test_agenda import (
     BOOKING_SUBMIT,
     DAYS,
+    ROWS,
     SETTLED_JS,
     _agenda_path,
     _fill_booking,
@@ -38,6 +51,7 @@ from renewal.browser.test_clinician_video import (
     _htmx,
     _seed_patient,
 )
+from renewal.browser.test_passkeys import _organization_admin
 from renewal.browser.test_patient_access import _redeem
 from renewal.browser.test_primitives import AXE_RUN_JS
 from renewal.browser.test_retention import seed_manager, sign_in_manager
@@ -51,7 +65,6 @@ from renewal.browser.test_teleconsult import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from playwright.sync_api import (
         Browser,
@@ -467,6 +480,320 @@ def _hint_journey(
     finally:
         for context in contexts:
             context.close()
+
+
+GRANT_INBOX: Final = """
+import sys
+from uuid import UUID
+
+import django
+
+django.setup()
+from apps.realtime.scopes import grant_clinic_topic
+from apps.tenancy.db import tenant_context
+
+actor, organization, clinic, user = map(UUID, sys.argv[1:5])
+with tenant_context(actor, organization):
+    print(grant_clinic_topic(
+        clinic_id=clinic, user_id=user, kind="inbox", permission="appointment.read_own"
+    ))
+"""
+# Installed before navigation. Counts realtime hints, and every worklist
+# refresh clinical-worklist.js starts (its fetch of this path with HX-Request)
+# and finishes: the returned promise's species wraps the worklist's own
+# .finally callback, so a refresh is done only after it consumed the body,
+# replaced or kept the board, cleared ``pending`` and started any coalesced
+# rerun. Records no payload.
+INBOX_HINTS_JS: Final = """(() => {
+  for (const kind of ['inbox', 'poll']) {
+    document.addEventListener('rt:' + kind, () => {
+      window['rt_' + kind] = (window['rt_' + kind] || 0) + 1;
+      window['rt_' + kind + '_at'] = performance.now();
+    }, true);
+  }
+  window.worklistStarted = 0;
+  window.worklistDone = 0;
+  class Tracked extends Promise {
+    finally(callback) {
+      return super.finally(() => {
+        try {
+          return callback();
+        } finally {
+          window.worklistDone += 1;
+        }
+      });
+    }
+  }
+  const native = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const response = native(input, init);
+    const headers = (init && init.headers) || {};
+    if (input !== window.location.pathname || headers['HX-Request'] !== 'true') {
+      return response;
+    }
+    window.worklistStarted += 1;
+    return Tracked.resolve(response);
+  };
+})();"""
+# The initial ready -> rt:poll reconciliation was consumed and nothing is in
+# flight; worklistStarted >= 1 proves that request really started.
+RECONCILED_JS: Final = (
+    "() => (window.rt_poll || 0) >= 1 && window.worklistStarted >= 1"
+    " && window.worklistDone === window.worklistStarted"
+)
+# Armed before the arrival. clinical-worklist.js refreshes on rt:inbox by
+# fetching the page and calling #today-board.replaceWith(next); this observes
+# that replacement and reads only the visit row's status attribute.
+ARRIVAL_WITNESS_JS: Final = """([name, before]) => {
+  const status = (board) => {
+    const row = Array.from(board.querySelectorAll('li.today-appointment'))
+      .find((item) => item.textContent.includes(name));
+    return row ? row.getAttribute('data-today-status') : null;
+  };
+  window.todayReplacedScheduled = false;
+  window.todayArrivedAt = 0;
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.removedNodes) {
+        if (node.id === 'today-board' && status(node) === 'scheduled') {
+          window.todayReplacedScheduled = true;
+        }
+      }
+      for (const node of record.addedNodes) {
+        if (
+          node.id === 'today-board'
+          && status(node) === 'arrived'
+          && (window.rt_inbox || 0) > before
+        ) {
+          window.todayArrivedAt = performance.now();
+          observer.disconnect();
+          return;
+        }
+      }
+    }
+  });
+  observer.observe(document.querySelector('[data-worklist="today"]'), {
+    childList: true,
+    subtree: true,
+  });
+}"""
+
+
+# Fixed-offset IANA zones: at any UTC instant one of them is before local noon.
+MORNING_ZONES: Final = ("Etc/UTC", "Etc/GMT+12")
+
+
+def _today_scene(staff: dict[str, str]) -> dict[str, str]:
+    """Seed an isolated clinic, clinician and receptionist for the Today scene.
+
+    The database clock, which Today, reception and the appointment triggers
+    all read, picks UTC before 12:00 UTC and UTC-12 otherwise. Both offsets
+    are fixed (no DST), so the clinic-local time is in [00:00, 12:00) when the
+    scene is seeded, at least 12 hours before the next local midnight; the
+    runner bounds the suite far below that. Fresh identities in a fresh clinic
+    keep availability and appointments disjoint from every other scene.
+    """
+    suffix = uuid4().hex[:8]
+    scene = {
+        **staff,
+        "clinic_a": str(uuid4()),
+        "physician_a_id": str(uuid4()),
+        "physician_a": f"medica-hoje-{suffix}",
+        "receptionist_id": str(uuid4()),
+        "receptionist": f"recepcao-hoje-{suffix}",
+        "totp_key": new_totp_key(),
+    }
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]
+        )
+        zone = conn.execute(
+            "SELECT CASE WHEN extract(hour FROM now() AT TIME ZONE 'UTC') < 12 "
+            "THEN %s ELSE %s END",
+            list(MORNING_ZONES),
+        ).fetchone()
+        assert zone is not None
+        conn.execute(
+            "INSERT INTO clinic_app.identity_clinic "
+            "(id, organization_id, name, crm_uf, timezone) "
+            "VALUES (%s, %s, 'Clínica Sintética Hoje', 'SP', %s)",
+            [scene["clinic_a"], staff["organization"], zone[0]],
+        )
+        for user_id, username, role in (
+            (scene["physician_a_id"], scene["physician_a"], "physician"),
+            (scene["receptionist_id"], scene["receptionist"], "receptionist"),
+        ):
+            conn.execute(
+                "INSERT INTO clinic_app.identity_user "
+                "(id, username, password, email, first_name, last_name, is_active, "
+                "is_staff, is_superuser, date_joined) "
+                "VALUES (%s, %s, %s, %s, '', '', true, false, false, now())",
+                [
+                    user_id,
+                    username,
+                    make_password(staff["password"]),
+                    f"{username}@hoje.invalid",
+                ],
+            )
+            conn.execute(
+                "INSERT INTO clinic_app.identity_userclinicrole "
+                "(id, user_id, organization_id, clinic_id, role, "
+                "workflow_bundle_version) VALUES (%s, %s, %s, %s, %s, 1)",
+                [str(uuid4()), user_id, staff["organization"], scene["clinic_a"], role],
+            )
+        conn.execute("SET ROLE clinic_app")
+        conn.execute(
+            "SELECT set_config('app.current_user_id', %s, true)",
+            [scene["physician_a_id"]],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.otp_totp_totpdevice "
+            "(name, confirmed, key, step, t0, digits, tolerance, drift, last_t, "
+            "user_id, throttling_failure_count, created_at) "
+            "VALUES ('Clinic OS authenticator', true, %s, 30, 0, 6, 1, 0, -1, "
+            "%s, 0, now())",
+            [scene["totp_key"], scene["physician_a_id"]],
+        )
+    return scene
+
+
+def _grant_inbox(staff: dict[str, str], root: Path) -> None:
+    """Opt the physician into the inbox topic through the real operator grant.
+
+    An organization administrator holds ``staff.organization``; the lease is
+    stored on this suite's own broker, which the served stream reads.
+    """
+    operator = _organization_admin(staff)["id"]
+    env = {
+        **os.environ,
+        "APP_DATABASE_URL": worker_dsn(),
+        "DJANGO_SETTINGS_MODULE": "config.settings.base",
+        "CLINIC_DATA_MODE": "synthetic",
+        "REALTIME_ENABLED": "true",
+        "REALTIME_REDIS_URL": os.environ["CLINIC_RENEWAL_REALTIME_REDIS_URL"],
+        "PYTHONPATH": str(Path.cwd()) + os.pathsep + str(Path.cwd() / "tests"),
+    }
+    args = (operator, staff["organization"], staff["clinic_a"], staff["physician_a_id"])
+    result = subprocess.run(  # noqa: S603 - fixed test entrypoint and owned DSN
+        [sys.executable, "-c", GRANT_INBOX, *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    (root / "grant-inbox.log").write_text(result.stdout + result.stderr)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"clinic:{staff['clinic_a']}:inbox"
+
+
+def _seed_visit(staff: dict[str, str], name: str) -> str:
+    """Seed a scheduled visit for the next database minute; return its local day.
+
+    The start is in the future for the real future-start trigger, and
+    ``_today_scene`` keeps it hours before clinic-local midnight.
+    """
+    enrollment = _seed_enrollment(staff, name)
+    with psycopg.connect(staff["dsn"]) as conn:
+        conn.execute(
+            "SELECT set_config('app.current_tenant', %s, true)", [staff["organization"]]
+        )
+        window = conn.execute(
+            "SELECT date_trunc('minute', now()) + interval '1 minute', "
+            "date_trunc('minute', now()) + interval '16 minutes'"
+        ).fetchone()
+        assert window is not None
+        scope = [staff["organization"], staff["clinic_a"], staff["physician_a_id"]]
+        conn.execute(
+            "INSERT INTO clinic_app.scheduling_availabilityblock "
+            "(id,organization_id,clinic_id,practitioner_id,start_at,end_at,"
+            "idempotency_key,create_fingerprint,created_at,updated_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,now(),now())",
+            [str(uuid4()), *scope, *window, str(uuid4()), secrets.token_bytes(32)],
+        )
+        conn.execute(
+            "INSERT INTO clinic_app.scheduling_appointment "
+            "(id,organization_id,clinic_id,patient_id,practitioner_id,start_at,end_at,"
+            "idempotency_key,create_fingerprint,status,created_at,updated_at) "
+            "SELECT %s,%s,%s,enrollment.patient_id,%s,%s,%s,%s,%s,'scheduled',"
+            "now(),now() FROM clinic_app.intake_patientclinicenrollment enrollment "
+            "WHERE enrollment.id=%s",
+            [
+                str(uuid4()),
+                staff["organization"],
+                staff["clinic_a"],
+                staff["physician_a_id"],
+                *window,
+                str(uuid4()),
+                secrets.token_bytes(32),
+                enrollment,
+            ],
+        )
+        day = conn.execute(
+            "SELECT ((%s::timestamptz) AT TIME ZONE clinic.timezone)::date::text "
+            "FROM clinic_app.identity_clinic clinic WHERE clinic.id=%s",
+            [window[0], staff["clinic_a"]],
+        ).fetchone()
+    assert day is not None
+    return str(day[0])
+
+
+def test_arrival_refreshes_a_connected_clinician_today(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    agenda_staff: dict[str, str],
+) -> None:
+    # Runs before the revocation and process-loss scene, which is terminal.
+    staff, base = _today_scene(agenda_staff), renewal_base_url
+    root = renewal_artifact_root / "realtime-today"
+    root.mkdir(mode=0o700)
+    _grant_inbox(staff, root)
+    name = "Sintetico Hoje Realtime"
+    day = _seed_visit(staff, name)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    with browser.new_context(locale="pt-BR", service_workers="block") as reception:
+        # Given: the clinician's Today holds a granted, connected inbox stream
+        # and lists the scheduled visit after its own reconciliation settled.
+        physician, receptionist = renewal_page, reception.new_page()
+        receptionist.set_default_timeout(15000)
+        physician.add_init_script(INBOX_HINTS_JS)
+        _sign_in_physician(physician, base, staff)
+        goto_settled(physician, f"{base}/clinics/{staff['clinic_a']}/today/")
+        board = physician.locator('[data-worklist="today"]')
+        expect(board).to_have_attribute("data-realtime-state", "connected")
+        wait_for_js(physician, SETTLED_JS)
+        wait_for_js(physician, RECONCILED_JS)
+        visit = board.locator("li.today-appointment", has_text=name)
+        expect(visit).to_have_attribute("data-today-status", "scheduled")
+        _sign_in_receptionist(receptionist, base, staff)
+        goto_settled(receptionist, base + _agenda_path(staff, "day", day))
+        row = receptionist.locator(ROWS).filter(has_text=name)
+        expect(row).to_have_attribute("data-appointment-status", "scheduled")
+        before = physician.evaluate(
+            "window.sameDocument = true; window.rtStarted = performance.now();"
+            " window.rt_inbox || 0"
+        )
+        physician.evaluate(ARRIVAL_WITNESS_JS, [name, before])
+
+        # When: reception records the patient's arrival.
+        click_to_navigate(row.locator('button[name="action"][value="arrive"]'))
+        expect(row).to_have_attribute("data-appointment-status", "arrived")
+
+        # Then: that change's hint replaces the scheduled board with the arrived
+        # one in place, after the hint and in the same document.
+        wait_for_js(
+            physician,
+            f"() => (window.rt_inbox || 0) > {before}"
+            " && window.rt_inbox_at >= window.rtStarted"
+            " && window.todayReplacedScheduled === true"
+            " && window.todayArrivedAt >= window.rt_inbox_at"
+            " && window.worklistDone === window.worklistStarted",
+        )
+        expect(visit).to_have_attribute("data-today-status", "arrived")
+        assert physician.evaluate("window.sameDocument === true")
+        _accessibility(physician, root, 1280)
 
 
 def test_two_sessions_refetch_and_fail_closed_without_realtime(
