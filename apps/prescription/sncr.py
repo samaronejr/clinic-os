@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -21,14 +20,14 @@ from apps.prescription.class_values import PrescriptionClass
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-type AllocationKind = Literal["NRA", "NRB", "NRB2", "NRT", "NRTAL", "RCE", "RET"]
+type AllocationKind = Literal["NRA", "NRB", "NRB2", "NRR", "NRT", "RCE", "RET"]
 
 CLASS_MODELS: dict[str, AllocationKind] = {
     PrescriptionClass.NOTIFICACAO_A: "NRA",
     PrescriptionClass.NOTIFICACAO_B: "NRB",
     PrescriptionClass.NOTIFICACAO_B2: "NRB2",
-    PrescriptionClass.RETINOID: "NRT",
-    PrescriptionClass.THALIDOMIDE: "NRTAL",
+    PrescriptionClass.RETINOID: "NRR",
+    PrescriptionClass.THALIDOMIDE: "NRT",
     PrescriptionClass.CONTROLE_ESPECIAL: "RCE",
     PrescriptionClass.ANTIMICROBIAL: "RET",
     PrescriptionClass.GLP1: "RET",
@@ -36,9 +35,13 @@ CLASS_MODELS: dict[str, AllocationKind] = {
 RECORDED_SNCR_PROVIDER = "sncr-documentation-v1"
 MAX_RECORDING_BYTES = 16_384
 RETAINED_BLOCK_SIZE = 1000
+MIN_NOTIFICATION_QUANTITY = 10
+MAX_NOTIFICATION_QUANTITY = 50
+MAX_AVAILABLE_BALANCE = 2_147_483_647
 INVALID_RECORDING = "sncr_invalid_recording"
 NUMBERING_UNAVAILABLE = "sncr_numbering_unavailable"
 RECONCILE = "sncr_reconcile"
+NUMBER_PATTERN = r"[0-9]{4}\.[0-9]-[0-9]{2}\.[0-9]{7}"
 JURISDICTIONS = frozenset(
     {
         "AC",
@@ -110,12 +113,12 @@ class AllocationRequest:
             "documento": self.registration,
         }
         if kind in {"RCE", "RET"}:
-            if self.quantity != 1 or (
-                self.cnpj and re.fullmatch(r"[0-9]{14}", self.cnpj) is None
-            ):
+            if self.quantity != 1 or re.fullmatch(r"[0-9]{14}", self.cnpj) is None:
                 raise SncrUnavailableError(INVALID_RECORDING)
             return {**common, "tipo": kind, "cnpj": self.cnpj}
-        if self.cnpj:
+        if self.cnpj or not (
+            MIN_NOTIFICATION_QUANTITY <= self.quantity <= MAX_NOTIFICATION_QUANTITY
+        ):
             raise SncrUnavailableError(INVALID_RECORDING)
         return {**common, "receita": kind, "quantidade": self.quantity}
 
@@ -189,10 +192,10 @@ class RecordedSncrAdapter:
             raise SncrUnavailableError(INVALID_RECORDING)
         if self._response is None:
             raise SncrUnavailableError(RECONCILE)
-        if self._status in {404, 422}:
+        if self._status == HTTPStatus.BAD_REQUEST:
             raise SncrUnavailableError(NUMBERING_UNAVAILABLE)
         if (
-            self._status != HTTPStatus.OK
+            self._status != (HTTPStatus.CREATED if "tipo" in payload else HTTPStatus.OK)
             or not 0 < len(self._response) <= MAX_RECORDING_BYTES
         ):
             raise SncrUnavailableError(INVALID_RECORDING)
@@ -212,42 +215,47 @@ class RecordedSncrAdapter:
         response: bytes,
     ) -> AllocatedNumbers:
         retained = "tipo" in payload
-        expected = {"dataSolicitacao", "documentoSolicitante", "numeracoesReceita"}
-        if not retained:
-            expected |= {"quantidade", "ativo"}
-        if (
-            facts.keys() != expected
-            or facts["documentoSolicitante"]
-            != f"{request.council}-{request.jurisdiction}-{request.registration}"
-            or not isinstance(facts["dataSolicitacao"], str)
-            or not isinstance(facts["numeracoesReceita"], str)
-        ):
+        expected = (
+            {"inicio", "fim", "quantidade", "mensagem"}
+            if retained
+            else {"numeracoesReceita", "saldoReceitas", "mensagem"}
+        )
+        if facts.keys() != expected or not isinstance(facts["mensagem"], str):
             raise SncrUnavailableError(INVALID_RECORDING)
-        try:
-            datetime.fromisoformat(facts["dataSolicitacao"])
-        except ValueError as error:
-            raise SncrUnavailableError(INVALID_RECORDING) from error
-        numbers = facts["numeracoesReceita"]
         if retained:
-            match = re.fullmatch(r"([0-9]{14}) a ([0-9]{14})", numbers)
-            if match is None:
-                raise SncrUnavailableError(INVALID_RECORDING)
-            first, last = match.groups()
-            quantity = int(last) - int(first) + 1
-            if quantity != RETAINED_BLOCK_SIZE or first[:2] != last[:2]:
-                raise SncrUnavailableError(INVALID_RECORDING)
-        else:
+            first, last = facts["inicio"], facts["fim"]
             if (
-                type(facts["quantidade"]) is not int
-                or facts["quantidade"] != request.quantity
-                or facts["ativo"] is not True
-                or re.fullmatch(r"[0-9]{4}\.[0-9]-[0-9]{2}\.[0-9]{7}", numbers) is None
-                or request.quantity != 1
+                not isinstance(first, str)
+                or not isinstance(last, str)
+                or re.fullmatch(NUMBER_PATTERN, first) is None
+                or re.fullmatch(NUMBER_PATTERN, last) is None
+                or first[:-7] != last[:-7]
+                or int(first[-7:]) < 1
+                or int(last[-7:]) - int(first[-7:]) + 1 != RETAINED_BLOCK_SIZE
+                or type(facts["quantidade"]) is not int
+                or facts["quantidade"] != RETAINED_BLOCK_SIZE
             ):
-                # The manual records one NR number. Do not invent a list shape.
                 raise SncrUnavailableError(INVALID_RECORDING)
-            first = last = numbers
-            quantity = 1
+            quantity = RETAINED_BLOCK_SIZE
+        else:
+            numbers = facts["numeracoesReceita"]
+            balance = facts["saldoReceitas"]
+            if (
+                not isinstance(numbers, str)
+                or re.fullmatch(
+                    r"\[" + NUMBER_PATTERN + r"(?:, " + NUMBER_PATTERN + r")*\]",
+                    numbers,
+                )
+                is None
+                or type(balance) is not int
+                or not 0 <= balance <= MAX_AVAILABLE_BALANCE
+            ):
+                raise SncrUnavailableError(INVALID_RECORDING)
+            returned = numbers[1:-1].split(", ")
+            quantity = len(returned)
+            if quantity > request.quantity or len(set(returned)) != quantity:
+                raise SncrUnavailableError(INVALID_RECORDING)
+            first, last = returned[0], returned[-1]
         return AllocatedNumbers(
             request=request,
             first=first,

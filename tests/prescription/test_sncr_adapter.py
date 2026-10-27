@@ -61,6 +61,7 @@ REQUEST = AllocationRequest(
     council="CRM",
     jurisdiction="SP",
     registration="999999999999",
+    quantity=25,
 )
 
 
@@ -343,14 +344,21 @@ def test_duplicate_command_concurrently_creates_one_receipt(
 
 @pytest.mark.parametrize("category", list(CLASS_MODELS))
 def test_documented_models_bind_exact_request_and_prescriber(category: str) -> None:
-    request = replace(REQUEST, category=category)
     retained = CLASS_MODELS[category] in {"RCE", "RET"}
+    request = replace(
+        REQUEST,
+        category=category,
+        quantity=1 if retained else 25,
+        cnpj="11111111111111" if retained else "",
+    )
     adapter: SncrAdapter = RecordedSncrAdapter(
-        request=request, response=recording(retained=retained)
+        request=request,
+        response=recording(retained=retained),
+        status=201 if retained else 200,
     )
     result = adapter.allocate(request)
     assert result.request == request
-    assert result.quantity == (1000 if retained else 1)
+    assert result.quantity == (1000 if retained else 2)
     assert result.response == recording(retained=retained)
     assert request.payload()["documento"] == REQUEST.registration
     assert request.endpoint.endswith(
@@ -364,8 +372,9 @@ def test_documented_models_bind_exact_request_and_prescriber(category: str) -> N
 @pytest.mark.parametrize(
     ("response", "status", "code"),
     [
-        (b"", 404, "sncr_numbering_unavailable"),
-        (b"", 422, "sncr_numbering_unavailable"),
+        (b"", 400, "sncr_numbering_unavailable"),
+        (b"", 404, "sncr_invalid_recording"),
+        (b"", 422, "sncr_invalid_recording"),
         (None, 200, "sncr_reconcile"),
         (b"{}", 500, "sncr_invalid_recording"),
         (b"[]", 200, "sncr_invalid_recording"),
@@ -401,6 +410,13 @@ def test_recorded_exhaustion_timeout_and_invalid_responses(
         {"quantidade": True},
         {"quantidade": 2},
         {"ativo": False},
+        {"saldoReceitas": True},
+        {"saldoReceitas": -1},
+        {"saldoReceitas": 2147483648},
+        {"saldoReceitas": "49"},
+        {"mensagem": None},
+        {"numeracoesReceita": "[]"},
+        {"numeracoesReceita": "[2411.1-00.0000001, 2411.1-00.0000001]"},
         {"unexpected": "SINTETICO-SENTINELA-SNCR"},
     ],
 )
@@ -446,30 +462,36 @@ def test_recorded_adapter_is_explicitly_disabled_without_rehearsal() -> None:
 
 
 @pytest.mark.parametrize(
-    "numbers",
+    ("first", "last"),
     [
-        "",
-        "11000000000001 a 11000000001001",
-        "11000000000001 a 12000000001000",
-        "1100000000000001 a 1100000000001000",
+        ("", "2602.6-53.0001000"),
+        ("2602.6-53.0000001", "2602.6-53.0001001"),
+        ("2602.6-53.0000001", "2602.6-54.0001000"),
+        ("2602.6-53.0001000", "2602.6-53.0000001"),
+        ("11000000000001", "11000000001000"),
     ],
 )
-def test_undocumented_or_extended_retained_block_refuses(numbers: str) -> None:
-    request = replace(REQUEST, category="controle_especial")
+def test_undocumented_or_extended_retained_block_refuses(first: str, last: str) -> None:
+    request = replace(
+        REQUEST, category="controle_especial", quantity=1, cnpj="11111111111111"
+    )
     facts = json.loads(recording(retained=True))
-    facts["numeracoesReceita"] = numbers
+    facts.update(inicio=first, fim=last)
     with pytest.raises(SncrUnavailableError, match="sncr_invalid_recording"):
         RecordedSncrAdapter(
-            request=request, response=json.dumps(facts).encode()
+            request=request, response=json.dumps(facts).encode(), status=201
         ).allocate(request)
 
 
 def test_retained_payload_does_not_accept_ignored_quantity_or_invalid_cnpj() -> None:
-    request = replace(REQUEST, category="controle_especial")
+    request = replace(
+        REQUEST, category="controle_especial", quantity=1, cnpj="11111111111111"
+    )
     assert replace(request, cnpj="99999999999999").payload()["cnpj"] == "99999999999999"
     for altered in (
         replace(request, quantity=2),
         replace(request, cnpj="invalid"),
+        replace(request, cnpj=""),
     ):
         with pytest.raises(SncrUnavailableError, match="sncr_invalid_recording"):
             altered.payload()

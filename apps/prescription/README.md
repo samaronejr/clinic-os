@@ -149,6 +149,15 @@ It never generates, extends or allocates numbers itself. Exhaustion returns
 wrong-prescriber and undocumented responses fail closed. Fixture provenance is
 in `tests/prescription/fixtures/sncr-documentation.json`.
 
+The v5 notification request asks for 10-50 numbers. Its HTTP 200 example has
+`numeracoesReceita` as a bracketed list encoded in a string, `saldoReceitas`
+and `mensagem`; a partial allocation is allowed. Retained requests require the
+platform CNPJ and return HTTP 201 with `inicio`, `fim`, `quantidade=1000` and
+`mensagem`. HTTP 400 is a numbering-unavailable refusal, never a successful
+allocation; 404/422 are not treated as documented exhaustion. Recordings are
+bound to their exact request: the response does not echo prescriber identity,
+and this offline adapter does not claim to perform Gov.br authentication.
+
 `SncrNumberAllocation` retains encrypted owner-imported request/response
 recordings per issuer. Runtime may only read its own recordings, never insert,
 update, delete or truncate them. The same immutable protections apply to

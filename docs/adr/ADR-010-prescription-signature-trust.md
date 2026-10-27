@@ -114,6 +114,14 @@ published documentation examples, not allocations to this system.
 `SncrNumberAllocation` stores owner-imported recordings encrypted and immutable.
 No number is fabricated, extended or sent to an external service.
 
+The v5 response fixtures use its literal examples: notification HTTP 200
+contains `numeracoesReceita` (a bracketed list encoded as a string),
+`saldoReceitas` and `mensagem`; the 10-50-number request may receive fewer
+numbers. Retained HTTP 201 contains `inicio`, `fim`, `quantidade=1000` and
+`mensagem`. No prescriber echo, timestamp wrapper or range-string schema is
+invented. Authentication remains a precondition outside this recorded-only
+adapter. HTTP 400 refuses allocation, rather than producing number records.
+
 That manual provides no emission-registration endpoint; that operation refuses
 until an approved contract exists. Its historical 14-digit examples do not
 establish the subsequently announced 16-digit schema. Official unmodified

@@ -5,18 +5,17 @@
     "edition": "September 2026, third edition, pages 11-15",
     "retrieved_on": "2026-10-27",
     "source_sha256": "dbaed56de26b42c739c5eedda5b688bf4c42249f75d151c5e57d6541e62a39bb",
-    "note": "Documentation examples only. Prescriber replaced by a synthetic numeric placeholder. Not an allocation or external receipt. Historical 14-digit schema, not a claim about the current 16-digit endpoint."
+    "note": "Response examples transcribed from sections 2.3.1.4 and 2.3.2.4, including the notification list encoded as a string. Only JSON typography/trailing commas normalized. Request identity is synthetic and is not a response field. Not an allocation, external receipt or claim about a newer endpoint."
   },
   "notification": {
-    "dataSolicitacao": "2025-09-24T14:25:00",
-    "quantidade": 1,
-    "ativo": true,
-    "documentoSolicitante": "CRM-SP-999999999999",
-    "numeracoesReceita": "2411.1-00.0000001"
+    "numeracoesReceita": "[2411.1-00.0000001, 2411.1-00.0000002]",
+    "saldoReceitas": 49,
+    "mensagem": "Saldo inferior a 50 receitas dispon\u00edveis"
   },
   "retained": {
-    "dataSolicitacao": "2026-07-16T14:25:00",
-    "documentoSolicitante": "CRM-SP-999999999999",
-    "numeracoesReceita": "11000000000001 a 11000000001000"
+    "inicio": "2602.6-53.0000001",
+    "fim": "2602.6-53.0001000",
+    "quantidade": 1000,
+    "mensagem": "Numera\u00e7\u00e3o gerada com sucesso."
   }
 }
