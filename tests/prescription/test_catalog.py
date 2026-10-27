@@ -8,6 +8,8 @@ from io import StringIO
 from typing import TYPE_CHECKING
 
 import pytest
+from apps.audit.models import AuditEvent
+from apps.comms.models import IntegrationOperation
 from apps.prescription.catalog import catalog_entries, set_favorite
 from apps.prescription.models import (
     MedicationCatalogEntry,
@@ -21,10 +23,10 @@ from apps.prescription.services import create_draft
 from apps.tenancy.db import tenant_context
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, connection, transaction
 
 from patient_service_support import runtime_role
-from renewal.test_encounters import physician_client
+from renewal.test_encounters import physician_client, setup_context
 from renewal.test_prescription_drafts import payload, seed
 
 if TYPE_CHECKING:
@@ -144,6 +146,75 @@ def test_favorites_are_issuer_scoped_and_removed_without_deletion(
         tenant_context(rbac_graph.shared_user, rbac_graph.organization_b),
     ):
         assert not MedicationFavorite.objects.exists()
+
+
+@pytest.mark.parametrize("favorite_state", ["absent", "inactive", "active"])
+@pytest.mark.parametrize(
+    "defect", ["empty", "oversized", "noninteger", "issuer", "clinic"]
+)
+def test_refused_favorite_post_has_no_row_audit_or_outbox_delta(
+    rbac_graph: RbacGraph, tmp_path: Path, favorite_state: str, defect: str
+) -> None:
+    # Given: an add, reactivation or removal through the real native HTTP form.
+    load_catalog(catalog_file(tmp_path))
+    entry = MedicationCatalogEntry.objects.get()
+    scope = seed(rbac_graph)
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        draft = create_draft(**scope)
+        if favorite_state != "absent":
+            set_favorite(
+                clinic_id=rbac_graph.clinic_a,
+                entry_id=entry.pk,
+                active=favorite_state == "active",
+            )
+    clinic_id = rbac_graph.clinic_b if defect == "clinic" else rbac_graph.clinic_a
+    url = f"/prescription/clinics/{clinic_id}/draft/"
+    with physician_client(rbac_graph) as client:
+        before_session = dict(client.session)
+        data = payload(scope, draft)
+        data.pop("action")
+        control = (
+            "favorite_remove_id" if favorite_state == "active" else "favorite_add_id"
+        )
+        data[control] = str(entry.pk)
+        if defect == "issuer":
+            data["issuer_id"] = str(rbac_graph.shared_user)
+        elif defect != "clinic":
+            data["items-TOTAL_FORMS"] = {
+                "empty": "0",
+                "oversized": str(MAX_ITEMS + 1),
+                "noninteger": "forged",
+            }[defect]
+        with tenant_context(rbac_graph.physician, rbac_graph.organization_a):
+            before_rows = list(MedicationFavorite.objects.order_by("pk").values())
+        with setup_context(rbac_graph.organization_a), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL ROLE clinic_owner")
+            before_audit = list(AuditEvent.objects.order_by("seq").values())
+            before_outbox = list(IntegrationOperation.objects.order_by("pk").values())
+        # When: malformed management data or a denied scope accompanies the control.
+        response = client.post(url, data)
+        # Then: refusal commits no creation, reactivation, removal, audit or outbox.
+        assert response.status_code == 403
+        assert dict(client.session) == before_session
+        assert "sessionid" not in response.cookies
+        with tenant_context(rbac_graph.physician, rbac_graph.organization_a):
+            assert (
+                list(MedicationFavorite.objects.order_by("pk").values()) == before_rows
+            )
+            stored = PrescriptionDraft.objects.get(pk=draft.pk)
+            assert stored.version == 1
+            assert stored.category is None
+            assert not PrescriptionItem.objects.filter(draft=draft).exists()
+        with setup_context(rbac_graph.organization_a), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL ROLE clinic_owner")
+            assert list(AuditEvent.objects.order_by("seq").values()) == before_audit
+            assert (
+                list(IntegrationOperation.objects.order_by("pk").values())
+                == before_outbox
+            )
 
 
 def test_refresh_retains_old_entries_but_searches_only_the_latest_batch(

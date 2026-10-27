@@ -44,6 +44,9 @@ def author_data(request: HttpRequest, draft: PrescriptionDraft) -> QueryDict:
         return data
     control = controls[0]
     entry_id = UUID(data.get(control, ""))
+    total = int(data.get("items-TOTAL_FORMS", "0"))
+    if not 1 <= total <= MAX_ITEMS:
+        raise ClinicalAccessDeniedError
     if control != "use_catalog_id":
         set_favorite(
             clinic_id=draft.clinic_id,
@@ -53,9 +56,6 @@ def author_data(request: HttpRequest, draft: PrescriptionDraft) -> QueryDict:
         return data
     entry = MedicationCatalogEntry.objects.filter(pk=entry_id).first()
     if entry is None:
-        raise ClinicalAccessDeniedError
-    total = int(data.get("items-TOTAL_FORMS", "0"))
-    if not 1 <= total <= MAX_ITEMS:
         raise ClinicalAccessDeniedError
     position = next(
         (

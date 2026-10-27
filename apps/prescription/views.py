@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
 from django.core.exceptions import ValidationError
-from django.db import DatabaseError, connection
+from django.db import DatabaseError, connection, transaction
 from django.forms import Select
 from django.http import HttpResponse, HttpResponseBase
 from django.shortcuts import redirect, render
@@ -919,10 +919,11 @@ def _workspace(
             if name != "clinic_id"
         ):
             raise ClinicalAccessDeniedError
-        draft = view_draft(draft_id=draft.pk, **scope)
-        form, items, saved, save_error = _draft_forms(
-            request, clinic_id, draft, scope, bound=bound
-        )
+        with transaction.atomic():
+            draft = view_draft(draft_id=draft.pk, **scope)
+            form, items, saved, save_error = _draft_forms(
+                request, clinic_id, draft, scope, bound=bound
+            )
         if bound and saved == OK and request.POST.get("action") in {"save", "discard"}:
             return redirect(continuation(clinic_id, encounter.pk))
         if bound:
