@@ -35,6 +35,35 @@ Prescription trust has five parts:
 - The verifier library or partner verification API is recorded here when
   todo 35 picks it.
 
+## Todo 35 recorded verification API boundary
+
+The selected local mechanism is `SignatureVerificationAPIAdapter`, separate
+from the signing object. It consumes the closed normalized response schema
+in `apps/prescription/signature_verification.py`: exact signed/content
+digests, operation reference, signer, class and approval digest; positive
+chain, timestamp and revocation verdicts; aware signing/check timestamps.
+Duplicate/unknown fields, negative or absent verdicts and every binding
+mismatch fail closed. Verification runs outside the tenant transaction.
+
+The only supplied API is `RecordedVerificationAPI`. Its immutable response
+is supplied by the rehearsal harness for one exact artifact digest.
+The fixture declares `synthetic-fixture`, `recorded-rehearsal-v1` and
+`synthetic-envelope`; these are not a trust anchor, qualified certificate,
+real PAdES profile or ITI validation result. The signer cannot manufacture a
+verification receipt, and its legacy envelope verifier is not consulted on
+this path. No live library, partner API identity or trust policy is selected.
+Those remain BLOCKED-ON-EG-1/EG-5 and require a successor recorded decision.
+
+The prepare/sign/status/verify protocol sits beside the original callback
+contract. The original synthetic provider remains the default. The recorded
+adapter first commits encrypted candidate bytes as `signed_unverified`.
+Timeout means reconcile those same immutable bytes, not signing again or
+assuming failure. A worker rechecks current authority and exact-byte approval
+after verification and reaches only `rehearsal_complete`. It never reaches
+`issued`; all real class/lifecycle/runtime gates remain closed.
+The additive migration preserves old signed artifacts and grants; rollback
+requires restore because accepted candidate history is immutable.
+
 ## Rejected
 
 - One generic signed PDF for every class. It ignores the class-specific rules

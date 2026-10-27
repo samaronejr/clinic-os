@@ -113,11 +113,34 @@ assigned encounter for the same patient. It retains the source link and copies
 only its frozen item snapshot, never its class, signature or issuance
 authority. The source bytes and prior snapshots remain untouched.
 
-`issue_prescription()` and the signing adapter remain deferred. Task 31's fresh
+`issue_prescription()` and live qualified signing remain deferred. Task 31's fresh
 professional verification and step-up apply at signing, not ordinary draft
 entry. Drafts confer no signing authority, patient release, signature,
 RNDS/SNCR exchange or live readiness. Later issuance must separately require the
 approved category contract and fresh physician/signer verification.
+
+## Independent signing verification rehearsal
+
+Todo 35 adds the prepare/sign/status/verify `SignatureProvider` protocol
+alongside the compatible `CallbackSignatureProvider` contract. The existing
+synthetic signer remains the default. An explicitly supplied
+`RecordedSignatureProvider` composes that synthetic signer with a separate
+`SignatureVerificationAPIAdapter`, whose response must bind the exact signed
+artifact, rendered digest, issuer approval, signer and manually chosen class.
+The decision and closed synthetic API policy are recorded in ADR-010.
+
+An authenticated candidate first commits as `signed_unverified`, retaining
+encrypted, immutable bytes. It grants no release, download or delivery.
+`reconcile_signature` verifies outside the transaction and revalidates current
+document, authority and approval before completion. Chain, timestamp and
+revocation must all be positive. A timeout returns `reconcile` and preserves
+the same candidate for that worker command, never re-signing it. Negative
+verification quarantines the candidate in `failed`; it never exposes bytes.
+Recorded fixtures reach only `rehearsal_complete`, never `issued`. Neither
+the existing synthetic envelope check nor recorded certificate verdicts
+claim independent qualified cryptographic verification. Live signing and
+verification both require activated lifecycle records and live-runtime
+approval; a real partner/API/trust policy remains BLOCKED-ON-EG-1/EG-5.
 
 ## Rendered document artifacts
 

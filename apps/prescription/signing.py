@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
@@ -37,7 +37,7 @@ from django.utils import timezone
 from django.utils.timezone import now as utc_now
 
 from apps.audit.canonical import AuditEventInput
-from apps.audit.services import record_event
+from apps.audit.services import record_event, record_phase1_event
 from apps.ehr.services import (
     ClinicalAccessDeniedError,
     ClinicalConflictError,
@@ -72,6 +72,7 @@ from apps.prescription.services import (
 from apps.prescription.signature_provider import (
     MAX_REFERENCE_LENGTH,
     SYNTHETIC_PROVIDER,
+    CallbackSignatureProvider,
     SignatureAcceptance,
     SignatureCallbackError,
     SignatureCallbackFacts,
@@ -81,10 +82,14 @@ from apps.prescription.signature_provider import (
     SignatureProviderUnavailableError,
     SignatureRequest,
     SignatureVerificationError,
+    VerifiedSignature,
     get_signature_provider,
+    require_live_signing_capabilities,
+    signature_approval_digest,
     signature_capability,
     signature_provider_for,
 )
+from apps.prescription.signature_verification import VerificationRequest
 from apps.tenancy.db import clear_connection_tenant_gucs
 
 if TYPE_CHECKING:
@@ -95,8 +100,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-type SignatureCallbackResult = Literal["applied", "duplicate", "rejected"]
+type SignatureCallbackResult = Literal["applied", "duplicate", "rejected", "reconcile"]
 type DispatchResult = Literal["signing", "skipped", "reconcile", "retry", "failed"]
+type ReconciliationResult = Literal["completed", "failed", "reconcile", "skipped"]
 
 _CLAIM_LOCK_NAMESPACE = "clinic-lock-v1:prescription-signature:"
 _LIVE_STATES = LIVE_SIGNATURE_STATES
@@ -185,19 +191,6 @@ def initiate_signature(
     if profile is None:
         reason = "registration_profile_required"
         raise PhysicianVerificationRequired(reason)
-    existing = SignatureOperation.objects.filter(
-        document=document, state__in=_LIVE_STATES
-    ).first()
-    if existing is not None:
-        superseded = SignatureOperation.objects.filter(
-            pk=existing.pk, state__in=_LIVE_STATES
-        ).update(
-            state=SignatureOperation.State.FAILED,
-            failure_reason="superseded",
-            completed_at=utc_now(),
-        )
-        if superseded == 1:
-            _signature_event(existing.pk, clinic_id, "failed", reason_code="superseded")
     completed = (
         SignatureOperation.objects.filter(
             document=document,
@@ -216,6 +209,19 @@ def initiate_signature(
         reason = "already_completed"
         raise ClinicalConflictError(reason)
     require_current_document(document)
+    existing = SignatureOperation.objects.filter(
+        document=document, state__in=_LIVE_STATES
+    ).first()
+    if existing is not None:
+        superseded = SignatureOperation.objects.filter(
+            pk=existing.pk, state__in=_LIVE_STATES
+        ).update(
+            state=SignatureOperation.State.FAILED,
+            failure_reason="superseded",
+            completed_at=utc_now(),
+        )
+        if superseded == 1:
+            _signature_event(existing.pk, clinic_id, "failed", reason_code="superseded")
     try:
         operation = SignatureOperation.objects.create(
             organization_id=document.organization_id,
@@ -267,7 +273,25 @@ def _evidence_snapshot(
         ),
         "content_digest": operation.content_digest,
         "document_version": operation.document.document_version,
+        "approval_digest": _operation_request(operation).approval_digest,
     }
+
+
+def _operation_request(operation: SignatureOperation) -> SignatureRequest:
+    """Reconstruct the exact approval from immutable stored fields."""
+    content = bytes(operation.document.pdf_bytes)
+    if sha256(content).hexdigest() != operation.content_digest:
+        raise DocumentStorageError
+    request = SignatureRequest(
+        operation_id=operation.pk,
+        issuer_id=operation.issuer_id,
+        signer_subject=operation.signer_subject,
+        content_digest=operation.content_digest,
+        content=content,
+        category=operation.category,
+        document_version=operation.document.document_version,
+    )
+    return replace(request, approval_digest=signature_approval_digest(request))
 
 
 def _authorization_deadline(
@@ -510,16 +534,13 @@ def _dispatch_request(scope: _SignatureScope) -> SignatureRequest | None:
         require_issuance_class(category=operation.category)
         document = operation.document
         require_current_document(document)
-        content = bytes(document.pdf_bytes)
-        if sha256(content).hexdigest() != operation.content_digest:
+        request = _operation_request(operation)
+        snapshot = operation.evidence_snapshot or {}
+        if snapshot.get("approval_digest") != request.approval_digest and (
+            operation.provider != SYNTHETIC_PROVIDER or "approval_digest" in snapshot
+        ):
             raise DocumentStorageError
-        return SignatureRequest(
-            operation_id=operation.pk,
-            issuer_id=operation.issuer_id,
-            signer_subject=operation.signer_subject,
-            content_digest=operation.content_digest,
-            content=content,
-        )
+        return request
 
 
 def _mark_signing(scope: _SignatureScope, operation_ref: str) -> bool:
@@ -565,7 +586,7 @@ def _fail_and_report(scope: _SignatureScope, reason_code: str) -> DispatchResult
 
 
 def _provider_begin(
-    provider: SignatureProvider,
+    provider: CallbackSignatureProvider,
     request: SignatureRequest,
     scope: _SignatureScope,
 ) -> SignatureAcceptance | DispatchResult:
@@ -687,24 +708,40 @@ def receive_signature_callback(
             payload=facts.payload,
             verified_at=verified_at,
         )
-        if facts.status == "signed":
-            _apply_signed(authenticator, operation, facts, verified_at)
-            return "applied"
-        operation.state = SignatureOperation.State.FAILED
-        operation.failure_reason = "provider_reported"
-        operation.completed_at = verified_at
-        operation.save(update_fields=("state", "failure_reason", "completed_at"))
-        _signature_event(
-            operation.pk,
-            operation.clinic_id,
-            "failed",
-            reason_code="provider_reported",
+        staged = facts.status == "signed" and isinstance(
+            authenticator, SignatureProvider
         )
+        if staged:
+            operation.state = SignatureOperation.State.SIGNED_UNVERIFIED
+            operation.signed_bytes = facts.signed_bytes
+            operation.signed_digest = sha256(facts.signed_bytes).hexdigest()
+            operation.save(update_fields=("state", "signed_bytes", "signed_digest"))
+            record_phase1_event(
+                "prescription.signature.signed_unverified",
+                clinic_id=operation.clinic_id,
+                affected_record_id=operation.pk,
+            )
+        elif facts.status == "signed":
+            _apply_signed(authenticator, operation, facts, verified_at)
+        else:
+            operation.state = SignatureOperation.State.FAILED
+            operation.failure_reason = "provider_reported"
+            operation.completed_at = verified_at
+            operation.save(update_fields=("state", "failure_reason", "completed_at"))
+            _signature_event(
+                operation.pk,
+                operation.clinic_id,
+                "failed",
+                reason_code="provider_reported",
+            )
+    if not staged:
         return "applied"
+    outcome = reconcile_signature(scope.operation_id)
+    return "reconcile" if outcome == "reconcile" else "applied"
 
 
 def _apply_signed(
-    authenticator: SignatureProvider,
+    authenticator: CallbackSignatureProvider,
     operation: SignatureOperation,
     facts: SignatureCallbackFacts,
     verified_at: datetime,
@@ -718,39 +755,7 @@ def _apply_signed(
     ``rehearsal_complete``; ``issued`` is reserved for an approved real
     provider, which no enabled capability currently supplies.
     """
-    try:
-        require_issuance_class(category=operation.category)
-    except ValidationError as refusal:
-        code = refusal.code
-        if code is None:
-            raise
-        operation.state = SignatureOperation.State.FAILED
-        operation.failure_reason = code
-        operation.completed_at = verified_at
-        operation.save(update_fields=("state", "failure_reason", "completed_at"))
-        _signature_event(operation.pk, operation.clinic_id, "failed", reason_code=code)
-        return
-    if operation.authorized_until is None or verified_at >= operation.authorized_until:
-        operation.state = SignatureOperation.State.FAILED
-        operation.failure_reason = "authorization_expired"
-        operation.completed_at = verified_at
-        operation.save(update_fields=("state", "failure_reason", "completed_at"))
-        _signature_event(
-            operation.pk,
-            operation.clinic_id,
-            "failed",
-            reason_code="authorization_expired",
-        )
-        return
-    failure = ""
-    try:
-        require_current_document(operation.document)
-    except ClinicalConflictError:
-        failure = "stale_document_approval"
-    except (ClinicalAccessDeniedError, CurrentActorError):
-        failure = "authorization_revoked"
-    except DocumentStorageError:
-        failure = "content_digest_mismatch"
+    failure = _verification_failure(operation)
     if failure:
         operation.state = SignatureOperation.State.FAILED
         operation.failure_reason = failure
@@ -764,6 +769,8 @@ def _apply_signed(
         )
         return
     try:
+        if authenticator.provider != SYNTHETIC_PROVIDER:
+            require_live_signing_capabilities(clinic_id=operation.clinic_id)
         verified = authenticator.verify_signature(
             signed_bytes=facts.signed_bytes,
             content_digest=operation.content_digest,
@@ -771,7 +778,7 @@ def _apply_signed(
             operation_ref=operation.operation_id,
             not_before=operation.created_at,
         )
-    except SignatureVerificationError:
+    except (SignatureVerificationError, SignatureProviderUnavailableError):
         operation.state = SignatureOperation.State.FAILED
         operation.failure_reason = "signature_invalid"
         operation.completed_at = verified_at
@@ -809,6 +816,154 @@ def _apply_signed(
         if authenticator.provider == SYNTHETIC_PROVIDER
         else "issued",
     )
+
+
+def _verification_request(operation: SignatureOperation) -> VerificationRequest:
+    """Bind the immutable candidate to the stored exact-byte approval."""
+    request = _operation_request(operation)
+    if (
+        request.category is None
+        or (operation.evidence_snapshot or {}).get("approval_digest")
+        != request.approval_digest
+        or sha256(bytes(operation.signed_bytes or b"")).hexdigest()
+        != operation.signed_digest
+    ):
+        raise SignatureVerificationError
+    return VerificationRequest(
+        signed_bytes=bytes(operation.signed_bytes or b""),
+        content_digest=request.content_digest,
+        signer_subject=request.signer_subject,
+        operation_ref=operation.operation_id,
+        category=request.category,
+        approval_digest=request.approval_digest,
+        not_before=operation.created_at,
+    )
+
+
+def _verification_failure(operation: SignatureOperation) -> str:
+    """Revalidate authority both before and after independent verification."""
+    try:
+        require_issuance_class(category=operation.category)
+    except ValidationError as refusal:
+        if refusal.code is None:
+            raise
+        return refusal.code
+    if operation.authorized_until is None or utc_now() >= operation.authorized_until:
+        return "authorization_expired"
+    try:
+        require_current_document(operation.document)
+    except ClinicalConflictError:
+        return "stale_document_approval"
+    except (ClinicalAccessDeniedError, CurrentActorError):
+        return "authorization_revoked"
+    except DocumentStorageError:
+        return "content_digest_mismatch"
+    return ""
+
+
+def _fail_verification(operation: SignatureOperation, reason: str) -> None:
+    """Quarantine the immutable candidate; expose no failed bytes to callers."""
+    operation.state = SignatureOperation.State.FAILED
+    operation.failure_reason = reason
+    operation.completed_at = utc_now()
+    operation.save(update_fields=("state", "failure_reason", "completed_at"))
+    record_phase1_event(
+        "prescription.signature.verification_failed",
+        clinic_id=operation.clinic_id,
+        affected_record_id=operation.pk,
+    )
+
+
+def _pending_verification(
+    scope: _SignatureScope,
+) -> VerificationRequest | ReconciliationResult:
+    """Materialize approved bytes inside scope, then leave the transaction."""
+    with _stored_scope_context(scope):
+        operation = (
+            SignatureOperation.objects.select_for_update()
+            .filter(
+                pk=scope.operation_id,
+                state=SignatureOperation.State.SIGNED_UNVERIFIED,
+            )
+            .first()
+        )
+        if operation is None:
+            return "skipped"
+        failure = _verification_failure(operation)
+        if failure:
+            _fail_verification(operation, failure)
+            return "failed"
+        try:
+            return _verification_request(operation)
+        except (SignatureVerificationError, DocumentStorageError):
+            _fail_verification(operation, "signature_invalid")
+            return "failed"
+
+
+def _independent_verification(
+    scope: _SignatureScope, request: VerificationRequest
+) -> VerifiedSignature | Literal["reconcile"] | None:
+    """Call the separately supplied API with no tenant transaction open."""
+    try:
+        verifier = signature_provider_for(scope.provider)
+        if not isinstance(verifier, SignatureProvider) or not verifier.synthetic:
+            return None
+        return verifier.verify(request)
+    except SignatureProviderTransientError:
+        return "reconcile"
+    except (SignatureVerificationError, SignatureProviderUnavailableError):
+        return None
+
+
+def _complete_verification(
+    scope: _SignatureScope, verified: VerifiedSignature | None
+) -> ReconciliationResult:
+    """Recheck current authority after the external call and commit atomically."""
+    with _stored_scope_context(scope):
+        operation = (
+            SignatureOperation.objects.select_for_update()
+            .filter(
+                pk=scope.operation_id,
+                state=SignatureOperation.State.SIGNED_UNVERIFIED,
+            )
+            .first()
+        )
+        if operation is None:
+            return "skipped"
+        failure = _verification_failure(operation)
+        if failure or verified is None:
+            _fail_verification(operation, failure or "signature_invalid")
+            return "failed"
+        document_order(operation.document)
+        operation.state = SignatureOperation.State.REHEARSAL_COMPLETE
+        operation.completed_at = verified.signed_at
+        operation.save(update_fields=("state", "completed_at"))
+        record_phase1_event(
+            "prescription.signature.verification_completed",
+            clinic_id=operation.clinic_id,
+            affected_record_id=operation.pk,
+        )
+        return "completed"
+
+
+def reconcile_signature(operation_id: UUID) -> ReconciliationResult:
+    """Verify stored bytes without re-signing; timeout preserves the candidate."""
+    from ops.release.activation import require_live_runtime  # noqa: PLC0415
+
+    require_live_runtime(os.environ)
+    scope = _resolve_operation_scope(operation_id)
+    if scope is None:
+        return "skipped"
+    with _operation_lock(operation_id) as acquired:
+        if not acquired:
+            return "reconcile"
+        request = _pending_verification(scope)
+        if isinstance(request, str):
+            return request
+        verified = _independent_verification(scope, request)
+        if verified == "reconcile":
+            return "reconcile"
+        return _complete_verification(scope, verified)
 
 
 def signature_status(

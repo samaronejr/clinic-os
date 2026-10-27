@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "provenance": "synthetic-fixture",
+  "policy": "recorded-rehearsal-v1",
+  "format": "synthetic-envelope",
+  "cases": {
+    "valid": {"chain": "trusted", "timestamp": "valid", "revocation": "good"},
+    "invalid_chain": {"chain": "invalid", "timestamp": "valid", "revocation": "good"},
+    "revoked_cert": {"chain": "trusted", "timestamp": "valid", "revocation": "revoked"},
+    "invalid_timestamp": {"chain": "trusted", "timestamp": "invalid", "revocation": "good"},
+    "timeout": {"outcome": "timeout"}
+  }
+}

@@ -11,6 +11,24 @@ type EventContract = tuple[str, str, str, str]
 CLINIC_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
 AFFECTED_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
 FIXED_MATRIX: Final[dict[str, EventContract]] = {
+    "prescription.signature.signed_unverified": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.signature",
+        "signed_unverified",
+    ),
+    "prescription.signature.verification_completed": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.signature",
+        "verification_completed",
+    ),
+    "prescription.signature.verification_failed": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.signature",
+        "verification_failed",
+    ),
     "prescription.clinical_draft.created": (
         "tenant",
         "clinic-os-web",

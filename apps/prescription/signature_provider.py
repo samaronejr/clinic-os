@@ -23,7 +23,7 @@ import secrets
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 import rfc8785
 from django.conf import settings
@@ -34,6 +34,8 @@ from apps.providers.services import is_live
 
 if TYPE_CHECKING:
     from uuid import UUID
+
+    from apps.prescription.signature_verification import VerificationRequest
 
 type JsonValue = (
     bool | int | str | float | None | Sequence[JsonValue] | Mapping[str, JsonValue]
@@ -91,6 +93,9 @@ class SignatureRequest:
     signer_subject: str
     content_digest: str
     content: bytes
+    category: str | None = None
+    document_version: int = 0
+    approval_digest: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,15 +141,14 @@ def signature_capability() -> SignatureCapability:
     )
 
 
-class SignatureProvider(Protocol):
-    """Contract an approved signing provider must satisfy.
+class CallbackSignatureProvider(Protocol):
+    """Existing callback contract retained for synthetic compatibility.
 
     ``begin`` runs outside the tenant transaction and returns only an
     operation reference. ``authenticate_callback`` verifies the raw
     provider callback before any stored operation or tenant is resolved.
-    ``verify_signature`` independently validates the returned signed bytes
-    against the expected content digest and signer; a provider-reported
-    success status is never sufficient for issuance.
+    ``verify_signature`` checks the synthetic envelope against expected
+    bytes and signer. It is not qualified certificate verification.
     """
 
     provider: str
@@ -173,6 +177,64 @@ class SignatureProvider(Protocol):
     ) -> VerifiedSignature:
         """Verify the signed artifact or raise SignatureVerificationError."""
         ...
+
+
+@runtime_checkable
+class SignatureProvider(Protocol):
+    """Prepare/sign/status/verify adapter alongside the callback contract.
+
+    Preparation binds exact bytes, signer, class and document version.
+    Signing/status are separate from ``verify``: that method delegates to
+    an independent verification API, never the signing provider's verdict.
+    External calls run outside the tenant transaction. Only a recorded,
+    explicitly synthetic implementation is runnable before EG-1/EG-5.
+    """
+
+    provider: str
+    synthetic: bool
+
+    def prepare(self, request: SignatureRequest) -> SignatureAcceptance:
+        """Bind approved input and prepare the partner operation."""
+        ...
+
+    def sign(
+        self, request: SignatureRequest, operation_ref: str
+    ) -> tuple[dict[str, str], bytes]:
+        """Return the partner's authenticated completion frame."""
+        ...
+
+    def status(self, operation_ref: str) -> SignatureCallbackFacts | None:
+        """Reconcile the existing operation without signing again."""
+        ...
+
+    def verify(self, request: VerificationRequest) -> VerifiedSignature:
+        """Verify through the independent API, not the signing API."""
+        ...
+
+
+def signature_approval_digest(request: SignatureRequest) -> str:
+    """Bind an approval to exact bytes, issuer, signer, class and version."""
+    return hashlib.sha256(
+        rfc8785.dumps(
+            {
+                "schema_version": 1,
+                "operation_id": str(request.operation_id),
+                "issuer_id": str(request.issuer_id),
+                "content_digest": request.content_digest,
+                "signer_subject": request.signer_subject,
+                "category": request.category,
+                "document_version": request.document_version,
+            }
+        )
+    ).hexdigest()
+
+
+def require_live_signing_capabilities(*, clinic_id: UUID) -> None:
+    """Refuse live signing unless BOTH lifecycle/runtime gates authorize it."""
+    if not is_live("qualified_signing", clinic_id=clinic_id) or not is_live(
+        "signature_verification", clinic_id=clinic_id
+    ):
+        raise SignatureProviderUnavailableError
 
 
 def _require_synthetic() -> None:
@@ -355,13 +417,13 @@ class SyntheticSignatureProvider:
         return VerifiedSignature(signed_at=signed_at)
 
 
-def signature_provider_for(provider: str) -> SignatureProvider:
+def signature_provider_for(provider: str) -> CallbackSignatureProvider:
     """Resolve a stored provider name; unknown or disabled names fail closed."""
     if provider == SYNTHETIC_PROVIDER and signature_capability().synthetic_enabled:
         return SyntheticSignatureProvider()
     raise SignatureProviderUnavailableError
 
 
-def get_signature_provider() -> SignatureProvider:
+def get_signature_provider() -> CallbackSignatureProvider:
     """Resolve the only explicitly enabled provider for new operations."""
     return signature_provider_for(SYNTHETIC_PROVIDER)

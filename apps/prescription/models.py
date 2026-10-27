@@ -235,7 +235,12 @@ class PrescriptionDocument(TenantScopedModel):
         ]
 
 
-LIVE_SIGNATURE_STATES: tuple[str, ...] = ("draft", "prepared", "signing")
+LIVE_SIGNATURE_STATES: tuple[str, ...] = (
+    "draft",
+    "prepared",
+    "signing",
+    "signed_unverified",
+)
 
 
 class SignatureOperation(TenantScopedModel):
@@ -262,6 +267,7 @@ class SignatureOperation(TenantScopedModel):
         DRAFT = "draft", "Rascunho"
         PREPARED = "prepared", "Preparado"
         SIGNING = "signing", "Assinando"
+        SIGNED_UNVERIFIED = "signed_unverified", "Assinado, aguardando verificação"
         ISSUED = "issued", "Emitido"
         REHEARSAL_COMPLETE = "rehearsal_complete", "Ensaio concluído"
         FAILED = "failed", "Falhou"
@@ -331,12 +337,23 @@ class SignatureOperation(TenantScopedModel):
                         "draft",
                         "prepared",
                         "signing",
+                        "signed_unverified",
                         "issued",
                         "rehearsal_complete",
                         "failed",
                     ]
                 ),
                 name="prescription_signature_state",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(state="signed_unverified")
+                | models.Q(
+                    signed_bytes__isnull=False,
+                    signed_digest__isnull=False,
+                    completed_at__isnull=True,
+                    failure_reason="",
+                ),
+                name="prescription_signature_unverified_fields",
             ),
             models.CheckConstraint(
                 condition=models.Q(content_digest__regex=r"^[0-9a-f]{64}$"),
@@ -368,7 +385,14 @@ class SignatureOperation(TenantScopedModel):
             ),
             models.CheckConstraint(
                 condition=(
-                    models.Q(state__in=["signing", "issued", "rehearsal_complete"])
+                    models.Q(
+                        state__in=[
+                            "signing",
+                            "signed_unverified",
+                            "issued",
+                            "rehearsal_complete",
+                        ]
+                    )
                     & ~models.Q(operation_id="")
                 )
                 | models.Q(state__in=["draft", "prepared", "failed"]),
