@@ -6,8 +6,8 @@ registration/search, staff availability, booking, agendas, rescheduling, and
 cancellation — exists, and the renewal domains (clinical records, consent,
 teleconsultation, prescriptions, billing, messaging, retention) are
 implemented and verified in synthetic mode on labelled synthetic adapters.
-Real issuance, automatic retention destruction and clinical-record exchange
-remain deferred stubs; every provider-backed slice stays `waiting_external`
+Real issuance remains externally gated. Automatic retention destruction and
+clinical-record exchange remain deferred stubs; every provider-backed slice stays `waiting_external`
 until its capability record is approved.
 
 See [SECURITY.md](SECURITY.md) for trust boundaries,
@@ -62,22 +62,28 @@ documents, synthetic signing, public verification). Each provider-backed slice
 uses a labelled synthetic adapter that refuses non-synthetic mode; real
 integration stays `waiting_external` on its task-6 capability record.
 
-Three service entrypoints remain deferred stubs that raise exactly
+Two service entrypoints remain deferred stubs that raise exactly
 `NotImplementedError("Phase >=1")`:
 
 | Deferred entrypoint | Reserved service boundary |
 | --- | --- |
-| `prescription.issue_prescription` | real prescription issuance (awaits the signing capability) |
 | `retention.apply_retention_policy` | automatic retention-policy destruction (no approved disposal policy) |
 | `interop.exchange_clinical_record` | clinical-record exchange (RNDS/SNCR preparation only) |
 
 The `apps.core` package supplies the project shell, readiness, privacy headers,
 and health endpoints; it is not one of the 13 registered domain apps.
 
+`prescription.issue_prescription` now implements an idempotent, issuer-scoped
+command over a verified synthetic signature. Its default-off rehearsal path
+creates one immutable `rehearsal_complete` receipt, never `issued`. Real simple
+issuance and regulated SNCR issuance remain BLOCKED-ON-EG; regulated requests
+without an activated `sncr` capability refuse without side effects. See the
+[prescription contract](../apps/prescription/README.md).
+
 ### Renewal prescription drafts
 
 Task 32 adds [synthetic prescription drafts](../apps/prescription/README.md),
-separate from the still-deferred issuance boundary above. Drafts bind an open
+separate from the gated issuance command above. Drafts bind an open
 encounter, patient and issuer, retain immutable item snapshots, compare expected
 versions, and enforce current assigned-physician authority in services and FORCE
 RLS. Active prescription drafts block encounter closure. The native no-store

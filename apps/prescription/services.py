@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, NoReturn, TypedDict, Unpack
+from typing import TYPE_CHECKING, Any, TypedDict, Unpack
 
 import rfc8785
 from django.core.exceptions import ValidationError
@@ -53,6 +53,7 @@ from apps.prescription.models import (
     DocumentKind,
     PrescriptionDocument,
     PrescriptionDraft,
+    PrescriptionIssuance,
     PrescriptionItem,
 )
 from apps.prescription.policy import (
@@ -74,10 +75,13 @@ class EncounterAssertions(TypedDict):
     issuer_id: UUID
 
 
-def issue_prescription() -> NoReturn:
-    """Issue a prescription when the prescription domain is implemented."""
-    message = "Phase >=1"
-    raise NotImplementedError(message)
+def issue_prescription(
+    *, clinic_id: UUID, document_id: UUID, command_id: UUID
+) -> PrescriptionIssuance:
+    """Record one verified rehearsal command; real issuance stays EG-gated."""
+    from apps.prescription.issuance import issue  # noqa: PLC0415
+
+    return issue(clinic_id=clinic_id, document_id=document_id, command_id=command_id)
 
 
 def authorize_encounter(*, clinic_id: UUID, encounter_id: UUID) -> Encounter:

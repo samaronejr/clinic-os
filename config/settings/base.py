@@ -85,6 +85,9 @@ WORKFLOWS_SYNTHETIC_ENABLED: bool = env.bool(
 ORDERS_SYNTHETIC_LAB_ENABLED: bool = env.bool(
     "ORDERS_SYNTHETIC_LAB_ENABLED", default=False
 )
+PRESCRIPTION_SYNTHETIC_ISSUANCE: bool = env.bool(
+    "PRESCRIPTION_SYNTHETIC_ISSUANCE", default=False
+)
 
 AUTH_USER_MODEL: str = "identity.User"
 AUTHENTICATION_BACKENDS: list[str] = [

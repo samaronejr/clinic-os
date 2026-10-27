@@ -46,6 +46,9 @@ class Phase1AuditEventRejectedError(ValueError):
 
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
+        "prescription.issuance.rehearsed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.issuance", "rehearsed"
+        ),
         "prescription.signature.signed_unverified": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "prescription.signature", "signed_unverified"
         ),

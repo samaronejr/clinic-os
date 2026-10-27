@@ -40,6 +40,14 @@ TRUNCATE_GUARDS = (
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
+    (
+        "prescription_prescriptionissuance",
+        "prescription_prescriptionissuance_no_truncate",
+    ),
+    (
+        "prescription_sncrnumberallocation",
+        "prescription_sncrnumberallocation_no_truncate",
+    ),
 )
 __all__: Final = (
     "RbacGraph",

@@ -28,6 +28,7 @@ from apps.prescription.services import (
     save_draft,
     view_draft,
 )
+from apps.prescription.sncr import SncrUnavailableError
 from apps.tenancy.db import TenantAccessDeniedError, tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
@@ -420,6 +421,12 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "revocation_read",
                     "revocation_insert",
                 )
+            } | {
+                ("prescription_prescriptionissuance", policy)
+                for policy in ("setup_tenant", "issuer_read", "issuer_insert")
+            } | {
+                ("prescription_sncrnumberallocation", policy)
+                for policy in ("setup_tenant", "issuer_read")
             }
             cursor.execute(
                 "SELECT table_name,privilege_type "
@@ -438,6 +445,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "prescription_signaturecallback",
                     "prescription_prescriptiondocumentrevocation",
                     "prescription_prescriptiondocumentrelease",
+                    "prescription_prescriptionissuance",
                 )
                 for privilege in ("SELECT", "INSERT")
             } | {
@@ -446,6 +454,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "prescription_prescriptionclasspolicy",
                     "prescription_medicationcatalogimport",
                     "prescription_medicationcatalogentry",
+                    "prescription_sncrnumberallocation",
                 )
             } | {
                 ("prescription_medicationfavorite", privilege)
@@ -538,10 +547,30 @@ def test_concurrent_saves_have_one_winner(rbac_graph: RbacGraph) -> None:
         assert view_draft(**scope, draft_id=draft.pk).version == 2
 
 
-def test_category_never_implies_real_issuance() -> None:
+def test_category_never_implies_real_issuance(rbac_graph: RbacGraph) -> None:
     assert validate_category(SYNTHETIC_CATEGORY) == "synthetic-draft-v1"
-    with pytest.raises(NotImplementedError):
-        services.issue_prescription()
+    scope = seed(rbac_graph)
+    with (
+        runtime_role(),
+        tenant_context(rbac_graph.physician, rbac_graph.organization_a),
+    ):
+        draft = create_draft(**scope, category=SYNTHETIC_CATEGORY)
+        draft = save_draft(
+            **scope,
+            draft_id=draft.pk,
+            category=SYNTHETIC_CATEGORY,
+            expected_version=1,
+            items=[ITEM],
+        )
+        document = services.render_document(
+            **scope, draft_id=draft.pk, expected_version=draft.version
+        )
+        with pytest.raises(SncrUnavailableError):
+            services.issue_prescription(
+                clinic_id=scope["clinic_id"],
+                document_id=document.pk,
+                command_id=uuid4(),
+            )
 
 
 def payload(scope: Scope, draft: PrescriptionDraft) -> dict[str, str]:

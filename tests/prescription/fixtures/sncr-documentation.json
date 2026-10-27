@@ -1,0 +1,22 @@
+{
+  "provenance": {
+    "synthetic": true,
+    "source": "https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/controlados/sncr/documentos-do-sncr/sncr_manual_api_v5.pdf/@@download/file",
+    "edition": "September 2026, third edition, pages 11-15",
+    "retrieved_on": "2026-10-27",
+    "source_sha256": "dbaed56de26b42c739c5eedda5b688bf4c42249f75d151c5e57d6541e62a39bb",
+    "note": "Documentation examples only. Prescriber replaced by a synthetic numeric placeholder. Not an allocation or external receipt. Historical 14-digit schema, not a claim about the current 16-digit endpoint."
+  },
+  "notification": {
+    "dataSolicitacao": "2025-09-24T14:25:00",
+    "quantidade": 1,
+    "ativo": true,
+    "documentoSolicitante": "CRM-SP-999999999999",
+    "numeracoesReceita": "2411.1-00.0000001"
+  },
+  "retained": {
+    "dataSolicitacao": "2026-07-16T14:25:00",
+    "documentoSolicitante": "CRM-SP-999999999999",
+    "numeracoesReceita": "11000000000001 a 11000000001000"
+  }
+}

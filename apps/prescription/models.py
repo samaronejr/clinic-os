@@ -20,6 +20,10 @@ from apps.prescription.class_values import (
     REAL_CLASSES,
     PrescriptionClass,
 )
+from apps.prescription.sncr_models import (
+    PrescriptionIssuance,
+    SncrNumberAllocation,
+)
 from apps.tenancy.fields import (
     EncryptedBytesField,
     EncryptedJSONField,
@@ -32,6 +36,8 @@ __all__ = (
     "MedicationCatalogImport",
     "MedicationFavorite",
     "PrescriptionClassPolicy",
+    "PrescriptionIssuance",
+    "SncrNumberAllocation",
 )
 
 

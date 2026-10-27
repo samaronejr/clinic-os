@@ -73,10 +73,15 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
-    issue_prescription,
     apply_retention_policy,
     exchange_clinical_record,
 )
+
+
+def test_issuance_command_keeps_explicit_scope_and_idempotency() -> None:
+    parameters = signature(issue_prescription).parameters
+    assert list(parameters) == ["clinic_id", "document_id", "command_id"]
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 @pytest.mark.parametrize(
@@ -395,7 +400,6 @@ def test_domain_app_configs_are_registered() -> None:
     "entrypoint",
     DEFERRED_SERVICE_ENTRYPOINTS,
     ids=(
-        "prescription.issue_prescription",
         "retention.apply_retention_policy",
         "interop.exchange_clinical_record",
     ),

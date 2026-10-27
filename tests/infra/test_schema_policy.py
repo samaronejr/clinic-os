@@ -116,6 +116,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "prescription_prescriptionitem",
         # Private physician favorites: tests/prescription/test_catalog.py.
         "prescription_medicationfavorite",
+        # Task 36 issuer-only immutable receipts/recordings: test_sncr_adapter.
+        "prescription_prescriptionissuance",
+        "prescription_sncrnumberallocation",
         # Task-33/34 artifacts and signing lifecycle: test_document_artifacts
         # and test_signatures check exact policies and ACLs.
         "prescription_prescriptiondocument",

@@ -98,6 +98,29 @@ after cryptographic verification and reaches only `rehearsal_complete`. It never
 The additive migration preserves old signed artifacts and grants; rollback
 requires restore because accepted candidate history is immutable.
 
+## Todo 36 issuance and SNCR boundary
+
+The stub is replaced by an explicit, idempotent issuer command over an already
+verified signature. The runnable synthetic path adds an immutable
+`rehearsal_complete` receipt; it never claims real issuance or patient release.
+Every regulated request first requires an activated `sncr` capability, with
+live runtime and class-specific approvals independently required. A refusal
+has no audit, outbox, numbering or document side effects.
+
+The recorded SNCR adapter follows the allocation field shapes in Anvisa's
+September 2026 third-edition `sncr_manual_api_v5.pdf` (pages 11-15). Exact
+prescriber/council/UF/class correlation is mandatory. Fixture numbers are
+published documentation examples, not allocations to this system.
+`SncrNumberAllocation` stores owner-imported recordings encrypted and immutable.
+No number is fabricated, extended or sent to an external service.
+
+That manual provides no emission-registration endpoint; that operation refuses
+until an approved contract exists. Its historical 14-digit examples do not
+establish the subsequently announced 16-digit schema. Official unmodified
+electronic templates, SNCR QR rendering, sandbox interoperability and real
+issuance remain BLOCKED-ON-EG-1/EG-5/EG-6. Neither an adapter fixture nor a
+lifecycle state can substitute for those records.
+
 ## Rejected
 
 - One generic signed PDF for every class. It ignores the class-specific rules

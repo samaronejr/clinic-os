@@ -113,11 +113,56 @@ assigned encounter for the same patient. It retains the source link and copies
 only its frozen item snapshot, never its class, signature or issuance
 authority. The source bytes and prior snapshots remain untouched.
 
-`issue_prescription()` and live qualified signing remain deferred. Task 31's fresh
+Live issuance and live qualified signing remain externally gated. Task 31's fresh
 professional verification and step-up apply at signing, not ordinary draft
 entry. Drafts confer no signing authority, patient release, signature,
 RNDS/SNCR exchange or live readiness. Later issuance must separately require the
 approved category contract and fresh physician/signer verification.
+
+## Issuance command and recorded SNCR allocation
+
+`issue_prescription(*, clinic_id, document_id, command_id)` derives the current
+assigned physician from database context. It accepts an explicit UUID command,
+locks the current draft version, verifies the rendered and signed digests, and
+requires a completed verified signature. One immutable `PrescriptionIssuance`
+receipt exists per document and command. Replaying the same command returns the
+same receipt without another audit append; a second command for that document
+refuses. A refused command rolls back its whole savepoint, including denial
+audit writes. It never implicitly signs or releases a document.
+
+`PRESCRIPTION_SYNTHETIC_ISSUANCE` defaults off. Its only runnable path is the
+retained `synthetic_non_controlled` class, producing `rehearsal_complete`, never
+`issued`. Real `simple` remains `class_not_enabled`. Every regulated class
+requires an activated `sncr` lifecycle record before any write; a missing or
+non-activated record returns `sncr_required`. Even an activated record cannot
+authorize use in a synthetic runtime. Qualified trust, per-class approval,
+approved official templates and external registration remain BLOCKED-ON-EG.
+The existing database guards against real and synthetic `issued` are unchanged.
+
+`SncrAdapter` describes allocation and emission registration separately.
+`RecordedSncrAdapter` is the only supplied implementation, with
+`real_enabled=False`, no network client and no credential loading. It binds an
+explicit recording to the exact prescriber/council/UF/class request, validates
+the closed documented response and returns only the recorded number or block.
+It never generates, extends or allocates numbers itself. Exhaustion returns
+`sncr_numbering_unavailable`; a timeout returns `sncr_reconcile`; malformed,
+wrong-prescriber and undocumented responses fail closed. Fixture provenance is
+in `tests/prescription/fixtures/sncr-documentation.json`.
+
+`SncrNumberAllocation` retains encrypted owner-imported request/response
+recordings per issuer. Runtime may only read its own recordings, never insert,
+update, delete or truncate them. The same immutable protections apply to
+issuance receipts. All new tables use FORCE RLS; audit contains metadata only.
+The protected-field migration is irreversible; rollback = restore.
+
+The inspected Anvisa September 2026 manual documents number requests, not an
+emission-registration endpoint. Registration explicitly refuses rather than
+inventing an API or acknowledgment. Its historical 14-digit examples are not
+claimed to match the subsequently announced 16-digit schema. No real or
+training-environment request was made. Official electronic models and SNCR QR
+rendering remain unavailable; the current PDF is synthetic and its random QR
+handle grants status lookup only. No legal issuance or EG satisfaction is
+claimed by any local receipt.
 
 ## Independent signing verification rehearsal
 

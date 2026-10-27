@@ -254,6 +254,7 @@ POSTURE_OVERRIDES: Final = {
     "prescription_content_guard": ("v", False, ["clinic_resolver"]),
     "prescription_current_document_guard": ("v", False, ["clinic_resolver"]),
     "prescription_document_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_issuance_guard": ("v", False, ["clinic_resolver"]),
     "prescription_document_open": ("s", False, ["clinic_resolver"]),
     "prescription_draft_guard": ("v", False, ["clinic_resolver"]),
     "prescription_item_guard": ("v", False, ["clinic_resolver"]),
@@ -487,6 +488,7 @@ FUNCTION_SIGNATURES: Final = {
     ("patient_session_overview", "kek text"),
     ("prescription_close_guard", ""),
     ("prescription_document_guard", ""),
+    ("prescription_issuance_guard", ""),
     (
         "prescription_document_open",
         "kek text, organization_id uuid, purpose text, envelope bytea",
@@ -802,6 +804,7 @@ FUNCTION_RESULTS: Final = {
     ),
     ("prescription_close_guard", ""): "trigger",
     ("prescription_document_guard", ""): "trigger",
+    ("prescription_issuance_guard", ""): "trigger",
     (
         "prescription_document_open",
         "kek text, organization_id uuid, purpose text, envelope bytea",

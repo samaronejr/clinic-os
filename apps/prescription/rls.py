@@ -21,6 +21,8 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "prescription_prescriptiondocumentrevocation",
         "prescription_verificationprobe",
         "prescription_medicationfavorite",
+        "prescription_prescriptionissuance",
+        "prescription_sncrnumberallocation",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset(
@@ -47,6 +49,8 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "prescription_medicationcatalogimport": frozenset({"SELECT"}),
     "prescription_medicationcatalogentry": frozenset({"SELECT"}),
     "prescription_medicationfavorite": frozenset({"SELECT", "INSERT"}),
+    "prescription_prescriptionissuance": frozenset({"SELECT", "INSERT"}),
+    "prescription_sncrnumberallocation": frozenset({"SELECT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
