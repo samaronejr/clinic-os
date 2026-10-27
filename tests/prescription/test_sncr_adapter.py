@@ -42,6 +42,7 @@ from apps.tenancy.db import tenant_context
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, connection, connections, transaction
 from django.test import override_settings
+from psycopg.errors import CheckViolation
 
 from patient_service_support import runtime_role
 from provider_gate_support import activate_capability, seed_capabilities
@@ -707,6 +708,61 @@ def test_cross_clinic_revocation_hides_existing_issuance_and_allocation(
                 command_id=uuid4(),
             )
     assert counts(signing_setup) == before
+
+
+@pytest.mark.parametrize("role", UserClinicRole.Role.values)
+def test_issuance_trigger_binds_the_stored_physician_role(
+    signing_setup: SigningSetup, role: str
+) -> None:
+    signature = signing_setup.issue()
+    graph = signing_setup.graph
+    with owner_scope(graph.organization_a):
+        creations = (
+            lambda: SncrNumberAllocation.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                issuer_id=graph.physician,
+                category=PrescriptionClass.NOTIFICACAO_A,
+                request_digest=sha256(recording()).hexdigest(),
+                recording={"synthetic": True, "response": json.loads(recording())},
+            ),
+            lambda: PrescriptionIssuance.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                issuer_id=graph.physician,
+                document=signing_setup.document,
+                signature=signature,
+                command_id=uuid4(),
+            ),
+        )
+        if role == "physician":
+            # Valid artifacts isolate the role decision from every other guard.
+            with transaction.atomic():
+                for create in creations:
+                    assert create().issuer_id == graph.physician
+                transaction.set_rollback(True)
+        UserClinicRole.objects.filter(
+            user_id=graph.physician,
+            clinic_id=graph.clinic_a,
+            role=UserClinicRole.Role.PHYSICIAN,
+        ).update(revoked_at=NOW)
+        if role != "physician":
+            UserClinicRole.objects.create(
+                organization_id=graph.organization_a,
+                clinic_id=graph.clinic_a,
+                user_id=graph.physician,
+                role=role,
+            )
+        # Owner writes bypass runtime RLS, so this must be the real trigger's
+        # stored-role decision, including a physician whose role was revoked.
+        for create in creations:
+            with pytest.raises(DatabaseError) as refusal, transaction.atomic():
+                create()
+            cause = refusal.value.__cause__
+            assert isinstance(cause, CheckViolation)
+            context = cause.diag.context
+            assert context is not None
+            assert "prescription_issuance_guard" in context
 
 
 def test_allocation_and_receipt_exact_posture() -> None:

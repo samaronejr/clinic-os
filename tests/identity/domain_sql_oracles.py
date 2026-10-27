@@ -46,6 +46,9 @@ from prescription.test_catalog_guards import (
 from prescription.test_document_kinds import (
     test_current_document_sql_guard_rechecks_authority_and_version,
 )
+from prescription.test_sncr_adapter import (
+    test_issuance_trigger_binds_the_stored_physician_role,
+)
 from scheduling.test_appointment_states import (
     test_database_trigger_decides_every_status_pair_by_actor,
     test_guards_decide_by_the_exact_permission_not_a_sibling,
@@ -219,6 +222,9 @@ PROTOCOL_ORACLES = {
     "clinic_app.prescription_signature_class_guard": [
         "test_signature_class_trigger_rejects_rebinding"
     ],
+    "clinic_app.prescription_issuance_guard": [
+        "test_issuance_trigger_binds_the_stored_physician_role"
+    ],
     "clinic_app.prescription_draft_guard": [
         "test_renewal_trigger_requires_source_care_for_every_role"
     ],
@@ -262,6 +268,7 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(test_current_document_sql_guard_rechecks_authority_and_version)
     assert callable(test_favorite_trigger_binds_the_stored_physician_role)
     assert callable(test_signature_class_trigger_rejects_rebinding)
+    assert callable(test_issuance_trigger_binds_the_stored_physician_role)
     assert callable(test_renewal_trigger_requires_source_care_for_every_role)
     assert callable(
         test_two_patient_sessions_and_physician_keep_independent_mode_receipts

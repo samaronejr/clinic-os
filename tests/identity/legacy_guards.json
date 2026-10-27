@@ -6292,6 +6292,25 @@
       "reason": "Executed class/catalog authoring, owner-import and renewal protocol witnesses enter the actual callable and assert real role, scope, saved-state or class-gate decisions; no staff-independence exemption is claimed."
     },
     {
+      "symbol": "apps.prescription.issuance._issue",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.prescription.services.authorize_encounter"
+      ],
+      "reason": "The private issuance command delegates staff authority to the existing executable encounter authorization boundary before reading or writing receipts; subsequent checks bind the document, class and verified signature."
+    },
+    {
+      "symbol": "apps.prescription.signature_provider.require_live_signing_capabilities",
+      "signals": [
+        "scope_name"
+      ],
+      "kind": "provider",
+      "reason": "Requires activated qualified-signing and independent-verification capabilities plus the live runtime gate. It reads provider lifecycle state, not staff membership, and does not grant clinical authority."
+    },
+    {
       "symbol": "apps.prescription.renewals.renew_draft",
       "signals": [
         "denial"
@@ -8744,6 +8763,7 @@
           "clinic_app.prescription_prescriptiondraft:draft_insert",
           "clinic_app.prescription_prescriptiondraft:draft_read",
           "clinic_app.prescription_prescriptiondraft:draft_update",
+          "clinic_app.prescription_prescriptionissuance:issuer_insert",
           "clinic_app.prescription_signaturecallback:signature_callback_insert",
           "clinic_app.prescription_signatureoperation:signature_insert",
           "clinic_app.prescription_signatureoperation:signature_read",
@@ -11828,6 +11848,7 @@
           }
         ],
         "migrations": [
+          "apps/prescription/migrations/_independent_signature_sql.py",
           "apps/prescription/migrations/_signature_sql.py"
         ],
         "policies": [],
@@ -14515,6 +14536,28 @@
         "test_favorite_trigger_binds_the_stored_physician_role"
       ],
       "reason": "Stored issuer role, clinic/organization binding and immutable favorite identity; the direct owner-role trigger oracle enumerates all ten issuer roles and revoked physician state independently of runtime RLS."
+    },
+    "clinic_app.prescription_issuance_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/prescription/migrations/_issuance_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_issuance_trigger_binds_the_stored_physician_role"
+      ],
+      "reason": "Stored issuer role and clinic/organization binding are required for both allocation imports and immutable issuance receipts. The direct owner-role trigger oracle enumerates all ten issuer roles and revoked physician state independently of runtime RLS."
     },
     "clinic_app.prescription_signature_class_guard": {
       "discovery": {

@@ -3377,6 +3377,12 @@
       "function:pg_catalog.texteq(text, text)"
     ]
   },
+  "constraint:prescription_signatureoperation.prescription_signature_unverified_fields": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "constraint:scheduling_absence.scheduling_absence_clinic_fk": {
     "direct": {},
     "via": [
@@ -7614,6 +7620,7 @@
       "constraint:prescription_signatureoperation.prescription_signature_operation_id_state",
       "constraint:prescription_signatureoperation.prescription_signature_signed_digest",
       "constraint:prescription_signatureoperation.prescription_signature_state",
+      "constraint:prescription_signatureoperation.prescription_signature_unverified_fields",
       "function:clinic_app.ehr_care(uuid)",
       "function:pg_catalog.hashtextextended(text, bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(bigint)",
@@ -7687,6 +7694,7 @@
       "constraint:prescription_signatureoperation.prescription_signature_operation_id_state",
       "constraint:prescription_signatureoperation.prescription_signature_signed_digest",
       "constraint:prescription_signatureoperation.prescription_signature_state",
+      "constraint:prescription_signatureoperation.prescription_signature_unverified_fields",
       "index:prescription_signature_live_unique",
       "index:prescription_signature_operation_id_unique",
       "policy:prescription_prescriptiondocument.document_insert",

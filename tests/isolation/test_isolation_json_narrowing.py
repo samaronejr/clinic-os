@@ -33,6 +33,47 @@ def test_docker_attestation_rejects_malformed_container_arrays(
 
 
 @pytest.mark.parametrize(
+    "command",
+    [
+        ["redis-server", "--save", "", "--appendonly", "no"],
+        ["", "synthetic-entrypoint-argument"],
+    ],
+)
+def test_docker_attestation_preserves_empty_string_arguments(
+    command: list[str],
+) -> None:
+    # Given: Docker's exec-form argv, including a valid empty argument.
+    identifier = "a" * 64
+    inventory: JsonObject = {"containers": [{"id": identifier}], "networks": []}
+    before = copy.deepcopy(inventory)
+
+    def run(arguments: tuple[str, ...]) -> str:
+        assert arguments[:3] == ("container", "inspect", "--format")
+        assert arguments[4] == identifier
+        if arguments[3] == "{{json .Config.Cmd}}":
+            return json.dumps(command)
+        assert arguments[3] in {MOUNT_TEMPLATE, NETWORK_TEMPLATE}
+        return ""
+
+    # When: the public boundary enriches a valid command without shell parsing.
+    observed = enrich_docker_attestation(inventory, run)
+
+    # Then: no argument is dropped, normalized or mistaken for absent argv.
+    assert observed == {
+        "containers": [
+            {
+                "id": identifier,
+                "command": command,
+                "mounts": [],
+                "network_attachments": [],
+            }
+        ],
+        "networks": [],
+    }
+    assert inventory == before
+
+
+@pytest.mark.parametrize(
     ("raw", "category"),
     [
         ('{"synthetic-private-payload":', "invalid-json"),
@@ -45,7 +86,6 @@ def test_docker_attestation_rejects_malformed_container_arrays(
         ('["synthetic-private-payload", 17]', "array-non-string"),
         ('["", null]', "array-non-string"),
         ("[]", "array-empty"),
-        ('["synthetic-private-payload", ""]', "array-empty-string"),
     ],
 )
 @pytest.mark.parametrize("invalid_first", [False, True])

@@ -10,6 +10,7 @@ from django.db.migrations.operations.base import Operation
 
 from apps.prescription.migrations._class_catalog_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField
+from apps.tenancy.migration_operations import SeparateDatabaseAndState
 
 CLASSES = [
     ("simple", "Simple prescription"),
@@ -43,7 +44,7 @@ VALUES
 """
 
 
-class ProtectedSchema(migrations.SeparateDatabaseAndState):
+class ProtectedSchema(SeparateDatabaseAndState):
     """Publish encrypted fields, grants and local-role SQL in one transaction."""
 
     atomic = True

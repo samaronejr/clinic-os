@@ -104,9 +104,8 @@ def _command_value(value: object, identifier: str) -> list[JsonValue]:
                 "container command must be a string array",
             )
         result.append(item)
-    if not result or any(not item for item in result):
-        category = "array-empty" if not result else "array-empty-string"
-        raise _command_error(identifier, category, "container command is empty")
+    if not result:
+        raise _command_error(identifier, "array-empty", "container command is empty")
     return result
 
 
