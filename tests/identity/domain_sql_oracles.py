@@ -38,6 +38,11 @@ from patients.duplicate_signal_cases import (
     test_forward_waitlist_keeps_integer_source_and_replacement_links,
 )
 from patients.test_duplicates import test_new_charge_for_an_aliased_identity_is_rejected
+from prescription.test_catalog_guards import (
+    test_favorite_trigger_binds_the_stored_physician_role,
+    test_renewal_trigger_requires_source_care_for_every_role,
+    test_signature_class_trigger_rejects_rebinding,
+)
 from prescription.test_document_kinds import (
     test_current_document_sql_guard_rechecks_authority_and_version,
 )
@@ -208,6 +213,15 @@ PROTOCOL_ORACLES = {
     "clinic_app.prescription_current_document_guard": [
         "test_current_document_sql_guard_rechecks_authority_and_version"
     ],
+    "clinic_app.prescription_favorite_guard": [
+        "test_favorite_trigger_binds_the_stored_physician_role"
+    ],
+    "clinic_app.prescription_signature_class_guard": [
+        "test_signature_class_trigger_rejects_rebinding"
+    ],
+    "clinic_app.prescription_draft_guard": [
+        "test_renewal_trigger_requires_source_care_for_every_role"
+    ],
 }
 
 
@@ -246,6 +260,9 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     )
     assert callable(test_sql_guards_allow_and_deny_all_staff_roles)
     assert callable(test_current_document_sql_guard_rechecks_authority_and_version)
+    assert callable(test_favorite_trigger_binds_the_stored_physician_role)
+    assert callable(test_signature_class_trigger_rejects_rebinding)
+    assert callable(test_renewal_trigger_requires_source_care_for_every_role)
     assert callable(
         test_two_patient_sessions_and_physician_keep_independent_mode_receipts
     )

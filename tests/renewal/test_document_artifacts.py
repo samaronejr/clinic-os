@@ -49,6 +49,7 @@ from django.db.models.functions import Now
 from PIL import Image
 
 from patient_service_support import runtime_role
+from prescription.policy_support import seed_class_policies
 from renewal.test_encounters import physician_client, setup_context
 from scheduling.appointment_service_support import (
     arrived_synthetic_appointment,
@@ -84,6 +85,7 @@ class Scope(TypedDict):
 
 
 def seed(graph: RbacGraph) -> Scope:
+    seed_class_policies()
     setup = seed_appointment_setup(graph)
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
         appointment = arrived_synthetic_appointment(setup)

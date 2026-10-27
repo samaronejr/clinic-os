@@ -257,6 +257,8 @@ POSTURE_OVERRIDES: Final = {
     "prescription_document_open": ("s", False, ["clinic_resolver"]),
     "prescription_draft_guard": ("v", False, ["clinic_resolver"]),
     "prescription_item_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_favorite_guard": ("v", False, ["clinic_resolver"]),
+    "prescription_signature_class_guard": ("v", False, ["clinic_resolver"]),
     "prescription_patient_document_bytes": (
         "s",
         True,
@@ -493,6 +495,8 @@ FUNCTION_SIGNATURES: Final = {
     ("prescription_content_guard", ""),
     ("prescription_current_document_guard", ""),
     ("prescription_item_guard", ""),
+    ("prescription_favorite_guard", ""),
+    ("prescription_signature_class_guard", ""),
     ("prescription_patient_document_bytes", "kek text, requested_document uuid"),
     ("prescription_patient_documents", ""),
     ("prescription_patient_documents", "kek text"),
@@ -806,6 +810,8 @@ FUNCTION_RESULTS: Final = {
     ("prescription_content_guard", ""): "trigger",
     ("prescription_current_document_guard", ""): "trigger",
     ("prescription_item_guard", ""): "trigger",
+    ("prescription_favorite_guard", ""): "trigger",
+    ("prescription_signature_class_guard", ""): "trigger",
     ("prescription_patient_document_bytes", "kek text, requested_document uuid"): (
         "bytea"
     ),

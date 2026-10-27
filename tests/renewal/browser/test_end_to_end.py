@@ -51,6 +51,7 @@ from renewal.browser._navigation import (
 )
 from renewal.browser._page_wait import evaluate_js, wait_for_js
 from renewal.browser._protected import kek as protected_kek
+from renewal.browser._room_join import room_join_readiness, room_media_settled
 from renewal.browser._teleconsult import register_physician, stored_room_name
 from renewal.browser.engines import (
     element_box,
@@ -843,9 +844,14 @@ def video_visit(case: Day, physician: Page, patient: Page, encounter: str) -> No
     if case.recovery:
         connection_recovers(case, patient, panel)
 
-    for action in ("join", "start"):
-        goto_settled(physician, staff_url)
-        click_to_navigate(card.locator(f'button[value="{action}"]'))
+    goto_settled(physician, staff_url)
+    with (
+        room_join_readiness(physician, staff_url, case.root),
+        room_media_settled(physician),
+    ):
+        click_to_navigate(card.locator('button[value="join"]'))
+    goto_settled(physician, staff_url)
+    click_to_navigate(card.locator('button[value="start"]'))
     goto_settled(physician, staff_url)
     expect(card).to_have_attribute("data-state", "active")
     patient.locator("[data-refresh-status]").click()
@@ -929,6 +935,7 @@ def sign_document(case: Day, physician: Page, anonymous: Page) -> str:
     goto_settled(physician, case.url(f"/ehr/clinics/{case.clinic}/encounter/"))
     click_to_navigate(physician.get_by_role("button", name="Prescrição sintética"))
     press(physician, "create")
+    physician.locator("#id_category").select_option("synthetic_non_controlled")
     for name, value in ITEM.items():
         physician.locator(f"#id_items-0-{name}").fill(value)
     press(physician, "save")

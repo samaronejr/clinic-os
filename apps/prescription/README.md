@@ -18,8 +18,10 @@ or patient cannot read drafts.
 
 Each explicit save compares `expected_version`, increments `version` atomically,
 and appends immutable item snapshots. Failed or stale saves preserve both stored
-content and bound browser input. Clinician-entered text is never trimmed,
-calculated, classified or used to generate treatment advice. Items capture
+content and bound browser input. Clinician-entered doses are never suggested,
+classified or used to generate treatment advice. Free text is retained exactly;
+the optional structured mode calculates only the total quantity explicitly
+defined by the entered dose, administrations/day and days. Items capture
 medication description (240), strength/form (160), dose (160), route (80),
 frequency (160), duration (160), quantity (80) and instructions (2000 characters),
 with at most 20 items. Metadata-only audit events track creation, viewing, saving
@@ -29,17 +31,87 @@ hides content, and is terminal; live drafts block encounter closure.
 ## Category boundary
 
 Superseded in part by docs/plans/clinic-ops-premium-successor.md (SD ledger):
-SD-6 replaces the synthetic-only category with a prescription-class taxonomy
-(todo 34); the rules in this section still hold in code today.
+SD-6 replaces the synthetic-only category with the todo-34 prescription-class
+taxonomy. Every new draft starts with `category=NULL`: there is no selected or
+persisted default, including on renewal. Only the assigned physician can choose,
+change or clear the class through a versioned save. A catalog selection never
+classifies medication.
 
 The [2026-09-24-v2 register](../../docs/integrations/capabilities.md) has no
 confirmed real issuance contract. Consequently **no real document category is
-supported**, including ordinary non-controlled prescriptions. Controlled,
-notification, antimicrobial and unknown categories fail closed server-side.
+supported for electronic issuance**, including ordinary non-controlled
+prescriptions. Known classes may be prepared manually; unknown values fail at
+the form, service and database boundaries. `PrescriptionClassPolicy` is an
+immutable, migration-seeded D-21 reference, not an approval toggle. Notifications
+A/B/B2, systemic retinoids and thalidomide require SNCR from the recorded
+30/09/2026 boundary. White control-special, antimicrobial and GLP-1 retention
+classes require it from 30/10/2026. Electronic requests refuse with
+`class_electronic_unavailable` before the recorded boundary and `sncr_required`
+from it onward; both remain BLOCKED-ON-EG-6. Simple electronic issuance remains
+BLOCKED-ON-EG-5 and the later issuance contract.
 The separate `synthetic_non_controlled` / `synthetic-draft-v1` contract is solely
 for the plan's synthetic rehearsal. It is not a legal approval or a claim that
 entered medication text is non-controlled or safe. This classification is never
 inferred from drug text.
+
+`require_issuance_class` runs at signing initiation, preparation, dispatch and
+completion. Unset classes refuse with `class_required` before an operation is
+created. An immutable `SignatureOperation.category` snapshots the explicit
+rendered-version choice; the issued-row CHECK independently requires a known,
+non-synthetic, non-null class. A separate database guard keeps every real
+electronic class closed until a later gate-backed migration. Paper preparation
+is allowed and labeled **not issued**. The only renderer remains synthetic;
+its paper preparation output is not a legally issued paper prescription.
+
+## Catalog, favorites and structured directions
+
+`load_medication_catalog --source <file> --sha256 <lowercase-sha256>` is the
+owner-only offline refresh job. It never downloads files or uses owner
+credentials in a runtime worker. Re-running the command is idempotent; a new
+snapshot becomes searchable by retrieval date and load time without changing
+historical entries or favorites. Stage an explicitly normalized UTF-8 JSON
+snapshot of Anvisa/CMED public terminology:
+
+```json
+{
+  "schema_version": 1,
+  "source_url": "https://www.gov.br/anvisa/pt-br/synthetic-example.json",
+  "retrieved_on": "2026-10-20",
+  "entries": [
+    {
+      "code": "SYNTHETIC-001",
+      "description": "Synthetic medicine",
+      "strength_form": "Synthetic tablet"
+    }
+  ]
+}
+```
+
+This example is synthetic, not a downloaded or licensed catalog. Raw CMED
+spreadsheets must first be normalized to this closed schema outside the loader.
+The loader validates schema, unique source codes, official HTTPS origin,
+retrieval date, size and the exact file checksum before inserting any rows.
+It retains URL/date/checksum in an immutable import receipt. Classification
+fields are rejected. No real dataset or EG-13 approval ships with this task;
+regulatory classification remains manual regardless of catalog provenance.
+
+Reference tables hold public data and have runtime SELECT only. Favorites are
+clinic/issuer scoped under FORCE RLS, require current physician authority, and
+are removed through audited deactivation, never DELETE. Native POST search,
+selection and favorite actions preserve the entered draft without saving it.
+
+Structured mode is explicit: a unit plus numeric dose, administrations/day and
+duration in days. Decimal-string multiplication computes quantity in the
+**same unit**, with no inferred conversion, packaging rule or rounding.
+Free-text mode performs no calculation. The structured payload is encrypted
+from its first schema version, alongside the existing encrypted item text.
+An optional `MedicationStatement` link must belong to the draft's clinic and
+patient; linking never confirms, reconciles or mutates the statement.
+
+Renewal explicitly copies a completed, non-revoked source artifact into a new
+assigned encounter for the same patient. It retains the source link and copies
+only its frozen item snapshot, never its class, signature or issuance
+authority. The source bytes and prior snapshots remain untouched.
 
 `issue_prescription()` and the signing adapter remain deferred. Task 31's fresh
 professional verification and step-up apply at signing, not ordinary draft

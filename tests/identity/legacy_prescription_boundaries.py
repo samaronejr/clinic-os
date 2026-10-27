@@ -15,6 +15,7 @@ from apps.tenancy.db import tenant_context
 
 from identity.legacy_parity_support import PHYSICIAN, Boundary
 from patient_service_support import runtime_role
+from prescription.policy_support import seed_class_policies
 from renewal.test_document_artifacts import ITEM
 from renewal.test_encounters import setup_context
 
@@ -31,6 +32,7 @@ class PrescriptionSubjects:
 
 
 def seed_prescription(w: LegacyWorld) -> PrescriptionSubjects:
+    seed_class_policies()
     with setup_context(w.graph.organization_a):
         PhysicianProfile.objects.create(
             organization_id=w.graph.organization_a,

@@ -6374,3 +6374,152 @@ msgstr "Sua autorização profissional mudou. Nenhum documento foi emitido."
 
 msgid "Confirm your current clinical scope before trying again."
 msgstr "Confirme seu escopo clínico atual antes de tentar novamente."
+msgid "Simple prescription"
+msgstr "Receita simples"
+
+msgid "Special-control prescription"
+msgstr "Receita de controle especial"
+
+msgid "Antimicrobial retention"
+msgstr "Antimicrobiano com retenção"
+
+msgid "GLP-1 retention"
+msgstr "GLP-1 com retenção"
+
+msgid "Notification A"
+msgstr "Notificação A"
+
+msgid "Notification B"
+msgstr "Notificação B"
+
+msgid "Notification B2"
+msgstr "Notificação B2"
+
+msgid "Systemic retinoid"
+msgstr "Retinoide sistêmico"
+
+msgid "Thalidomide"
+msgstr "Talidomida"
+
+msgid "Synthetic rehearsal; no real issuance"
+msgstr "Ensaio sintético; sem emissão real"
+
+msgid "Choose a prescription class before issuance."
+msgstr "Escolha uma classe de receita antes de emitir."
+
+msgid "Prescription class unavailable."
+msgstr "Classe de receita indisponível."
+
+msgid "Paper preparation only; not issued."
+msgstr "Somente preparo em papel; não emitido."
+
+msgid "Electronic issuance unavailable: SNCR integration pending. Prepare paper instead."
+msgstr "Emissão eletrônica indisponível: integração SNCR pendente. Prepare a via em papel."
+
+msgid "Electronic issuance unavailable. Prepare paper instead."
+msgstr "Emissão eletrônica indisponível. Prepare a via em papel."
+
+msgid "Choose a valid prescription class."
+msgstr "Escolha uma classe de receita válida."
+
+msgid "Enter at most 80 characters."
+msgstr "Informe até 80 caracteres."
+
+msgid "Choose a valid dose unit."
+msgstr "Escolha uma unidade de dose válida."
+
+msgid "Check the structured directions."
+msgstr "Revise a posologia estruturada."
+
+msgid "Prescription class"
+msgstr "Classe de receita"
+
+msgid "Choose a class"
+msgstr "Escolha uma classe"
+
+msgid "Dose unit for structured directions"
+msgstr "Unidade da dose para posologia estruturada"
+
+msgid "Free-text directions"
+msgstr "Posologia em texto livre"
+
+msgid "Tablet"
+msgstr "Comprimido"
+
+msgid "Capsule"
+msgstr "Cápsula"
+
+msgid "Drop"
+msgstr "Gota"
+
+msgid "With a unit, enter numeric dose, administrations per day and days. Quantity is their exact product in that unit; no conversion or rounding."
+msgstr "Ao escolher uma unidade, informe dose numérica, administrações por dia e dias. A quantidade é o produto exato desses valores nessa unidade; sem conversão ou arredondamento."
+
+msgid "Link to medication reconciliation"
+msgstr "Vínculo com a conciliação de medicamentos"
+
+msgid "No reconciliation link"
+msgstr "Sem vínculo com a conciliação"
+
+msgid "Enter a quantity or choose structured directions."
+msgstr "Informe uma quantidade ou escolha a posologia estruturada."
+
+msgid "The draft already has 20 items."
+msgstr "O rascunho já tem 20 itens."
+
+msgid "The class starts unset. Only you choose it; neither the catalog nor a renewal classifies medication."
+msgstr "A classe começa sem seleção. Só você a escolhe; o catálogo e a renovação não classificam medicamentos."
+
+msgid "Up to 20 items. Save to add a field. Doses are never suggested. Structured quantity uses only the numbers you enter."
+msgstr "Até 20 itens. Salve para adicionar um campo. Nenhuma dose é sugerida. A quantidade estruturada usa somente os números que você informa."
+
+msgid "Create a draft without a selected class. Regulated electronic issuance remains unavailable; paper preparation and synthetic rehearsal are separate paths."
+msgstr "Crie um rascunho sem classe selecionada. A emissão eletrônica regulada continua indisponível; o preparo em papel e o ensaio sintético são caminhos separados."
+
+msgid "Renew for review"
+msgstr "Renovar para revisão"
+
+msgid "Renewal copies the previous directions for review. It never copies the class or issues a document."
+msgstr "A renovação copia a posologia anterior para revisão. Não copia a classe nem emite um documento."
+
+msgid "Medication catalog and favorites"
+msgstr "Catálogo de medicamentos e favoritos"
+
+msgid "Terminology only: no dose, treatment advice or regulatory class is inferred. Manual entry remains available."
+msgstr "Somente terminologia: nenhuma dose, orientação de tratamento ou classe regulatória é inferida. O preenchimento manual continua disponível."
+
+msgid "Search the medication catalog"
+msgstr "Buscar no catálogo de medicamentos"
+
+msgid "Search catalog"
+msgstr "Buscar no catálogo"
+
+msgid "Catalog results"
+msgstr "Resultados do catálogo"
+
+msgid "Source retrieved"
+msgstr "Fonte obtida em"
+
+msgid "Use catalog entry"
+msgstr "Usar item do catálogo"
+
+msgid "Add favorite"
+msgstr "Adicionar aos favoritos"
+
+msgid "No catalog results. Enter medication manually or search a loaded snapshot."
+msgstr "Nenhum resultado no catálogo. Preencha o medicamento manualmente ou busque uma versão carregada."
+
+msgid "Your favorites in this clinic"
+msgstr "Seus favoritos nesta clínica"
+
+msgid "Remove favorite"
+msgstr "Remover dos favoritos"
+
+msgid "No favorites yet. Favorites never select a class or directions."
+msgstr "Nenhum favorito ainda. Os favoritos não selecionam classe nem posologia."
+
+msgid "No class selected"
+msgstr "Nenhuma classe selecionada"
+
+msgid "Frequency is administrations per day; duration is days."
+msgstr "A frequência está em administrações por dia; a duração, em dias."

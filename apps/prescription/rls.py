@@ -20,9 +20,17 @@ CUSTOM_RLS_TABLES: Final[frozenset[str]] = frozenset(
         "prescription_prescriptiondocumentrelease",
         "prescription_prescriptiondocumentrevocation",
         "prescription_verificationprobe",
+        "prescription_medicationfavorite",
     }
 )
-NON_RLS_TABLES: Final[frozenset[str]] = frozenset()
+NON_RLS_TABLES: Final[frozenset[str]] = frozenset(
+    {
+        # Public, immutable reference data; only clinic_owner may import it.
+        "prescription_prescriptionclasspolicy",
+        "prescription_medicationcatalogimport",
+        "prescription_medicationcatalogentry",
+    }
+)
 RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     "prescription_prescriptiondraft": frozenset({"SELECT", "INSERT"}),
     "prescription_documentdraftcontent": frozenset({"SELECT", "INSERT"}),
@@ -35,6 +43,10 @@ RUNTIME_GRANTS: Final[dict[str, frozenset[str]]] = {
     # Probe rows are written only by the resolver-owned verification
     # function; the runtime role holds no grants.
     "prescription_verificationprobe": frozenset(),
+    "prescription_prescriptionclasspolicy": frozenset({"SELECT"}),
+    "prescription_medicationcatalogimport": frozenset({"SELECT"}),
+    "prescription_medicationcatalogentry": frozenset({"SELECT"}),
+    "prescription_medicationfavorite": frozenset({"SELECT", "INSERT"}),
 }
 # Column-level privileges held by the runtime role (pg_attribute.attacl).
 COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
@@ -44,6 +56,9 @@ COLUMN_GRANTS: Final[frozenset[tuple[str, str, str]]] = frozenset(
         ("prescription_prescriptiondraft", "state", "UPDATE"),
         ("prescription_prescriptiondraft", "updated_at", "UPDATE"),
         ("prescription_prescriptiondraft", "version", "UPDATE"),
+        ("prescription_prescriptiondraft", "category", "UPDATE"),
+        ("prescription_prescriptiondraft", "contract_version", "UPDATE"),
+        ("prescription_medicationfavorite", "active", "UPDATE"),
         ("prescription_signatureoperation", "authorized_until", "UPDATE"),
         ("prescription_signatureoperation", "completed_at", "UPDATE"),
         ("prescription_signatureoperation", "evidence_id", "UPDATE"),

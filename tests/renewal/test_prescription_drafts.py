@@ -34,6 +34,7 @@ from django.db import DatabaseError, connection, connections, transaction
 from django.db.models.functions import Now
 
 from patient_service_support import runtime_role
+from prescription.policy_support import seed_class_policies
 from renewal.test_encounters import physician_client, setup_context
 from scheduling.appointment_service_support import (
     arrived_synthetic_appointment,
@@ -64,6 +65,7 @@ class Scope(TypedDict):
 
 
 def seed(graph: RbacGraph) -> Scope:
+    seed_class_policies()
     setup = seed_appointment_setup(graph)
     with runtime_role(), tenant_context(graph.shared_user, graph.organization_a):
         appointment = arrived_synthetic_appointment(setup)
@@ -395,6 +397,14 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "signature_callback_insert",
                 )
             } | {
+                ("prescription_medicationfavorite", policy)
+                for policy in (
+                    "setup_tenant",
+                    "favorite_read",
+                    "favorite_insert",
+                    "favorite_update",
+                )
+            } | {
                 ("prescription_prescriptiondocumentrelease", policy)
                 for policy in (
                     "setup_tenant",
@@ -430,6 +440,16 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "prescription_prescriptiondocumentrelease",
                 )
                 for privilege in ("SELECT", "INSERT")
+            } | {
+                (table, "SELECT")
+                for table in (
+                    "prescription_prescriptionclasspolicy",
+                    "prescription_medicationcatalogimport",
+                    "prescription_medicationcatalogentry",
+                )
+            } | {
+                ("prescription_medicationfavorite", privilege)
+                for privilege in ("SELECT", "INSERT")
             }
             cursor.execute(
                 "SELECT table_name,column_name "
@@ -439,7 +459,13 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
             )
             assert set(cursor.fetchall()) == {
                 ("prescription_prescriptiondraft", column)
-                for column in ("version", "state", "updated_at")
+                for column in (
+                    "version",
+                    "state",
+                    "updated_at",
+                    "category",
+                    "contract_version",
+                )
             } | {
                 ("prescription_signatureoperation", column)
                 for column in (
@@ -453,7 +479,7 @@ def test_database_binding_rls_and_terminal_discard(rbac_graph: RbacGraph) -> Non
                     "failure_reason",
                     "completed_at",
                 )
-            } | {
+            } | {("prescription_medicationfavorite", "active")} | {
                 ("prescription_prescriptiondocumentrelease", column)
                 for column in ("revoked_by_id", "revoked_at")
             }

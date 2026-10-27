@@ -61,6 +61,7 @@ from apps.prescription.signing import (
 from apps.tenancy.db import tenant_context
 from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
+from psycopg.errors import CheckViolation
 
 from auth.stepup_test_support import verified_request
 from patient_service_support import runtime_role
@@ -254,6 +255,7 @@ def test_exact_byte_synthetic_lifecycle_completes_rehearsal_and_binds_evidence(
     graph = setup.graph
     # A verified synthetic callback completes the rehearsal; it never issues.
     assert operation.state == "rehearsal_complete"
+    assert operation.category == "synthetic_non_controlled"
     assert operation.operation_id.startswith("synop-")
     assert operation.content_digest == setup.document.pdf_digest
     assert operation.signer_subject == setup.profile.signing_subject
@@ -289,6 +291,54 @@ def test_exact_byte_synthetic_lifecycle_completes_rehearsal_and_binds_evidence(
         )
         assert download.data == signed
         assert download.content_type == "application/pdf"
+
+
+def test_issued_row_check_independently_refuses_an_unset_class(
+    setup: SigningSetup,
+) -> None:
+    # Given: a real operation, with only transition triggers temporarily removed
+    # by the owner so this test proves the CHECK, not another guard.
+    operation = setup.initiate()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "ALTER TABLE clinic_app.prescription_signatureoperation "
+            "DISABLE TRIGGER prescription_signature_guard"
+        )
+        cursor.execute(
+            "ALTER TABLE clinic_app.prescription_signatureoperation "
+            "DISABLE TRIGGER prescription_signature_class_guard"
+        )
+    try:
+        with owner_scope(setup.graph.organization_a):
+            SignatureOperation.objects.filter(pk=operation.pk).update(category=None)
+        # When: clinic_app tries to publish an issued row without a chosen class.
+        with (
+            runtime_role(),
+            tenant_context(setup.graph.physician, setup.graph.organization_a),
+            pytest.raises(DatabaseError) as refusal,
+            transaction.atomic(),
+        ):
+            SignatureOperation.objects.filter(pk=operation.pk).update(
+                state="issued",
+                operation_id="synthetic-constraint-probe",
+                completed_at=NOW,
+                signed_bytes=b"synthetic",
+                signed_digest=sha256(b"synthetic").hexdigest(),
+            )
+        # Then: the issued-row CHECK itself names the refusal.
+        cause = refusal.value.__cause__
+        assert isinstance(cause, CheckViolation)
+        assert cause.diag.constraint_name == "prescription_issued_class_required"
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "ALTER TABLE clinic_app.prescription_signatureoperation "
+                "ENABLE TRIGGER prescription_signature_guard"
+            )
+            cursor.execute(
+                "ALTER TABLE clinic_app.prescription_signatureoperation "
+                "ENABLE TRIGGER prescription_signature_class_guard"
+            )
 
 
 def test_state_machine_rejects_illegal_and_terminal_transitions(

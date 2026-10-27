@@ -29,6 +29,24 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "prescription.clinical_draft",
         "discarded",
     ),
+    "prescription.favorite.added": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.favorite",
+        "added",
+    ),
+    "prescription.favorite.removed": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.favorite",
+        "removed",
+    ),
+    "prescription.draft.renewed": (
+        "tenant",
+        "clinic-os-web",
+        "prescription.draft",
+        "renewed",
+    ),
     "scheduling.queue.arrived": (
         "tenant",
         "clinic-os-web",

@@ -55,6 +55,15 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "prescription.clinical_draft.discarded": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "prescription.clinical_draft", "discarded"
         ),
+        "prescription.favorite.added": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.favorite", "added"
+        ),
+        "prescription.favorite.removed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.favorite", "removed"
+        ),
+        "prescription.draft.renewed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "prescription.draft", "renewed"
+        ),
         "scheduling.queue.arrived": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "scheduling.queue", "arrived"
         ),

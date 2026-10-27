@@ -1,4 +1,4 @@
-"""Scoped synthetic drafts and retained clinician-entered item snapshots."""
+"""Scoped preparation drafts and retained clinician-entered item snapshots."""
 
 from __future__ import annotations
 
@@ -9,12 +9,30 @@ from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.prescription.catalog_models import (
+    MedicationCatalogEntry,
+    MedicationCatalogImport,
+    MedicationFavorite,
+    PrescriptionClassPolicy,
+)
+from apps.prescription.class_values import (
+    CLASSES_CONTRACT,
+    REAL_CLASSES,
+    PrescriptionClass,
+)
 from apps.tenancy.fields import (
     EncryptedBytesField,
     EncryptedJSONField,
     EncryptedTextField,
 )
 from apps.tenancy.models import TenantScopedModel
+
+__all__ = (
+    "MedicationCatalogEntry",
+    "MedicationCatalogImport",
+    "MedicationFavorite",
+    "PrescriptionClassPolicy",
+)
 
 
 class DocumentKind(models.TextChoices):
@@ -39,15 +57,20 @@ class PrescriptionDraft(TenantScopedModel):
     clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
     patient = models.ForeignKey("intake.Patient", on_delete=models.PROTECT)
     issuer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    category = models.CharField(max_length=40)
+    category = models.CharField(  # noqa: DJ001 - NULL means no physician selection
+        max_length=40, choices=PrescriptionClass, null=True, blank=True
+    )
     contract_version = models.CharField(max_length=64)
+    renewal_source = models.ForeignKey(
+        "PrescriptionDocument", on_delete=models.PROTECT, null=True, related_name="+"
+    )
     version = models.PositiveIntegerField(default=1)
     state = models.CharField(max_length=16, default="draft")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        """Keep the synthetic-only contract explicit in persisted data."""
+        """Bind the selected class to its preparation contract."""
 
         constraints: ClassVar = [
             models.UniqueConstraint(
@@ -66,10 +89,17 @@ class PrescriptionDraft(TenantScopedModel):
             ),
             models.CheckConstraint(
                 condition=models.Q(
+                    category__isnull=False,
                     category="synthetic_non_controlled",
                     contract_version="synthetic-draft-v1",
+                )
+                | models.Q(category__isnull=True, contract_version=CLASSES_CONTRACT)
+                | models.Q(
+                    category__isnull=False,
+                    category__in=REAL_CLASSES,
+                    contract_version=CLASSES_CONTRACT,
                 ),
-                name="prescription_synthetic_contract",
+                name="prescription_class_contract",
             ),
         ]
 
@@ -97,7 +127,7 @@ class DocumentDraftContent(TenantScopedModel):
 
 
 class PrescriptionItem(TenantScopedModel):
-    """Immutable item snapshot; values are text, not calculated treatment advice."""
+    """Immutable text and optional exact quantities, never treatment advice."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     draft = models.ForeignKey(PrescriptionDraft, on_delete=models.PROTECT)
@@ -116,6 +146,15 @@ class PrescriptionItem(TenantScopedModel):
     quantity = EncryptedTextField(purpose="prescription.prescriptionitem.quantity")
     instructions = EncryptedTextField(
         purpose="prescription.prescriptionitem.instructions", null=True
+    )
+    directions = EncryptedJSONField(
+        purpose="prescription.prescriptionitem.directions", null=True
+    )
+    catalog_entry = models.ForeignKey(
+        MedicationCatalogEntry, on_delete=models.PROTECT, null=True
+    )
+    medication_statement = models.ForeignKey(
+        "ehr.MedicationStatement", on_delete=models.PROTECT, null=True
     )
 
     class Meta:
@@ -240,6 +279,9 @@ class SignatureOperation(TenantScopedModel):
     provider = models.CharField(max_length=64)
     operation_id = models.CharField(max_length=128, default="")
     state = models.CharField(max_length=24, choices=State, default=State.DRAFT)
+    category = models.CharField(  # noqa: DJ001 - legacy/unselected is not a class
+        max_length=40, choices=PrescriptionClass, null=True, blank=True
+    )
     content_digest = models.CharField(max_length=64)
     signer_subject = models.CharField(max_length=255)
     evidence = models.ForeignKey(
@@ -263,6 +305,16 @@ class SignatureOperation(TenantScopedModel):
         """Bind one live operation per document and one provider reference."""
 
         constraints: ClassVar = [
+            models.CheckConstraint(
+                condition=~models.Q(state="issued")
+                | models.Q(category__isnull=False, category__in=REAL_CLASSES),
+                name="prescription_issued_class_required",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(category__isnull=True)
+                | models.Q(category__in=PrescriptionClass.values),
+                name="prescription_signature_class",
+            ),
             models.UniqueConstraint(
                 fields=("document",),
                 condition=models.Q(state__in=LIVE_SIGNATURE_STATES),

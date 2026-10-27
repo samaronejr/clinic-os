@@ -1,6 +1,11 @@
-"""Task-6 approvals are unavailable; only a visibly synthetic draft is supported."""
+"""Manual draft classes, bounded clinician text and explicit structured units."""
+
+from typing import Final
 
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+
+from apps.prescription.class_values import CLASSES_CONTRACT, PrescriptionClass
 
 SYNTHETIC_CATEGORY = "synthetic_non_controlled"
 SYNTHETIC_CONTRACT = "synthetic-draft-v1"
@@ -15,23 +20,24 @@ ITEM_LIMITS = {
     "quantity": 80,
     "instructions": 2000,
 }
+DOSE_UNIT_LABELS: Final = {
+    "tablet": _("Tablet"),
+    "capsule": _("Capsule"),
+    "drop": _("Drop"),
+    **{unit: unit for unit in ("mL", "mg", "g", "ug", "IU")},
+}
 
 
-def validate_category(category: str) -> str:
+def validate_category(category: str | None) -> str:
     """Never infer a category or drug safety from medication text.
 
-    No real category has a confirmed issuance contract in 2026-09-24-v2.
-    This synthetic contract authorizes draft rehearsal only, not issuance.
-    Controlled, notification, ordinary non-controlled and unknown categories
-    all fail closed rather than inheriting the synthetic exception.
+    A known class permits draft preparation, not electronic issuance.
+    None remains unset; no service or catalog chooses a class on its behalf.
     """
-    if category != SYNTHETIC_CATEGORY:
-        message = (
-            "Categoria sem contrato de emissão confirmado. "
-            "Use apenas o ensaio sintético."
-        )
+    if category is not None and category not in PrescriptionClass.values:
+        message = _("Choose a valid prescription class.")
         raise ValidationError(message, code="unsupported_category")
-    return SYNTHETIC_CONTRACT
+    return SYNTHETIC_CONTRACT if category == SYNTHETIC_CATEGORY else CLASSES_CONTRACT
 
 
 def validate_items(items: list[dict[str, str]]) -> None:
@@ -39,12 +45,19 @@ def validate_items(items: list[dict[str, str]]) -> None:
     if not 1 <= len(items) <= MAX_ITEMS:
         message = "Informe de 1 a 20 itens."
         raise ValidationError(message, code="invalid_items")
+    optional = {"dose_unit": 16, "catalog_entry_id": 36, "medication_statement_id": 36}
+    limits = {**ITEM_LIMITS, **optional}
     for item in items:
-        if set(item) != set(ITEM_LIMITS) or any(
+        if not set(ITEM_LIMITS) <= set(item) <= set(limits) or any(
             not isinstance(value, str)
-            or len(value) > ITEM_LIMITS[field]
+            or len(value) > limits[field]
             or "\x00" in value
-            or (field != "instructions" and not value.strip())
+            or (
+                field in ITEM_LIMITS
+                and field != "instructions"
+                and not value.strip()
+                and not (field == "quantity" and item.get("dose_unit"))
+            )
             for field, value in item.items()
         ):
             message = "Revise os campos do medicamento."

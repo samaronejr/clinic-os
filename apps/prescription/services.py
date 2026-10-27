@@ -1,4 +1,4 @@
-"""Author-only synthetic drafts; real prescription issuance remains unavailable."""
+"""Author-only prescription preparation; real issuance remains unavailable."""
 
 from __future__ import annotations
 
@@ -30,6 +30,8 @@ from apps.identity.current_context import (
 from apps.identity.models import Clinic, UserClinicRole
 from apps.intake.models import Patient
 from apps.orders.values import CATALOG
+from apps.prescription.class_values import CLASSES_CONTRACT, PrescriptionClass
+from apps.prescription.directions import item_snapshot, snapshot_items
 from apps.prescription.document_rendering import (
     DOCUMENT_INPUT_VERSION,
     RENDER_PROFILE,
@@ -54,9 +56,8 @@ from apps.prescription.models import (
     PrescriptionItem,
 )
 from apps.prescription.policy import (
-    ITEM_LIMITS,
+    DOSE_UNIT_LABELS,
     SYNTHETIC_CATEGORY,
-    SYNTHETIC_CONTRACT,
     validate_category,
     validate_items,
 )
@@ -129,9 +130,9 @@ def create_draft(
     encounter_id: UUID,
     patient_id: UUID,
     issuer_id: UUID,
-    category: str,
+    category: str | None = None,
 ) -> PrescriptionDraft:
-    """Create or resume a scoped synthetic draft without replacing its content."""
+    """Create or resume a draft without choosing a class or replacing content."""
     encounter = authorize_encounter(clinic_id=clinic_id, encounter_id=encounter_id)
     _scope(encounter, patient_id, issuer_id)
     contract = validate_category(category)
@@ -191,7 +192,7 @@ def save_draft(
     *,
     clinic_id: UUID,
     draft_id: UUID,
-    category: str,
+    category: str | None,
     expected_version: int,
     items: list[dict[str, str]],
     **scope: Unpack[EncounterAssertions],
@@ -200,24 +201,21 @@ def save_draft(
     authorized = view_draft(clinic_id=clinic_id, draft_id=draft_id, **scope)
     if authorized.kind != DocumentKind.PRESCRIPTION:
         raise ClinicalAccessDeniedError
-    validate_category(category)
+    contract = validate_category(category)
     validate_items(items)
     with transaction.atomic():
         draft = _locked_draft(authorized.pk, expected_version)
         draft.version += 1
-        draft.save(update_fields=("version", "updated_at"))
-        PrescriptionItem.objects.bulk_create(
-            [
-                PrescriptionItem(
-                    organization_id=draft.organization_id,
-                    draft=draft,
-                    version=draft.version,
-                    position=position,
-                    **item,
-                )
-                for position, item in enumerate(items, start=1)
-            ]
+        draft.category = category
+        draft.contract_version = contract
+        snapshots = [
+            item_snapshot(draft=draft, item=item, position=position)
+            for position, item in enumerate(items, start=1)
+        ]
+        draft.save(
+            update_fields=("version", "updated_at", "category", "contract_version")
         )
+        PrescriptionItem.objects.bulk_create(snapshots)
         _event(draft, "saved")
         return draft
 
@@ -257,6 +255,7 @@ def create_document_draft(
         if encounter.state != "open":
             reason = "encounter_closed"
             raise ClinicalConflictError(reason)
+        category = None if kind == DocumentKind.PRESCRIPTION else SYNTHETIC_CATEGORY
         draft = PrescriptionDraft.objects.create(
             organization_id=encounter.organization_id,
             clinic_id=clinic_id,
@@ -264,8 +263,8 @@ def create_document_draft(
             patient_id=encounter.patient_id,
             issuer_id=encounter.physician_id,
             kind=kind,
-            category=SYNTHETIC_CATEGORY,
-            contract_version=SYNTHETIC_CONTRACT,
+            category=category,
+            contract_version=validate_category(category),
         )
         record_phase1_event(
             "prescription.clinical_draft.created",
@@ -372,6 +371,7 @@ def _frozen_input(
     if patient is None or clinic is None:
         raise ClinicalAccessDeniedError
     configuration = latest_configuration(draft.clinic_id)
+    items = draft_items(draft)
     frozen = {
         "v": DOCUMENT_INPUT_VERSION,
         "draft_id": str(draft.pk),
@@ -391,7 +391,7 @@ def _frozen_input(
         },
         "issued_at": issued_at,
         "verification_url": verification_url,
-        "items": draft_items(draft),
+        "items": items,
     }
     if draft.kind != DocumentKind.PRESCRIPTION:
         content = document_content(draft)
@@ -404,6 +404,23 @@ def _frozen_input(
             }
         if draft.kind == DocumentKind.EXAM_REQUEST:
             frozen["order_command_id"] = str(exam_order_command(draft))
+    with translation.override("pt-br"):
+        for item in items:
+            if item.get("dose_unit"):
+                item["dose_unit_label"] = str(DOSE_UNIT_LABELS[item["dose_unit"]])
+                item["directions_label"] = translation.gettext(
+                    "Frequency is administrations per day; duration is days."
+                )
+        if draft.contract_version == CLASSES_CONTRACT:
+            frozen["class_label"] = (
+                str(PrescriptionClass(draft.category).label)
+                if draft.category
+                else translation.gettext("No class selected")
+            )
+            frozen["preparation_mode"] = "paper"
+            frozen["preparation_label"] = translation.gettext(
+                "Paper preparation only; not issued."
+            )
     return frozen
 
 
@@ -591,11 +608,7 @@ def require_current_document(document: PrescriptionDocument) -> None:
 
 def draft_items(draft: PrescriptionDraft) -> list[dict[str, str]]:
     """Return the current author-visible snapshot, never discarded content."""
-    return list(
-        PrescriptionItem.objects.filter(draft=draft, version=draft.version).values(
-            *ITEM_LIMITS
-        )
-    )
+    return snapshot_items(draft)
 
 
 def discard_draft(

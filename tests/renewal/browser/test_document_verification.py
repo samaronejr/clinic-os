@@ -534,6 +534,7 @@ def test_document_verification_journey(  # noqa: PLR0915 - one linear journey
         press(page, "open")
         click_to_navigate(page.get_by_role("button", name="Prescrição sintética"))
         press(page, "create")
+        page.locator("#id_category").select_option("synthetic_non_controlled")
         for field, value in ITEM.items():
             page.locator(f"#id_items-0-{field}").fill(value)
         press(page, "save")

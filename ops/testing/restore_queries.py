@@ -22,7 +22,14 @@ RLS_RELATIONS: Final = tuple(
             *(
                 relation
                 for relation in DOMAIN_RELATIONS
-                if relation not in ("audit_event", "identity_user")
+                if relation
+                not in (
+                    "audit_event",
+                    "identity_user",
+                    # Public reference snapshots carry SELECT-only ACLs, not RLS.
+                    "prescription_medicationcatalogimport",
+                    "prescription_medicationcatalogentry",
+                )
             ),
             "tenancy_tenantprobe",
         )
@@ -228,6 +235,9 @@ FROM (
     FROM clinic_app.providers_capabilityversion AS v
     JOIN clinic_app.providers_providercapability AS c
       ON c.id = v.capability_id
+    UNION ALL
+    SELECT 'prescription-class ' || to_jsonb(p)::text
+    FROM clinic_app.prescription_prescriptionclasspolicy AS p
 ) AS registry
 """
 TENANT_KEY_STATUS_SQL: Final = """

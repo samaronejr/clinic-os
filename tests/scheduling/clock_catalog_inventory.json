@@ -1400,6 +1400,39 @@
       "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
+  "constraint:identity_physicianevidence.identity_physicianev_encounter_id_ce5b2c7f_fk_ehr_encou": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:identity_physicianevidence.identity_physicianev_profile_id_2b9669cc_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_physicianprofile.identity_physician_identity_nonblank",
+      "constraint:identity_physicianprofile.identity_physicianpr_organization_id_8e8893ba_fk_identity_",
+      "constraint:identity_physicianprofile.identity_physicianprofile_user_id_cc4656bc_fk_identity_user_id",
+      "policy:identity_physicianprofile.physician_provision",
+      "policy:identity_physicianprofile.physician_self"
+    ]
+  },
   "constraint:identity_physicianprofile.identity_physician_identity_nonblank": {
     "direct": {},
     "via": [
@@ -2915,6 +2948,208 @@
       "trigger:identity_user.identity_password_session_rejection"
     ]
   },
+  "constraint:prescription_prescriptiondocument.prescription_document_digests": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_document_handle_shape": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_document_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_document_version_positive": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
+      "constraint:prescription_prescriptiondraft.prescription_draft_state",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
+      "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "policy:prescription_prescriptiondraft.draft_insert",
+      "policy:prescription_prescriptiondraft.draft_read",
+      "policy:prescription_prescriptiondraft.draft_update",
+      "policy:prescription_prescriptiondraft.setup_tenant",
+      "trigger:prescription_prescriptiondraft.prescription_draft_binding"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patient.intake_patient_organization_id_cb286636_fk_identity_",
+      "policy:intake_patient.tenant_isolation",
+      "trigger:intake_patient.intake_patient_mirror_guard"
+    ]
+  },
+  "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_clinic_id_d0d609b7_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_document_id_06cf42ec_fk_prescript": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_encounter_id_77adb7b8_fk_ehr_encou": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_issuer_id_23d53512_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_organization_id_c2c7e3e1_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_patient_id_56e668a8_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patient.intake_patient_organization_id_cb286636_fk_identity_",
+      "policy:intake_patient.tenant_isolation",
+      "trigger:intake_patient.intake_patient_mirror_guard"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_revoked_by_id_f0c50e19_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:prescription_prescriptiondocumentrevocation.prescription_revocation_reason": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:prescription_prescriptiondraft.prescription_class_contract": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "constraint:prescription_prescriptiondraft.prescription_document_kind": {
     "direct": {},
     "via": [
@@ -2983,22 +3218,163 @@
       "trigger:intake_patient.intake_patient_mirror_guard"
     ]
   },
+  "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding"
+    ]
+  },
   "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check": {
     "direct": {},
     "via": [
       "function:pg_catalog.int4ge(integer, integer)"
     ]
   },
-  "constraint:prescription_prescriptiondraft.prescription_synthetic_contract": {
+  "constraint:prescription_prescriptiondraft.prescription_version_positive": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.int4ge(integer, integer)"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_issued_class_required": {
     "direct": {},
     "via": [
       "function:pg_catalog.texteq(text, text)"
     ]
   },
-  "constraint:prescription_prescriptiondraft.prescription_version_positive": {
+  "constraint:prescription_signatureoperation.prescription_signatu_clinic_id_b9790618_fk_identity_": {
     "direct": {},
     "via": [
-      "function:pg_catalog.int4ge(integer, integer)"
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "policy:identity_clinic.tenant_isolation"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signatu_document_id_4a576636_fk_prescript": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signatu_encounter_id_9325c288_fk_ehr_encou": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.zz_intake_survivor_binding"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signatu_evidence_id_28249780_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_physicianevidence.identity_physicianev_encounter_id_ce5b2c7f_fk_ehr_encou",
+      "constraint:identity_physicianevidence.identity_physicianev_profile_id_2b9669cc_fk_identity_",
+      "policy:identity_physicianevidence.physician_evidence_assigned",
+      "policy:identity_physicianevidence.physician_evidence_owner"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signatu_issuer_id_14873ca1_fk_identity_": {
+    "direct": {},
+    "via": [
+      "trigger:identity_user.ehr_note_recipient_deactivated",
+      "trigger:identity_user.identity_password_session_rejection"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signatu_organization_id_95ebea6a_fk_identity_": {
+    "direct": {},
+    "via": [
+      "constraint:identity_organization.identity_organization_status",
+      "constraint:identity_organization.identity_pending_capture_protected",
+      "policy:identity_organization.active_organization_runtime",
+      "policy:identity_organization.tenant_isolation",
+      "trigger:identity_organization.pending_organization_guard"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signatu_patient_id_75138d45_fk_intake_pa": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patient.intake_patient_organization_id_cb286636_fk_identity_",
+      "policy:intake_patient.tenant_isolation",
+      "trigger:intake_patient.intake_patient_mirror_guard"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signature_class": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signature_content_digest": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signature_failed_fields": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signature_operation_id_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signature_signed_digest": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.textregexeq(text, text)"
+    ]
+  },
+  "constraint:prescription_signatureoperation.prescription_signature_state": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
     ]
   },
   "constraint:scheduling_absence.scheduling_absence_clinic_fk": {
@@ -7081,6 +7457,7 @@
   "function:clinic_app.prescription_close_guard()": {
     "direct": {},
     "via": [
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
       "constraint:prescription_prescriptiondraft.prescription_document_kind",
       "constraint:prescription_prescriptiondraft.prescription_draft_state",
       "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
@@ -7088,9 +7465,90 @@
       "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
       "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
       "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
       "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
-      "constraint:prescription_prescriptiondraft.prescription_synthetic_contract",
       "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "policy:prescription_prescriptiondraft.draft_insert",
+      "policy:prescription_prescriptiondraft.draft_read",
+      "policy:prescription_prescriptiondraft.draft_update",
+      "policy:prescription_prescriptiondraft.setup_tenant",
+      "trigger:prescription_prescriptiondraft.prescription_draft_binding"
+    ]
+  },
+  "function:clinic_app.prescription_current_document_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:intake_patientclinicenrollment.intake_enrollment_fingerprint_32_check",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_clinic_fk",
+      "constraint:intake_patientclinicenrollment.intake_enrollment_org_patient_fk",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_clinic_id_3ac489a1_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_organization_id_2f311d2a_fk_identity_",
+      "constraint:intake_patientclinicenrollment.intake_patientclinic_patient_id_78ad9bc7_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
+      "constraint:prescription_prescriptiondraft.prescription_draft_state",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
+      "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "function:clinic_app.has_permission(text, uuid, uuid)",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.version()",
+      "policy:intake_patientclinicenrollment.tenant_isolation",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "policy:prescription_prescriptiondraft.draft_insert",
+      "policy:prescription_prescriptiondraft.draft_read",
+      "policy:prescription_prescriptiondraft.draft_update",
+      "policy:prescription_prescriptiondraft.setup_tenant",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding",
+      "trigger:prescription_prescriptiondraft.prescription_draft_binding"
+    ]
+  },
+  "function:clinic_app.prescription_document_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
+      "constraint:prescription_prescriptiondraft.prescription_draft_state",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
+      "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "function:pg_catalog.jsonb_typeof(jsonb)",
+      "function:pg_catalog.octet_length(bit)",
+      "function:pg_catalog.octet_length(bytea)",
+      "function:pg_catalog.octet_length(character)",
+      "function:pg_catalog.octet_length(text)",
+      "function:pg_catalog.version()",
       "policy:prescription_prescriptiondraft.draft_insert",
       "policy:prescription_prescriptiondraft.draft_read",
       "policy:prescription_prescriptiondraft.draft_update",
@@ -7112,6 +7570,51 @@
       "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
       "constraint:ehr_encounter.ehr_encounter_revision_check",
       "constraint:ehr_encounter.ehr_encounter_state_check",
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_clinic_id_d0d609b7_fk_identity_",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_document_id_06cf42ec_fk_prescript",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_encounter_id_77adb7b8_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_issuer_id_23d53512_fk_identity_",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_organization_id_c2c7e3e1_fk_identity_",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_patient_id_56e668a8_fk_intake_pa",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_prescri_revoked_by_id_f0c50e19_fk_identity_",
+      "constraint:prescription_prescriptiondocumentrevocation.prescription_revocation_reason",
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
+      "constraint:prescription_prescriptiondraft.prescription_draft_state",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
+      "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "constraint:prescription_signatureoperation.prescription_issued_class_required",
+      "constraint:prescription_signatureoperation.prescription_signatu_clinic_id_b9790618_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_document_id_4a576636_fk_prescript",
+      "constraint:prescription_signatureoperation.prescription_signatu_encounter_id_9325c288_fk_ehr_encou",
+      "constraint:prescription_signatureoperation.prescription_signatu_evidence_id_28249780_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_issuer_id_14873ca1_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_organization_id_95ebea6a_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_patient_id_75138d45_fk_intake_pa",
+      "constraint:prescription_signatureoperation.prescription_signature_class",
+      "constraint:prescription_signatureoperation.prescription_signature_content_digest",
+      "constraint:prescription_signatureoperation.prescription_signature_failed_fields",
+      "constraint:prescription_signatureoperation.prescription_signature_operation_id_state",
+      "constraint:prescription_signatureoperation.prescription_signature_signed_digest",
+      "constraint:prescription_signatureoperation.prescription_signature_state",
+      "function:clinic_app.ehr_care(uuid)",
       "function:pg_catalog.hashtextextended(text, bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(bigint)",
       "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
@@ -7123,15 +7626,147 @@
       "function:pg_catalog.text(xml)",
       "function:pg_catalog.version()",
       "index:ehr_encounter_one_open_unscheduled",
+      "index:prescription_signature_live_unique",
+      "index:prescription_signature_operation_id_unique",
       "policy:ehr_encounter.clinical_insert",
       "policy:ehr_encounter.clinical_lock",
       "policy:ehr_encounter.clinical_read",
       "policy:ehr_encounter.setup_tenant",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "policy:prescription_prescriptiondocumentrevocation.revocation_insert",
+      "policy:prescription_prescriptiondocumentrevocation.revocation_read",
+      "policy:prescription_prescriptiondocumentrevocation.setup_tenant",
+      "policy:prescription_prescriptiondraft.draft_insert",
+      "policy:prescription_prescriptiondraft.draft_read",
+      "policy:prescription_prescriptiondraft.draft_update",
+      "policy:prescription_prescriptiondraft.setup_tenant",
+      "policy:prescription_signatureoperation.setup_tenant",
+      "policy:prescription_signatureoperation.signature_insert",
+      "policy:prescription_signatureoperation.signature_read",
+      "policy:prescription_signatureoperation.signature_update",
       "trigger:ehr_encounter.ehr_binding",
       "trigger:ehr_encounter.ehr_close",
       "trigger:ehr_encounter.ehr_timeline_changed",
       "trigger:ehr_encounter.prescription_encounter_close",
-      "trigger:ehr_encounter.zz_intake_survivor_binding"
+      "trigger:ehr_encounter.zz_intake_survivor_binding",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding",
+      "trigger:prescription_prescriptiondocumentrevocation.prescription_revocation_binding",
+      "trigger:prescription_prescriptiondraft.prescription_draft_binding",
+      "trigger:prescription_signatureoperation.prescription_current_signature",
+      "trigger:prescription_signatureoperation.prescription_signature_class_guard",
+      "trigger:prescription_signatureoperation.prescription_signature_guard"
+    ]
+  },
+  "function:clinic_app.prescription_revocation_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "constraint:prescription_signatureoperation.prescription_issued_class_required",
+      "constraint:prescription_signatureoperation.prescription_signatu_clinic_id_b9790618_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_document_id_4a576636_fk_prescript",
+      "constraint:prescription_signatureoperation.prescription_signatu_encounter_id_9325c288_fk_ehr_encou",
+      "constraint:prescription_signatureoperation.prescription_signatu_evidence_id_28249780_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_issuer_id_14873ca1_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_organization_id_95ebea6a_fk_identity_",
+      "constraint:prescription_signatureoperation.prescription_signatu_patient_id_75138d45_fk_intake_pa",
+      "constraint:prescription_signatureoperation.prescription_signature_class",
+      "constraint:prescription_signatureoperation.prescription_signature_content_digest",
+      "constraint:prescription_signatureoperation.prescription_signature_failed_fields",
+      "constraint:prescription_signatureoperation.prescription_signature_operation_id_state",
+      "constraint:prescription_signatureoperation.prescription_signature_signed_digest",
+      "constraint:prescription_signatureoperation.prescription_signature_state",
+      "index:prescription_signature_live_unique",
+      "index:prescription_signature_operation_id_unique",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "policy:prescription_signatureoperation.setup_tenant",
+      "policy:prescription_signatureoperation.signature_insert",
+      "policy:prescription_signatureoperation.signature_read",
+      "policy:prescription_signatureoperation.signature_update",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding",
+      "trigger:prescription_signatureoperation.prescription_current_signature",
+      "trigger:prescription_signatureoperation.prescription_signature_class_guard",
+      "trigger:prescription_signatureoperation.prescription_signature_guard"
+    ]
+  },
+  "function:clinic_app.prescription_signature_class_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_class_contract",
+      "constraint:prescription_prescriptiondraft.prescription_document_kind",
+      "constraint:prescription_prescriptiondraft.prescription_draft_state",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_clinic_id_6eaa73e1_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_encounter_id_4cb49746_fk_ehr_encou",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_issuer_id_e8bc3387_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_organization_id_ef262c81_fk_identity_",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_patient_id_ca27cced_fk_intake_pa",
+      "constraint:prescription_prescriptiondraft.prescription_prescri_renewal_source_id_0eb41ba3_fk_prescript",
+      "constraint:prescription_prescriptiondraft.prescription_prescriptiondraft_version_check",
+      "constraint:prescription_prescriptiondraft.prescription_version_positive",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "function:pg_catalog.version()",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "policy:prescription_prescriptiondraft.draft_insert",
+      "policy:prescription_prescriptiondraft.draft_read",
+      "policy:prescription_prescriptiondraft.draft_update",
+      "policy:prescription_prescriptiondraft.setup_tenant",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding",
+      "trigger:prescription_prescriptiondraft.prescription_draft_binding"
+    ]
+  },
+  "function:clinic_app.prescription_signature_guard()": {
+    "direct": {},
+    "via": [
+      "constraint:prescription_prescriptiondocument.prescription_document_digests",
+      "constraint:prescription_prescriptiondocument.prescription_document_handle_shape",
+      "constraint:prescription_prescriptiondocument.prescription_document_state",
+      "constraint:prescription_prescriptiondocument.prescription_document_version_positive",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_clinic_id_5c840b23_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_draft_id_9efb0fec_fk_prescript",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_encounter_id_966c12fc_fk_ehr_encou",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_issuer_id_996454e8_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_organization_id_638e3d7b_fk_identity_",
+      "constraint:prescription_prescriptiondocument.prescription_prescri_patient_id_fc9ba332_fk_intake_pa",
+      "constraint:prescription_prescriptiondocument.prescription_prescriptiondocument_document_version_check",
+      "function:pg_catalog.btrim(bytea, bytea)",
+      "function:pg_catalog.btrim(text)",
+      "function:pg_catalog.btrim(text, text)",
+      "function:pg_catalog.jsonb_typeof(jsonb)",
+      "policy:prescription_prescriptiondocument.document_insert",
+      "policy:prescription_prescriptiondocument.document_read",
+      "policy:prescription_prescriptiondocument.setup_tenant",
+      "trigger:prescription_prescriptiondocument.prescription_document_binding"
     ]
   },
   "function:clinic_app.principal_has(text, uuid)": {
@@ -9476,6 +10111,18 @@
       "function:pg_catalog.texteq(text, text)"
     ]
   },
+  "index:prescription_signature_live_unique": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
+  "index:prescription_signature_operation_id_unique": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.texteq(text, text)"
+    ]
+  },
   "index:scheduling_appointment_scheduled_patient_excl": {
     "direct": {},
     "via": [
@@ -10160,6 +10807,62 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:identity_physicianevidence.physician_evidence_assigned": {
+    "direct": {},
+    "via": [
+      "constraint:ehr_encounter.ehr_encounter_appointment_id_976adfe1_fk_schedulin",
+      "constraint:ehr_encounter.ehr_encounter_binding_shape",
+      "constraint:ehr_encounter.ehr_encounter_clinic_id_c6458866_fk_identity_clinic_id",
+      "constraint:ehr_encounter.ehr_encounter_organization_id_c483560d_fk_identity_",
+      "constraint:ehr_encounter.ehr_encounter_patient_id_74e5fea4_fk_intake_patient_id",
+      "constraint:ehr_encounter.ehr_encounter_physician_id_8db4ca0e_fk_identity_user_id",
+      "constraint:ehr_encounter.ehr_encounter_revision_check",
+      "constraint:ehr_encounter.ehr_encounter_state_check",
+      "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
+      "constraint:identity_clinic.identity_clinic_timezone_nonblank",
+      "constraint:identity_physicianprofile.identity_physician_identity_nonblank",
+      "constraint:identity_physicianprofile.identity_physicianpr_organization_id_8e8893ba_fk_identity_",
+      "constraint:identity_physicianprofile.identity_physicianprofile_user_id_cc4656bc_fk_identity_user_id",
+      "constraint:identity_userclinicrole.identity_userclinicr_clinic_id_d02c889e_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicr_organization_id_fadd3a07_fk_identity_",
+      "constraint:identity_userclinicrole.identity_userclinicrole_org_clinic_fk",
+      "constraint:identity_userclinicrole.identity_userclinicrole_user_id_f253a70d_fk_identity_user_id",
+      "constraint:identity_userclinicrole.identity_userclinicrole_workflow_bundle_version_check",
+      "constraint:identity_userclinicrole.identity_workflow_bundle_version",
+      "function:clinic_app.ehr_assigned(uuid)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "index:ehr_encounter_one_open_unscheduled",
+      "policy:ehr_encounter.clinical_insert",
+      "policy:ehr_encounter.clinical_lock",
+      "policy:ehr_encounter.clinical_read",
+      "policy:ehr_encounter.setup_tenant",
+      "policy:identity_clinic.tenant_isolation",
+      "policy:identity_physicianprofile.physician_provision",
+      "policy:identity_physicianprofile.physician_self",
+      "policy:identity_userclinicrole.tenant_isolation",
+      "trigger:ehr_encounter.ehr_binding",
+      "trigger:ehr_encounter.ehr_close",
+      "trigger:ehr_encounter.ehr_timeline_changed",
+      "trigger:ehr_encounter.prescription_encounter_close",
+      "trigger:ehr_encounter.zz_intake_survivor_binding",
+      "trigger:identity_userclinicrole.ehr_note_recipient_revoked",
+      "trigger:identity_userclinicrole.identity_membership_session_rejection",
+      "trigger:identity_userclinicrole.pending_membership_guard",
+      "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
+    ]
+  },
+  "policy:identity_physicianevidence.physician_evidence_owner": {
+    "direct": {},
+    "via": [
+      "constraint:identity_physicianprofile.identity_physician_identity_nonblank",
+      "constraint:identity_physicianprofile.identity_physicianpr_organization_id_8e8893ba_fk_identity_",
+      "constraint:identity_physicianprofile.identity_physicianprofile_user_id_cc4656bc_fk_identity_user_id",
+      "function:pg_catalog.uuid_eq(uuid, uuid)",
+      "policy:identity_physicianprofile.physician_provision",
+      "policy:identity_physicianprofile.physician_self"
+    ]
+  },
   "policy:identity_physicianprofile.physician_provision": {
     "direct": {},
     "via": [
@@ -10506,6 +11209,64 @@
       "function:pg_catalog.uuid_eq(uuid, uuid)"
     ]
   },
+  "policy:prescription_prescriptiondocument.document_insert": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_assigned(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_prescriptiondocument.document_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_care(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_prescriptiondocument.setup_tenant": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_prescriptiondocumentrevocation.revocation_insert": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_assigned(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_prescriptiondocumentrevocation.revocation_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_care(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_prescriptiondocumentrevocation.setup_tenant": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
   "policy:prescription_prescriptiondraft.draft_insert": {
     "direct": {},
     "via": [
@@ -10555,6 +11316,45 @@
   "policy:prescription_prescriptiondraft.setup_tenant": {
     "direct": {},
     "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_signatureoperation.setup_tenant": {
+    "direct": {},
+    "via": [
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_signatureoperation.signature_insert": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_assigned(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_signatureoperation.signature_read": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_assigned(uuid)",
+      "function:pg_catalog.current_setting(text)",
+      "function:pg_catalog.current_setting(text, boolean)",
+      "function:pg_catalog.texteq(text, text)",
+      "function:pg_catalog.uuid_eq(uuid, uuid)"
+    ]
+  },
+  "policy:prescription_signatureoperation.signature_update": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.ehr_assigned(uuid)",
       "function:pg_catalog.current_setting(text)",
       "function:pg_catalog.current_setting(text, boolean)",
       "function:pg_catalog.texteq(text, text)",
@@ -11373,10 +12173,40 @@
       "function:clinic_app.questionnaire_template_state_guard()"
     ]
   },
+  "trigger:prescription_prescriptiondocument.prescription_document_binding": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.prescription_document_guard()"
+    ]
+  },
+  "trigger:prescription_prescriptiondocumentrevocation.prescription_revocation_binding": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.prescription_revocation_guard()"
+    ]
+  },
   "trigger:prescription_prescriptiondraft.prescription_draft_binding": {
     "direct": {},
     "via": [
       "function:clinic_app.prescription_draft_guard()"
+    ]
+  },
+  "trigger:prescription_signatureoperation.prescription_current_signature": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.prescription_current_document_guard()"
+    ]
+  },
+  "trigger:prescription_signatureoperation.prescription_signature_class_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.prescription_signature_class_guard()"
+    ]
+  },
+  "trigger:prescription_signatureoperation.prescription_signature_guard": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.prescription_signature_guard()"
     ]
   },
   "trigger:scheduling_absence.scheduling_definition_guard": {

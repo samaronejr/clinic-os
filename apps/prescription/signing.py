@@ -31,6 +31,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, connections, transaction
 from django.utils import timezone
 from django.utils.timezone import now as utc_now
@@ -54,6 +55,7 @@ from apps.identity.stepup import (
     STEP_UP_SESSION_KEY,
     StepUpRequired,
 )
+from apps.prescription.class_policy import require_issuance_class
 from apps.prescription.documents import document_order
 from apps.prescription.models import (
     LIVE_SIGNATURE_STATES,
@@ -169,6 +171,8 @@ def initiate_signature(
     actor = encounter.physician_id
     if document.issuer_id != actor:
         _denied(clinic_id, document.encounter_id, "not_issuer")
+    category = document.frozen_input.get("category")
+    require_issuance_class(category=category)
     if not signature_capability().synthetic_enabled:
         raise SignatureUnavailableError
     if sha256(bytes(document.pdf_bytes)).hexdigest() != document.pdf_digest:
@@ -222,6 +226,7 @@ def initiate_signature(
             issuer_id=actor,
             provider=get_signature_provider().provider,
             state=SignatureOperation.State.DRAFT,
+            category=category,
             content_digest=document.pdf_digest,
             signer_subject=profile.signing_subject,
         )
@@ -314,6 +319,7 @@ def _prepare_signature(
         reason = "invalid_state"
         raise ClinicalConflictError(reason)
     require_current_document(operation.document)
+    require_issuance_class(category=operation.category)
     signer = SigningIdentity(
         issuer_id=operation.issuer_id,
         subject=operation.signer_subject,
@@ -501,6 +507,7 @@ def _dispatch_request(scope: _SignatureScope) -> SignatureRequest | None:
         )
         if operation is None or operation.state != SignatureOperation.State.PREPARED:
             return None
+        require_issuance_class(category=operation.category)
         document = operation.document
         require_current_document(document)
         content = bytes(document.pdf_bytes)
@@ -711,6 +718,18 @@ def _apply_signed(
     ``rehearsal_complete``; ``issued`` is reserved for an approved real
     provider, which no enabled capability currently supplies.
     """
+    try:
+        require_issuance_class(category=operation.category)
+    except ValidationError as refusal:
+        code = refusal.code
+        if code is None:
+            raise
+        operation.state = SignatureOperation.State.FAILED
+        operation.failure_reason = code
+        operation.completed_at = verified_at
+        operation.save(update_fields=("state", "failure_reason", "completed_at"))
+        _signature_event(operation.pk, operation.clinic_id, "failed", reason_code=code)
+        return
     if operation.authorized_until is None or verified_at >= operation.authorized_until:
         operation.state = SignatureOperation.State.FAILED
         operation.failure_reason = "authorization_expired"
@@ -767,12 +786,11 @@ def _apply_signed(
     # Order placement shares this callback transaction with completion and its
     # audit receipt. A failure rolls back the order, callback and signed state.
     document_order(operation.document)
-    if authenticator.provider == SYNTHETIC_PROVIDER:
-        operation.state = SignatureOperation.State.REHEARSAL_COMPLETE
-        event = "rehearsal_completed"
-    else:
-        operation.state = SignatureOperation.State.ISSUED
-        event = "issued"
+    operation.state = (
+        SignatureOperation.State.REHEARSAL_COMPLETE
+        if authenticator.provider == SYNTHETIC_PROVIDER
+        else SignatureOperation.State.ISSUED
+    )
     operation.signed_bytes = facts.signed_bytes
     operation.signed_digest = sha256(facts.signed_bytes).hexdigest()
     operation.completed_at = verified.signed_at
@@ -784,7 +802,13 @@ def _apply_signed(
             "completed_at",
         )
     )
-    _signature_event(operation.pk, operation.clinic_id, event)
+    _signature_event(
+        operation.pk,
+        operation.clinic_id,
+        "rehearsal_completed"
+        if authenticator.provider == SYNTHETIC_PROVIDER
+        else "issued",
+    )
 
 
 def signature_status(

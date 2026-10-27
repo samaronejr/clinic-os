@@ -19,6 +19,7 @@ from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
 from identity.permission_support import owner_context
+from identity.prescription_authority_oracle import run_prescription_census
 from rbac_fixtures import RbacGraph
 from rbac_fixtures import rbac_graph as seed_graph
 
@@ -262,6 +263,7 @@ def run_cut1_census(
             )
     run_passkey_census(proofs, graph)
     run_orders_census(proofs, graph)
+    run_prescription_census(proofs, graph, patch, secret_root)
     secret = secret_root / "workflow-synthetic-callback.secret"
     assert not secret.exists()
     secret.write_text(token_hex(32), encoding="ascii")

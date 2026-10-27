@@ -425,6 +425,7 @@ def test_prescription_draft_requires_explicit_encounter_patient_issuer_category(
         "category",
     ]
     assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
+    assert parameters["category"].default is None
 
 
 def test_clinical_document_draft_requires_explicit_scope_and_kind() -> None:

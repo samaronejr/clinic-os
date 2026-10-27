@@ -393,6 +393,35 @@ def _qr_matrix(payload: str) -> list[list[bool]]:
     return [[bool(cell) for cell in row] for row in matrix]
 
 
+def _item_paragraphs(item: object, position: int) -> list[str]:
+    """Project one exact item, including the explicit structured unit conventions."""
+    if not isinstance(item, Mapping):
+        raise DocumentRenderError
+    paragraphs = [f"Item {position}"]
+    for field in (
+        "medication_description",
+        "strength_form",
+        "dose",
+        "route",
+        "frequency",
+        "duration",
+        "quantity",
+    ):
+        value = item.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise DocumentRenderError
+        paragraphs.append(_wrap(f"  {field}", value))
+    if item.get("dose_unit"):
+        paragraphs.append(_wrap("  Unidade", _require_text(item, "dose_unit_label")))
+        paragraphs.append(_require_text(item, "directions_label"))
+    instructions = item.get("instructions")
+    if not isinstance(instructions, str):
+        raise DocumentRenderError
+    if instructions.strip():
+        paragraphs.append(_wrap("  instructions", instructions))
+    return paragraphs
+
+
 def _paragraphs(frozen_input: Mapping[str, object]) -> list[str]:
     """Lay out the required visible fields in a fixed, deterministic order.
 
@@ -415,6 +444,11 @@ def _paragraphs(frozen_input: Mapping[str, object]) -> list[str]:
         _wrap("Clínica", _require_text(frozen_input, "clinic_label")),
         _wrap("Emitido em", _require_text(frozen_input, "issued_at")),
     ]
+    if frozen_input.get("preparation_mode") == "paper":
+        paragraphs[2:2] = [
+            _wrap("Classe de receita", _require_text(frozen_input, "class_label")),
+            _require_text(frozen_input, "preparation_label"),
+        ]
     paragraphs.extend(_branding_paragraphs(frozen_input))
     if kind != "prescription":
         paragraphs.extend(_clinical_content(frozen_input, template.content_label))
@@ -431,27 +465,7 @@ def _prescription_content(frozen_input: Mapping[str, object]) -> list[str]:
         raise DocumentRenderError
     paragraphs = ["", "Itens"]
     for position, item in enumerate(items, start=1):
-        if not isinstance(item, Mapping):
-            raise DocumentRenderError
-        paragraphs.append(f"Item {position}")
-        for field in (
-            "medication_description",
-            "strength_form",
-            "dose",
-            "route",
-            "frequency",
-            "duration",
-            "quantity",
-        ):
-            value = item.get(field)
-            if not isinstance(value, str) or not value.strip():
-                raise DocumentRenderError
-            paragraphs.append(_wrap(f"  {field}", value))
-        instructions = item.get("instructions")
-        if not isinstance(instructions, str):
-            raise DocumentRenderError
-        if instructions.strip():
-            paragraphs.append(_wrap("  instructions", instructions))
+        paragraphs.extend(_item_paragraphs(item, position))
     paragraphs.extend(
         [
             "",

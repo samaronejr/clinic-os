@@ -67,6 +67,7 @@ from identity.lifecycle_test_support import session_key, verified_client
 from patient_service_support import runtime_role
 from patients.delegate_support import NotesFixture, active_grant, delegate_world
 from patients.duplicate_history_support import retained_histories
+from prescription.policy_support import seed_class_policies
 from renewal.test_document_artifacts import ITEM, Scope, seed_rendered
 from renewal.test_encounters import physician_client, setup_context
 
@@ -706,6 +707,7 @@ def test_survivor_downloads_signed_alias_history_without_repointing_artifacts(
     rbac_graph: RbacGraph,
 ) -> None:
     # Given: the merged identity's signed document, released before adjudication.
+    seed_class_policies()
     world = retained_histories(rbac_graph, intake_services)
     scope: Scope = {
         "clinic_id": rbac_graph.clinic_a,

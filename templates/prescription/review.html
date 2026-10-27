@@ -31,6 +31,7 @@
       <div class="rx-fact"><dt>Médico no documento</dt><dd data-frozen="issuer">{{ frozen.issuer_label }}</dd></div>
       <div class="rx-fact"><dt>Clínica no documento</dt><dd data-frozen="clinic">{{ frozen.clinic_label }}</dd></div>
       <div class="rx-fact"><dt>{% trans "Document kind" %}</dt><dd>{{ draft.get_kind_display }} <span class="meta">· {{ frozen.contract_version }}</span></dd></div>
+      {% if is_prescription %}<div class="rx-fact"><dt>{% trans "Prescription class" %}</dt><dd>{% if frozen.class_label %}{{ frozen.class_label }}{% elif frozen.category == "synthetic_non_controlled" %}{% trans "Synthetic rehearsal; no real issuance" %}{% else %}{% trans "No class selected" %}{% endif %} <span class="meta">· {{ frozen.contract_version }}</span></dd></div>{% endif %}
       <div class="rx-fact"><dt>Renderizado em</dt><dd>{{ document.created_at|date:"d/m/Y H:i" }}</dd></div>
       <div class="rx-fact"><dt>Resumo do conteúdo (SHA-256)</dt><dd><code>{{ document.pdf_digest }}</code></dd></div>
     </dl>
@@ -58,6 +59,10 @@
   </section>
   <section class="panel" aria-labelledby="sign-title" data-signature="{% if complete %}complete{% elif live %}live{% elif revoked %}revoked{% elif draft.state != "draft" %}discarded{% elif stale %}stale{% else %}ready{% endif %}">
     <h2 id="sign-title">Assinatura</h2>
+    {% if not eligibility.allowed %}
+    <p class="feedback" role="status" data-class-gate="{{ eligibility.reason_code }}">{{ eligibility.label }}</p>
+    <p class="hint" data-preparation-mode="paper">{% trans "Paper preparation only; not issued." %}</p>
+    {% endif %}
     {% if complete %}
       <p class="feedback feedback--success" role="status">Assinatura concluída em {{ complete.operation.completed_at|date:"d/m/Y H:i" }} · {{ complete.badge.1 }}.</p>
       <div class="actions"><a class="button" href="{% url 'prescription:signing' clinic_id complete.operation.pk %}">Ver resultado e evidências</a></div>
@@ -82,7 +87,7 @@
       <form method="post" id="sign-form" data-once>{% csrf_token %}
         <input type="hidden" name="document_id" value="{{ document.pk }}">
         <div class="actions">
-          <button class="button" name="action" value="sign_document" type="submit">{% if last_failed %}Assinar novamente a versão {{ document.document_version }}{% else %}Assinar a versão {{ document.document_version }}{% endif %}</button>
+          <button class="button" name="action" value="sign_document" type="submit"{% if not eligibility.allowed %} disabled aria-disabled="true"{% endif %}>{% if last_failed %}Assinar novamente a versão {{ document.document_version }}{% else %}Assinar a versão {{ document.document_version }}{% endif %}</button>
           <span class="rx-once-status" data-once-status role="status" hidden>Iniciando a assinatura… um único envio é aceito.</span>
         </div>
         <p class="hint">A assinatura usa o provedor sintético de ensaio. O resultado nunca é um documento emitido com validade; ele serve apenas para verificar o fluxo.</p>

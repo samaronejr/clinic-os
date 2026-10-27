@@ -121,6 +121,9 @@ DOMAIN_RELATIONS: Final = (
     "prescription_signaturecallback",
     "prescription_signatureoperation",
     "prescription_verificationprobe",
+    "prescription_medicationcatalogimport",
+    "prescription_medicationcatalogentry",
+    "prescription_medicationfavorite",
     "retention_legalhold",
     "retention_recordexport",
     "retention_recordrelease",
@@ -196,10 +199,14 @@ REQUIRED_EMPTY: Final = (
 # surrogate keys: the target's migrations recreate them, and the rehearsal
 # requires the source registry to equal the target's before any mutation.
 TARGET_SEEDED_RELATIONS: Final = (
+    "prescription_prescriptionclasspolicy",
     "providers_capabilityversion",
     "providers_providercapability",
 )
 TARGET_OWNED_RELATIONS: Final[dict[str, str]] = {
+    "prescription_prescriptionclasspolicy": (
+        "immutable D-21 migration seed; exact source/target equality required"
+    ),
     "audit_event_tenant": "view over audit_event; holds no rows of its own",
     "auth_group": "framework auth groups; UserClinicRole is the only RBAC authority",
     "auth_group_permissions": (
