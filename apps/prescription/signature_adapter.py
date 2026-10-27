@@ -1,4 +1,4 @@
-"""Recorded signing adapter composed with a separate verification API.
+"""Synthetic certificate signer composed with independent local verification.
 
 All artifacts and responses are synthetic. This adapter exercises the
 future cloud-certificate boundary, not a real PAdES/ICP-Brasil integration.
@@ -8,20 +8,31 @@ provider remains the application default.
 
 from __future__ import annotations
 
+import base64
 import json
+import secrets
+from hashlib import sha256
 from typing import TYPE_CHECKING
 
+from django.utils.timezone import now as utc_now
+
+from apps.prescription.signature_envelope import (
+    BINDING_KEYS,
+    closed_object,
+    parse_envelope,
+)
 from apps.prescription.signature_provider import (
-    SYNTHETIC_END,
-    SYNTHETIC_MARKER,
+    SIGNATURE_HEADER,
     SignatureAcceptance,
     SignatureCallbackError,
     SignatureCallbackFacts,
     SignatureProviderRejectedError,
+    SignatureProviderUnavailableError,
     SignatureRequest,
     SignatureVerificationError,
     SyntheticSignatureProvider,
     VerifiedSignature,
+    _callback_signature,
     _require_synthetic,
     signature_approval_digest,
 )
@@ -34,18 +45,26 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import datetime
 
+    from apps.prescription.signature_certificate import CertificateSigningMaterial
+
 RECORDED_PROVIDER = "recorded-signature-v1"
 
 
 class RecordedSignatureProvider:
-    """Keep signing and independent verification on distinct objects."""
+    """Keep private-key signing and public-key/CRL verification distinct."""
 
     provider = RECORDED_PROVIDER
     synthetic = True
 
-    def __init__(self, verifier: SignatureVerificationAPIAdapter) -> None:
+    def __init__(
+        self,
+        verifier: SignatureVerificationAPIAdapter,
+        *,
+        material: CertificateSigningMaterial | None = None,
+    ) -> None:
         """Inject recorded verification evidence independently of the signer."""
         self.verifier = verifier
+        self.material = material
         self._signer = SyntheticSignatureProvider()
         self._requests: dict[str, SignatureRequest] = {}
         self._callbacks: dict[str, SignatureCallbackFacts] = {}
@@ -57,8 +76,11 @@ class RecordedSignatureProvider:
             request.category != "synthetic_non_controlled"
             or request.document_version < 1
             or request.approval_digest != signature_approval_digest(request)
+            or sha256(request.content).hexdigest() != request.content_digest
         ):
             raise SignatureProviderRejectedError
+        if self.material is None:
+            raise SignatureProviderUnavailableError
         acceptance = self._signer.begin(request)
         self._requests[acceptance.operation_ref] = request
         return acceptance
@@ -73,7 +95,18 @@ class RecordedSignatureProvider:
         """Complete only the previously prepared exact request in this fixture."""
         if self._requests.get(operation_ref) != request:
             raise SignatureProviderRejectedError
-        headers, body = self._signer.sign(request, operation_ref)
+        if self.material is None:
+            raise SignatureProviderUnavailableError
+        signed_bytes = self.material.sign(request, operation_ref, utc_now())
+        body = json.dumps(
+            {
+                "event_id": f"event-{secrets.token_hex(8)}",
+                "operation_id": operation_ref,
+                "status": "signed",
+                "signed_bytes": base64.b64encode(signed_bytes).decode("ascii"),
+            }
+        ).encode()
+        headers = {SIGNATURE_HEADER: _callback_signature(body)}
         self._callbacks[operation_ref] = self.authenticate_callback(
             headers=headers, body=body
         )
@@ -90,20 +123,12 @@ class RecordedSignatureProvider:
         """Authenticate raw bytes AND correlate the envelope before DB lookup."""
         facts = self._signer.authenticate_callback(headers=headers, body=body)
         if facts.status == "signed":
-            marker = facts.signed_bytes.rfind(SYNTHETIC_MARKER)
-            if marker < 0 or not facts.signed_bytes.endswith(SYNTHETIC_END):
-                raise SignatureCallbackError
-            raw = facts.signed_bytes[
-                marker + len(SYNTHETIC_MARKER) : -len(SYNTHETIC_END)
-            ]
             try:
-                manifest = json.loads(raw)
-            except (ValueError, UnicodeError) as error:
+                _, manifest = parse_envelope(facts.signed_bytes)
+                binding = closed_object(manifest["binding"], BINDING_KEYS)
+            except SignatureVerificationError as error:
                 raise SignatureCallbackError from error
-            if (
-                not isinstance(manifest, dict)
-                or manifest.get("operation_id") != facts.operation_ref
-            ):
+            if binding["operation_ref"] != facts.operation_ref:
                 raise SignatureCallbackError
         return facts
 

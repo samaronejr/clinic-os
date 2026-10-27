@@ -2,7 +2,9 @@
 
 The task-6 register records ``qualified_signing`` and
 ``signature_verification`` as unavailable (2026-09-24-v2): no provider,
-format profile, verifier package or sandbox is selected. This module pins
+approved live format profile or sandbox is selected. Todo 35 selects local
+cryptography/X.509/CRL verification for its separate synthetic certificate
+adapter, recorded in ADR-010. This module pins
 the provider contract and supplies an explicitly synthetic implementation
 for the rehearsal lifecycle only. The synthetic provider signs with a fixed
 test key, never a credential, and refuses to run outside synthetic data

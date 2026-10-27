@@ -124,21 +124,25 @@ approved category contract and fresh physician/signer verification.
 Todo 35 adds the prepare/sign/status/verify `SignatureProvider` protocol
 alongside the compatible `CallbackSignatureProvider` contract. The existing
 synthetic signer remains the default. An explicitly supplied
-`RecordedSignatureProvider` composes that synthetic signer with a separate
-`SignatureVerificationAPIAdapter`, whose response must bind the exact signed
-artifact, rendered digest, issuer approval, signer and manually chosen class.
-The decision and closed synthetic API policy are recorded in ADR-010.
+`RecordedSignatureProvider` takes explicit synthetic certificate material and
+a separate `SignatureVerificationAPIAdapter`. The latter uses locked
+cryptography to verify exact-byte RSA-PSS signatures, the certificate path to
+a configured synthetic root, a separately signed timestamp proof, certificate
+validity/purpose/identity and issuer-signed CRLs. Recorded verdict strings are
+never verification evidence. The selected mechanism, fixed fixtures and
+restricted synthetic anchor policy are recorded in ADR-010.
 
 An authenticated candidate first commits as `signed_unverified`, retaining
 encrypted, immutable bytes. It grants no release, download or delivery.
 `reconcile_signature` verifies outside the transaction and revalidates current
-document, authority and approval before completion. Chain, timestamp and
-revocation must all be positive. A timeout returns `reconcile` and preserves
+document, authority and approval before completion. Unsigned/tampered bytes,
+wrong/broken chains, revoked or expired certificates and invalid timestamp
+proofs fail closed. An unavailable revocation source returns `reconcile` and preserves
 the same candidate for that worker command, never re-signing it. Negative
 verification quarantines the candidate in `failed`; it never exposes bytes.
 Recorded fixtures reach only `rehearsal_complete`, never `issued`. Neither
-the existing synthetic envelope check nor recorded certificate verdicts
-claim independent qualified cryptographic verification. Live signing and
+the existing synthetic envelope check nor this synthetic PKI establishes
+qualified ICP-Brasil/PAdES interoperability. Live signing and
 verification both require activated lifecycle records and live-runtime
 approval; a real partner/API/trust policy remains BLOCKED-ON-EG-1/EG-5.
 

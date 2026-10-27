@@ -25,10 +25,18 @@ from apps.prescription.signature_adapter import (
     RECORDED_PROVIDER,
     RecordedSignatureProvider,
 )
+from apps.prescription.signature_certificate import CertificateSigningMaterial
+from apps.prescription.signature_envelope import (
+    END as SYNTHETIC_END,
+)
+from apps.prescription.signature_envelope import (
+    MARKER as SYNTHETIC_MARKER,
+)
+from apps.prescription.signature_envelope import (
+    parse_envelope,
+)
 from apps.prescription.signature_provider import (
     SIGNATURE_HEADER,
-    SYNTHETIC_END,
-    SYNTHETIC_MARKER,
     SignatureCallbackError,
     SignatureProviderRejectedError,
     SignatureProviderTransientError,
@@ -42,6 +50,7 @@ from apps.prescription.signature_provider import (
 from apps.prescription.signature_verification import (
     RecordedVerificationAPI,
     SignatureVerificationAPIAdapter,
+    VerificationAPI,
     VerificationRequest,
 )
 from apps.prescription.verification import release_document
@@ -61,12 +70,14 @@ if TYPE_CHECKING:
 __all__ = ("signing_setup",)
 pytestmark = pytest.mark.django_db(transaction=True)
 
-FIXTURE = Path(__file__).parent / "fixtures" / "signature-verification.json"
-SIGNED = b"%PDF-1.4\nSynthetic verification fixture; not a qualified signature.\n"
+FIXTURE = Path(__file__).parent / "fixtures" / "signature-pki.json"
+PKI = json.loads(FIXTURE.read_text())
+ANCHOR = base64.b64decode(PKI["certificates"]["root"])
+SIGNED = base64.b64decode(PKI["artifacts"]["valid"])
 EXPECTATION = VerificationRequest(
     signed_bytes=SIGNED,
-    content_digest=sha256(b"Synthetic rendered bytes").hexdigest(),
-    signer_subject="synthetic:recorded-signer",
+    content_digest=PKI["binding"]["content_digest"],
+    signer_subject=PKI["signer_subject"],
     operation_ref="synthetic-recorded-operation",
     category="synthetic_non_controlled",
     approval_digest="a" * 64,
@@ -77,32 +88,37 @@ EXPECTATION = VerificationRequest(
 @pytest.fixture(autouse=True)
 def synthetic_verification(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setattr("apps.prescription.signature_verification.utc_now", lambda: NOW)
+    monkeypatch.setattr("apps.prescription.signature_adapter.utc_now", lambda: NOW)
     with override_settings(PRESCRIPTION_SYNTHETIC_SIGNING=True):
         yield
 
 
 def recorded_api(case: str, request: VerificationRequest) -> RecordedVerificationAPI:
-    fixture = json.loads(FIXTURE.read_text())
-    facts = fixture["cases"][case]
-    if facts.get("outcome") == "timeout":
-        return RecordedVerificationAPI(
-            response=None, signed_digest=sha256(request.signed_bytes).hexdigest()
-        )
-    response = {
-        **{key: value for key, value in fixture.items() if key != "cases"},
-        **facts,
-        "signed_digest": sha256(request.signed_bytes).hexdigest(),
-        "content_digest": request.content_digest,
-        "signer_subject": request.signer_subject,
-        "operation_ref": request.operation_ref,
-        "category": request.category,
-        "approval_digest": request.approval_digest,
-        "signed_at": NOW.isoformat(),
-        "checked_at": NOW.isoformat(),
-    }
+    """Supply actual issuer-signed CRLs, never an invented trust verdict."""
     return RecordedVerificationAPI(
-        response=json.dumps(response).encode(),
+        response=None if case == "timeout" else json.dumps(PKI["revocation"]).encode(),
         signed_digest=sha256(request.signed_bytes).hexdigest(),
+    )
+
+
+def verification_adapter(api: VerificationAPI) -> SignatureVerificationAPIAdapter:
+    return SignatureVerificationAPIAdapter(api, trust_anchor=ANCHOR)
+
+
+def material(case: str = "valid") -> CertificateSigningMaterial:
+    leaf = {"revoked_cert": "revoked", "expired_cert": "expired"}.get(case, "leaf")
+    return CertificateSigningMaterial(
+        private_key=PKI["public_test_private_keys"][leaf].encode(),
+        certificate=base64.b64decode(PKI["certificates"][leaf]),
+        intermediate=base64.b64decode(
+            PKI["certificates"][
+                "broken_intermediate" if case == "invalid_chain" else "intermediate"
+            ]
+        ),
+        timestamp_key=PKI["public_test_private_keys"][
+            "leaf" if case == "invalid_timestamp" else "timestamp"
+        ].encode(),
+        timestamp_certificate=base64.b64decode(PKI["certificates"]["timestamp"]),
     )
 
 
@@ -112,6 +128,7 @@ def recorded_api(case: str, request: VerificationRequest) -> RecordedVerificatio
         ("valid", None),
         ("invalid_chain", SignatureVerificationError),
         ("revoked_cert", SignatureVerificationError),
+        ("expired_cert", SignatureVerificationError),
         ("invalid_timestamp", SignatureVerificationError),
         ("timeout", SignatureProviderTransientError),
     ],
@@ -122,14 +139,20 @@ def test_recorded_independent_verification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("apps.prescription.signature_verification.utc_now", lambda: NOW)
-    api = recorded_api(case, EXPECTATION)
-    verifier = SignatureVerificationAPIAdapter(api)
+    request = replace(
+        EXPECTATION,
+        signed_bytes=base64.b64decode(
+            PKI["artifacts"]["valid" if case == "timeout" else case]
+        ),
+    )
+    api = recorded_api(case, request)
+    verifier = verification_adapter(api)
     assert not connection.in_atomic_block
     if error is not None:
         with pytest.raises(error):
-            verifier.verify(EXPECTATION)
+            verifier.verify(request)
     else:
-        assert verifier.verify(EXPECTATION).signed_at == NOW
+        assert verifier.verify(request).signed_at == NOW
 
 
 @dataclass
@@ -140,6 +163,7 @@ class RecordedSetup:
     def candidate(
         self, case: str
     ) -> tuple[SignatureOperation, dict[str, str], bytes, VerificationRequest]:
+        self.provider.material = material(case)
         operation = self.base.request_signature()
         graph = self.base.graph
         with runtime_role(), tenant_context(graph.physician, graph.organization_a):
@@ -156,9 +180,7 @@ class RecordedSetup:
             approval_digest=request.approval_digest,
             not_before=operation.created_at,
         )
-        self.provider.verifier = SignatureVerificationAPIAdapter(
-            recorded_api(case, expected)
-        )
+        self.provider.verifier = verification_adapter(recorded_api(case, expected))
         return operation, headers, body, expected
 
     def receive(self, headers: dict[str, str], body: bytes) -> str:
@@ -174,8 +196,11 @@ def recorded(
     signing_setup: SigningSetup, monkeypatch: pytest.MonkeyPatch
 ) -> RecordedSetup:
     adapter = RecordedSignatureProvider(
-        SignatureVerificationAPIAdapter(recorded_api("timeout", EXPECTATION))
+        verification_adapter(recorded_api("timeout", EXPECTATION)), material=material()
     )
+    with owner_scope(signing_setup.graph.organization_a):
+        signing_setup.profile.signing_subject = PKI["signer_subject"]
+        signing_setup.profile.save(update_fields=("signing_subject",))
     monkeypatch.setattr(signing, "get_signature_provider", lambda: adapter)
     monkeypatch.setattr(signing, "signature_provider_for", lambda name: adapter)
     return RecordedSetup(signing_setup, adapter)
@@ -211,7 +236,7 @@ def test_candidate_is_committed_before_independent_verification_and_never_issued
         "verify_signature",
         signer_verification_is_not_independent,
     )
-    recorded.provider.verifier = SignatureVerificationAPIAdapter(ObservedAPI())
+    recorded.provider.verifier = verification_adapter(ObservedAPI())
     assert recorded.receive(headers, body) == "applied"
     final = recorded.base.refresh(operation)
     assert seen == ["signed_unverified"]
@@ -232,7 +257,9 @@ def test_candidate_is_committed_before_independent_verification_and_never_issued
 
 
 @pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize("case", ["invalid_chain", "revoked_cert", "invalid_timestamp"])
+@pytest.mark.parametrize(
+    "case", ["invalid_chain", "revoked_cert", "expired_cert", "invalid_timestamp"]
+)
 def test_negative_verification_quarantines_candidate_without_release(
     recorded: RecordedSetup, case: str
 ) -> None:
@@ -266,7 +293,7 @@ def test_timeout_reconciles_the_same_bytes_after_worker_restart_without_resignin
     assert recorded.receive(headers, body) == "duplicate"
     assert recorded.base.dispatch(operation.pk) == "reconcile"
     restarted = RecordedSignatureProvider(
-        SignatureVerificationAPIAdapter(recorded_api("valid", expected))
+        verification_adapter(recorded_api("valid", expected))
     )
     monkeypatch.setattr(signing, "signature_provider_for", lambda name: restarted)
     assert recorded.reconcile(operation) == "completed"
@@ -293,15 +320,54 @@ def test_independent_verifier_rejects_tampered_signed_bytes(
     recorded: RecordedSetup,
 ) -> None:
     operation, _, body, expected = recorded.candidate("valid")
+    content, manifest = parse_envelope(expected.signed_bytes)
+    tampered = (
+        content
+        + b"\n% Synthetic altered document bytes\n"
+        + SYNTHETIC_MARKER
+        + json.dumps(manifest).encode()
+        + SYNTHETIC_END
+    )
+    payload = json.loads(body)
+    payload["signed_bytes"] = base64.b64encode(tampered).decode("ascii")
+    headers, altered = authenticated_body(payload)
+    facts = recorded.provider.authenticate_callback(headers=headers, body=altered)
+    assert facts.signed_bytes == tampered
+    assert facts.operation_ref == expected.operation_ref
+    request = replace(expected, signed_bytes=facts.signed_bytes)
+    verifier = verification_adapter(recorded_api("valid", request))
+    with pytest.raises(SignatureVerificationError):
+        verifier.verify(request)
+    recorded.provider.verifier = verifier
+    assert recorded.receive(headers, altered) == "applied"
+    final = recorded.base.refresh(operation)
+    assert final.state == "failed"
+    assert final.failure_reason == "signature_invalid"
+    assert bytes(final.signed_bytes) == tampered
+    with owner_scope(recorded.base.graph.organization_a):
+        assert SignatureCallback.objects.filter(operation=operation).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_forged_envelope_is_rejected_before_scope_lookup(
+    recorded: RecordedSetup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operation, _, body, expected = recorded.candidate("valid")
     payload = json.loads(body)
     payload["signed_bytes"] = base64.b64encode(
         b"tampered-" + expected.signed_bytes
     ).decode("ascii")
     headers, altered = authenticated_body(payload)
-    assert recorded.receive(headers, altered) == "applied"
-    final = recorded.base.refresh(operation)
-    assert final.state == "failed"
-    assert final.failure_reason == "signature_invalid"
+
+    def scope_must_not_be_read(provider: str, operation_ref: str) -> None:
+        pytest.fail("A forged signature envelope reached scope resolution")
+
+    monkeypatch.setattr(signing, "_resolve_callback_scope", scope_must_not_be_read)
+    with pytest.raises(SignatureCallbackError):
+        recorded.receive(headers, altered)
+    assert recorded.base.refresh(operation).state == "signing"
+    with owner_scope(recorded.base.graph.organization_a):
+        assert SignatureCallback.objects.count() == 0
 
 
 @pytest.mark.django_db(transaction=True)
@@ -372,9 +438,7 @@ def test_approval_is_revalidated_after_verification_timeout(
         pending = recorded.base.refresh(operation)
         assert pending.authorized_until is not None
         monkeypatch.setattr(signing, "utc_now", lambda: pending.authorized_until)
-    recorded.provider.verifier = SignatureVerificationAPIAdapter(
-        recorded_api("valid", expected)
-    )
+    recorded.provider.verifier = verification_adapter(recorded_api("valid", expected))
     assert recorded.reconcile(operation) == "failed"
     final = recorded.base.refresh(operation)
     assert final.state == "failed"
@@ -465,7 +529,7 @@ def test_preparation_refuses_changed_approval(field: str) -> None:
         "document_version": replace(request, document_version=2),
     }[field]
     adapter = RecordedSignatureProvider(
-        SignatureVerificationAPIAdapter(recorded_api("valid", EXPECTATION))
+        verification_adapter(recorded_api("valid", EXPECTATION))
     )
     with pytest.raises(SignatureProviderRejectedError):
         adapter.prepare(changed)
@@ -474,32 +538,32 @@ def test_preparation_refuses_changed_approval(field: str) -> None:
 @pytest.mark.parametrize(
     "field",
     [
-        "signed_digest",
         "content_digest",
         "signer_subject",
         "operation_ref",
         "category",
         "approval_digest",
-        "policy",
-        "provenance",
-        "format",
-        "schema_version",
-        "signed_at",
-        "checked_at",
     ],
 )
-def test_independent_response_must_match_every_binding(field: str) -> None:
-    api = recorded_api("valid", EXPECTATION)
-    assert api.response is not None
-    payload = json.loads(api.response)
-    payload[field] = "synthetic-mismatched-value"
-    verifier = SignatureVerificationAPIAdapter(
-        RecordedVerificationAPI(
-            response=json.dumps(payload).encode(), signed_digest=api.signed_digest
-        )
-    )
+def test_actual_signature_binds_every_approval_field(field: str) -> None:
+    content, payload = parse_envelope(EXPECTATION.signed_bytes)
+    assert isinstance(payload["binding"], dict)
+    payload["binding"][field] = "synthetic-mismatched-value"
+    altered = content + SYNTHETIC_MARKER + json.dumps(payload).encode() + SYNTHETIC_END
+    # Change BOTH the claimed expectation and envelope. String equality is not
+    # enough: the original cryptographic signature must still reject the change.
+    changed = replace(EXPECTATION, signed_bytes=altered)
+    value = "synthetic-mismatched-value"
+    request = {
+        "content_digest": replace(changed, content_digest=value),
+        "signer_subject": replace(changed, signer_subject=value),
+        "operation_ref": replace(changed, operation_ref=value),
+        "category": replace(changed, category=value),
+        "approval_digest": replace(changed, approval_digest=value),
+    }[field]
+    verifier = verification_adapter(recorded_api("valid", request))
     with pytest.raises(SignatureVerificationError):
-        verifier.verify(EXPECTATION)
+        verifier.verify(request)
 
 
 @pytest.mark.parametrize(
@@ -510,17 +574,17 @@ def test_independent_response_is_closed_and_bounded(shape: str) -> None:
     assert api.response is not None
     payload = json.loads(api.response)
     if shape == "missing":
-        del payload["revocation"]
+        del payload["intermediate_crl"]
     if shape == "unknown":
         payload["unexpected"] = True
     response = json.dumps(payload).encode()
     if shape == "duplicate":
-        response = response[:-1] + b',"chain":"trusted"}'
+        response = response[:-1] + b',"root_crl":"duplicate"}'
     if shape == "malformed":
         response = b"not-json"
     if shape == "large":
-        response = b"x" * 8193
-    verifier = SignatureVerificationAPIAdapter(
+        response = b"x" * (256 * 1024 + 1)
+    verifier = verification_adapter(
         RecordedVerificationAPI(response=response, signed_digest=api.signed_digest)
     )
     with pytest.raises(SignatureVerificationError):
@@ -549,7 +613,7 @@ def test_only_one_worker_can_verify_a_pending_candidate(
         finally:
             connections.close_all()
 
-    recorded.provider.verifier = SignatureVerificationAPIAdapter(PausedAPI())
+    recorded.provider.verifier = verification_adapter(PausedAPI())
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(worker)
         try:
@@ -575,7 +639,7 @@ def test_expiry_during_independent_verification_is_rechecked_before_completion(
             monkeypatch.setattr(signing, "utc_now", lambda: deadline)
             return api.verify(signed_bytes)
 
-    recorded.provider.verifier = SignatureVerificationAPIAdapter(ExpiringAPI())
+    recorded.provider.verifier = verification_adapter(ExpiringAPI())
     assert recorded.receive(headers, body) == "applied"
     final = recorded.base.refresh(operation)
     assert final.state == "failed"
@@ -686,32 +750,33 @@ def test_independent_api_is_never_called_inside_a_transaction() -> None:
             return b"unreachable"
 
     with transaction.atomic(), pytest.raises(SignatureProviderUnavailableError):
-        SignatureVerificationAPIAdapter(ObservedAPI()).verify(EXPECTATION)
+        verification_adapter(ObservedAPI()).verify(EXPECTATION)
     assert calls == []
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("signed_at", False),
-        ("signed_at", NOW.replace(tzinfo=None).isoformat()),
-        ("checked_at", "2000-01-01T00:00:00+00:00"),
+        ("time", False),
+        ("time", NOW.replace(tzinfo=None).isoformat()),
+        ("time", "2000-01-01T00:00:00+00:00"),
     ],
 )
 def test_independent_timestamp_evidence_is_aware_typed_and_ordered(
     field: str, value: object
 ) -> None:
-    api = recorded_api("valid", EXPECTATION)
-    assert api.response is not None
-    report = json.loads(api.response)
-    report[field] = value
-    adapter = SignatureVerificationAPIAdapter(
-        RecordedVerificationAPI(
-            response=json.dumps(report).encode(), signed_digest=api.signed_digest
-        )
+    content, report = parse_envelope(EXPECTATION.signed_bytes)
+    assert isinstance(report["timestamp"], dict)
+    report["timestamp"][field] = value
+    request = replace(
+        EXPECTATION,
+        signed_bytes=(
+            content + SYNTHETIC_MARKER + json.dumps(report).encode() + SYNTHETIC_END
+        ),
     )
+    adapter = verification_adapter(recorded_api("valid", request))
     with pytest.raises(SignatureVerificationError):
-        adapter.verify(EXPECTATION)
+        adapter.verify(request)
 
 
 @pytest.mark.parametrize("provider", ["legacy", "unavailable"])
@@ -746,7 +811,7 @@ def test_abandon_during_verification_cannot_complete_the_candidate(
                 )
             return api.verify(signed_bytes)
 
-    recorded.provider.verifier = SignatureVerificationAPIAdapter(AbandoningAPI())
+    recorded.provider.verifier = verification_adapter(AbandoningAPI())
     assert recorded.receive(headers, body) == "applied"
     final = recorded.base.refresh(operation)
     assert final.state == "failed"
