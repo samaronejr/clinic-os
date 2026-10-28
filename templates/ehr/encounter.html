@@ -1,10 +1,9 @@
 {% extends "base.html" %}
 {% load static tz i18n components ehr_ui ai_chart %}
 {% block title %}Atendimento · Clinic OS{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-ehr.css' %}"><script src="{% static 'js/ehr-autosave.js' %}" defer></script><script src="{% static 'js/components/drawer.js' %}" defer></script>{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'css/clinic-os-components.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-ehr.css' %}"><link rel="stylesheet" href="{% static 'css/clinic-os-scribe.css' %}"><script src="{% static 'js/ehr-autosave.js' %}" defer></script><script src="{% static 'js/scribe-capture.js' %}" defer></script><script src="{% static 'js/components/drawer.js' %}" defer></script>{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="encounter-title">
-  <p class="eyebrow">Registro clínico</p>
   <h1 id="encounter-title">Atendimento</h1>
   <p class="lede">{% trans "Record the visit at your own pace. With JavaScript on, the draft is saved to the server while you type; the status says it is saved only after the server confirms." %}</p>
   <p><a href="{% url 'scheduling:agenda' clinic_id %}">Voltar à agenda</a></p>
@@ -17,6 +16,7 @@
     {% patient_workspace_allowed clinic_id enrollment_id as clinical_workspace %}
     {% if clinical_workspace %}<form method="post" action="{% url 'ehr:patient-workspace' clinic_id %}">{% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Open longitudinal record" %}</button></form>{% endif %}
     {% endif %}
+    {% if capture.available or capture.recording %}{% include "scribe/capture.html" %}{% endif %}
     <form method="post" action="{% url 'ehr:history' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Problemas e alergias</button></form>
     <form method="post" action="{% url 'ehr:attachments' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Anexos</button></form>
     {% if encounter.appointment_id %}

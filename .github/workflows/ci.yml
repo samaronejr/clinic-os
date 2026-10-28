@@ -160,6 +160,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
+          - "scribe-capture,scribe-capture@firefox,scribe-capture@webkit"
           - "clinic-settings,billing,prescription-draft,prescribing,document-verification,onboarding"
           - "consent,amendments,attachments,clinical-history,clinician-video"
           - "video-recovery,encounter,end-to-end,patient-workspace"

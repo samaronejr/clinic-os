@@ -228,6 +228,32 @@ def source_fragments(
     return list(_cached_fragments(tree, bindings))
 
 
+def _membership_data(node: ast.AST) -> tuple[ast.AST, ...]:
+    """Literal membership needles are data, not SQL sent to an execute sink."""
+    if not isinstance(node, ast.GeneratorExp) or len(node.generators) != 1:
+        return ()
+    generator = node.generators[0]
+    comparison = node.elt
+    if (
+        generator.ifs
+        or not isinstance(generator.target, ast.Name)
+        or not isinstance(generator.iter, (ast.Tuple, ast.List))
+        or not isinstance(comparison, ast.Compare)
+        or len(comparison.ops) != 1
+        or not isinstance(comparison.ops[0], ast.In)
+        or not isinstance(comparison.left, ast.Name)
+        or comparison.left.id != generator.target.id
+        or not isinstance(comparison.comparators[0], ast.Name)
+    ):
+        return ()
+    if not all(
+        isinstance(value, ast.Constant) and isinstance(value.value, str)
+        for value in generator.iter.elts
+    ):
+        return ()
+    return tuple(generator.iter.elts)
+
+
 @lru_cache(maxsize=2048)
 def _cached_fragments(
     tree: ast.Module, bindings: tuple[tuple[str, str], ...]
@@ -241,6 +267,7 @@ def _cached_fragments(
     skipped: set[ast.AST] = set()
     result = []
     for node in ast.walk(tree):
+        skipped.update(_membership_data(node))
         if (
             isinstance(node, ast.GeneratorExp)
             and len(node.generators) == 1

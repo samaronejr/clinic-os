@@ -20,8 +20,22 @@
 | interop | deferred stub | 1 | - |
 | orders | identity-safe orders, encrypted immutable sources, quarantine, version-bound review and audience release | new | orders/README.md |
 | ai | governed synthetic inference, immutable encrypted artifacts, budgets, metering, kill switches | new | ai/README.md |
+| scribe | consented capture, volatile buffers, verified encrypted ingest and room gating | new | scribe/README.md |
 
 ## REQUEST AUTHORITY FLOW
+
+### Scribe
+
+Read `scribe/README.md` before changing capture, receipts, encryption or discard.
+The four public entrypoints are exported by `scribe/services.py`;
+`tests/infra/test_module_boundaries.py` pins their signatures and defaults.
+`tests/scribe/test_posture.py` and `tests/infra/test_new_app_posture.py` pin exact
+FORCE RLS, policies, table grants and column grants. Keep the original upload
+deadline and immutable encounter/token/epoch binding. Capture receipts
+acknowledge encrypted ingest, not completed object delivery. The
+`scribe-capture` browser suite owns interruption, privacy and accessibility
+evidence. Physical devices and independent S3/MinIO qualification stay external.
+
 - `tenancy/middleware.py` wraps the WHOLE response in one durable atomic: staff -> `tenant_context(user_id, session["active_org_id"])`; `/patient/*` -> `intake.patient_access.patient_session_context` (no staff GUC). Status >=500 rolls back; streaming responses raise.
 - Bypass list (no tenant txn): `/`, `/healthz`, `/readyz`, `/auth/login/`, `/static/`, `/patient/access/`, `/prescription/signing/callback/`, `/prescription/verify/`.
 - GUCs are transaction-local: `app.current_user_id`, `app.current_tenant`, `app.current_patient_session`. Policies compare `NULLIF(current_setting('app.current_tenant', true), '')::uuid` -> missing context = zero rows.

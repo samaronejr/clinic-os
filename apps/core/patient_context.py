@@ -119,9 +119,11 @@ def switch_consequences(switch: ContextSwitch) -> tuple[SwitchConsequence, ...]:
 
 def discard_bound_work(switch: ContextSwitch) -> None:
     """Let every guard release its bound work before the context changes."""
-    for guard in tuple(_GUARDS.values()):
-        if guard.check(switch) is not None:
-            guard.discard(switch)
+    pending = [
+        guard for guard in tuple(_GUARDS.values()) if guard.check(switch) is not None
+    ]
+    for guard in pending:
+        guard.discard(switch)
 
 
 def _session_key(clinic_id: UUID) -> str:

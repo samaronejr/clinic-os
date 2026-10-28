@@ -63,6 +63,7 @@ from apps.identity.models import UserClinicRole
 from apps.identity.otp import flow_redirect, privileged_totp_required, safe_next_url
 from apps.identity.stepup import StepUpRequired
 from apps.intake.models import PatientClinicEnrollment
+from apps.scribe.presenter import capture_panel
 from apps.tenancy.middleware import HANDLED_REJECTION_ATTR
 
 if TYPE_CHECKING:
@@ -140,6 +141,9 @@ def _context(
         "editor_session": uuid4(),
         "episodes": _episodes(clinic_id, encounter),
         "encounter": encounter,
+        "capture": capture_panel(
+            request, clinic_id=clinic_id, encounter_id=encounter.pk
+        ),
         "versions": versions,
         "draft": draft,
         "current": current,

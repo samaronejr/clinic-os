@@ -271,6 +271,20 @@ def _probe_route(
                     ("enrollment_id", "encounter_id"), (False, True)
                 )
             )
+        if route.name == "scribe:control":
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        "action": "pause",
+                        "encounter_token": "invalid",
+                        "session_id": str(uuid4()),
+                        "command_id": str(uuid4()),
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"

@@ -1,4 +1,22 @@
 {
+  "clinic_app.digest(bytea, text)": {
+    "extension": "pgcrypto",
+    "implementation": "pg_digest",
+    "language": "c",
+    "library": "$libdir/pgcrypto",
+    "returns": "bytea",
+    "volatility": "i",
+    "reason": "Content hashing of explicit bytes/text and algorithm; pinned pgcrypto C implementation. No clock or randomness admission."
+  },
+  "clinic_app.digest(text, text)": {
+    "extension": "pgcrypto",
+    "implementation": "pg_digest",
+    "language": "c",
+    "library": "$libdir/pgcrypto",
+    "returns": "bytea",
+    "volatility": "i",
+    "reason": "Content hashing of explicit bytes/text and algorithm; pinned pgcrypto C implementation. No clock or randomness admission."
+  },
   "clinic_app.gen_random_uuid()": {
     "extension": "pgcrypto",
     "implementation": "pg_random_uuid",
@@ -638,6 +656,15 @@
     "volatility": "i",
     "reason": "Reached the audit-ledger timestamp-finiteness constraint; conservative overload resolution retains this exact finiteness implementation as opaque risk."
   },
+  "pg_catalog.jsonb_agg(anyelement)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "s",
+    "reason": "Structural JSON construction or aggregation over supplied capture/range values. Ordering and argument output conversion remain call-site dependent; this is not an argument-independent purity or time-zone-independence claim."
+  },
   "pg_catalog.jsonb_array_elements(jsonb)": {
     "extension": "",
     "implementation": "jsonb_array_elements",
@@ -664,6 +691,42 @@
     "reason": "identity_passkey_guard bounds the supplied transport array to eight entries during registration; retain this exact native JSON array-length implementation as opaque risk.",
     "returns": "integer",
     "volatility": "i"
+  },
+  "pg_catalog.jsonb_build_array(\"any\")": {
+    "extension": "",
+    "implementation": "jsonb_build_array",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "s",
+    "reason": "Structural JSON construction or aggregation over supplied capture/range values. Ordering and argument output conversion remain call-site dependent; this is not an argument-independent purity or time-zone-independence claim."
+  },
+  "pg_catalog.jsonb_build_array()": {
+    "extension": "",
+    "implementation": "jsonb_build_array_noargs",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "s",
+    "reason": "Structural JSON construction or aggregation over supplied capture/range values. Ordering and argument output conversion remain call-site dependent; this is not an argument-independent purity or time-zone-independence claim."
+  },
+  "pg_catalog.jsonb_build_object(\"any\")": {
+    "extension": "",
+    "implementation": "jsonb_build_object",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "s",
+    "reason": "Structural JSON construction or aggregation over supplied capture/range values. Ordering and argument output conversion remain call-site dependent; this is not an argument-independent purity or time-zone-independence claim."
+  },
+  "pg_catalog.jsonb_build_object()": {
+    "extension": "",
+    "implementation": "jsonb_build_object_noargs",
+    "language": "internal",
+    "library": "",
+    "returns": "jsonb",
+    "volatility": "s",
+    "reason": "Structural JSON construction or aggregation over supplied capture/range values. Ordering and argument output conversion remain call-site dependent; this is not an argument-independent purity or time-zone-independence claim."
   },
   "pg_catalog.jsonb_delete(jsonb, text)": {
     "extension": "",
@@ -1079,6 +1142,204 @@
     "volatility": "i",
     "reason": "Required hashing of supplied bytes/text for deterministic identifiers; not a security-signature primitive."
   },
+  "pg_catalog.min(anyarray)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "anyarray",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(anyenum)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "anyenum",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(bigint)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "bigint",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(character)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "character",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(date)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "date",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(double precision)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "double precision",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(inet)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "inet",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(integer)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "integer",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(interval)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "interval",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(money)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "money",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(numeric)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "numeric",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(oid)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "oid",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(pg_lsn)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "pg_lsn",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(real)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "real",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(smallint)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "smallint",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(text)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(tid)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "tid",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(time with time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "time with time zone",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(time without time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "time without time zone",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(timestamp with time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "timestamp with time zone",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(timestamp without time zone)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "timestamp without time zone",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
+  "pg_catalog.min(xid8)": {
+    "extension": "",
+    "implementation": "aggregate_dummy",
+    "language": "internal",
+    "library": "",
+    "returns": "xid8",
+    "volatility": "i",
+    "reason": "Minimum selection over explicit input values; conservative discovery includes all installed overloads. Temporal inputs are values, not a new wall-clock read."
+  },
   "pg_catalog.numeric(bigint)": {
     "extension": "",
     "implementation": "int8_numeric",
@@ -1313,6 +1574,24 @@
     "volatility": "i",
     "reason": "Required overlap comparison of supplied ranges."
   },
+  "pg_catalog.replace(text, text, text)": {
+    "extension": "",
+    "implementation": "replace_text",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "Text/byte slicing or replacement over supplied values in retained capture bindings and validation; not a clock source."
+  },
+  "pg_catalog.row_number()": {
+    "extension": "",
+    "implementation": "window_row_number",
+    "language": "internal",
+    "library": "",
+    "returns": "bigint",
+    "volatility": "i",
+    "reason": "Position within the explicitly ordered bounded missing-chunk sequence; input/order dependent and not a clock source."
+  },
   "pg_catalog.session_user()": {
     "extension": "",
     "implementation": "session_user",
@@ -1375,6 +1654,42 @@
     "returns": "text",
     "volatility": "i",
     "reason": "Reached text aggregation for protected/template validation; both overloads remain opaque risk."
+  },
+  "pg_catalog.substr(bytea, integer)": {
+    "extension": "",
+    "implementation": "bytea_substr_no_len",
+    "language": "internal",
+    "library": "",
+    "returns": "bytea",
+    "volatility": "i",
+    "reason": "Text/byte slicing or replacement over supplied values in retained capture bindings and validation; not a clock source."
+  },
+  "pg_catalog.substr(bytea, integer, integer)": {
+    "extension": "",
+    "implementation": "bytea_substr",
+    "language": "internal",
+    "library": "",
+    "returns": "bytea",
+    "volatility": "i",
+    "reason": "Text/byte slicing or replacement over supplied values in retained capture bindings and validation; not a clock source."
+  },
+  "pg_catalog.substr(text, integer)": {
+    "extension": "",
+    "implementation": "text_substr_no_len",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "Text/byte slicing or replacement over supplied values in retained capture bindings and validation; not a clock source."
+  },
+  "pg_catalog.substr(text, integer, integer)": {
+    "extension": "",
+    "implementation": "text_substr",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "Text/byte slicing or replacement over supplied values in retained capture bindings and validation; not a clock source."
   },
   "pg_catalog.substring(bit, integer)": {
     "extension": "",

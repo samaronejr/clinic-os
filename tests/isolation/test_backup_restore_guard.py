@@ -33,9 +33,9 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
         )
         == restore_contract.TABLE_DATA
     )
-    # Derived from the migrated Wave B + gateway + agent PostgreSQL catalog;
+    # Source-union candidate only; re-derive from the integrated PostgreSQL catalog.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 162
+    assert len(restore_contract.DOMAIN_RELATIONS) == 166
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(
@@ -57,6 +57,12 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     } <= set(restore_contract.DOMAIN_RELATIONS)
     assert "clinic_app.identity_patientdelegategrant" in restore_contract.TABLE_DATA
     assert "clinic_app.identity_userpreference" in restore_contract.TABLE_DATA
+    assert {
+        "scribe_audiochunk",
+        "scribe_captureepoch",
+        "scribe_recordingcommand",
+        "scribe_recordingsession",
+    } <= set(restore_contract.DOMAIN_RELATIONS)
     assert set(restore_contract.TARGET_SEEDED_RELATIONS) == {
         "prescription_prescriptionclasspolicy",
         "providers_capabilityversion",

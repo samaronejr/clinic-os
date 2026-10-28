@@ -33,7 +33,8 @@ from renewal.browser._fixture_secrets import (
     pytest_make_collect_report,
     pytest_runtest_makereport,
 )
-from renewal.browser.engines import launch, selected_engine
+from renewal.browser.engines import grant_capture_audio, launch, selected_engine
+from renewal.browser.test_availability import availability_staff
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -42,7 +43,11 @@ if TYPE_CHECKING:
 
 # The failure-report backstop (_fixture_secrets), re-exported so pytest runs
 # it for every suite in this directory.
-__all__ = ("pytest_make_collect_report", "pytest_runtest_makereport")
+__all__ = (
+    "availability_staff",
+    "pytest_make_collect_report",
+    "pytest_runtest_makereport",
+)
 NAVIGATION_TIMEOUT_MS = 20_000
 # Every engine reports a refused script/style/connection/eval as a console
 # error naming the policy: Chromium and WebKit write "Content Security
@@ -295,12 +300,15 @@ def renewal_engine() -> str:
 
 
 @pytest.fixture(scope="session")
-def renewal_page(renewal_engine: str) -> Iterator[Page]:
+def renewal_page(renewal_engine: str, renewal_base_url: str) -> Iterator[Page]:
     """Launch the runner-selected real browser engine and yield one page."""
     executable = _required("CLINIC_RENEWAL_BROWSER_EXECUTABLE")
     with sync_playwright() as driver:
-        browser = launch(driver, renewal_engine, executable)
+        media = os.environ.get("CLINIC_BROWSER_FAKE_MEDIA") == "1"
+        browser = launch(driver, renewal_engine, executable, media=media)
         context = browser.new_context()
+        if media:
+            grant_capture_audio(context, renewal_base_url)
         page = context.new_page()
         page.set_default_timeout(NAVIGATION_TIMEOUT_MS)
         yield page

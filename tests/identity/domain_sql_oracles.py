@@ -64,6 +64,10 @@ from scheduling.test_resource_permission_identity import GUARDS
 from scheduling.test_resource_role_matrix import (
     test_effective_interval_is_actor_invariant,
 )
+from scribe import test_actor_readers as scribe_actor
+from scribe import test_ingest as scribe_ingest
+from scribe import test_refusals as scribe_refusals
+from scribe import test_room_capture as scribe_room
 from teleconsult.test_mode_concurrency import (
     test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
 )
@@ -187,7 +191,41 @@ EHR_PROTOCOLS = {
     name: [*cases, "test_longitudinal_functions_keep_exact_execute_privileges"]
     for name, cases in EHR_PROTOCOLS.items()
 }
+SCRIBE_PROTOCOL_ORACLES = {
+    "clinic_app.scribe_assigned": [
+        "test_native_capture_authority_refuses_inactive_actor",
+        "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority",
+    ],
+    "clinic_app.scribe_consent": [
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_consent_fence": [
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_gaps": [
+        "test_reordered_chunks_close_only_the_gap_they_fill",
+        "test_resume_fences_old_epoch_and_commands_replay",
+    ],
+    "clinic_app.scribe_guard": [
+        "test_native_capture_authority_refuses_inactive_actor",
+        "test_resume_fences_old_epoch_and_commands_replay",
+        "test_role_loss_refuses_every_action_without_session_or_domain_mutation",
+    ],
+    "clinic_app.scribe_room_capture_allowed": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_room_cleanup": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+        "test_revoked_consent_stops_new_chunks_and_direct_sql",
+    ],
+    "clinic_app.scribe_room_guard": [
+        "test_room_bits_require_explicit_live_capture_and_asr_stays_closed",
+    ],
+}
+
 PROTOCOL_ORACLES = {
+    **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
@@ -332,5 +370,26 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         ),
         (ai_posture, PROTOCOL_ORACLES["clinic_app.ai_staff"]),
         (ai_controls, PROTOCOL_ORACLES["clinic_app.configuration_guard"]),
+        (
+            scribe_actor,
+            ("test_native_capture_authority_refuses_inactive_actor",),
+        ),
+        (
+            scribe_ingest,
+            (
+                "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority",
+                "test_revoked_consent_stops_new_chunks_and_direct_sql",
+                "test_reordered_chunks_close_only_the_gap_they_fill",
+                "test_resume_fences_old_epoch_and_commands_replay",
+            ),
+        ),
+        (
+            scribe_refusals,
+            ("test_role_loss_refuses_every_action_without_session_or_domain_mutation",),
+        ),
+        (
+            scribe_room,
+            ("test_room_bits_require_explicit_live_capture_and_asr_stays_closed",),
+        ),
     ):
         assert all(callable(getattr(module, name)) for name in names)
