@@ -300,11 +300,11 @@ def _probe_route(
                 )
                 for htmx in (False, True)
             )
-        if route.name == "ai:decision-support":
-            requests += tuple(
-                ("POST", {"encounter_id": str(uuid4()), "command": "open"}, htmx)
-                for htmx in (False, True)
-            )
+        requests += tuple(
+            ("POST", {"encounter_id": str(uuid4()), "command": "open"}, htmx)
+            for htmx in (False, True)
+            if route.name == "ai:decision-support"
+        )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"
