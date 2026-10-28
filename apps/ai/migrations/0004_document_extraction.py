@@ -6,9 +6,10 @@ from django.db import migrations
 
 from apps.ai.migrations import _extraction_review_sql, _extraction_sql
 from apps.ai.migrations._extraction_tables import OPERATIONS
+from apps.ai.migrations._state_batch import SchemaStateBatch
 
 
-class ProtectedSchema(migrations.SeparateDatabaseAndState):
+class ProtectedSchema(SchemaStateBatch):
     """Publish ciphertext tables and the complete least-privilege contract together."""
 
     atomic = True

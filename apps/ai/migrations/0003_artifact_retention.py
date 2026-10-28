@@ -5,6 +5,7 @@ from typing import ClassVar
 from django.db import migrations, models
 
 from apps.ai.contracts import PURPOSES
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.tenancy.fields import EncryptedTextField
 
 
@@ -13,7 +14,7 @@ class Migration(migrations.Migration):
 
     atomic = False
     dependencies: ClassVar = [("ai", "0002_agent_execution")]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.AlterField(
             model_name="aiartifact",
             name="content",
@@ -44,6 +45,12 @@ class Migration(migrations.Migration):
                 ),
                 name="ai_artifact_values",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunPython(migrations.RunPython.noop),
     ]

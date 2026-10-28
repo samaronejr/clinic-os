@@ -7,6 +7,7 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations._transcript_sql import SQL
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.migration_operations import AddConstraint
@@ -24,7 +25,7 @@ class Migration(migrations.Migration):
         ("ai", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.CreateModel(
             name="ChunkTranscription",
             fields=[
@@ -213,6 +214,12 @@ class Migration(migrations.Migration):
                 | models.Q(confidence_milli__lte=1000),
                 name="scribe_transcript_confidence",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(SQL),
     ]

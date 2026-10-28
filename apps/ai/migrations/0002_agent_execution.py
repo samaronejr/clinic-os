@@ -11,6 +11,7 @@ from apps.ai.migrations import (
     _agent_posture_sql,
 )
 from apps.ai.migrations._agent_tables import OPERATIONS
+from apps.ai.migrations._state_batch import SchemaStateBatch
 
 
 class Migration(migrations.Migration):
@@ -24,7 +25,7 @@ class Migration(migrations.Migration):
         ("providers", "0001_initial"),
     ]
     operations: ClassVar = [
-        *OPERATIONS,
+        SchemaStateBatch(database_operations=OPERATIONS, state_operations=OPERATIONS),
         migrations.RunSQL(
             "BEGIN;\n"
             + _agent_access_sql.SQL

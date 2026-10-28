@@ -4,12 +4,14 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
+
 
 class Migration(migrations.Migration):
     """Keep all recording/chunk identities and original upload deadlines."""
 
     dependencies: ClassVar = [("scribe", "0003_transcripts")]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.AddField(
             model_name="audiochunk",
             name="storage_location",
@@ -31,5 +33,11 @@ class Migration(migrations.Migration):
                 ),
                 name="scribe_chunk_state",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
     ]

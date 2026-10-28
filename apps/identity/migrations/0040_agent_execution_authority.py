@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.identity.migrations._agent_authority_sql import SQL
 
 
@@ -11,7 +12,7 @@ class Migration(migrations.Migration):
     """Add v2 without promoting or widening any existing principal."""
 
     dependencies: ClassVar = [("identity", "0039_ai_policy")]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.AddField(
             model_name="serviceprincipalgrant",
             name="grant_set_version",
@@ -45,6 +46,12 @@ class Migration(migrations.Migration):
                 & models.Q(subject_scope="clinic"),
                 name="identity_principal_grant_v1_scope",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(SQL),
     ]

@@ -14,6 +14,7 @@ from apps.ai.migrations import (
     _platform_sql,
     _policy_sql,
 )
+from apps.ai.migrations._state_batch import SchemaStateBatch
 
 _PURPOSES = (
     "scribe_asr",
@@ -39,7 +40,7 @@ class Migration(migrations.Migration):
         ("intake", "0014_delegate_sessions"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.CreateModel(
             name="AIArtifact",
             fields=[
@@ -340,6 +341,12 @@ class Migration(migrations.Migration):
                 condition=models.Q(closed_at__isnull=True),
                 name="ai_circuit_config_uniq",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(
             "BEGIN;\n"

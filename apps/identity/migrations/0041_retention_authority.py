@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.identity.migrations._principal_sql import SQL as PRINCIPAL_SQL
 
 _start = PRINCIPAL_SQL.index("CREATE FUNCTION clinic_app.principal_scope(")
@@ -30,7 +31,7 @@ class Migration(migrations.Migration):
     """Existing machine identities and grants remain immutable."""
 
     dependencies: ClassVar = [("identity", "0040_agent_execution_authority")]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.AddField(
             model_name="clinicconfiguration",
             name="raw_audio_retention_days",
@@ -83,6 +84,12 @@ class Migration(migrations.Migration):
                 & models.Q(subject_scope="clinic"),
                 name="identity_principal_grant_v1_scope",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(SQL),
     ]

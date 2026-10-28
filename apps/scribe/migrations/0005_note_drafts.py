@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import migrations, models
 
 import apps.tenancy.fields
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations._draft_sql import SQL
 
 
@@ -25,7 +26,7 @@ class Migration(migrations.Migration):
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.CreateModel(
             name="AIDraft",
             fields=[
@@ -292,6 +293,12 @@ class Migration(migrations.Migration):
             constraint=models.UniqueConstraint(
                 fields=("version", "command_id"), name="scribe_review_command"
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(SQL),
     ]

@@ -6,6 +6,7 @@ from typing import ClassVar
 from django.db import migrations, models
 from django.db.models import deletion
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.retention.migrations._purge_audit_sql import SQL as AUDIT_SQL
 from apps.retention.migrations._purge_execution_sql import SQL as EXECUTION_SQL
 from apps.retention.migrations._purge_guard_sql import SQL as GUARD_SQL
@@ -36,7 +37,7 @@ class Migration(migrations.Migration):
         ("ai", "0003_artifact_retention"),
         ("workflows", "0005_result_source_tasks"),
     ]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.RemoveConstraint(
             model_name="retentionpolicy", name="retention_policy_class_check"
         ),
@@ -124,6 +125,12 @@ class Migration(migrations.Migration):
                     ),
                 ],
             },
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(
             SCOPE_SQL + GUARD_SQL + EXECUTION_SQL + TASK_SQL + AUDIT_SQL + RESTORE_SQL

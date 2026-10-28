@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from django.db import migrations, models
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.state import ModelState, ProjectState
@@ -162,3 +163,48 @@ def test_full_migration_state_replay_has_bounded_model_renders(
 
     # Then: repeated tenant-graph renders cannot return unnoticed.
     assert rendered < 25_000
+
+
+def test_wave_c_batch_renders_changed_models_once(
+    rendered_state: ProjectState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operation = SchemaStateBatch(
+        state_operations=[
+            migrations.AddField(
+                model_name="entry", name="first", field=models.IntegerField(null=True)
+            ),
+            migrations.AddField(
+                model_name="entry", name="second", field=models.IntegerField(null=True)
+            ),
+            migrations.CreateModel(
+                name="Receipt",
+                fields=[
+                    ("id", models.AutoField(primary_key=True)),
+                    ("entry", models.ForeignKey("render_probe.Entry", models.CASCADE)),
+                ],
+            ),
+        ]
+    )
+    before = rendered_state.clone()
+    rendered: list[str] = []
+    original: Callable[[ModelState, Apps], type[models.Model]] = ModelState.render
+
+    def render(model: ModelState, apps: Apps) -> type[models.Model]:
+        rendered.append(model.name_lower)
+        return original(model, apps)
+
+    monkeypatch.setattr(ModelState, "render", render)
+    operation.state_forwards("render_probe", rendered_state)
+
+    assert rendered == ["entry", "receipt"]
+    assert "first" not in before.models["render_probe", "entry"].fields
+    assert {"first", "second"} <= set(
+        rendered_state.models["render_probe", "entry"].fields
+    )
+    rendered_state.clear_delayed_apps_cache()
+    receipt = rendered_state.apps.get_model("render_probe", "Receipt")
+    entry = rendered_state.apps.get_model("render_probe", "Entry")
+    assert receipt._meta.get_field("entry").related_model is entry
+    assert {relation.related_model for relation in entry._meta.related_objects} == {
+        receipt
+    }

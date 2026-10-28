@@ -7,6 +7,7 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.scribe.migrations import _capture_sql
 from apps.tenancy.migration_operations import AddConstraint
 
@@ -28,7 +29,7 @@ class Migration(migrations.Migration):
         ("providers", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.CreateModel(
             name="RecordingSession",
             fields=[
@@ -261,6 +262,12 @@ class Migration(migrations.Migration):
                 ),
                 name="scribe_chunk_state",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(_capture_sql.SQL),
     ]
