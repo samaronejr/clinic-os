@@ -85,6 +85,9 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ai_actionexecution",
         "ai_actionreceipt",
         "ai_compensation",
+        # Exact source-bound, resolver-confirmed extraction posture: tests/ai.
+        "ai_extractionjob",
+        "ai_extractioncandidate",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

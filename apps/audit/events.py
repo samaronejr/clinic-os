@@ -302,6 +302,18 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             )
             for decision in ("accepted", "modified", "rejected")
         },
+        "ai.extraction.started": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.extraction_job", "started"
+        ),
+        "ai.extraction.proposed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.extraction_candidate", "proposed"
+        ),
+        "ai.extraction.confirmed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.extraction_candidate", "confirmed"
+        ),
+        "ai.extraction.rejected": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "ai.extraction_candidate", "rejected"
+        ),
         "ai.invocation.reserved": Phase1AuditEventDefinition(
             "tenant", "clinic-os-worker", "ai.invocation", "reserved"
         ),

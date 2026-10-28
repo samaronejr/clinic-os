@@ -3,6 +3,7 @@
 from apps.ai.agent_models import ActionProposal, AgentPolicyVersion, AgentRun, Approval
 from apps.ai.configuration_models import GatewaySwitch, ModelConfiguration
 from apps.ai.execution_models import ActionExecution, ActionReceipt, Compensation
+from apps.ai.extraction_models import ExtractionCandidateRecord, ExtractionJob
 from apps.ai.ledger_models import AIArtifact, AICircuit, AIInvocation
 
 __all__ = (
@@ -16,6 +17,8 @@ __all__ = (
     "AgentRun",
     "Approval",
     "Compensation",
+    "ExtractionCandidateRecord",
+    "ExtractionJob",
     "GatewaySwitch",
     "ModelConfiguration",
 )

@@ -16,6 +16,7 @@ from apps.ai.policy import OrganizationPolicy
 from apps.ai.services import invoke
 from apps.identity.clinic_configuration import (
     ConfigurationContent,
+    latest_configuration,
     publish_configuration,
 )
 from apps.identity.models import User, UserClinicRole
@@ -115,9 +116,10 @@ def seed(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> GatewayWorld:
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
     configuration = model()
     with runtime_role(), tenant_context(administrator.pk, graph.organization_a):
+        current = latest_configuration(graph.clinic_a)
         first = publish_configuration(
             clinic_id=graph.clinic_a,
-            expected_version=0,
+            expected_version=current.version if current is not None else 0,
             content=ConfigurationContent("Synthetic AI clinic"),
         )
         set_organization_policy(

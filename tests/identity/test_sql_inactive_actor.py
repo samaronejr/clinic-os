@@ -29,6 +29,9 @@ from django.db import DatabaseError, ProgrammingError, connection, transaction
 from psycopg.errors import InsufficientPrivilege
 from sqlparse import tokens
 
+from ai.extraction_oracles import (
+    ACTOR_PROTOCOL_ORACLES as EXTRACTION_ACTOR_PROTOCOL_ORACLES,
+)
 from consent.test_purposes import register_physician
 from identity.authority_sql import _tokenize, references
 from identity.lifecycle_actor_probes import LIFECYCLE_DELEGATE_PROBES, LIFECYCLE_PROBES
@@ -386,6 +389,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         | MERGE_ACTOR_PROTOCOL_ORACLES
         | ORDERS_ACTOR_PROTOCOL_ORACLES
         | RETENTION_ACTOR_PROTOCOLS
+        | EXTRACTION_ACTOR_PROTOCOL_ORACLES
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

@@ -38,6 +38,8 @@ RECEPTION_TABLES = (
     "scheduling_displaydevice",
 )
 TRUNCATE_GUARDS = (
+    ("ai_extractionjob", "extraction_no_truncate"),
+    ("ai_extractioncandidate", "extraction_no_truncate"),
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),

@@ -196,6 +196,57 @@ msgstr "Solicitação de apoio à decisão inválida."
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"
 
+msgid "Synthetic extraction. Verify each source region; confirmation never acknowledges or releases the result."
+msgstr "Extração sintética. Confira cada região da fonte; confirmar nunca registra a revisão clínica nem libera o resultado."
+
+msgid "Extraction decision saved."
+msgstr "Decisão de extração salva."
+
+msgid "Refresh extraction"
+msgstr "Atualizar extração"
+
+msgid "Source page with extraction regions"
+msgstr "Página original com regiões de extração"
+
+msgid "Extraction candidates"
+msgstr "Valores candidatos da extração"
+
+msgid "Unreadable"
+msgstr "Ilegível"
+
+msgid "Imported and confirmed"
+msgstr "Importado e confirmado"
+
+msgid "Ambiguous. No value will be filed."
+msgstr "Ambíguo. Nenhum valor será registrado."
+
+msgid "Identity-verified result version"
+msgstr "Versão do resultado com identidade verificada"
+
+msgid "Choose a verified source"
+msgstr "Escolha uma fonte verificada"
+
+msgid "The same source bytes must pass result identity verification before filing."
+msgstr "O mesmo arquivo original precisa passar pela verificação de identidade do resultado antes do registro."
+
+msgid "Confirm source value"
+msgstr "Confirmar valor da fonte"
+
+msgid "Reject candidate"
+msgstr "Rejeitar candidato"
+
+msgid "No candidates yet. Refresh after the governed extraction job finishes; manual result entry remains available."
+msgstr "Ainda não há candidatos. Atualize após a conclusão da extração controlada; o registro manual de resultados continua disponível."
+
+msgid "Open extraction from a matched result or an available clinical attachment."
+msgstr "Abra a extração a partir de um resultado identificado ou de um anexo clínico disponível."
+
+msgid "Review extraction candidates"
+msgstr "Revisar valores candidatos da extração"
+
+msgid "Extraction unavailable or source changed. Continue with manual result entry."
+msgstr "Extração indisponível ou fonte alterada. Continue com o registro manual do resultado."
+
 msgid "Open linked image"
 msgstr "Abrir imagem vinculada"
 

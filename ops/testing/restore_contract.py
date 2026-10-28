@@ -29,6 +29,8 @@ DOMAIN_RELATIONS: Final = (
     "ai_aiinvocation",
     "ai_approval",
     "ai_compensation",
+    "ai_extractioncandidate",
+    "ai_extractionjob",
     "ai_gatewayswitch",
     "ai_modelconfiguration",
     "audit_event",

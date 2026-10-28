@@ -5,6 +5,7 @@ from typing import Final, NoReturn
 import pytest
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
+from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
 from apps.billing.services import create_invoice
@@ -175,6 +176,17 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
         ),
         (read_artifact, ["clinic_id", "artifact_id"], {}),
         (apply_retention_policy, ["clinic_id", "record_class"], {}),
+        (
+            start_extraction,
+            ["clinic_id", "budget", "result_version_id", "attachment_id"],
+            {"result_version_id": None, "attachment_id": None},
+        ),
+        (collect_extraction, ["clinic_id", "job_id"], {}),
+        (
+            review_extraction,
+            ["clinic_id", "candidate_id", "decision", "result_version_id"],
+            {"result_version_id": None},
+        ),
         (current_policy, ["clinic_id"], {}),
         (reset_circuit, ["clinic_id", "configuration_id"], {}),
         (

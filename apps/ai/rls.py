@@ -14,8 +14,11 @@ AGENT_TABLES: Final = frozenset(
         "ai_compensation",
     }
 )
+EXTRACTION_TABLES: Final = frozenset({"ai_extractionjob", "ai_extractioncandidate"})
 CUSTOM_RLS_TABLES: Final = (
-    frozenset({"ai_aiartifact", "ai_aiinvocation", "ai_aicircuit"}) | AGENT_TABLES
+    frozenset({"ai_aiartifact", "ai_aiinvocation", "ai_aicircuit"})
+    | AGENT_TABLES
+    | EXTRACTION_TABLES
 )
 NON_RLS_TABLES: Final = frozenset({"ai_modelconfiguration", "ai_gatewayswitch"})
 RUNTIME_GRANTS: Final = {

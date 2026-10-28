@@ -480,6 +480,30 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         )
         for decision in ("accepted", "modified", "rejected")
     },
+    "ai.extraction.started": (
+        "tenant",
+        "clinic-os-web",
+        "ai.extraction_job",
+        "started",
+    ),
+    "ai.extraction.proposed": (
+        "tenant",
+        "clinic-os-worker",
+        "ai.extraction_candidate",
+        "proposed",
+    ),
+    "ai.extraction.confirmed": (
+        "tenant",
+        "clinic-os-web",
+        "ai.extraction_candidate",
+        "confirmed",
+    ),
+    "ai.extraction.rejected": (
+        "tenant",
+        "clinic-os-web",
+        "ai.extraction_candidate",
+        "rejected",
+    ),
     "ai.invocation.reserved": (
         "tenant",
         "clinic-os-worker",

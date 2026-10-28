@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load tz %}
+{% load tz i18n %}
 {% block title %}Anexos clínicos · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow intake-create" aria-labelledby="attachments-title">
@@ -35,6 +35,7 @@
           {% if can_write %}<form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="attachment_id" value="{{ attachment.pk }}"><button class="button button--secondary" type="submit" name="action" value="scan">Concluir verificação</button></form>{% endif %}
         {% elif attachment.state == "available" %}
           <form method="post">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><input type="hidden" name="attachment_id" value="{{ attachment.pk }}"><button class="button button--secondary" type="submit" name="action" value="download">Baixar arquivo</button></form>
+          <form method="post" action="{% url 'ai:extraction' clinic_id %}">{% csrf_token %}<input type="hidden" name="action" value="start"><input type="hidden" name="attachment_id" value="{{ attachment.pk }}"><button class="button button--secondary" type="submit">{% trans "Review extraction candidates" %}</button></form>
         {% else %}
           <p>Rejeitado na verificação. O arquivo não pode ser baixado.</p>
         {% endif %}

@@ -3,6 +3,8 @@
 from ai import test_agent_execution, test_agent_guards
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
+from ai.extraction_oracles import CASES as EXTRACTION_CASES
+from ai.extraction_oracles import SQL_PROTOCOL_ORACLES as EXTRACTION_PROTOCOLS
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
     test_ineligible_recipient_cannot_receive_note_grant,
@@ -251,6 +253,7 @@ PROTOCOL_ORACLES = {
     **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
+    **EXTRACTION_PROTOCOLS,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
     **{
@@ -346,6 +349,12 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert all(callable(case) for case in DELEGATE_CASES.values())
     assert all(callable(case) for case in EHR_CASES.values())
     assert all(callable(case) for case in ORDERS_CASES.values())
+    assert all(callable(case) for case in EXTRACTION_CASES.values())
+    assert all(
+        name in EXTRACTION_CASES
+        for cases in EXTRACTION_PROTOCOLS.values()
+        for name in cases
+    )
     assert all(
         name in ORDERS_CASES for cases in ORDERS_PROTOCOLS.values() for name in cases
     )

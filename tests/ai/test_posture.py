@@ -18,6 +18,7 @@ from apps.ai.rls import (
     AGENT_TABLES,
     COLUMN_GRANTS,
     CUSTOM_RLS_TABLES,
+    EXTRACTION_TABLES,
     RUNTIME_GRANTS,
 )
 from apps.core.integration import execute_operation
@@ -111,6 +112,11 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
             (table, policy)
             for table in AGENT_TABLES
             for policy in ("agent_owner", "agent_staff", "agent_machine")
+        ),
+        *(
+            (table, policy)
+            for table in EXTRACTION_TABLES
+            for policy in ("extraction_owner", "extraction_staff")
         ),
     }
     assert grants == {

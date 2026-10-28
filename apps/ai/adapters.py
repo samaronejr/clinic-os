@@ -22,6 +22,11 @@ from apps.ai.contracts import (
 )
 from apps.ai.decision_contracts import SCHEMA as DECISION_SCHEMA
 from apps.ai.decision_contracts import synthetic_decision_reply
+from apps.ai.extraction_contracts import ExtractionInputError
+from apps.ai.extraction_documents import (
+    recorded_document_extraction,
+    synthetic_document_extraction,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -121,6 +126,12 @@ class SyntheticProvider(AdapterBase):
     def extract(self, *, request: ProviderRequest) -> ProviderResult:
         """Produce only the extraction schema the gateway accepts."""
         result = self.complete(request=request)
+        if request.content.startswith('{"schema":"document-extraction-v1",'):
+            try:
+                text = synthetic_document_extraction(request.content)
+            except ExtractionInputError:
+                raise GatewayInputError from None
+            return ProviderResult(json.dumps({"text": text}), result.usage)
         return ProviderResult('{"text":"Synthetic extraction"}', result.usage)
 
 
@@ -148,6 +159,18 @@ class RecordedFixtureProvider(SyntheticProvider):
     def extract(self, *, request: ProviderRequest) -> ProviderResult:
         """Replay a closed-schema extraction, not a generated completion."""
         self.check_boundary(request)
+        if request.model_id == "extraction-fixture-v1":
+            try:
+                content = recorded_document_extraction(request.content)
+            except ExtractionInputError:
+                raise GatewayInputError from None
+            return ProviderResult(
+                json.dumps({"text": content}),
+                Usage(
+                    tokens_in=min(request.limits.tokens_in, 4),
+                    tokens_out=min(request.limits.tokens_out, 6),
+                ),
+            )
         return self._record(request, "extract")
 
     @staticmethod

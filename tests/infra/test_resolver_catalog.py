@@ -30,6 +30,9 @@ RESOLVER_TABLE_GRANTS: Final = {
     ("ai_actionexecution", "SELECT"),
     ("ai_actionreceipt", "SELECT"),
     ("ai_compensation", "SELECT"),
+    ("ai_extractionjob", "SELECT"),
+    ("ai_extractioncandidate", "SELECT"),
+    ("orders_resultobservation", "INSERT"),
     ("providers_providercapability", "SELECT"),
     ("providers_capabilityversion", "SELECT"),
     ("ai_aiartifact", "SELECT"),
@@ -149,6 +152,10 @@ RESOLVER_TABLE_GRANTS: Final = {
 }
 RESOLVER_COLUMN_GRANTS: Final = {
     *retention_catalog.COLUMN_GRANTS,
+    ("ai_extractioncandidate", "status", "UPDATE"),
+    ("ai_extractioncandidate", "observation_id", "UPDATE"),
+    ("ai_extractioncandidate", "reviewed_by_id", "UPDATE"),
+    ("ai_extractioncandidate", "reviewed_at", "UPDATE"),
     *duplicate_catalog.COLUMN_GRANTS,
     ("consent_aiusedisclosure", "encounter_id", "SELECT"),
     ("consent_aiusedisclosure", "clinic_id", "SELECT"),
@@ -257,6 +264,23 @@ POSTURE_OVERRIDES: Final = {
     "ai_budget_usage": ("s", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_policy_valid": ("i", True, ["clinic_app", "clinic_owner", "clinic_resolver"]),
     "ai_ledger_guard": ("v", False, ["clinic_resolver"]),
+    "ai_extraction_source_allowed": (
+        "v",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "ai_extraction_job_allowed": (
+        "v",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "ai_imported_observation": (
+        "v",
+        True,
+        ["clinic_app", "clinic_owner", "clinic_resolver"],
+    ),
+    "ai_extraction_guard": ("v", False, ["clinic_resolver"]),
+    "ai_review_extraction": ("v", True, ["clinic_app", "clinic_resolver"]),
     "ai_platform_guard": ("v", False, ["clinic_resolver"]),
     "delegate_now": ("s", False, ["clinic_resolver"]),
     "patient_identity": ("s", False, ["clinic_resolver"]),
@@ -477,6 +501,17 @@ FUNCTION_SIGNATURES: Final = {
     ("ai_budget_usage", "requested_purpose text"),
     ("ai_policy_valid", "policy jsonb"),
     ("ai_ledger_guard", ""),
+    (
+        "ai_extraction_source_allowed",
+        "clinic uuid, enrollment uuid, version uuid, attachment uuid, digest text",
+    ),
+    ("ai_extraction_job_allowed", "job uuid"),
+    ("ai_imported_observation", "observation uuid, version uuid, clinic uuid"),
+    ("ai_extraction_guard", ""),
+    (
+        "ai_review_extraction",
+        "requested uuid, target uuid, decision text, source bytea, kek text",
+    ),
     ("ai_platform_guard", ""),
     ("delegate_now", ""),
     ("patient_identity", "requested_session uuid"),
@@ -764,6 +799,20 @@ FUNCTION_RESULTS: Final = {
     ),
     ("ai_policy_valid", "policy jsonb"): "boolean",
     ("ai_ledger_guard", ""): "trigger",
+    (
+        "ai_extraction_source_allowed",
+        "clinic uuid, enrollment uuid, version uuid, attachment uuid, digest text",
+    ): "boolean",
+    ("ai_extraction_job_allowed", "job uuid"): "boolean",
+    (
+        "ai_imported_observation",
+        "observation uuid, version uuid, clinic uuid",
+    ): "boolean",
+    ("ai_extraction_guard", ""): "trigger",
+    (
+        "ai_review_extraction",
+        "requested uuid, target uuid, decision text, source bytea, kek text",
+    ): "TABLE(observation_id uuid, created boolean)",
     ("ai_platform_guard", ""): "trigger",
     ("delegate_now", ""): "timestamp with time zone",
     (

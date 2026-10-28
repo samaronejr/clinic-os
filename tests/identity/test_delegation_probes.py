@@ -22,6 +22,7 @@ from identity.delegation_probes import CASES
 from identity.nonstaff_differential import root_delegation
 from identity.nonstaff_document_probes import SYMBOLS as DOCUMENT_SYMBOLS
 from identity.nonstaff_ehr_probes import SYMBOLS as EHR_SYMBOLS
+from identity.nonstaff_extraction_probes import SYMBOLS as EXTRACTION_SYMBOLS
 from identity.nonstaff_lifecycle_probes import SYMBOLS as LIFECYCLE_SYMBOLS
 from identity.permission_support import permission_actor, permission_context
 from identity.test_permission_parity import INVENTORY
@@ -87,7 +88,11 @@ def _context(
 def test_cases_cover_every_root_delegation() -> None:
     rows = [row["symbol"] for row in INVENTORY["candidates"] if root_delegation(row)]
     assert sorted(
-        set(CASES) | LIFECYCLE_SYMBOLS | EHR_SYMBOLS | DOCUMENT_SYMBOLS
+        set(CASES)
+        | LIFECYCLE_SYMBOLS
+        | EHR_SYMBOLS
+        | DOCUMENT_SYMBOLS
+        | EXTRACTION_SYMBOLS
     ) == sorted(rows)
     for case in CASES.values():
         assert case.permission in BUNDLES_V1[case.permission_role]

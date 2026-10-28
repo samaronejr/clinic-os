@@ -243,3 +243,77 @@ cannot display it; opening a workspace does not load old conversations. No new
 table or SQL privilege is introduced. Rollback disables the `brief` purpose.
 AI failure leaves manual chart work intact. All inference remains offline,
 `real_enabled=False`; this implementation satisfies no EG or live approval.
+
+## Document and result extraction
+
+Todo 45 exposes `start_extraction`, `collect_extraction` and `review_extraction`
+in `extraction.py`. Each command is keyword-only and clinic-scoped. Inputs come
+from an immutable, identity-matched current `ResultVersion`, or from an
+`available` clinical attachment through the EHR download authorization boundary.
+Admission uses the existing gateway's extraction purpose, policy, budgets,
+kill switches and after-commit outbox. No provider is called in a request.
+
+`ExtractionJob` retains the exact source SHA-256, patient enrollment, page
+rotations, requester and governed invocation. The DTO
+`extraction_contracts.ExtractionCandidate` retains field, raw text, exact source
+value, separately parsed exact string, explicit unit and reference interval,
+one-based page and bounding box. Coordinates are unrotated top-left normalized
+integers from 0 to 10000; highlights rotate with the rendered page. Candidate
+content is encrypted in `ExtractionCandidateRecord`; no content enters audit,
+outbox, task arguments or metering. Drafts expire with the seven-day synthetic
+gateway output; retention owns eventual purge. Confirmed provenance is retained.
+
+Decimal parsing requires pt-BR decimal comma. Dot-only separators, invalid dates,
+unknown or missing decimal units and unreadable regions stay ambiguous. Dates
+require DD/MM/YYYY and have no physical unit. No separator, unit, range,
+abnormality, identity factor or clinical interpretation is inferred.
+Only a candidate can become confirmed; ambiguous drafts may only be rejected.
+
+The source-only synthetic adapter reads explicit PDF text lines
+`field: value unit [reference interval]`. This bounded offline fixture format
+is not general medical understanding. Raster-only pages receive an `Ilegível`
+region. `recorded_fixture` model `extraction-fixture-v1` additionally replays
+the exact synthetic PNG and reviewed regions in
+`fixtures/document_extraction_v1.json`; another digest is refused.
+General OCR, sandbox, paid, live and real-provider legs remain **BLOCKED-ON-EG**.
+
+PDF tools are the existing `/usr/bin/pdfinfo`, `pdftotext` and `pdftoppm`.
+Each local process has a ten-second deadline, bounded pipe output, no shell,
+no network client, and discarded stderr. Plaintext travels only in memory.
+Documents are limited to 32 pages and 10 MiB; the existing gateway's 1 MiB
+encrypted-input plaintext limit also bounds the base64 document envelope.
+Larger/unreadable inputs retain the manual path instead of claiming extraction.
+
+Confirmation requires current patient-scoped `clinical.write` in addition to
+source read authority. An operator needs that clinical grant; `order.route`
+alone does not grant clinical write. An attachment can file only into a current,
+independently identity-matched result version with identical source bytes and
+enrollment. The clinician must first use the existing result ingestion and
+identity verification workflow. The resolver checks the same bindings, expiry,
+deterministic parse and exact encrypted confirmation payload independently.
+It shares the result-series correction/review fence. One confirmation creates
+one immutable `ResultObservation`, with `provenance="imported"`, confirmer,
+candidate id and page/bbox. Replays do not create another observation.
+Already-acknowledged versions cannot acquire new extracted observations;
+confirmation never acknowledges, releases or closes the review task.
+
+The native review form is `/clinics/<clinic_id>/extraction/`. Selectors travel in
+POST bodies, with TOTP and CSRF. Authorized page bytes are rendered as inert,
+inline PNG in the private no-store HTML body, not as a patient URL or active PDF.
+Region links and per-value decisions work without JavaScript. No clinical
+content enters browser storage, service-worker caches or data attributes.
+Native 100/200/400-percent zoom keeps page bytes and region geometry together
+inside a keyboard-scrollable source viewport, including on narrow screens.
+
+Migration `0003_document_extraction` atomically installs the additive protected
+tables, FORCE RLS, exact grants, cross-scope bindings, immutability/truncate guards
+and the resolver-only observation bridge. Runtime cannot UPDATE a decision or
+forge the bridge. The existing order observation ingestion rules remain intact
+for every row without that exact uncommitted resolver marker.
+It is non-atomic at the migration level and irreversible; rollback = restore.
+Recovery includes both new relations and their encryption keys.
+
+`tests/ai/test_extraction.py` and `test_extraction_state.py` are database-free.
+`test_extraction_runtime.py`, exact posture, migration upgrade, catalog census
+and the real native browser flow require the root's serialized runtime lane;
+source-only evidence does not claim those gates passed.

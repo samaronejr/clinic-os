@@ -343,6 +343,112 @@
       ]
     },
     {
+      "symbol": "apps.ai.extraction.authorized_job",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter"
+      ],
+      "reason": "Source reads use the existing exact-result or EHR care authorization boundary. Additional denials bind immutable source bytes and enrollment, not a new staff-role equivalence."
+    },
+    {
+      "symbol": "apps.ai.extraction.collect_extraction",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter",
+        "apps.ai.artifacts.read_artifact"
+      ],
+      "reason": "Collection requires current source authority and the gateway artifact reader. Parser, expiry and duplicate collection constraints never supply staff authority."
+    },
+    {
+      "symbol": "apps.ai.extraction.extraction_source",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter"
+      ],
+      "reason": "The exact result reader, patient clinical.read permission and EHR care predicate decide staff authority. Attachment availability and source shape are additional domain constraints."
+    },
+    {
+      "symbol": "apps.ai.extraction.review_extraction",
+      "signals": [
+        "denial",
+        "permission",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter"
+      ],
+      "reason": "Current source read plus patient-scoped clinical.write govern the human confirmer through these executed primitive boundaries. Independent SQL protocol oracles additionally bind identity, exact bytes, parser output, expiry and one-shot filing."
+    },
+    {
+      "symbol": "apps.ai.extraction.start_extraction",
+      "signals": [
+        "actor"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter",
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "Admission uses current domain source authority and the existing patient-bound, current-human gateway admission; no new machine or role bypass is introduced."
+    },
+    {
+      "symbol": "apps.ai.extraction_views._workspace",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter",
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.artifacts.read_artifact",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "Native actions invoke the same patient-scoped extraction commands. Posted job/candidate linkage is a domain binding and never grants staff access."
+    },
+    {
+      "symbol": "apps.ai.extraction_views.extraction_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.privileged_totp_required",
+        "clinic_app.has_permission",
+        "apps.orders.access.require_version",
+        "apps.ehr.attachments.authorize_attachment_encounter",
+        "apps.ai.artifacts.check_authority",
+        "apps.ai.artifacts.read_artifact",
+        "apps.ai.services.invoke"
+      ],
+      "reason": "The existing TOTP decorator and the reachable clinic-scoped native command boundary enforce staff access."
+    },
+    {
       "symbol": "apps.ai.management.commands.ai_gateway.Command.handle",
       "signals": [
         "authentication"
@@ -8229,6 +8335,159 @@
       "probes": [],
       "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
     },
+    "clinic_app.ai_extraction_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_extraction_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_five_confirmations_import_exact_values_without_acknowledgment",
+        "test_extraction_sql_rechecks_inactive_and_foreign_actor",
+      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+      ],
+      "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
+    },
+    "clinic_app.ai_extraction_job_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_extraction_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_extractioncandidate:extraction_staff"
+        ],
+        "resolvers": [
+          "clinic_app.ai_extraction_guard",
+          "clinic_app.ai_imported_observation",
+          "clinic_app.ai_review_extraction"
+        ],
+        "signatures": [
+          {
+            "arguments": "job uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_five_confirmations_import_exact_values_without_acknowledgment",
+        "test_extraction_sql_rechecks_inactive_and_foreign_actor",
+      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+      ],
+      "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
+    },
+    "clinic_app.ai_extraction_source_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_extraction_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_extractionjob:extraction_staff"
+        ],
+        "resolvers": [
+          "clinic_app.ai_extraction_guard",
+          "clinic_app.ai_extraction_job_allowed"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, enrollment uuid, version uuid, attachment uuid, digest text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_five_confirmations_import_exact_values_without_acknowledgment",
+        "test_extraction_sql_rechecks_inactive_and_foreign_actor",
+      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+      ],
+      "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
+    },
+    "clinic_app.ai_imported_observation": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_extraction_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.orders_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "observation uuid, version uuid, clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_five_confirmations_import_exact_values_without_acknowledgment",
+        "test_extraction_sql_rechecks_inactive_and_foreign_actor",
+      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+      ],
+      "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
+    },
+    "clinic_app.ai_review_extraction": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_extraction_review_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid, target uuid, decision text, source bytea, kek text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_five_confirmations_import_exact_values_without_acknowledgment",
+        "test_extraction_sql_rechecks_inactive_and_foreign_actor",
+      "test_native_extraction_reviews_exact_regions_and_refuses_invalid_commands",
+      "test_attachment_requires_scan_and_independent_exact_byte_identity_match",
+      "test_resolver_rejects_another_current_version_even_with_identical_bytes",
+      "test_resolver_expiry_uses_database_time_at_the_exact_deadline",
+      "test_resolver_refuses_filing_before_writing_into_an_acknowledged_version"
+      ],
+      "reason": "Identity-matched exact-source extraction protocol delegates current human authority to has_permission and EHR care; real confirmation, inactive/foreign raw SQL and native refusal oracles execute the guard without authorization mocks."
+    },
     "clinic_app.ai_budget_usage": {
       "discovery": {
         "migrations": [
@@ -9837,6 +10096,7 @@
           "clinic_app.prescription_prescriptiondocumentrevocation:revocation_read"
         ],
         "resolvers": [
+          "clinic_app.ai_extraction_source_allowed",
           "clinic_app.ehr_history_care",
           "clinic_app.ehr_timeline_visible",
           "clinic_app.prescription_draft_guard"
@@ -10386,6 +10646,7 @@
         "migrations": [],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_review_extraction",
           "clinic_app.billing_revision_snapshot",
           "clinic_app.billing_settlement_receipt",
           "clinic_app.ehr_timeline_enqueue",
@@ -10479,6 +10740,10 @@
         "resolvers": [
           "clinic_app.agent_record_guard",
           "clinic_app.agent_staff",
+          "clinic_app.ai_extraction_guard",
+          "clinic_app.ai_extraction_source_allowed",
+          "clinic_app.ai_imported_observation",
+          "clinic_app.ai_review_extraction",
           "clinic_app.ai_staff",
           "clinic_app.configuration_guard",
           "clinic_app.consent_guard",
@@ -14477,6 +14742,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.agent_action_payload",
+          "clinic_app.ai_review_extraction",
           "clinic_app.identity_signup_register",
           "clinic_app.orders_verify_identity",
           "clinic_app.prescription_document_open",
@@ -15359,6 +15625,9 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.ai_extraction_source_allowed",
+          "clinic_app.ai_imported_observation",
+          "clinic_app.ai_review_extraction",
           "clinic_app.orders_guard",
           "clinic_app.orders_ingest_scope",
           "clinic_app.orders_verify_identity"
