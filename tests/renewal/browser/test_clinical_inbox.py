@@ -31,12 +31,12 @@ from renewal.browser._navigation import (
 from renewal.browser.a11y_support import check_page
 from renewal.browser.engines import element_box, full_page_screenshot
 from renewal.browser.results_support import place, seed_result_patient, upload
+from renewal.browser.support_managers import seed_ai_admin
 from renewal.browser.test_availability import (
     _sign_in_physician,
     _sign_in_receptionist,
     availability_staff,
 )
-from renewal.browser.test_clinic_settings import seed_ai_admin
 from renewal.browser.test_realtime import _today_scene
 
 if TYPE_CHECKING:

@@ -124,6 +124,75 @@ msgstr "A cópia de segurança expira em"
 msgid "Clinical records are never automatically destroyed. Transient synthetic artifacts follow their retention policy; active legal holds block destruction."
 msgstr "Registros clínicos nunca são destruídos automaticamente. Artefatos sintéticos transitórios seguem a política de retenção; guardas legais ativas impedem a destruição."
 
+msgid "Clinician decision support"
+msgstr "Apoio à decisão do médico"
+
+msgid "Synthetic preview. Not validated for clinical use."
+msgstr "Prévia sintética. Não validada para uso clínico."
+
+msgid "Evidence review only. No diagnosis, prognosis, prescriptions, dose calculations or patient messages. You may accept, modify or reject without affecting care."
+msgstr "Somente revisão de evidências. Sem diagnóstico, prognóstico, prescrição, cálculo de doses ou mensagens ao paciente. Você pode aceitar, modificar ou rejeitar sem afetar o cuidado."
+
+msgid "AI-use decision recorded. Nothing was added to the chart, prescribed or sent. Make any changes in the clinical record yourself."
+msgstr "Decisão sobre o uso da IA registrada. Nada foi acrescentado ao prontuário, prescrito ou enviado. Faça as alterações no registro clínico por conta própria."
+
+msgid "Model hypothesis - clinician review required"
+msgstr "Hipótese do modelo - exige revisão do médico"
+
+msgid "Consider reviewing whether the documented evidence is complete. Missing records do not establish absence."
+msgstr "Considere revisar se as evidências documentadas estão completas. A falta de registros não comprova ausência."
+
+msgid "Consider comparing the documented fact with the cited reference and checking its applicability."
+msgstr "Considere comparar o fato documentado com a referência citada e verificar sua aplicabilidade."
+
+msgid "Patient fact"
+msgstr "Fato do paciente"
+
+msgid "Reference statement"
+msgstr "Declaração da referência"
+
+msgid "Population"
+msgstr "População"
+
+msgid "Limitations"
+msgstr "Limitações"
+
+msgid "License"
+msgstr "Licença"
+
+msgid "No considerations with currently resolvable evidence. Continue working manually."
+msgstr "Não há considerações com evidências acessíveis no momento. Continue trabalhando manualmente."
+
+msgid "Accept consideration"
+msgstr "Aceitar consideração"
+
+msgid "Modify in the clinical record"
+msgstr "Modificar no registro clínico"
+
+msgid "Reject consideration"
+msgstr "Rejeitar consideração"
+
+msgid "Considerations are not ready. Continue working manually while the request is processed."
+msgstr "As considerações não estão prontas. Continue trabalhando manualmente enquanto a solicitação é processada."
+
+msgid "Refresh considerations"
+msgstr "Atualizar considerações"
+
+msgid "Decision support unavailable. The manual clinical record remains available."
+msgstr "Apoio à decisão indisponível. O registro clínico manual continua disponível."
+
+msgid "I choose to use decision support for this request only."
+msgstr "Escolho usar o apoio à decisão somente nesta solicitação."
+
+msgid "Request evidence review"
+msgstr "Solicitar revisão de evidências"
+
+msgid "Return to the encounter"
+msgstr "Voltar ao atendimento"
+
+msgid "Invalid decision-support request."
+msgstr "Solicitação de apoio à decisão inválida."
+
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"
 

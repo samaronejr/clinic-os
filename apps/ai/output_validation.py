@@ -13,7 +13,10 @@ from apps.ai.contracts import (
     ProviderRequest,
     ProviderResult,
     Usage,
+    request_schema,
 )
+from apps.ai.decision_contracts import SCHEMA as DECISION_SCHEMA
+from apps.ai.decision_contracts import parse_decision_request, validate_decision_reply
 
 if TYPE_CHECKING:
     from apps.ai.adapters import ProviderProtocol
@@ -95,6 +98,9 @@ def call_provider(
         case unreachable:
             assert_never(unreachable)
     result = validate_result(result, limits=request.limits, method=method)
-    if f'"schema": "{SCHEMA}"' in request.content:
+    schema = request_schema(request.content)
+    if schema == DECISION_SCHEMA:
+        validate_decision_reply(result.content, parse_decision_request(request.content))
+    elif schema == SCHEMA:
         validate_reply(result.content, parse_request(request.content))
     return result

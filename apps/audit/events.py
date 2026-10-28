@@ -296,6 +296,12 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ai.artifact.created": Phase1AuditEventDefinition(
             "tenant", "clinic-os-worker", "ai.artifact", "created"
         ),
+        **{
+            f"ai.decision_support.{decision}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.decision_support", decision
+            )
+            for decision in ("accepted", "modified", "rejected")
+        },
         "ai.invocation.reserved": Phase1AuditEventDefinition(
             "tenant", "clinic-os-worker", "ai.invocation", "reserved"
         ),

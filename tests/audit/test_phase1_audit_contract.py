@@ -471,6 +471,15 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "published",
     ),
     "ai.artifact.created": ("tenant", "clinic-os-worker", "ai.artifact", "created"),
+    **{
+        f"ai.decision_support.{decision}": (
+            "tenant",
+            "clinic-os-web",
+            "ai.decision_support",
+            decision,
+        )
+        for decision in ("accepted", "modified", "rejected")
+    },
     "ai.invocation.reserved": (
         "tenant",
         "clinic-os-worker",

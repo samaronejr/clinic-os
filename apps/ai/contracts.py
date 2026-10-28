@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Literal
@@ -77,6 +78,19 @@ class ProviderUnavailableError(RuntimeError):
 
 class ProviderTimeoutError(ProviderUnavailableError):
     """The provider exceeded its bounded request deadline."""
+
+
+def request_schema(content: str) -> str | None:
+    """Select only a structural root schema; generic inputs may be plain text."""
+    try:
+        data: object = json.loads(content)
+    except (json.JSONDecodeError, RecursionError):
+        return None
+    if isinstance(data, dict):
+        schema = data.get("schema")
+        if isinstance(schema, str):
+            return schema
+    return None
 
 
 @dataclass(frozen=True, slots=True)

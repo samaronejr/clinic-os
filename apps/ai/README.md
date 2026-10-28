@@ -1,5 +1,47 @@
 # Governed synthetic AI gateway
 
+## Optional decision-support panel (todo 46)
+
+The encounter panel is off by default. Organization enablement uses the existing
+`decision_support` AI policy and budgets. Each clinician must opt in for each
+request; the checkbox resets and creates no persistent preference or session
+mutation. Missing or refused patient AI-use disclosure also blocks the panel.
+
+Three current provider-registry records must carry the indicated `record_ref`,
+a same-capability owner approval with nonempty evidence, and state
+`production_authorized` or `activated`:
+
+| Capability key | Required record |
+| --- | --- |
+| `decision_support_safety` | EG-3 |
+| `decision_support_regulatory` | EG-4 |
+| `decision_support_references` | EG-13 |
+
+The same gates are checked at direct artifact access, admission, dispatch and
+display. Research/sandbox state, revocation, missing evidence, unavailable catalog
+or disabled policy renders unavailable. There is no gate-bypass setting, new
+Celery task or direct runtime grant. Synthetic owner fixtures in disposable test
+databases simulate these records; they do not satisfy an external gate.
+
+The versioned catalog in `fixtures/reference-catalog-v1.json` contains only
+self-authored synthetic CC0 evidence-review content, not a clinical knowledge
+base. Its population and limitations are displayed alongside source and date.
+The model may select only two closed review considerations with exact chart and
+catalog references. Patient facts, reference statements and model hypotheses
+remain separate. Free-form diagnoses, prognosis, prescriptions, dosing arithmetic
+and patient-facing text have no representable output field. An invented citation
+drops the entire response before storage and increments the existing invocation
+`invalid_output` failure count. Source permissions and versions are resolved again
+for each display; revoked facts and their dependent considerations disappear.
+
+Inputs and outputs are encrypted encounter/session-bound artifacts with the
+input's original one-day deadline. `accepted`, `modified` and `rejected` record
+AI-use provenance against the exact invocation; none changes a clinical record,
+creates a prescription, runs an agent tool, sends a message or affects care.
+Modification is a clinician's explicit choice to edit in the manual clinical
+record, not an automatic rewrite of the immutable model artifact. Refusals roll
+back their input, chart-read audit entries and publication callbacks.
+
 This is the binding contract for todo 38. All inference is offline simulation.
 No model configuration, organization opt-in, command, or test satisfies an
 external gate. Real adapters remain `real_enabled=False`. Live, sandbox, paid,

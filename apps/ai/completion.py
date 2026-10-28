@@ -105,7 +105,7 @@ def finish_success(
         retention_class="review_draft",
         expires_at=(
             source.expires_at
-            if invocation.purpose == "brief"
+            if invocation.purpose in {"brief", "decision_support"}
             else timezone.now() + timedelta(days=7)
         ),
     )

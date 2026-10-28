@@ -10,7 +10,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -37,6 +37,7 @@ from renewal.browser.engines import (
     zoom_200,
     zoom_screenshot,
 )
+from renewal.browser.support_managers import seed_ai_admin, seed_settings_manager
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_primitives import (
     CYAN,
@@ -48,7 +49,7 @@ from renewal.browser.test_primitives import (
     TABBABLE_JS,
     _px,
 )
-from renewal.browser.test_retention import post_action, seed_manager, sign_in_manager
+from renewal.browser.test_retention import post_action, sign_in_manager
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -282,48 +283,6 @@ def publish_brand(page: Page, width: int) -> int:
         "e => e.complete && e.naturalWidth > 0"
     )
     return version + 1
-
-
-def seed_settings_manager(staff: dict[str, str]) -> dict[str, str]:
-    manager = seed_manager(staff)
-    with psycopg.connect(staff["dsn"]) as conn:
-        conn.execute(
-            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.identity_userclinicrole "
-            "(id,user_id,organization_id,clinic_id,role,workflow_bundle_version) "
-            "VALUES (%s,%s,%s,%s,'clinic_admin',1)",
-            [str(uuid4()), manager["id"], staff["organization"], staff["clinic_b"]],
-        )
-    return manager
-
-
-def seed_ai_admin(staff: dict[str, str], theme: str) -> dict[str, str]:
-    """Seed an organization admin of both clinics who reads in ``theme``."""
-    manager = seed_settings_manager(staff)
-    with psycopg.connect(staff["dsn"]) as conn:
-        conn.execute(
-            "SELECT set_config('app.current_tenant',%s,true)",
-            [staff["organization"]],
-        )
-        for clinic in (staff["clinic_a"], staff["clinic_b"]):
-            conn.execute(
-                "INSERT INTO clinic_app.identity_userclinicrole "
-                "(id,user_id,organization_id,clinic_id,role,workflow_bundle_version) "
-                "VALUES (%s,%s,%s,%s,'org_admin',1)",
-                [str(uuid4()), manager["id"], staff["organization"], clinic],
-            )
-        conn.execute("SET ROLE clinic_app")
-        conn.execute(
-            "SELECT set_config('app.current_user_id',%s,true)", [manager["id"]]
-        )
-        conn.execute(
-            "INSERT INTO clinic_app.identity_userpreference "
-            "(user_id,theme,density,updated_at) VALUES (%s,%s,'comfortable',now())",
-            [manager["id"], theme],
-        )
-    return manager
 
 
 @pytest.mark.parametrize("width", [1280, 768, 375])

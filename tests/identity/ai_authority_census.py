@@ -20,11 +20,13 @@ from ai import (
     test_brief,
     test_cancellation,
     test_controls,
+    test_decision_support,
     test_gateway,
     test_posture,
 )
 from ai.agent_support import agent_world
 from ai.brief_support import seeded
+from ai.decision_support_helpers import enable, world_for
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -162,6 +164,28 @@ def exercise_ai_authority(
             partial(
                 test_brief.test_native_and_htmx_drawer_generate_and_recheck,
                 chart_subject,
+                enhanced=False,
+            ),
+        )
+    for decision_oracle in (
+        test_decision_support.test_fake_model_has_separate_facts_references_hypotheses_and_exact_licensed_sources,
+        test_decision_support.test_direct_gateway_artifacts_cannot_bypass_gate_revocation,
+    ):
+        with patch.context() as local:
+            decision_subject = world_for(graph(), local)
+            enable(decision_subject)
+            proofs.run(
+                f"Decision support current authority:{decision_oracle.__name__}",
+                partial(decision_oracle, decision_subject),
+            )
+    with patch.context() as local:
+        decision_subject = world_for(graph(), local)
+        enable(decision_subject)
+        proofs.run(
+            "Decision support native per-use opt-in and session-bound display",
+            partial(
+                test_decision_support.test_native_and_htmx_panel_require_session_bound_opt_in,
+                decision_subject,
                 enhanced=False,
             ),
         )

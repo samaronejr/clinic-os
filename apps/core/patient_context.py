@@ -50,6 +50,7 @@ DEMOGRAPHICS_READ: Final = "demographics.read"
 PATIENT_BOUND_VIEWS: Final = frozenset(
     {
         "ai:chart-assistant",
+        "ai:decision-support",
         "ehr:encounter",
         "ehr:patient-workspace",
         "ehr:history",

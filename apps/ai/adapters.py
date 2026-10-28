@@ -18,7 +18,10 @@ from apps.ai.contracts import (
     ProviderResult,
     ProviderUnavailableError,
     Usage,
+    request_schema,
 )
+from apps.ai.decision_contracts import SCHEMA as DECISION_SCHEMA
+from apps.ai.decision_contracts import synthetic_decision_reply
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -90,10 +93,10 @@ class SyntheticProvider(AdapterBase):
         """Return a fixed review-only draft without echoing source content."""
         self.check_boundary(request)
         content = "Synthetic draft. Human review required."
-        if (
-            request.content.startswith("{")
-            and f'"schema": "{SCHEMA}"' in request.content
-        ):
+        schema = request_schema(request.content)
+        if schema == DECISION_SCHEMA:
+            content = synthetic_decision_reply(request.content)
+        elif schema == SCHEMA:
             content = synthetic_reply(request.content)
         return ProviderResult(
             content,

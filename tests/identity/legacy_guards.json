@@ -275,6 +275,64 @@
       ]
     },
     {
+      "symbol": "apps.ai.decision_policy.authorize_decision",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.ai.decision_policy.authorize_decision#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.decision_policy.authorized_catalog",
+      "signals": [
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.ai.decision_policy.authorized_catalog#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.decision_support.display_decision_support",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.ai.decision_support.display_decision_support#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.decision_support.request_decision_support",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.ai.decision_support.request_decision_support#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.decision_views.decision_support",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.ai.decision_views.decision_support#cut1"
+      ]
+    },
+    {
       "symbol": "apps.ai.execution_tasks.dispatch_approved",
       "signals": [
         "denial"
@@ -7053,6 +7111,16 @@
     "apps.ai.context.recheck_context#cut1",
     "apps.ai.controls.current_policy#cut1",
     "apps.ai.controls.set_organization_policy#cut1",
+    "apps.ai.decision_policy.authorize_decision#cut1",
+    "apps.ai.decision_policy.authorize_decision#observed",
+    "apps.ai.decision_policy.authorized_catalog#cut1",
+    "apps.ai.decision_policy.authorized_catalog#observed",
+    "apps.ai.decision_support.display_decision_support#cut1",
+    "apps.ai.decision_support.display_decision_support#observed",
+    "apps.ai.decision_support.request_decision_support#cut1",
+    "apps.ai.decision_support.request_decision_support#observed",
+    "apps.ai.decision_views.decision_support#cut1",
+    "apps.ai.decision_views.decision_support#observed",
     "apps.ai.execution_tasks.dispatch_approved#cut1",
     "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
     "apps.ai.outbox.GatewayActionAdapter.send#cut1",

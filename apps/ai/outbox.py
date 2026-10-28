@@ -22,7 +22,9 @@ from apps.ai.contracts import (
     Purpose,
     Reason,
     Usage,
+    request_schema,
 )
+from apps.ai.decision_contracts import parse_decision_request
 from apps.ai.models import AICircuit, AIInvocation
 from apps.ai.output_validation import call_provider, parse_method
 from apps.ai.policy import check_configuration, enabled_policy
@@ -103,9 +105,12 @@ def eligible(scope: OperationScope) -> bool:
         )
         if (
             invocation.purpose == Purpose.BRIEF
-            and f'"schema": "{SCHEMA}"' in source.content
+            and request_schema(source.content) == SCHEMA
         ):
             recheck_context(clinic_id=scope.clinic_id, content=source.content)
+        if invocation.purpose == Purpose.DECISION_SUPPORT:
+            request = parse_decision_request(source.content)
+            recheck_context(clinic_id=scope.clinic_id, content=request.chart.encode())
     except GatewayRefusedError as error:
         finish_failure(invocation, reason=error.reason)
         return False

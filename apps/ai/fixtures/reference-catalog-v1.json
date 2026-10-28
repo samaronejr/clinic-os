@@ -1,0 +1,15 @@
+{
+  "schema": "synthetic-reference-catalog-v1",
+  "entries": [
+    {
+      "key": "synthetic-evidence-review",
+      "version": 1,
+      "source": "Clinic OS - referencia sintetica de revisao",
+      "published_on": "2026-10-28",
+      "population": "Somente cenarios sinteticos; nenhuma populacao clinica validada.",
+      "statement": "Comparar a informacao registrada com a fonte e revisar sua aplicabilidade.",
+      "limitations": "Conteudo sintetico sem recomendacao diagnostica ou terapeutica. Nao validado para uso clinico.",
+      "license_ref": "CC0-1.0:clinic-os-synthetic-v1"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ from apps.ai.contracts import (
     Method,
     Purpose,
 )
+from apps.ai.decision_policy import authorize_decision
 from apps.ai.models import AIArtifact
 from apps.ai.policy import enabled_policy
 from apps.audit.services import record_phase1_event
@@ -74,6 +75,12 @@ def create_input(
         or (purpose is Purpose.EXTRACTION and method != "extract")
     ):
         raise GatewayInputError
+    if purpose is Purpose.DECISION_SUPPORT:
+        if method != "complete":
+            raise GatewayInputError
+        authorize_decision(
+            clinic_id=clinic_id, content=content, enrollment_id=patient_enrollment_id
+        )
     clinic = Clinic.objects.get(pk=clinic_id)
     artifact = AIArtifact.objects.create(
         organization_id=clinic.organization_id,
@@ -110,6 +117,12 @@ def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtif
         purpose=purpose,
         patient_enrollment_id=artifact.patient_enrollment_id,
     )
+    if purpose is Purpose.DECISION_SUPPORT:
+        authorize_decision(
+            clinic_id=clinic_id,
+            content=artifact.content,
+            enrollment_id=artifact.patient_enrollment_id,
+        )
     return artifact
 
 
@@ -129,5 +142,19 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
         purpose=Purpose(artifact.purpose),
         patient_enrollment_id=artifact.patient_enrollment_id,
     )
+    if artifact.purpose == Purpose.DECISION_SUPPORT.value:
+        invocation = artifact.invocation
+        source = (
+            artifact
+            if artifact.kind == "input"
+            else (invocation.inputs_ref if invocation is not None else None)
+        )
+        if source is None:
+            raise GatewayAccessDeniedError
+        authorize_decision(
+            clinic_id=clinic_id,
+            content=source.content,
+            enrollment_id=artifact.patient_enrollment_id,
+        )
     content: str = artifact.content
     return content
