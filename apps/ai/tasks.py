@@ -44,7 +44,11 @@ def _queue(scope: OperationScope) -> str:
             .values_list("purpose", flat=True)
             .first()
         )
-    return "ai-batch" if purpose == Purpose.ANALYST.value else "ai-interactive"
+    return (
+        "ai-batch"
+        if purpose in {Purpose.ANALYST.value, Purpose.SCRIBE_DRAFT.value}
+        else "ai-interactive"
+    )
 
 
 def dispatch(scope: OperationScope) -> None:

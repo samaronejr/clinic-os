@@ -164,6 +164,14 @@ ACTOR_PROTOCOL_ORACLES = {
     "clinic_app.scribe_assigned(uuid)": (
         "scribe.test_actor_readers.test_native_capture_authority_refuses_inactive_actor",
     ),
+    "clinic_app.scribe_note_author(uuid)": (
+        "scribe.test_draft_authority."
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ),
+    "clinic_app.scribe_note_visible(uuid)": (
+        "scribe.test_draft_authority."
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ),
     "clinic_app.scribe_guard()": (
         "scribe.test_actor_readers.test_native_capture_authority_refuses_inactive_actor",
         "scribe.test_refusals.test_role_loss_refuses_every_action_without_session_or_domain_mutation",
@@ -202,6 +210,8 @@ SQL_PROTOCOL_ORACLES = (
             "clinic_app.agent_snapshot(uuid,text)",
             "clinic_app.has_permission(text,uuid,uuid)",
             "clinic_app.scribe_assigned(uuid)",
+            "clinic_app.scribe_note_author(uuid)",
+            "clinic_app.scribe_note_visible(uuid)",
             "clinic_app.scribe_guard()",
             # A sealed staff-role oracle already classifies this SQL guard;
             # the actor protocol above adds independent inactive-caller proof.

@@ -25,6 +25,7 @@ from identity.nonstaff_differential import (
     assert_behavioral_classifications,
 )
 from identity.nonstaff_document_probes import document_probes
+from identity.nonstaff_draft_probes import draft_probes
 from identity.nonstaff_ehr_probes import ehr_probes
 from identity.nonstaff_extraction_probes import extraction_probes
 from identity.nonstaff_infrastructure_probes import (
@@ -86,6 +87,7 @@ def run_nonstaff_census(
             )
         probes: dict[str, list[DifferentialProbe]] = {}
         for probe in [
+            *draft_probes(data, graph),
             *patient_probes(data),
             *infrastructure_probes(data, patch),
             *metrics_probes(data, patch),

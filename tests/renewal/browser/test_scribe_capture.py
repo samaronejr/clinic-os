@@ -1,4 +1,4 @@
-"""Real MediaRecorder and private HTTP ingest; no recording-video dependency in CI."""
+"""Real capture and source-linked review, including the local review QA video."""
 
 from __future__ import annotations
 
@@ -492,6 +492,47 @@ def test_declined_microphone_keeps_manual_clinical_save(
     if supported(page):
         assert inspect_capture(page, availability_staff)["chunks"] == 0
     save_manual_note(page)
+
+
+@pytest.mark.parametrize("journey", ["happy", "late", "native", "foreign"])
+def test_encounter_ai_review(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    journey: str,
+) -> None:
+    """Run note review in the existing capture suite on all three engines."""
+    from renewal.browser.scribe_review_journeys import (  # noqa: PLC0415
+        foreign_review,
+        happy_review,
+        late_review,
+        native_review,
+    )
+
+    browser = renewal_page.context.browser
+    assert browser is not None
+    video = journey == "happy"
+    context = browser.new_context(
+        locale="pt-BR",
+        viewport={"width": 1280, "height": 1000},
+        record_video_dir=str(renewal_artifact_root / "review-video") if video else None,
+    )
+    page = context.new_page()
+    page.set_default_timeout(20_000)
+    try:
+        {
+            "happy": happy_review,
+            "late": late_review,
+            "native": native_review,
+            "foreign": foreign_review,
+        }[journey](page, renewal_base_url, renewal_artifact_root, availability_staff)
+    finally:
+        recording = page.video
+        context.close()
+        if video:
+            assert recording is not None
+            recording.save_as(str(renewal_artifact_root / "review.webm"))
 
 
 def test_suspended_meter_does_not_block_capture_or_manual_care(

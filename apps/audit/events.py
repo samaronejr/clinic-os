@@ -262,6 +262,21 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
             "tenant", "clinic-os-worker", "scribe.transcription", "queued"
         ),
         **{
+            f"scribe.draft.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker" if state == "generated" else "clinic-os-web",
+                "scribe.ai_draft",
+                state,
+            )
+            for state in ("requested", "generated")
+        },
+        **{
+            f"scribe.suggestion.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "scribe.review_decision", state
+            )
+            for state in ("accepted", "modified", "rejected")
+        },
+        **{
             f"scribe.transcript.{mutation}": Phase1AuditEventDefinition(
                 "tenant",
                 "clinic-os-worker" if mutation == "recognized" else "clinic-os-web",

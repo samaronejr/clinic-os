@@ -74,6 +74,10 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "scribe_chunktranscription",
         "scribe_transcriptversion",
         "scribe_transcriptsegment",
+        "scribe_aidraft",
+        "scribe_draftsectionsuggestion",
+        "scribe_draftactionproposal",
+        "scribe_reviewdecision",
         # Exact requester-only ciphertext and ledger policies: tests/ai/test_posture.py.
         "ai_aiartifact",
         "ai_aiinvocation",

@@ -7,8 +7,28 @@ from typing import ClassVar
 
 from django.db import models
 
+from apps.scribe.draft_models import (
+    AIDraft,
+    DraftActionProposal,
+    DraftSectionSuggestion,
+    ReviewDecision,
+)
 from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
+
+__all__ = (
+    "AIDraft",
+    "AudioChunk",
+    "CaptureEpoch",
+    "ChunkTranscription",
+    "DraftActionProposal",
+    "DraftSectionSuggestion",
+    "RecordingCommand",
+    "RecordingSession",
+    "ReviewDecision",
+    "TranscriptSegment",
+    "TranscriptVersion",
+)
 
 
 class RecordingSession(TenantScopedModel):

@@ -7,6 +7,168 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Clinician AI review"
+msgstr "Revisão clínica das sugestões de IA"
+
+msgid "Compare the sources, your note and each AI suggestion. Nothing is applied or finalized automatically."
+msgstr "Compare as fontes, sua anotação e cada sugestão de IA. Nada é aplicado ou finalizado automaticamente."
+
+msgid "Note review is unavailable for this encounter."
+msgstr "A revisão da anotação está indisponível para este atendimento."
+
+msgid "Review command was not accepted. Reopen the saved note and try again."
+msgstr "A ação de revisão não foi aceita. Reabra a anotação salva e tente novamente."
+
+msgid "Your submitted note - not applied"
+msgstr "Sua anotação enviada — não aplicada"
+
+msgid "Offline. Keep this page open; the text is not saved in this browser. Reconnect before submitting."
+msgstr "Sem conexão. Mantenha esta página aberta; o texto não é salvo neste navegador. Reconecte antes de enviar."
+
+msgid "This restored page is unconfirmed. Refresh the review before applying a suggestion."
+msgstr "Esta página restaurada não foi confirmada. Atualize a revisão antes de aplicar uma sugestão."
+
+msgid "Draft generation queued. Continue manually while waiting; refresh to see the result."
+msgstr "Geração de sugestões na fila. Continue manualmente enquanto aguarda; atualize para ver o resultado."
+
+msgid "Your review was recorded. The note is still a draft; finalization is a separate action."
+msgstr "Sua revisão foi registrada. A anotação continua como rascunho; a finalização é uma ação separada."
+
+msgid "AI drafting is unavailable. It requires a final transcript, separate current AI consent, informed disclosure and an enabled organization policy. Manual notes remain available."
+msgstr "As sugestões de IA estão indisponíveis. São necessários uma transcrição final, consentimento vigente específico para IA, informação ao paciente e habilitação pela organização. A anotação manual continua disponível."
+
+msgid "Missing audio was not reconstructed."
+msgstr "O áudio ausente não foi reconstruído."
+
+msgid "Review sections"
+msgstr "Áreas da revisão"
+
+msgid "Sources"
+msgstr "Fontes"
+
+msgid "Your note"
+msgstr "Sua anotação"
+
+msgid "Suggestions"
+msgstr "Sugestões"
+
+msgid "Refresh review"
+msgstr "Atualizar revisão"
+
+msgid "Generate source-linked suggestions"
+msgstr "Gerar sugestões vinculadas às fontes"
+
+msgid "Reported, observed and hypothesis are distinct. Confidence is not a safety guarantee. Uncertain source text never confirms a dose."
+msgstr "Relato, observação e hipótese são distintos. Confiança não é garantia de segurança. Um trecho incerto nunca confirma uma dose."
+
+msgid "Hypothesis - not a confirmed finding"
+msgstr "Hipótese — não é um achado confirmado"
+
+msgid "No source text is available. Continue the note manually."
+msgstr "Nenhum texto de fonte está disponível. Continue a anotação manualmente."
+
+msgid "Save manual note"
+msgstr "Salvar anotação manual"
+
+msgid "Only a server acknowledgement confirms a save. Accepting a suggestion saves through your own note command with revision checking."
+msgstr "Somente a confirmação do servidor garante que a anotação foi salva. Ao aceitar uma sugestão, você salva a anotação com verificação da revisão."
+
+msgid "Within a suggestion, Alt+Shift+A accepts and Alt+Shift+R rejects. Conflicts require an explicit edited replacement."
+msgstr "Dentro de uma sugestão, Alt+Shift+A aceita e Alt+Shift+R rejeita. Em caso de conflito, edite explicitamente o texto de substituição."
+
+msgid "The original source changed or is unavailable."
+msgstr "A fonte original mudou ou está indisponível."
+
+msgid "Compare original with draft"
+msgstr "Comparar original com sugestão"
+
+msgid "Original at generation"
+msgstr "Original no momento da geração"
+
+msgid "AI suggestion"
+msgstr "Sugestão de IA"
+
+msgid "Accepted by clinician"
+msgstr "Aceita pelo médico"
+
+msgid "Modified by clinician"
+msgstr "Modificada pelo médico"
+
+msgid "Rejected by clinician"
+msgstr "Rejeitada pelo médico"
+
+msgid "Stale suggestion. Sources or generation changed; regenerate before applying."
+msgstr "Sugestão desatualizada. As fontes ou a geração mudaram; gere novamente antes de aplicar."
+
+msgid "Regenerate section"
+msgstr "Gerar novamente esta seção"
+
+msgid "Reject suggestion"
+msgstr "Rejeitar sugestão"
+
+msgid "Manual edits are preserved. Compare both versions and type the replacement explicitly; accepting cannot overwrite a touched section, including edit-then-revert."
+msgstr "As edições manuais são preservadas. Compare as duas versões e digite explicitamente a substituição; aceitar não pode sobrescrever uma seção editada, mesmo após desfazer a edição."
+
+msgid "Accept suggestion"
+msgstr "Aceitar sugestão"
+
+msgid "Your edited replacement"
+msgstr "Sua substituição editada"
+
+msgid "Apply my edited replacement"
+msgstr "Aplicar minha substituição editada"
+
+msgid "No supported suggestions are available. Nothing has been added to the note."
+msgstr "Não há sugestões fundamentadas disponíveis. Nada foi acrescentado à anotação."
+
+msgid "Proposed orders and tasks - separate from the note"
+msgstr "Propostas de pedidos e tarefas — separadas da anotação"
+
+msgid "These are source-linked A0 proposals, not orders, tasks or approvals. Review them in their domain workspace. Note review cannot execute an agent tool or approve its payload."
+msgstr "Estas são propostas A0 vinculadas às fontes, não pedidos, tarefas ou aprovações. Revise-as na área correspondente. A revisão da anotação não executa ferramentas de agentes nem aprova seu conteúdo."
+
+msgid "Order proposal"
+msgstr "Proposta de pedido"
+
+msgid "Task proposal"
+msgstr "Proposta de tarefa"
+
+msgid "No separate proposals were generated."
+msgstr "Nenhuma proposta separada foi gerada."
+
+msgid "Open governed proposal queue"
+msgstr "Abrir fila de propostas com aprovação"
+
+msgid "AI use in this encounter"
+msgstr "Uso de IA neste atendimento"
+
+msgid "AI origin remains visible after clinician review and local finalization. It does not imply automated approval or a digital signature."
+msgstr "A origem em IA permanece visível após a revisão médica e a finalização local. Isso não significa aprovação automática nem assinatura digital."
+
+msgid "Model configuration"
+msgstr "Configuração do modelo"
+
+#, python-format
+msgid "Source %(index)s"
+msgstr "Fonte %(index)s"
+
+#, python-format
+msgid "Based on note revision %(revision)s · generation %(generation)s."
+msgstr "Baseada na revisão %(revision)s da anotação · geração %(generation)s."
+
+msgid "Current note compared with AI suggestion"
+msgstr "Anotação atual comparada com a sugestão de IA"
+
+#, python-format
+msgid "Scribe drafting · model configuration version %(version)s · note revision %(revision)s."
+msgstr "Sugestão de anotação · configuração do modelo versão %(version)s · revisão %(revision)s da anotação."
+
+msgid "Review source-linked AI suggestions"
+msgstr "Revisar sugestões de IA vinculadas às fontes"
+
+msgid "Nothing was applied. The note, sources or generation changed. Reopen the review and compare; your submitted text is preserved below."
+msgstr "Nada foi aplicado. A anotação, as fontes ou a geração mudaram. Reabra a revisão e compare; seu texto enviado está preservado abaixo."
+
 msgid "Consultation transcript"
 msgstr "Transcrição da consulta"
 

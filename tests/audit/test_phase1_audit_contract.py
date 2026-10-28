@@ -431,6 +431,24 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         "queued",
     ),
     **{
+        f"scribe.draft.{state}": (
+            "tenant",
+            "clinic-os-worker" if state == "generated" else "clinic-os-web",
+            "scribe.ai_draft",
+            state,
+        )
+        for state in ("requested", "generated")
+    },
+    **{
+        f"scribe.suggestion.{state}": (
+            "tenant",
+            "clinic-os-web",
+            "scribe.review_decision",
+            state,
+        )
+        for state in ("accepted", "modified", "rejected")
+    },
+    **{
         f"scribe.transcript.{mutation}": (
             "tenant",
             "clinic-os-worker" if mutation == "recognized" else "clinic-os-web",

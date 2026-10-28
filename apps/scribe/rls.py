@@ -12,6 +12,10 @@ CUSTOM_RLS_TABLES: Final = frozenset(
         "scribe_chunktranscription",
         "scribe_transcriptversion",
         "scribe_transcriptsegment",
+        "scribe_aidraft",
+        "scribe_draftsectionsuggestion",
+        "scribe_draftactionproposal",
+        "scribe_reviewdecision",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()

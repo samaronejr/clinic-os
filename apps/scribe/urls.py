@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from apps.scribe import transcript_views, views
+from apps.scribe import review_views, transcript_views, views
 
 app_name = "scribe"
 urlpatterns = [
@@ -16,5 +16,10 @@ urlpatterns = [
         "clinics/<uuid:clinic_id>/scribe/transcript/",
         transcript_views.transcript_review,
         name="transcript",
+    ),
+    path(
+        "clinics/<uuid:clinic_id>/scribe/review/",
+        review_views.note_review,
+        name="review",
     ),
 ]

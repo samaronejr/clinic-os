@@ -6230,6 +6230,76 @@
       ]
     },
     {
+      "symbol": "apps.scribe.draft_sources.drafting_consent",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.consent.services.consent_for_future_use"
+      ],
+      "reason": "Todo 42 rechecks current domain authority before using or applying source-linked note suggestions; the named reachable boundary has an executable real-role oracle.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.draft_sources.drafting_consent#observed"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.draft_sources.note_frame",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "observe": true,
+      "probes": [
+        "apps.scribe.draft_sources.note_frame#observed"
+      ],
+      "reason": "The real nonstaff census reuses its existing clinical version and observes the note reader under the actual membership-free actor; assigned and inactive controls run in the native domain tests."
+    },
+    {
+      "symbol": "apps.scribe.draft_sources.resolve_sources",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 42 rechecks current domain authority before using or applying source-linked note suggestions; the named reachable boundary has an executable real-role oracle.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.draft_sources.resolve_sources#observed"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.drafting.draft_for_input",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.drafting.draft_for_input#cut1",
+        "apps.scribe.drafting.draft_for_input#observed"
+      ],
+      "reason": "The executed scribe census reaches committed draft input materialization through the actual governed gateway and verifies clinician-owned application and retained provenance.",
+      "observe": true
+    },
+    {
+      "symbol": "apps.scribe.drafting.sources_for_draft",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.draft_sources.note_frame"
+      ],
+      "reason": "Todo 42 rechecks current domain authority before using or applying source-linked note suggestions; the named reachable boundary has an executable real-role oracle.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.drafting.sources_for_draft#observed"
+      ]
+    },
+    {
       "symbol": "apps.scribe.outbox.MediaActionAdapter.send",
       "signals": [
         "tenant_boundary"
@@ -6237,6 +6307,51 @@
       "kind": "direct",
       "probes": [
         "apps.scribe.outbox.MediaActionAdapter.send#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.review_views._command",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.draft_sources.note_frame"
+      ],
+      "reason": "Todo 42 rechecks current domain authority before using or applying source-linked note suggestions; the named reachable boundary has an executable real-role oracle.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.review_views._command#observed"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.review_views.note_review",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.draft_sources.note_frame"
+      ],
+      "reason": "Todo 42 rechecks current domain authority before using or applying source-linked note suggestions; the named reachable boundary has an executable real-role oracle.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.review_views.note_review#observed"
+      ]
+    },
+    {
+      "symbol": "apps.scribe.reviews.review_suggestion",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.draft_sources.note_frame"
+      ],
+      "reason": "Todo 42 rechecks current domain authority before using or applying source-linked note suggestions; the named reachable boundary has an executable real-role oracle.",
+      "observe": true,
+      "probes": [
+        "apps.scribe.reviews.review_suggestion#observed"
       ]
     },
     {
@@ -7609,7 +7724,16 @@
     "apps.scribe.authority.encounter_scope#cut1",
     "apps.scribe.authority.recording_scope#cut1",
     "apps.scribe.authority.token_scope#cut1",
+    "apps.scribe.draft_sources.drafting_consent#observed",
+    "apps.scribe.draft_sources.note_frame#observed",
+    "apps.scribe.draft_sources.resolve_sources#observed",
+    "apps.scribe.drafting.draft_for_input#cut1",
+    "apps.scribe.drafting.draft_for_input#observed",
+    "apps.scribe.drafting.sources_for_draft#observed",
     "apps.scribe.outbox.MediaActionAdapter.send#cut1",
+    "apps.scribe.review_views._command#observed",
+    "apps.scribe.review_views.note_review#observed",
+    "apps.scribe.reviews.review_suggestion#observed",
     "apps.scribe.storage.open_audio#cut1",
     "apps.scribe.storage.seal_audio#cut1",
     "apps.scribe.switches.bound_recordings#cut1",
@@ -8295,6 +8419,113 @@
     }
   ],
   "sql_guards": {
+    "clinic_app.scribe_citation_allowed": {
+      "kind": "domain_protocol",
+      "reason": "Todo 42 binds source-exact generations and immutable clinician decisions to current assigned-note authority; native valid, foreign-reference and mutation-refusal cases execute this protocol.",
+      "probes": [
+        "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+        "test_raw_citation_and_history_guards_reject_foreign_references"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_draft_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.scribe_draft_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_version uuid, requested_transcript uuid, reference jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_draft_guard": {
+      "kind": "domain_protocol",
+      "reason": "Todo 42 binds source-exact generations and immutable clinician decisions to current assigned-note authority; native valid, foreign-reference and mutation-refusal cases execute this protocol.",
+      "probes": [
+        "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+        "test_raw_citation_and_history_guards_reject_foreign_references",
+        "test_raw_review_guard_enforces_applied_text_by_decision_kind",
+        "test_exact_review_replay_is_read_only_and_changed_replay_is_refused"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_draft_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_note_author": {
+      "kind": "domain_protocol",
+      "reason": "Todo 42 binds source-exact generations and immutable clinician decisions to current assigned-note authority; native valid, foreign-reference and mutation-refusal cases execute this protocol.",
+      "probes": [
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_draft_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scribe_aidraft:draft_insert",
+          "clinic_app.scribe_aidraft:draft_read",
+          "clinic_app.scribe_draftactionproposal:draft_insert",
+          "clinic_app.scribe_draftactionproposal:draft_read",
+          "clinic_app.scribe_draftsectionsuggestion:draft_insert",
+          "clinic_app.scribe_draftsectionsuggestion:draft_read",
+          "clinic_app.scribe_reviewdecision:draft_insert"
+        ],
+        "resolvers": [
+          "clinic_app.scribe_citation_allowed",
+          "clinic_app.scribe_draft_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_version uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
+    "clinic_app.scribe_note_visible": {
+      "kind": "domain_protocol",
+      "reason": "Todo 42 binds source-exact generations and immutable clinician decisions to current assigned-note authority; native valid, foreign-reference and mutation-refusal cases execute this protocol.",
+      "probes": [
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority"
+      ],
+      "discovery": {
+        "migrations": [
+          "apps/scribe/migrations/_draft_sql.py"
+        ],
+        "policies": [
+          "clinic_app.scribe_reviewdecision:draft_read"
+        ],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested_version uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      }
+    },
     "clinic_app.__function_name__": {
       "discovery": {
         "migrations": [
@@ -10000,7 +10231,8 @@
           "clinic_app.ehr_timeline_visible",
           "clinic_app.retention_guard",
           "clinic_app.scribe_assigned",
-          "clinic_app.scribe_guard"
+          "clinic_app.scribe_guard",
+          "clinic_app.scribe_note_visible"
         ],
         "signatures": [
           {
@@ -10099,7 +10331,8 @@
           "clinic_app.ai_extraction_source_allowed",
           "clinic_app.ehr_history_care",
           "clinic_app.ehr_timeline_visible",
-          "clinic_app.prescription_draft_guard"
+          "clinic_app.prescription_draft_guard",
+          "clinic_app.scribe_note_visible"
         ],
         "signatures": [
           {
@@ -10261,7 +10494,9 @@
           "clinic_app.ehr_noteaccessgrant:note_grant_revoke",
           "clinic_app.ehr_restrictednote:note_restriction_insert"
         ],
-        "resolvers": [],
+        "resolvers": [
+          "clinic_app.scribe_note_author"
+        ],
         "signatures": [
           {
             "arguments": "requested_document uuid",
@@ -10362,7 +10597,10 @@
           "clinic_app.ehr_restrictednote:note_restriction_read"
         ],
         "resolvers": [
-          "clinic_app.ehr_timeline_visible"
+          "clinic_app.ehr_timeline_visible",
+          "clinic_app.scribe_citation_allowed",
+          "clinic_app.scribe_note_author",
+          "clinic_app.scribe_note_visible"
         ],
         "signatures": [
           {
@@ -10773,6 +11011,7 @@
           "clinic_app.scheduling_lifecycle_guard",
           "clinic_app.scheduling_service_practitioners",
           "clinic_app.scribe_assigned",
+          "clinic_app.scribe_citation_allowed",
           "clinic_app.scribe_guard",
           "clinic_app.teleconsult_clinician",
           "clinic_app.workflows_guard",
@@ -12336,7 +12575,8 @@
           "clinic_app.patient_alias_overview",
           "clinic_app.prescription_patient_documents",
           "clinic_app.retention_care",
-          "clinic_app.retention_patient_releases"
+          "clinic_app.retention_patient_releases",
+          "clinic_app.scribe_citation_allowed"
         ],
         "signatures": [
           {

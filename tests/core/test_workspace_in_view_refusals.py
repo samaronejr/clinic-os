@@ -271,6 +271,21 @@ def _probe_route(
                     ("enrollment_id", "encounter_id"), (False, True)
                 )
             )
+        if route.name == "scribe:review":
+            # The review form rejects generic bodies before note authorization.
+            # A valid body reaches the unchanged view's unknown-version refusal.
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        "action": "open",
+                        "encounter_id": known_encounter or str(uuid4()),
+                        "version_id": str(uuid4()),
+                    },
+                    htmx,
+                )
+                for htmx in (False, True)
+            )
         if route.name == "scribe:control":
             requests += tuple(
                 (

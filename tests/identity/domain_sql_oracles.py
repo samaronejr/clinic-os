@@ -69,6 +69,8 @@ from scheduling.test_resource_role_matrix import (
     test_effective_interval_is_actor_invariant,
 )
 from scribe import test_actor_readers as scribe_actor
+from scribe import test_draft_authority as scribe_draft_authority
+from scribe import test_draft_runtime as scribe_draft_runtime
 from scribe import test_ingest as scribe_ingest
 from scribe import test_refusals as scribe_refusals
 from scribe import test_room_capture as scribe_room
@@ -198,6 +200,22 @@ EHR_PROTOCOLS = {
     for name, cases in EHR_PROTOCOLS.items()
 }
 SCRIBE_PROTOCOL_ORACLES = {
+    "clinic_app.scribe_note_author": [
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ],
+    "clinic_app.scribe_note_visible": [
+        "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+    ],
+    "clinic_app.scribe_citation_allowed": [
+        "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+        "test_raw_citation_and_history_guards_reject_foreign_references",
+    ],
+    "clinic_app.scribe_draft_guard": [
+        "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+        "test_raw_citation_and_history_guards_reject_foreign_references",
+        "test_raw_review_guard_enforces_applied_text_by_decision_kind",
+        "test_exact_review_replay_is_read_only_and_changed_replay_is_refused",
+    ],
     "clinic_app.scribe_asr_allowed": [
         "test_governed_completion_review_and_final_are_retained_successors",
         "test_ai_revocation_refuses_an_already_queued_invocation",
@@ -391,6 +409,21 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
     for module, names in (
+        (
+            scribe_draft_authority,
+            (
+                "test_note_scope_and_sql_readers_keep_assigned_and_current_authority",
+                "test_raw_citation_and_history_guards_reject_foreign_references",
+                "test_raw_review_guard_enforces_applied_text_by_decision_kind",
+            ),
+        ),
+        (
+            scribe_draft_runtime,
+            (
+                "test_generation_and_three_clinician_decisions_never_finalize_automatically",
+                "test_exact_review_replay_is_read_only_and_changed_replay_is_refused",
+            ),
+        ),
         (
             test_agent_guards,
             (

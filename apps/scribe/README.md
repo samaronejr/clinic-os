@@ -2,14 +2,16 @@
 
 The capture slice records consented consultation audio. Todo 41 adds optional,
 separately consented synthetic transcription through the governed Model Gateway.
-Neither slice generates a clinical note or authorizes drafting.
+Todo 42 adds separately governed note suggestions and explicit clinician review.
+Neither capture nor transcription consent alone authorizes drafting.
 Manual clinical care does not require recording consent.
 
 ## Authority and state
 
 The public service surface is `issue_encounter_token`, `create_recording`,
 `control_recording`, `ingest_chunk`, `read_transcript`, `review_segment`, and
-`finalize_transcript`. Services receive explicit keyword-only
+`finalize_transcript`, `request_draft`, `read_review`, and `review_suggestion`.
+Services receive explicit keyword-only
 scope. The current database principal supplies authority, never a caller's
 patient, organization, or actor claim.
 
@@ -227,3 +229,63 @@ Vendor codec references, retrieved October 26, 2026:
 - AWS: https://docs.aws.amazon.com/transcribe/latest/APIReference/API_streaming_StartStreamTranscription.html
 - Azure: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-speech-recognition-results
 - Google: https://cloud.google.com/speech-to-text/v2/docs/reference/rest/v2/projects.locations.recognizers/recognize
+
+## Source-linked note review
+
+Only the current assigned clinician and draft author may request or apply a
+suggestion. Admission requires a final transcript, current separate AI consent,
+the encounter's informed disclosure, organization-purpose opt-in, global switch,
+approved model configuration, capability version and gateway budget. Manual care
+remains available when any AI prerequisite is missing.
+
+The reference-only `ai-batch` job materializes authorized transcript and chart
+sources only at the provider boundary. `AIDraft` retains the exact note revision,
+section edit epochs, encrypted base content, source references and configuration.
+Each section's generation is independently fenced. A newer request for one
+section invalidates only that section's older results. Changed transcript or
+chart dependencies make the old suggestions stale.
+
+The runnable synthetic adapter extracts exact cited source text. It does not
+invent an examination, diagnosis, negation or dose. Uncited assertions are
+dropped; unknown, foreign, duplicated or altered citations reject the entire
+result. Reviewed patient/caregiver speech is reported; ambiguous speech remains
+a hypothesis; only an explicitly observed chart observation is observed.
+Confidence is not rendered as a clinical safety score. More fluent generation
+requires its own evaluated contract rather than weakening this validator.
+
+Three-way comparison uses base B, model M, current clinician content C and the
+section edit epochs. M == C converges without changing C; M == B leaves C
+unchanged. Otherwise, a changed epoch or C != B is a conflict, including a
+deletion or edit followed by revert. Only an untouched section can take M.
+Acceptance always calls the clinician's own `record_clinical_note` with CAS.
+An explicit edited replacement is a clinician decision, not an automatic merge.
+Refused commands roll back every effect, including read audits; the HTTP boundary
+does not mutate the session. Refresh preserves posted unsaved content and refuses
+to silently rebase it onto another editor's revision.
+
+The native POST panel presents sources, note and suggestions in three desktop
+columns and stacks them on narrow screens. Each suggestion has citations,
+original/current comparison, accept/modify/reject, section regeneration and
+keyboard accept/reject. JavaScript adds shortcuts and honest offline/restored
+states, never persistence. The entire manual/review workflow also works without
+JavaScript. Orders and tasks are separate A0 proposals; note acceptance cannot
+approve or execute an agent payload. The existing governed proposal workspace
+retains its independent authority and approval boundary.
+
+`ReviewDecision` appends the clinician, action, exact result revision/digest and
+model capability/configuration snapshot. The database requires applied-text
+ciphertext of 1 through 262144 bytes for accepted/modified decisions and SQL NULL
+for rejected decisions (the decline operation). Applied text uses an encrypted
+JSON string, so explicit deletion retains `""` rather than losing its payload to
+SQL NULL. Rejection stores no applied text. Accepted and modified AI origin remains
+visible on the encounter after local finalization, under the clinical note's
+reader policy. Finalization and signing remain separate explicit workflows.
+The four new tables are FORCE-RLS, immutable, non-truncatable and included in the
+recovery manifest. `0005_note_drafts` is additive, non-atomic and irreversible
+because it introduces encrypted columns; rollback uses a verified restore.
+
+The planned `encounter-ai-review` journeys run inside the existing standard
+`scribe-capture` suite so the runner and its canonical ledger contract remain
+unchanged. They cover three-section review/finalization, late-result conflicts,
+native/offline handling and foreign-citation refusal on all three engines.
+Synthetic evidence does not qualify external providers or satisfy a live gate.

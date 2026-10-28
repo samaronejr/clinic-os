@@ -6,7 +6,6 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from apps.ai import tasks
 from apps.ai.artifacts import create_input
 from apps.ai.contracts import Budget, Price, Purpose, Usage
 from apps.ai.controls import set_organization_policy
@@ -93,7 +92,7 @@ def seed(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> GatewayWorld:
     def publish(*, kwargs: dict[str, str], queue: str, countdown: int = 0) -> None:
         publications.append((kwargs, queue, countdown))
 
-    monkeypatch.setattr(tasks.execute, "apply_async", publish)
+    monkeypatch.setattr("apps.ai.tasks.execute.apply_async", publish)
     administrator = User.objects.create(username=f"synthetic-ai-owner-{uuid4().hex}")
     with owner_context(graph.organization_a):
         for clinic in (graph.clinic_a, graph.clinic_b):

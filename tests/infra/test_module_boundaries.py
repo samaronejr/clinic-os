@@ -168,6 +168,21 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
             ["clinic_id", "session_id", "expected_revision", "review"],
             {},
         ),
+        (
+            scribe_services.request_draft,
+            ["clinic_id", "version_id", "transcript_id", "request_key", "request"],
+            {},
+        ),
+        (scribe_services.read_review, ["clinic_id", "version_id"], {}),
+        (
+            scribe_services.review_suggestion,
+            [
+                "clinic_id",
+                "version_id",
+                "review",
+            ],
+            {},
+        ),
         (invoke, ["clinic_id", "purpose", "principal", "inputs_ref", "budget"], {}),
         (
             create_input,

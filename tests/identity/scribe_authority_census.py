@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Protocol
 
+import pytest
 from apps.core.patient_context import ContextSwitch
 from apps.scribe.contracts import LIVE_STATES
 from apps.scribe.models import RecordingSession
@@ -14,6 +15,10 @@ from django.test import override_settings
 
 from patient_service_support import runtime_role
 from scribe import test_ingest, test_refusals, test_transcript_runtime
+from scribe.draft_support import seed_draft_world
+from scribe.test_draft_runtime import (
+    test_generation_and_three_clinician_decisions_never_finalize_automatically,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -59,6 +64,15 @@ def exercise_scribe_authority(
         SCRIBE_SYNTHETIC_CAPTURE=True,
         SCRIBE_MEDIA_ROOT=secret_root.parent / "scribe-census-media",
     ):
+        with pytest.MonkeyPatch.context() as patch:
+            subject = seed_draft_world(graph(), patch)
+            proofs.run(
+                "Scribe domain-owned draft materialization and clinician provenance",
+                partial(
+                    test_generation_and_three_clinician_decisions_never_finalize_automatically,
+                    subject,
+                ),
+            )
         proofs.run(
             "Scribe encrypted delivery and assigned-reader scope",
             partial(

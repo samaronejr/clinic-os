@@ -40,6 +40,10 @@ RECEPTION_TABLES = (
 TRUNCATE_GUARDS = (
     ("ai_extractionjob", "extraction_no_truncate"),
     ("ai_extractioncandidate", "extraction_no_truncate"),
+    ("scribe_aidraft", "draft_no_truncate"),
+    ("scribe_draftsectionsuggestion", "draft_no_truncate"),
+    ("scribe_draftactionproposal", "draft_no_truncate"),
+    ("scribe_reviewdecision", "draft_no_truncate"),
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
