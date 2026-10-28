@@ -148,6 +148,19 @@ ACTOR_PROTOCOL_ORACLES = {
     signature: tuple(f"identity.test_lifecycle_sql_readers.{name}" for name in names)
     for signature, names in _ACCOUNT_ORACLES.items()
 } | {
+    "clinic_app.agent_record_guard()": (
+        "ai.test_agent_guards.test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "ai.test_agent_guards.test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "ai.test_agent_execution.test_revoked_approver_blocks_after_approval",
+        "ai.test_agent_execution.test_superseded_source_publication_blocks_execution",
+        "ai.test_agent_guards.test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+    ),
+    "clinic_app.agent_snapshot(uuid,text)": (
+        "identity.test_sql_inactive_actor.test_sql_clause_refuses_inactive_actor",
+    ),
+    "clinic_app.has_permission(text,uuid,uuid)": (
+        "identity.test_sql_inactive_actor.test_sql_clause_refuses_inactive_actor",
+    ),
     "clinic_app.reception_readiness(uuid,uuid)": (
         "identity.test_reception_readiness_actor.test_readiness_sql_refuses_inactive_existing_actor",
     ),
@@ -176,8 +189,11 @@ SQL_PROTOCOL_ORACLES = (
         not in {
             "clinic_app.identity_offboarding_clinics(uuid,uuid)",
             "clinic_app.identity_reset_guard()",
-            # A sealed staff-role oracle already classifies this SQL guard;
-            # the actor protocol above adds independent inactive-caller proof.
+            # Sealed staff/domain oracles already classify these SQL guards;
+            # actor protocols add independent inactive-caller proof.
+            "clinic_app.agent_record_guard()",
+            "clinic_app.agent_snapshot(uuid,text)",
+            "clinic_app.has_permission(text,uuid,uuid)",
             "clinic_app.reception_readiness(uuid,uuid)",
         }
     }

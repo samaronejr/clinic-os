@@ -206,6 +206,43 @@ for setting, value in (("app.current_tenant", tenant), ("app.current_user_id", u
     assert application_boundary(tmp_path) == {}
 
 
+@pytest.mark.parametrize(
+    ("first", "second", "reason"),
+    [
+        ('"SELECT 1"', '"SELECT 2"', None),
+        ('"PREPARE hidden AS SELECT now()"', '"SELECT 1"', "server-prepare"),
+        ('"SELECT 1"', '"EXECUTE hidden"', "dynamic-or-prepared-execute"),
+        ('"SELECT 1"', "query_text", "unresolved-statement"),
+        ("query_text", '"SELECT 1"', "unresolved-statement"),
+    ],
+)
+def test_conditional_sql_censuses_both_branches(
+    tmp_path: Path, first: str, second: str, reason: str | None
+) -> None:
+    (tmp_path / "conditional.py").write_text(
+        f"cursor.execute({first} if condition else {second})\n"
+    )
+    assert application_boundary(tmp_path) == (
+        {} if reason is None else {"conditional.py": [reason]}
+    )
+
+
+@pytest.mark.parametrize("phrase", ["execute shell", "EXECUTE hidden"])
+def test_membership_needles_are_data_but_executed_needles_remain_censused(
+    tmp_path: Path, phrase: str
+) -> None:
+    path = tmp_path / "needles.py"
+    path.write_text(
+        f"flagged = any(fragment in folded for fragment in ({phrase!r},))\n"
+    )
+    assert application_boundary(tmp_path) == {}
+    path.write_text(
+        "flagged = any(cursor.execute(fragment) or fragment in folded "
+        f"for fragment in ({phrase!r},))\n"
+    )
+    assert "unresolved-statement" in application_boundary(tmp_path)["needles.py"]
+
+
 @pytest.mark.parametrize("statement", ["SELECT 1", "PREPARE hidden AS SELECT now()"])
 def test_finite_queries_follow_nested_migration_factories(
     tmp_path: Path, statement: str

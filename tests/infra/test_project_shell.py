@@ -100,6 +100,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
     # beyond built-ins (registration order is not part of the contract)
     assert sorted(project_tasks) == [
         "apps.ai.tasks.execute",
+        "apps.ai.tasks.execute_agent",
         "apps.ehr.tasks.refresh_timeline",
         "apps.scheduling.tasks.expire_holds",
         "apps.workflows.tasks.escalate",

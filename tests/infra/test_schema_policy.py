@@ -68,6 +68,13 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         "ai_aiartifact",
         "ai_aiinvocation",
         "ai_aicircuit",
+        "ai_agentpolicyversion",
+        "ai_agentrun",
+        "ai_actionproposal",
+        "ai_approval",
+        "ai_actionexecution",
+        "ai_actionreceipt",
+        "ai_compensation",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

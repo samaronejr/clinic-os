@@ -6060,6 +6060,160 @@ msgstr "Registrando a ação sobre o resultado. Aguarde a confirmação."
 msgid "Your access changed. This result view is no longer available."
 msgstr "Seu acesso mudou. Esta visualização de resultados não está mais disponível."
 
+msgid "Enable this synthetic agent"
+msgstr "Habilitar este agente sintético"
+
+msgid "Maximum autonomy"
+msgstr "Autonomia máxima"
+
+msgid "Explain only"
+msgstr "Somente explicar"
+
+msgid "Prepare a review task"
+msgstr "Preparar tarefa para revisão"
+
+msgid "Bounded administrative execution"
+msgstr "Executar ações administrativas delimitadas"
+
+msgid "Specific approval for every effect"
+msgstr "Exigir aprovação específica para cada efeito"
+
+msgid "Allowed domain commands"
+msgstr "Comandos de domínio permitidos"
+
+msgid "Create an operational review checklist"
+msgstr "Criar lista de verificação para revisão operacional"
+
+msgid "Simulate one logistics reminder"
+msgstr "Simular um lembrete operacional"
+
+msgid "Owner-provisioned machine principal"
+msgstr "Identidade de máquina provisionada pelo responsável"
+
+msgid "Required for bounded or specifically approved execution. Never a staff user."
+msgstr "Obrigatória para execução delimitada ou com aprovação específica. Não informe um usuário da equipe."
+
+msgid "Daily action limit"
+msgstr "Limite diário de ações"
+
+msgid "Daily simulated cost limit (micro-BRL)"
+msgstr "Limite diário de custo simulado (micro-BRL)"
+
+msgid "Execution timeout (seconds)"
+msgstr "Prazo de execução (segundos)"
+
+msgid "After a known failure"
+msgstr "Após uma falha confirmada"
+
+msgid "Require manual follow-up"
+msgstr "Exigir acompanhamento manual"
+
+msgid "Simulate the approved cancellation"
+msgstr "Simular o cancelamento aprovado"
+
+msgid "No automatic compensation; require manual follow-up"
+msgstr "Sem compensação automática; exigir acompanhamento manual"
+
+msgid "Proposed"
+msgstr "Proposta"
+
+msgid "Awaiting approval"
+msgstr "Aguardando aprovação"
+
+msgid "Approved"
+msgstr "Aprovada"
+
+msgid "Rejected"
+msgstr "Rejeitada"
+
+msgid "Executing"
+msgstr "Em execução"
+
+msgid "Receipt recorded"
+msgstr "Comprovante registrado"
+
+msgid "Reconciliation required"
+msgstr "Conciliação necessária"
+
+msgctxt "agent proposal state"
+msgid "Reconciled"
+msgstr "Conciliada"
+
+msgid "Manual review required"
+msgstr "Revisão manual necessária"
+
+msgid "Compensating"
+msgstr "Em compensação"
+
+msgid "Compensated"
+msgstr "Compensada"
+
+msgid "Manual follow-up required"
+msgstr "Acompanhamento manual necessário"
+
+msgid "This proposal changed or is no longer eligible. Refresh and review it again."
+msgstr "Esta proposta mudou ou não está mais apta para execução. Atualize e revise novamente."
+
+msgid "Agent approval is unavailable. Ask an administrator to check its managed key."
+msgstr "A aprovação de agentes está indisponível. Peça ao administrador que verifique a chave gerenciada."
+
+msgid "Check the autonomy, registered tools and current policy version."
+msgstr "Confira a autonomia, os comandos cadastrados e a versão atual da política."
+
+msgid "Agent proposals"
+msgstr "Propostas dos agentes"
+
+msgid "Review the exact effect before approval. Unknown outcomes need reconciliation, never a blind retry."
+msgstr "Revise o efeito exato antes de aprovar. Resultados desconhecidos exigem conciliação; não repita a ação sem confirmação."
+
+msgid "Agent policies"
+msgstr "Políticas dos agentes"
+
+msgid "Synthetic execution only. No real message is sent and no money is charged."
+msgstr "Execução somente simulada. Nenhuma mensagem real será enviada e nenhum valor será cobrado."
+
+msgid "Policy version"
+msgstr "Versão da política"
+
+msgid "Approval expires"
+msgstr "Validade da aprovação"
+
+msgid "Approved effect digest"
+msgstr "Resumo criptográfico do efeito aprovado"
+
+msgid "Approve this exact effect"
+msgstr "Aprovar este efeito exato"
+
+msgid "Reject proposal"
+msgstr "Rejeitar proposta"
+
+msgid "Approved. Waiting for the authorized executor."
+msgstr "Aprovada. Aguardando o executor autorizado."
+
+msgid "Manual follow-up is required in the administrative queue. Do not resend the action."
+msgstr "É necessário acompanhamento manual na fila administrativa. Não reenvie a ação."
+
+msgid "No proposals to review"
+msgstr "Nenhuma proposta para revisar"
+
+msgid "Published agent policies govern future proposals. You can continue all work manually."
+msgstr "As políticas publicadas regem as próximas propostas. Todo o trabalho pode continuar manualmente."
+
+msgid "Every save publishes a new version. Disabling a capability invalidates its queued approvals."
+msgstr "Cada gravação publica uma nova versão. Desabilitar uma capacidade invalida suas aprovações pendentes."
+
+msgid "Back to proposals"
+msgstr "Voltar às propostas"
+
+msgid "Publish agent policy"
+msgstr "Publicar política do agente"
+
+msgid "Source revision"
+msgstr "Revisão da fonte"
+
+msgid "Task due"
+msgstr "Prazo da tarefa"
+
 msgid "Results, notes and tasks that need you, most urgent first."
 msgstr "Resultados, evoluções e tarefas que dependem de você, os mais urgentes primeiro."
 

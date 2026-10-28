@@ -15,10 +15,10 @@ requires `appointment.read`; analysis requires `charge.read`. Unknown, foreign,
 expired, and another user's artifact all return the same access denial.
 
 This gateway uses todo 7's human-attributed `ActionOperationRequest` transport.
-The existing machine principal grant set permits only `appointment.read` and
+The existing v1 machine principal grant set permits only `appointment.read` and
 cannot impersonate a human, read clinical artifacts, or enqueue this action.
-The agent execution platform owns future machine action authority; this app
-does not widen those grants.
+The separate agent execution platform owns v2 machine action authority; inference
+admission does not widen those grants or impersonate a human.
 
 Inputs and outputs are purpose-bound `EncryptedTextField` envelopes with explicit
 retention classes and expiries: one day for synthetic transient input, seven
@@ -152,3 +152,11 @@ are derived from the live catalog by `tests/infra/test_recovery_manifest.py`.
 real-role runtime gates. `test_units.py` and `test_migration_state.py` need no
 database. UI browser coverage extends the existing `clinic-settings` suite.
 Root owns the serialized runtime slot, canonical gate, and independent review.
+
+## Agent execution
+
+Todo 39 adds versioned policies, canonical encrypted proposals, digest-bound
+human approvals, unique fenced executions, receipts and compensation.
+The binding [execution contract](../../docs/ai/agent-execution.md) describes
+the closed tool registry, actual-principal attribution, execute-time revalidation,
+unknown-outcome reconciliation and the synthetic-only limits.

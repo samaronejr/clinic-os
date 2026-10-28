@@ -73,13 +73,14 @@ PRIVILEGED: Final = frozenset(
 # migrated to permissions yet keep their narrower workspace. RP configuration
 # actors can still discover scheduling Settings without patient administration.
 EXPECTED: Final = {
-    "owner": ["agenda", "patients", "finance", "operations", "settings"],
+    "owner": ["agenda", "patients", "finance", "operations", "automations", "settings"],
     "clinic_admin": [
         "agenda",
         "patients",
         "inbox",
         "finance",
         "operations",
+        "automations",
         "settings",
     ],
     "receptionist": [
@@ -95,12 +96,12 @@ EXPECTED: Final = {
     "nurse": ["today", "inbox"],
     "allied_professional": ["inbox"],
     "scheduler": ["inbox", "settings"],
-    "clinic_manager": ["inbox", "settings"],
+    "clinic_manager": ["inbox", "automations", "settings"],
     "finance": [],
     "org_admin": ["settings"],
 }
 TOKEN_MIN_LENGTH: Final = 20
-UNDELIVERED: Final = frozenset({"messages", "automations", "reports"})
+UNDELIVERED: Final = frozenset({"messages", "reports"})
 
 
 def _client_for(graph: RbacGraph, role: str) -> tuple[Client, User]:
@@ -284,13 +285,13 @@ def test_workflow_candidate_opens_only_delivered_operations(
     response = _get(client, "/auth/protected/")
     assert response.status_code == OK
     assert _modules(response) == (
-        ["inbox", "operations", "settings"]
+        ["inbox", "operations", "automations", "settings"]
         if role in {"scheduler", "clinic_manager"}
-        else ["today", "inbox", "operations"]
+        else ["today", "inbox", "operations", "automations"]
         if role == "nurse"
-        else ["inbox", "operations"]
+        else ["inbox", "operations", "automations"]
         if role == "allied_professional"
-        else ["operations"]
+        else ["operations", "automations"]
     )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
 
@@ -347,7 +348,6 @@ def test_registry_never_renders_an_undelivered_destination() -> None:
     assert undelivered == {
         "messages",
         "operations",
-        "automations",
         "reports",
     }
     assert [d.key for d in DESTINATIONS] == [

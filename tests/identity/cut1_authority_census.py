@@ -306,7 +306,7 @@ def run_cut1_census(
             )
     finally:
         secret.unlink()
-    exercise_ai_authority(proofs, graph, patch, database_url)
+    exercise_ai_authority(proofs, graph, patch, database_url, secret_root)
     record_property(
         "cut1_authority_certificates",
         {symbol: sorted(labels) for symbol, labels in proofs.certificates.items()},

@@ -277,6 +277,13 @@ def _provisioning_seed(graph: RbacGraph) -> dict[str, Callable[[], object]]:
             db_identity=f"clinic_agent_{uuid4().hex}",
             purpose="availability",
         ),
+        "register_execution_principal": (
+            lambda: service_principals.register_execution_principal(
+                clinic_id=clinic,
+                name="sintetico-matrix-execution",
+                db_identity=f"clinic_agent_{uuid4().hex}",
+            )
+        ),
         "revoke_principal": lambda: service_principals.revoke_principal(
             clinic_id=clinic, principal_id=granted.pk
         ),
@@ -321,7 +328,8 @@ def test_every_provisioning_service_requires_organization_staff_authority(
                 calls[name]()
             after = _authority_state(rbac_graph)
             assert after[:2] != before[:2], name
-            assert after[2] == before[2] + 1, name
+            events = 2 if name == "register_execution_principal" else 1
+            assert after[2] == before[2] + events, name
         else:
             with (
                 pytest.raises(CurrentActorError),

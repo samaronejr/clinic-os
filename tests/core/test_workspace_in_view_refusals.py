@@ -272,17 +272,18 @@ def _probe_route(
     return refusals, statuses
 
 
-def _passkey_page_refusal(
+def _membership_page_refusal(
     graph: RbacGraph,
     monkeypatch: pytest.MonkeyPatch,
     superuser_database_url: str,
+    *,
+    route_name: str,
+    role: str,
 ) -> tuple[int, set[int]]:
     # Given a real authenticated member whose page is initially available.
-    client, user = _client_for(graph, "receptionist")
+    client, user = _client_for(graph, role)
     route = next(
-        route
-        for route in workspace_routes(get_resolver())
-        if route.name == "identity:passkeys"
+        route for route in workspace_routes(get_resolver()) if route.name == route_name
     )
     assert _get(client, route.url(graph.clinic_a)).status_code == 200
     session_key = client.session.session_key
@@ -340,7 +341,13 @@ def test_passkey_page_refuses_membership_lost_after_admission(
     monkeypatch: pytest.MonkeyPatch,
     superuser_database_url: str,
 ) -> None:
-    _passkey_page_refusal(rbac_graph, monkeypatch, superuser_database_url)
+    _membership_page_refusal(
+        rbac_graph,
+        monkeypatch,
+        superuser_database_url,
+        route_name="identity:passkeys",
+        role="receptionist",
+    )
 
 
 def test_authorised_in_view_refusals_are_session_read_only(
@@ -405,11 +412,20 @@ def test_authorised_in_view_refusals_are_session_read_only(
             refused, codes = _probe_route(route, client, rbac_graph, monkeypatch)
             observed[route.name] += refused
             statuses[route.name].update(codes)
-    refused, codes = _passkey_page_refusal(
-        rbac_graph, monkeypatch, superuser_database_url
-    )
-    observed["identity:passkeys"] += refused
-    statuses["identity:passkeys"].update(codes)
+    for route_name, role in (
+        ("identity:passkeys", "receptionist"),
+        ("ai:agents", "clinic_admin"),
+        ("ai:agent-settings", "clinic_admin"),
+    ):
+        refused, codes = _membership_page_refusal(
+            rbac_graph,
+            monkeypatch,
+            superuser_database_url,
+            route_name=route_name,
+            role=role,
+        )
+        observed[route_name] += refused
+        statuses[route_name].update(codes)
     # This owner can read clinic A's controls but lacks organization authority
     # in clinic B. A valid AI policy POST therefore reaches the real view's
     # organization-wide refusal instead of stopping at a schema/auth boundary.

@@ -123,6 +123,9 @@ class Probe:
 # clinic_admin holds every permission probed here, so one real staff role
 # satisfies each gate and the only change between calls is is_active.
 PROBES = {
+    "clinic_app.agent_snapshot(uuid,text)": Probe(
+        "SELECT clinic_app.agent_snapshot(%(clinic)s, 'tasks.assign') IS NOT NULL"
+    ),
     "clinic_app.has_permission(text,uuid,uuid)": Probe(
         "SELECT clinic_app.has_permission('staff.clinic', %(clinic)s, NULL)"
     ),
@@ -356,9 +359,11 @@ def _delegates(reader: Reader, checked: set[str]) -> bool:
 
 
 def _checked(readers: dict[str, Reader]) -> tuple[set[str], set[str]]:
-    """Derive own-clause readers, then readers that delegate to them."""
+    """Derive own-clause readers and delegators to proven active boundaries."""
     own = {name for name, reader in readers.items() if reader.own_clause}
-    checked = set(own)
+    # Bound-actor evaluators have no actor GUC and are outside this reader graph.
+    # A protocol seeds propagation only with its retained direct inactive probe.
+    checked = own | (set(readers) & set(PROBES) & set(ACTOR_PROTOCOL_ORACLES))
     grew = True
     while grew:
         grew = False
@@ -385,7 +390,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
     # INSERT of an inactive account. It is not an active-caller proof. Those
     # readers need executable capability/creation/cleanup contracts instead.
     assert protocols <= set(readers)
-    assert own - protocols == set(PROBES) | set(OWN_GUARD_PROBES)
+    assert own - protocols == (set(PROBES) | set(OWN_GUARD_PROBES)) - protocols
     assert set(readers) - own - delegating - protocols == set(JUSTIFIED) | set(
         LIFECYCLE_PROBES
     )

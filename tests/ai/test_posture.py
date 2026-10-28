@@ -13,7 +13,13 @@ from apps.ai.artifacts import create_input
 from apps.ai.contracts import Purpose
 from apps.ai.models import AICircuit, AIInvocation
 from apps.ai.owner import reset_circuit
-from apps.ai.rls import COLUMN_GRANTS, RUNTIME_GRANTS
+from apps.ai.rls import (
+    AGENT_GRANTS,
+    AGENT_TABLES,
+    COLUMN_GRANTS,
+    CUSTOM_RLS_TABLES,
+    RUNTIME_GRANTS,
+)
 from apps.core.integration import execute_operation
 from apps.identity.models import CareTeamMembership, User, UserClinicRole
 from apps.identity.permissions import BUNDLES_V1
@@ -63,18 +69,35 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
             [tables],
         )
         grants = set(cursor.fetchall())
+        # Table UPDATE already appears in grants; inspect only explicit
+        # column ACLs here, as the exact resolver-catalog test does.
         cursor.execute(
-            "SELECT table_name,column_name,privilege_type "
-            "FROM information_schema.role_column_grants "
-            "WHERE table_schema='clinic_app' "
-            "AND grantee='clinic_app' AND privilege_type='UPDATE' "
-            "AND table_name=ANY(%s)",
+            """
+            SELECT class.relname, attribute.attname, acl.privilege_type
+            FROM pg_catalog.pg_attribute AS attribute
+            JOIN pg_catalog.pg_class AS class ON class.oid = attribute.attrelid
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = class.relnamespace
+            CROSS JOIN LATERAL pg_catalog.aclexplode(attribute.attacl) AS acl
+            JOIN pg_catalog.pg_roles AS grantee ON grantee.oid = acl.grantee
+            WHERE namespace.nspname = 'clinic_app'
+              AND grantee.rolname = 'clinic_app' AND acl.privilege_type = 'UPDATE'
+              AND class.relname = ANY(%s)
+            """,
             [tables],
         )
         columns = set(cursor.fetchall())
+        cursor.execute(
+            "SELECT table_name,privilege_type "
+            "FROM information_schema.role_table_grants "
+            "WHERE table_schema='clinic_app' AND grantee='clinic_agent' "
+            "AND table_name=ANY(%s)",
+            [tables],
+        )
+        machine_grants = set(cursor.fetchall())
     # Then: no permissive tenant-only clinical policy or write grant is hidden.
     assert flags == {
-        (table, table.startswith("ai_ai"), table.startswith("ai_ai"), "clinic_owner")
+        (table, table in CUSTOM_RLS_TABLES, table in CUSTOM_RLS_TABLES, "clinic_owner")
         for table in tables
     }
     assert policies == {
@@ -84,6 +107,11 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         ("ai_aiinvocation", "ai_invocation_user"),
         ("ai_aicircuit", "ai_owner"),
         ("ai_aicircuit", "ai_circuit_tenant"),
+        *(
+            (table, policy)
+            for table in AGENT_TABLES
+            for policy in ("agent_owner", "agent_staff", "agent_machine")
+        ),
     }
     assert grants == {
         (table, privilege)
@@ -91,6 +119,11 @@ def test_ai_tables_have_exact_policies_flags_and_runtime_privileges() -> None:
         for privilege in privileges
     }
     assert columns == set(COLUMN_GRANTS)
+    assert machine_grants == {
+        (table, privilege)
+        for table, privileges in AGENT_GRANTS.items()
+        for privilege in privileges
+    }
 
 
 def test_ai_sql_role_and_scope_decisions_follow_exact_permissions(

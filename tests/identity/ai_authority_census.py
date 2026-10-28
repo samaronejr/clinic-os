@@ -2,13 +2,31 @@
 
 from __future__ import annotations
 
+import time
+from contextlib import contextmanager
 from functools import partial
+from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Protocol
+from uuid import uuid4
 
-from ai import test_cancellation, test_controls, test_gateway, test_posture
+import psycopg
+from apps.identity import stepup
+from django.db import connections
+from psycopg import sql
+
+from ai import (
+    test_agent_execution,
+    test_agent_guards,
+    test_cancellation,
+    test_controls,
+    test_gateway,
+    test_posture,
+)
+from ai.agent_support import agent_world
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
+    from pathlib import Path
 
     import pytest
 
@@ -19,11 +37,39 @@ class _ProofRecorder(Protocol):
     def run(self, label: str, oracle: Callable[[], None]) -> None: ...
 
 
+@contextmanager
+def _agent_login(database_url: str, patch: pytest.MonkeyPatch) -> Iterator[str]:
+    """Give each retained principal its own real login without rewriting history."""
+    name = "clinic_agent_t39_" + uuid4().hex
+    secret = token_urlsafe(32)
+    agent = connections["agent"]
+    agent.close()
+    with psycopg.connect(database_url, autocommit=True) as owner:
+        owner.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE clinic_agent").format(
+                sql.Identifier(name),
+                sql.Literal(secret),
+            )
+        )
+        try:
+            with patch.context() as local:
+                local.setattr(stepup, "_utc_now_seconds", lambda: int(time.time()))
+                local.setitem(agent.settings_dict, "USER", name)
+                local.setitem(agent.settings_dict, "PASSWORD", secret)
+                try:
+                    yield name
+                finally:
+                    agent.close()
+        finally:
+            owner.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(name)))
+
+
 def exercise_ai_authority(
     proofs: _ProofRecorder,
     graph: Callable[[], RbacGraph],
     patch: pytest.MonkeyPatch,
     superuser_database_url: str,
+    secret_root: Path,
 ) -> None:
     """Bind source candidates to executed scope, role, owner and transport checks."""
     with patch.context() as local:
@@ -59,5 +105,30 @@ def exercise_ai_authority(
                 graph(),
                 local,
                 inactive_actor=True,
+            ),
+        )
+    for agent_oracle in (
+        test_agent_guards.test_agent_scope_and_approval_refusals_are_side_effect_free,
+        test_agent_guards.test_fabricated_step_up_and_double_approval_cannot_add_votes,
+        test_agent_execution.test_revoked_approver_blocks_after_approval,
+        test_agent_execution.test_superseded_source_publication_blocks_execution,
+    ):
+        with (
+            patch.context() as local,
+            _agent_login(superuser_database_url, local),
+        ):
+            subject = agent_world(graph(), local, secret_root)
+            proofs.run(
+                f"Agent executed authority:{agent_oracle.__name__}",
+                partial(agent_oracle, subject),
+            )
+    with patch.context() as local, _agent_login(superuser_database_url, local):
+        proofs.run(
+            "Agent native exact-effect decisions and refusal exits",
+            partial(
+                test_agent_guards.test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals,
+                graph(),
+                local,
+                secret_root,
             ),
         )

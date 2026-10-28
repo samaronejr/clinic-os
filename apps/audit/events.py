@@ -130,6 +130,100 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.timeline.viewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.timeline", "viewed"
         ),
+        **{
+            f"ai.action.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.action_proposal",
+                state,
+            )
+            for state in (
+                "proposal",
+                "validated",
+                "rejected",
+                "approved",
+                "executing",
+                "receipt",
+                "unknown",
+                "reconciled",
+                "exception",
+                "failure",
+                "compensating",
+                "compensated",
+                "manual_required",
+            )
+        },
+        **{
+            f"ai.execution.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.action_execution",
+                state,
+            )
+            for state in (
+                "executing",
+                "sending",
+                "receipt",
+                "unknown",
+                "reconciled",
+                "exception",
+                "failure",
+                "rejected",
+                "compensating",
+                "compensated",
+                "manual_required",
+            )
+        },
+        **{
+            f"ai.agent_run.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.agent_run",
+                state,
+            )
+            for state in (
+                "created",
+                "validated",
+                "rejected",
+                "approved",
+                "executing",
+                "receipt",
+                "unknown",
+                "reconciled",
+                "exception",
+                "failure",
+                "compensating",
+                "compensated",
+                "manual_required",
+            )
+        },
+        **{
+            f"ai.compensation.{state}": Phase1AuditEventDefinition(
+                "tenant",
+                "clinic-os-worker",
+                "ai.compensation",
+                state,
+            )
+            for state in ("compensating", "compensated", "manual_required")
+        },
+        "ai.agent_policy.published": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "ai.agent_policy_version",
+            "published",
+        ),
+        "ai.approval.recorded": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "ai.approval",
+            "recorded",
+        ),
+        "ai.receipt.recorded": Phase1AuditEventDefinition(
+            "tenant",
+            "clinic-os-worker",
+            "ai.action_receipt",
+            "recorded",
+        ),
         "ai.model.drafted": Phase1AuditEventDefinition(
             "system", "clinic-os-ops", "ai.model_configuration", "drafted"
         ),

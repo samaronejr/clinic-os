@@ -5,9 +5,12 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
+import os
+import subprocess
+import sys
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -884,3 +887,181 @@ def test_ai_settings_form_meets_the_accessibility_matrix(
     assert evidence["initial"]["associations"] == []
     assert evidence["invalid"]["associations"] == []
     assert scene.problems == []
+
+
+@pytest.mark.parametrize(
+    "presentation",
+    [(1440, "light"), (1440, "dark"), (390, "light"), (390, "dark")],
+)
+def test_agent_queue_and_policy_controls(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    presentation: tuple[int, str],
+) -> None:
+    width, theme = presentation
+    staff = availability_staff
+    manager = seed_ai_admin(staff, theme)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(viewport={"width": width, "height": 900})
+    try:
+        page = context.new_page()
+        sign_in_manager(page, renewal_base_url, staff, manager)
+        queue = f"{renewal_base_url}/clinics/{staff['clinic_a']}/automations/agents/"
+        policy = f"{renewal_base_url}/clinics/{staff['clinic_a']}/settings/agents/"
+        goto_settled(page, queue)
+        expect(page.locator("[data-agent-empty]")).to_be_visible()
+        capture(page, renewal_artifact_root, f"agents-empty-{theme}", width)
+        check_page(
+            page,
+            renewal_base_url,
+            renewal_artifact_root,
+            f"agents-empty-{theme}-{width}",
+        )
+        goto_settled(page, policy)
+        form = page.locator("[data-agent-policy-form]").first
+        assert form.evaluate(ASSOCIATION_JS) == []
+        version = int(form.locator("#id_front_desk-expected_version").input_value())
+        expect(form.locator("#id_front_desk-enabled")).not_to_be_checked()
+        form.locator("#id_front_desk-autonomy_ceiling").select_option("A1")
+        form.locator("#id_front_desk-enabled").check()
+        form.locator('input[value="workflows.review_task"]').check()
+        click_to_navigate(form.locator("button[type=submit]"))
+        expect(form.locator("#id_front_desk-expected_version")).to_have_value(
+            str(version + 1)
+        )
+        capture(page, renewal_artifact_root, f"agents-policy-{theme}", width)
+        check_page(
+            page,
+            renewal_base_url,
+            renewal_artifact_root,
+            f"agents-policy-{theme}-{width}",
+        )
+        form.locator("#id_front_desk-timeout_seconds").fill("0")
+        click_to_navigate(form.locator("button[type=submit]"))
+        expect(form.locator("[role=alert]")).to_be_visible()
+        expect(form.locator("#id_front_desk-timeout_seconds")).to_have_attribute(
+            "aria-invalid", "true"
+        )
+        assert form.evaluate(ASSOCIATION_JS) == []
+        capture(page, renewal_artifact_root, f"agents-invalid-{theme}", width)
+        form.locator("#id_front_desk-timeout_seconds").fill("30")
+        form.locator("#id_front_desk-enabled").uncheck()
+        click_to_navigate(form.locator("button[type=submit]"))
+        expect(form.locator("#id_front_desk-expected_version")).to_have_value(
+            str(version + 2)
+        )
+        expect(form.locator("#id_front_desk-enabled")).not_to_be_checked()
+        expect(page.locator("h1")).to_have_text(gettext("Agent policies"))
+        if width == 390:
+            page.set_viewport_size({"width": 320, "height": 900})
+            page.emulate_media(reduced_motion="reduce", forced_colors="active")
+            capture(page, renewal_artifact_root, f"agents-reflow-{theme}", 320)
+    finally:
+        context.close()
+
+
+def seed_proposal(staff: dict[str, str], manager: dict[str, str]) -> tuple[str, str]:
+    environment = {
+        **os.environ,
+        "APP_DATABASE_URL": staff["dsn"],
+        "DJANGO_SETTINGS_MODULE": "config.settings.base",
+        "CLINIC_DATA_MODE": "synthetic",
+        "PYTHONPATH": ".:tests",
+    }
+    result = subprocess.run(  # noqa: S603 - fixed fixture module and opaque identifiers.
+        [
+            sys.executable,
+            "-m",
+            "renewal.agent_proposal_fixture",
+            manager["id"],
+            staff["clinic_a"],
+            staff["organization"],
+        ],
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    seeded = json.loads(result.stdout)
+    return str(UUID(seeded["proposal_id"])), str(seeded["source_revision"])
+
+
+@pytest.mark.parametrize(
+    "presentation",
+    [(1440, "light"), (1440, "dark"), (390, "light"), (390, "dark")],
+)
+def test_native_exact_effect_approval_and_rejection(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    presentation: tuple[int, str],
+) -> None:
+    width, theme = presentation
+    staff = availability_staff
+    manager = seed_ai_admin(staff, theme)
+    proposal, source_revision = seed_proposal(staff, manager)
+    browser = renewal_page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        viewport={"width": width, "height": 900},
+        java_script_enabled=False,
+        locale="pt-BR",
+        timezone_id="Asia/Tokyo",
+    )
+    try:
+        page = context.new_page()
+        sign_in_manager(page, renewal_base_url, staff, manager)
+        queue = f"{renewal_base_url}/clinics/{staff['clinic_a']}/automations/agents/"
+        goto_settled(page, queue)
+        row = page.locator(f'[data-agent-proposal="{proposal}"]')
+        expect(row).to_have_attribute("data-agent-state", "validated")
+        expect(row.locator("[data-agent-source-revision]")).to_have_text(
+            source_revision
+        )
+        expect(row.locator("[data-agent-task-due]")).to_be_visible()
+        digest = row.locator('input[name="digest"]').input_value()
+        capture(page, renewal_artifact_root, f"agents-review-{theme}", width)
+        row.locator('input[name="digest"]').evaluate(
+            "(input) => { input.value = 'f'.repeat(64); }"
+        )
+        click_to_navigate(row.locator('button[value="approve"]'))
+        expect(page.locator('[role="alert"]')).to_be_visible()
+        expect(row).to_have_attribute("data-agent-state", "validated")
+        expect(row.locator('input[name="digest"]')).to_have_value(digest)
+        capture(page, renewal_artifact_root, f"agents-stale-{theme}", width)
+        click_to_navigate(row.locator('button[value="approve"]'))
+        expect(row).to_have_attribute("data-agent-state", "receipt")
+        capture(page, renewal_artifact_root, f"agents-receipt-{theme}", width)
+        with psycopg.connect(staff["dsn"]) as connection:
+            connection.execute("SET ROLE clinic_app")
+            connection.execute(
+                "SELECT set_config('app.current_tenant',%s,true)",
+                [staff["organization"]],
+            )
+            connection.execute(
+                "SELECT set_config('app.current_user_id',%s,true)", [manager["id"]]
+            )
+            assert connection.execute("SELECT current_user").fetchone() == (
+                "clinic_app",
+            )
+            assert connection.execute(
+                "SELECT t.kind FROM clinic_app.ai_actionreceipt r "
+                "JOIN clinic_app.ai_actionexecution e ON e.id=r.execution_id "
+                "JOIN clinic_app.workflows_task t ON t.id=r.provider_reference "
+                "WHERE e.proposal_id=%s",
+                [proposal],
+            ).fetchall() == [("checklist",)]
+        rejected, _source_revision = seed_proposal(staff, manager)
+        goto_settled(page, queue)
+        row = page.locator(f'[data-agent-proposal="{rejected}"]')
+        click_to_navigate(row.locator('button[value="reject"]'))
+        expect(row).to_have_attribute("data-agent-state", "rejected")
+        capture(page, renewal_artifact_root, f"agents-rejected-{theme}", width)
+    finally:
+        context.close()
