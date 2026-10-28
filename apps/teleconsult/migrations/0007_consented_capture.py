@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from django.db import migrations, models
 
+from apps.ai.migrations._state_batch import SchemaStateBatch
 from apps.teleconsult.migrations import _consented_capture_sql
 from apps.tenancy.migration_operations import AddConstraint
 
@@ -15,7 +16,7 @@ class Migration(migrations.Migration):
         ("teleconsult", "0006_mode_audit"),
         ("scribe", "0001_initial"),
     ]
-    operations: ClassVar = [
+    _schema_operations: ClassVar = [
         migrations.RemoveConstraint(
             model_name="teleconsultroom", name="teleconsult_room_capture_disabled"
         ),
@@ -25,6 +26,12 @@ class Migration(migrations.Migration):
                 condition=models.Q(transcription_enabled=False),
                 name="teleconsult_room_transcription_disabled",
             ),
+        ),
+    ]
+    operations: ClassVar = [
+        SchemaStateBatch(
+            database_operations=_schema_operations,
+            state_operations=_schema_operations,
         ),
         migrations.RunSQL(
             _consented_capture_sql.SQL, _consented_capture_sql.REVERSE_SQL
