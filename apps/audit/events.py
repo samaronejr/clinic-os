@@ -130,6 +130,42 @@ PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingPr
         "ehr.timeline.viewed": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "ehr.timeline", "viewed"
         ),
+        "ai.model.drafted": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "drafted"
+        ),
+        "ai.model.approved": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "approved"
+        ),
+        "ai.model.active": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "active"
+        ),
+        "ai.model.retired": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.model_configuration", "retired"
+        ),
+        "ai.global_switch.changed": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.gateway_switch", "changed"
+        ),
+        "ai.organization_policy.published": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-web", "identity.clinic_configuration", "published"
+        ),
+        "ai.artifact.created": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.artifact", "created"
+        ),
+        "ai.invocation.reserved": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.invocation", "reserved"
+        ),
+        "ai.invocation.succeeded": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.invocation", "succeeded"
+        ),
+        "ai.invocation.failed": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.invocation", "failed"
+        ),
+        "ai.circuit.opened": Phase1AuditEventDefinition(
+            "tenant", "clinic-os-worker", "ai.circuit", "opened"
+        ),
+        "ai.circuit.closed": Phase1AuditEventDefinition(
+            "system", "clinic-os-ops", "ai.circuit", "closed"
+        ),
         "identity.delegate.requested": Phase1AuditEventDefinition(
             "tenant", "clinic-os-web", "identity.patient_delegate_grant", "requested"
         ),

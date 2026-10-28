@@ -18,6 +18,7 @@ from django.db import connection
 from ops.testing import restore_rehearsal, restore_verification
 from ops.testing.restore_contract import RestoreContractError
 from ops.testing.restore_queries import TARGET_SEED_SQL
+from psycopg import sql
 
 from otp_test_support import runtime_role
 from provider_gate_support import seed_capabilities
@@ -194,6 +195,25 @@ def test_posture_rejects_role_and_acl_drift(
                 restore_verification.require_owner_rls_acl_posture(client)
         finally:
             raw.execute("REVOKE SELECT ON clinic_app.tenancy_tenantdatakey FROM PUBLIC")
+
+
+@pytest.mark.parametrize("relation", ["ai_gatewayswitch", "ai_modelconfiguration"])
+def test_posture_rejects_global_ai_write_grants(
+    superuser_database_url: str, relation: str
+) -> None:
+    # Given: global platform data is restored with runtime SELECT-only access.
+    client = SuperuserClient(superuser_database_url)
+    restore_verification.require_owner_rls_acl_posture(client)
+    table = sql.Identifier("clinic_app", relation)
+    with psycopg.connect(superuser_database_url, autocommit=True) as raw:
+        # When: a restored global table improperly grants runtime UPDATE.
+        raw.execute(sql.SQL("GRANT UPDATE ON {} TO clinic_app").format(table))
+        try:
+            # Then: the global classification still refuses writable controls.
+            with pytest.raises(RestoreContractError, match="acl-platform"):
+                restore_verification.require_owner_rls_acl_posture(client)
+        finally:
+            raw.execute(sql.SQL("REVOKE UPDATE ON {} FROM clinic_app").format(table))
 
 
 def test_empty_target_gate_rejects_populated_database(

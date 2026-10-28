@@ -370,6 +370,72 @@ msgstr "Informe um número finito."
 msgid "Questions are configuration, not medical advice. Branches use only a previous answer and a fixed comparison; no expressions or calculated answers. Assigned questionnaires retain their original version."
 msgstr "As perguntas são configurações, não orientação médica. As ramificações usam somente uma resposta anterior e uma comparação fixa, sem expressões nem respostas calculadas. Os questionários atribuídos mantêm a versão original."
 
+msgid "AI settings"
+msgstr "Configurações de IA"
+
+msgid "Scribe transcription"
+msgstr "Transcrição da consulta"
+
+msgid "Scribe drafting"
+msgstr "Rascunho da consulta"
+
+msgid "Document extraction"
+msgstr "Extração de documentos"
+
+msgid "Front desk drafts"
+msgstr "Rascunhos da recepção"
+
+msgid "Operational analysis"
+msgstr "Análise operacional"
+
+msgid "Clinical review aid"
+msgstr "Apoio à revisão clínica"
+
+msgid "Enable synthetic AI for this organization"
+msgstr "Habilitar IA sintética para esta organização"
+
+msgid "Enabled AI capabilities"
+msgstr "Recursos de IA habilitados"
+
+msgid "Monthly AI limit (micro-BRL)"
+msgstr "Limite mensal de IA (micro-BRL)"
+
+msgid "Monthly capability limit in micro-BRL; 1 BRL = 1000000 micro-BRL."
+msgstr "Limite mensal do recurso em micro-BRL; 1 BRL = 1000000 micro-BRL."
+
+msgid "Choose each AI capability only once."
+msgstr "Selecione cada recurso de IA apenas uma vez."
+
+msgid "Synthetic AI only. These controls do not authorize a real provider or live patient data."
+msgstr "Somente IA sintética. Estes controles não autorizam um provedor real nem dados reais de pacientes."
+
+msgid "AI is disabled. Continue working manually."
+msgstr "A IA está desabilitada. Continue trabalhando manualmente."
+
+msgid "AI is degraded. Continue working manually; an approved fallback may be available."
+msgstr "A IA está com funcionamento limitado. Continue trabalhando manualmente; uma alternativa aprovada pode estar disponível."
+
+msgid "Synthetic AI is enabled for the selected capabilities. Every draft needs human review."
+msgstr "A IA sintética está habilitada para os recursos selecionados. Todo rascunho exige revisão humana."
+
+msgid "Review the limits below before saving."
+msgstr "Revise os limites abaixo antes de salvar."
+
+msgid "Save AI controls"
+msgstr "Salvar controles de IA"
+
+msgid "Publish the clinic configuration before changing AI controls."
+msgstr "Publique a configuração da clínica antes de alterar os controles de IA."
+
+msgid "The configuration changed. Reload before saving."
+msgstr "A configuração mudou. Recarregue antes de salvar."
+
+msgid "AI is unavailable. Continue working manually."
+msgstr "A IA está indisponível. Continue trabalhando manualmente."
+
+msgid "AI request queued. You can continue working manually."
+msgstr "Solicitação de IA na fila. Você pode continuar trabalhando manualmente."
+
 msgid "Clinic OS secure clinical workspace."
 msgstr "Clinic OS: seu espaço de trabalho clínico seguro."
 

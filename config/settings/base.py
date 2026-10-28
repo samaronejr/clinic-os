@@ -76,6 +76,7 @@ INSTALLED_APPS: list[str] = [
     "apps.realtime.apps.RealtimeConfig",
     "apps.workflows.apps.WorkflowsConfig",
     "apps.orders.apps.OrdersConfig",
+    "apps.ai.apps.AiConfig",
 ]
 
 # Rehearsal is explicit and cannot activate a real provider.

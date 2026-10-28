@@ -1,5 +1,7 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
+from ai import test_controls as ai_controls
+from ai import test_posture as ai_posture
 from ehr.test_note_grant_lifecycle import (
     test_grant_and_recipient_loss_hold_the_same_transaction_fence,
     test_ineligible_recipient_cannot_receive_note_grant,
@@ -188,6 +190,14 @@ PROTOCOL_ORACLES = {
     **DUPLICATE_SQL_ORACLES,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
     **EHR_PROTOCOLS,
+    "clinic_app.ai_staff": [
+        "test_ai_sql_role_and_scope_decisions_follow_exact_permissions",
+        "test_clinical_purposes_recheck_current_patient_authority",
+    ],
+    "clinic_app.configuration_guard": [
+        "test_ai_policy_requires_organization_permission_in_every_clinic",
+        "test_native_controls_execute_valid_invalid_stale_and_forbidden_requests",
+    ],
     **SCHEDULING_CASES,
     "clinic_app.scheduling_capacity_guard": [
         *SCHEDULING_CASES["clinic_app.scheduling_capacity_guard"],
@@ -277,3 +287,8 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     assert callable(
         test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority
     )
+    for module, names in (
+        (ai_posture, PROTOCOL_ORACLES["clinic_app.ai_staff"]),
+        (ai_controls, PROTOCOL_ORACLES["clinic_app.configuration_guard"]),
+    ):
+        assert all(callable(getattr(module, name)) for name in names)

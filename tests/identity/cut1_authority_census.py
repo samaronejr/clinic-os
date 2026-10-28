@@ -15,6 +15,7 @@ from apps.identity.models import UserClinicRole
 from django.test import override_settings
 
 from auth.stepup_test_support import STEP_UP_NOW
+from identity.ai_authority_census import exercise_ai_authority
 from identity.legacy_parity_support import target_code
 from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
@@ -305,6 +306,7 @@ def run_cut1_census(
             )
     finally:
         secret.unlink()
+    exercise_ai_authority(proofs, graph, patch, database_url)
     record_property(
         "cut1_authority_certificates",
         {symbol: sorted(labels) for symbol, labels in proofs.certificates.items()},

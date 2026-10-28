@@ -2,6 +2,7 @@
 # workflow and the renewal runner. One ``--cov`` flag per line; the aggregate
 # floor (--cov-fail-under=90) is unchanged.
 --cov=apps.audit
+--cov=apps.ai
 --cov=apps.billing
 --cov=apps.comms
 --cov=apps.consent

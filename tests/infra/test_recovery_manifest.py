@@ -197,6 +197,15 @@ def test_recovery_manifest_names_only_existing_relations() -> None:
     manifest = Manifest()
 
     assert stale_entries(relations) == []
+    catalog_domain = {
+        relation.name
+        for relation in relations
+        if relation.schema == APP_SCHEMA
+        and relation.kind == "r"
+        and relation.name not in manifest.excluded
+    }
+    assert set(manifest.domain) == catalog_domain
+    assert len(manifest.domain) == len(catalog_domain)
     assert len(set(manifest.domain)) == len(manifest.domain)
     assert set(manifest.domain).isdisjoint(manifest.excluded)
     assert all(restore_contract.TARGET_OWNED_RELATIONS.values())

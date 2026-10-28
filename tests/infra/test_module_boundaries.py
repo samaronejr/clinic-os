@@ -3,6 +3,10 @@ from inspect import Parameter, signature
 from typing import Final, NoReturn
 
 import pytest
+from apps.ai.artifacts import create_input, read_artifact
+from apps.ai.controls import current_policy, set_organization_policy
+from apps.ai.owner import reset_circuit
+from apps.ai.services import invoke
 from apps.billing.services import create_invoice
 from apps.comms.services import reminder_send_eligible
 from apps.consent.services import record_consent
@@ -52,6 +56,7 @@ FOUNDATION_APP_NAMES: Final = frozenset(
 )
 DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     {
+        "apps.ai.apps.AiConfig",
         "apps.audit.apps.AuditConfig",
         "apps.billing.apps.BillingConfig",
         "apps.comms.apps.CommsConfig",
@@ -117,6 +122,20 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
 @pytest.mark.parametrize(
     ("entrypoint", "names", "defaults"),
     [
+        (invoke, ["clinic_id", "purpose", "principal", "inputs_ref", "budget"], {}),
+        (
+            create_input,
+            ["clinic_id", "purpose", "content", "patient_enrollment_id", "method"],
+            {"patient_enrollment_id": None, "method": "complete"},
+        ),
+        (read_artifact, ["clinic_id", "artifact_id"], {}),
+        (current_policy, ["clinic_id"], {}),
+        (reset_circuit, ["clinic_id", "configuration_id"], {}),
+        (
+            set_organization_policy,
+            ["clinic_id", "expected_version", "policy"],
+            {},
+        ),
         (authorization.authorize_topics_sync, ["session_key", "topics"], {}),
         (authorization.authorize_topics, ["session_key", "topics"], {}),
         (tickets.issue_ticket, ["session_key", "topics"], {}),
