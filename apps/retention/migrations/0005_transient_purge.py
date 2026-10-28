@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
     dependencies: ClassVar = [
         ("retention", "0004_delegate_confidentiality"),
         ("identity", "0041_retention_authority"),
-        ("scribe", "0003_purge_state"),
+        ("scribe", "0004_purge_state"),
         ("ai", "0003_artifact_retention"),
         ("workflows", "0005_result_source_tasks"),
     ]

@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
 
     atomic = False
     dependencies: ClassVar = [
-        ("ai", "0002_agent_execution"),
+        ("ai", "0003_artifact_retention"),
         ("orders", "0004_matched_patient_authority"),
     ]
     operations: ClassVar = [

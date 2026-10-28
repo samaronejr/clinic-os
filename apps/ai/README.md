@@ -305,7 +305,7 @@ content enters browser storage, service-worker caches or data attributes.
 Native 100/200/400-percent zoom keeps page bytes and region geometry together
 inside a keyboard-scrollable source viewport, including on narrow screens.
 
-Migration `0003_document_extraction` atomically installs the additive protected
+Migration `0004_document_extraction` atomically installs the additive protected
 tables, FORCE RLS, exact grants, cross-scope bindings, immutability/truncate guards
 and the resolver-only observation bridge. Runtime cannot UPDATE a decision or
 forge the bridge. The existing order observation ingestion rules remain intact

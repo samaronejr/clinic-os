@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     """Keep all recording/chunk identities and original upload deadlines."""
 
-    dependencies: ClassVar = [("scribe", "0002_ai_disclosure_capture")]
+    dependencies: ClassVar = [("scribe", "0003_transcripts")]
     operations: ClassVar = [
         migrations.AddField(
             model_name="audiochunk",
