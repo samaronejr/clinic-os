@@ -6743,3 +6743,111 @@ msgstr "Nenhuma classe selecionada"
 
 msgid "Frequency is administrations per day; duration is days."
 msgstr "A frequência está em administrações por dia; a duração, em dias."
+
+msgid "Permitted chart assistant"
+msgstr "Assistente do prontuário permitido"
+
+msgid "Choose one record and a valid chart question."
+msgstr "Selecione um registro e uma pergunta válida sobre o prontuário."
+
+msgid "Chronology"
+msgstr "Cronologia"
+
+msgid "Active problems"
+msgstr "Problemas ativos"
+
+msgid "Allergies"
+msgstr "Alergias"
+
+msgid "Observations"
+msgstr "Observações"
+
+msgid "Recent results"
+msgstr "Resultados recentes"
+
+msgid "Outstanding tasks"
+msgstr "Tarefas pendentes"
+
+msgid "Prior decisions"
+msgstr "Decisões anteriores"
+
+msgid "Problem"
+msgstr "Problema"
+
+msgid "Allergy"
+msgstr "Alergia"
+
+msgid "Result"
+msgstr "Resultado"
+
+msgid "Problem assessment"
+msgstr "Avaliação de problemas"
+
+msgid "Allergy assessment"
+msgstr "Avaliação de alergias"
+
+msgid "Synthetic simulation. Source excerpts only; no diagnosis or action. Each question is an isolated turn, retained for at most one day."
+msgstr "Simulação sintética. Apenas trechos das fontes; sem diagnóstico ou ação. Cada pergunta é uma interação isolada, mantida por no máximo um dia."
+
+msgid "Generating brief. Continue reviewing the chart manually."
+msgstr "Gerando resumo. Continue revisando o prontuário manualmente."
+
+msgid "Refresh brief"
+msgstr "Atualizar resumo"
+
+msgid "This assistant answers only the listed questions about the current permitted chart. It cannot identify or retrieve another patient."
+msgstr "Este assistente responde apenas às perguntas listadas sobre o prontuário atual permitido. Não pode identificar nem buscar outro paciente."
+
+msgid "Not found means not found in available records, never that a condition is absent. Restricted or revoked sources are not shown."
+msgstr "Não encontrado significa não encontrado nos registros disponíveis, nunca que uma condição está ausente. Fontes restritas ou revogadas não são exibidas."
+
+msgid "Coverage is limited to the most recent available records."
+msgstr "A cobertura se limita aos registros disponíveis mais recentes."
+
+msgid "Explicitly recorded: none documented. This is not an inferred absence."
+msgstr "Registro explícito: nenhum registro documentado. Isso não é uma ausência inferida."
+
+msgid "Recheck source access"
+msgstr "Verificar novamente o acesso à fonte"
+
+msgid "This source is unavailable for your current access."
+msgstr "Esta fonte está indisponível para seu acesso atual."
+
+msgid "Not found in available records."
+msgstr "Não encontrado nos registros disponíveis."
+
+msgid "Generate pre-visit brief"
+msgstr "Gerar resumo pré-consulta"
+
+msgid "Question about the current chart"
+msgstr "Pergunta sobre o prontuário atual"
+
+msgid "What problems are recorded?"
+msgstr "Quais problemas estão registrados?"
+
+msgid "What allergies are recorded?"
+msgstr "Quais alergias estão registradas?"
+
+msgid "What medications are recorded?"
+msgstr "Quais medicamentos estão registrados?"
+
+msgid "What observations are recorded?"
+msgstr "Quais observações estão registradas?"
+
+msgid "What results are recorded?"
+msgstr "Quais resultados estão registrados?"
+
+msgid "What tasks are outstanding?"
+msgstr "Quais tarefas estão pendentes?"
+
+msgid "What prior decisions are recorded?"
+msgstr "Quais decisões anteriores estão registradas?"
+
+msgid "What encounters are recorded?"
+msgstr "Qual é a cronologia dos atendimentos?"
+
+msgid "Choose a listed chart question. Names, other patients and instructions are refused without a search."
+msgstr "Escolha uma pergunta listada sobre o prontuário. Nomes, outros pacientes e instruções são recusados sem uma busca."
+
+msgid "Ask the chart"
+msgstr "Perguntar ao prontuário"

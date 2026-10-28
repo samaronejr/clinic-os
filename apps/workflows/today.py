@@ -4,8 +4,8 @@ Only appointments the physician is the practitioner of are read, under the
 ``appointment.read_own`` permission; nothing here widens the agenda's
 own-appointment scope. Encounters are looked up only for those same-clinic
 appointments. Inbox counts appear only when the inbox itself would open. The
-pre-visit brief slot is reserved for todo 44 and is reported as unavailable
-while no AI capability exists. Committed appointment writes publish the clinic
+pre-visit brief slot resolves its patient separately through todo 44's
+default-off chart assistant. Committed appointment writes publish the clinic
 inbox hint Today subscribes to, so a connected board refetches its own day
 without a clinic-wide agenda grant.
 """
@@ -22,6 +22,7 @@ from django.utils import timezone
 from apps.ehr.models import Encounter
 from apps.identity.current_context import CurrentActorError, require_permission
 from apps.identity.models import Clinic
+from apps.intake.models import PatientClinicEnrollment
 from apps.scheduling.models import Appointment
 from apps.scheduling.timezones import civil_day_bounds
 from apps.workflows.inbox import InboxPage, publish_inbox_hint, query_inbox
@@ -48,11 +49,12 @@ class TodayAppointment:
     status: str
     encounter_open: bool
     can_start: bool
+    enrollment_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class TodayView:
-    """The clinician's day; the brief stays unavailable until todo 44."""
+    """The clinician's day; chart assistance has its own patient authorization."""
 
     clinic: Clinic
     day: date
@@ -108,6 +110,11 @@ def view_today(*, clinic_id: UUID) -> TodayView:
             state=Encounter.State.OPEN,
         ).values_list("appointment_id", flat=True)
     )
+    enrolled = dict(
+        PatientClinicEnrollment.objects.filter(
+            clinic_id=clinic_id, patient_id__in=[row.patient_id for row in found]
+        ).values_list("patient_id", "pk")
+    )
     rows = tuple(
         TodayAppointment(
             appointment_id=row.pk,
@@ -118,6 +125,7 @@ def view_today(*, clinic_id: UUID) -> TodayView:
             status=row.status,
             encounter_open=row.pk in opened,
             can_start=row.status in STARTABLE,
+            enrollment_id=enrolled.get(row.patient_id),
         )
         for row in found[:PAGE_LIMIT]
     )

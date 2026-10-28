@@ -3,10 +3,16 @@
 from django.urls import path
 
 from apps.ai.agent_views import agent_queue, agent_settings
+from apps.ai.brief_views import chart_assistant
 from apps.ai.views import settings_view
 
 app_name = "ai"
 urlpatterns = [
+    path(
+        "clinics/<uuid:clinic_id>/chart-assistant/",
+        chart_assistant,
+        name="chart-assistant",
+    ),
     path("clinics/<uuid:clinic_id>/settings/ai/", settings_view, name="settings"),
     path("clinics/<uuid:clinic_id>/automations/agents/", agent_queue, name="agents"),
     path(

@@ -97,7 +97,11 @@ def finish_success(
         invocation=invocation,
         content=result.content,
         retention_class="review_draft",
-        expires_at=timezone.now() + timedelta(days=7),
+        expires_at=(
+            source.expires_at
+            if invocation.purpose == "brief"
+            else timezone.now() + timedelta(days=7)
+        ),
     )
     from apps.ai.policy import price_for  # noqa: PLC0415 - avoid model import cycle
 

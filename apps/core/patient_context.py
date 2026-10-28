@@ -49,6 +49,7 @@ DEMOGRAPHICS_READ: Final = "demographics.read"
 # shows the banner only for the patient it bound in the same request.
 PATIENT_BOUND_VIEWS: Final = frozenset(
     {
+        "ai:chart-assistant",
         "ehr:encounter",
         "ehr:patient-workspace",
         "ehr:history",

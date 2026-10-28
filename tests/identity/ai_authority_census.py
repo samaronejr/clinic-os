@@ -17,12 +17,14 @@ from psycopg import sql
 from ai import (
     test_agent_execution,
     test_agent_guards,
+    test_brief,
     test_cancellation,
     test_controls,
     test_gateway,
     test_posture,
 )
 from ai.agent_support import agent_world
+from ai.brief_support import seeded
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -130,5 +132,36 @@ def exercise_ai_authority(
                 graph(),
                 local,
                 secret_root,
+            ),
+        )
+    for chart_oracle in (
+        test_brief.test_brief_every_assertion_has_exact_authorized_source,
+        test_brief.test_unauthorized_actor_gets_no_context_counts_or_artifact,
+        test_brief.test_restricted_note_excluded_then_granted_and_hidden_after_revocation,
+    ):
+        with patch.context() as local:
+            chart_subject = seeded(graph(), local)
+            proofs.run(
+                f"Chart permitted-source authority:{chart_oracle.__name__}",
+                partial(chart_oracle, chart_subject),
+            )
+    with patch.context() as local:
+        chart_subject = seeded(graph(), local)
+        proofs.run(
+            "Chart pre-send source revocation",
+            partial(
+                test_brief.test_revoke_before_dispatch_does_not_send_old_references,
+                chart_subject,
+                local,
+            ),
+        )
+    with patch.context() as local:
+        chart_subject = seeded(graph(), local)
+        proofs.run(
+            "Chart native session-bound display and current authority",
+            partial(
+                test_brief.test_native_and_htmx_drawer_generate_and_recheck,
+                chart_subject,
+                enhanced=False,
             ),
         )

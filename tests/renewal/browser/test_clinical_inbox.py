@@ -9,15 +9,20 @@ DOM events the realtime client raises; no timer drives any assertion.
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import psycopg
 import pytest
 from django.utils.translation import gettext as _
+from ops.testing.process_helpers import run_process
 from playwright.sync_api import expect
 
+from renewal.browser._fixture_secrets import worker_dsn
 from renewal.browser._navigation import (
     click_to_navigate,
     expect_document,
@@ -31,6 +36,7 @@ from renewal.browser.test_availability import (
     _sign_in_receptionist,
     availability_staff,
 )
+from renewal.browser.test_clinic_settings import seed_ai_admin
 from renewal.browser.test_realtime import _today_scene
 
 if TYPE_CHECKING:
@@ -469,6 +475,134 @@ def test_today_shows_next_patient_brief_and_inbox_counts(
     expect(
         page.locator(".today-next").get_by_role("button", name=_("Continue encounter"))
     ).to_be_enabled()
+
+
+def _brief_command(
+    patch: pytest.MonkeyPatch, dsn: str, *arguments: str
+) -> dict[str, str]:
+    with patch.context() as local:
+        for name, value in {
+            "APP_DATABASE_URL": dsn,
+            "DJANGO_SETTINGS_MODULE": "config.settings.base",
+            "CLINIC_DATA_MODE": "synthetic",
+            "CELERY_BROKER_URL": "memory://",
+            "PYTHONPATH": os.pathsep.join((".", "tests")),
+        }.items():
+            local.setenv(name, value)
+        # Playwright's synchronous driver owns this thread's running loop.
+        # The bounded async subprocess helper needs its own thread and loop.
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            result = worker.submit(
+                run_process,
+                (
+                    sys.executable,
+                    "-c",
+                    "import django; django.setup(); "
+                    "from renewal.chart_brief_fixture import main; main()",
+                    *arguments,
+                ),
+                timeout_seconds=60,
+            ).result()
+    assert result.returncode == 0, result.stderr
+    data: dict[str, str] = json.loads(result.stdout)
+    return data
+
+
+def _brief_post(page: Page, button: Locator) -> None:
+    with page.expect_response(
+        lambda response: (
+            response.url.endswith("/chart-assistant/")
+            and response.request.method == "POST"
+        )
+    ) as posted:
+        button.click()
+    assert posted.value.status == 200
+
+
+def chart_brief_journey(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drive the worker-backed Today journey from the agenda worker suite."""
+    staff = _today_scene(availability_staff)
+    with psycopg.connect(staff["dsn"]) as owner:
+        owner.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        day = owner.execute("SELECT (current_date + 1)::text").fetchone()
+    assert day is not None
+    data = seed_result_patient(staff, str(day[0]))
+    data["appointment"] = _arrived_today(staff, data["patient"])
+    _sign_in_physician(renewal_page, renewal_base_url, staff)
+    page = renewal_page
+    url = f"{renewal_base_url}/clinics/{staff['clinic_a']}/today/"
+    goto_settled(page, url)
+    with expect_document(page):
+        page.locator(".today-next button[type=submit]").click()
+    expect(page.locator("[data-encounter]")).to_have_count(1)
+    goto_settled(page, url)
+    administrator = seed_ai_admin(staff, "light")
+    assert (
+        _brief_command(
+            monkeypatch,
+            staff["dsn"],
+            "seed",
+            administrator["id"],
+            staff["clinic_a"],
+            staff["organization"],
+        )["status"]
+        == "seeded"
+    )
+    goto_settled(page, url)
+    _brief_post(page, page.get_by_role("button", name=_("Generate pre-visit brief")))
+    expect(page.locator("#chart-panel")).to_have_attribute(
+        "data-chart-state", "generating"
+    )
+    with psycopg.connect(staff["dsn"]) as owner:
+        owner.execute(
+            "SELECT set_config('app.current_tenant',%s,true)", [staff["organization"]]
+        )
+        operation = owner.execute(
+            "SELECT i.operation_id FROM clinic_app.ai_aiinvocation i "
+            "JOIN clinic_app.ai_aiartifact a ON a.id=i.inputs_ref_id "
+            "WHERE a.patient_enrollment_id=%s ORDER BY i.created_at DESC LIMIT 1",
+            [data["enrollment"]],
+        ).fetchone()
+    assert operation is not None
+    assert (
+        _brief_command(monkeypatch, worker_dsn(), "execute", str(operation[0]))[
+            "status"
+        ]
+        == "succeeded"
+    )
+    _brief_post(page, page.get_by_role("button", name=_("Refresh brief")))
+    expect(page.locator("[data-today-brief]")).to_have_attribute(
+        "data-today-brief", "ready"
+    )
+    expect(page.locator('[data-chart-citation="encounter"]')).to_have_count(1)
+    for width in (1280, 375, 320):
+        page.set_viewport_size({"width": width, "height": 900})
+        themed(page, renewal_artifact_root, "brief", width)
+        check_page(page, renewal_base_url, renewal_artifact_root, f"brief-{width}")
+        targets(page)
+    page.locator("#chart-question").fill("What allergies does Synthetic Other have?")
+    _brief_post(page, page.get_by_role("button", name=_("Ask the chart")))
+    expect(page.locator('[data-chart-answer="refused"]')).to_be_visible()
+    assert "Synthetic Other" not in page.locator("#chart-panel").inner_text()
+    themed(page, renewal_artifact_root, "brief-refused", 320)
+    assert _brief_command(monkeypatch, staff["dsn"], "down")["status"] == "unavailable"
+    _brief_post(page, page.get_by_role("button", name=_("Generate pre-visit brief")))
+    expect(page.locator("#chart-panel")).to_have_attribute(
+        "data-chart-state", "unavailable"
+    )
+    expect(page.locator("#chart-panel")).to_contain_text(_("Brief unavailable"))
+    themed(page, renewal_artifact_root, "brief-unavailable", 320)
+    with expect_document(page):
+        page.locator(".today-next button[type=submit]").click()
+    expect(page.locator("[data-encounter]")).to_have_count(1)
 
 
 def test_receptionist_gets_the_empty_inbox_shape_and_refused_pages(

@@ -213,6 +213,47 @@
       ]
     },
     {
+      "symbol": "apps.ai.brief.display_brief",
+      "signals": [
+        "actor",
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.brief.display_brief#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.brief.request_brief",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.brief.request_brief#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.brief_views.chart_assistant",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.brief_views.chart_assistant#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.context.recheck_context",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.context.recheck_context#cut1"
+      ]
+    },
+    {
       "symbol": "apps.ai.controls.current_policy",
       "signals": [
         "permission"
@@ -1176,6 +1217,28 @@
         "clinic_app.has_permission"
       ],
       "reason": "Plan item 27: the workspace's open-with-this-encounter path. It decides the assignee (_encounter_actor), clinical.write through has_permission, the title and an unlinked encounter before writing both rows in one savepoint. tests/ehr/test_write_ordering.py executes the assignee without clinical.write, a non-assignee colleague with it, and the already-linked conflict through the service and the HTTP route; each asserts no episode row and no episode audit row."
+    },
+    {
+      "symbol": "apps.ehr.chart_sources.chart_enrollment",
+      "signals": [
+        "denial",
+        "permission",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.chart_sources.chart_enrollment#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.chart_sources.read_chart",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.chart_sources.read_chart#cut1"
+      ]
     },
     {
       "symbol": "apps.ehr.finalization._author_version",
@@ -6370,6 +6433,16 @@
       ]
     },
     {
+      "symbol": "apps.workflows.chart_sources.read_task_sources",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.chart_sources.read_task_sources#cut1"
+      ]
+    },
+    {
       "symbol": "apps.workflows.definition_services._definition",
       "signals": [
         "denial"
@@ -6711,6 +6784,10 @@
     "apps.ai.artifacts.input_for#cut1",
     "apps.ai.artifacts.read_artifact#cut1",
     "apps.ai.attestations.step_up_evidence#cut1",
+    "apps.ai.brief.display_brief#cut1",
+    "apps.ai.brief.request_brief#cut1",
+    "apps.ai.brief_views.chart_assistant#cut1",
+    "apps.ai.context.recheck_context#cut1",
     "apps.ai.controls.current_policy#cut1",
     "apps.ai.controls.set_organization_policy#cut1",
     "apps.ai.execution_tasks.dispatch_approved#cut1",
@@ -6774,6 +6851,8 @@
     "apps.ehr.attachment_views.attachment_workspace",
     "apps.ehr.attachments.attachment_context",
     "apps.ehr.attachments.authorize_attachment_encounter",
+    "apps.ehr.chart_sources.chart_enrollment#cut1",
+    "apps.ehr.chart_sources.read_chart#cut1",
     "apps.ehr.finalization._author_version",
     "apps.ehr.finalization.finalize_version",
     "apps.ehr.history._context",
@@ -7120,6 +7199,7 @@
     "apps.workflows.access.require_owner_target#cut1",
     "apps.workflows.access.require_reference#cut1",
     "apps.workflows.access.require_task_access#cut1",
+    "apps.workflows.chart_sources.read_task_sources#cut1",
     "apps.workflows.definition_services._definition#cut1",
     "apps.workflows.designer._authorized_designer#cut1",
     "apps.workflows.designer._command#cut1",

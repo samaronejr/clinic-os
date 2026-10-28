@@ -160,3 +160,44 @@ human approvals, unique fenced executions, receipts and compensation.
 The binding [execution contract](../../docs/ai/agent-execution.md) describes
 the closed tool registry, actual-principal attribution, execute-time revalidation,
 unknown-outcome reconciliation and the synthetic-only limits.
+
+## Permitted chart assistant (todo 44)
+
+`context.assemble_context` reads only through the owning EHR, orders and task
+services, with canonical physician and current patient `clinical.read`
+authority before any source or coverage report. EHR source RLS includes the
+current restricted-note grant. Bounded coverage describes available records
+only; neither omitted record counts nor restricted-note existence are exposed.
+The assistant performs no vector search, cross-patient lookup or tool action.
+
+`brief.request_brief` and `brief.display_brief` implement generating, ready and
+unavailable behind the existing default-off organization `brief` purpose flag,
+global switch, model configuration and synthetic data-mode gates. Gateway input
+contains the encrypted isolated question, a session HMAC and source references,
+not copied chart text or previous turns. References are rechecked before send.
+Output must exactly match `docs/ai/brief-v1.json` and the permitted input
+references. Invented, omitted, altered or cross-patient citations fail closed.
+Display resolves every reference and content digest again through the domain
+services; revoked or changed sources disappear without an omitted-item count.
+Every displayed assertion is the current source excerpt, with kind, record id,
+exact version and date. Missing evidence is `not_found`, never clinical absence;
+an explicit `none_documented` assessment has its own cited evidence state.
+
+`POST /clinics/<clinic_id>/chart-assistant/` accepts exactly one
+`enrollment_id` or `encounter_id`, a bounded `question` for `ask`, or an
+opaque `invocation_id` for `display`; the native `generate` command requests
+the whole brief. `surface` is only `today` or `workspace`. CSRF/TOTP, current
+authority, session binding and no-store apply on every request. The drawer
+works in the patient and encounter workspaces and the next-patient Today slot,
+with native POST fallback and an explicit refresh while generating. It lists
+the supported topical chart questions. Unlisted, identity-seeking and
+instruction-bearing questions receive the same refusal without a patient
+search, model call or action. They never confirm another person's existence.
+
+One turn is retained only as existing immutable encrypted AIArtifact input and
+output. The output shares the input's original one-day expiry, not a renewed
+seven-day review deadline. Another login session, requester, patient or clinic
+cannot display it; opening a workspace does not load old conversations. No new
+table or SQL privilege is introduced. Rollback disables the `brief` purpose.
+AI failure leaves manual chart work intact. All inference remains offline,
+`real_enabled=False`; this implementation satisfies no EG or live approval.

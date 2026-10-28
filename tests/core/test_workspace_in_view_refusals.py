@@ -253,6 +253,24 @@ def _probe_route(
                 )
                 for htmx in (False, True)
             )
+        if route.name == "ai:chart-assistant":
+            # The closed form rejects the generic action-shaped requests
+            # before chart authorization. Unknown records with a valid form
+            # reach the real view's refusal in native and enhanced requests.
+            requests += tuple(
+                (
+                    "POST",
+                    {
+                        selector: str(uuid4()),
+                        "command": "generate",
+                        "surface": "workspace",
+                    },
+                    htmx,
+                )
+                for selector, htmx in product(
+                    ("enrollment_id", "encounter_id"), (False, True)
+                )
+            )
         clinics = (
             (graph.clinic_a, uuid4())
             if route.name == "identity:recovery"

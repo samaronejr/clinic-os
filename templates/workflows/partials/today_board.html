@@ -1,4 +1,4 @@
-{% load i18n clinic_locale inbox_labels %}
+{% load i18n clinic_locale inbox_labels ai_chart %}
 <div id="today-board" class="today-layout" data-today-day="{{ screen.day|date:'Y-m-d' }}">
   <div class="today-main">
     <section class="panel today-next" aria-labelledby="today-next-title" data-today-next="{% if screen.next_patient %}{{ screen.next_patient.status }}{% else %}none{% endif %}">
@@ -17,9 +17,9 @@
       {% endif %}
       {% endwith %}
     </section>
-    <section class="today-brief" aria-labelledby="today-brief-title" data-today-brief="{{ screen.brief }}">
+    <section class="today-brief" aria-labelledby="today-brief-title">
       <h2 id="today-brief-title">{% trans "Pre-visit brief" %}</h2>
-      {% trans "Brief unavailable" as brief_title %}{% trans "AI assistance is off for this clinic. Review the record before the visit." as brief_message %}{% include "includes/components/state.html" with state="disabled" title=brief_title message=brief_message only %}
+      {% if chart_enrollment_id %}{% chart_panel clinic_id enrollment_id=chart_enrollment_id surface="today" %}{% else %}{% chart_panel clinic_id enrollment_id=screen.next_patient.enrollment_id surface="today" %}{% endif %}
     </section>
     <section class="worklist-section" aria-labelledby="today-day-title">
       <h2 id="today-day-title">{% blocktrans count count=screen.appointments|length %}{{ count }} appointment today{% plural %}{{ count }} appointments today{% endblocktrans %}</h2>

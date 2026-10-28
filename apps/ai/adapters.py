@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from django.db import connections
 
+from apps.ai.brief_contracts import SCHEMA, synthetic_reply
 from apps.ai.contracts import (
     MAX_TIMEOUT_SECONDS,
     GatewayInputError,
@@ -88,8 +89,14 @@ class SyntheticProvider(AdapterBase):
     def complete(self, *, request: ProviderRequest) -> ProviderResult:
         """Return a fixed review-only draft without echoing source content."""
         self.check_boundary(request)
+        content = "Synthetic draft. Human review required."
+        if (
+            request.content.startswith("{")
+            and f'"schema": "{SCHEMA}"' in request.content
+        ):
+            content = synthetic_reply(request.content)
         return ProviderResult(
-            "Synthetic draft. Human review required.",
+            content,
             Usage(
                 tokens_in=min(request.limits.tokens_in, 4),
                 tokens_out=min(request.limits.tokens_out, 6),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, assert_never
 
+from apps.ai.brief_contracts import SCHEMA, parse_request, validate_reply
 from apps.ai.contracts import (
     MAX_CONTENT_BYTES,
     GatewayInputError,
@@ -93,4 +94,7 @@ def call_provider(
             result = ProviderResult("".join(chunks), usage)
         case unreachable:
             assert_never(unreachable)
-    return validate_result(result, limits=request.limits, method=method)
+    result = validate_result(result, limits=request.limits, method=method)
+    if f'"schema": "{SCHEMA}"' in request.content:
+        validate_reply(result.content, parse_request(request.content))
+    return result

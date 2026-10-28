@@ -8,7 +8,9 @@ from typing import TYPE_CHECKING
 
 from apps.ai.adapters import provider_for
 from apps.ai.artifacts import input_for
+from apps.ai.brief_contracts import SCHEMA
 from apps.ai.completion import finish_failure, finish_success
+from apps.ai.context import recheck_context
 from apps.ai.contracts import (
     GatewayAccessDeniedError,
     GatewayInputError,
@@ -92,16 +94,26 @@ def eligible(scope: OperationScope) -> bool:
     try:
         enabled_policy(Purpose(invocation.purpose))
         check_configuration(invocation.configuration, scope.clinic_id)
-        input_for(
+        source = input_for(
             clinic_id=scope.clinic_id,
             inputs_ref=invocation.inputs_ref_id,
             purpose=Purpose(invocation.purpose),
         )
+        if (
+            invocation.purpose == Purpose.BRIEF
+            and f'"schema": "{SCHEMA}"' in source.content
+        ):
+            recheck_context(clinic_id=scope.clinic_id, content=source.content)
     except GatewayRefusedError as error:
         finish_failure(invocation, reason=error.reason)
         return False
-    except (GatewayAccessDeniedError, CurrentActorError):
-        finish_failure(invocation, reason="authority_revoked")
+    except (GatewayAccessDeniedError, CurrentActorError, GatewayInputError) as error:
+        finish_failure(
+            invocation,
+            reason="invalid_output"
+            if isinstance(error, GatewayInputError)
+            else "authority_revoked",
+        )
         return False
     return True
 

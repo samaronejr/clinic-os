@@ -29,6 +29,7 @@ import subprocess
 import sys
 import threading
 from datetime import UTC, date, datetime, timedelta
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urlsplit
@@ -64,11 +65,34 @@ from renewal.browser.engines import (
     full_page_screenshot,
     new_context,
 )
+from renewal.browser.test_availability import availability_staff
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from playwright.sync_api import Browser, BrowserContext, Locator, Page, Route
+
+__all__ = ("availability_staff",)
+
+
+def test_today_source_cited_brief_refuses_other_patient_and_preserves_manual_chart(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The standard agenda runner lends the runtime-role worker connection.
+    # Load after collection: clinical-inbox's shared Today fixture imports
+    # this module through test_realtime.
+    import_module("renewal.browser.test_clinical_inbox").chart_brief_journey(
+        renewal_page,
+        renewal_base_url,
+        renewal_artifact_root,
+        availability_staff,
+        monkeypatch,
+    )
+
 
 CLINIC_A = "Clínica Vila Mariana"
 CLINIC_B = "Clínica Aurora Sintética"  # sorts first, so selecting A is a real choice

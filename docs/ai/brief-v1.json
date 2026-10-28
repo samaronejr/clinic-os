@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:clinic-os:ai:brief-v1",
+  "title": "Source-cited permitted chart brief and isolated question response",
+  "description": "The synthetic model selects exact source references only. Displayed text is re-read from each currently authorized owning domain, never supplied by the model. not_found means not found in available records, not clinical absence. Explicit none_documented assessments remain cited evidence, not an inferred absence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "answer", "citations"],
+  "properties": {
+    "schema": {"const": "brief-v1"},
+    "answer": {"enum": ["sources", "not_found"]},
+    "citations": {
+      "type": "array",
+      "maxItems": 250,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/citation"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"answer": {"const": "not_found"}}},
+      "then": {"properties": {"citations": {"maxItems": 0}}},
+      "else": {"properties": {"citations": {"minItems": 1}}}
+    }
+  ],
+  "$defs": {
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section", "kind", "id", "version", "date", "digest", "evidence"],
+      "properties": {
+        "section": {
+          "enum": ["chronology", "active_problems", "allergies", "medications", "observations", "recent_results", "outstanding_tasks", "prior_decisions"]
+        },
+        "kind": {
+          "enum": ["encounter", "problem", "problem_assessment", "allergy", "allergy_assessment", "medication", "observation", "result", "task", "note"]
+        },
+        "id": {"type": "string", "format": "uuid"},
+        "version": {"type": "integer", "minimum": 1},
+        "date": {"type": "string", "format": "date-time"},
+        "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "evidence": {"enum": ["recorded", "documented_none"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"evidence": {"const": "documented_none"}}},
+          "then": {"properties": {"kind": {"enum": ["problem_assessment", "allergy_assessment"]}}}
+        }
+      ]
+    }
+  }
+}
