@@ -35,6 +35,8 @@ from apps.tenancy.db import tenant_context
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from apps.ai.contracts import ProviderResult
+
 
 class AITransportError(PermanentSendError):
     """Sanitize all adapter failures before they reach the shared transport."""
@@ -207,9 +209,17 @@ class GatewayActionAdapter:
             if reason is not None:
                 finish_failure(invocation, reason=reason, latency_ms=latency_ms)
             else:
-                finish_success(
+                self.settle_success(
                     invocation_id=invocation.pk, result=result, latency_ms=latency_ms
                 )
         if reason is not None:
             raise AITransportError from None
         return SendResult(provider_reference=prepared.invocation_id.hex)
+
+    def settle_success(
+        self, *, invocation_id: UUID, result: ProviderResult, latency_ms: int
+    ) -> None:
+        """Let a registered domain adapter add atomic output projections."""
+        finish_success(
+            invocation_id=invocation_id, result=result, latency_ms=latency_ms
+        )

@@ -41,6 +41,9 @@ TRUNCATE_GUARDS = (
     *((table, "reception_guard_truncate") for table in RECEPTION_TABLES),
     ("ehr_specialtypack", "specialty_no_truncate"),
     ("ehr_specialtyentry", "specialty_no_truncate"),
+    ("scribe_chunktranscription", "transcript_no_truncate"),
+    ("scribe_transcriptversion", "transcript_no_truncate"),
+    ("scribe_transcriptsegment", "transcript_no_truncate"),
     (
         "prescription_prescriptionissuance",
         "prescription_prescriptionissuance_no_truncate",

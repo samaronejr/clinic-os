@@ -3,18 +3,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING
 
 from django.db import connection, transaction
 
+from apps.ai.adapters import register_provider
+from apps.ai.outbox import organization_lock_key
 from apps.audit.services import record_phase1_event
 from apps.comms.adapters import OperationScope, PermanentSendError, SendResult
+from apps.core.integration import register_action_adapter, register_subject_recheck
 from apps.ehr.attachment_storage import AttachmentStorage, AttachmentStorageError
 from apps.providers.services import current_version
 from apps.scribe.authority import active_consent, recording_scope
 from apps.scribe.contracts import ScribeError
-from apps.scribe.models import AudioChunk
+from apps.scribe.gateway import (
+    ScribeGatewayActionAdapter,
+    ScribeRecordedProvider,
+    ScribeSyntheticProvider,
+)
+from apps.scribe.gateway import (
+    eligible as gateway_eligible,
+)
+from apps.scribe.models import AudioChunk, RecordingSession
 from apps.scribe.storage import media_storage
+from apps.scribe.tasks import dispatch_transcription
 from apps.tenancy.db import tenant_context
 
 if TYPE_CHECKING:
@@ -73,6 +86,16 @@ def consent_lock_key(scope: OperationScope, _chunk_id: UUID) -> str:
     return f"scribe-consent:{scope.clinic_id}"
 
 
+def register_gateway() -> None:
+    """Extend inference only through the existing startup registries."""
+    register_provider(ScribeSyntheticProvider())
+    register_provider(ScribeRecordedProvider())
+    register_action_adapter(ScribeGatewayActionAdapter())
+    register_subject_recheck(
+        "ai.invocation", gateway_eligible, lock_key=organization_lock_key
+    )
+
+
 class MediaActionAdapter:
     """Prepare ciphertext inside the tenant transaction; store it outside."""
 
@@ -121,6 +144,12 @@ class MediaActionAdapter:
                 if storage.get(prepared.key) != prepared.ciphertext:
                     raise MediaTransportError from None
             with tenant_context(scope.actor_id, scope.organization_id):
+                session_id = AudioChunk.objects.values_list(
+                    "session_id", flat=True
+                ).get(pk=prepared.chunk_id)
+                # Match ingest, transcript settlement and human review:
+                # consent boundary -> session -> chunk -> transcript/audit.
+                RecordingSession.objects.select_for_update().get(pk=session_id)
                 if not eligible(scope):
                     raise MediaTransportError
                 chunk = AudioChunk.objects.select_for_update().get(pk=prepared.chunk_id)
@@ -133,6 +162,7 @@ class MediaActionAdapter:
                     affected_record_id=chunk.pk,
                 )
                 transaction.on_commit(lambda: storage.clear_pending(prepared.key))
+                transaction.on_commit(partial(dispatch_transcription, scope))
         except (AttachmentStorageError, ScribeError) as error:
             raise MediaTransportError from error
         return SendResult(provider_reference=prepared.chunk_id.hex)

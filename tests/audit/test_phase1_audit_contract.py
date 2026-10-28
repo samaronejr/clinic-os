@@ -415,6 +415,21 @@ FIXED_MATRIX: Final[dict[str, EventContract]] = {
         )
         for state in ("received", "accepted", "quarantined", "rejected")
     },
+    "scribe.transcription.queued": (
+        "tenant",
+        "clinic-os-worker",
+        "scribe.transcription",
+        "queued",
+    ),
+    **{
+        f"scribe.transcript.{mutation}": (
+            "tenant",
+            "clinic-os-worker" if mutation == "recognized" else "clinic-os-web",
+            "scribe.transcript",
+            mutation,
+        )
+        for mutation in ("recognized", "finalized", "speaker_relabeled", "corrected")
+    },
     "ai.model.drafted": (
         "system",
         "clinic-os-ops",

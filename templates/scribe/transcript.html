@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Consultation transcript" %} · Clinic OS{% endblock %}
+{% block content %}
+<section class="shell-narrow" aria-labelledby="transcript-title">
+  <h1 id="transcript-title">{% trans "Consultation transcript" %}</h1>
+  <p class="lede">{% trans "Synthetic transcription. Review every word and speaker. Nothing is added to the clinical note automatically." %}</p>
+  <p><a class="button button--secondary" href="{% url 'ehr:encounter' clinic_id %}">{% trans "Continue the note manually" %}</a></p>
+  {% if denied %}
+    <p class="feedback feedback--error" role="alert" data-transcript-denied>{% trans "Transcript unavailable for this encounter." %}</p>
+  {% elif invalid %}
+    <p class="feedback feedback--error" role="alert">{% trans "Transcript command was not accepted. Refresh and try again." %}</p>
+  {% elif recording %}
+    {% if error %}<p class="feedback feedback--error" role="alert" tabindex="-1" data-focus-error>{{ error }}</p>{% endif %}
+    {% if saved %}<p class="feedback feedback--success" role="status">{% trans "New transcript version saved. Earlier versions are unchanged." %}</p>{% endif %}
+    {% if queued %}<p class="feedback" role="status">{% trans "Pending audio queued for transcription. Continue manually while waiting." %}</p>{% endif %}
+    <p class="feedback" role="status" data-transcript-state="{% if transcript.state == 'final' %}final{% else %}transcription_pending{% endif %}">
+      {% if transcript.state == "final" %}{% trans "Final transcript" %}{% else %}{% trans "Transcription pending" %} · {% trans "Partial transcript" %}{% endif %}
+    </p>
+    <p class="help-text">{% trans "Unknown voices are never assumed to be the patient. Confidence is not a safety guarantee." %}</p>
+    {% if not available %}<p class="feedback" data-transcription-disabled>{% trans "Transcription is unavailable. Separate AI consent and an enabled, approved model are required. Audio is retained according to policy; continue manually." %}</p>{% endif %}
+    <form method="post" action="{% url 'scribe:transcript' clinic_id %}">
+      {% csrf_token %}
+      <input type="hidden" name="encounter_id" value="{{ encounter_id }}">
+      <input type="hidden" name="session_id" value="{{ recording.pk }}">
+      <div class="actions">
+        <button class="button button--secondary" name="action" value="refresh" type="submit">{% trans "Refresh transcript" %}</button>
+        {% if transcript.state != "final" %}<button class="button button--secondary" name="action" value="queue" type="submit"{% if not available %} disabled{% endif %}>{% trans "Queue pending transcription" %}</button>{% endif %}
+      </div>
+    </form>
+    <ol class="record-review" aria-label="{% trans 'Transcript segments' %}">
+      {% for row in segments %}
+      <li data-transcript-segment>
+        <p class="help-text">{{ row.item.start_ms }}–{{ row.item.end_ms }} ms · {{ row.item.language }}</p>
+        <p>{% for run in row.runs %}{% if run.kind %}<mark>{{ run.text }}</mark>{% else %}{{ run.text }}{% endif %}{% endfor %}</p>
+        {% if row.item.uncertainty %}<p class="feedback">{% trans "Uncertain or inaudible span. Verify against the source; do not infer a dose." %}</p>{% endif %}
+        <form method="post" action="{% url 'scribe:transcript' clinic_id %}" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="encounter_id" value="{{ encounter_id }}">
+          <input type="hidden" name="session_id" value="{{ recording.pk }}">
+          <input type="hidden" name="expected_revision" value="{{ revision }}">
+          <input type="hidden" name="segment_id" value="{{ row.item.segment_id }}">
+          <div class="field">
+            <label for="speaker-{{ forloop.counter }}">{% trans "Speaker role" %}</label>
+            <select id="speaker-{{ forloop.counter }}" name="speaker">{% for key, label in speaker_choices %}<option value="{{ key }}"{% if row.item.speaker == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </div>
+          <button class="button button--secondary" name="action" value="relabel" type="submit">{% trans "Save speaker review" %}</button>
+        </form>
+        <details>
+          <summary class="button button--secondary">{% trans "Correct this segment" %}</summary>
+          <form method="post" action="{% url 'scribe:transcript' clinic_id %}" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="encounter_id" value="{{ encounter_id }}">
+            <input type="hidden" name="session_id" value="{{ recording.pk }}">
+            <input type="hidden" name="expected_revision" value="{{ revision }}">
+            <input type="hidden" name="segment_id" value="{{ row.item.segment_id }}">
+            <div class="field"><label for="text-{{ forloop.counter }}">{% trans "Reviewed transcript text" %}</label><textarea id="text-{{ forloop.counter }}" name="text" rows="3" maxlength="16384" autocomplete="off" spellcheck="false" required>{{ row.item.text }}</textarea></div>
+            <p class="help-text">{% trans "Saving confirms your correction and replaces uncertainty marks for this segment in a new version." %}</p>
+            <button class="button button--secondary" name="action" value="correct" type="submit">{% trans "Save corrected successor" %}</button>
+          </form>
+        </details>
+      </li>
+      {% empty %}<li>{% trans "No transcript text is available yet. Continue the note manually." %}</li>{% endfor %}
+    </ol>
+    {% if missing %}
+    <section aria-labelledby="transcript-coverage-title">
+      <h2 id="transcript-coverage-title">{% trans "Incomplete coverage" %}</h2>
+      <p>{% trans "Missing or pending audio is listed below. No replacement text has been invented." %}</p>
+      <ul>{% for slot in missing %}<li>{% blocktrans with sequence=slot.sequence %}Audio slice {{ sequence }} is missing or pending.{% endblocktrans %}</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+    {% if transcript.incomplete_acknowledged %}<p class="feedback">{% trans "Finalized with clinician-acknowledged incomplete coverage." %}</p>{% endif %}
+    {% if transcript.state != "final" %}
+    <form method="post" action="{% url 'scribe:transcript' clinic_id %}" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="encounter_id" value="{{ encounter_id }}">
+      <input type="hidden" name="session_id" value="{{ recording.pk }}">
+      <input type="hidden" name="expected_revision" value="{{ revision }}">
+      <label class="settings-check"><input type="checkbox" name="acknowledge_incomplete" value="on"> {% trans "I acknowledge incomplete coverage and will not infer missing content." %}</label>
+      <div class="actions"><button class="button" name="action" value="finalize" type="submit"{% if not can_finalize %} disabled{% endif %}>{% trans "Finalize transcript" %}</button></div>
+      {% if not can_finalize %}<p class="help-text">{% trans "Stop recording before finalizing the transcript." %}</p>{% endif %}
+    </form>
+    {% endif %}
+  {% else %}
+    <p class="feedback">{% trans "No transcript text is available yet. Continue the note manually." %}</p>
+  {% endif %}
+</section>
+{% endblock %}

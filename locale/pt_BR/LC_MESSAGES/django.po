@@ -7,6 +7,111 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Consultation transcript"
+msgstr "Transcrição da consulta"
+
+msgid "Speaker role"
+msgstr "Papel de quem está falando"
+
+msgid "Synthetic transcription. Review every word and speaker. Nothing is added to the clinical note automatically."
+msgstr "Transcrição sintética. Revise cada palavra e quem está falando. Nada é adicionado ao prontuário automaticamente."
+
+msgid "Continue the note manually"
+msgstr "Continuar a anotação manualmente"
+
+msgid "Transcript unavailable for this encounter."
+msgstr "Transcrição indisponível para este atendimento."
+
+msgid "Transcript command was not accepted. Refresh and try again."
+msgstr "A ação na transcrição não foi aceita. Atualize e tente novamente."
+
+msgid "New transcript version saved. Earlier versions are unchanged."
+msgstr "Nova versão da transcrição salva. As versões anteriores permanecem inalteradas."
+
+msgid "Pending audio queued for transcription. Continue manually while waiting."
+msgstr "Áudio pendente enviado à fila de transcrição. Continue manualmente enquanto aguarda."
+
+msgid "Final transcript"
+msgstr "Transcrição final"
+
+msgid "Transcription pending"
+msgstr "Transcrição pendente"
+
+msgid "Partial transcript"
+msgstr "Transcrição parcial"
+
+msgid "Unknown voices are never assumed to be the patient. Confidence is not a safety guarantee."
+msgstr "Vozes desconhecidas nunca são consideradas automaticamente a pessoa atendida. A confiança do modelo não garante segurança."
+
+msgid "Transcription is unavailable. Separate AI consent and an enabled, approved model are required. Audio is retained according to policy; continue manually."
+msgstr "Transcrição indisponível. É necessário consentimento específico para IA e um modelo aprovado e habilitado. O áudio é mantido conforme a política; continue manualmente."
+
+msgid "Refresh transcript"
+msgstr "Atualizar transcrição"
+
+msgid "Queue pending transcription"
+msgstr "Enviar transcrição pendente à fila"
+
+msgid "Transcript segments"
+msgstr "Trechos da transcrição"
+
+msgid "Uncertain or inaudible span. Verify against the source; do not infer a dose."
+msgstr "Trecho incerto ou inaudível. Confira a fonte; não deduza uma dose."
+
+msgid "Save speaker review"
+msgstr "Salvar revisão de quem está falando"
+
+msgid "Correct this segment"
+msgstr "Corrigir este trecho"
+
+msgid "Reviewed transcript text"
+msgstr "Texto revisado da transcrição"
+
+msgid "Saving confirms your correction and replaces uncertainty marks for this segment in a new version."
+msgstr "Salvar confirma sua correção e substitui as marcações de incerteza deste trecho em uma nova versão."
+
+msgid "Save corrected successor"
+msgstr "Salvar nova versão corrigida"
+
+msgid "No transcript text is available yet. Continue the note manually."
+msgstr "Ainda não há texto transcrito. Continue a anotação manualmente."
+
+msgid "Incomplete coverage"
+msgstr "Cobertura incompleta"
+
+msgid "Missing or pending audio is listed below. No replacement text has been invented."
+msgstr "O áudio ausente ou pendente está listado abaixo. Nenhum texto foi inventado para substituí-lo."
+
+msgid "Audio slice %(sequence)s is missing or pending."
+msgstr "O trecho de áudio %(sequence)s está ausente ou pendente."
+
+msgid "Finalized with clinician-acknowledged incomplete coverage."
+msgstr "Finalizada com cobertura incompleta reconhecida pelo profissional."
+
+msgid "I acknowledge incomplete coverage and will not infer missing content."
+msgstr "Reconheço a cobertura incompleta e não vou deduzir o conteúdo ausente."
+
+msgid "Finalize transcript"
+msgstr "Finalizar transcrição"
+
+msgid "Stop recording before finalizing the transcript."
+msgstr "Pare a gravação antes de finalizar a transcrição."
+
+msgid "Review transcript"
+msgstr "Revisar transcrição"
+
+msgid "Transcript changed. Refresh before reviewing this version."
+msgstr "A transcrição mudou. Atualize antes de revisar esta versão."
+
+msgid "Transcript cannot be finalized until recording stops and coverage is reviewed."
+msgstr "A transcrição só pode ser finalizada após parar a gravação e revisar a cobertura."
+
+msgid "Unknown speaker"
+msgstr "Pessoa não identificada"
+
+msgid "Clinician"
+msgstr "Profissional de saúde"
+
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"
 

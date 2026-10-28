@@ -11,10 +11,12 @@ from django.utils import timezone
 
 from apps.ai.contracts import MICROS_PER_CENTAVO, ProviderResult, Reason
 from apps.ai.models import AIArtifact, AICircuit, AIInvocation
+from apps.ai.policy import price_for
 from apps.audit.services import record_phase1_event
 from apps.core.telemetry import METRICS
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from uuid import UUID
 
 
@@ -75,7 +77,11 @@ def finish_failure(
 
 
 def finish_success(
-    *, invocation_id: UUID, result: ProviderResult, latency_ms: int
+    *,
+    invocation_id: UUID,
+    result: ProviderResult,
+    latency_ms: int,
+    project: Callable[[], None] | None = None,
 ) -> None:
     """Atomically retain encrypted output and exact metering once."""
     invocation = (
@@ -103,8 +109,6 @@ def finish_success(
             else timezone.now() + timedelta(days=7)
         ),
     )
-    from apps.ai.policy import price_for  # noqa: PLC0415 - avoid model import cycle
-
     invocation.tokens_in = result.usage.tokens_in
     invocation.tokens_out = result.usage.tokens_out
     invocation.tokens_cached = result.usage.tokens_cached
@@ -129,6 +133,8 @@ def finish_success(
             "settled_at",
         )
     )
+    if project is not None:
+        project()
     record_phase1_event(
         "ai.artifact.created",
         clinic_id=invocation.clinic_id,

@@ -17,6 +17,7 @@
     {% if clinical_workspace %}<form method="post" action="{% url 'ehr:patient-workspace' clinic_id %}">{% csrf_token %}<input type="hidden" name="enrollment_id" value="{{ enrollment_id }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Open longitudinal record" %}</button></form>{% endif %}
     {% endif %}
     {% if capture.available or capture.recording %}{% include "scribe/capture.html" %}{% endif %}
+    <form method="post" action="{% url 'scribe:transcript' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">{% trans "Review transcript" %}</button></form>
     <form method="post" action="{% url 'ehr:history' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Problemas e alergias</button></form>
     <form method="post" action="{% url 'ehr:attachments' clinic_id %}">{% csrf_token %}<input type="hidden" name="encounter_id" value="{{ encounter.pk }}"><button class="button button--secondary" type="submit" name="action" value="open">Anexos</button></form>
     {% if encounter.appointment_id %}

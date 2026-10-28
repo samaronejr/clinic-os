@@ -68,6 +68,8 @@ from scribe import test_actor_readers as scribe_actor
 from scribe import test_ingest as scribe_ingest
 from scribe import test_refusals as scribe_refusals
 from scribe import test_room_capture as scribe_room
+from scribe import test_transcript_concurrency as scribe_transcript_native
+from scribe import test_transcript_runtime as scribe_transcript
 from teleconsult.test_mode_concurrency import (
     test_concurrent_real_sql_mode_calls_keep_the_actual_winning_authority,
 )
@@ -192,6 +194,25 @@ EHR_PROTOCOLS = {
     for name, cases in EHR_PROTOCOLS.items()
 }
 SCRIBE_PROTOCOL_ORACLES = {
+    "clinic_app.scribe_asr_allowed": [
+        "test_governed_completion_review_and_final_are_retained_successors",
+        "test_ai_revocation_refuses_an_already_queued_invocation",
+    ],
+    "clinic_app.scribe_asr_consent_fence": [
+        "test_ai_revocation_refuses_an_already_queued_invocation",
+        "test_native_consent_publication_holds_asr_send_fence",
+    ],
+    "clinic_app.scribe_transcript_coverage": [
+        "test_coverage_reader_rechecks_native_assignment_and_active_actor",
+        "test_finalize_without_full_coverage_requires_explicit_disposition",
+        "test_read_unknown_and_foreign_clinic_have_the_same_denial",
+    ],
+    "clinic_app.scribe_transcript_guard": [
+        "test_governed_completion_review_and_final_are_retained_successors",
+        "test_finalize_without_full_coverage_requires_explicit_disposition",
+        "test_database_coverage_change_is_a_recoverable_transcript_conflict",
+        "test_native_coverage_storage_has_per_version_and_recording_bounds",
+    ],
     "clinic_app.scribe_assigned": [
         "test_native_capture_authority_refuses_inactive_actor",
         "test_outbox_stores_only_ciphertext_and_object_keys_are_not_authority",
@@ -390,6 +411,24 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
         (
             scribe_room,
             ("test_room_bits_require_explicit_live_capture_and_asr_stays_closed",),
+        ),
+        (
+            scribe_transcript,
+            (
+                "test_coverage_reader_rechecks_native_assignment_and_active_actor",
+                "test_governed_completion_review_and_final_are_retained_successors",
+                "test_ai_revocation_refuses_an_already_queued_invocation",
+                "test_finalize_without_full_coverage_requires_explicit_disposition",
+                "test_read_unknown_and_foreign_clinic_have_the_same_denial",
+            ),
+        ),
+        (
+            scribe_transcript_native,
+            (
+                "test_native_consent_publication_holds_asr_send_fence",
+                "test_database_coverage_change_is_a_recoverable_transcript_conflict",
+                "test_native_coverage_storage_has_per_version_and_recording_bounds",
+            ),
         ),
     ):
         assert all(callable(getattr(module, name)) for name in names)

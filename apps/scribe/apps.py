@@ -23,6 +23,7 @@ class ScribeConfig(AppConfig):
             MediaActionAdapter,
             consent_lock_key,
             eligible,
+            register_gateway,
         )
         from apps.scribe.switches import CaptureSwitchGuard  # noqa: PLC0415
         from apps.scribe.tasks import dispatch  # noqa: PLC0415
@@ -31,3 +32,4 @@ class ScribeConfig(AppConfig):
         register_action_dispatcher("scribe_media", dispatch)
         register_subject_recheck("scribe.chunk", eligible, lock_key=consent_lock_key)
         register_context_switch_guard("scribe.capture", CaptureSwitchGuard())
+        register_gateway()

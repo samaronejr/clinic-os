@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from django.db import models
 
+from apps.tenancy.fields import EncryptedJSONField, EncryptedTextField
 from apps.tenancy.models import TenantScopedModel
 
 
@@ -168,5 +169,106 @@ class RecordingCommand(TenantScopedModel):
         constraints: ClassVar = [
             models.UniqueConstraint(
                 fields=("session", "command_id"), name="scribe_command_receipt"
+            ),
+        ]
+
+
+class ChunkTranscription(TenantScopedModel):
+    """Immutable binding from accepted audio to one governed AI invocation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(RecordingSession, on_delete=models.PROTECT)
+    chunk = models.OneToOneField(AudioChunk, on_delete=models.PROTECT)
+    consent = models.ForeignKey("consent.ConsentAcceptance", on_delete=models.PROTECT)
+    invocation = models.OneToOneField("ai.AIInvocation", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantScopedModel.Meta):
+        """Request provenance is retained even when recognition is unavailable."""
+
+        abstract = False
+
+
+class TranscriptVersion(TenantScopedModel):
+    """Append-only partial/final snapshots; corrections create successors."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(RecordingSession, on_delete=models.PROTECT)
+    predecessor = models.OneToOneField(
+        "self", null=True, on_delete=models.PROTECT, related_name="successor"
+    )
+    revision = models.PositiveIntegerField()
+    state = models.CharField(max_length=8)
+    mutation = models.CharField(max_length=24)
+    coverage = models.JSONField()
+    incomplete_acknowledged = models.BooleanField(default=False)
+    request = models.ForeignKey(ChunkTranscription, null=True, on_delete=models.PROTECT)
+    recognition_index = models.PositiveSmallIntegerField(null=True)
+    latency_ms = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey("identity.User", on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    write_transaction_id = models.BigIntegerField(default=0, editable=False)
+
+    class Meta(TenantScopedModel.Meta):
+        """One linear successor chain per recording; finals stay immutable."""
+
+        abstract = False
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("session", "revision"), name="scribe_transcript_revision"
+            ),
+            models.UniqueConstraint(
+                fields=("request", "recognition_index"),
+                name="scribe_recognition_event",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(state__in=("partial", "final")),
+                name="scribe_transcript_state",
+            ),
+        ]
+
+
+class TranscriptSegment(TenantScopedModel):
+    """Snapshot-local rows retain stable source identities and encrypted text."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey(RecordingSession, on_delete=models.PROTECT)
+    version = models.ForeignKey(
+        TranscriptVersion, on_delete=models.PROTECT, related_name="segments"
+    )
+    source_id = models.UUIDField()
+    chunk = models.ForeignKey(AudioChunk, on_delete=models.PROTECT)
+    start_ms = models.PositiveIntegerField()
+    end_ms = models.PositiveIntegerField()
+    text = EncryptedTextField(purpose="scribe.transcript.text")
+    speaker = models.CharField(max_length=16, default="unknown")
+    confidence_milli = models.PositiveSmallIntegerField(null=True)
+    uncertainty = EncryptedJSONField(purpose="scribe.transcript.uncertainty")
+    language = models.CharField(max_length=35, default="pt-BR")
+    speaker_reviewed = models.BooleanField(default=False)
+    text_reviewed = models.BooleanField(default=False)
+
+    class Meta(TenantScopedModel.Meta):
+        """A source segment occurs once in each retained transcript snapshot."""
+
+        abstract = False
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("version", "source_id"), name="scribe_transcript_segment"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(end_ms__gt=models.F("start_ms")),
+                name="scribe_transcript_time",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    speaker__in=("clinician", "patient", "caregiver", "unknown")
+                ),
+                name="scribe_transcript_speaker",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(confidence_milli__isnull=True)
+                | models.Q(confidence_milli__lte=1000),
+                name="scribe_transcript_confidence",
             ),
         ]

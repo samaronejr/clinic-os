@@ -6853,6 +6853,97 @@
       "probes": [
         "apps.workflows.views._staff_catalog#cut1"
       ]
+    },
+    {
+      "symbol": "apps.scribe.tasks.run_transcription",
+      "signals": [
+        "tenant_boundary"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 resolves the stored media operation and reaches recording_scope before preparing or admitting audio; no broker actor or tenant claim supplies authority."
+    },
+    {
+      "symbol": "apps.scribe.transcript_views._recording",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 selected recording lookup rechecks recording_scope; the additional denial binds it to the encounter selected by the browser."
+    },
+    {
+      "symbol": "apps.scribe.transcript_views.transcript_review",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.encounter_scope"
+      ],
+      "reason": "Todo 41 native review rechecks the selected encounter through browser_binding and encounter_scope before reading, queueing or reviewing a transcript."
+    },
+    {
+      "symbol": "apps.scribe.transcription._consented",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 recording_scope decides current assignment and clinical authority; additional checks narrow future processing to accepted audio, exact recording consent, disclosure and separate AI assistance consent."
+    },
+    {
+      "symbol": "apps.scribe.transcription._unseal_audio",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 rechecks the consented recording boundary immediately before decrypting; remaining denials authenticate ciphertext and immutable chunk identity."
+    },
+    {
+      "symbol": "apps.scribe.transcription.materialize_input",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 validates the retained ciphertext reference and reaches recording_scope before producing ephemeral provider audio; no second raw-audio artifact survives object-key shredding."
+    },
+    {
+      "symbol": "apps.scribe.transcripts.authorized_recording",
+      "signals": [
+        "denial",
+        "scope_name"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.scribe.authority.recording_scope"
+      ],
+      "reason": "Todo 41 all transcript reads and human successors delegate current clinical authority to recording_scope; discarded recordings additionally refuse."
+    },
+    {
+      "symbol": "apps.scribe.transcripts.coverage_for",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scribe.transcripts.coverage_for#cut1"
+      ],
+      "reason": "The executed census enters this actual callable on populated native coverage and verifies assigned active admission, another actor, another tenant, inactive assignment and unknown-record refusal under clinic_app. No staff-independence exemption is claimed."
     }
   ],
   "probes": [
@@ -7260,6 +7351,7 @@
     "apps.scribe.storage.open_audio#cut1",
     "apps.scribe.storage.seal_audio#cut1",
     "apps.scribe.switches.bound_recordings#cut1",
+    "apps.scribe.transcripts.coverage_for#cut1",
     "apps.scribe.views.capture_chunk#cut1",
     "apps.scribe.views.capture_control#cut1",
     "apps.teleconsult.participants.authorize_room_topic",
@@ -15769,13 +15861,22 @@
           "clinic_app.scribe_captureepoch:capture_insert",
           "clinic_app.scribe_captureepoch:capture_read",
           "clinic_app.scribe_captureepoch:capture_update",
+          "clinic_app.scribe_chunktranscription:transcript_insert",
+          "clinic_app.scribe_chunktranscription:transcript_read",
           "clinic_app.scribe_recordingcommand:capture_insert",
           "clinic_app.scribe_recordingcommand:capture_read",
           "clinic_app.scribe_recordingsession:capture_read",
-          "clinic_app.scribe_recordingsession:capture_update"
+          "clinic_app.scribe_recordingsession:capture_update",
+          "clinic_app.scribe_transcriptsegment:transcript_insert",
+          "clinic_app.scribe_transcriptsegment:transcript_read",
+          "clinic_app.scribe_transcriptversion:transcript_insert",
+          "clinic_app.scribe_transcriptversion:transcript_read"
         ],
         "resolvers": [
-          "clinic_app.scribe_guard"
+          "clinic_app.scribe_asr_allowed",
+          "clinic_app.scribe_guard",
+          "clinic_app.scribe_transcript_coverage",
+          "clinic_app.scribe_transcript_guard"
         ],
         "signatures": [
           {
@@ -15800,6 +15901,7 @@
         ],
         "policies": [],
         "resolvers": [
+          "clinic_app.scribe_asr_allowed",
           "clinic_app.scribe_consent",
           "clinic_app.scribe_guard",
           "clinic_app.scribe_room_capture_allowed"
@@ -15818,6 +15920,50 @@
             "set_returning": false
           }
         ]
+      }
+    },
+    "clinic_app.scribe_asr_allowed": {
+      "kind": "domain_protocol",
+      "reason": "Todo 41 requires current recording authority and separate exact AI assistance consent before transcription; live execution remains blocked on external gates.",
+      "probes": ["test_governed_completion_review_and_final_are_retained_successors", "test_ai_revocation_refuses_an_already_queued_invocation"],
+      "discovery": {
+        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "policies": [],
+        "resolvers": ["clinic_app.scribe_transcript_guard"],
+        "signatures": [{"arguments": "requested_session uuid, acceptance uuid", "returns": "bool", "security_definer": true, "set_returning": false}]
+      }
+    },
+    "clinic_app.scribe_asr_consent_fence": {
+      "kind": "domain_protocol",
+      "reason": "Todo 41 serializes recording/AI consent publication and withdrawal with the gateway organization send fence.",
+      "probes": ["test_ai_revocation_refuses_an_already_queued_invocation", "test_native_consent_publication_holds_asr_send_fence"],
+      "discovery": {
+        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [{"arguments": "", "returns": "trigger", "security_definer": true, "set_returning": false}]
+      }
+    },
+    "clinic_app.scribe_transcript_coverage": {
+      "kind": "domain_protocol",
+      "reason": "Todo 41 resolves declared epoch/track/sequence coverage only under current assigned-recording authority and preserves absent or pending chunks.",
+      "probes": ["test_coverage_reader_rechecks_native_assignment_and_active_actor", "test_finalize_without_full_coverage_requires_explicit_disposition", "test_read_unknown_and_foreign_clinic_have_the_same_denial"],
+      "discovery": {
+        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "policies": [],
+        "resolvers": ["clinic_app.scribe_transcript_guard"],
+        "signatures": [{"arguments": "requested_session uuid", "returns": "jsonb", "security_definer": true, "set_returning": false}]
+      }
+    },
+    "clinic_app.scribe_transcript_guard": {
+      "kind": "domain_protocol",
+      "reason": "Todo 41 binds immutable requests and transcript successors to their real session, accepted chunk, governed invocation and complete or explicitly acknowledged coverage.",
+      "probes": ["test_governed_completion_review_and_final_are_retained_successors", "test_finalize_without_full_coverage_requires_explicit_disposition", "test_database_coverage_change_is_a_recoverable_transcript_conflict", "test_native_coverage_storage_has_per_version_and_recording_bounds"],
+      "discovery": {
+        "migrations": ["apps/scribe/migrations/_transcript_sql.py"],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [{"arguments": "", "returns": "trigger", "security_definer": true, "set_returning": false}]
       }
     },
     "clinic_app.scribe_consent_fence": {

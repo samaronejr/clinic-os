@@ -9,6 +9,9 @@ CUSTOM_RLS_TABLES: Final = frozenset(
         "scribe_captureepoch",
         "scribe_audiochunk",
         "scribe_recordingcommand",
+        "scribe_chunktranscription",
+        "scribe_transcriptversion",
+        "scribe_transcriptsegment",
     }
 )
 NON_RLS_TABLES: Final[frozenset[str]] = frozenset()

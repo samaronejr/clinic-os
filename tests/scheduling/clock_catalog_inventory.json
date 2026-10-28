@@ -400,6 +400,7 @@
       "policy:consent_consenttext.setup_tenant",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
@@ -6028,6 +6029,7 @@
       "policy:consent_consenttext.setup_tenant",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
@@ -6145,10 +6147,12 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence",
       "trigger:consent_noticeversion.consent_binding",
@@ -9943,6 +9947,48 @@
       "trigger:identity_userclinicrole.workflows_bundle_selection_guard"
     ]
   },
+  "function:clinic_app.scribe_asr_consent_fence()": {
+    "direct": {},
+    "via": [
+      "constraint:consent_consentacceptance.consent_authority_check",
+      "constraint:consent_consentacceptance.consent_consentaccep_clinic_id_c51861d0_fk_identity_",
+      "constraint:consent_consentacceptance.consent_consentaccep_enrollment_id_dbb0d524_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_organization_id_31410d0b_fk_identity_",
+      "constraint:consent_consentacceptance.consent_consentaccep_patient_id_ac67e8f9_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_patient_session_id_fc7bcace_fk_intake_pa",
+      "constraint:consent_consentacceptance.consent_consentaccep_text_id_a971ac6b_fk_consent_c",
+      "constraint:consent_consenttext.consent_consenttext_clinic_id_c0bc255a_fk_identity_clinic_id",
+      "constraint:consent_consenttext.consent_consenttext_organization_id_b745af1e_fk_identity_",
+      "constraint:consent_consenttext.consent_consenttext_published_by_id_ee3da737_fk_identity_",
+      "constraint:consent_consenttext.consent_consenttext_version_check",
+      "constraint:consent_consenttext.consent_text_scope_check",
+      "function:pg_catalog.hashtextextended(text, bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(bigint)",
+      "function:pg_catalog.pg_advisory_xact_lock(integer, integer)",
+      "function:pg_catalog.text(\"char\")",
+      "function:pg_catalog.text(boolean)",
+      "function:pg_catalog.text(character)",
+      "function:pg_catalog.text(inet)",
+      "function:pg_catalog.text(name)",
+      "function:pg_catalog.text(xml)",
+      "policy:consent_consentacceptance.consent_acceptance_insert",
+      "policy:consent_consentacceptance.consent_acceptance_read",
+      "policy:consent_consentacceptance.consent_alias_read",
+      "policy:consent_consentacceptance.delegate_purpose",
+      "policy:consent_consentacceptance.setup_tenant",
+      "policy:consent_consenttext.consent_text_insert",
+      "policy:consent_consenttext.consent_text_read",
+      "policy:consent_consenttext.delegate_purpose",
+      "policy:consent_consenttext.setup_tenant",
+      "trigger:consent_consentacceptance.consent_binding",
+      "trigger:consent_consentacceptance.consent_delegate_binding",
+      "trigger:consent_consenttext.consent_binding",
+      "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
+      "trigger:consent_consenttext.scribe_capture_consent_published",
+      "trigger:consent_consenttext.scribe_recording_publication_fence"
+    ]
+  },
   "function:clinic_app.scribe_assigned(uuid)": {
     "direct": {},
     "via": [
@@ -10004,10 +10050,12 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
@@ -10093,6 +10141,7 @@
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
@@ -10587,10 +10636,12 @@
       "trigger:consent_consentacceptance.consent_binding",
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consentrevocation.consent_binding",
+      "trigger:consent_consentrevocation.scribe_asr_revocation_fence",
       "trigger:consent_consentrevocation.scribe_capture_consent_revoked",
       "trigger:consent_consentrevocation.scribe_recording_revocation_fence",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence",
       "trigger:ehr_encounter.ehr_binding",
@@ -12462,6 +12513,7 @@
       "policy:consent_consenttext.setup_tenant",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
@@ -12571,6 +12623,7 @@
       "trigger:consent_consentacceptance.consent_delegate_binding",
       "trigger:consent_consenttext.consent_binding",
       "trigger:consent_consenttext.consent_plain_text",
+      "trigger:consent_consenttext.scribe_asr_publication_fence",
       "trigger:consent_consenttext.scribe_capture_consent_published",
       "trigger:consent_consenttext.scribe_recording_publication_fence"
     ]
@@ -14482,6 +14535,12 @@
       "function:clinic_app.consent_guard()"
     ]
   },
+  "trigger:consent_consentrevocation.scribe_asr_revocation_fence": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scribe_asr_consent_fence()"
+    ]
+  },
   "trigger:consent_consentrevocation.scribe_capture_consent_revoked": {
     "direct": {},
     "via": [
@@ -14504,6 +14563,12 @@
     "direct": {},
     "via": [
       "function:clinic_app.overlay_plain_text_guard()"
+    ]
+  },
+  "trigger:consent_consenttext.scribe_asr_publication_fence": {
+    "direct": {},
+    "via": [
+      "function:clinic_app.scribe_asr_consent_fence()"
     ]
   },
   "trigger:consent_consenttext.scribe_capture_consent_published": {

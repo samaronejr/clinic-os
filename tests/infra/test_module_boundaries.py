@@ -153,6 +153,21 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
             ["clinic_id", "encounter_token", "chunk"],
             {},
         ),
+        (
+            scribe_services.read_transcript,
+            ["clinic_id", "session_id"],
+            {},
+        ),
+        (
+            scribe_services.finalize_transcript,
+            ["clinic_id", "session_id", "expected_revision", "acknowledge_incomplete"],
+            {},
+        ),
+        (
+            scribe_services.review_segment,
+            ["clinic_id", "session_id", "expected_revision", "review"],
+            {},
+        ),
         (invoke, ["clinic_id", "purpose", "principal", "inputs_ref", "budget"], {}),
         (
             create_input,

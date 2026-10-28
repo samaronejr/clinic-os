@@ -8,7 +8,11 @@ import os
 import re
 import subprocess
 import sys
+from base64 import b64encode
+from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
+from urllib.parse import urljoin
+from uuid import uuid4
 
 import pytest
 from playwright.sync_api import expect
@@ -20,8 +24,9 @@ from renewal.browser._navigation import (
     goto_settled,
     reload_settled,
 )
+from renewal.browser._page_wait import evaluate_js
 from renewal.browser.a11y_support import check_page
-from renewal.browser.engines import grant_capture_audio
+from renewal.browser.engines import full_page_screenshot, grant_capture_audio
 from renewal.browser.test_availability import _sign_in_physician
 from renewal.browser.test_encounter import seed
 
@@ -174,7 +179,7 @@ def save_manual_note(page: Page) -> None:
     expect(page.locator("#id_subjective")).to_have_value(note)
 
 
-def fake_microphone(page: Page, *, declined: bool = False, clock: bool = False) -> None:
+def fake_microphone(page: Page, *, declined: bool = False) -> None:
     """Replace hardware only; the real browser encoder and HTTP stack still run."""
     assert os.environ.get("CLINIC_BROWSER_FAKE_MEDIA") == "1"
     browser = page.context.browser
@@ -197,7 +202,6 @@ def fake_microphone(page: Page, *, declined: bool = False, clock: bool = False) 
                 throw new DOMException('Synthetic refusal','NotAllowedError');
               }
               const stream = await nativeGetUserMedia({audio:true});
-              if (CLOCK) window.__scribeClockStream = stream.clone();
               const track = stream.getAudioTracks()[0];
               const stop = track.stop.bind(track);
               track.stop = () => {
@@ -207,9 +211,9 @@ def fake_microphone(page: Page, *, declined: bool = False, clock: bool = False) 
               return stream;
             }
           }});
-        })();""".replace("DECLINED", "true" if declined else "false")
-        .replace("CLOCK", "true" if clock else "false")
-        .replace("NATIVE", "true" if native else "false")
+        })();""".replace("DECLINED", "true" if declined else "false").replace(
+            "NATIVE", "true" if native else "false"
+        )
     )
 
 
@@ -365,7 +369,8 @@ def test_seventy_second_outage_pauses_drops_expired_audio_and_records_gaps(
     availability_staff: dict[str, str],
 ) -> None:
     page = outage_page
-    fake_microphone(page, clock=True)
+    page.clock.install()
+    fake_microphone(page)
     open_capture(page, renewal_base_url, availability_staff, "2036-04-22")
     page.locator('[data-capture-action="start"]').click()
     panel = page.locator("[data-scribe-capture]")
@@ -377,49 +382,81 @@ def test_seventy_second_outage_pauses_drops_expired_audio_and_records_gaps(
         "data-received", re.compile(r"^[1-9][0-9]*$"), timeout=15000
     )
     page.evaluate("""() => {
+      const panel = document.querySelector('[data-scribe-capture]');
       window.__scribeMaximumBuffer = 0;
-      document.querySelector('[data-scribe-capture]').addEventListener(
-        'scribe:state', event => {
+      panel.addEventListener('scribe:state', event => {
           window.__scribeMaximumBuffer = Math.max(window.__scribeMaximumBuffer,
             Number(event.target.dataset.bufferedMs));
         });
+      window.__scribeOfflineBuffer = new Promise(resolve => {
+        const buffered = event => {
+          if (!navigator.onLine && event.detail.pending > 0) {
+            panel.removeEventListener('scribe:state', buffered);
+            resolve();
+          }
+        };
+        panel.addEventListener('scribe:state', buffered);
+      });
+      window.__scribeOfflinePause = new Promise(resolve => {
+        const paused = event => {
+          if (event.detail.phase === 'offline' && event.detail.lost > 0) {
+            panel.removeEventListener('scribe:state', paused);
+            resolve();
+          }
+        };
+        panel.addEventListener('scribe:state', paused);
+      });
     }""")
     page.context.set_offline(True)
-    elapsed = page.evaluate("""async () => {
-      // A separate synthetic media clock supplies real encoder events, not a
-      // timer wait or a mocked capture recorder. Main capture still auto-pauses.
-      const mime = ['audio/webm;codecs=opus','audio/ogg;codecs=opus']
-        .find(value => MediaRecorder.isTypeSupported(value));
-      const clock = new MediaRecorder(window.__scribeClockStream, {mimeType:mime});
-      let ticks = 0;
-      const started = performance.now();
-      const complete = new Promise((resolve, reject) => {
-        AbortSignal.timeout(100000).addEventListener('abort',
-          () => reject(new Error('media_clock_timeout')), {once:true});
-        clock.addEventListener('dataavailable', () => {
-          ticks += 1;
-          if (ticks === 70) {
-            clock.stop();
-            window.__scribeClockStream.getTracks().forEach(track => track.stop());
-            resolve(performance.now() - started);
-          }
-        });
-      });
-      clock.start(1000);
-      return await complete;
-    }""")
-    assert float(elapsed) >= 70000
+    evaluate_js(page, "() => window.__scribeOfflineBuffer", timeout=20_000)
+    # Advance the application's actual deadline clock, not an auxiliary encoder
+    # whose elapsed wall time is quantized differently by each browser.
+    page.clock.fast_forward(70_000)
+    evaluate_js(page, "() => window.__scribeOfflinePause", timeout=20_000)
     expect(panel).to_have_attribute("data-phase", "offline")
-    assert page.evaluate("() => window.__scribeMaximumBuffer") <= 60000
+    assert 0 < page.evaluate("() => window.__scribeMaximumBuffer") <= 60000
     assert page.evaluate("() => window.__scribeStops") >= 1
     page.screenshot(path=str(renewal_artifact_root / "offline-paused.png"))
-    page.context.set_offline(False)
+
+    def pause_ack(response: Response) -> bool:
+        if not response.url.endswith("/scribe/control/"):
+            return False
+        payload = response.request.post_data_json
+        return (
+            response.request.method == "POST"
+            and isinstance(payload, dict)
+            and payload.get("action") == "pause"
+        )
+
+    with page.expect_response(pause_ack) as paused:
+        page.context.set_offline(False)
+    assert paused.value.status == 200
+    pause_payload = paused.value.request.post_data_json
+    assert isinstance(pause_payload, dict)
+    last_seq = pause_payload["last_seq"]
+    assert isinstance(last_seq, int)
     expect(page.locator('[data-capture-action="resume"]')).to_be_enabled(timeout=20000)
     metadata = inspect_capture(page, availability_staff)
     assert metadata["original_expiry_verified"] is True
     epochs = metadata["epochs"]
     assert isinstance(epochs, list)
-    assert epochs[0]["gaps"]["microphone"]
+    sequences = metadata["sequences"]
+    assert isinstance(sequences, list)
+    assert sequences
+    acknowledged = [
+        seq for number, seq, state in sequences if state in {"buffered", "accepted"}
+    ]
+    assert acknowledged
+    assert acknowledged == list(range(acknowledged[-1] + 1))
+    first_missing = acknowledged[-1] + 1
+    assert last_seq >= first_missing
+    assert epochs == [
+        {
+            "number": 1,
+            "closed": True,
+            "gaps": {"microphone": [[first_missing, last_seq]]},
+        }
+    ]
     assert int(panel.get_attribute("data-lost") or "0") > 0
     page.locator('[data-capture-action="stop"]').click()
     expect(panel).to_have_attribute("data-phase", "done")
@@ -428,7 +465,9 @@ def test_seventy_second_outage_pauses_drops_expired_audio_and_records_gaps(
             {
                 "level": "L1",
                 "hardware": "synthetic",
-                "outage_ms": elapsed,
+                "clock_advance_ms": 70_000,
+                "gap_first_seq": first_missing,
+                "gap_last_seq": last_seq,
                 "metadata": metadata,
             },
             sort_keys=True,
@@ -653,3 +692,123 @@ def test_native_stop_and_manual_save_need_no_javascript(
         assert page.evaluate("() => window.__scribeStops") >= 1
     finally:
         context.close()
+
+
+def test_transcript_pending_incomplete_final_and_manual_care(
+    capture_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+) -> None:
+    page = capture_page
+    page.route(
+        "**/static/vendor/axe/axe.min.js",
+        lambda route: route.continue_(
+            headers={
+                key: value
+                for key, value in route.request.headers.items()
+                if key.lower() not in {"if-modified-since", "if-none-match"}
+            }
+        ),
+    )
+    open_capture(page, renewal_base_url, availability_staff, "2036-05-08")
+    panel = page.locator("[data-scribe-capture]")
+    form = panel.locator("[data-capture-form]")
+    token = form.locator('[name="encounter_token"]').input_value()
+    headers = {
+        "X-CSRFToken": form.locator('[name="csrfmiddlewaretoken"]').input_value(),
+        "Referer": page.url,
+    }
+    control = panel.get_attribute("data-control-url")
+    upload = panel.get_attribute("data-chunk-url")
+    assert control is not None
+    assert upload is not None
+    authorized = page.request.post(
+        urljoin(renewal_base_url, control),
+        data={
+            "action": "authorize",
+            "encounter_token": token,
+            "command_id": str(uuid4()),
+        },
+        headers=headers,
+    )
+    assert authorized.status == 200
+    session = authorized.json()["session_id"]
+    started = page.request.post(
+        urljoin(renewal_base_url, control),
+        data={
+            "action": "start",
+            "encounter_token": token,
+            "command_id": str(uuid4()),
+            "session_id": session,
+        },
+        headers=headers,
+    )
+    assert started.status == 200
+    epoch = started.json()["epoch"]
+    audio = b"SINTETICO-41-ASR-AUDIO"
+    received = page.request.post(
+        urljoin(renewal_base_url, upload),
+        data={
+            "session_id": session,
+            "epoch": epoch,
+            "track": "microphone",
+            "seq": 0,
+            "sha256": sha256(audio).hexdigest(),
+            "duration_ms": 2000,
+            "codec": "audio/webm;codecs=opus",
+            "bytes": b64encode(audio).decode("ascii"),
+        },
+        headers={**headers, "X-Encounter-Token": token},
+    )
+    assert received.status == 200
+    assert received.json()["ack"] == "received"
+    stopped = page.request.post(
+        urljoin(renewal_base_url, control),
+        data={
+            "action": "stop",
+            "encounter_token": token,
+            "command_id": str(uuid4()),
+            "session_id": session,
+            "expected_epoch": epoch,
+            "last_seq": 1,
+        },
+        headers=headers,
+    )
+    assert stopped.status == 200
+    assert stopped.json()["state"] == "stopped"
+    click_to_navigate(page.locator('form[action$="/scribe/transcript/"] button'))
+    expect(page.locator("[data-transcript-state]")).to_have_attribute(
+        "data-transcript-state", "transcription_pending"
+    )
+    expect(page.locator("[data-transcription-disabled]")).to_be_visible()
+    expect(page.locator("#transcript-coverage-title")).to_be_visible()
+    for width in (1280, 375):
+        page.set_viewport_size({"width": width, "height": 1000})
+        assert page.evaluate(
+            "() => document.documentElement.scrollWidth <= window.innerWidth"
+        )
+        full_page_screenshot(
+            page, renewal_artifact_root / f"transcript-pending-{width}.png"
+        )
+    check_page(page, renewal_base_url, renewal_artifact_root, "transcript-pending")
+    click_to_navigate(page.locator('button[value="finalize"]'))
+    expect(page.locator("[data-focus-error]")).to_be_visible()
+    expect(page.locator("[data-transcript-state]")).to_have_attribute(
+        "data-transcript-state", "transcription_pending"
+    )
+    page.locator('[name="acknowledge_incomplete"]').check()
+    click_to_navigate(page.locator('button[value="finalize"]'))
+    expect(page.locator("[data-transcript-state]")).to_have_attribute(
+        "data-transcript-state", "final"
+    )
+    expect(page.locator("#transcript-coverage-title")).to_be_visible()
+    click_to_navigate(page.locator('button[value="refresh"]'))
+    expect(page.locator("[data-transcript-state]")).to_have_attribute(
+        "data-transcript-state", "final"
+    )
+    check_page(page, renewal_base_url, renewal_artifact_root, "transcript-final")
+    full_page_screenshot(page, renewal_artifact_root / "transcript-final.png")
+    click_to_navigate(page.locator('a[href$="/encounter/"]'))
+    expect(page.locator("#soap-form")).to_be_visible()
+    save_manual_note(page)

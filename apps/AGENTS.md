@@ -27,12 +27,15 @@
 ### Scribe
 
 Read `scribe/README.md` before changing capture, receipts, encryption or discard.
-The four public entrypoints are exported by `scribe/services.py`;
+The seven public entrypoints are exported by `scribe/services.py`;
 `tests/infra/test_module_boundaries.py` pins their signatures and defaults.
 `tests/scribe/test_posture.py` and `tests/infra/test_new_app_posture.py` pin exact
 FORCE RLS, policies, table grants and column grants. Keep the original upload
 deadline and immutable encounter/token/epoch binding. Capture receipts
 acknowledge encrypted ingest, not completed object delivery. The
+transcription path additionally requires separate current AI assistance consent
+and the governed gateway. Transcript corrections are immutable successors;
+never deduplicate repeated words or invent missing coverage. The
 `scribe-capture` browser suite owns interruption, privacy and accessibility
 evidence. Physical devices and independent S3/MinIO qualification stay external.
 

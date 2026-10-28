@@ -105,6 +105,7 @@ def test_celery_app_registers_only_the_integration_task() -> None:
         "apps.ehr.tasks.refresh_timeline",
         "apps.scheduling.tasks.expire_holds",
         "apps.scribe.tasks.execute",
+        "apps.scribe.tasks.transcribe",
         "apps.workflows.tasks.escalate",
         "apps.workflows.tasks.execute_step",
         "apps.workflows.tasks.scan_due",

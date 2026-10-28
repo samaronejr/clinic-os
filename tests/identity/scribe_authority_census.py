@@ -13,7 +13,7 @@ from apps.tenancy.db import tenant_context
 from django.test import override_settings
 
 from patient_service_support import runtime_role
-from scribe import test_ingest, test_refusals
+from scribe import test_ingest, test_refusals, test_transcript_runtime
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -70,6 +70,13 @@ def exercise_scribe_authority(
             "Scribe current consent and direct SQL refusal",
             partial(
                 test_ingest.test_revoked_consent_stops_new_chunks_and_direct_sql,
+                graph(),
+            ),
+        )
+        proofs.run(
+            "Scribe transcript coverage native assignment, tenant and active actor",
+            partial(
+                test_transcript_runtime.test_coverage_reader_rechecks_native_assignment_and_active_actor,
                 graph(),
             ),
         )

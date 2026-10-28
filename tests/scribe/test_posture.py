@@ -17,6 +17,13 @@ TABLES: Final = frozenset(
         "scribe_recordingcommand",
     }
 )
+TRANSCRIPT_TABLES: Final = frozenset(
+    {
+        "scribe_chunktranscription",
+        "scribe_transcriptversion",
+        "scribe_transcriptsegment",
+    }
+)
 TENANT: Final = (
     "(organization_id = (NULLIF(current_setting("
     "'app.current_tenant'::text, true), ''::text))::uuid)"
@@ -32,7 +39,7 @@ def test_every_scribe_table_has_exact_enable_force_and_owner_posture() -> None:
     model_tables = {
         model._meta.db_table for model in apps.get_app_config("scribe").get_models()
     }
-    assert model_tables == CUSTOM_RLS_TABLES == TABLES
+    assert model_tables == CUSTOM_RLS_TABLES == TABLES | TRANSCRIPT_TABLES
 
     # When: the deployed catalog, not the declaration, supplies the flags.
     with connection.cursor() as cursor:
@@ -42,12 +49,14 @@ def test_every_scribe_table_has_exact_enable_force_and_owner_posture() -> None:
             "FROM pg_catalog.pg_class c "
             "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
             "WHERE n.nspname = 'clinic_app' AND c.relname = ANY(%s)",
-            [sorted(TABLES)],
+            [sorted(TABLES | TRANSCRIPT_TABLES)],
         )
         observed = set(cursor.fetchall())
 
     # Then: no table may be missing, unforced, or owned by a runtime role.
-    assert observed == {(table, True, True, "clinic_owner") for table in TABLES}
+    assert observed == {
+        (table, True, True, "clinic_owner") for table in TABLES | TRANSCRIPT_TABLES
+    }
 
 
 def test_scribe_policy_roles_commands_and_predicates_are_exact() -> None:
@@ -106,13 +115,46 @@ def test_scribe_policy_roles_commands_and_predicates_are_exact() -> None:
             )
 
     # When: every policy is read, including unexpected permissive additions.
+    for table in TRANSCRIPT_TABLES:
+        assigned = "clinic_app.scribe_assigned(session_id)"
+        expected.update(
+            {
+                (
+                    table,
+                    "setup_tenant",
+                    "PERMISSIVE",
+                    ("clinic_owner",),
+                    "ALL",
+                    TENANT,
+                    TENANT,
+                ),
+                (
+                    table,
+                    "transcript_read",
+                    "PERMISSIVE",
+                    ("clinic_app",),
+                    "SELECT",
+                    assigned,
+                    None,
+                ),
+                (
+                    table,
+                    "transcript_insert",
+                    "PERMISSIVE",
+                    ("clinic_app",),
+                    "INSERT",
+                    None,
+                    f"({TENANT} AND {assigned})",
+                ),
+            }
+        )
     with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("SET LOCAL search_path = pg_catalog")
         cursor.execute(
             "SELECT tablename, policyname, permissive, roles, cmd, qual, with_check "
             "FROM pg_catalog.pg_policies "
             "WHERE schemaname = 'clinic_app' AND tablename = ANY(%s)",
-            [sorted(TABLES)],
+            [sorted(TABLES | TRANSCRIPT_TABLES)],
         )
         observed = {
             (table, name, mode, tuple(roles), command, using, check)

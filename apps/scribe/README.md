@@ -1,14 +1,15 @@
 # Consultation audio capture and ingest
 
-This slice captures consented consultation audio. It does not transcribe audio,
-call a model, generate a clinical note, or authorize any of those operations.
-ASR and drafting require their own consent, capability, and Model Gateway work.
+The capture slice records consented consultation audio. Todo 41 adds optional,
+separately consented synthetic transcription through the governed Model Gateway.
+Neither slice generates a clinical note or authorizes drafting.
 Manual clinical care does not require recording consent.
 
 ## Authority and state
 
 The public service surface is `issue_encounter_token`, `create_recording`,
-`control_recording`, and `ingest_chunk`. Services receive explicit keyword-only
+`control_recording`, `ingest_chunk`, `read_transcript`, `review_segment`, and
+`finalize_transcript`. Services receive explicit keyword-only
 scope. The current database principal supplies authority, never a caller's
 patient, organization, or actor claim.
 
@@ -145,3 +146,78 @@ reflow have dedicated `scribe-capture` cases; they do not replace physical
 assistive-technology evidence. The repair's manual QA matrix and review notes
 belong in the task-40 evidence packet. Root's separate re-review remains the
 approval boundary; self-review is not independent approval.
+
+## Optional synthetic transcription
+
+Each accepted chunk publishes a reference-only `apps.scribe.tasks.transcribe`
+task on `ai-interactive` after commit. The worker fetches ciphertext outside a
+transaction, rechecks assignment, decrypts under the tenant key, and admits one
+purpose-bound encrypted input through `apps.ai.services.invoke`. No audio enters
+task arguments or integration-operation rows. A unique retained
+`ChunkTranscription` binds the chunk, exact `ai_assistance` acceptance and
+governed invocation; matching replays do not reserve another invocation.
+The durable AI input contains object ciphertext and opaque binding metadata,
+not raw audio. Only gateway preparation materializes raw bytes into the
+repr-hidden, ephemeral provider request. Destroying the chunk's sole wrapped
+object key therefore leaves no independently decryptable raw-audio shadow.
+
+Current recording consent and an informed, unrefused encounter disclosure are
+necessary but insufficient. Admission and final provider eligibility also
+require separate current `ai_assistance` consent, the ASR capability registry,
+approved model configuration, both AI switches and the existing exact budget.
+Consent publication and withdrawal take the gateway's organization send fence;
+no purpose lock is acquired while a worker holds that fence.
+The registered transcript projection runs after metering is settled but before
+the first AI audit append, inside the same transaction. Media acceptance takes
+the recording row before its chunk row, preserving recording/chunk/audit order.
+
+The only runnable ASR is the deterministic synthetic recording in
+`fixtures/asr_v1.json`. It exercises partial replacement, repeated words,
+inaudibility and the uncertain dose "5 ou 15 mg"; it makes no accuracy claim.
+AWS Transcribe Streaming, Azure Speech and Google Speech-to-Text v2 request
+options and result codecs are executable on offline fixtures in `asr.py`.
+Their execution stays `BLOCKED-ON-EG`, with `real_enabled=False`; there is no
+SDK, credential loader or network transport to activate accidentally. AWS's
+Ogg Opus requirement and Azure's unqualified compressed-audio dependency are
+explicit rather than pretending every browser container interoperates.
+
+`TranscriptVersion` is an immutable linear successor chain. `TranscriptSegment`
+stores text and uncertainty spans only in tenant-encrypted fields. Stitching
+orders source ranges by time and immutable identity, never by text, and never
+deduplicates repeated words. Every version retains declared epoch/track/sequence
+coverage, including gaps, pending recognitions and completed chunk references.
+Content-free milliseconds measure received-chunk-to-partial latency.
+Snapshot roots retain source identities; only changed source text rows are
+appended. Each version does copy its full coverage metadata, not its source
+text. A version is limited to 1 MiB of coverage JSON and a recording to 64 MiB
+of retained coverage JSON. Recognition stops at 63 MiB, reserving 1 MiB for
+finalization or human review; reaching capacity is a clean transcript refusal
+and leaves retained audio and manual care available. These database-enforced
+limits bound metadata growth; they are not a claim of linear storage.
+Unknown voices remain `unknown`; role labels are reviewable proposals.
+
+The native POST-only screen opens from the encounter and provides pending,
+partial, final, disabled, empty, conflict and denial states, marked uncertainty,
+speaker review, text corrections and a manual-note link. Every review creates a
+new version and metadata-only audit event. Human reviews survive later
+hypotheses. Finalization requires a stopped recording and full coverage or
+explicit, unchecked-by-default acknowledgment of incompleteness. Late model
+results never change a final; correcting one creates a new final successor.
+
+An ASR refusal/outage retains audio under its existing policy and leaves
+`transcription_pending`. There is no invented text or automatic replay of an
+unknown charged outcome. The queue action admits only not-yet-requested chunks.
+Existing transcripts do not authorize new processing after consent loss.
+
+`0003_transcripts` is additive, non-atomic and irreversible because it introduces
+protected columns; rollback = restore. All three tables have FORCE RLS,
+SELECT/INSERT-only runtime grants, binding and immutability guards, no truncate
+grant, and recovery-manifest classification. Real-role SQL, migration-upgrade,
+restore-rehearsal and browser acceptance require the separately owned DB window.
+Source-only verification does not satisfy those gates or any EG.
+
+Vendor codec references, retrieved October 26, 2026:
+
+- AWS: https://docs.aws.amazon.com/transcribe/latest/APIReference/API_streaming_StartStreamTranscription.html
+- Azure: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/get-speech-recognition-results
+- Google: https://cloud.google.com/speech-to-text/v2/docs/reference/rest/v2/projects.locations.recognizers/recognize

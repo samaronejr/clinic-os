@@ -35,7 +35,7 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     )
     # Source-union candidate only; re-derive from the integrated PostgreSQL catalog.
     # tests/infra/test_recovery_manifest.py independently proves completeness.
-    assert len(restore_contract.DOMAIN_RELATIONS) == 166
+    assert len(restore_contract.DOMAIN_RELATIONS) == 169
     assert "clinic_app.prescription_prescriptionissuance" in restore_contract.TABLE_DATA
     assert "clinic_app.prescription_sncrnumberallocation" in restore_contract.TABLE_DATA
     assert len(set(restore_contract.DOMAIN_RELATIONS)) == len(
@@ -60,8 +60,11 @@ def test_fixed_manifest_and_postgresql_commands_are_closed() -> None:
     assert {
         "scribe_audiochunk",
         "scribe_captureepoch",
+        "scribe_chunktranscription",
         "scribe_recordingcommand",
         "scribe_recordingsession",
+        "scribe_transcriptsegment",
+        "scribe_transcriptversion",
     } <= set(restore_contract.DOMAIN_RELATIONS)
     assert set(restore_contract.TARGET_SEEDED_RELATIONS) == {
         "prescription_prescriptionclasspolicy",
