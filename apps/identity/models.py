@@ -141,6 +141,9 @@ class ClinicConfiguration(models.Model):
         default=False, db_default=False
     )
     hold_ttl_minutes = models.PositiveSmallIntegerField(default=10, db_default=10)
+    raw_audio_retention_days = models.PositiveSmallIntegerField(default=7, db_default=7)
+    retention_dry_run = models.BooleanField(default=True, db_default=True)
+    retention_backup_days = models.PositiveSmallIntegerField(default=35, db_default=35)
     logo_png = models.BinaryField(default=bytes, blank=True)
     published_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -178,6 +181,12 @@ class ClinicConfiguration(models.Model):
                 condition=models.Q(hold_ttl_minutes__gte=1)
                 & models.Q(hold_ttl_minutes__lte=60),
                 name="identity_config_hold_ttl_bounds",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(raw_audio_retention_days__lte=365)
+                & models.Q(retention_backup_days__gte=1)
+                & models.Q(retention_backup_days__lte=3650),
+                name="identity_config_retention_bounds",
             ),
         ]
 
@@ -358,7 +367,7 @@ class ServicePrincipal(TenantScopedModel):
                 fields=("organization", "id"), name="identity_principal_org_id_uniq"
             ),
             models.CheckConstraint(
-                condition=models.Q(grant_set_version__in=(1, 2))
+                condition=models.Q(grant_set_version__in=(1, 2, 3))
                 & models.Q(db_identity__regex=r"^clinic_agent(_[a-z0-9_]+)?$")
                 & models.Q(name__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$")
                 & models.Q(purpose__regex=r"^[a-z0-9][a-z0-9_-]{0,63}$"),
@@ -390,6 +399,7 @@ class ServicePrincipalGrant(TenantScopedModel):
                 condition=(
                     models.Q(grant_set_version=1, permission="appointment.read")
                     | models.Q(grant_set_version=2, permission="agent.execute")
+                    | models.Q(grant_set_version=3, permission="retention.execute")
                 )
                 & models.Q(subject_scope="clinic"),
                 name="identity_principal_grant_v1_scope",

@@ -112,6 +112,18 @@ msgstr "Pessoa não identificada"
 msgid "Clinician"
 msgstr "Profissional de saúde"
 
+msgid "Audio discarded according to policy."
+msgstr "Áudio descartado conforme política."
+
+msgid "Artifact discarded according to policy."
+msgstr "Artefato descartado conforme política."
+
+msgid "Backup copy expires at"
+msgstr "A cópia de segurança expira em"
+
+msgid "Clinical records are never automatically destroyed. Transient synthetic artifacts follow their retention policy; active legal holds block destruction."
+msgstr "Registros clínicos nunca são destruídos automaticamente. Artefatos sintéticos transitórios seguem a política de retenção; guardas legais ativas impedem a destruição."
+
 msgid "Open linked consent document"
 msgstr "Abrir documento de consentimento vinculado"
 

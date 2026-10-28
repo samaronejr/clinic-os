@@ -20,6 +20,12 @@
   data-text-loading="{% trans "Confirming capture authority. The microphone is still off." %}"
   data-text-device="{% trans "Microphone __N__" %}">
   <h2 id="scribe-title" tabindex="-1">{% trans "Consultation audio" %}</h2>
+  {% for receipt in capture.purge_receipts %}
+  <p class="feedback" data-audio-purge-receipt>
+    {% trans "Audio discarded according to policy." %} {{ receipt.purged_at|date:"d/m/Y" }}.
+    {% trans "Backup copy expires at" %} {{ receipt.backup_copy_expires_at|date:"d/m/Y" }}.
+  </p>
+  {% endfor %}
   {% if capture.available %}
   <p class="help-text">{% trans "Synthetic capture. Recording consent does not authorize transcription or AI processing. Unconfirmed audio stays only in memory for at most 60 seconds; it is never saved on this device." %}</p>
   <p class="feedback" role="status" aria-live="polite" data-capture-status>{% if capture.recording %}{% trans "A previous capture needs recovery. This browser is not recording. Recover, then resume explicitly." %}{% else %}{% trans "Microphone off. Start only when everyone is ready." %}{% endif %}</p>

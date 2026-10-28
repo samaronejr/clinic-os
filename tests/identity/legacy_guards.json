@@ -213,16 +213,6 @@
       ]
     },
     {
-      "symbol": "apps.ai.brief_views.chart_assistant",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ai.brief_views.chart_assistant#cut1"
-      ]
-    },
-    {
       "symbol": "apps.ai.brief.display_brief",
       "signals": [
         "actor",
@@ -241,6 +231,16 @@
       "kind": "direct",
       "probes": [
         "apps.ai.brief.request_brief#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.ai.brief_views.chart_assistant",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.brief_views.chart_assistant#cut1"
       ]
     },
     {
@@ -417,6 +417,16 @@
       "kind": "direct",
       "probes": [
         "apps.audit.services._record_lab_event#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.audit.services._record_retention_event",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.audit.services._record_retention_event#cut1"
       ]
     },
     {
@@ -997,23 +1007,13 @@
       ]
     },
     {
-      "symbol": "apps.core.workspace_access._billing_surface_admitted",
+      "symbol": "apps.core.workspace.WorkspaceClinic.agenda_url",
       "signals": [
         "permission"
       ],
       "kind": "direct",
       "probes": [
-        "apps.core.workspace_access._billing_surface_admitted"
-      ]
-    },
-    {
-      "symbol": "apps.core.workspace_access.workspace_denial",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.core.workspace_access.workspace_denial"
+        "apps.core.workspace.WorkspaceClinic.agenda_url#cut1"
       ]
     },
     {
@@ -1050,13 +1050,23 @@
       ]
     },
     {
-      "symbol": "apps.core.workspace.WorkspaceClinic.agenda_url",
+      "symbol": "apps.core.workspace_access._billing_surface_admitted",
       "signals": [
         "permission"
       ],
       "kind": "direct",
       "probes": [
-        "apps.core.workspace.WorkspaceClinic.agenda_url#cut1"
+        "apps.core.workspace_access._billing_surface_admitted"
+      ]
+    },
+    {
+      "symbol": "apps.core.workspace_access.workspace_denial",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.core.workspace_access.workspace_denial"
       ]
     },
     {
@@ -1281,49 +1291,6 @@
       ]
     },
     {
-      "symbol": "apps.ehr.history_views._editor_kind",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.ehr.history.authorize_history"
-      ]
-    },
-    {
-      "symbol": "apps.ehr.history_views._editor",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
-      "enforced_by": [
-        "apps.ehr.history.authorize_history"
-      ]
-    },
-    {
-      "symbol": "apps.ehr.history_views._workspace",
-      "signals": [
-        "denial",
-        "role_helper"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.history_views._workspace"
-      ]
-    },
-    {
-      "symbol": "apps.ehr.history_views.history_workspace",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.ehr.history_views.history_workspace"
-      ]
-    },
-    {
       "symbol": "apps.ehr.history._context",
       "signals": [
         "resolver"
@@ -1355,6 +1322,49 @@
       "kind": "direct",
       "probes": [
         "apps.ehr.history.save_history"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.history_views._editor",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.ehr.history.authorize_history"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.history_views._editor_kind",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Resolved source/SQL dependency consults staff state; authority is exercised by the named reachable oracle, not exempted as nonstaff.",
+      "enforced_by": [
+        "apps.ehr.history.authorize_history"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.history_views._workspace",
+      "signals": [
+        "denial",
+        "role_helper"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.history_views._workspace"
+      ]
+    },
+    {
+      "symbol": "apps.ehr.history_views.history_workspace",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ehr.history_views.history_workspace"
       ]
     },
     {
@@ -2287,26 +2297,6 @@
       ]
     },
     {
-      "symbol": "apps.identity.onboarding_views.onboarding_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.onboarding_views.onboarding_view"
-      ]
-    },
-    {
-      "symbol": "apps.identity.onboarding_views.provider_review",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.onboarding_views.provider_review"
-      ]
-    },
-    {
       "symbol": "apps.identity.onboarding._recovery_enrollment",
       "signals": [
         "actor"
@@ -2328,33 +2318,23 @@
       ]
     },
     {
-      "symbol": "apps.identity.otp_views._current_user",
+      "symbol": "apps.identity.onboarding_views.onboarding_view",
       "signals": [
-        "authentication"
+        "decorator"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.otp_views._current_user"
+        "apps.identity.onboarding_views.onboarding_view"
       ]
     },
     {
-      "symbol": "apps.identity.otp_views.enroll_view",
+      "symbol": "apps.identity.onboarding_views.provider_review",
       "signals": [
-        "authentication"
+        "decorator"
       ],
       "kind": "direct",
       "probes": [
-        "apps.identity.otp_views.enroll_view"
-      ]
-    },
-    {
-      "symbol": "apps.identity.otp_views.verify_view",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.otp_views.verify_view"
+        "apps.identity.onboarding_views.provider_review"
       ]
     },
     {
@@ -2387,6 +2367,36 @@
       "probes": [
         "apps.identity.otp.privileged_totp_required",
         "apps.identity.otp.privileged_totp_required#unverified"
+      ]
+    },
+    {
+      "symbol": "apps.identity.otp_views._current_user",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.otp_views._current_user"
+      ]
+    },
+    {
+      "symbol": "apps.identity.otp_views.enroll_view",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.otp_views.enroll_view"
+      ]
+    },
+    {
+      "symbol": "apps.identity.otp_views.verify_view",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.otp_views.verify_view"
       ]
     },
     {
@@ -2592,16 +2602,6 @@
       ]
     },
     {
-      "symbol": "apps.identity.preferences_views.preferences_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.preferences_views.preferences_view"
-      ]
-    },
-    {
       "symbol": "apps.identity.preferences.save_ui_preferences",
       "signals": [
         "actor"
@@ -2609,6 +2609,16 @@
       "kind": "direct",
       "probes": [
         "apps.identity.preferences.save_ui_preferences"
+      ]
+    },
+    {
+      "symbol": "apps.identity.preferences_views.preferences_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.preferences_views.preferences_view"
       ]
     },
     {
@@ -2710,7 +2720,7 @@
       ]
     },
     {
-      "symbol": "apps.identity.service_principals.revoke_principal_grant",
+      "symbol": "apps.identity.service_principals.revoke_principal",
       "signals": [
         "denial"
       ],
@@ -2721,7 +2731,7 @@
       ]
     },
     {
-      "symbol": "apps.identity.service_principals.revoke_principal",
+      "symbol": "apps.identity.service_principals.revoke_principal_grant",
       "signals": [
         "denial"
       ],
@@ -2835,16 +2845,6 @@
       ]
     },
     {
-      "symbol": "apps.identity.session_inventory.revoke_session_hash",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.session_inventory.revoke_session_hash"
-      ]
-    },
-    {
       "symbol": "apps.identity.session_inventory.revoke_session",
       "signals": [
         "actor",
@@ -2853,6 +2853,16 @@
       "kind": "direct",
       "probes": [
         "apps.identity.session_inventory.revoke_session"
+      ]
+    },
+    {
+      "symbol": "apps.identity.session_inventory.revoke_session_hash",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.session_inventory.revoke_session_hash"
       ]
     },
     {
@@ -2966,26 +2976,6 @@
       ]
     },
     {
-      "symbol": "apps.identity.stepup_views._current_active_user",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.stepup_views._current_active_user"
-      ]
-    },
-    {
-      "symbol": "apps.identity.stepup_views.step_up_view",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.identity.stepup_views.step_up_view"
-      ]
-    },
-    {
       "symbol": "apps.identity.stepup._freshness_is_valid",
       "signals": [
         "authentication"
@@ -3017,6 +3007,26 @@
       ]
     },
     {
+      "symbol": "apps.identity.stepup_views._current_active_user",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.stepup_views._current_active_user"
+      ]
+    },
+    {
+      "symbol": "apps.identity.stepup_views.step_up_view",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.identity.stepup_views.step_up_view"
+      ]
+    },
+    {
       "symbol": "apps.identity.views.protected_view",
       "signals": [
         "decorator"
@@ -3024,18 +3034,6 @@
       "kind": "direct",
       "probes": [
         "apps.identity.views.protected_view"
-      ]
-    },
-    {
-      "symbol": "apps.intake.access.authorized_enrollment_for",
-      "signals": [
-        "denial",
-        "permission",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.access.authorized_enrollment_for"
       ]
     },
     {
@@ -3048,6 +3046,18 @@
       "kind": "direct",
       "probes": [
         "apps.intake.access.authorized_enrollment"
+      ]
+    },
+    {
+      "symbol": "apps.intake.access.authorized_enrollment_for",
+      "signals": [
+        "denial",
+        "permission",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.access.authorized_enrollment_for"
       ]
     },
     {
@@ -3341,17 +3351,6 @@
       "reason": "Task-18 human-session, role, scope and native-response oracles execute this boundary through the cut1 census."
     },
     {
-      "symbol": "apps.intake.patient_search.search_patients_exact",
-      "signals": [
-        "denial",
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.intake.patient_search.search_patients_exact"
-      ]
-    },
-    {
       "symbol": "apps.intake.patient_search.search_patients",
       "signals": [
         "resolver"
@@ -3361,6 +3360,17 @@
         "apps.intake.access.authorized_manager_clinic"
       ],
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
+    },
+    {
+      "symbol": "apps.intake.patient_search.search_patients_exact",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.intake.patient_search.search_patients_exact"
+      ]
     },
     {
       "symbol": "apps.intake.questionnaire_views._denied",
@@ -3834,17 +3844,6 @@
       "reason": "Executed class/catalog authoring, owner-import and renewal protocol witnesses enter the actual callable and assert real role, scope, saved-state or class-gate decisions; no staff-independence exemption is claimed."
     },
     {
-      "symbol": "apps.prescription.catalog_loading.load_catalog_snapshot",
-      "signals": [
-        "authentication"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.prescription.catalog_loading.load_catalog_snapshot#cut1"
-      ],
-      "reason": "Executed class/catalog authoring, owner-import and renewal protocol witnesses enter the actual callable and assert real role, scope, saved-state or class-gate decisions; no staff-independence exemption is claimed."
-    },
-    {
       "symbol": "apps.prescription.catalog.catalog_entries",
       "signals": [
         "role_helper"
@@ -3875,6 +3874,17 @@
       "kind": "direct",
       "probes": [
         "apps.prescription.catalog.set_favorite#cut1"
+      ],
+      "reason": "Executed class/catalog authoring, owner-import and renewal protocol witnesses enter the actual callable and assert real role, scope, saved-state or class-gate decisions; no staff-independence exemption is claimed."
+    },
+    {
+      "symbol": "apps.prescription.catalog_loading.load_catalog_snapshot",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.prescription.catalog_loading.load_catalog_snapshot#cut1"
       ],
       "reason": "Executed class/catalog authoring, owner-import and renewal protocol witnesses enter the actual callable and assert real role, scope, saved-state or class-gate decisions; no staff-independence exemption is claimed."
     },
@@ -4268,7 +4278,7 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.verification.revoke_document_release",
+      "symbol": "apps.prescription.verification.revoke_document",
       "signals": [
         "actor",
         "denial"
@@ -4281,7 +4291,7 @@
       "reason": "Consumer of the named executable authorization boundaries; remaining denials concern record state/input, not a distinct staff-role grant."
     },
     {
-      "symbol": "apps.prescription.verification.revoke_document",
+      "symbol": "apps.prescription.verification.revoke_document_release",
       "signals": [
         "actor",
         "denial"
@@ -4650,6 +4660,56 @@
       ]
     },
     {
+      "symbol": "apps.retention.execution.DatabasePurgeBackend.complete",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.execution.DatabasePurgeBackend.complete#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.retention.execution.DatabasePurgeBackend.confirm",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.execution.DatabasePurgeBackend.confirm#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.retention.execution.DatabasePurgeBackend.fail",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.execution.DatabasePurgeBackend.fail#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.retention.execution.DatabasePurgeBackend.prepare",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.execution.DatabasePurgeBackend.prepare#cut1"
+      ]
+    },
+    {
+      "symbol": "apps.retention.execution.schedule_purges",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.execution.schedule_purges#cut1"
+      ]
+    },
+    {
       "symbol": "apps.retention.services._author_label",
       "signals": [
         "denial",
@@ -4731,6 +4791,16 @@
       "differential": true,
       "probes": [
         "apps.retention.services._session_scope#observed"
+      ]
+    },
+    {
+      "symbol": "apps.retention.services.apply_retention_policy",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.services.apply_retention_policy#cut1"
       ]
     },
     {
@@ -4882,6 +4952,16 @@
       ]
     },
     {
+      "symbol": "apps.retention.tasks.scan_due",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.retention.tasks.scan_due#cut1"
+      ]
+    },
+    {
       "symbol": "apps.retention.views._context",
       "signals": [
         "resolver"
@@ -4979,22 +5059,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.agenda_board_views.agenda_board_action_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.otp.is_privileged_user",
-        "apps.identity.otp.privileged_totp_required",
-        "apps.scheduling.access.authorized_agenda_scope",
-        "apps.scheduling.agenda_grid._move_rules",
-        "apps.scheduling.resource_booking.authorized_service_clinic",
-        "clinic_app.has_permission"
-      ],
-      "reason": "The board action POST authorizes the agenda scope before any write, then hold/confirm/cancel/arrive/no-show go through create_hold/create_service_hold and the lifecycle services, which re-decide their has_permission terms under the write locks; the slot finder uses free_move_slots. Refusals are the unknown-clinic 404 with no session or record write; the board delegation case covers every role and the booked physician."
-    },
-    {
       "symbol": "apps.scheduling.agenda_board.board_catalog",
       "signals": [
         "denial"
@@ -5035,7 +5099,7 @@
       "reason": "The board uses view_agenda's Wave B scope and professional catalog. Move hooks mirror the legacy, service and own-service move authority, lifecycle hooks the move terms and confirm the booking terms (book, then book_own, each asked through require_permission and so clinic_app.has_permission, in authorized_service_clinic order), as authorize_transition decides them; other-unit occupancy is times only. The board delegation case exercises every catalog role and spies the exact permission names."
     },
     {
-      "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_move_view",
+      "symbol": "apps.scheduling.agenda_board_views.agenda_board_action_view",
       "signals": [
         "decorator"
       ],
@@ -5044,23 +5108,11 @@
         "apps.identity.otp.is_privileged_user",
         "apps.identity.otp.privileged_totp_required",
         "apps.scheduling.access.authorized_agenda_scope",
-        "apps.scheduling.patient_authority.authorized_appointment_clinic",
+        "apps.scheduling.agenda_grid._move_rules",
+        "apps.scheduling.resource_booking.authorized_service_clinic",
         "clinic_app.has_permission"
       ],
-      "reason": "The move POST checks agenda scope before move_appointment, which retains reschedule_appointment's locked authority, then renders the board (view_agenda_board). HTTP tests cover every role and the booked physician with silent, side-effect-free refusals."
-    },
-    {
-      "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "delegated",
-      "enforced_by": [
-        "apps.identity.otp.is_privileged_user",
-        "apps.identity.otp.privileged_totp_required",
-        "apps.scheduling.access.authorized_agenda_scope"
-      ],
-      "reason": "The board GET renders view_agenda_board under authorized_agenda_scope; its POST checks the same scope through board_catalog before any filter, unit or saved-view write. Refusals share the unknown-clinic 404 and never write the session."
+      "reason": "The board action POST authorizes the agenda scope before any write, then hold/confirm/cancel/arrive/no-show go through create_hold/create_service_hold and the lifecycle services, which re-decide their has_permission terms under the write locks; the slot finder uses free_move_slots. Refusals are the unknown-clinic 404 with no session or record write; the board delegation case covers every role and the booked physician."
     },
     {
       "symbol": "apps.scheduling.agenda_grid._columns",
@@ -5123,6 +5175,34 @@
         "clinic_app.has_permission"
       ],
       "reason": "The grid uses view_agenda's Wave B scope and professional catalog. Move hooks mirror the selected booking's legacy, service or own-service authority; expiry filtering uses the existing database clock."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_move_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "apps.scheduling.access.authorized_agenda_scope",
+        "apps.scheduling.patient_authority.authorized_appointment_clinic",
+        "clinic_app.has_permission"
+      ],
+      "reason": "The move POST checks agenda scope before move_appointment, which retains reschedule_appointment's locked authority, then renders the board (view_agenda_board). HTTP tests cover every role and the booked physician with silent, side-effect-free refusals."
+    },
+    {
+      "symbol": "apps.scheduling.agenda_grid_views.agenda_grid_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "delegated",
+      "enforced_by": [
+        "apps.identity.otp.is_privileged_user",
+        "apps.identity.otp.privileged_totp_required",
+        "apps.scheduling.access.authorized_agenda_scope"
+      ],
+      "reason": "The board GET renders view_agenda_board under authorized_agenda_scope; its POST checks the same scope through board_catalog before any filter, unit or saved-view write. Refusals share the unknown-clinic 404 and never write the session."
     },
     {
       "symbol": "apps.scheduling.agenda_presenter.agenda_screen",
@@ -5203,15 +5283,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.appointment_lifecycle.expire_due_holds",
-      "signals": [
-        "denial",
-        "resolver"
-      ],
-      "kind": "data_operation",
-      "reason": "W (machine) hold-expiry job over the worker_protocol projection; refuses human actors and patient sessions; each hold expires through expire(). No staff-role decision."
-    },
-    {
       "symbol": "apps.scheduling.appointment_lifecycle.expire",
       "signals": [
         "denial",
@@ -5219,6 +5290,15 @@
       ],
       "kind": "data_operation",
       "reason": "W (machine) clock-mandated hold expiry: refuses any human actor or patient session before calling the worker_protocol resolver, which refuses them again; no staff-role decision exists for this edge."
+    },
+    {
+      "symbol": "apps.scheduling.appointment_lifecycle.expire_due_holds",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "data_operation",
+      "reason": "W (machine) hold-expiry job over the worker_protocol projection; refuses human actors and patient sessions; each hold expires through expire(). No staff-role decision."
     },
     {
       "symbol": "apps.scheduling.appointment_rescheduling._reschedule",
@@ -5625,58 +5705,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.reception_queries.reception_practitioners",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.reception_queries.reception_practitioners"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.reception_queries.view_reception_day",
-      "signals": [
-        "denial",
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.reception_queries.view_reception_day"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.reception_views._render",
-      "signals": [
-        "permission"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.reception_views._render"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.reception_views.reception_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.reception_views.reception_view"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.reception_views.waiting_display",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "nonstaff",
-      "probes": [
-        "apps.scheduling.reception_views.waiting_display"
-      ],
-      "reason": "Device-cookie or bearer possession is the principal; valid and invalid device tokens are executed for every staff role independently of staff membership."
-    },
-    {
       "symbol": "apps.scheduling.reception._write",
       "signals": [
         "denial"
@@ -5767,6 +5795,58 @@
       "probes": [
         "apps.scheduling.reception.update_room_status"
       ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_queries.reception_practitioners",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_queries.reception_practitioners"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_queries.view_reception_day",
+      "signals": [
+        "denial",
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_queries.view_reception_day"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_views._render",
+      "signals": [
+        "permission"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_views._render"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_views.reception_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.reception_views.reception_view"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.reception_views.waiting_display",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "nonstaff",
+      "probes": [
+        "apps.scheduling.reception_views.waiting_display"
+      ],
+      "reason": "Device-cookie or bearer possession is the principal; valid and invalid device tokens are executed for every staff role independently of staff membership."
     },
     {
       "symbol": "apps.scheduling.resource_booking.authorized_service_clinic",
@@ -5907,28 +5987,6 @@
       ]
     },
     {
-      "symbol": "apps.scheduling.waitlist_views._patient_submit",
-      "signals": [
-        "denial"
-      ],
-      "kind": "delegated",
-      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
-      "differential": true,
-      "enforced_by": [
-        "apps.scheduling.patient_authority.authorized_appointment_clinic"
-      ]
-    },
-    {
-      "symbol": "apps.scheduling.waitlist_views.waitlist_view",
-      "signals": [
-        "decorator"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.scheduling.waitlist_views.waitlist_view"
-      ]
-    },
-    {
       "symbol": "apps.scheduling.waitlist.add_waitlist_entry",
       "signals": [
         "denial"
@@ -5951,6 +6009,28 @@
       "differential": true,
       "enforced_by": [
         "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.waitlist_views._patient_submit",
+      "signals": [
+        "denial"
+      ],
+      "kind": "delegated",
+      "reason": "Re-export resolution reaches the shared staff/patient authorization boundary. Its staff oracle remains required; patient-context differential replay is retained as additional coverage.",
+      "differential": true,
+      "enforced_by": [
+        "apps.scheduling.patient_authority.authorized_appointment_clinic"
+      ]
+    },
+    {
+      "symbol": "apps.scheduling.waitlist_views.waitlist_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.scheduling.waitlist_views.waitlist_view"
       ]
     },
     {
@@ -6292,18 +6372,6 @@
       ]
     },
     {
-      "symbol": "apps.tenancy.envelope.blind_indexes_with_versions",
-      "signals": [
-        "resolver"
-      ],
-      "kind": "direct",
-      "reason": "The versioned digest oracle executes the real tenant-key resolver and requires observed authority channels; it is not a nonstaff exemption.",
-      "observe": true,
-      "probes": [
-        "apps.tenancy.envelope.blind_indexes_with_versions#observed"
-      ]
-    },
-    {
       "symbol": "apps.tenancy.envelope.blind_indexes",
       "signals": [
         "resolver"
@@ -6313,6 +6381,18 @@
       "observe": true,
       "probes": [
         "apps.tenancy.envelope.blind_indexes#observed"
+      ]
+    },
+    {
+      "symbol": "apps.tenancy.envelope.blind_indexes_with_versions",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "reason": "The versioned digest oracle executes the real tenant-key resolver and requires observed authority channels; it is not a nonstaff exemption.",
+      "observe": true,
+      "probes": [
+        "apps.tenancy.envelope.blind_indexes_with_versions#observed"
       ]
     },
     {
@@ -6627,6 +6707,18 @@
       ]
     },
     {
+      "symbol": "apps.workflows.inbox.require_inbox",
+      "signals": [
+        "permission",
+        "role_helper",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.workflows.inbox.require_inbox#cut1"
+      ]
+    },
+    {
       "symbol": "apps.workflows.inbox_views._authorized_inbox",
       "signals": [
         "decorator",
@@ -6676,18 +6768,6 @@
       "kind": "direct",
       "probes": [
         "apps.workflows.inbox_views.today#cut1"
-      ]
-    },
-    {
-      "symbol": "apps.workflows.inbox.require_inbox",
-      "signals": [
-        "permission",
-        "role_helper",
-        "scope_name"
-      ],
-      "kind": "direct",
-      "probes": [
-        "apps.workflows.inbox.require_inbox#cut1"
       ]
     },
     {
@@ -6967,9 +7047,9 @@
     "apps.ai.artifacts.input_for#cut1",
     "apps.ai.artifacts.read_artifact#cut1",
     "apps.ai.attestations.step_up_evidence#cut1",
-    "apps.ai.brief_views.chart_assistant#cut1",
     "apps.ai.brief.display_brief#cut1",
     "apps.ai.brief.request_brief#cut1",
+    "apps.ai.brief_views.chart_assistant#cut1",
     "apps.ai.context.recheck_context#cut1",
     "apps.ai.controls.current_policy#cut1",
     "apps.ai.controls.set_organization_policy#cut1",
@@ -6987,6 +7067,7 @@
     "apps.ai.views.settings_view#cut1",
     "apps.audit.services._record_delegate_event#cut1",
     "apps.audit.services._record_lab_event#cut1",
+    "apps.audit.services._record_retention_event#cut1",
     "apps.audit.services._record_system_event#observed",
     "apps.audit.services.record_event#observed",
     "apps.billing.pix.prepare_pix_charge",
@@ -7025,11 +7106,11 @@
     "apps.core.navigation.granted_permissions",
     "apps.core.patient_context.patient_context_allowed",
     "apps.core.views.workspace_home",
-    "apps.core.workspace_access._billing_surface_admitted",
-    "apps.core.workspace_access.workspace_denial",
+    "apps.core.workspace.WorkspaceClinic.agenda_url#cut1",
     "apps.core.workspace._visible_clinics",
     "apps.core.workspace.resolve_workspace",
-    "apps.core.workspace.WorkspaceClinic.agenda_url#cut1",
+    "apps.core.workspace_access._billing_surface_admitted",
+    "apps.core.workspace_access.workspace_denial",
     "apps.ehr.attachment_views._workspace",
     "apps.ehr.attachment_views.attachment_workspace",
     "apps.ehr.attachments.attachment_context",
@@ -7038,11 +7119,11 @@
     "apps.ehr.chart_sources.read_chart#cut1",
     "apps.ehr.finalization._author_version",
     "apps.ehr.finalization.finalize_version",
-    "apps.ehr.history_views._workspace",
-    "apps.ehr.history_views.history_workspace",
     "apps.ehr.history._context",
     "apps.ehr.history.authorize_history",
     "apps.ehr.history.save_history",
+    "apps.ehr.history_views._workspace",
+    "apps.ehr.history_views.history_workspace",
     "apps.ehr.inbox._assigned#cut1",
     "apps.ehr.longitudinal_access.patient_scope",
     "apps.ehr.management.commands.encrypt_attachment_objects.Command.handle#observed",
@@ -7098,16 +7179,16 @@
     "apps.identity.notifications.IdentityEmailAdapter.prepare",
     "apps.identity.notifications.reset_send_eligible",
     "apps.identity.offboarding.offboard_staff",
+    "apps.identity.onboarding.onboarding_progress",
     "apps.identity.onboarding_views.onboarding_view",
     "apps.identity.onboarding_views.provider_review",
-    "apps.identity.onboarding.onboarding_progress",
-    "apps.identity.otp_views._current_user",
-    "apps.identity.otp_views.enroll_view",
-    "apps.identity.otp_views.verify_view",
     "apps.identity.otp.is_confirmed_verified_user",
     "apps.identity.otp.is_privileged_user",
     "apps.identity.otp.privileged_totp_required",
     "apps.identity.otp.privileged_totp_required#unverified",
+    "apps.identity.otp_views._current_user",
+    "apps.identity.otp_views.enroll_view",
+    "apps.identity.otp_views.verify_view",
     "apps.identity.passkey_account_views._page#cut1",
     "apps.identity.passkey_account_views.passkeys_view#cut1",
     "apps.identity.passkey_assertion_views.assertion_begin#cut1",
@@ -7128,8 +7209,8 @@
     "apps.identity.phase1a_identity_acl_migration.remove_runtime_identity_acl#observed",
     "apps.identity.physician_verification._assigned_encounter",
     "apps.identity.physician_verification.verify_physician_for_signing",
-    "apps.identity.preferences_views.preferences_view",
     "apps.identity.preferences.save_ui_preferences",
+    "apps.identity.preferences_views.preferences_view",
     "apps.identity.recovery.execute_authenticator_reset",
     "apps.identity.recovery.issue_recovery_codes",
     "apps.identity.recovery.recover_authenticator",
@@ -7145,8 +7226,8 @@
     "apps.identity.session_inventory.register_session",
     "apps.identity.session_inventory.require_session_step_up",
     "apps.identity.session_inventory.require_verified_session",
-    "apps.identity.session_inventory.revoke_session_hash",
     "apps.identity.session_inventory.revoke_session",
+    "apps.identity.session_inventory.revoke_session_hash",
     "apps.identity.session_inventory.session_cookie_is_revoked",
     "apps.identity.session_inventory.session_is_active",
     "apps.identity.session_inventory.supersede_session_hash",
@@ -7157,14 +7238,14 @@
     "apps.identity.staff_views.reset_execute_view",
     "apps.identity.staff_views.reset_request_view",
     "apps.identity.staff_views.staff_view",
-    "apps.identity.stepup_views._current_active_user",
-    "apps.identity.stepup_views.step_up_view",
     "apps.identity.stepup._freshness_is_valid",
     "apps.identity.stepup.assert_step_up",
     "apps.identity.stepup.require_recent_verification",
+    "apps.identity.stepup_views._current_active_user",
+    "apps.identity.stepup_views.step_up_view",
     "apps.identity.views.protected_view",
-    "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_enrollment",
+    "apps.intake.access.authorized_enrollment_for",
     "apps.intake.access.authorized_manager_clinic",
     "apps.intake.alias_access.patient_alias_overview#cut1",
     "apps.intake.alias_access.patient_alias_set#cut1",
@@ -7234,10 +7315,10 @@
     "apps.orders.views._patients#cut1",
     "apps.orders.views.results#cut1",
     "apps.prescription.authoring.author_data#cut1",
-    "apps.prescription.catalog_loading.load_catalog_snapshot#cut1",
     "apps.prescription.catalog.catalog_entries#cut1",
     "apps.prescription.catalog.favorite_entries#cut1",
     "apps.prescription.catalog.set_favorite#cut1",
+    "apps.prescription.catalog_loading.load_catalog_snapshot#cut1",
     "apps.prescription.class_policy.require_issuance_class#cut1",
     "apps.prescription.directions.item_snapshot#cut1",
     "apps.prescription.document_views._workspace",
@@ -7268,17 +7349,24 @@
     "apps.realtime.authorization._staff_topics",
     "apps.realtime.hooks.permission_changed#observed",
     "apps.realtime.scopes.register_job_topic",
+    "apps.retention.execution.DatabasePurgeBackend.complete#cut1",
+    "apps.retention.execution.DatabasePurgeBackend.confirm#cut1",
+    "apps.retention.execution.DatabasePurgeBackend.fail#cut1",
+    "apps.retention.execution.DatabasePurgeBackend.prepare#cut1",
+    "apps.retention.execution.schedule_purges#cut1",
     "apps.retention.services._clinic",
     "apps.retention.services._denied",
     "apps.retention.services._record_patient_view#observed",
     "apps.retention.services._record_scope",
     "apps.retention.services._require_manager",
     "apps.retention.services._session_scope#observed",
+    "apps.retention.services.apply_retention_policy#cut1",
     "apps.retention.services.export_patient_records#cut1",
     "apps.retention.services.export_staff_records",
     "apps.retention.services.patient_released_records#observed",
     "apps.retention.services.release_version",
     "apps.retention.services.verify_stored_export",
+    "apps.retention.tasks.scan_due#cut1",
     "apps.retention.views._is_manager",
     "apps.retention.views._is_physician",
     "apps.retention.views.retention_workspace",
@@ -7316,11 +7404,6 @@
     "apps.scheduling.patient_authority.require_patient_booking_scope#observed",
     "apps.scheduling.patient_booking._slot#observed",
     "apps.scheduling.patient_booking.patient_appointment#observed",
-    "apps.scheduling.reception_queries.reception_practitioners",
-    "apps.scheduling.reception_queries.view_reception_day",
-    "apps.scheduling.reception_views._render",
-    "apps.scheduling.reception_views.reception_view",
-    "apps.scheduling.reception_views.waiting_display",
     "apps.scheduling.reception.arrival_readiness",
     "apps.scheduling.reception.broadcast_clinician_delay",
     "apps.scheduling.reception.call_to_room",
@@ -7330,6 +7413,11 @@
     "apps.scheduling.reception.reception_clinic",
     "apps.scheduling.reception.revoke_display_device",
     "apps.scheduling.reception.update_room_status",
+    "apps.scheduling.reception_queries.reception_practitioners",
+    "apps.scheduling.reception_queries.view_reception_day",
+    "apps.scheduling.reception_views._render",
+    "apps.scheduling.reception_views.reception_view",
+    "apps.scheduling.reception_views.waiting_display",
     "apps.scheduling.resource_booking.authorized_service_clinic#cut1",
     "apps.scheduling.resource_booking.authorized_transition_clinic#cut1",
     "apps.scheduling.resource_booking.booking_selection#cut1",
@@ -7373,8 +7461,8 @@
     "apps.teleconsult.workspace._session_version",
     "apps.tenancy.db.service_principal_context#observed",
     "apps.tenancy.db.tenant_context",
-    "apps.tenancy.envelope.blind_indexes_with_versions#observed",
     "apps.tenancy.envelope.blind_indexes#observed",
+    "apps.tenancy.envelope.blind_indexes_with_versions#observed",
     "apps.tenancy.envelope.decrypt#observed",
     "apps.tenancy.envelope.encrypt#observed",
     "apps.tenancy.envelope.issue_tenant_key#observed",
@@ -7402,12 +7490,12 @@
     "apps.workflows.engine.execute_step#cut1",
     "apps.workflows.engine.utc_now#cut1",
     "apps.workflows.external.step_send_eligible#cut1",
+    "apps.workflows.inbox.require_inbox#cut1",
     "apps.workflows.inbox_views._authorized_inbox#cut1",
     "apps.workflows.inbox_views._authorized_today#cut1",
     "apps.workflows.inbox_views._selected_versions#cut1",
     "apps.workflows.inbox_views._terms#cut1",
     "apps.workflows.inbox_views.today#cut1",
-    "apps.workflows.inbox.require_inbox#cut1",
     "apps.workflows.run_control.retry_run#cut1",
     "apps.workflows.run_services.cancel_run#cut1",
     "apps.workflows.run_services.start_run#cut1",
@@ -7434,8 +7522,8 @@
     "clinic_app.load_current_user",
     "clinic_app.questionnaire_completion",
     "clinic_app.questionnaire_staff",
-    "clinic_app.retention_care_patients",
     "clinic_app.retention_care",
+    "clinic_app.retention_care_patients",
     "clinic_app.user_has_org",
     "clinic_app.user_organizations",
     "clinic_app.waitlist_staff"
@@ -8098,7 +8186,8 @@
     "clinic_app.ai_ledger_guard": {
       "discovery": {
         "migrations": [
-          "apps/ai/migrations/_ledger_sql.py"
+          "apps/ai/migrations/_ledger_sql.py",
+          "apps/retention/migrations/_purge_guard_sql.py"
         ],
         "policies": [],
         "resolvers": [],
@@ -8195,7 +8284,8 @@
           "clinic_app.ai_aiartifact:ai_artifact_user"
         ],
         "resolvers": [
-          "clinic_app.ai_ledger_guard"
+          "clinic_app.ai_ledger_guard",
+          "clinic_app.retention_purge_visible"
         ],
         "signatures": [
           {
@@ -9487,7 +9577,10 @@
           "clinic_app.prescription_patient_document_bytes",
           "clinic_app.prescription_verify",
           "clinic_app.prescription_verify_synthetic",
+          "clinic_app.retention_audit",
+          "clinic_app.retention_emit_task",
           "clinic_app.retention_record_viewed",
+          "clinic_app.retention_system_task_valid",
           "clinic_app.teleconsult_mode_transition_audit"
         ],
         "signatures": [
@@ -10239,6 +10332,8 @@
           "clinic_app.questionnaire_receipt",
           "clinic_app.renew_delegate_grant",
           "clinic_app.request_delegate_grant",
+          "clinic_app.retention_failure",
+          "clinic_app.retention_schedule",
           "clinic_app.scheduling_capacity_guard",
           "clinic_app.scheduling_lifecycle_receipt"
         ],
@@ -12800,6 +12895,7 @@
     "clinic_app.principal_scope": {
       "discovery": {
         "migrations": [
+          "apps/identity/migrations/0041_retention_authority.py",
           "apps/identity/migrations/_agent_authority_sql.py",
           "apps/identity/migrations/_principal_sql.py"
         ],
@@ -13225,6 +13321,7 @@
           "clinic_app.retention_author_label",
           "clinic_app.retention_care",
           "clinic_app.retention_guard",
+          "clinic_app.retention_purge_visible",
           "clinic_app.retention_record_scope",
           "clinic_app.teleconsult_assigned"
         ],
@@ -13502,6 +13599,7 @@
     "clinic_app.retention_guard": {
       "discovery": {
         "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [],
@@ -13567,6 +13665,7 @@
     "clinic_app.retention_record_scope": {
       "discovery": {
         "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py",
           "apps/retention/migrations/_retention_sql.py"
         ],
         "policies": [],
@@ -14709,6 +14808,7 @@
       "discovery": {
         "migrations": [
           "apps/orders/migrations/_task_sql.py",
+          "apps/retention/migrations/_purge_task_sql.py",
           "apps/workflows/migrations/0004_task_completion_gate.py",
           "apps/workflows/migrations/_workflow_sql.py"
         ],
@@ -15873,6 +15973,7 @@
           "clinic_app.scribe_transcriptversion:transcript_read"
         ],
         "resolvers": [
+          "clinic_app.retention_purge_visible",
           "clinic_app.scribe_asr_allowed",
           "clinic_app.scribe_guard",
           "clinic_app.scribe_transcript_coverage",
@@ -16023,6 +16124,7 @@
       ],
       "discovery": {
         "migrations": [
+          "apps/retention/migrations/_purge_guard_sql.py",
           "apps/scribe/migrations/_ai_disclosure_sql.py",
           "apps/scribe/migrations/_capture_sql.py"
         ],
@@ -16110,6 +16212,527 @@
           }
         ]
       }
+    },
+    "clinic_app.retention_audit": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text, occurred_at_utc timestamp with time zone, content_hash bytea",
+            "returns": "int8",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_audit_scope": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_audit_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_audit"
+        ],
+        "signatures": [
+          {
+            "arguments": "record_id uuid, event_name text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_authorized": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_audit_scope",
+          "clinic_app.retention_complete",
+          "clinic_app.retention_confirm",
+          "clinic_app.retention_failure",
+          "clinic_app.retention_mutation_allowed",
+          "clinic_app.retention_prepare",
+          "clinic_app.retention_purge_guard",
+          "clinic_app.retention_schedule"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_complete": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_execution_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_confirm": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_execution_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested uuid, object_key text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_due": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_prepare",
+          "clinic_app.retention_purge_guard",
+          "clinic_app.retention_schedule"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, record_class text, record_id uuid",
+            "returns": "timestamptz",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_emit_task": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_task_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_failure": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_task_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested uuid, reason text",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_held": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_complete",
+          "clinic_app.retention_confirm",
+          "clinic_app.retention_mutation_allowed",
+          "clinic_app.retention_prepare",
+          "clinic_app.retention_purge_guard",
+          "clinic_app.retention_restore_tombstones",
+          "clinic_app.retention_schedule"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, record_class text, record_id uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_hold_fence": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_mutation_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_ledger_guard",
+          "clinic_app.retention_shred",
+          "clinic_app.scribe_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "target_class text, target_id uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_prepare": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_execution_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, requested uuid",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_principal_scope": {
+      "discovery": {
+        "migrations": [],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_authorized",
+          "clinic_app.retention_sweep_scopes"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested_principal uuid, requested_clinic uuid",
+            "returns": "uuid",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_purge_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_purge_visible": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [
+          "clinic_app.retention_artifactpurge:purge_read"
+        ],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "requested uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_related_hold": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_held",
+          "clinic_app.retention_hold_fence"
+        ],
+        "signatures": [
+          {
+            "arguments": "target_class text, target_id uuid, held_class text, held_id uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_restore_tombstones": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_restore_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "current_tombstones jsonb",
+            "returns": "jsonb",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_schedule": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_execution_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, record_class text",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_shred": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_guard_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.retention_prepare",
+          "clinic_app.retention_restore_tombstones"
+        ],
+        "signatures": [
+          {
+            "arguments": "requested uuid",
+            "returns": "void",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_sweep_scopes": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_scope_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "record",
+            "security_definer": true,
+            "set_returning": true
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
+    },
+    "clinic_app.retention_system_task_valid": {
+      "discovery": {
+        "migrations": [
+          "apps/retention/migrations/_purge_task_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.workflows_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "row_data jsonb",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_legal_hold_receipt_and_crypto_shred_execute_with_the_real_principal",
+        "test_native_retention_authority_and_restore_keep_independent_subjects"
+      ],
+      "reason": "Transient retention protocol: exact machine scope, holds, irreversible key removal, retained receipts and owner-only restore; real-role positive and refusal oracles bind its effects."
     }
   },
   "sql_method": [

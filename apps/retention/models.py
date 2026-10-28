@@ -24,6 +24,9 @@ RECORD_CLASSES: Final = (
     "ehr.history_assessment",
     "ehr.problem",
     "ehr.allergy",
+    "raw_audio",
+    "ai_artifact",
+    "transcript_partial",
 )
 
 
@@ -276,5 +279,54 @@ class RecordExport(TenantScopedModel):
             models.CheckConstraint(
                 condition=models.Q(manifest_digest__regex=r"^[0-9a-f]{64}$"),
                 name="retention_export_digest_check",
+            ),
+        ]
+
+
+class ArtifactPurge(TenantScopedModel):
+    """A permanent tombstone and receipt, never the object or its decrypting key."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    clinic = models.ForeignKey("identity.Clinic", on_delete=models.PROTECT)
+    # Provenance only, never authority. Current tombstones can postdate an older
+    # backup's principal/task registry; replay must not depend on those rows.
+    principal_id = models.UUIDField()
+    record_class = models.CharField(max_length=24)
+    record_id = models.UUIDField()
+    state = models.CharField(max_length=16, default="retained")
+    due_at = models.DateTimeField()
+    backup_copy_expires_at = models.DateTimeField(null=True)
+    started_at = models.DateTimeField(null=True)
+    purged_at = models.DateTimeField(null=True)
+    target_count = models.PositiveIntegerField(default=0)
+    deleted_keys = models.JSONField(default=list)
+    failure_code = models.CharField(max_length=32, default="", blank=True)
+    failure_task_id = models.UUIDField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantScopedModel.Meta):
+        """One command identity per target; no relational history is deleted."""
+
+        abstract = False
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=("clinic", "record_class", "record_id"),
+                name="retention_purge_target_uniq",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    record_class__in=("raw_audio", "ai_artifact", "transcript_partial")
+                )
+                & models.Q(
+                    state__in=(
+                        "retained",
+                        "purge_due",
+                        "purging",
+                        "purged",
+                        "blocked_hold",
+                    )
+                )
+                & models.Q(failure_code__in=("", "storage_unavailable")),
+                name="retention_purge_values",
             ),
         ]

@@ -24,7 +24,7 @@ from apps.scribe.contracts import (
 )
 from apps.scribe.controls import update_gaps
 from apps.scribe.models import AudioChunk, CaptureEpoch, RecordingSession
-from apps.scribe.storage import media_storage, seal_audio
+from apps.scribe.storage import media_location, media_storage, seal_audio
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -120,6 +120,7 @@ def ingest_chunk(
             duration_ms=chunk.duration_ms,
             codec=chunk.codec,
             storage_key=key,
+            storage_location=media_location(),
             expires_at=expires_at,
             wrapped_key=sealed.wrapped_key,
             encrypted_data=sealed.ciphertext,

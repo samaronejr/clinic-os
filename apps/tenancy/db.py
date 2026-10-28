@@ -111,8 +111,9 @@ def service_principal_context(*, principal_id: UUID, clinic_id: UUID) -> Iterato
         with transaction.atomic(using="agent", durable=True):
             with agent.cursor() as cursor:
                 cursor.execute(
-                    "SELECT clinic_app.principal_scope(%s, %s)",
-                    [principal_id, clinic_id],
+                    "SELECT coalesce(clinic_app.principal_scope(%s, %s), "
+                    "clinic_app.retention_principal_scope(%s, %s))",
+                    [principal_id, clinic_id, principal_id, clinic_id],
                 )
                 row = cursor.fetchone()
                 if row is None or not isinstance(row[0], UUID):

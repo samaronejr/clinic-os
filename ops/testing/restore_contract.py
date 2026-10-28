@@ -139,6 +139,7 @@ DOMAIN_RELATIONS: Final = (
     "prescription_medicationcatalogentry",
     "prescription_medicationfavorite",
     "retention_legalhold",
+    "retention_artifactpurge",
     "retention_recordexport",
     "retention_recordrelease",
     "retention_retentionpolicy",

@@ -8,11 +8,13 @@ from infra import (
     identity_lifecycle_catalog,
     longitudinal_catalog,
     orders_catalog,
+    retention_catalog,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RESOLVER_TABLE_GRANTS: Final = {
+    *retention_catalog.TABLE_GRANTS,
     *duplicate_catalog.TABLE_GRANTS,
     ("intake_patientidentifier", "SELECT"),
     ("scheduling_cliniciandelay", "SELECT"),
@@ -146,6 +148,7 @@ RESOLVER_TABLE_GRANTS: Final = {
     *orders_catalog.TABLE_GRANTS,
 }
 RESOLVER_COLUMN_GRANTS: Final = {
+    *retention_catalog.COLUMN_GRANTS,
     *duplicate_catalog.COLUMN_GRANTS,
     ("consent_aiusedisclosure", "encounter_id", "SELECT"),
     ("consent_aiusedisclosure", "clinic_id", "SELECT"),
@@ -197,6 +200,7 @@ RESOLVER_COLUMN_GRANTS: Final = {
     ("teleconsult_teleconsultsession", "state", "UPDATE"),
 }
 POSTURE_OVERRIDES: Final = {
+    **retention_catalog.POSTURE,
     "reception_guard": ("v", False, ["clinic_resolver"]),
     "reception_display": ("s", True, ["clinic_app", "clinic_resolver"]),
     "reception_readiness": ("s", True, ["clinic_app", "clinic_resolver"]),
@@ -433,6 +437,7 @@ POSTURE_OVERRIDES: Final = {
     **orders_catalog.POSTURE,
 }
 FUNCTION_SIGNATURES: Final = {
+    *retention_catalog.RESULTS,
     ("reception_guard", ""),
     ("reception_display", "token_digest text"),
     ("reception_readiness", "requested_clinic uuid, requested_appointment uuid"),
@@ -697,6 +702,7 @@ FUNCTION_SIGNATURES: Final = {
     *orders_catalog.RESULTS,
 }
 FUNCTION_RESULTS: Final = {
+    **retention_catalog.RESULTS,
     ("reception_guard", ""): "trigger",
     ("reception_display", "token_digest text"): "jsonb",
     (

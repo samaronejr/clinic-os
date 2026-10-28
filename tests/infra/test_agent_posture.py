@@ -4,6 +4,8 @@ import pytest
 from apps.tenancy import posture
 from django.db import connection, transaction
 
+from infra.retention_catalog import AGENT_SIGNATURES
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -108,6 +110,7 @@ def test_agent_definer_execute_surface_is_exact() -> None:
             ("agent_controls", "requested uuid"),
             ("agent_proposal_scope", "requested uuid"),
             ("agent_source", "requested uuid, source_id uuid"),
+            *AGENT_SIGNATURES,
             ("principal_has", "perm text, clinic uuid"),
             ("principal_scope", "requested_principal uuid, requested_clinic uuid"),
         }

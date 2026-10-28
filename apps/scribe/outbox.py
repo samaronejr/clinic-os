@@ -26,7 +26,7 @@ from apps.scribe.gateway import (
     eligible as gateway_eligible,
 )
 from apps.scribe.models import AudioChunk, RecordingSession
-from apps.scribe.storage import media_storage
+from apps.scribe.storage import media_location, media_storage
 from apps.scribe.tasks import dispatch_transcription
 from apps.tenancy.db import tenant_context
 
@@ -109,7 +109,10 @@ class MediaActionAdapter:
             organization_id=operation.organization_id,
             state="buffered",
         )
-        if operation.payload_digest != chunk.sha256:
+        if (
+            operation.payload_digest != chunk.sha256
+            or chunk.storage_location != media_location()
+        ):
             raise MediaTransportError
         return PreparedMedia(
             OperationScope(

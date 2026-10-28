@@ -47,6 +47,7 @@ from patients.duplicate_authority_cases import (
 from renewal.test_teleconsult_sessions import _create as teleconsult_create
 from renewal.test_teleconsult_sessions import seed as teleconsult_seed
 from renewal.test_teleconsult_sessions import synthetic_provider
+from retention.sql_oracles import ACTOR_PROTOCOL_ORACLES as RETENTION_ACTOR_PROTOCOLS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -384,6 +385,7 @@ def test_every_actor_reader_checks_is_active_or_is_justified() -> None:
         ACTOR_PROTOCOL_ORACLES
         | MERGE_ACTOR_PROTOCOL_ORACLES
         | ORDERS_ACTOR_PROTOCOL_ORACLES
+        | RETENTION_ACTOR_PROTOCOLS
     )
     protocols = set(protocol_oracles)
     # A lexical is_active occurrence may be a pending-account predicate or an

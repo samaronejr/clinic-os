@@ -44,6 +44,7 @@ TRUNCATE_GUARDS = (
     ("scribe_chunktranscription", "transcript_no_truncate"),
     ("scribe_transcriptversion", "transcript_no_truncate"),
     ("scribe_transcriptsegment", "transcript_no_truncate"),
+    ("retention_artifactpurge", "retention_purge_no_truncate"),
     (
         "prescription_prescriptionissuance",
         "prescription_prescriptionissuance_no_truncate",

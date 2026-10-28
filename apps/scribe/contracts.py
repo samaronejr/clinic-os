@@ -6,8 +6,11 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 SLICE_MS: Final = 2000
 BUFFER_MS: Final = 60000
@@ -29,6 +32,7 @@ class Reason(StrEnum):
     INVALID_COMMAND = "invalid_command"
     STORAGE_UNAVAILABLE = "storage_unavailable"
     AUDIO_UNAVAILABLE = "audio_unavailable"
+    AUDIO_PURGED = "audio_purged"
     CONSENT_REVOKED = "consent_revoked"
     IDEMPOTENCY_MISMATCH = "idempotency_mismatch"
     ALREADY_ACTIVE = "recording_already_active"
@@ -45,6 +49,15 @@ class ScribeError(Exception):
         """Retain a machine result without content or provider exception text."""
         self.code = code
         super().__init__(code)
+
+
+class AudioPurgedError(ScribeError):
+    """Expose the policy receipt date only after the caller's recording authority."""
+
+    def __init__(self, *, receipt_date: datetime) -> None:
+        """Keep a fixed reason rather than an object key or clinical identifier."""
+        self.receipt_date = receipt_date
+        super().__init__(Reason.AUDIO_PURGED)
 
 
 @dataclass(frozen=True, slots=True)

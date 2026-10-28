@@ -46,6 +46,8 @@ server-state tests/ai/test_agent_execution.py
 server-state tests/ai/test_agent_guards.py
 server-state tests/ai/test_agent_authority.py
 server-state tests/ai/test_agent_isolation.py
+server-state tests/retention/test_execution.py
+server-state tests/retention/test_principal_migrations.py
 server-state tests/renewal/test_action_operations.py::test_service_principal_cannot_run_a_queued_action
 # The guard's own positive probe commits a value-identical ALTER ROLE.
 server-state tests/infra/test_ci_pytest.py::test_guard_flags_a_value_preserving_cluster_global_write

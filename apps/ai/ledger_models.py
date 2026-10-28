@@ -23,7 +23,8 @@ class AIArtifact(TenantScopedModel):
     purpose = models.CharField(max_length=24)
     method = models.CharField(max_length=12, default="complete")
     kind = models.CharField(max_length=8, default="input")
-    content = EncryptedTextField(purpose="ai.artifact.content.v1")
+    content = EncryptedTextField(purpose="ai.artifact.content.v1", null=True)
+    purged_at = models.DateTimeField(null=True)
     retention_class = models.CharField(max_length=24)
     expires_at = models.DateTimeField()
     invocation = models.OneToOneField(
@@ -50,7 +51,7 @@ class AIArtifact(TenantScopedModel):
                     | models.Q(
                         kind="output",
                         invocation__isnull=False,
-                        retention_class="review_draft",
+                        retention_class__in=("review_draft", "transcript_partial"),
                     )
                 ),
                 name="ai_artifact_values",

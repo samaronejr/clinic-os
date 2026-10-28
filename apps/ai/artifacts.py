@@ -101,6 +101,7 @@ def input_for(*, clinic_id: UUID, inputs_ref: UUID, purpose: Purpose) -> AIArtif
         kind="input",
         purpose=purpose.value,
         expires_at__gt=timezone.now(),
+        purged_at__isnull=True,
     ).first()
     if artifact is None:
         raise GatewayAccessDeniedError
@@ -119,6 +120,7 @@ def read_artifact(*, clinic_id: UUID, artifact_id: UUID) -> str:
         clinic_id=clinic_id,
         user_id=current_actor_id(),
         expires_at__gt=timezone.now(),
+        purged_at__isnull=True,
     ).first()
     if artifact is None:
         raise GatewayAccessDeniedError

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from apps.core.patient_context import SESSION_PREFIX, patient_context_allowed
+from apps.retention.models import ArtifactPurge
 from apps.scribe.authority import active_consent, encounter_scope, issue_encounter_token
 from apps.scribe.contracts import LIVE_STATES, ScribeError
 from apps.scribe.models import CaptureEpoch, RecordingSession
@@ -25,6 +26,7 @@ class CapturePanel:
     command_id: UUID | None = None
     recording: RecordingSession | None = None
     epoch_token: str = ""
+    purge_receipts: tuple[ArtifactPurge, ...] = ()
 
 
 def capture_panel(
@@ -42,6 +44,16 @@ def capture_panel(
         encounter_id=encounter_id, state__in=LIVE_STATES
     ).first()
     available = scope.encounter.state == "open"
+    purge_receipts = tuple(
+        ArtifactPurge.objects.filter(
+            clinic_id=clinic_id,
+            record_class="raw_audio",
+            state="purged",
+            record_id__in=RecordingSession.objects.filter(
+                encounter_id=encounter_id
+            ).values_list("pk", flat=True),
+        ).order_by("-purged_at")[:20]
+    )
     try:
         active_consent(
             scope,
@@ -61,6 +73,7 @@ def capture_panel(
         str(CaptureEpoch.objects.get(session=recording, number=recording.epoch).pk)
         if recording is not None and recording.epoch
         else "",
+        purge_receipts,
     )
 
 

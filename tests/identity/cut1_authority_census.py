@@ -21,6 +21,7 @@ from identity.orders_authority_oracle import run_orders_census
 from identity.passkey_authority_oracle import run_passkey_census
 from identity.permission_support import owner_context
 from identity.prescription_authority_oracle import run_prescription_census
+from identity.retention_authority_census import exercise_retention_authority
 from identity.scribe_authority_census import exercise_scribe_authority
 from rbac_fixtures import RbacGraph
 from rbac_fixtures import rbac_graph as seed_graph
@@ -216,7 +217,6 @@ def run_cut1_census(
     from workflows.guard_discovery import discover_guards  # noqa: PLC0415
 
     proofs = ExecutedProofs(symbols)
-    database_now = engine.utc_now
 
     def graph(*, workflows: bool = False) -> RbacGraph:
         result = seed_graph._get_wrapped_function()(secret_root)
@@ -302,12 +302,13 @@ def run_cut1_census(
 
             proofs.run(
                 "workflow scanner publishes exactly the stored due IDs",
-                partial(_scanner, local, database_now),
+                partial(_scanner, local, engine.utc_now),
             )
     finally:
         secret.unlink()
     exercise_ai_authority(proofs, graph, patch, database_url, secret_root)
     exercise_scribe_authority(proofs, graph, secret_root)
+    exercise_retention_authority(proofs, graph, patch, secret_root)
     record_property(
         "cut1_authority_certificates",
         {symbol: sorted(labels) for symbol, labels in proofs.certificates.items()},

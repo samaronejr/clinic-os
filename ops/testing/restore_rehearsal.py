@@ -22,6 +22,11 @@ from ops.testing.restore_contract import (
     require_exact_toc,
     require_source_scope,
 )
+from ops.testing.restore_purge import (
+    CURRENT_TOMBSTONES_SQL,
+    reapply_purge_tombstones,
+    restore_media_copy,
+)
 from ops.testing.restore_transport import (
     delete_private_artifacts,
     verify_hash_sidecar,
@@ -131,6 +136,8 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
     target_app: ContainerPostgres | None = None,
     verify_environment: dict[str, str] | None = None,
     probe_path: Path | None = None,
+    media_store: Path | None = None,
+    source_media_store: Path | None = None,
 ) -> RehearsalEvidence:
     """Guard, dump, authenticate, restore, compare, and erase one archive.
 
@@ -184,8 +191,19 @@ def run_rehearsal(  # noqa: PLR0913, PLR0915 - one linear rehearsal pipeline
         require_exact_toc(source_toc)
         require_exact_toc(target_toc)
         verify_hash_sidecar(archive, sidecar)
+        current_tombstones = source.sql(CURRENT_TOMBSTONES_SQL)
         target.restore(archive_bytes)
         require_equal_fingerprints(source_fingerprints, relation_fingerprints(target))
+        media_binding = None
+        if source_media_store is not None:
+            if media_store is None:
+                _fail("restore media root is invalid")
+            media_binding = restore_media_copy(
+                source=source_media_store, destination=media_store, work_dir=work_dir
+            )
+        reapply_purge_tombstones(
+            target, current_tombstones, media_store, media_binding=media_binding
+        )
         require_owner_rls_acl_posture(target)
         require_audit_chain(target)
         audit_chain = True
@@ -352,6 +370,8 @@ def main() -> int:
         target_app=target_app,
         verify_environment=verify_environment,
         probe_path=Path(arguments.probe),
+        media_store=Path(arguments.media_store),
+        source_media_store=Path(arguments.source_media_store),
     )
     elapsed = time.monotonic() - started
     value: JsonObject = {
@@ -525,6 +545,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--evidence", required=True)
     parser.add_argument("--probe", required=True)
     parser.add_argument("--object-store", required=True)
+    parser.add_argument("--media-store", required=True)
+    parser.add_argument("--source-media-store", required=True)
     parser.add_argument("--source-claim", required=True)
     parser.add_argument("--target-claim", required=True)
     parser.add_argument("--secret-dir")

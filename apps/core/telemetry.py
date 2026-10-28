@@ -965,6 +965,7 @@ class MetricsRegistry:
         self._ai_cost_sum: dict[tuple[str, str], int] = {}
         self._scrape_errors: dict[str, int] = {}
         self._provider_probes: dict[str, Callable[[], bool]] = {}
+        self._retention_failures = 0
 
     def observe_request(
         self, *, route: str, method: str, status: int, seconds: float
@@ -1019,17 +1020,32 @@ class MetricsRegistry:
         with self._lock:
             self._scrape_errors[cleaned] = self._scrape_errors.get(cleaned, 0) + 1
 
+    def record_retention_failure(self) -> None:
+        """Count failed purges with no tenant, subject, object or free-text labels."""
+        with self._lock:
+            self._retention_failures += 1
+
     def render(self) -> str:
         """Render every family plus fresh collector output as text format."""
         sections = [
             self._render_request_histograms(),
             self._render_ai_invocations(),
+            self._render_retention_failures(),
             render_queue_metrics(registry=self),
             render_outbox_metrics(registry=self),
             self._render_scrape_errors(),
             self._render_provider_health(),
         ]
         return "".join(sections)
+
+    def _render_retention_failures(self) -> str:
+        with self._lock:
+            count = self._retention_failures
+        return (
+            "# HELP clinic_retention_purge_failures_total Failed artifact purges.\n"
+            "# TYPE clinic_retention_purge_failures_total counter\n"
+            f"clinic_retention_purge_failures_total {count}\n"
+        )
 
     def _render_request_histograms(self) -> str:
         with self._lock:

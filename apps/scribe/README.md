@@ -64,6 +64,12 @@ plus the sequence's two-second offset plus sixty seconds. Reconnect, replay,
 and recovery cannot extend it. It is not the raw-object retention deadline;
 retention policy and raw-object purge belong to todo 43.
 
+Todo 43 implements that policy in `apps/retention`: ingest binds an immutable
+storage namespace, wrapped keys are destroyed before object deletion, and a
+`purging` chunk is not a completed deletion receipt. The encounter shows the
+final policy receipt and backup-expiry date. `open_audio` reports
+`AudioPurgedError` with the receipt date only after recording authorization.
+
 ## Volatile client and native care
 
 The client opens no microphone before server authorization and user permission.

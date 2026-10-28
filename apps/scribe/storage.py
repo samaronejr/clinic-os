@@ -19,7 +19,10 @@ from apps.ehr.attachment_storage import (
     FilesystemAttachmentStorage,
 )
 from apps.providers.services import current_version, is_live
-from apps.scribe.contracts import MAX_CHUNK_BYTES, Reason, ScribeError
+from apps.retention.models import ArtifactPurge
+from apps.scribe.authority import active_consent, recording_scope
+from apps.scribe.contracts import MAX_CHUNK_BYTES, AudioPurgedError, Reason, ScribeError
+from apps.scribe.models import AudioChunk
 from apps.tenancy.envelope import EnvelopeError, protect, reveal
 
 if TYPE_CHECKING:
@@ -36,6 +39,15 @@ class SealedAudio:
 
     ciphertext: bytes = field(repr=False)
     wrapped_key: bytes = field(repr=False)
+
+
+def media_location() -> str:
+    """Bind purge verification to the ingest backend and exact storage namespace."""
+    if settings.SCRIBE_DEV_MINIO:
+        namespace = f"s3:{settings.SCRIBE_S3_ENDPOINT}:{settings.SCRIBE_S3_BUCKET}"
+    else:
+        namespace = f"filesystem:{Path(settings.SCRIBE_MEDIA_ROOT).resolve()}"
+    return sha256(namespace.encode("utf-8")).hexdigest()
 
 
 def seal_audio(*, key: str, data: bytes) -> SealedAudio:
@@ -87,15 +99,24 @@ def media_storage(*, clinic_id: UUID) -> AttachmentStorage:
 
 def open_audio(*, clinic_id: UUID, chunk_id: UUID) -> bytes:
     """Authorize the stored subject before resolving its opaque object key."""
-    from apps.scribe.authority import active_consent, recording_scope  # noqa: PLC0415
-    from apps.scribe.models import AudioChunk  # noqa: PLC0415
-
-    chunk = AudioChunk.objects.filter(pk=chunk_id, state="accepted").first()
+    chunk = AudioChunk.objects.filter(pk=chunk_id).first()
     if chunk is None:
         raise ScribeError
     recording, subject = recording_scope(
         clinic_id=clinic_id, session_id=chunk.session_id, consent_required=False
     )
+    receipt = ArtifactPurge.objects.filter(
+        clinic_id=clinic_id,
+        record_class="raw_audio",
+        record_id=recording.pk,
+        state="purged",
+    ).first()
+    if receipt is not None and receipt.purged_at is not None:
+        raise AudioPurgedError(receipt_date=receipt.purged_at)
+    if chunk.state != "accepted":
+        raise ScribeError(Reason.AUDIO_UNAVAILABLE)
+    if chunk.storage_location != media_location():
+        raise ScribeError(Reason.AUDIO_UNAVAILABLE)
     active_consent(subject, lock=False, acceptance_id=recording.consent_id)
     if not chunk.wrapped_key:
         raise ScribeError(Reason.AUDIO_UNAVAILABLE)

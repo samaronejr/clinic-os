@@ -80,7 +80,6 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
     }
 )
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
-    apply_retention_policy,
     exchange_clinical_record,
 )
 
@@ -175,6 +174,7 @@ def test_passkey_boundaries_are_exact_and_derive_current_authority(
             {"patient_enrollment_id": None, "method": "complete"},
         ),
         (read_artifact, ["clinic_id", "artifact_id"], {}),
+        (apply_retention_policy, ["clinic_id", "record_class"], {}),
         (current_policy, ["clinic_id"], {}),
         (reset_circuit, ["clinic_id", "configuration_id"], {}),
         (
@@ -464,10 +464,7 @@ def test_domain_app_configs_are_registered() -> None:
 @pytest.mark.parametrize(
     "entrypoint",
     DEFERRED_SERVICE_ENTRYPOINTS,
-    ids=(
-        "retention.apply_retention_policy",
-        "interop.exchange_clinical_record",
-    ),
+    ids=("interop.exchange_clinical_record",),
 )
 def test_deferred_service_entrypoint_raises_phase_boundary(
     entrypoint: Callable[[], NoReturn],

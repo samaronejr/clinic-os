@@ -53,6 +53,34 @@ def register_execution_principal(
 
 
 @transaction.atomic
+def register_retention_principal(
+    *, clinic_id: UUID, name: str, db_identity: str
+) -> ServicePrincipal:
+    """Provision v3 retention without promoting an existing v1 machine identity."""
+    clinic = _owner_clinic(clinic_id)
+    principal = ServicePrincipal.objects.create(
+        organization_id=clinic.organization_id,
+        clinic=clinic,
+        name=name,
+        db_identity=db_identity,
+        purpose="retention",
+        grant_set_version=3,
+    )
+    record_phase1_event(
+        "identity.principal.created",
+        clinic_id=clinic_id,
+        affected_record_id=principal.pk,
+    )
+    grant_principal(
+        clinic_id=clinic_id,
+        principal_id=principal.pk,
+        permission="retention.execute",
+        subject_scope="clinic",
+    )
+    return principal
+
+
+@transaction.atomic
 def register_principal(
     *, clinic_id: UUID, name: str, db_identity: str, purpose: str
 ) -> ServicePrincipal:

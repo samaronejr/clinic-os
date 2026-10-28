@@ -6,7 +6,13 @@
 <section class="shell-narrow intake-create" aria-labelledby="retention-title">
   <p class="eyebrow">Conformidade</p>
   <h1 id="retention-title">Retenção e guarda legal</h1>
-  <p class="lede">Nenhum registro é eliminado automaticamente. O descarte exige uma política aprovada e a ausência de guarda legal ativa.</p>
+  <p class="lede">{% trans "Clinical records are never automatically destroyed. Transient synthetic artifacts follow their retention policy; active legal holds block destruction." %}</p>
+  {% for receipt in purge_receipts %}
+  <p class="feedback" data-purge-receipt>
+    {% trans "Artifact discarded according to policy." %} {{ receipt.purged_at|date:"d/m/Y" }}.
+    {% trans "Backup copy expires at" %} {{ receipt.backup_copy_expires_at|date:"d/m/Y" }}.
+  </p>
+  {% endfor %}
   {% if error %}<div class="feedback feedback--error" role="alert" id="retention-error">{{ error }}</div>{% endif %}
   {% if disposal %}<p class="feedback feedback--success" role="status" id="disposal-result">{{ disposal }}</p>{% endif %}
   {% for message in messages %}<p class="feedback feedback--success" role="status">{{ message }}</p>{% endfor %}

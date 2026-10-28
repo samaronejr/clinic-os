@@ -52,6 +52,8 @@ from prescription.test_document_kinds import (
 from prescription.test_sncr_adapter import (
     test_issuance_trigger_binds_the_stored_physician_role,
 )
+from retention.sql_oracles import CASES as RETENTION_CASES
+from retention.sql_oracles import SQL_PROTOCOL_ORACLES as RETENTION_PROTOCOLS
 from scheduling.test_appointment_states import (
     test_database_trigger_decides_every_status_pair_by_actor,
     test_guards_decide_by_the_exact_permission_not_a_sibling,
@@ -246,6 +248,7 @@ SCRIBE_PROTOCOL_ORACLES = {
 }
 
 PROTOCOL_ORACLES = {
+    **RETENTION_PROTOCOLS,
     **SCRIBE_PROTOCOL_ORACLES,
     **DUPLICATE_SQL_ORACLES,
     "clinic_app.reception_display": ["test_reception_display_device_contract"],
@@ -330,6 +333,11 @@ PROTOCOL_ORACLES = {
 def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
     """Keep every live protocol member bound to its executed domain matrix."""
     assert observed == PROTOCOL_ORACLES
+    assert all(
+        callable(RETENTION_CASES[name])
+        for names in RETENTION_PROTOCOLS.values()
+        for name in names
+    )
     assert callable(test_reception_display_device_contract)
     assert all(case in GUARDS for cases in SCHEDULING_CASES.values() for case in cases)
     assert all(callable(case) for case in SQL_CASES.values())

@@ -117,6 +117,7 @@ class AudioChunk(TenantScopedModel):
     codec = models.CharField(max_length=40)
     size_bytes = models.PositiveIntegerField()
     storage_key = models.CharField(max_length=64, unique=True)
+    storage_location = models.CharField(max_length=64, default="")
     wrapped_key = models.BinaryField(default=bytes)
     encrypted_data = models.BinaryField(default=bytes)
     expires_at = models.DateTimeField()
@@ -143,6 +144,7 @@ class AudioChunk(TenantScopedModel):
                         "quarantined",
                         "rejected",
                         "purged",
+                        "purging",
                     )
                 ),
                 name="scribe_chunk_state",
