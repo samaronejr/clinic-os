@@ -1,5 +1,22 @@
 # Governed synthetic AI gateway
 
+## Offline ASR/LLM benchmark (todo 48)
+
+`python manage.py ai_benchmark --report <new-path>` runs only the closed
+synthetic/recorded adapters against todo 47's hashed engineering corpus. JSON
+front matter is validated by `benchmark.schema.json`; dated selection records
+live at `docs/ai/provider-selection-<date>.md`. Local latency, ASR WER, gateway
+validity, failure counts and per-encounter usage/cost are measured. Clinical
+error rates remain null pending independent two-rater adjudication; no fake
+metric authorizes a clinical configuration or represents vendor performance.
+
+Missing/unverified region or retention terms and foreign-jurisdiction fallback
+routes are ineligible. No eligible automatic fallback means manual documentation.
+The optional `--record-selections` flag requires `clinic_owner` and appends only
+synthetic `selected_in_plan` versions under `benchmark_<purpose>_<route>` keys,
+without replacing runtime provider capabilities or creating approval records.
+Paid, real-provider, sandbox and live legs remain BLOCKED-ON-EG.
+
 ## Optional decision-support panel (todo 46)
 
 The encounter panel is off by default. Organization enablement uses the existing
