@@ -92,6 +92,11 @@ def test_all_concrete_tenant_models_have_the_exact_rls_policy_set() -> None:
         # Exact source-bound, resolver-confirmed extraction posture: tests/ai.
         "ai_extractionjob",
         "ai_extractioncandidate",
+        # Blinded reviewer policies/ACLs: tests/ai/test_evaluation_authority.py.
+        "ai_evaluationprotocol",
+        "ai_evaluationrun",
+        "ai_evaluationrating",
+        "ai_modelchangerequest",
         # Bounded append-only clinic settings: test_clinic_settings.
         "identity_clinicconfiguration",
         # Task 19 representation policies/ACLs: tests/patients/test_delegates.py.

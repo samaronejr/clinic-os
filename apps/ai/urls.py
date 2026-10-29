@@ -5,11 +5,13 @@ from django.urls import path
 from apps.ai.agent_views import agent_queue, agent_settings
 from apps.ai.brief_views import chart_assistant
 from apps.ai.decision_views import decision_support
+from apps.ai.evaluation.views import evaluation_view
 from apps.ai.extraction_views import extraction_view
 from apps.ai.views import settings_view
 
 app_name = "ai"
 urlpatterns = [
+    path("clinics/<uuid:clinic_id>/evaluation/", evaluation_view, name="evaluation"),
     path(
         "clinics/<uuid:clinic_id>/decision-support/",
         decision_support,

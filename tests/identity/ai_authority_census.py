@@ -21,6 +21,10 @@ from ai import (
     test_cancellation,
     test_controls,
     test_decision_support,
+    test_evaluation_authority,
+    test_evaluation_cli,
+    test_evaluation_native,
+    test_evaluation_runtime,
     test_gateway,
     test_posture,
 )
@@ -187,5 +191,26 @@ def exercise_ai_authority(
                 test_decision_support.test_native_and_htmx_panel_require_session_bound_opt_in,
                 decision_subject,
                 enhanced=False,
+            ),
+        )
+    for evaluation_oracle in (
+        test_evaluation_authority.test_evaluation_sql_checks_every_stored_role_and_exact_clinic,
+        test_evaluation_authority.test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor,
+        test_evaluation_runtime.test_two_independent_reviews_and_explicit_owner_change_are_required,
+        test_evaluation_runtime.test_assignments_scope_and_raw_verdict_writes_cannot_be_forged,
+        test_evaluation_cli.test_cli_owner_scope_restores_role_after_service_failure_and_denies_runtime_entry,
+    ):
+        proofs.run(
+            f"Evaluation current authority:{evaluation_oracle.__name__}",
+            partial(evaluation_oracle, graph()),
+        )
+    with patch.context() as local:
+        test_evaluation_native.fixed_review_freshness._get_wrapped_function()(local)
+        proofs.run(
+            "Evaluation native and HX independent required-answer authority",
+            partial(
+                test_evaluation_native.test_blinded_native_form_validates_every_answer_and_keeps_one_vote,
+                graph(),
+                enhanced=True,
             ),
         )

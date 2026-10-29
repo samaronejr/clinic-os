@@ -479,6 +479,12 @@ NAVIGATION_EXEMPTIONS: dict[Path, dict[str, str]] = {
             "main-content afterSettle are subscribed before submission; no document"
         ),
     },
+    BROWSER_SUITES / "evaluation_journeys.py": {
+        "_hx_enter": (
+            "Enter submits only the HX evaluation form; the POST response and "
+            "afterSettle are subscribed before submission; no document"
+        ),
+    },
     BROWSER_SUITES / "test_primitives.py": dict.fromkeys(
         (
             "test_calendar_days_and_combobox_hold_at_320",

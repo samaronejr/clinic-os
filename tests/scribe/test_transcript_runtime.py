@@ -82,7 +82,11 @@ def permit_asr(graph: RbacGraph, scope: World, monkeypatch: pytest.MonkeyPatch) 
             retention_terms="synthetic-no-retention",
         ),
     )
-    model(purpose=Purpose.SCRIBE_ASR)
+    model(
+        organization=graph.organization_a,
+        clinic=graph.clinic_a,
+        purpose=Purpose.SCRIBE_ASR,
+    )
     with runtime_role(), tenant_context(gateway.administrator, graph.organization_a):
         current = latest_configuration(graph.clinic_a)
         assert current is not None

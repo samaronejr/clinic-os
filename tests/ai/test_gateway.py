@@ -213,7 +213,12 @@ def test_fallback_never_crosses_the_approved_jurisdiction(
     with runtime_role():
         assert execute_operation(original.operation_id) == "failed"
     region = "br-synthetic" if same_jurisdiction else "us-synthetic"
-    fallback = model(fallback=True, region=region)
+    fallback = model(
+        organization=rbac_graph.organization_a,
+        clinic=rbac_graph.clinic_a,
+        fallback=True,
+        region=region,
+    )
     set_global_switch(enabled=True, approved_regions=("br-synthetic", "us-synthetic"))
     # When: the next invocation chooses a route.
     result = enqueue(world)

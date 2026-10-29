@@ -67,7 +67,7 @@ def seed(actor: UUID, clinic: UUID, organization: UUID) -> tuple[UUID, int]:
             ),
         )
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
-    model()
+    model(organization=organization, clinic=clinic)
     with runtime_role(), tenant_context(actor, organization):
         configuration = latest_configuration(clinic)
         if configuration is None:

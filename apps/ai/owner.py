@@ -18,6 +18,7 @@ from apps.ai.contracts import (
     Price,
     Purpose,
 )
+from apps.ai.evaluation.versions import source_versions
 from apps.ai.models import AICircuit, GatewaySwitch, ModelConfiguration
 from apps.audit.services import record_phase1_event
 from apps.core.integration import hold_subject_mutation_key
@@ -67,6 +68,7 @@ def propose_model(*, terms: ModelTerms) -> ModelConfiguration:
     version = ModelConfiguration.objects.filter(purpose=terms.purpose.value).aggregate(
         latest=Max("version")
     )["latest"]
+    evaluated_sources = source_versions(terms.purpose)
     configuration = ModelConfiguration.objects.create(
         purpose=terms.purpose.value,
         capability_key=(
@@ -90,6 +92,9 @@ def propose_model(*, terms: ModelTerms) -> ModelConfiguration:
         version=(version or 0) + 1,
         route=terms.route,
         timeout_seconds=terms.timeout_seconds,
+        prompt_sha256=evaluated_sources["prompt"],
+        retrieval_sha256=evaluated_sources["retrieval"],
+        schema_sha256=evaluated_sources["schema"],
     )
     record_phase1_event(
         "ai.model.drafted", clinic_id=UUID(int=0), affected_record_id=configuration.pk
@@ -114,6 +119,12 @@ def transition_model(
         or len(approval_ref) > MAX_MODEL_TEXT
         or (state == "approved" and not approval_ref)
     ):
+        raise GatewayInputError
+    if state == "active" and source_versions(Purpose(configuration.purpose)) != {
+        "prompt": configuration.prompt_sha256,
+        "retrieval": configuration.retrieval_sha256,
+        "schema": configuration.schema_sha256,
+    }:
         raise GatewayInputError
     configuration.state = state
     if approval_ref:

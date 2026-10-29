@@ -57,7 +57,7 @@ def configure(*, organization: UUID, clinic: UUID) -> None:
         ),
     )
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
-    model(purpose=Purpose.EXTRACTION)
+    model(organization=organization, clinic=clinic, purpose=Purpose.EXTRACTION)
     with runtime_role(), tenant_context(administrator.pk, organization):
         configuration = latest_configuration(clinic)
         if configuration is None:

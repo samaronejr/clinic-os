@@ -15,10 +15,19 @@ AGENT_TABLES: Final = frozenset(
     }
 )
 EXTRACTION_TABLES: Final = frozenset({"ai_extractionjob", "ai_extractioncandidate"})
+EVALUATION_TABLES: Final = frozenset(
+    {
+        "ai_evaluationprotocol",
+        "ai_evaluationrun",
+        "ai_evaluationrating",
+        "ai_modelchangerequest",
+    }
+)
 CUSTOM_RLS_TABLES: Final = (
     frozenset({"ai_aiartifact", "ai_aiinvocation", "ai_aicircuit"})
     | AGENT_TABLES
     | EXTRACTION_TABLES
+    | EVALUATION_TABLES
 )
 NON_RLS_TABLES: Final = frozenset({"ai_modelconfiguration", "ai_gatewayswitch"})
 RUNTIME_GRANTS: Final = {
@@ -61,6 +70,18 @@ COLUMN_GRANTS: Final = frozenset(
             "cost_minor",
             "latency_ms",
             "settled_at",
+        ),
+    }.items()
+    for column in columns
+) | frozenset(
+    (table, column, "UPDATE")
+    for table, columns in {
+        "ai_evaluationrun": ("sample_results", "automatic_failures", "scored_at"),
+        "ai_modelchangerequest": (
+            "status",
+            "approved_by_id",
+            "approval_ref",
+            "decided_at",
         ),
     }.items()
     for column in columns

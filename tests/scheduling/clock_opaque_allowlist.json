@@ -782,6 +782,15 @@
     "volatility": "i",
     "reason": "Reached the audit-ledger actor-scope payload-shape constraint; retained native risk."
   },
+  "pg_catalog.jsonb_object_keys(jsonb)": {
+    "extension": "",
+    "implementation": "jsonb_object_keys",
+    "language": "internal",
+    "library": "",
+    "returns": "text",
+    "volatility": "i",
+    "reason": "Required closed evaluation label-key validation; retain the exact JSON object-key iterator as reviewed opaque risk."
+  },
   "pg_catalog.jsonb_path_exists(jsonb, jsonpath, jsonb, boolean)": {
     "extension": "",
     "implementation": "jsonb_path_exists",

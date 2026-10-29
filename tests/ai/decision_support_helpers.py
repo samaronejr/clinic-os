@@ -40,7 +40,11 @@ if TYPE_CHECKING:
 
 def world_for(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> BriefWorld:
     world = seeded(graph, monkeypatch)
-    model(purpose=Purpose.DECISION_SUPPORT)
+    model(
+        organization=graph.organization_a,
+        clinic=graph.clinic_a,
+        purpose=Purpose.DECISION_SUPPORT,
+    )
     return world
 
 

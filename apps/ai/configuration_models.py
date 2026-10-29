@@ -36,6 +36,9 @@ class ModelConfiguration(models.Model):
         default="draft",
     )
     timeout_seconds = models.PositiveSmallIntegerField(default=30)
+    prompt_sha256 = models.CharField(max_length=64, default="")
+    retrieval_sha256 = models.CharField(max_length=64, default="")
+    schema_sha256 = models.CharField(max_length=64, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

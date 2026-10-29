@@ -7357,3 +7357,213 @@ msgstr "Escolha uma pergunta listada sobre o prontuário. Nomes, outros paciente
 
 msgid "Ask the chart"
 msgstr "Perguntar ao prontuário"
+
+msgid "Blinded AI evaluation"
+msgstr "Avaliação cega de IA"
+
+msgid "Synthetic engineering corpus. This is not clinical validation or evidence of real-world performance."
+msgstr "Base sintética de engenharia. Isto não é validação clínica nem evidência de desempenho no mundo real."
+
+msgid "Review independently. Model identity and the other rater's decisions are hidden. An adjudicator resolves disagreements after both reviews."
+msgstr "Revise de forma independente. A identidade do modelo e as decisões do outro revisor ficam ocultas. Um adjudicador resolve as divergências após as duas revisões."
+
+msgid "Evaluation decision saved."
+msgstr "Decisão da avaliação salva."
+
+msgid "The evaluation has not been scored yet."
+msgstr "A avaliação ainda não foi processada."
+
+msgid "Assigned evaluations"
+msgstr "Avaliações atribuídas"
+
+msgid "Open assigned evaluation"
+msgstr "Abrir avaliação atribuída"
+
+msgid "No evaluations are assigned to you."
+msgstr "Nenhuma avaliação foi atribuída a você."
+
+msgid "Evaluation case"
+msgstr "Caso da avaliação"
+
+msgid "Case"
+msgstr "Caso"
+
+msgid "Open case"
+msgstr "Abrir caso"
+
+msgid "Synthetic source"
+msgstr "Fonte sintética"
+
+msgid "Candidate output"
+msgstr "Saída candidata"
+
+msgid "Independent ratings for adjudication"
+msgstr "Revisões independentes para adjudicação"
+
+msgid "Rater"
+msgstr "Revisor"
+
+msgid "Answer every review item before saving."
+msgstr "Responda a todos os itens da revisão antes de salvar."
+
+msgid "Save independent rating"
+msgstr "Salvar revisão independente"
+
+msgid "This case is saved, complete, or waiting for both independent ratings."
+msgstr "Este caso já foi salvo, concluído ou aguarda as duas revisões independentes."
+
+msgid "Synthetic owner approval reference"
+msgstr "Referência da aprovação sintética do responsável"
+
+msgid "Approve evaluated change"
+msgstr "Aprovar alteração avaliada"
+
+msgid "Reject change"
+msgstr "Rejeitar alteração"
+
+msgid "Evaluation changed or review is incomplete. Refresh and review again."
+msgstr "A avaliação mudou ou a revisão está incompleta. Atualize e revise novamente."
+
+msgid "Clinically significant omission"
+msgstr "Omissão clinicamente significativa"
+
+msgid "Unsupported clinical assertion"
+msgstr "Afirmação clínica sem suporte"
+
+msgid "Speaker attribution error"
+msgstr "Erro na atribuição do falante"
+
+msgid "Negation error"
+msgstr "Erro de negação"
+
+msgid "Chronology error"
+msgstr "Erro de cronologia"
+
+msgid "Unit or decimal error"
+msgstr "Erro de unidade ou decimal"
+
+msgid "Medication name or dose error"
+msgstr "Erro no nome ou na dose do medicamento"
+
+msgid "Allergy handling error"
+msgstr "Erro no registro de alergias"
+
+msgid "Unsupported citation"
+msgstr "Citação sem suporte"
+
+msgid "Incorrect action"
+msgstr "Ação incorreta"
+
+msgid "Policy violation"
+msgstr "Violação da política"
+
+msgid "Unauthorized side effect"
+msgstr "Efeito não autorizado"
+
+msgid "Duplicate side effect"
+msgstr "Efeito duplicado"
+
+msgid "Missed escalation"
+msgstr "Encaminhamento necessário não realizado"
+
+msgid "Critical error"
+msgstr "Erro crítico"
+
+msgid "Correction time in milliseconds"
+msgstr "Tempo de correção em milissegundos"
+
+msgid "No error"
+msgstr "Sem erro"
+
+msgid "Error observed"
+msgstr "Erro observado"
+
+msgid "AI evaluation report"
+msgstr "Relatório de avaliação de IA"
+
+msgid "Capability"
+msgstr "Capacidade"
+
+msgid "Evaluation status"
+msgstr "Situação da avaliação"
+
+msgid "Corpus version"
+msgstr "Versão da base de avaliação"
+
+msgid "Thresholds hash"
+msgstr "Hash dos limites registrados"
+
+msgid "Cases"
+msgstr "Casos"
+
+msgid "Encounter clusters"
+msgstr "Grupos por atendimento"
+
+msgid "Cohen's kappa"
+msgstr "Kappa de Cohen"
+
+msgid "Word error rate (descriptive only)"
+msgstr "Taxa de erros de palavras (apenas descritiva)"
+
+msgid "Clinical error encounter bootstrap interval"
+msgstr "Intervalo bootstrap de erro clínico por atendimento"
+
+msgid "Adjudicated rates and Wilson confidence intervals"
+msgstr "Taxas adjudicadas e intervalos de confiança de Wilson"
+
+msgid "Metric"
+msgstr "Métrica"
+
+msgid "Numerator"
+msgstr "Numerador"
+
+msgid "Denominator"
+msgstr "Denominador"
+
+msgid "Rate"
+msgstr "Taxa"
+
+msgid "Wilson interval"
+msgstr "Intervalo de Wilson"
+
+msgid "Stratified engineering observations"
+msgstr "Observações de engenharia estratificadas"
+
+msgid "Tag"
+msgstr "Marcador"
+
+msgid "Errors"
+msgstr "Erros"
+
+msgid "Undefined"
+msgstr "Indefinido"
+
+msgid "Configuration version"
+msgstr "Versão da configuração"
+
+msgid "Passed"
+msgstr "Aprovada"
+
+msgid "Mean correction time of the two independent raters in milliseconds"
+msgstr "Tempo médio de correção dos dois avaliadores independentes em milissegundos"
+
+msgid "Cases with clinical error"
+msgstr "Casos com erro clínico"
+
+msgid "Citation support"
+msgstr "Fundamentação das citações"
+
+msgid "Action correctness"
+msgstr "Correção das ações"
+
+msgid "Specialty"
+msgstr "Especialidade"
+
+msgid "Device"
+msgstr "Dispositivo"
+
+msgid "Simulated accent"
+msgstr "Sotaque simulado"
+
+msgid "Synthetic engineering fixtures and scripted review are not representative clinical validation. Zero observed critical errors is a gate, not a safety claim. Real-world performance and clinical thresholds require EG-3/EG-11. AI-05/AI-06 fixture contracts do not implement their future workflows."
+msgstr "Exemplos sintéticos de engenharia e revisões roteirizadas não representam validação clínica. A ausência de erros críticos observados é um critério de passagem, não uma afirmação de segurança. Desempenho no mundo real e limites clínicos exigem EG-3/EG-11. Os exemplos de AI-05/AI-06 não implementam os fluxos futuros."

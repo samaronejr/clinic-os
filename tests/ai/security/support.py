@@ -32,7 +32,11 @@ def security_agent(
     graph = world.gateway.graph
     autonomy = world.policy.autonomy_ceiling
     if capability == "analyst":
-        model(purpose=Purpose.ANALYST)
+        model(
+            organization=graph.organization_a,
+            clinic=graph.clinic_a,
+            purpose=Purpose.ANALYST,
+        )
     with (
         runtime_role(),
         tenant_context(world.gateway.administrator, graph.organization_a),

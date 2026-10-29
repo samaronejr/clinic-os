@@ -47,6 +47,22 @@ class Phase1AuditEventRejectedError(ValueError):
 PHASE1_AUDIT_EVENTS: Final[Mapping[str, Phase1AuditEventDefinition]] = MappingProxyType(
     {
         **{
+            f"ai.evaluation.{state}": Phase1AuditEventDefinition(
+                "tenant", "clinic-os-web", "ai.evaluation", state
+            )
+            for state in (
+                "registered",
+                "started",
+                "scored",
+                "rated",
+                "passed",
+                "failed",
+                "change_requested",
+                "change_approved",
+                "change_rejected",
+            )
+        },
+        **{
             f"retention.purge.{state}": Phase1AuditEventDefinition(
                 "tenant", "clinic-os-worker", "retention.artifact_purge", state
             )

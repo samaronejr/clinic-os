@@ -39,6 +39,7 @@ from apps.scribe.drafting import (
     sources_for_draft,
 )
 from apps.scribe.models import AIDraft, DraftSectionSuggestion, RecordingSession
+from apps.scribe.outbox import register_gateway
 from apps.scribe.review_views import _command, note_review
 from apps.scribe.reviews import review_suggestion
 from apps.scribe.transcripts import read_transcript
@@ -215,6 +216,7 @@ def census_draft(data: NonstaffSubjects, graph: RbacGraph) -> DraftSubjects:
         ),
     ):
         admit_interactive_work._get_wrapped_function()(patch)
+        register_gateway()
         version = seed_review_sources(
             actor=graph.physician,
             clinic=graph.clinic_a,

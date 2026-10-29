@@ -56,7 +56,11 @@ def seed_draft_world(graph: RbacGraph, patch: pytest.MonkeyPatch) -> DraftWorld:
     admit_interactive_work._get_wrapped_function()(patch)
     scope = world(graph)
     permit_asr(graph, scope, patch)
-    configuration = model(purpose=Purpose.SCRIBE_DRAFT)
+    configuration = model(
+        organization=graph.organization_a,
+        clinic=graph.clinic_a,
+        purpose=Purpose.SCRIBE_DRAFT,
+    )
     with runtime_role(), tenant_context(graph.clinic_admin, graph.organization_a):
         current = latest_configuration(graph.clinic_a)
         assert current is not None

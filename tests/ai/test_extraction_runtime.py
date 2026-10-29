@@ -48,7 +48,11 @@ def extracted_job(
     world: World | None = None,
 ) -> ExtractionJob:
     gateway = seed(rbac_graph, monkeypatch)
-    model(purpose=Purpose.EXTRACTION)
+    model(
+        organization=rbac_graph.organization_a,
+        clinic=rbac_graph.clinic_a,
+        purpose=Purpose.EXTRACTION,
+    )
     with as_actor(rbac_graph, gateway.administrator):
         configuration = latest_configuration(rbac_graph.clinic_a)
         assert configuration is not None

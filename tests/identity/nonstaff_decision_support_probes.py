@@ -132,7 +132,11 @@ def census_world(
         ),
     )
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
-    configuration = model(purpose=Purpose.DECISION_SUPPORT)
+    configuration = model(
+        organization=graph.organization_a,
+        clinic=graph.clinic_a,
+        purpose=Purpose.DECISION_SUPPORT,
+    )
     administrator = User.objects.create(
         username="synthetic-decision-census-owner-" + uuid4().hex
     )

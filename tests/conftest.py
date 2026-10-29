@@ -38,6 +38,10 @@ RECEPTION_TABLES = (
     "scheduling_displaydevice",
 )
 TRUNCATE_GUARDS = (
+    ("ai_evaluationprotocol", "evaluation_no_truncate"),
+    ("ai_evaluationrun", "evaluation_no_truncate"),
+    ("ai_evaluationrating", "evaluation_no_truncate"),
+    ("ai_modelchangerequest", "evaluation_no_truncate"),
     ("ai_extractionjob", "extraction_no_truncate"),
     ("ai_extractioncandidate", "extraction_no_truncate"),
     ("scribe_aidraft", "draft_no_truncate"),

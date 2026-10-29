@@ -5,6 +5,7 @@ from typing import Final, NoReturn
 import pytest
 from apps.ai.artifacts import create_input, read_artifact
 from apps.ai.controls import current_policy, set_organization_policy
+from apps.ai.evaluation import services as evaluation_services
 from apps.ai.extraction import collect_extraction, review_extraction, start_extraction
 from apps.ai.owner import reset_circuit
 from apps.ai.services import invoke
@@ -83,6 +84,47 @@ DOMAIN_APP_CONFIG_PATHS: Final = frozenset(
 DEFERRED_SERVICE_ENTRYPOINTS: Final[tuple[Callable[[], NoReturn], ...]] = (
     exchange_clinical_record,
 )
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "names"),
+    [
+        (
+            evaluation_services.register_protocol,
+            [
+                "clinic_id",
+                "capability",
+                "corpus_version",
+                "thresholds",
+                "clinical_owner_ref",
+            ],
+        ),
+        (
+            evaluation_services.start_run,
+            ["clinic_id", "protocol_id", "configuration_id", "reviewers"],
+        ),
+        (
+            evaluation_services.store_results,
+            ["clinic_id", "run_id", "results"],
+        ),
+        (
+            evaluation_services.rate_case,
+            ["clinic_id", "run_id", "case_id", "labels"],
+        ),
+        (evaluation_services.finish_run, ["clinic_id", "run_id"]),
+        (evaluation_services.request_change, ["clinic_id", "run_id"]),
+        (
+            evaluation_services.decide_change,
+            ["clinic_id", "change_id", "decision", "approval_ref"],
+        ),
+    ],
+)
+def test_evaluation_commands_derive_human_authority_from_current_scope(
+    entrypoint: Callable[..., object], names: list[str]
+) -> None:
+    parameters = signature(entrypoint).parameters
+    assert list(parameters) == names
+    assert all(p.kind is Parameter.KEYWORD_ONLY for p in parameters.values())
 
 
 def test_issuance_command_keeps_explicit_scope_and_idempotency() -> None:

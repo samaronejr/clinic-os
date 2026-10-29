@@ -47,7 +47,7 @@ def seed(*, actor: UUID, clinic: UUID, organization: UUID) -> None:
         ),
     )
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
-    model(purpose=Purpose.BRIEF)
+    model(organization=organization, clinic=clinic, purpose=Purpose.BRIEF)
     with runtime_role(), tenant_context(actor, organization):
         current = latest_configuration(clinic)
         if current is None:

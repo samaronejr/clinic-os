@@ -37,6 +37,7 @@ from renewal.browser.engines import (
     zoom_200,
     zoom_screenshot,
 )
+from renewal.browser.evaluation_journeys import blinded_journey
 from renewal.browser.support_managers import seed_ai_admin, seed_settings_manager
 from renewal.browser.test_availability import _sign_in_physician, availability_staff
 from renewal.browser.test_primitives import (
@@ -393,6 +394,33 @@ def test_ai_organization_controls_are_native_scoped_and_readable(
         capture(page, renewal_artifact_root, f"ai-invalid-{theme}", width)
     finally:
         context.close()
+
+
+@pytest.mark.parametrize(
+    "presentation",
+    [
+        (1280, "light", False),
+        (375, "dark", False),
+        (1280, "light", True),
+        (375, "dark", True),
+    ],
+    ids=["native-desktop", "native-mobile", "hx-desktop", "hx-mobile"],
+)
+def test_blinded_two_rater_adjudication(
+    renewal_page: Page,
+    renewal_base_url: str,
+    renewal_artifact_root: Path,
+    availability_staff: dict[str, str],
+    presentation: tuple[int, str, bool],
+) -> None:
+    """Extend clinic-settings; the standard runner exercises every browser engine."""
+    blinded_journey(
+        renewal_page,
+        renewal_base_url,
+        renewal_artifact_root,
+        availability_staff,
+        presentation=presentation,
+    )
 
 
 @dataclasses.dataclass

@@ -76,7 +76,10 @@ It stores purpose, capability key, provider/model, region and jurisdiction,
 retention/training terms, integer micro-BRL prices, version, review reference,
 primary/fallback route, timeout, and state. The DB permits only
 `draft -> approved -> active -> retired`, with retirement also possible before
-activation. Terms never mutate; changes require a new version. Model review
+activation. Todo 47 additionally requires a passing, preregistered evaluation
+and an explicit clinic-owner change approval before activation. The platform
+owner still performs the model-state transition. Terms never mutate; changes
+require a new version. Model review
 references are synthetic configuration approvals, not provider/EG approvals.
 
 Every load reads the provider lifecycle's current version and refuses missing,
@@ -317,3 +320,94 @@ Recovery includes both new relations and their encryption keys.
 `test_extraction_runtime.py`, exact posture, migration upgrade, catalog census
 and the real native browser flow require the root's serialized runtime lane;
 source-only evidence does not claim those gates passed.
+
+## Evaluation and model change control (todo 47)
+
+`evaluation/` is an offline engineering harness, not an external approval.
+The closed `engineering-v1` corpus has twelve authored scenarios, four encounter
+clusters and all eight AI capability identifiers. Its SHA-256 binds the exact
+manifest and static audio bytes. The lawful-provenance field records synthetic
+CC0 scripts and offline Flite generation. Tags describe simulated voices,
+devices and adversarial conditions, not a representative pt-BR population.
+The static speech registry is about 163 kB. Tests/CI only read and verify it;
+`ops/testing/ai_evaluation_audio.py` is an explicitly invoked optional generator.
+
+`EvaluationProtocol` freezes the corpus, case/cluster sample sizes and canonical
+threshold document/hash before scoring. Registration requires one current human
+with both physician and owner roles in the exact clinic. Only synthetic
+engineering review references are accepted. Changing any threshold creates a
+new version and hash; an older run cannot approve a change after supersession.
+The engineering defaults are zero critical/forbidden errors, zero case-level
+clinical errors, complete case-level citation/action correctness, twelve cases
+and four encounters. These are software-test thresholds, not EG-3 clinical
+thresholds selected after looking at a candidate.
+
+`EvaluationRun` binds the exact configuration/version, model terms digest and
+prompt/retrieval/schema source hashes. Scoring uses only the registered synthetic
+providers through the unchanged `output_validation.call_provider` boundary,
+outside all transactions. It never executes agent tools. Observations and
+candidate output are encrypted with purpose `ai.evaluation.samples.v1`; they
+never enter metering, audit, task arguments or telemetry. Every run remains
+pending until independent structured human review completes.
+
+Two distinct assigned physicians submit immutable `EvaluationRating` rows.
+The run creator cannot occupy either rater slot or the adjudicator slot.
+Their identities, model identity and the other vote are hidden in the native
+review form at `/clinics/<clinic_id>/evaluation/`. The distinct adjudicator can
+see the two votes only after both exist and resolves taxonomy disagreements.
+RLS and raw-SQL guards repeat role, assignment, clinic, actor and ordering
+checks. Record selectors remain in POST bodies; content is private/no-store and
+never enters browser storage. One immutable binary taxonomy labels each case;
+correction time is explicitly reported in milliseconds, not guessed by a model.
+Correction summaries and encounter-bootstrap intervals use each case's mean of
+the two independent raters' durations, including cases requiring adjudication.
+The adjudicator's separate duration does not replace either rater's measurement.
+
+The SQL resolver computes passed/failed from complete adjudication, sample
+sizes, zero observed critical/unauthorized/duplicate/missed-escalation effects
+and the registered rates. A caller cannot write a verdict column. Reports
+retain numerator/denominator, WER alignment counts (descriptive only), taxonomy
+counts, case-level citation support and action correctness, Cohen's kappa
+(undefined when chance agreement is one), Wilson 95 percent intervals,
+deterministic encounter-cluster bootstrap intervals and specialty/device/accent
+strata. A synthetic pass and zero observed critical errors are not safety or
+real-world performance claims. Real clinical thresholds, adjudication and lawful
+representative data remain EG-3/EG-11.
+
+`ModelChangeRequest` is requested/approved/rejected. Only a current clinic owner
+other than its requester can decide it. A single-owner clinic must appoint a
+second independent owner before an evaluated model change can activate; the
+manual clinical workflow remains available. This deliberately accepts the
+onboarding cost rather than a self-approval exception. Approval requires a
+passing, current, unsuperseded run. A separate
+database trigger refuses model activation without that decision; admission and
+dispatch require the calling clinic's own current approval and recheck current
+source hashes. A platform state transition needs at least one current clinic
+approval, but it does not admit any other clinic. Registering a newer protocol
+invalidates only that clinic's older approvals; another clinic's independent
+approval remains valid. Model, prompt, retrieval or schema
+changes therefore need a new configuration and regression approval. Existing
+historical configurations with empty source bindings become unavailable rather
+than receiving a fabricated approval. No provider or live-data gate is opened.
+
+The owner command uses the same `assert_owner_database_role` entry check as
+`ai_gateway`, then binds the explicit `--operator-id`/organization/clinic through
+the existing transaction-local owner GUC context. It stays on `clinic_owner`.
+The evaluation's resolver-owned role predicates are owner-callable; runtime-only
+identity loaders are not granted to the owner and no runtime role is assumed.
+The owner command requires explicit current human/organization/clinic scope:
+`ai_eval register --capability AI-04 --corpus engineering-v1` registers the fixed
+engineering rubric; `ai_eval run --capability AI-04 --corpus engineering-v1`
+additionally names a configuration and three reviewers. `finish`, `report`
+(`--html <new-file>`), `request-change` and `decide` use opaque run/change ids.
+`ai_eval --help` lists the required scope options. Final platform activation
+continues through `ai_gateway model-state`; an evaluation command alone never
+activates a configuration.
+
+Migration `0005_evaluation` adds four durable, FORCE-RLS relations, exact column
+grants, composite scope bindings, no-delete/truncate guards and resolver-owned
+functions. Encrypted observations make it non-atomic at the migration level and
+irreversible; rollback = restore. Recovery includes all four relations and
+their tenant keys. Test fixtures obtain scripted engineering approvals through
+these same real services; there is no product bypass and those scripted votes
+are not clinician adjudication or external acceptance.

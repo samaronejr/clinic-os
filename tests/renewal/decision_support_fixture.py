@@ -98,7 +98,7 @@ def seed(
 ) -> None:
     """Owner-only simulated records never approve a genuine clinical capability."""
     seed_gateway(actor=actor, clinic=clinic, organization=organization)
-    model(purpose=Purpose.DECISION_SUPPORT)
+    model(organization=organization, clinic=clinic, purpose=Purpose.DECISION_SUPPORT)
     for key, record in GATE_CAPABILITIES:
         propose_version(
             key,

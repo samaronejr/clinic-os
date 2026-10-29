@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final
 
+from renewal.browser._page_wait import _answer, evaluate_js
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -89,12 +91,18 @@ def check_page(
     ``paused_clock`` is for a page whose Playwright clock is paused: axe then
     settles one clock millisecond at a time, so no later page timer can fire.
     """
-    if not page.evaluate(AXE_LOADED_JS):
+    if not evaluate_js(page, AXE_LOADED_JS):
         with page.expect_response(f"{base_url}{AXE_URL}") as axe_response:
-            page.add_script_tag(url=f"{base_url}{AXE_URL}")
+            _answer(
+                page,
+                page._impl_obj.add_script_tag(url=f"{base_url}{AXE_URL}"),
+                None,
+            )
         assert axe_response.value.status == OK_STATUS
     violations: list[dict[str, object]] = (
-        _settle_under_paused_clock(page) if paused_clock else page.evaluate(AXE_RUN_JS)
+        _settle_under_paused_clock(page)
+        if paused_clock
+        else evaluate_js(page, AXE_RUN_JS)
     )
     destination = artifact_root / "axe" / f"{state}.json"
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

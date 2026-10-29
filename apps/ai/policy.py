@@ -20,6 +20,7 @@ from apps.ai.contracts import (
     Price,
     Purpose,
 )
+from apps.ai.evaluation.versions import source_versions
 from apps.ai.models import AICircuit, GatewaySwitch, ModelConfiguration
 from apps.providers.services import current_version
 
@@ -151,9 +152,20 @@ def price_for(configuration: ModelConfiguration) -> Price:
 def check_configuration(configuration: ModelConfiguration, clinic_id: UUID) -> None:
     """Refuse unapproved regions, retired terms, or unavailable capabilities."""
     control = GatewaySwitch.objects.filter(pk=1, enabled=True).first()
+    evaluated_sources = source_versions(Purpose(configuration.purpose))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT clinic_app.ai_eval_activation_allowed(%s,%s)",
+            [configuration.pk, clinic_id],
+        )
+        approved = cursor.fetchone() == (True,)
     capability = current_version(configuration.capability_key, clinic_id=clinic_id)
     if (
         configuration.state != "active"
+        or not approved
+        or configuration.prompt_sha256 != evaluated_sources["prompt"]
+        or configuration.retrieval_sha256 != evaluated_sources["retrieval"]
+        or configuration.schema_sha256 != evaluated_sources["schema"]
         or not configuration.approval_ref
         or not configuration.retention_terms
         or not configuration.training_terms

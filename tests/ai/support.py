@@ -23,6 +23,7 @@ from apps.providers.lifecycle import VersionInput, propose_version
 from apps.tenancy.db import tenant_context
 from django.apps import apps
 
+from ai.evaluation_support import approve_configuration
 from identity.permission_support import owner_context
 from patient_service_support import runtime_role
 
@@ -48,6 +49,8 @@ class GatewayWorld:
 
 def model(
     *,
+    organization: UUID,
+    clinic: UUID,
     purpose: Purpose = Purpose.FRONT_DESK,
     fallback: bool = False,
     region: str = "br-synthetic",
@@ -73,6 +76,7 @@ def model(
         state="approved",
         approval_ref="synthetic-model-review-v1",
     )
+    approve_configuration(configuration, organization=organization, clinic=clinic)
     return transition_model(configuration_id=configuration.pk, state="active")
 
 
@@ -113,7 +117,7 @@ def seed(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> GatewayWorld:
         ),
     )
     set_global_switch(enabled=True, approved_regions=("br-synthetic",))
-    configuration = model()
+    configuration = model(organization=graph.organization_a, clinic=graph.clinic_a)
     with runtime_role(), tenant_context(administrator.pk, graph.organization_a):
         current = latest_configuration(graph.clinic_a)
         first = publish_configuration(

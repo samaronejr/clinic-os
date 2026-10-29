@@ -333,6 +333,139 @@
       ]
     },
     {
+      "symbol": "apps.ai.evaluation.services.authorized_run",
+      "signals": [
+        "denial",
+        "resolver",
+        "scope_name"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.authorized_run#cut1",
+        "apps.ai.evaluation.services.authorized_run#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services.decide_change",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.decide_change#cut1",
+        "apps.ai.evaluation.services.decide_change#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services.evaluation_staff",
+      "signals": [
+        "denial",
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.evaluation_staff#cut1",
+        "apps.ai.evaluation.services.evaluation_staff#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services.finish_run",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.finish_run#cut1",
+        "apps.ai.evaluation.services.finish_run#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services.review_slot",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.review_slot#cut1",
+        "apps.ai.evaluation.services.review_slot#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services.start_run",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.start_run#cut1",
+        "apps.ai.evaluation.services.start_run#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.services.store_results",
+      "signals": [
+        "denial"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.services.store_results#cut1",
+        "apps.ai.evaluation.services.store_results#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.views._review",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.views._review#cut1",
+        "apps.ai.evaluation.views._review#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.views._workspace",
+      "signals": [
+        "actor"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.views._workspace#cut1",
+        "apps.ai.evaluation.views._workspace#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
+      "symbol": "apps.ai.evaluation.views.evaluation_view",
+      "signals": [
+        "decorator"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.evaluation.views.evaluation_view#cut1",
+        "apps.ai.evaluation.views.evaluation_view#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
       "symbol": "apps.ai.execution_tasks.dispatch_approved",
       "signals": [
         "denial"
@@ -449,6 +582,19 @@
       "reason": "The existing TOTP decorator and the reachable clinic-scoped native command boundary enforce staff access."
     },
     {
+      "symbol": "apps.ai.management.commands.ai_eval.Command.handle",
+      "signals": [
+        "authentication"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.management.commands.ai_eval.Command.handle#cut1",
+        "apps.ai.management.commands.ai_eval.Command.handle#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
+    },
+    {
       "symbol": "apps.ai.management.commands.ai_gateway.Command.handle",
       "signals": [
         "authentication"
@@ -507,6 +653,19 @@
       "probes": [
         "apps.ai.owner.transition_model#cut1"
       ]
+    },
+    {
+      "symbol": "apps.ai.policy.check_configuration",
+      "signals": [
+        "resolver"
+      ],
+      "kind": "direct",
+      "probes": [
+        "apps.ai.policy.check_configuration#cut1",
+        "apps.ai.policy.check_configuration#observed"
+      ],
+      "observe": true,
+      "reason": "Executed evaluation authority oracle: exact stored roles, current active assigned human, blinded native/HX review, owner-only CLI, and immutable preregistered approval. The merged census records this real callable only after its domain test passes."
     },
     {
       "symbol": "apps.ai.policy.organization_policy",
@@ -7342,13 +7501,37 @@
     "apps.ai.decision_support.request_decision_support#observed",
     "apps.ai.decision_views.decision_support#cut1",
     "apps.ai.decision_views.decision_support#observed",
+    "apps.ai.evaluation.services.authorized_run#cut1",
+    "apps.ai.evaluation.services.authorized_run#observed",
+    "apps.ai.evaluation.services.decide_change#cut1",
+    "apps.ai.evaluation.services.decide_change#observed",
+    "apps.ai.evaluation.services.evaluation_staff#cut1",
+    "apps.ai.evaluation.services.evaluation_staff#observed",
+    "apps.ai.evaluation.services.finish_run#cut1",
+    "apps.ai.evaluation.services.finish_run#observed",
+    "apps.ai.evaluation.services.review_slot#cut1",
+    "apps.ai.evaluation.services.review_slot#observed",
+    "apps.ai.evaluation.services.start_run#cut1",
+    "apps.ai.evaluation.services.start_run#observed",
+    "apps.ai.evaluation.services.store_results#cut1",
+    "apps.ai.evaluation.services.store_results#observed",
+    "apps.ai.evaluation.views._review#cut1",
+    "apps.ai.evaluation.views._review#observed",
+    "apps.ai.evaluation.views._workspace#cut1",
+    "apps.ai.evaluation.views._workspace#observed",
+    "apps.ai.evaluation.views.evaluation_view#cut1",
+    "apps.ai.evaluation.views.evaluation_view#observed",
     "apps.ai.execution_tasks.dispatch_approved#cut1",
+    "apps.ai.management.commands.ai_eval.Command.handle#cut1",
+    "apps.ai.management.commands.ai_eval.Command.handle#observed",
     "apps.ai.management.commands.ai_gateway.Command.handle#cut1",
     "apps.ai.outbox.GatewayActionAdapter.send#cut1",
     "apps.ai.owner.propose_model#cut1",
     "apps.ai.owner.reset_circuit#cut1",
     "apps.ai.owner.set_global_switch#cut1",
     "apps.ai.owner.transition_model#cut1",
+    "apps.ai.policy.check_configuration#cut1",
+    "apps.ai.policy.check_configuration#observed",
     "apps.ai.policy.organization_policy#cut1",
     "apps.ai.proposals.propose_action#cut1",
     "apps.ai.services.invoke#cut1",
@@ -8565,6 +8748,251 @@
       "kind": "migration_only",
       "probes": [],
       "reason": "Historical or templated migration declaration; not a deployed callable. Retained so source-only additions cannot escape the census."
+    },
+    "clinic_app.ai_eval_activation_allowed": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_eval_model_gate"
+        ],
+        "signatures": [
+          {
+            "arguments": "candidate uuid, clinic uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_finalize": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, subject uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_model_gate": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_rating_visible": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_evaluationrating:evaluation_staff"
+        ],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "subject uuid, case_key text, human uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_record_guard": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [],
+        "signatures": [
+          {
+            "arguments": "",
+            "returns": "trigger",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_run_visible": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_evaluationrun:evaluation_staff"
+        ],
+        "resolvers": [
+          "clinic_app.ai_eval_rating_visible"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_staff": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [
+          "clinic_app.ai_evaluationprotocol:evaluation_staff",
+          "clinic_app.ai_evaluationrun:evaluation_staff",
+          "clinic_app.ai_modelchangerequest:evaluation_staff"
+        ],
+        "resolvers": [
+          "clinic_app.ai_eval_finalize",
+          "clinic_app.ai_eval_rating_visible",
+          "clinic_app.ai_eval_record_guard",
+          "clinic_app.ai_eval_run_visible"
+        ],
+        "signatures": [
+          {
+            "arguments": "clinic uuid, mode text",
+            "returns": "bool",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
+    },
+    "clinic_app.ai_eval_verdict": {
+      "discovery": {
+        "migrations": [
+          "apps/ai/migrations/_evaluation_sql.py"
+        ],
+        "policies": [],
+        "resolvers": [
+          "clinic_app.ai_eval_activation_allowed",
+          "clinic_app.ai_eval_finalize",
+          "clinic_app.ai_eval_record_guard"
+        ],
+        "signatures": [
+          {
+            "arguments": "subject uuid",
+            "returns": "text",
+            "security_definer": true,
+            "set_returning": false
+          }
+        ]
+      },
+      "kind": "domain_protocol",
+      "probes": [
+        "test_evaluation_sql_checks_every_stored_role_and_exact_clinic",
+        "test_evaluation_raw_readers_and_rating_guard_refuse_inactive_or_foreign_actor",
+        "test_two_independent_reviews_and_explicit_owner_change_are_required",
+        "test_threshold_history_is_immutable_and_new_registration_invalidates_old_run",
+        "test_disagreement_is_blinded_until_both_votes_and_requires_distinct_adjudicator",
+        "test_assignments_scope_and_raw_verdict_writes_cannot_be_forged",
+        "test_adjudicator_only_receives_votes_after_both_independent_reviews"
+      ],
+      "reason": "Preregistered evaluation and human change-control protocol. Executed stored-role, raw inactive/foreign SQL, independent-rater, adjudicator and explicit owner activation tests bind this exact deployed guard."
     },
     "clinic_app.ai_extraction_guard": {
       "discovery": {
@@ -10119,6 +10547,7 @@
         "policies": [],
         "resolvers": [
           "clinic_app.agent_audit",
+          "clinic_app.ai_eval_record_guard",
           "clinic_app.audit_append_system_unchecked_v1",
           "clinic_app.audit_append_system_unchecked_v2",
           "clinic_app.audit_append_unchecked_v1",
@@ -13881,6 +14310,7 @@
           "clinic_app.teleconsult_teleconsultsession:teleconsult_session_read"
         ],
         "resolvers": [
+          "clinic_app.ai_eval_staff",
           "clinic_app.billing_settlement_guard",
           "clinic_app.billing_staff_invoice",
           "clinic_app.configuration_guard",

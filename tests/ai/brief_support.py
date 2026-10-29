@@ -40,7 +40,9 @@ class BriefWorld:
 def seeded(graph: RbacGraph, monkeypatch: pytest.MonkeyPatch) -> BriefWorld:
     chart = chart_world(graph)
     gateway = seed(graph, monkeypatch)
-    model(purpose=Purpose.BRIEF)
+    model(
+        organization=graph.organization_a, clinic=graph.clinic_a, purpose=Purpose.BRIEF
+    )
     with owner_context(graph.organization_a):
         UserClinicRole.objects.filter(
             clinic_id=graph.clinic_a, user_id=graph.physician

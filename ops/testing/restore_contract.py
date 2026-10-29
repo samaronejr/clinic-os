@@ -19,6 +19,10 @@ from dataclasses import dataclass
 from typing import Final, Never
 
 DOMAIN_RELATIONS: Final = (
+    "ai_evaluationprotocol",
+    "ai_evaluationrun",
+    "ai_evaluationrating",
+    "ai_modelchangerequest",
     "ai_actionexecution",
     "ai_actionproposal",
     "ai_actionreceipt",
