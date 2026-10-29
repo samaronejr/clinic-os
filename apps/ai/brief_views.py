@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from django.db import transaction
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.crypto import salted_hmac
@@ -64,20 +65,21 @@ def chart_assistant(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         binding = salted_hmac(
             "ai.chart-session.v1", request.session.session_key, algorithm="sha256"
         ).hexdigest()
-        if data["command"] == "display":
-            brief = display_brief(
-                clinic_id=clinic_id,
-                enrollment_id=enrolled,
-                session_binding=binding,
-                invocation_id=data["invocation_id"],
-            )
-        else:
-            brief = request_brief(
-                clinic_id=clinic_id,
-                enrollment_id=enrolled,
-                session_binding=binding,
-                question=data["question"] if data["command"] == "ask" else "",
-            )
+        with transaction.atomic():
+            if data["command"] == "display":
+                brief = display_brief(
+                    clinic_id=clinic_id,
+                    enrollment_id=enrolled,
+                    session_binding=binding,
+                    invocation_id=data["invocation_id"],
+                )
+            else:
+                brief = request_brief(
+                    clinic_id=clinic_id,
+                    enrollment_id=enrolled,
+                    session_binding=binding,
+                    question=data["question"] if data["command"] == "ask" else "",
+                )
         context: dict[str, object] = {
             "clinic_id": clinic_id,
             "chart_brief": brief,

@@ -6,7 +6,7 @@ import json
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 import psycopg
@@ -42,8 +42,9 @@ from apps.orders.services import (
 )
 from apps.tenancy.db import tenant_context
 from apps.workflows.services import TaskSpec, create_task
+from django.conf import settings
 from django.db import connection
-from django.urls import reverse
+from django.urls import get_resolver, reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 
@@ -52,13 +53,18 @@ from ehr.longitudinal_support import care_reader, finalized
 from ehr.test_addenda import clinician, signed_in
 from ehr.test_autosave import as_actor
 from ehr.test_longitudinal import MEDICATION, TEMPERATURE
+from ehr.test_refusal_matrix import snapshot
 from identity.permission_support import owner_context, permission_actor
 from orders.support import SOURCE
+from workspace_refusal_support import workspace_routes
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
+    from uuid import UUID
 
     from apps.ai.contracts import ProviderRequest
+    from django.http import HttpRequest, HttpResponseBase
     from pytest_django.fixtures import SettingsWrapper
 
     from rbac_fixtures import RbacGraph
@@ -604,3 +610,69 @@ def test_today_renders_unavailable_without_affecting_the_day(world: BriefWorld) 
         assert response.status_code == 200
         assert b'data-today-brief="unavailable"' in response.content
         assert gettext("Brief unavailable").encode() in response.content
+
+
+@pytest.mark.parametrize("enhanced", [False, True], ids=["native", "htmx"])
+@pytest.mark.parametrize("branch", ["today-patient", "missing-key", "input-bound"])
+def test_brief_refusal_branches_preserve_database_and_session(
+    world: BriefWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    superuser_database_url: str,
+    branch: str,
+    enhanced: bool,
+) -> None:
+    g = world.graph
+    body = {
+        "enrollment_id": str(world.chart.enrollment),
+        "command": "generate",
+        "surface": "today" if branch == "today-patient" else "workspace",
+    }
+    expected = 400 if branch == "input-bound" else 403
+    if branch == "input-bound":
+        # The real assembled chart exceeds the protocol ceiling; no service
+        # or authorization result is replaced with an unconditional exception.
+        monkeypatch.setattr("apps.ai.brief_contracts.MAX_SOURCES", 0)
+        baseline = {**body, "command": "unsupported"}
+    else:
+        baseline = {**body, "enrollment_id": str(uuid4())}
+    with signed_in(g.physician) as client:
+        assert client.get("/auth/protected/").status_code == 200
+        session = dict(client.session)
+        before = snapshot(superuser_database_url)
+        publications = list(world.gateway.publications)
+        if branch == "missing-key":
+            route = next(
+                route
+                for route in workspace_routes(get_resolver())
+                if route.name == "ai:chart-assistant"
+            )
+            original = cast("Callable[..., HttpResponseBase]", route.pattern.callback)
+
+            def lose_framework_key(
+                request: HttpRequest, clinic_id: UUID
+            ) -> HttpResponseBase:
+                assert request.user.pk == g.physician
+                assert request.session.session_key is not None
+                assert not request.session.modified
+                request.session._session_key = None
+                return original(request, clinic_id)
+
+            monkeypatch.setattr(route.pattern, "callback", lose_framework_key)
+        bodies = []
+        for data in (body, baseline):
+            response = client.post(
+                reverse("ai:chart-assistant", args=(g.clinic_a,)),
+                data,
+                HTTP_HX_REQUEST="true" if enhanced else "false",
+            )
+            assert response.status_code == expected
+            assert response.wsgi_request.session.modified is False
+            assert dict(response.wsgi_request.session) == session
+            assert dict(client.session) == session
+            assert settings.SESSION_COOKIE_NAME not in response.cookies
+            assert data["enrollment_id"].encode() not in response.content
+            assert b"data-chart-citation" not in response.content
+            assert snapshot(superuser_database_url) == before
+            assert world.gateway.publications == publications
+            bodies.append(response.content)
+        assert bodies[0] == bodies[1]

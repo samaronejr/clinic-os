@@ -44,6 +44,7 @@ def chart_enrollment(
 ) -> UUID:
     """Resolve one POST selector only after canonical clinician admission."""
     require_current_actor_clinic_roles(clinic_id, (UserClinicRole.Role.PHYSICIAN,))
+    require_permission("demographics.read", clinic_id=clinic_id)
     if (enrollment_id is None) == (encounter_id is None):
         raise ClinicalAccessDeniedError
     if encounter_id is not None:

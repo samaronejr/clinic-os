@@ -8062,6 +8062,14 @@
       ]
     },
     {
+      "path": "apps/ehr/chart_sources.py",
+      "function": "chart_enrollment",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+      "legacy_allowed": [
+        "physician"
+      ]
+    },
+    {
       "path": "apps/ehr/history.py",
       "function": "authorize_history",
       "roles": "(UserClinicRole.Role.PHYSICIAN,)",
