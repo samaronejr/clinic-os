@@ -186,7 +186,7 @@ def agent_settings(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
                         ),
                     )
                     status = 409
-                except ActionAccessDeniedError:
+                except (ActionAccessDeniedError, CurrentActorError):
                     return render(request, "403.html", status=403)
                 else:
                     return redirect(reverse("ai:agent-settings", args=(clinic_id,)))

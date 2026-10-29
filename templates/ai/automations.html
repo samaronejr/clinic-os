@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% load i18n clinic_locale %}
+{% load i18n clinic_locale workspace %}
+{% block workspace_refusal %}{% if error %}{% workspace_refusal %}{% endif %}{% endblock %}
 {% block title %}{% trans "Agent proposals" %} · Clinic OS{% endblock %}
 {% block content %}
 <section aria-labelledby="agents-title">
