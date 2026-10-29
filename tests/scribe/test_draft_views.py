@@ -2,24 +2,27 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from apps.ehr.models import ClinicalDocumentVersion
-from apps.ehr.services import record_clinical_note
+from apps.ehr.services import create_draft, record_clinical_note
 from apps.scribe.models import DraftSectionSuggestion, ReviewDecision
 from apps.tenancy.db import tenant_context
+from django.conf import settings
 from django.urls import reverse
 from django.utils.translation import gettext
 
+from core.test_workspace_boundaries import _normalized_denial
 from otp_test_support import runtime_role
 from renewal.test_encounters import physician_client
 from scribe.draft_support import generate
 from scribe.test_draft_runtime import draft_world
 from scribe.test_ingest import media
 from scribe.test_refusals import snapshot
-from scribe.test_transcript_views import bind
+from scribe.test_transcript_views import bind, other_encounter
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -43,6 +46,53 @@ def post(
         **changes,
     }
     return client.post(reverse("scribe:review", args=(scope.graph.clinic_a,)), values)
+
+
+@pytest.mark.parametrize("htmx", [False, True], ids=["native", "htmx"])
+def test_note_from_another_authorized_encounter_has_unknown_denial_parity(
+    draft_world: DraftWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    htmx: bool,
+) -> None:
+    scope, graph = draft_world, draft_world.graph
+    encounter = other_encounter(graph, scope.recording)
+    assert encounter != scope.recording.encounter
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        original = ClinicalDocumentVersion.objects.get(pk=scope.version)
+        version = create_draft(
+            clinic_id=graph.clinic_a,
+            encounter_id=encounter,
+            template_id=original.template_id,
+        )
+    selected = replace(
+        scope,
+        recording=replace(scope.recording, encounter=encounter),
+        version=version.pk,
+    )
+    with physician_client(graph) as client:
+        bind(graph, selected.recording, client, monkeypatch)
+        assert post(client, selected).status_code == 200
+        before = snapshot()
+        session = dict(client.session)
+        responses = []
+        for identifier in (scope.version, uuid4()):
+            response = client.post(
+                reverse("scribe:review", args=(graph.clinic_a,)),
+                {
+                    "encounter_id": str(encounter),
+                    "version_id": str(identifier),
+                    "action": "open",
+                },
+                HTTP_HX_REQUEST="true" if htmx else "false",
+            )
+            assert response.status_code == 403
+            assert b"data-review-denied" in response.content
+            assert not response.wsgi_request.session.modified
+            assert settings.SESSION_COOKIE_NAME not in response.cookies
+            assert dict(client.session) == session
+            assert snapshot() == before
+            responses.append(response)
+        assert _normalized_denial(responses[0]) == _normalized_denial(responses[1])
 
 
 def test_native_review_shows_sources_diff_and_persistent_ai_origin(
