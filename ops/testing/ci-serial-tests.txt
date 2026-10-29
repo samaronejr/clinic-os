@@ -46,6 +46,11 @@ server-state tests/ai/test_agent_execution.py
 server-state tests/ai/test_agent_guards.py
 server-state tests/ai/test_agent_authority.py
 server-state tests/ai/test_agent_isolation.py
+# Wave C callers of the same role-mutating session fixture. The security modules
+# request it through their autouse machine_login; the census tests request it
+# explicitly. Keep the parallel catalog counters and fingerprints unchanged.
+server-state tests/ai/security/test_agency.py
+server-state tests/ai/security/test_budget_attacks.py
 server-state tests/identity/test_decision_support_probes.py::test_decision_adapters_compose_with_primary_nonstaff_census
 server-state tests/identity/test_scribe_census.py::test_real_nonstaff_census_observes_the_note_reader
 server-state tests/ai/test_extraction_authority.py::test_extraction_census_observes_every_delegated_permission_root
