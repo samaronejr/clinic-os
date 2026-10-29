@@ -8018,6 +8018,14 @@
   ],
   "role_calls": [
     {
+      "path": "apps/ai/decision_policy.py",
+      "function": "authorized_catalog",
+      "roles": "(UserClinicRole.Role.PHYSICIAN,)",
+      "legacy_allowed": [
+        "physician"
+      ]
+    },
+    {
       "path": "apps/billing/pix.py",
       "function": "prepare_pix_charge",
       "roles": "MANAGER_ROLES",

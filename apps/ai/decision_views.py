@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from django.db import transaction
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.crypto import salted_hmac
@@ -24,7 +25,9 @@ from apps.ai.decision_support import (
     record_decision,
     request_decision_support,
 )
+from apps.core.patient_context import BOUND_ATTRIBUTE, bind_patient_context
 from apps.core.workspace import finish_clinic_selection
+from apps.ehr.chart_sources import chart_enrollment
 from apps.ehr.services import ClinicalAccessDeniedError
 from apps.identity.current_context import CurrentActorError
 from apps.identity.models import Clinic
@@ -62,50 +65,63 @@ def decision_support(request: HttpRequest, clinic_id: UUID) -> HttpResponse:
         "ai.decision-session.v1", request.session.session_key, algorithm="sha256"
     ).hexdigest()
     try:
-        if data["command"] == "open":
-            panel = open_decision_support(
-                clinic_id=clinic_id, encounter_id=data["encounter_id"]
-            )
-        elif data["command"] == "generate":
-            panel = request_decision_support(
-                clinic_id=clinic_id,
-                encounter_id=data["encounter_id"],
-                session_binding=binding,
-                opt_in=data["opt_in"],
-            )
-        elif data["command"] == "display":
-            panel = display_decision_support(
-                clinic_id=clinic_id,
-                encounter_id=data["encounter_id"],
-                session_binding=binding,
-                invocation_id=data["invocation_id"],
-            )
-        else:
-            try:
-                panel = record_decision(
+        with transaction.atomic():
+            if data["command"] == "open":
+                panel = open_decision_support(
+                    clinic_id=clinic_id, encounter_id=data["encounter_id"]
+                )
+            elif data["command"] == "generate":
+                panel = request_decision_support(
+                    clinic_id=clinic_id,
+                    encounter_id=data["encounter_id"],
+                    session_binding=binding,
+                    opt_in=data["opt_in"],
+                )
+            elif data["command"] == "display":
+                panel = display_decision_support(
                     clinic_id=clinic_id,
                     encounter_id=data["encounter_id"],
                     session_binding=binding,
                     invocation_id=data["invocation_id"],
-                    decision=data["command"],
                 )
-            except GatewayRefusedError:
-                panel = DecisionPanel()
+            else:
+                try:
+                    panel = record_decision(
+                        clinic_id=clinic_id,
+                        encounter_id=data["encounter_id"],
+                        session_binding=binding,
+                        invocation_id=data["invocation_id"],
+                        decision=data["command"],
+                    )
+                except GatewayRefusedError:
+                    panel = DecisionPanel()
+            enrolled = chart_enrollment(
+                clinic_id=clinic_id, encounter_id=data["encounter_id"]
+            )
+            bind_patient_context(
+                request,
+                clinic_id=clinic_id,
+                enrollment_id=enrolled,
+                record_view=False,
+            )
+            response = render(
+                request,
+                "ai/decision_fragment.html"
+                if request.headers.get("HX-Request") == "true"
+                else "ai/decision.html",
+                {
+                    "clinic_id": clinic_id,
+                    "encounter_id": data["encounter_id"],
+                    "cds": panel,
+                    "clinic_timezone": Clinic.objects.get(pk=clinic_id).timezone,
+                },
+            )
+            # Bind the rendered banner, not the persistent workspace selection.
+            if hasattr(request, BOUND_ATTRIBUTE):
+                delattr(request, BOUND_ATTRIBUTE)
+            finish_clinic_selection(request, accepted=False)
+            return response
     except (CurrentActorError, ClinicalAccessDeniedError, GatewayAccessDeniedError):
         return render(request, "403.html", status=403)
     except GatewayInputError:
         return render(request, "400.html", status=400)
-    response = render(
-        request,
-        "ai/decision_fragment.html"
-        if request.headers.get("HX-Request") == "true"
-        else "ai/decision.html",
-        {
-            "clinic_id": clinic_id,
-            "encounter_id": data["encounter_id"],
-            "cds": panel,
-            "clinic_timezone": Clinic.objects.get(pk=clinic_id).timezone,
-        },
-    )
-    finish_clinic_selection(request, accepted=False)
-    return response

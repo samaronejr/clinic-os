@@ -46,6 +46,7 @@ server-state tests/ai/test_agent_execution.py
 server-state tests/ai/test_agent_guards.py
 server-state tests/ai/test_agent_authority.py
 server-state tests/ai/test_agent_isolation.py
+server-state tests/identity/test_decision_support_probes.py::test_decision_adapters_compose_with_primary_nonstaff_census
 server-state tests/identity/test_scribe_census.py::test_real_nonstaff_census_observes_the_note_reader
 server-state tests/ai/test_extraction_authority.py::test_extraction_census_observes_every_delegated_permission_root
 server-state tests/retention/test_execution.py
