@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from apps.core import workspace
+from apps.core.navigation import granted_permissions
 from apps.ehr.models import ClinicalDocumentVersion
 from apps.ehr.services import create_draft, record_clinical_note
 from apps.scribe.models import DraftSectionSuggestion, ReviewDecision
@@ -130,6 +132,29 @@ def test_native_review_shows_sources_diff_and_persistent_ai_origin(
             assert (
                 ClinicalDocumentVersion.objects.get(pk=scope.version).state == "draft"
             )
+
+
+@pytest.mark.parametrize("admitted", [False, True], ids=["physician", "automation"])
+def test_review_offers_the_proposal_queue_only_with_automation_authority(
+    draft_world: DraftWorld,
+    monkeypatch: pytest.MonkeyPatch,
+    admitted: bool,
+) -> None:
+    scope, graph = draft_world, draft_world.graph
+    generate(scope)
+    if admitted:
+        monkeypatch.setattr(
+            workspace,
+            "granted_permissions",
+            lambda clinic_id: granted_permissions(clinic_id) | {"automation.admin"},
+        )
+    with physician_client(graph) as client:
+        bind(graph, scope.recording, client, monkeypatch)
+        opened = post(client, scope)
+    assert opened.status_code == 200
+    assert b"data-separate-proposals" in opened.content
+    link = gettext("Open governed proposal queue") in opened.content.decode()
+    assert link is admitted
 
 
 @pytest.mark.parametrize(

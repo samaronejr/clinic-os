@@ -72,6 +72,9 @@ PRIVILEGED: Final = frozenset(
 # route guards the destinations lead to today). Roles whose routes are not
 # migrated to permissions yet keep their narrower workspace. RP configuration
 # actors can still discover scheduling Settings without patient administration.
+# Automations is the RP row "admin" (clinic manager/admin) and "org" (owner). The
+# org admin also holds "org" authority, but is not a workspace shell role: with
+# no landing clinic its navigation is the Settings fallback and has no palette.
 EXPECTED: Final = {
     "owner": ["agenda", "patients", "finance", "operations", "automations", "settings"],
     "clinic_admin": [
@@ -286,12 +289,14 @@ def test_workflow_candidate_opens_only_delivered_operations(
     assert response.status_code == OK
     assert _modules(response) == (
         ["inbox", "operations", "automations", "settings"]
-        if role in {"scheduler", "clinic_manager"}
-        else ["today", "inbox", "operations", "automations"]
+        if role == "clinic_manager"
+        else ["inbox", "operations", "settings"]
+        if role == "scheduler"
+        else ["today", "inbox", "operations"]
         if role == "nurse"
-        else ["inbox", "operations", "automations"]
+        else ["inbox", "operations"]
         if role == "allied_professional"
-        else ["operations", "automations"]
+        else ["operations"]
     )
     assert f'href="/clinics/{rbac_graph.clinic_a}/tasks/"' in response.content.decode()
 

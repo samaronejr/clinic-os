@@ -261,7 +261,7 @@ DESTINATIONS: Final[tuple[Destination, ...]] = (
         "automations",
         gettext_noop("Automations"),
         "ai:agents",
-        ("automation.admin", "automation.organization", "tasks.assign"),
+        ("automation.admin", "automation.organization"),
         route_roles=None,
         views=frozenset({"ai:agents", "ai:agent-settings"}),
         owner_todo=39,

@@ -90,7 +90,7 @@
     <h2 id="review-proposals-title">{% trans "Proposed orders and tasks - separate from the note" %}</h2>
     <p>{% trans "These are source-linked A0 proposals, not orders, tasks or approvals. Review them in their domain workspace. Note review cannot execute an agent tool or approve its payload." %}</p>
     <ul>{% for proposal in panel.proposals %}<li data-draft-proposal>{% if proposal.kind == "order" %}<strong>{% trans "Order proposal" %}</strong>{% else %}<strong>{% trans "Task proposal" %}</strong>{% endif %}<p class="review-text">{{ proposal.text }}</p></li>{% empty %}<li>{% trans "No separate proposals were generated." %}</li>{% endfor %}</ul>
-    <p><a class="button button--secondary" href="{% url 'ai:agents' clinic_id %}">{% trans "Open governed proposal queue" %}</a></p>
+    {% for link in workspace.links %}{% if link.key == "automations" %}<p><a class="button button--secondary" href="{{ link.url }}">{% trans "Open governed proposal queue" %}</a></p>{% endif %}{% endfor %}
   </section>
   {% note_ai_history clinic_id encounter_id %}
   {% endif %}

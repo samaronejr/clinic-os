@@ -1,6 +1,6 @@
 """Executable protocol oracles for scheduling, workflows and teleconsult."""
 
-from ai import test_agent_execution, test_agent_guards
+from ai import test_agent_execution, test_agent_guards, test_agent_staff_authority
 from ai import test_controls as ai_controls
 from ai import test_posture as ai_posture
 from ai.evaluation_oracles import CASES as EVALUATION_CASES
@@ -297,12 +297,19 @@ PROTOCOL_ORACLES = {
             "clinic_app.agent_record_guard",
             "clinic_app.agent_snapshot",
             "clinic_app.agent_source",
-            "clinic_app.agent_staff",
             "clinic_app.agent_transition",
             "clinic_app.identity_actor_permission",
             "clinic_app.identity_agent_grant_version",
         )
     },
+    "clinic_app.agent_staff": [
+        "test_agent_scope_and_approval_refusals_are_side_effect_free",
+        "test_fabricated_step_up_and_double_approval_cannot_add_votes",
+        "test_revoked_approver_blocks_after_approval",
+        "test_superseded_source_publication_blocks_execution",
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_agent_staff_admits_only_automation_authority",
+    ],
     "clinic_app.ai_staff": [
         "test_ai_sql_role_and_scope_decisions_follow_exact_permissions",
         "test_clinical_purposes_recheck_current_patient_authority",
@@ -447,6 +454,10 @@ def assert_executable_protocol_oracles(observed: dict[str, list[str]]) -> None:
                 "test_revoked_approver_blocks_after_approval",
                 "test_superseded_source_publication_blocks_execution",
             ),
+        ),
+        (
+            test_agent_staff_authority,
+            ("test_agent_staff_admits_only_automation_authority",),
         ),
         (ai_posture, PROTOCOL_ORACLES["clinic_app.ai_staff"]),
         (ai_controls, PROTOCOL_ORACLES["clinic_app.configuration_guard"]),

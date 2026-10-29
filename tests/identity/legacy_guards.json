@@ -16848,7 +16848,8 @@
     "clinic_app.agent_staff": {
       "discovery": {
         "migrations": [
-          "apps/ai/migrations/_agent_access_sql.py"
+          "apps/ai/migrations/_agent_access_sql.py",
+          "apps/ai/migrations/_agent_staff_authority_sql.py"
         ],
         "policies": [
           "clinic_app.ai_actionexecution:agent_staff",
@@ -16878,7 +16879,8 @@
         "test_fabricated_step_up_and_double_approval_cannot_add_votes",
         "test_revoked_approver_blocks_after_approval",
         "test_superseded_source_publication_blocks_execution",
-        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals"
+        "test_native_agent_decisions_use_the_displayed_digest_and_preserve_refusals",
+        "test_agent_staff_admits_only_automation_authority"
       ],
       "reason": "Digest-bound agent protocol: real runtime scope, current authority, immutable approvals, source versions, and native refusal oracles."
     },
