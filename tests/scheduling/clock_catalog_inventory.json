@@ -11212,8 +11212,7 @@
   },
   "function:clinic_app.orders_emit_task()": {
     "direct": {
-      "pg_catalog.statement_timestamp()": 3,
-      "unresolved-temporal-coercion": 1
+      "pg_catalog.statement_timestamp()": 3
     },
     "via": [
       "constraint:orders_order.orders_order_clinic_id_6e302833_fk_identity_clinic_id",
@@ -11280,8 +11279,7 @@
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 2,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 2,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2,
-      "unresolved-temporal-coercion": 5
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 2
     },
     "via": [
       "constraint:identity_clinic.identity_clinic_organization_id_f645cafc_fk_identity_",
@@ -12928,8 +12926,7 @@
   "function:clinic_app.retention_guard()": {
     "direct": {
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 1,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1,
-      "unresolved-temporal-coercion": 2
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 1
     },
     "via": [
       "constraint:ehr_clinicaldocument.ehr_clinicaldocument_encounter_id_f4cb8564_fk_ehr_encounter_id",
@@ -15065,8 +15062,7 @@
       "pg_catalog.interval_pl_timestamptz(interval, timestamp with time zone)": 5,
       "pg_catalog.statement_timestamp()": 5,
       "pg_catalog.timestamptz_mi_interval(timestamp with time zone, interval)": 9,
-      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 5,
-      "unresolved-temporal-coercion": 3
+      "pg_catalog.timestamptz_pl_interval(timestamp with time zone, interval)": 5
     },
     "via": [
       "constraint:comms_integrationoperation.comms_integrationope_actor_id_2efcba8f_fk_identity_",

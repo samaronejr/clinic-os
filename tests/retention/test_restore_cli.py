@@ -165,6 +165,59 @@ def test_seed_uses_the_acceptance_source_media_namespace(
     assert environment["SCRIBE_MEDIA_ROOT"] == str(tmp_path / "media-source")
 
 
+def _stub_rehearsal_database_boundaries(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Only database/container/process boundaries are inert. The acceptance
+    # caller, Makefile, parser, rehearsal, copy, namespace check and purge run.
+    monkeypatch.setattr(restore_rehearsal, "require_lease_claim", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_hba", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_equal_target_seed", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_empty_target", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_owner_rls_acl_posture", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_audit_chain", Mock())
+    monkeypatch.setattr(restore_rehearsal, "require_key_probe", Mock())
+    monkeypatch.setattr(restore_rehearsal, "_probe_restored_app_role", Mock())
+    monkeypatch.setattr(restore_rehearsal, "_run_verify", Mock())
+    monkeypatch.setattr(
+        restore_rehearsal,
+        "source_scope",
+        Mock(
+            return_value=SourceScope(
+                active_writer_count=0,
+                empty_relation_counts=dict.fromkeys(REQUIRED_EMPTY, 0),
+                foreign_audit_organization_count=0,
+                identity_user_count=4,
+                organization_count=1,
+                tenant_data_key_count=1,
+                totp_without_identity_count=0,
+                unexpected_domain_relations=(),
+                users_without_role_count=0,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        restore_rehearsal,
+        "migration_leaves",
+        Mock(return_value="synthetic migration leaves"),
+    )
+    monkeypatch.setattr(
+        restore_rehearsal,
+        "relation_fingerprints",
+        Mock(return_value=dict.fromkeys(EQUALITY_RELATIONS, "a" * 32)),
+    )
+    monkeypatch.setattr(
+        restore_rehearsal, "require_audit_content", Mock(return_value=0)
+    )
+    monkeypatch.setattr(
+        restore_rehearsal,
+        "require_equal_tenant_key_status",
+        Mock(return_value="synthetic key status"),
+    )
+    monkeypatch.setattr(restore_rehearsal, "verify_object_store", Mock(return_value=0))
+    monkeypatch.setattr(
+        restore_rehearsal, "require_sequence_headroom", Mock(return_value=())
+    )
+
+
 def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -194,42 +247,7 @@ def test_acceptance_replays_source_tombstones_into_its_fresh_media_root(
         "ops.testing.restore_rehearsal.ContainerPostgres",
         Mock(side_effect=[source, target]),
     )
-    # Only database/container/process boundaries are inert. The acceptance
-    # caller, Makefile, parser, rehearsal, copy, namespace check and purge run.
-    for name in (
-        "require_lease_claim",
-        "require_hba",
-        "require_equal_target_seed",
-        "require_empty_target",
-        "require_owner_rls_acl_posture",
-        "require_audit_chain",
-        "require_key_probe",
-        "_probe_restored_app_role",
-        "_run_verify",
-    ):
-        monkeypatch.setattr(f"ops.testing.restore_rehearsal.{name}", Mock())
-    for name, value in {
-        "source_scope": SourceScope(
-            active_writer_count=0,
-            empty_relation_counts=dict.fromkeys(REQUIRED_EMPTY, 0),
-            foreign_audit_organization_count=0,
-            identity_user_count=4,
-            organization_count=1,
-            tenant_data_key_count=1,
-            totp_without_identity_count=0,
-            unexpected_domain_relations=(),
-            users_without_role_count=0,
-        ),
-        "migration_leaves": "synthetic migration leaves",
-        "relation_fingerprints": dict.fromkeys(EQUALITY_RELATIONS, "a" * 32),
-        "require_audit_content": 0,
-        "require_equal_tenant_key_status": "synthetic key status",
-        "verify_object_store": 0,
-        "require_sequence_headroom": (),
-    }.items():
-        monkeypatch.setattr(
-            f"ops.testing.restore_rehearsal.{name}", Mock(return_value=value)
-        )
+    _stub_rehearsal_database_boundaries(monkeypatch)
     probe = tmp_path / "probe.json"
     probe.write_text(
         json.dumps(
