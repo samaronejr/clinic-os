@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n workspace %}
+{% block workspace_refusal %}{% if denied or invalid or error %}{% workspace_refusal %}{% endif %}{% endblock %}
 {% block title %}{% trans "Consultation transcript" %} · Clinic OS{% endblock %}
 {% block content %}
 <section class="shell-narrow" aria-labelledby="transcript-title">

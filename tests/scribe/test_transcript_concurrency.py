@@ -148,19 +148,19 @@ def test_media_acceptance_serializes_with_transcript_snapshot(
             acceptance_attempted.set()
             connections.close_all()
 
-    target = (
-        "apps.scribe.transcription.save_snapshot"
-        if action == "settle"
-        else "apps.scribe.transcripts.save_snapshot"
-    )
-    monkeypatch.setattr(target, pause_snapshot)
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(accept_media)
         try:
             if action == "settle":
+                monkeypatch.setattr(
+                    "apps.scribe.transcription.save_snapshot", pause_snapshot
+                )
                 with runtime_role():
                     assert execute_operation(inference) == "succeeded"
             else:
+                monkeypatch.setattr(
+                    "apps.scribe.transcripts.save_snapshot", pause_snapshot
+                )
                 with (
                     runtime_role(),
                     tenant_context(graph.physician, graph.organization_a),

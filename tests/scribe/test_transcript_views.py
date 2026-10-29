@@ -2,25 +2,30 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
 from apps.core.integration import execute_operation
+from apps.ehr.services import open_unscheduled_encounter
 from apps.scribe.models import ChunkTranscription, RecordingSession, TranscriptVersion
 from apps.scribe.services import control_recording, read_transcript
 from apps.scribe.tasks import run_transcription
 from apps.tenancy.db import tenant_context
+from django.conf import settings
 from django.urls import reverse
 
+from core.test_workspace_boundaries import _normalized_denial
 from patient_service_support import runtime_role
 from renewal.test_encounters import physician_client
 from scribe.test_ingest import World, media, world
-from scribe.test_refusals import API, freeze_successful_session_activity
+from scribe.test_refusals import API, freeze_successful_session_activity, snapshot
 from scribe.test_transcript_runtime import accepted, permit_asr
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from uuid import UUID
 
     from django.test import Client
     from django.test.client import _MonkeyPatchedWSGIResponse
@@ -65,6 +70,54 @@ def post(
         **changes,
     }
     return client.post(reverse("scribe:transcript", args=(graph.clinic_a,)), values)
+
+
+def other_encounter(graph: RbacGraph, scope: World) -> UUID:
+    """Use a real second assignment for the same patient, not forged ORM state."""
+    with runtime_role(), tenant_context(graph.physician, graph.organization_a):
+        enrollment = RecordingSession.objects.get(pk=scope.session).enrollment_id
+        return open_unscheduled_encounter(
+            clinic_id=graph.clinic_a,
+            enrollment_id=enrollment,
+            reason="documentation_only",
+        ).pk
+
+
+@pytest.mark.parametrize("htmx", [False, True], ids=["native", "htmx"])
+def test_recording_from_another_authorized_encounter_has_unknown_denial_parity(
+    rbac_graph: RbacGraph,
+    monkeypatch: pytest.MonkeyPatch,
+    htmx: bool,
+) -> None:
+    graph = rbac_graph
+    original = world(graph)
+    selected = replace(original, encounter=other_encounter(graph, original))
+    assert selected.encounter != original.encounter
+    with physician_client(graph) as client:
+        bind(graph, selected, client, monkeypatch)
+        # Both encounters are assigned and readable; only their pairing is bad.
+        assert post(client, graph, selected, "open", session_id="").status_code == 200
+        before = snapshot()
+        session = dict(client.session)
+        responses = []
+        for identifier in (original.session, uuid4()):
+            response = client.post(
+                reverse("scribe:transcript", args=(graph.clinic_a,)),
+                {
+                    "encounter_id": str(selected.encounter),
+                    "session_id": str(identifier),
+                    "action": "open",
+                },
+                HTTP_HX_REQUEST="true" if htmx else "false",
+            )
+            assert response.status_code == 403
+            assert b"data-transcript-denied" in response.content
+            assert not response.wsgi_request.session.modified
+            assert settings.SESSION_COOKIE_NAME not in response.cookies
+            assert dict(client.session) == session
+            assert snapshot() == before
+            responses.append(response)
+        assert _normalized_denial(responses[0]) == _normalized_denial(responses[1])
 
 
 def test_native_speaker_correction_finalization_and_revision_conflicts(

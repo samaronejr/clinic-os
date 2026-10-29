@@ -163,13 +163,21 @@ def test_registered_clinic_refusals_are_session_read_only(
     violations: list[tuple[str, str, str]] = []
     reached: set[str] = set()
     for route in routes:
+        payload = {}
+        if route.name in {"scribe:transcript", "scribe:review"}:
+            # Valid forms must reach authority checks, not stop at a 400.
+            payload = {"encounter_id": str(uuid4()), "action": "open"}
+            if route.name == "scribe:review":
+                payload["version_id"] = str(uuid4())
         for method in ("GET", "POST"):
             responses = []
             for clinic_id in (target, uuid4()):
                 _restore_session(client, snapshot)
                 url = route.url(clinic_id)
                 response = (
-                    _get(client, url) if method == "GET" else _post(client, url, {})
+                    _get(client, url)
+                    if method == "GET"
+                    else _post(client, url, payload)
                 )
                 match = response.wsgi_request.resolver_match
                 assert match is not None
