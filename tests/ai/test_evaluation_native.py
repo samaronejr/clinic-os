@@ -31,7 +31,10 @@ from ai.evaluation_support import (
     review_world,
 )
 from auth.stepup_test_support import STEP_UP_NOW, verified_request
+from core.test_workspace_boundaries import _normalized_denial
+from core.test_workspace_in_view_refusals import assert_session_read_only
 from ehr.test_addenda import signed_in
+from scribe.test_refusals import snapshot as committed_state
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -262,6 +265,34 @@ def test_native_refusals_cover_malformed_unknown_unassigned_and_extra_inputs(
     )
     assert rejected.status_code == 200
     assert "data-evaluation-saved" in rejected.content.decode()
+
+
+@pytest.mark.parametrize("enhanced", [False, True], ids=["native", "hx"])
+def test_http_unknown_review_actions_are_read_only_denials(
+    rbac_graph: RbacGraph, enhanced: bool
+) -> None:
+    world = evaluation_world(rbac_graph)
+    url = reverse("ai:evaluation", args=(world.clinic,))
+    with signed_in(world.reviewers.rater_one) as client:
+        assert client.get(url).status_code == 200
+        snapshot = dict(client.session)
+        before = committed_state()
+        denials = []
+        for action in ("unknown", "unregistered"):
+            response = client.post(
+                url,
+                {
+                    "action": action,
+                    "run_id": str(world.run.pk),
+                    "case_id": "synthetic-accents",
+                },
+                HTTP_HX_REQUEST="true" if enhanced else "false",
+            )
+            assert response.status_code == 400
+            assert_session_read_only(client, response, snapshot)
+            denials.append(_normalized_denial(response))
+            assert committed_state() == before
+        assert denials[0] == denials[1]
 
 
 def test_adjudicator_only_receives_votes_after_both_independent_reviews(
